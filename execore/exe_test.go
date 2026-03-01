@@ -133,15 +133,15 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 		t.Fatalf("Failed to get user by email: %v", err)
 	}
 
-	// Create an email verification token
+	// Create an email verification token (no verification_code — this is the
+	// standard link-based flow, not the app_token code-based flow).
 	token := "test-token-" + time.Now().Format("20060102150405")
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
-	verificationCode := "112233"
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
-			VALUES (?, ?, ?, ?, ?)`,
-			token, email, user.UserID, expires, verificationCode)
+			INSERT INTO email_verifications (token, email, user_id, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			token, email, user.UserID, expires)
 		return err
 	})
 	if err != nil {
@@ -212,15 +212,15 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Create an email verification token
+	// Create an email verification token (no verification_code — this is the
+	// standard link-based flow, not the app_token code-based flow).
 	token := "test-home-token-" + time.Now().Format("20060102150405")
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
-	verificationCode := "112233"
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
-			VALUES (?, ?, ?, ?, ?)`,
-			token, email, user.UserID, expires, verificationCode)
+			INSERT INTO email_verifications (token, email, user_id, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			token, email, user.UserID, expires)
 		return err
 	})
 	if err != nil {

@@ -1533,6 +1533,15 @@ func generatePairingCode() string {
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
+// generateVerificationCode returns an 8-character lowercase hex string for email verification.
+func generateVerificationCode() string {
+	b := make([]byte, 4)
+	if _, err := crand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	return fmt.Sprintf("%08x", b)
+}
+
 var errNoEmailService = errors.New("email service not configured")
 
 // bogusEmailDomains contains domains that should never receive emails.

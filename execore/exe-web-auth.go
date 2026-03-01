@@ -1580,6 +1580,48 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// For app token flow (iOS), send a 6-digit code instead of a clickable link.
+	// The link would open in the system browser outside ASWebAuthenticationSession,
+	// so the exedev-app:// redirect would never fire.
+	if appFlow.isAppTokenFlow() {
+		code := generateVerificationCode()
+		// Update the record with the verification code.
+		err = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).UpdateEmailVerificationCode, exedb.UpdateEmailVerificationCodeParams{
+			VerificationCode: &code,
+			Token:            token,
+		})
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to store verification code", "error", err)
+			s.showAuthError(w, r, "Failed to create verification. Please try again.", "")
+			return
+		}
+
+		webHost := s.env.WebHost
+		subject := fmt.Sprintf("Your verification code - %s", webHost)
+		body := fmt.Sprintf(`Hello,
+
+Your verification code is: %s
+
+Enter this code in the app to sign in. It will expire in 24 hours.
+
+Best regards,
+The %s team`, code, webHost)
+
+		err = s.sendEmail(r.Context(), email.TypeWebAuthVerification, addr, subject, body)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", addr)
+			s.showAuthError(w, r, "Failed to send email. Please try again or contact support.", "")
+			return
+		}
+
+		var devCode string
+		if s.env.WebDev {
+			devCode = code
+		}
+		s.showAppTokenCodeEntry(w, r, addr, devCode, "")
+		return
+	}
+
 	// Send email with clean verification URL (no redirect params - they're stored in DB)
 	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", getScheme(r), r.Host, token)
 
@@ -1614,6 +1656,104 @@ The %s team`, verifyEmailURL, webHost)
 		devURL = verifyEmailURL
 	}
 	s.showAuthEmailSent(w, r, addr, devURL)
+}
+
+// showAppTokenCodeEntry renders the code entry page for the app token email flow.
+func (s *Server) showAppTokenCodeEntry(w http.ResponseWriter, r *http.Request, email, devCode, errorMsg string) {
+	data := struct {
+		stage.Env
+		Email   string
+		DevCode string
+		Error   string
+	}{
+		Env:     s.env,
+		Email:   email,
+		DevCode: devCode,
+		Error:   errorMsg,
+	}
+	s.renderTemplate(r.Context(), w, "app-token-code-entry.html", data)
+}
+
+// handleAppTokenVerifyCode handles POST /auth/verify-code.
+// It validates a verification code from the app token email flow and completes authentication.
+// The lookup is by email (not token) so the verification token is never exposed to the client.
+func (s *Server) handleAppTokenVerifyCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	email := strings.TrimSpace(r.FormValue("email"))
+	code := strings.TrimSpace(r.FormValue("code"))
+
+	if email == "" || code == "" {
+		http.Error(w, "Missing email or code", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the most recent code-based verification for this email.
+	ev, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailVerificationByEmail, email)
+	if err != nil {
+		s.slog().InfoContext(r.Context(), "no pending code verification", "email", email, "error", err)
+		s.showAuthError(w, r, "No pending verification for this email. Please start over.", "")
+		return
+	}
+
+	// This endpoint is only for app_token flow.
+	flow := appTokenFlowFromEmailVerification(ev)
+	if !flow.isAppTokenFlow() {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Enforce attempt limit.
+	const maxCodeAttempts = 5
+	if ev.VerificationCodeAttempts >= int64(maxCodeAttempts) {
+		s.slog().WarnContext(r.Context(), "verification code attempts exceeded", "email", ev.Email)
+		_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteEmailVerificationByToken, ev.Token)
+		s.showAuthError(w, r, "Too many attempts. Please start over.", "")
+		return
+	}
+
+	// Check the code.
+	if *ev.VerificationCode != code {
+		_, _ = withTxRes1(s, r.Context(), (*exedb.Queries).IncrementEmailVerificationCodeAttempts, ev.Token)
+		remaining := maxCodeAttempts - int(ev.VerificationCodeAttempts) - 1
+		s.slog().InfoContext(r.Context(), "wrong verification code", "email", ev.Email, "remaining", remaining)
+		msg := fmt.Sprintf("Incorrect code. %d attempts remaining.", remaining)
+		if remaining <= 0 {
+			_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteEmailVerificationByToken, ev.Token)
+			s.showAuthError(w, r, "Too many attempts. Please start over.", "")
+			return
+		}
+		s.showAppTokenCodeEntry(w, r, ev.Email, "", msg)
+		return
+	}
+
+	// Code matches — consume the token.
+	ev, err = s.validateEmailVerificationToken(r.Context(), ev.Token)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to validate token after code check", "error", err)
+		s.render401(w, r, exeweb.UnauthorizedData{InvalidToken: true})
+		return
+	}
+
+	// Resolve pending shares/invites for new users.
+	if ev.IsNewUser {
+		s.slackFeed.EmailVerified(r.Context(), ev.UserID)
+	}
+	user, userErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, ev.UserID)
+	if userErr == nil {
+		if err := s.resolvePendingShares(r.Context(), user.Email, ev.UserID); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to resolve pending shares in verify-code", "error", err)
+		}
+		if err := s.resolvePendingTeamInvites(r.Context(), user.Email, ev.UserID); err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to resolve pending team invites in verify-code", "error", err)
+		}
+	}
+
+	// Complete the app token flow.
+	s.completeAuthWithAppToken(w, r, ev.UserID, flow, ev.IsNewUser)
 }
 
 // showAuthError displays an authentication error page

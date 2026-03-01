@@ -102,32 +102,50 @@ func createTestUserWithAppToken(t *testing.T, s *Server, email string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.Copy(io.Discard, resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	var verifyToken string
-	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT token FROM email_verifications WHERE email = ?`, email).Scan(&verifyToken)
-	})
-	if err != nil {
-		t.Fatal("no verification token:", err)
+	// Should show the code entry page.
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Enter Code") && !strings.Contains(bodyStr, "verify-code") {
+		t.Fatalf("expected code entry page, got: %s", bodyStr[:min(200, len(bodyStr))])
 	}
 
+	// Retrieve the verification code from DB.
+	var code string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT verification_code FROM email_verifications WHERE email = ?`, email).Scan(&code)
+	})
+	if err != nil {
+		t.Fatal("no verification record:", err)
+	}
+	if code == "" {
+		t.Fatal("verification code not set")
+	}
+
+	// Submit the code.
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=%s", port, verifyToken), nil)
+	form2 := url.Values{}
+	form2.Set("email", email)
+	form2.Set("code", code)
+	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/auth/verify-code", port), strings.NewReader(form2.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	// The app token flow now renders a passkey prompt page (200) instead of redirecting.
+	// The app token flow renders the success/passkey page.
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
 
-	// An auth cookie should be set (needed for passkey registration on the page).
+	// An auth cookie should be set (for passkey registration on the page).
 	hasCookie := false
 	for _, c := range resp.Cookies() {
 		if c.Name == "exe-auth" {
@@ -139,7 +157,7 @@ func createTestUserWithAppToken(t *testing.T, s *Server, email string) string {
 	}
 
 	// The page should contain the callback URL with the app token.
-	bodyStr := string(body)
+	bodyStr = string(body)
 	if !strings.Contains(bodyStr, "exedev-app") || !strings.Contains(bodyStr, "exeapp_") {
 		t.Fatal("page should contain callback URL with app token")
 	}
@@ -371,9 +389,9 @@ func TestAppTokenFlowStoresParamsInEmailVerification(t *testing.T) {
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	var rm, cb *string
+	var rm, cb, vc *string
 	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT response_mode, callback_uri FROM email_verifications WHERE email = ?`, "params@example.com").Scan(&rm, &cb)
+		return rx.QueryRow(`SELECT response_mode, callback_uri, verification_code FROM email_verifications WHERE email = ?`, "params@example.com").Scan(&rm, &cb, &vc)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -383,5 +401,134 @@ func TestAppTokenFlowStoresParamsInEmailVerification(t *testing.T) {
 	}
 	if cb == nil || *cb != "exedev-app://auth" {
 		t.Fatalf("expected callback_uri=exedev-app://auth, got %v", cb)
+	}
+	if vc == nil || len(*vc) != 8 {
+		t.Fatalf("expected 8-char hex verification_code, got %v", vc)
+	}
+}
+
+func TestAppTokenVerifyCodeWrongCode(t *testing.T) {
+	s := newTestServer(t)
+	port := s.httpPort()
+	const testEmail = "wrongcode@example.com"
+
+	// Start the app_token email flow.
+	form := url.Values{}
+	form.Set("email", testEmail)
+	form.Set("response_mode", "app_token")
+	form.Set("callback_uri", "exedev-app://auth")
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/auth", port),
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	// Submit a wrong code — should show error but allow retry.
+	submitCode := func(code string) (int, string) {
+		f := url.Values{}
+		f.Set("email", testEmail)
+		f.Set("code", code)
+		req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/auth/verify-code", port), strings.NewReader(f.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, string(body)
+	}
+
+	// First wrong attempt — should show remaining count.
+	status, body := submitCode("00000000")
+	if status != http.StatusOK {
+		t.Fatalf("expected 200, got %d", status)
+	}
+	if !strings.Contains(body, "Incorrect code") || !strings.Contains(body, "4 attempts remaining") {
+		t.Fatalf("expected error with 4 remaining, got: %s", body[:min(300, len(body))])
+	}
+
+	// Verification record should NOT be consumed (can retry).
+	var count int
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT count(*) FROM email_verifications WHERE email = ?`, testEmail).Scan(&count)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("verification should not be consumed on wrong code")
+	}
+
+	// Exhaust remaining attempts (4 more = 5 total).
+	for i := 0; i < 3; i++ {
+		submitCode("00000000")
+	}
+	// 5th attempt should lock it out.
+	status, body = submitCode("00000000")
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", status)
+	}
+	if !strings.Contains(body, "Too many attempts") {
+		t.Fatalf("expected lockout message, got: %s", body[:min(300, len(body))])
+	}
+
+	// Verification record should be deleted.
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT count(*) FROM email_verifications WHERE email = ?`, testEmail).Scan(&count)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("verification should be deleted after too many attempts")
+	}
+}
+
+func TestAppTokenCodeEntryDoesNotExposeToken(t *testing.T) {
+	// The code entry page must not contain the verification token.
+	// The token is a secret that proves email ownership in the link-based flow;
+	// exposing it would let someone skip the code check via /verify-email.
+	s := newTestServer(t)
+	port := s.httpPort()
+
+	// Start the app_token email flow.
+	form := url.Values{}
+	form.Set("email", "notoken@example.com")
+	form.Set("response_mode", "app_token")
+	form.Set("callback_uri", "exedev-app://auth")
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/auth", port),
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Get the token from DB — it must NOT appear in the page.
+	var verifyToken string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT token FROM email_verifications WHERE email = ?`, "notoken@example.com").Scan(&verifyToken)
+	})
+	if err != nil {
+		t.Fatal("no verification token:", err)
+	}
+
+	if strings.Contains(string(body), verifyToken) {
+		t.Fatal("code entry page must not contain the verification token")
 	}
 }

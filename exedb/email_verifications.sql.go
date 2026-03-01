@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -17,6 +18,34 @@ DELETE FROM email_verifications WHERE token = ?
 func (q *Queries) DeleteEmailVerificationByToken(ctx context.Context, token string) error {
 	_, err := q.exec(ctx, q.deleteEmailVerificationByTokenStmt, deleteEmailVerificationByToken, token)
 	return err
+}
+
+const getEmailVerificationByEmail = `-- name: GetEmailVerificationByEmail :one
+SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri, verification_code_attempts FROM email_verifications
+WHERE email = ? AND verification_code IS NOT NULL AND expires_at > datetime('now')
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, email string) (EmailVerification, error) {
+	row := q.queryRow(ctx, q.getEmailVerificationByEmailStmt, getEmailVerificationByEmail, email)
+	var i EmailVerification
+	err := row.Scan(
+		&i.Token,
+		&i.Email,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.VerificationCode,
+		&i.InviteCodeID,
+		&i.IsNewUser,
+		&i.RedirectUrl,
+		&i.ReturnHost,
+		&i.ResponseMode,
+		&i.CallbackUri,
+		&i.VerificationCodeAttempts,
+	)
+	return i, err
 }
 
 const getEmailVerificationByPartialToken = `-- name: GetEmailVerificationByPartialToken :one
@@ -34,7 +63,7 @@ func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token 
 }
 
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
-SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri FROM email_verifications
+SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri, verification_code_attempts FROM email_verifications
 WHERE token = ?
 `
 
@@ -54,8 +83,17 @@ func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string)
 		&i.ReturnHost,
 		&i.ResponseMode,
 		&i.CallbackUri,
+		&i.VerificationCodeAttempts,
 	)
 	return i, err
+}
+
+const incrementEmailVerificationCodeAttempts = `-- name: IncrementEmailVerificationCodeAttempts :execresult
+UPDATE email_verifications SET verification_code_attempts = verification_code_attempts + 1 WHERE token = ?
+`
+
+func (q *Queries) IncrementEmailVerificationCodeAttempts(ctx context.Context, token string) (sql.Result, error) {
+	return q.exec(ctx, q.incrementEmailVerificationCodeAttemptsStmt, incrementEmailVerificationCodeAttempts, token)
 }
 
 const insertEmailVerification = `-- name: InsertEmailVerification :exec
@@ -125,5 +163,19 @@ func (q *Queries) InsertOrReplaceEmailVerification(ctx context.Context, arg Inse
 		arg.ResponseMode,
 		arg.CallbackUri,
 	)
+	return err
+}
+
+const updateEmailVerificationCode = `-- name: UpdateEmailVerificationCode :exec
+UPDATE email_verifications SET verification_code = ? WHERE token = ?
+`
+
+type UpdateEmailVerificationCodeParams struct {
+	VerificationCode *string `db:"verification_code" json:"verification_code"`
+	Token            string  `db:"token" json:"token"`
+}
+
+func (q *Queries) UpdateEmailVerificationCode(ctx context.Context, arg UpdateEmailVerificationCodeParams) error {
+	_, err := q.exec(ctx, q.updateEmailVerificationCodeStmt, updateEmailVerificationCode, arg.VerificationCode, arg.Token)
 	return err
 }

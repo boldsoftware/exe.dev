@@ -345,6 +345,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailByUserIDStmt, err = db.PrepareContext(ctx, getEmailByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailByUserID: %w", err)
 	}
+	if q.getEmailVerificationByEmailStmt, err = db.PrepareContext(ctx, getEmailVerificationByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmailVerificationByEmail: %w", err)
+	}
 	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
 	}
@@ -566,6 +569,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.hasUserAccessToBoxStmt, err = db.PrepareContext(ctx, hasUserAccessToBox); err != nil {
 		return nil, fmt.Errorf("error preparing query HasUserAccessToBox: %w", err)
+	}
+	if q.incrementEmailVerificationCodeAttemptsStmt, err = db.PrepareContext(ctx, incrementEmailVerificationCodeAttempts); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementEmailVerificationCodeAttempts: %w", err)
 	}
 	if q.incrementSeenOnHostsStmt, err = db.PrepareContext(ctx, incrementSeenOnHosts); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementSeenOnHosts: %w", err)
@@ -854,6 +860,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
+	}
+	if q.updateEmailVerificationCodeStmt, err = db.PrepareContext(ctx, updateEmailVerificationCode); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateEmailVerificationCode: %w", err)
 	}
 	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
@@ -1467,6 +1476,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.getEmailVerificationByEmailStmt != nil {
+		if cerr := q.getEmailVerificationByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmailVerificationByEmailStmt: %w", cerr)
+		}
+	}
 	if q.getEmailVerificationByPartialTokenStmt != nil {
 		if cerr := q.getEmailVerificationByPartialTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByPartialTokenStmt: %w", cerr)
@@ -1835,6 +1849,11 @@ func (q *Queries) Close() error {
 	if q.hasUserAccessToBoxStmt != nil {
 		if cerr := q.hasUserAccessToBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasUserAccessToBoxStmt: %w", cerr)
+		}
+	}
+	if q.incrementEmailVerificationCodeAttemptsStmt != nil {
+		if cerr := q.incrementEmailVerificationCodeAttemptsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementEmailVerificationCodeAttemptsStmt: %w", cerr)
 		}
 	}
 	if q.incrementSeenOnHostsStmt != nil {
@@ -2317,6 +2336,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateEmailVerificationCodeStmt != nil {
+		if cerr := q.updateEmailVerificationCodeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateEmailVerificationCodeStmt: %w", cerr)
+		}
+	}
 	if q.updatePasskeySignCountStmt != nil {
 		if cerr := q.updatePasskeySignCountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
@@ -2583,6 +2607,7 @@ type Queries struct {
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
+	getEmailVerificationByEmailStmt            *sql.Stmt
 	getEmailVerificationByPartialTokenStmt     *sql.Stmt
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
@@ -2657,6 +2682,7 @@ type Queries struct {
 	getUserWithSSHKeyStmt                      *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
+	incrementEmailVerificationCodeAttemptsStmt *sql.Stmt
 	incrementSeenOnHostsStmt                   *sql.Stmt
 	incrementShareLinkUsageStmt                *sql.Stmt
 	incrementUserEmailCountStmt                *sql.Stmt
@@ -2753,6 +2779,7 @@ type Queries struct {
 	updateBoxRoutesStmt                        *sql.Stmt
 	updateBoxSSHPortStmt                       *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
+	updateEmailVerificationCodeStmt            *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
 	updateSSHKeyCommentStmt                    *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
@@ -2890,6 +2917,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
+		getEmailVerificationByEmailStmt:            q.getEmailVerificationByEmailStmt,
 		getEmailVerificationByPartialTokenStmt:     q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
@@ -2964,6 +2992,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
+		incrementEmailVerificationCodeAttemptsStmt: q.incrementEmailVerificationCodeAttemptsStmt,
 		incrementSeenOnHostsStmt:                   q.incrementSeenOnHostsStmt,
 		incrementShareLinkUsageStmt:                q.incrementShareLinkUsageStmt,
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
@@ -3060,6 +3089,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
 		updateBoxSSHPortStmt:                       q.updateBoxSSHPortStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
+		updateEmailVerificationCodeStmt:            q.updateEmailVerificationCodeStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
 		updateSSHKeyCommentStmt:                    q.updateSSHKeyCommentStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,

@@ -64,6 +64,7 @@ func (s *Server) prepareHandler() http.Handler {
 	// the cross-site Sec-Fetch-Site context to this POST. Safe to allow:
 	// it only confirms an already-issued, single-use token.
 	cop.AddInsecureBypassPattern("POST /verify-email")
+	cop.AddInsecureBypassPattern("POST /auth/verify-code")
 
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
@@ -637,6 +638,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/billing/update", http.StatusMovedPermanently)
 	case "/auth":
 		s.handleAuth(w, r)
+	case "/auth/verify-code":
+		s.handleAppTokenVerifyCode(w, r)
 	case "/auth/confirm":
 		s.handleAuthConfirm(w, r)
 	case "/oauth/google/callback":

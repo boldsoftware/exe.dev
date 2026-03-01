@@ -18,3 +18,15 @@ SELECT user_id
 FROM email_verifications
 WHERE token = ? AND expires_at > datetime('now')
 LIMIT 1;
+
+-- name: UpdateEmailVerificationCode :exec
+UPDATE email_verifications SET verification_code = ? WHERE token = ?;
+
+-- name: IncrementEmailVerificationCodeAttempts :execresult
+UPDATE email_verifications SET verification_code_attempts = verification_code_attempts + 1 WHERE token = ?;
+
+-- name: GetEmailVerificationByEmail :one
+SELECT * FROM email_verifications
+WHERE email = ? AND verification_code IS NOT NULL AND expires_at > datetime('now')
+ORDER BY created_at DESC
+LIMIT 1;

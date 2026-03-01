@@ -170,18 +170,19 @@ type EmailQualityBypass struct {
 }
 
 type EmailVerification struct {
-	Token            string     `db:"token" json:"token"`
-	Email            string     `db:"email" json:"email"`
-	UserID           string     `db:"user_id" json:"user_id"`
-	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-	VerificationCode *string    `db:"verification_code" json:"verification_code"`
-	InviteCodeID     *int64     `db:"invite_code_id" json:"invite_code_id"`
-	IsNewUser        bool       `db:"is_new_user" json:"is_new_user"`
-	RedirectUrl      *string    `db:"redirect_url" json:"redirect_url"`
-	ReturnHost       *string    `db:"return_host" json:"return_host"`
-	ResponseMode     *string    `db:"response_mode" json:"response_mode"`
-	CallbackUri      *string    `db:"callback_uri" json:"callback_uri"`
+	Token                    string     `db:"token" json:"token"`
+	Email                    string     `db:"email" json:"email"`
+	UserID                   string     `db:"user_id" json:"user_id"`
+	ExpiresAt                time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt                *time.Time `db:"created_at" json:"created_at"`
+	VerificationCode         *string    `db:"verification_code" json:"verification_code"`
+	InviteCodeID             *int64     `db:"invite_code_id" json:"invite_code_id"`
+	IsNewUser                bool       `db:"is_new_user" json:"is_new_user"`
+	RedirectUrl              *string    `db:"redirect_url" json:"redirect_url"`
+	ReturnHost               *string    `db:"return_host" json:"return_host"`
+	ResponseMode             *string    `db:"response_mode" json:"response_mode"`
+	CallbackUri              *string    `db:"callback_uri" json:"callback_uri"`
+	VerificationCodeAttempts int64      `db:"verification_code_attempts" json:"verification_code_attempts"`
 }
 
 type HllSketch struct {
