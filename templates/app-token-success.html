@@ -45,10 +45,12 @@
       if (!done) finish();
     }, 20000);
 
+    const hasPasskeys = {{if .HasPasskeys}}true{{else}}false{{end}};
+
     document.addEventListener('DOMContentLoaded', async function() {
       const status = document.getElementById('passkey-status');
 
-      if (!passkey.isSupported()) {
+      if (hasPasskeys || !passkey.isSupported()) {
         finish();
         return;
       }

@@ -212,16 +212,25 @@ func (s *Server) completeAuthWithAppToken(w http.ResponseWriter, r *http.Request
 		email = user.Email
 	}
 
+	// Check if user already has passkeys so we don't prompt unnecessarily.
+	hasPasskeys := false
+	passkeys, err := withRxRes1(s, ctx, (*exedb.Queries).GetPasskeysByUserID, userID)
+	if err == nil && len(passkeys) > 0 {
+		hasPasskeys = true
+	}
+
 	data := struct {
 		stage.Env
 		Email       string
 		CallbackURL string
 		IsWelcome   bool
+		HasPasskeys bool
 	}{
 		Env:         s.env,
 		Email:       email,
 		CallbackURL: callbackURL.String(),
 		IsWelcome:   isNewUser,
+		HasPasskeys: hasPasskeys,
 	}
 	s.renderTemplate(ctx, w, "app-token-success.html", data)
 	return true
