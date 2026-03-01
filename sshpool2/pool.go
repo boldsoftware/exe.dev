@@ -178,6 +178,8 @@ func (p *Pool) incCacheResult(result string) {
 }
 
 // connectTo returns a pooled connection for the given host, user, port, and signer.
+// DoChanContext lets each caller return on its own ctx.Done() while shared
+// connection work continues until all waiters cancel.
 func (p *Pool) connectTo(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (*pooledConn, error) {
 	key := connKey{
 		host:      host,
@@ -185,18 +187,14 @@ func (p *Pool) connectTo(ctx context.Context, host, user string, port int, signe
 		port:      port,
 		publicKey: string(signer.PublicKey().Marshal()),
 	}
-	// Do not pass the context into the singleflight function:
-	// Even if the context is canceled, other callers may still want to use the connection.
-	pc, err, _ := p.sfGroup.Do(key, func() (*pooledConn, error) {
-		return p.connect(key, config)
+	ch := p.sfGroup.DoChanContext(ctx, key, func(sfCtx context.Context) (*pooledConn, error) {
+		return p.connect(sfCtx, key, config)
 	})
-	if err != nil {
-		return nil, err
+	res := <-ch
+	if res.Err != nil {
+		return nil, res.Err
 	}
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	return pc, nil
+	return res.Val, nil
 }
 
 // retryLoop retries work until success or retries exhausted.
@@ -267,7 +265,9 @@ func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user st
 
 // connect establishes an SSH connection.
 // The returned pooledConn is valid for at least p.ttl() duration.
-func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, error) {
+// ctx is used for the TCP dial; it does not affect the SSH handshake
+// (which is bounded by the 3s deadline).
+func (p *Pool) connect(ctx context.Context, key connKey, config *ssh.ClientConfig) (*pooledConn, error) {
 	// If we have an existing usable connection in the pool, return it immediately.
 	pc := p.getConn(key)
 	connected := pc.connect()
@@ -283,8 +283,9 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 
 	// Establish TCP connection with deadline.
 	// Use Deadline (not Timeout) so TCP connect + SSH handshake share the same 3s budget.
+	// ctx allows aborting the dial when all singleflight callers cancel.
 	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.Dial("tcp", addr)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("SSH dial failed: %w", err)
 	}
@@ -309,7 +310,7 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	}
 
 	client := ssh.NewClient(sshConn, chans, reqs)
-	p.log().Info("established new SSH connection in pool", "key", key.String())
+	p.log().InfoContext(ctx, "established new SSH connection in pool", "key", key.String())
 
 	pc = &pooledConn{client: client, key: key, pool: p, log: p.log()}
 	// Immediately mark as connected and then add a disconnect for balance.
