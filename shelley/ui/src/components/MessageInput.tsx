@@ -53,6 +53,8 @@ interface MessageInputProps {
   /** If set, persist draft message to localStorage under this key */
   persistKey?: string;
   initialRows?: number;
+  /** Status bar content rendered inline on mobile (hidden on desktop) */
+  statusSlot?: React.ReactNode;
 }
 
 const PERSIST_KEY_PREFIX = "shelley_draft_";
@@ -66,6 +68,7 @@ function MessageInput({
   onClearInjectedText,
   persistKey,
   initialRows = 1,
+  statusSlot,
 }: MessageInputProps) {
   const [message, setMessage] = useState(() => {
     // Load persisted draft if persistKey is set
@@ -489,6 +492,7 @@ function MessageInput({
           />
         </div>
         <div className="message-controls-row">
+          {statusSlot && <div className="message-controls-status-slot">{statusSlot}</div>}
           <button
             type="button"
             onClick={handleAttachClick}

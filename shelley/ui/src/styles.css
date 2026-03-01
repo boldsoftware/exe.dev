@@ -3414,6 +3414,11 @@ svg {
     background-color 0.3s ease;
 }
 
+/* Inline status slot in message controls — hidden on desktop, shown on mobile */
+.message-controls-status-slot {
+  display: none;
+}
+
 /* Mobile optimizations for tighter spacing */
 @media (max-width: 767px) {
   .header {
@@ -3421,18 +3426,62 @@ svg {
     padding-top: calc(0.375rem + env(safe-area-inset-top, 0px));
   }
 
-  .status-bar {
-    padding: 0.375rem 0.75rem;
-    min-height: 2rem;
+  /* Hide standalone status bar on mobile — content is shown inline in controls row.
+     Exception: keep visible for archived conversations (no MessageInput rendered)
+     and new conversations (status slot is not used). */
+  .status-bar:not(.status-bar-archived):not(.status-bar-new) {
+    display: none;
+  }
+
+  .hide-on-mobile {
+    display: none;
+  }
+
+  /* Show inline status slot on mobile */
+  .message-controls-status-slot {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+  }
+
+  /* Compact the status bar active layout when inline */
+  .message-controls-status-slot .status-bar-active {
+    gap: 0.375rem;
+  }
+
+  .message-controls-status-slot .context-usage-bar-container {
+    flex-shrink: 0;
+  }
+
+  /* Override column stacking for new-conversation fields when inline */
+  .message-controls-status-slot .status-bar-new-conversation {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.375rem;
+  }
+
+  .message-controls-status-slot .status-field {
+    min-width: 0;
+  }
+
+  .message-controls-status-slot .status-chip {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .message-input-container {
     padding: 0.5rem 0.75rem;
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border);
   }
 
   .message-input-form {
-    flex-direction: column;
+    flex-direction: column-reverse;
     align-items: stretch;
     gap: 0.375rem;
   }

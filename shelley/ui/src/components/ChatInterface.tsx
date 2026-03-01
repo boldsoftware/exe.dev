@@ -641,6 +641,14 @@ function ChatInterface({
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
   const { markdownMode, setMarkdownMode } = useMarkdown();
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const [browserNotifsEnabled, setBrowserNotifsEnabled] = useState(() =>
     isChannelEnabled("browser"),
   );
@@ -1607,6 +1615,127 @@ function ChatInterface({
     ];
   };
 
+  // Status bar content — rendered in the standalone status bar (desktop) and
+  // inline in the message input controls row (mobile via CSS).
+  function renderStatusContent() {
+    return currentConversation?.archived ? (
+      // Archived state
+      <>
+        <span className="status-message">This conversation is archived.</span>
+        <button onClick={handleUnarchive} className="status-button status-button-primary">
+          Unarchive
+        </button>
+      </>
+    ) : isDisconnected ? (
+      // Disconnected state
+      <>
+        <span className="status-message status-warning">Disconnected</span>
+        <button onClick={reconnect} className="status-button status-button-primary">
+          Retry
+        </button>
+      </>
+    ) : isReconnecting ? (
+      // Reconnecting state
+      <>
+        <span className="status-message status-reconnecting">
+          Reconnecting{reconnectAttempts > 0 ? ` (${reconnectAttempts}/3)` : ""}
+          <span className="reconnecting-dots">...</span>
+        </span>
+      </>
+    ) : error ? (
+      // Error state
+      <>
+        <span className="status-message status-error">{error}</span>
+        <button onClick={() => setError(null)} className="status-button status-button-text">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </>
+    ) : agentWorking && conversationId ? (
+      // Agent working — show status with stop button and context bar
+      <div className="status-bar-active" data-testid="agent-thinking">
+        <div className="status-working-group">
+          <AnimatedWorkingStatus />
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="status-stop-button"
+            title={cancelling ? "Cancelling..." : "Stop"}
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
+            <span className="status-stop-label">{cancelling ? "Cancelling..." : "Stop"}</span>
+          </button>
+        </div>
+        <ContextUsageBar
+          contextWindowSize={contextWindowSize}
+          maxContextTokens={
+            models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
+          }
+          conversationId={conversationId}
+          modelName={selectedModelDisplayName}
+          onDistillConversation={onDistillConversation ? handleDistillConversation : undefined}
+          agentWorking={agentWorking}
+        />
+      </div>
+    ) : !conversationId ? (
+      // New conversation — show model picker and cwd selector
+      <div className="status-bar-new-conversation">
+        <div
+          className="status-field status-field-model"
+          title="AI model to use for this conversation"
+        >
+          <span className="status-field-label">Model:</span>
+          <ModelPicker
+            models={models}
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+            onManageModels={() => onOpenModelsModal?.()}
+            disabled={sending}
+          />
+        </div>
+        <div
+          className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
+          title={cwdError || "Working directory for file operations"}
+        >
+          <span className="status-field-label">Dir:</span>
+          <button
+            className={`status-chip${cwdError ? " status-chip-error" : ""}`}
+            onClick={() => setShowDirectoryPicker(true)}
+            disabled={sending}
+          >
+            {selectedCwd || "(no cwd)"}
+          </button>
+        </div>
+      </div>
+    ) : (
+      // Active conversation — show ready message and context bar
+      <div className="status-bar-active">
+        <span className="status-message status-ready">
+          <span className="hide-on-mobile">Ready on </span>
+          {hostname}
+        </span>
+        <ContextUsageBar
+          contextWindowSize={contextWindowSize}
+          maxContextTokens={
+            models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
+          }
+          conversationId={conversationId}
+          modelName={selectedModelDisplayName}
+          onDistillConversation={onDistillConversation ? handleDistillConversation : undefined}
+          agentWorking={agentWorking}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="full-height flex flex-col">
       {/* Header */}
@@ -2024,134 +2153,17 @@ function ChatInterface({
         }}
       />
 
-      {/* Unified Status Bar */}
-      <div className="status-bar">
+      {/* Status bar — always visible on desktop; hidden on mobile for active convos
+          (CSS hides it, and content is suppressed to avoid duplicate DOM elements). */}
+      <div
+        className={`status-bar${currentConversation?.archived ? " status-bar-archived" : ""}${!conversationId ? " status-bar-new" : ""}`}
+      >
         <div className="status-bar-content">
-          {currentConversation?.archived ? (
-            // Archived state
-            <>
-              <span className="status-message">This conversation is archived.</span>
-              <button onClick={handleUnarchive} className="status-button status-button-primary">
-                Unarchive
-              </button>
-            </>
-          ) : isDisconnected ? (
-            // Disconnected state
-            <>
-              <span className="status-message status-warning">Disconnected</span>
-              <button onClick={reconnect} className="status-button status-button-primary">
-                Retry
-              </button>
-            </>
-          ) : isReconnecting ? (
-            // Reconnecting state - show during backoff attempts
-            <>
-              <span className="status-message status-reconnecting">
-                Reconnecting{reconnectAttempts > 0 ? ` (${reconnectAttempts}/3)` : ""}
-                <span className="reconnecting-dots">...</span>
-              </span>
-            </>
-          ) : error ? (
-            // Error state
-            <>
-              <span className="status-message status-error">{error}</span>
-              <button onClick={() => setError(null)} className="status-button status-button-text">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </>
-          ) : agentWorking && conversationId ? (
-            // Agent working - show status with stop button and context bar
-            <div className="status-bar-active" data-testid="agent-thinking">
-              <div className="status-working-group">
-                <AnimatedWorkingStatus />
-                <button
-                  onClick={handleCancel}
-                  disabled={cancelling}
-                  className="status-stop-button"
-                  title={cancelling ? "Cancelling..." : "Stop"}
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="1" />
-                  </svg>
-                  <span className="status-stop-label">{cancelling ? "Cancelling..." : "Stop"}</span>
-                </button>
-              </div>
-              <ContextUsageBar
-                contextWindowSize={contextWindowSize}
-                maxContextTokens={
-                  models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
-                }
-                conversationId={conversationId}
-                modelName={selectedModelDisplayName}
-                onDistillConversation={
-                  onDistillConversation ? handleDistillConversation : undefined
-                }
-                agentWorking={agentWorking}
-              />
-            </div>
-          ) : // Idle state - show ready message, or configuration for empty conversation
-          !conversationId ? (
-            // Empty conversation - show model (left) and cwd (right)
-            <div className="status-bar-new-conversation">
-              {/* Model selector - far left */}
-              <div
-                className="status-field status-field-model"
-                title="AI model to use for this conversation"
-              >
-                <span className="status-field-label">Model:</span>
-                <ModelPicker
-                  models={models}
-                  selectedModel={selectedModel}
-                  onSelectModel={setSelectedModel}
-                  onManageModels={() => onOpenModelsModal?.()}
-                  disabled={sending}
-                />
-              </div>
-
-              {/* CWD indicator - far right */}
-              <div
-                className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
-                title={cwdError || "Working directory for file operations"}
-              >
-                <span className="status-field-label">Dir:</span>
-                <button
-                  className={`status-chip${cwdError ? " status-chip-error" : ""}`}
-                  onClick={() => setShowDirectoryPicker(true)}
-                  disabled={sending}
-                >
-                  {selectedCwd || "(no cwd)"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            // Active conversation - show Ready + context bar
-            <div className="status-bar-active">
-              <span className="status-message status-ready">Ready on {hostname}</span>
-              <ContextUsageBar
-                contextWindowSize={contextWindowSize}
-                maxContextTokens={
-                  models.find((m) => m.id === selectedModel)?.max_context_tokens || 200000
-                }
-                conversationId={conversationId}
-                modelName={selectedModelDisplayName}
-                onDistillConversation={
-                  onDistillConversation ? handleDistillConversation : undefined
-                }
-                agentWorking={agentWorking}
-              />
-            </div>
-          )}
+          {(!isMobile || !conversationId || currentConversation?.archived) && renderStatusContent()}
         </div>
       </div>
 
-      {/* Message input - hidden for archived conversations */}
+      {/* Message input — hidden for archived conversations */}
       {!currentConversation?.archived && (
         <MessageInput
           key={conversationId || "new"}
@@ -2165,6 +2177,7 @@ function ChatInterface({
           }}
           persistKey={conversationId || "new-conversation"}
           initialRows={conversationId ? 1 : 3}
+          statusSlot={conversationId && isMobile ? renderStatusContent() : undefined}
         />
       )}
 
