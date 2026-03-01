@@ -180,6 +180,24 @@ func TestStripExeDevAuth(t *testing.T) {
 			comment: "non-exe basic auth should be forwarded",
 		},
 		{
+			name:    "bearer_exeapp",
+			auth:    "Bearer exeapp_dGVzdHRva2VuZGF0YQ",
+			strip:   true,
+			comment: "app token bearer auth should be stripped",
+		},
+		{
+			name:    "bearer_exeapp_prefix_only",
+			auth:    "Bearer exeapp_",
+			strip:   true,
+			comment: "app token prefix with empty body should be stripped",
+		},
+		{
+			name:    "basic_exeapp_password",
+			auth:    makeBasicAuth("anyuser", "exeapp_dGVzdHRva2VuZGF0YQ"),
+			strip:   true,
+			comment: "app token basic password should be stripped",
+		},
+		{
 			name:    "basic_mixed_case_scheme",
 			auth:    "bAsIc " + base64.StdEncoding.EncodeToString([]byte("user:exe0.payload.sig")),
 			strip:   true,

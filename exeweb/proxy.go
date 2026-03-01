@@ -1257,13 +1257,16 @@ func stripExeDevAuth(req *http.Request) {
 	}
 	const bearer = "Bearer "
 	if len(auth) >= len(bearer) && strings.EqualFold(auth[:len(bearer)], bearer) {
-		if strings.HasPrefix(strings.TrimSpace(auth[len(bearer):]), sshkey.TokenPrefix) {
+		token := strings.TrimSpace(auth[len(bearer):])
+		if strings.HasPrefix(token, sshkey.TokenPrefix) || strings.HasPrefix(token, AppTokenPrefix) {
 			req.Header.Del("Authorization")
 		}
 		return
 	}
-	if _, password, ok := req.BasicAuth(); ok && strings.HasPrefix(password, sshkey.TokenPrefix) {
-		req.Header.Del("Authorization")
+	if _, password, ok := req.BasicAuth(); ok {
+		if strings.HasPrefix(password, sshkey.TokenPrefix) || strings.HasPrefix(password, AppTokenPrefix) {
+			req.Header.Del("Authorization")
+		}
 	}
 }
 
