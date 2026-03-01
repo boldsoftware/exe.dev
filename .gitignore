@@ -55,6 +55,11 @@ e1ed
 brief_*.md
 mlruns.db
 
+# Xcode
+iOS/build/
+iOS/exe.dev.xcodeproj/xcuserdata/
+iOS/exe.dev.xcodeproj/project.xcworkspace/xcuserdata/
+
 # https://github.com/wedow/ticket tickets
 .tickets
 *.m4a
