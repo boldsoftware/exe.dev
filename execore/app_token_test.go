@@ -532,3 +532,78 @@ func TestAppTokenCodeEntryDoesNotExposeToken(t *testing.T) {
 		t.Fatal("code entry page must not contain the verification token")
 	}
 }
+
+func TestAppTokenInProxyCookie(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "proxycookie@example.com")
+
+	// Look up user ID.
+	var userID string
+	err := s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "proxycookie@example.com").Scan(&userID)
+	})
+	if err != nil {
+		t.Fatal("no user:", err)
+	}
+
+	// Create a box owned by this user.
+	boxName := "appcookiebox"
+	privateRoute := `{"port":80,"share":"private"}`
+	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"fake_ctrhost", boxName, "running", "test-image", "test-container-id", userID, privateRoute,
+			"test-identity-key", "test-authorized-keys", "test-client-key", 2222)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create box: %v", err)
+	}
+
+	box, err := withRxRes1(s, context.Background(), (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		t.Fatalf("failed to look up box: %v", err)
+	}
+
+	port := s.httpPort()
+	cookieName := exeweb.ProxyAuthCookieName(port)
+
+	// Test: app token in proxy cookie authenticates.
+	t.Run("app_token_cookie_authenticates", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/", s.env.BoxSub(boxName), s)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: appToken})
+
+		result := s.getProxyAuth(req, box)
+		if result == nil {
+			t.Fatal("expected auth result from app token in cookie, got nil")
+		}
+		if result.UserID != userID {
+			t.Fatalf("expected userID %q, got %q", userID, result.UserID)
+		}
+	})
+
+	// Test: invalid app token in cookie is rejected.
+	t.Run("invalid_app_token_cookie_rejected", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/", s.env.BoxSub(boxName), s)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: exeweb.AppTokenPrefix + "invalid_token"})
+
+		result := s.getProxyAuth(req, box)
+		if result != nil {
+			t.Fatalf("expected nil for invalid app token in cookie, got userID=%q", result.UserID)
+		}
+	})
+
+	// Test: regular cookie value is not treated as app token.
+	t.Run("regular_cookie_not_app_token", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "/", s.env.BoxSub(boxName), s)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: "not-an-app-token"})
+
+		result := s.getProxyAuth(req, box)
+		if result != nil {
+			t.Fatalf("expected nil for regular cookie, got userID=%q", result.UserID)
+		}
+	})
+}

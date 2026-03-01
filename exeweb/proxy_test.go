@@ -2,14 +2,19 @@ package exeweb
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"exe.dev/email"
 	"exe.dev/stage"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -677,4 +682,207 @@ func TestClearExeDevHeaders(t *testing.T) {
 	if got := req.Header.Get("X-Custom-Header"); got != "custom-value" {
 		t.Fatalf("expected other X- headers untouched, got %q", got)
 	}
+}
+
+// mockProxyData is a minimal ProxyData + AppTokenValidator for unit tests.
+type mockProxyData struct {
+	appTokens map[string]string // token -> userID
+	cookies   map[string]CookieData
+}
+
+func (m *mockProxyData) BoxInfo(ctx context.Context, boxName string) (BoxData, bool, error) {
+	return BoxData{}, false, nil
+}
+
+func (m *mockProxyData) CookieInfo(ctx context.Context, cookieValue, domain string) (CookieData, bool, error) {
+	key := cookieValue + "@" + domain
+	if cd, ok := m.cookies[key]; ok {
+		return cd, true, nil
+	}
+	return CookieData{}, false, nil
+}
+
+func (m *mockProxyData) UserInfo(ctx context.Context, userID string) (UserData, bool, error) {
+	return UserData{UserID: userID}, true, nil
+}
+
+func (m *mockProxyData) IsUserLockedOut(ctx context.Context, userID string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockProxyData) UserHasExeSudo(ctx context.Context, userID string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockProxyData) CreateAuthCookie(ctx context.Context, userID, domain string) (string, error) {
+	return "", nil
+}
+func (m *mockProxyData) DeleteAuthCookie(ctx context.Context, cookieValue string) error { return nil }
+func (m *mockProxyData) UsedCookie(ctx context.Context, cookieValue string)             {}
+func (m *mockProxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockProxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockProxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockProxyData) ValidateMagicSecret(ctx context.Context, secret string) (string, string, string, error) {
+	return "", "", "", nil
+}
+
+func (m *mockProxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (string, string, error) {
+	return "", "", nil
+}
+func (m *mockProxyData) HLLNoteEvents(ctx context.Context, userID string, events []string) {}
+func (m *mockProxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID string) error {
+	return nil
+}
+
+func (m *mockProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error {
+	return nil
+}
+
+func (m *mockProxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
+	return nil
+}
+
+func (m *mockProxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
+	if uid, ok := m.appTokens[token]; ok {
+		return uid, nil
+	}
+	return "", fmt.Errorf("invalid token")
+}
+
+func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testUserID = "user-123"
+		testToken  = AppTokenPrefix + "test_token_value"
+		boxName    = "mybox"
+	)
+
+	mock := &mockProxyData{
+		appTokens: map[string]string{testToken: testUserID},
+		cookies:   map[string]CookieData{},
+	}
+
+	testEnv := stage.Test()
+	ps := &ProxyServer{
+		Data:           mock,
+		Lg:             slog.Default(),
+		Env:            &testEnv,
+		ProxyHTTPSPort: 443,
+	}
+
+	t.Run("app_token_in_cookie_authenticates", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(443), Value: testToken})
+
+		result := ps.GetProxyAuth(req, boxName)
+		if result == nil {
+			t.Fatal("expected auth result from app token in cookie, got nil")
+		}
+		if result.UserID != testUserID {
+			t.Fatalf("expected userID %q, got %q", testUserID, result.UserID)
+		}
+	})
+
+	t.Run("invalid_app_token_in_cookie_rejected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(443), Value: AppTokenPrefix + "bad_token"})
+
+		result := ps.GetProxyAuth(req, boxName)
+		if result != nil {
+			t.Fatalf("expected nil for invalid app token in cookie, got userID=%q", result.UserID)
+		}
+	})
+
+	t.Run("non_app_token_cookie_not_treated_as_app_token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(443), Value: "regular-cookie-value"})
+
+		result := ps.GetProxyAuth(req, boxName)
+		if result != nil {
+			t.Fatalf("expected nil for regular cookie value, got userID=%q", result.UserID)
+		}
+	})
+
+	t.Run("bearer_still_takes_priority_over_cookie", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		// Also set a cookie with a different (invalid) app token.
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(443), Value: AppTokenPrefix + "other"})
+
+		result := ps.GetProxyAuth(req, boxName)
+		if result == nil {
+			t.Fatal("expected auth result from bearer, got nil")
+		}
+		if result.UserID != testUserID {
+			t.Fatalf("expected userID %q from bearer, got %q", testUserID, result.UserID)
+		}
+	})
+
+	t.Run("db_cookie_takes_priority_over_app_token_cookie", func(t *testing.T) {
+		// Add a valid DB cookie.
+		dbCookieValue := "db-cookie-123"
+		mockWithCookie := &mockProxyData{
+			appTokens: map[string]string{testToken: testUserID},
+			cookies: map[string]CookieData{
+				dbCookieValue + "@mybox.exe.xyz": {
+					CookieValue: dbCookieValue,
+					Domain:      "mybox.exe.xyz",
+					UserID:      "db-user-456",
+					ExpiresAt:   time.Now().Add(time.Hour),
+				},
+			},
+		}
+		testEnvCookie := stage.Test()
+		psWithCookie := &ProxyServer{
+			Data:           mockWithCookie,
+			Lg:             slog.Default(),
+			Env:            &testEnvCookie,
+			ProxyHTTPSPort: 443,
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(443), Value: dbCookieValue})
+
+		result := psWithCookie.GetProxyAuth(req, boxName)
+		if result == nil {
+			t.Fatal("expected auth result from DB cookie, got nil")
+		}
+		if result.UserID != "db-user-456" {
+			t.Fatalf("expected userID %q from DB cookie, got %q", "db-user-456", result.UserID)
+		}
+	})
+
+	t.Run("app_token_cookie_with_port", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://mybox.exe.xyz:8080/", nil)
+		req.Host = "mybox.exe.xyz:8080"
+		req.AddCookie(&http.Cookie{Name: ProxyAuthCookieName(8080), Value: testToken})
+
+		result := ps.GetProxyAuth(req, boxName)
+		if result == nil {
+			t.Fatal("expected auth result from app token in port-specific cookie, got nil")
+		}
+		if result.UserID != testUserID {
+			t.Fatalf("expected userID %q, got %q", testUserID, result.UserID)
+		}
+	})
 }

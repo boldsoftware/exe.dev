@@ -559,10 +559,11 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 
 // GetProxyAuth checks if the user is authenticated for the proxy
 // and returns the auth result.
-// Supports three authentication methods, tried in this order:
+// Supports four authentication methods, tried in this order:
 //  1. Bearer token auth (Authorization: Bearer <token>)
 //  2. Basic auth with token as password (for git HTTPS, etc.)
 //  3. Cookie-based auth (login-with-exe-* cookies)
+//  4. App token in cookie (for iOS web views that can't set headers)
 //
 // For token-based auth, the namespace must be "v0@VMNAME.BOXHOST".
 // Returns nil if not authenticated.
@@ -598,7 +599,33 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 		return &ProxyAuthResult{UserID: userID}
 	}
 
+	// 4. Check if the proxy cookie contains an app token.
+	// iOS web views can't set Authorization headers, so the app
+	// injects its bearer token as the proxy cookie value instead.
+	if result := ps.validateAppTokenFromCookie(r); result != nil {
+		return result
+	}
+
 	return nil
+}
+
+// validateAppTokenFromCookie checks the proxy auth cookie for an app token.
+// This supports iOS web views which cannot set Authorization headers
+// but can set cookies. The app sets its bearer token as the cookie value.
+func (ps *ProxyServer) validateAppTokenFromCookie(r *http.Request) *ProxyAuthResult {
+	port, err := GetRequestPort(r)
+	if err != nil {
+		return nil
+	}
+	cookieName := ProxyAuthCookieName(port)
+	cookie, err := r.Cookie(cookieName)
+	if err != nil || cookie.Value == "" {
+		return nil
+	}
+	if !strings.HasPrefix(cookie.Value, AppTokenPrefix) {
+		return nil
+	}
+	return ps.ValidateAppTokenForProxy(r.Context(), cookie.Value)
 }
 
 // ValidateAppTokenForProxy validates an app token for proxy access.
