@@ -1,0 +1,10 @@
+[Unit]
+Description=Run continuous code review every 30 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
