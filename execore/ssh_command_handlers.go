@@ -415,6 +415,27 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleThrottleUserCommand,
 		},
 		{
+			Name:         "sudo-exe",
+			Hidden:       true,
+			RequiresSudo: true,
+			Description:  "Administrative commands (support only)",
+			Subcommands: []*exemenu.Command{
+				{
+					Name:              "llm-credits",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "Show LLM credit state for a user",
+					Usage:             "sudo-exe llm-credits <userid-or-email>",
+					HasPositionalArgs: true,
+					FlagSetFunc:       jsonOnlyFlags("llm-credits"),
+					Handler:           ss.handleLLMCreditsCommand,
+				},
+			},
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				return cc.Errorf("usage: sudo-exe <subcommand>")
+			},
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {

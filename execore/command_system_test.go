@@ -938,6 +938,8 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 		"exelets":                 true,
 		"resize":                  true,
 		"backfill-allocated-cpus": true,
+		"sudo-exe":                true,
+		"sudo-exe llm-credits":    true,
 		"team create":             true,
 		"team enroll":             true,
 		"team unenroll":           true,
