@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/googleoauth"
 	"exe.dev/sshkey"
@@ -177,19 +178,33 @@ func (s *Server) handleOAuthGoogleCallback(w http.ResponseWriter, r *http.Reques
 
 	// Google may return a different email than what the user originally typed
 	// (e.g. user typed a plus-alias like user+test@gmail.com but Google
-	// authenticates them as user@gmail.com). Trust Google's verified email.
+	// authenticates them as user@gmail.com).
 	if !strings.EqualFold(claims.Email, oauthState.Email) {
-		s.slog().InfoContext(ctx, "google oauth email substitution",
-			"original", oauthState.Email, "google", claims.Email)
-		oauthState.Email = claims.Email
+		originalEmail := oauthState.Email
 
-		// Team invite tokens are scoped to the original email. Don't let
-		// a user authenticate as a different Google account and inherit
-		// a team invite meant for someone else.
-		oauthState.TeamInviteToken = nil
+		// Check if the original email is a plus-alias of the Google email.
+		// If so, keep the original email so users can sign up and log in
+		// with plus-addressed accounts (e.g. user+billing@gmail.com).
+		strippedOriginal := email.StripPlusSuffix(originalEmail)
+		if strings.EqualFold(strippedOriginal, claims.Email) {
+			// The user typed e.g. user+foo@gmail.com, Google confirmed user@gmail.com.
+			// Keep oauthState.Email as the original plus-addressed email.
+			s.slog().InfoContext(ctx, "google oauth plus-alias match, keeping original email",
+				"original", originalEmail, "google", claims.Email)
+		} else {
+			// Genuinely different email — use Google's.
+			s.slog().InfoContext(ctx, "google oauth email substitution",
+				"original", oauthState.Email, "google", claims.Email)
+			oauthState.Email = claims.Email
 
-		// Re-resolve whether this is a new or existing user with the Google email.
-		existingUserID, err := s.GetUserIDByEmail(ctx, claims.Email)
+			// Team invite tokens are scoped to the original email. Don't let
+			// a user authenticate as a different Google account and inherit
+			// a team invite meant for someone else.
+			oauthState.TeamInviteToken = nil
+		}
+
+		// Re-resolve whether this is a new or existing user.
+		existingUserID, err := s.GetUserIDByEmail(ctx, oauthState.Email)
 		if err == nil {
 			oauthState.IsNewUser = false
 			oauthState.UserID = &existingUserID
