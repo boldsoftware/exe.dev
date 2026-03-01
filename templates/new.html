@@ -5,6 +5,10 @@
 
         <h1 class="new-title">Create a New VM</h1>
 
+        {{if .ErrorMessage}}
+        <div class="form-error-banner">{{.ErrorMessage}}</div>
+        {{end}}
+
         <div class="form-group">
             <div class="form-input-group">
                 <input

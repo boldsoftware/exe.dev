@@ -346,6 +346,13 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check for error parameter (e.g., redirected back from /create-vm due to VM limit)
+	errorCode := r.URL.Query().Get("error")
+	var errorMessage string
+	if errorCode == "vm_limit" {
+		errorMessage = "You have reached the maximum number of VMs allowed on your plan. Delete an existing VM to create a new one."
+	}
+
 	data := struct {
 		stage.Env
 		HostnameSuggestion string
@@ -356,6 +363,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		ActivePage         string
 		BasicUser          bool
 		IdeaSlug           string
+		ErrorMessage       string
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
@@ -366,6 +374,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		ActivePage:         "",
 		BasicUser:          false,
 		IdeaSlug:           ideaSlug,
+		ErrorMessage:       errorMessage,
 	}
 	s.renderTemplate(r.Context(), w, "new.html", data)
 }
@@ -451,6 +460,24 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 					billingURL += "&image=" + url.QueryEscape(image)
 				}
 				http.Redirect(w, r, billingURL, http.StatusSeeOther)
+				return
+			}
+		}
+
+		// Check if user has reached their VM limit before starting async creation
+		boxCount, err := s.CountBoxesForLimitCheck(r.Context(), userID)
+		if err == nil {
+			effectiveLimits, _ := s.GetEffectiveLimits(r.Context(), userID)
+			maxBoxes := GetMaxBoxes(effectiveLimits)
+			if int(boxCount) >= maxBoxes {
+				redirectURL := "/new?name=" + url.QueryEscape(hostname) + "&error=vm_limit"
+				if prompt != "" {
+					redirectURL += "&prompt=" + url.QueryEscape(prompt)
+				}
+				if image != "" {
+					redirectURL += "&image=" + url.QueryEscape(image)
+				}
+				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 				return
 			}
 		}

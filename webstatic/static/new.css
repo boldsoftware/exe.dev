@@ -754,3 +754,22 @@
   }
 
 }
+
+.form-error-banner {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+    .form-error-banner {
+        background: #2a1215;
+        border-color: #5c1d24;
+        color: #f87171;
+    }
+}
