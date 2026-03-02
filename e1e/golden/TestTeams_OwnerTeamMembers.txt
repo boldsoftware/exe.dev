@@ -11,7 +11,7 @@ team members
 
 PROMPT ▶ team members
 Team members:
+  owner@test-teams.example (billing owner)
   member@test-teams.example
-  owner@test-teams.example (owner)
 PROMPT ▶ exit
 Goodbye!
