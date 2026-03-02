@@ -408,6 +408,26 @@ jobs:
 
           # Try to rebase onto main and push
           ./bin/retry.sh git fetch origin main
+
+          # Sync shelley commits pushed directly to shelley.git.
+          # If shelley/main has advanced past what origin/main knows about,
+          # sync those commits into exe and push to origin/main first.
+          # This prevents push-to-subrepo.sh from failing with tree mismatch.
+          ./bin/retry.sh git fetch shelley
+          SHELLEY_TREE=$(git rev-parse "shelley/main^{tree}")
+          EXE_SHELLEY_TREE=$(git ls-tree origin/main shelley --format "%(objectname)")
+          if [ "$SHELLEY_TREE" != "$EXE_SHELLEY_TREE" ]; then
+            echo "shelley/main has advanced past origin/main; syncing inline..."
+            QUEUE_HEAD=$(git rev-parse HEAD)
+            git checkout --detach origin/main
+            ./bin/sync-commits-from-shelley.sh shelley/main
+            ./bin/retry.sh --retry-on 128 git push origin new-exe-commit:main
+            git tag -d new-exe-commit || true
+            ./bin/retry.sh git fetch origin main
+            git checkout --detach "$QUEUE_HEAD"
+            echo "Shelley sync complete; origin/main updated"
+          fi
+
           # For debugging, print the current commit and main's commit
           echo "Current HEAD: $(git rev-parse HEAD)"
           echo "Origin main: $(git rev-parse origin/main)"
