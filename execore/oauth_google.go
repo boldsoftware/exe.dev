@@ -12,6 +12,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/googleoauth"
 	"exe.dev/sshkey"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 )
 
@@ -86,7 +87,7 @@ func (s *Server) insertOAuthState(ctx context.Context, state string, params oaut
 		Provider:  provider,
 		Email:     params.email,
 		IsNewUser: params.isNewUser,
-		ExpiresAt: time.Now().Add(googleoauth.StateExpiry),
+		ExpiresAt: sqlite.NormalizeTime(time.Now().Add(googleoauth.StateExpiry)),
 	}
 	if params.userID != "" {
 		insertParams.UserID = &params.userID
