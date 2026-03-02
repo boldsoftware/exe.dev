@@ -85,14 +85,14 @@ func TestGetTools(t *testing.T) {
 	})
 
 	result := tools.GetTools()
-	if len(result) != 2 {
-		t.Fatalf("GetTools: expected 2 tools, got %d", len(result))
+	if len(result) != 6 {
+		t.Fatalf("GetTools: expected 6 tools, got %d", len(result))
 	}
-	if result[0].Name != "browser" {
-		t.Errorf("expected first tool name %q, got %q", "browser", result[0].Name)
-	}
-	if result[1].Name != "read_image" {
-		t.Errorf("expected second tool name %q, got %q", "read_image", result[1].Name)
+	expectedNames := []string{"browser", "read_image", "browser_emulate", "browser_network", "browser_accessibility", "browser_profile"}
+	for i, name := range expectedNames {
+		if result[i].Name != name {
+			t.Errorf("expected tool %d name %q, got %q", i, name, result[i].Name)
+		}
 	}
 }
 
@@ -596,14 +596,14 @@ func TestRegisterBrowserTools(t *testing.T) {
 	tools, cleanup := RegisterBrowserTools(ctx, 0)
 	t.Cleanup(cleanup)
 
-	if len(tools) != 2 {
-		t.Fatalf("RegisterBrowserTools: expected 2 tools, got %d", len(tools))
+	if len(tools) != 6 {
+		t.Fatalf("RegisterBrowserTools: expected 6 tools, got %d", len(tools))
 	}
-	if tools[0].Name != "browser" {
-		t.Errorf("expected first tool name %q, got %q", "browser", tools[0].Name)
-	}
-	if tools[1].Name != "read_image" {
-		t.Errorf("expected second tool name %q, got %q", "read_image", tools[1].Name)
+	expectedNames := []string{"browser", "read_image", "browser_emulate", "browser_network", "browser_accessibility", "browser_profile"}
+	for i, name := range expectedNames {
+		if tools[i].Name != name {
+			t.Errorf("expected tool %d name %q, got %q", i, name, tools[i].Name)
+		}
 	}
 	cleanup()
 }

@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/tracing"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"shelley.exe.dev/llm"
@@ -72,6 +74,17 @@ type BrowseTools struct {
 	downloads      map[string]*DownloadInfo // keyed by GUID
 	downloadsMutex sync.Mutex
 	downloadCond   *sync.Cond
+	// Network monitoring
+	networkEnabled     bool
+	networkRequests    []*NetworkRequest
+	networkMutex       sync.Mutex
+	maxNetworkRequests int
+	// Profiling state
+	profilingActive bool
+	tracingActive   bool
+	traceEvents     []json.RawMessage
+	traceCompleteCh chan struct{}
+	traceMutex      sync.Mutex
 }
 
 // NewBrowseTools creates a new set of browser automation tools.
@@ -137,17 +150,9 @@ func (b *BrowseTools) GetBrowserContext() (context.Context, error) {
 		chromedp.WithBrowserOption(chromedp.WithDialTimeout(60*time.Second)),
 	)
 
-	// Set up event listeners for console logs and downloads
-	chromedp.ListenTarget(browserCtx, func(ev any) {
-		switch e := ev.(type) {
-		case *runtime.EventConsoleAPICalled:
-			b.captureConsoleLog(e)
-		case *browser.EventDownloadWillBegin:
-			b.handleDownloadWillBegin(e)
-		case *browser.EventDownloadProgress:
-			b.handleDownloadProgress(e)
-		}
-	})
+	// Set up event listeners for console logs, downloads, network, and tracing.
+	// All listeners are registered once at browser startup and gated by enable flags.
+	chromedp.ListenTarget(browserCtx, b.handleBrowserEvent)
 
 	// Start the browser
 	if err := chromedp.Run(browserCtx); err != nil {
@@ -230,6 +235,56 @@ func (b *BrowseTools) Close() {
 	b.mux.Lock()
 	defer b.mux.Unlock()
 	b.closeBrowserLocked()
+}
+
+// handleBrowserEvent is the unified event handler for all CDP events.
+func (b *BrowseTools) handleBrowserEvent(ev any) {
+	switch e := ev.(type) {
+	case *runtime.EventConsoleAPICalled:
+		b.captureConsoleLog(e)
+	case *browser.EventDownloadWillBegin:
+		b.handleDownloadWillBegin(e)
+	case *browser.EventDownloadProgress:
+		b.handleDownloadProgress(e)
+	case *network.EventRequestWillBeSent:
+		b.networkMutex.Lock()
+		enabled := b.networkEnabled
+		b.networkMutex.Unlock()
+		if enabled {
+			b.captureNetworkRequest(e)
+		}
+	case *network.EventResponseReceived:
+		b.networkMutex.Lock()
+		enabled := b.networkEnabled
+		b.networkMutex.Unlock()
+		if enabled {
+			b.captureNetworkResponse(e)
+		}
+	case *network.EventLoadingFinished:
+		b.networkMutex.Lock()
+		enabled := b.networkEnabled
+		b.networkMutex.Unlock()
+		if enabled {
+			b.captureNetworkFinished(e)
+		}
+	case *tracing.EventDataCollected:
+		b.traceMutex.Lock()
+		if b.tracingActive {
+			for _, v := range e.Value {
+				b.traceEvents = append(b.traceEvents, json.RawMessage(v))
+			}
+		}
+		b.traceMutex.Unlock()
+	case *tracing.EventTracingComplete:
+		b.traceMutex.Lock()
+		if b.traceCompleteCh != nil {
+			select {
+			case b.traceCompleteCh <- struct{}{}:
+			default:
+			}
+		}
+		b.traceMutex.Unlock()
+	}
 }
 
 // navigateInput is the input for the navigate action.
@@ -483,9 +538,16 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 	}, Display: display}
 }
 
-// GetTools returns browser tools: the combined browser tool and the read_image tool.
+// GetTools returns all browser tools.
 func (b *BrowseTools) GetTools() []*llm.Tool {
-	return []*llm.Tool{b.CombinedTool(), b.ReadImageTool()}
+	return []*llm.Tool{
+		b.CombinedTool(),
+		b.ReadImageTool(),
+		b.EmulateTool(),
+		b.NetworkTool(),
+		b.AccessibilityTool(),
+		b.ProfileTool(),
+	}
 }
 
 // CombinedTool returns a single tool that handles all browser actions via an "action" field.
