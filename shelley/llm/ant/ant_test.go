@@ -1222,6 +1222,60 @@ func TestToLLMContentWithNestedToolResults(t *testing.T) {
 	}
 }
 
+func TestSanitizeJSONControlChars(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no control chars", `{"text":"hello"}`, `{"text":"hello"}`},
+		{"form feed in string", "{\"text\":\"hello\fworld\"}", `{"text":"hello\u000cworld"}`},
+		{"multiple control chars", "{\"t\":\"a\x01b\x02c\"}", `{"t":"a\u0001b\u0002c"}`},
+		{"control char outside string", "{\n\"t\":\"v\"}", "{\n\"t\":\"v\"}"},
+		{"escaped quote in string", `{"t":"say \"hi\""}`, `{"t":"say \"hi\""}`},
+		{"escaped backslash then quote", `{"t":"a\\"}`, `{"t":"a\\"}`},
+		{"tab escaped", "{\"t\":\"a\tb\"}", `{"t":"a\u0009b"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(sanitizeJSONControlChars([]byte(tt.input)))
+			if got != tt.want {
+				t.Errorf("sanitizeJSONControlChars() = %q, want %q", got, tt.want)
+			}
+			// Verify the result is valid JSON
+			var v any
+			if err := json.Unmarshal([]byte(got), &v); err != nil {
+				t.Errorf("result is not valid JSON: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseSSEStreamFormFeedInText(t *testing.T) {
+	// Simulate Anthropic sending a raw form feed (\f) in a text delta.
+	// This is invalid JSON but happens in practice.
+	var b strings.Builder
+	b.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_ff\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	// Raw \f inside the text delta value
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\fworld\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("Content length = %d, want 1", len(resp.Content))
+	}
+	want := "hello\fworld"
+	if resp.Content[0].Text == nil || *resp.Content[0].Text != want {
+		t.Errorf("Content[0].Text = %v, want %q", resp.Content[0].Text, want)
+	}
+}
+
 func TestParseSSEStreamText(t *testing.T) {
 	stream := mockSSEResponse("msg_abc", Claude45Sonnet, "Hello!", 10, 5)
 	resp, err := parseSSEStream(strings.NewReader(stream))
