@@ -367,7 +367,7 @@ func (es *exeproxServer) IsBoxSharedWithUserTeam(ctx context.Context, req *proxy
 // If the share link is valid, it will be used,
 // so this method is also responsible for recording the use,
 // and for creating an email-based share for the user.
-func (es *exeproxServer) CheckShareLInk(ctx context.Context, req *proxyapi.CheckShareLinkRequest) (*proxyapi.CheckShareLinkResponse, error) {
+func (es *exeproxServer) CheckShareLink(ctx context.Context, req *proxyapi.CheckShareLinkRequest) (*proxyapi.CheckShareLinkResponse, error) {
 	ok, err := es.s.checkShareLink(ctx, int(req.BoxID), req.BoxName, req.UserID, req.ShareToken)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
