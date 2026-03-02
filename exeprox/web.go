@@ -392,7 +392,7 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	// 2) BoxHost (exe.xyz) uses wildcard certs via DNS-01
 	if domz.FirstMatch(serverName, wp.env.BoxHost) != "" {
 		cert, err := wp.exeproxData().CertForDomain(hello.Context(), serverName)
-		if strings.Contains(err.Error(), wildcardcert.ErrUnrecognizedDomain.Error()) {
+		if err != nil && strings.Contains(err.Error(), wildcardcert.ErrUnrecognizedDomain.Error()) {
 			wp.lg().DebugContext(hello.Context(), "wildcard CertForDomain rejected unrecognized domain", "serverName", serverName, "error", err)
 		} else if err != nil {
 			wp.lg().ErrorContext(hello.Context(), "wildcard CertForDomain failed; giving up", "serverName", serverName, "error", err)
