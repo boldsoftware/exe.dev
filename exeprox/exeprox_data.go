@@ -192,11 +192,12 @@ func (ged *grpcExeproxData) UserInfo(ctx context.Context, userID string) (userDa
 		return userData{}, false, nil
 	}
 	ud := userData{
-		userID:      userID,
-		email:       resp.UserInfo.Email,
-		rootSupport: resp.UserInfo.RootSupport,
-		isLockedOut: resp.UserInfo.IsLockedOut,
-		accountID:   resp.UserInfo.AccountID,
+		userID:               userID,
+		email:                resp.UserInfo.Email,
+		rootSupport:          resp.UserInfo.RootSupport,
+		isLockedOut:          resp.UserInfo.IsLockedOut,
+		accountID:            resp.UserInfo.AccountID,
+		teamBillingAccountID: resp.UserInfo.TeamBillingAccountID,
 	}
 	return ud, true, nil
 }

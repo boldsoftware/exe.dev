@@ -52,6 +52,10 @@ func (d *preflightGatewayData) AccountIDForUser(context.Context, string) (string
 	return d.accountID, d.accountExists, d.accountErr
 }
 
+func (d *preflightGatewayData) TeamBillingAccountID(context.Context, string) (string, bool, error) {
+	return "", false, nil
+}
+
 func (d *preflightGatewayData) UseCredits(_ context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
 	d.useCreditsCalls++
 	d.useCreditsAccount = accountID

@@ -238,9 +238,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
-			m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name, "has_billing_account", false)
-			m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
-			return
+			// Check if team billing_owner has a billing account.
+			accountID, ok, err = m.data.TeamBillingAccountID(r.Context(), userID)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if err != nil {
+				m.httpError(w, r, "failed to check team billing account", http.StatusInternalServerError, boxName, err)
+				return
+			}
+			if !ok {
+				m.log.WarnContext(r.Context(), "insufficient LLM credit", "user_id", userID, "box", boxName, "available_usd", creditInfo.Available, "plan", creditInfo.Plan.Name, "has_billing_account", false)
+				m.httpError(w, r, creditInfo.Plan.CreditExhaustedError, http.StatusPaymentRequired, boxName, nil)
+				return
+			}
 		}
 
 		billingBalance, err := m.data.UseCredits(r.Context(), accountID, 0, tender.Zero())

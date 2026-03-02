@@ -93,10 +93,20 @@ WHERE (
 -- name: DeleteAccountsByUserID :exec
 DELETE FROM accounts WHERE created_by = ?;
 
+-- name: GetTeamBillingOwnerAccountID :one
+-- GetTeamBillingOwnerAccountID returns the billing account ID of the user's team billing_owner.
+SELECT a.id
+FROM accounts a
+JOIN team_members tm_billing ON a.created_by = tm_billing.user_id
+JOIN team_members tm_user ON tm_billing.team_id = tm_user.team_id
+WHERE tm_user.user_id = @member_user_id
+AND tm_billing.role = 'billing_owner';
+
 -- name: GetUserPlanCategory :one
 -- GetUserPlanCategory determines the user's plan category for LLM gateway credit limits.
 -- Returns 'friend' if user has billing_exemption='free'
--- Returns 'has_billing' if user has an active billing account (most recent billing event is 'active')
+-- Returns 'has_billing' if user has an active billing account (most recent billing event is 'active'),
+--   or if user's team billing_owner has an active billing account
 -- Returns 'no_billing' otherwise
 -- Note: 'custom' category is determined by checking for explicit overrides in code, not SQL.
 SELECT
@@ -106,6 +116,21 @@ SELECT
             SELECT 1 FROM accounts a
             JOIN billing_events e ON e.account_id = a.id
             WHERE a.created_by = ?1
+            AND e.event_type = 'active'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'has_billing'
+        WHEN EXISTS (
+            SELECT 1 FROM team_members tm_user
+            JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
+            JOIN accounts a ON a.created_by = tm_billing.user_id
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE tm_user.user_id = ?1
+            AND tm_billing.role = 'billing_owner'
             AND e.event_type = 'active'
             AND e.id = (
                 SELECT e2.id FROM billing_events e2

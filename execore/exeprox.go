@@ -214,12 +214,19 @@ func (s *Server) userInfoForExeprox(ctx context.Context, userID string) (*proxya
 	} else {
 		accountID = account.ID
 	}
+	// Look up team billing_owner's account ID (best-effort, empty if none).
+	teamBillingAccountID := ""
+	if tbID, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamBillingOwnerAccountID, userID); err == nil {
+		teamBillingAccountID = tbID
+	}
+
 	ret := &proxyapi.UserInfo{
-		UserID:      userID,
-		Email:       user.Email,
-		RootSupport: user.RootSupport,
-		IsLockedOut: user.IsLockedOut,
-		AccountID:   accountID,
+		UserID:               userID,
+		Email:                user.Email,
+		RootSupport:          user.RootSupport,
+		IsLockedOut:          user.IsLockedOut,
+		AccountID:            accountID,
+		TeamBillingAccountID: teamBillingAccountID,
 	}
 	return ret, true, now, nil
 }

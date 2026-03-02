@@ -85,6 +85,18 @@ func (gd *ProxyLLMGatewayData) AccountIDForUser(ctx context.Context, userID stri
 	return ud.accountID, true, nil
 }
 
+// TeamBillingAccountID implements [llmgateway.GatewayData.TeamBillingAccountID].
+func (gd *ProxyLLMGatewayData) TeamBillingAccountID(ctx context.Context, userID string) (string, bool, error) {
+	ud, exists, err := gd.users.lookup(ctx, gd.data, userID)
+	if err != nil {
+		return "", false, err
+	}
+	if !exists || ud.teamBillingAccountID == "" {
+		return "", false, nil
+	}
+	return ud.teamBillingAccountID, true, nil
+}
+
 // UseCredits implements [llmgateway.GatewayData.UseCredits].
 func (gd *ProxyLLMGatewayData) UseCredits(ctx context.Context, accountID string, quantity int, unitprice tender.Value) (tender.Value, error) {
 	resp, err := gd.client.LLMUseCredits(ctx, &proxyapi.LLMUseCreditsRequest{

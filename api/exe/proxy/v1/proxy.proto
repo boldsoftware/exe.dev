@@ -154,11 +154,12 @@ message UserInfoResponse {
 
 // UserInfo is information we send about a user.
 message UserInfo {
-  string user_id = 1;     // user ID
-  string email = 2;       // user email
-  int64 root_support = 3; // root support setting
-  bool is_locked_out = 4; // whether user is locked out
-  string account_id = 5;  // user accounting ID
+  string user_id = 1;                   // user ID
+  string email = 2;                     // user email
+  int64 root_support = 3;              // root support setting
+  bool is_locked_out = 4;              // whether user is locked out
+  string account_id = 5;               // user accounting ID
+  string team_billing_account_id = 6;  // team billing_owner's account ID (empty if none)
 }
 
 // GetPublicIPsRequest is information sent to GetPublicIPs.

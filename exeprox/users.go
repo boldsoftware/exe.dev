@@ -13,11 +13,12 @@ type usersData struct {
 
 // userData holds information about a user.
 type userData struct {
-	userID      string
-	email       string
-	rootSupport int64  // level of root support
-	isLockedOut bool   // whether user is locked out
-	accountID   string // accounting ID from accounts database table
+	userID                string
+	email                 string
+	rootSupport           int64  // level of root support
+	isLockedOut           bool   // whether user is locked out
+	accountID             string // accounting ID from accounts database table
+	teamBillingAccountID  string // team billing_owner's account ID (empty if none)
 }
 
 // lookup returns information about a user given the user ID.

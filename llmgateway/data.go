@@ -41,6 +41,11 @@ type GatewayData interface {
 	// The bool result reports whether an account exists.
 	AccountIDForUser(ctx context.Context, userID string) (string, bool, error)
 
+	// TeamBillingAccountID returns the billing account ID of the user's
+	// team billing_owner. The bool result reports whether the user is in
+	// a team with a billing_owner who has a billing account.
+	TeamBillingAccountID(ctx context.Context, userID string) (string, bool, error)
+
 	// UseCredits applies a credit usage entry and returns remaining billing credit.
 	UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error)
 }
@@ -89,6 +94,18 @@ func (gd *DBGatewayData) AccountIDForUser(ctx context.Context, userID string) (s
 		return "", false, err
 	}
 	return account.ID, true, nil
+}
+
+// TeamBillingAccountID implements [GatewayData.TeamBillingAccountID].
+func (gd *DBGatewayData) TeamBillingAccountID(ctx context.Context, userID string) (string, bool, error) {
+	accountID, err := exedb.WithRxRes1(gd.DB, ctx, (*exedb.Queries).GetTeamBillingOwnerAccountID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return accountID, true, nil
 }
 
 // UseCredits implements [GatewayData.UseCredits].

@@ -492,6 +492,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTeamAuthProviderStmt, err = db.PrepareContext(ctx, getTeamAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamAuthProvider: %w", err)
 	}
+	if q.getTeamBillingOwnerAccountIDStmt, err = db.PrepareContext(ctx, getTeamBillingOwnerAccountID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamBillingOwnerAccountID: %w", err)
+	}
 	if q.getTeamBillingOwnerUserIDStmt, err = db.PrepareContext(ctx, getTeamBillingOwnerUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamBillingOwnerUserID: %w", err)
 	}
@@ -1742,6 +1745,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTeamAuthProviderStmt: %w", cerr)
 		}
 	}
+	if q.getTeamBillingOwnerAccountIDStmt != nil {
+		if cerr := q.getTeamBillingOwnerAccountIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamBillingOwnerAccountIDStmt: %w", cerr)
+		}
+	}
 	if q.getTeamBillingOwnerUserIDStmt != nil {
 		if cerr := q.getTeamBillingOwnerUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTeamBillingOwnerUserIDStmt: %w", cerr)
@@ -2712,6 +2720,7 @@ type Queries struct {
 	getTagsNeedingRefreshStmt                  *sql.Stmt
 	getTeamStmt                                *sql.Stmt
 	getTeamAuthProviderStmt                    *sql.Stmt
+	getTeamBillingOwnerAccountIDStmt           *sql.Stmt
 	getTeamBillingOwnerUserIDStmt              *sql.Stmt
 	getTeamForUserStmt                         *sql.Stmt
 	getTeamMemberByEmailStmt                   *sql.Stmt
@@ -3029,6 +3038,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
 		getTeamStmt:                                q.getTeamStmt,
 		getTeamAuthProviderStmt:                    q.getTeamAuthProviderStmt,
+		getTeamBillingOwnerAccountIDStmt:           q.getTeamBillingOwnerAccountIDStmt,
 		getTeamBillingOwnerUserIDStmt:              q.getTeamBillingOwnerUserIDStmt,
 		getTeamForUserStmt:                         q.getTeamForUserStmt,
 		getTeamMemberByEmailStmt:                   q.getTeamMemberByEmailStmt,
