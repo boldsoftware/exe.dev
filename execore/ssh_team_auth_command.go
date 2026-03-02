@@ -112,7 +112,7 @@ func (ss *SSHServer) handleTeamAuthSetCommand(ctx context.Context, cc *exemenu.C
 	if team == nil {
 		return cc.Errorf("You are not part of a team")
 	}
-	if team.Role != "owner" {
+	if team.Role != "billing_owner" {
 		return cc.Errorf("Only team owners can change auth settings")
 	}
 
