@@ -60,7 +60,11 @@ Use subagents for:
 
 Each subagent has its own slug identifier within this conversation.
 You can send messages to existing subagents by using the same slug.
-The tool returns the subagent's last response, or a status if the timeout is reached.`
+The tool returns the subagent's last response, or a status if the timeout is reached.
+
+When writing prompts for subagents, convey intent, nuance, and operational
+details — not just prescriptive instructions. The subagent has no context
+beyond what you put in the prompt, so share the "why" alongside the "what".`
 
 	if len(s.AvailableModels) > 0 {
 		base += "\n\nAvailable models (use the \"model\" parameter to override the default):"
