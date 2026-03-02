@@ -1922,6 +1922,57 @@ func TestDoRetriesOnTruncatedStream(t *testing.T) {
 	}
 }
 
+func TestDoStopsRetryingOnContextCancel(t *testing.T) {
+	// If the context is cancelled during retries, Do should stop immediately
+	// instead of sleeping through all 11 attempts.
+	truncated := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial", 100)
+
+	transport := &retryCountTransport{
+		truncatedCount: 999, // always truncated
+		truncatedBody:  truncated,
+		completeBody:   truncated,
+	}
+
+	s := &Service{
+		APIKey:  "test-key",
+		HTTPC:   &http.Client{Transport: transport},
+		Backoff: []time.Duration{10 * time.Second}, // long backoff to prove we don't sleep through it
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		}},
+	}
+
+	// Cancel context after first attempt completes
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := s.Do(ctx, req)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Do() expected error")
+	}
+	if !strings.Contains(err.Error(), "context cancelled") && !strings.Contains(err.Error(), "context deadline") {
+		// Accept either "context cancelled" from our check or "context deadline exceeded" from http
+		if !strings.Contains(err.Error(), "cancelled") && !strings.Contains(err.Error(), "deadline") {
+			t.Errorf("error = %q, want context-related error", err.Error())
+		}
+	}
+	// Should have stopped well before 11 * 10s = 110s
+	if elapsed > 5*time.Second {
+		t.Errorf("Do() took %v, expected it to bail out quickly on context cancellation", elapsed)
+	}
+	// Should have made at most a few attempts, not all 11
+	if transport.calls > 3 {
+		t.Errorf("expected at most 3 attempts, got %d (should stop retrying on cancelled context)", transport.calls)
+	}
+}
+
 func TestDoFailsAfterMaxRetriesOnTruncatedStream(t *testing.T) {
 	// All attempts return truncated stream — should fail after max retries
 	truncated := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial", 100)

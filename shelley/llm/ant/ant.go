@@ -794,9 +794,18 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			return nil, fmt.Errorf("anthropic request failed after %d attempts: %w", attempts, errs)
 		}
 		if attempts > 0 {
+			// Bail out early if context is already done — no point sleeping
+			// and retrying when every attempt will fail immediately.
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("anthropic request failed after %d attempts (context cancelled): %w", attempts, errs)
+			}
 			sleep := backoff[min(attempts-1, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
 			slog.WarnContext(ctx, "anthropic request sleep before retry", "sleep", sleep, "attempts", attempts)
-			time.Sleep(sleep)
+			select {
+			case <-time.After(sleep):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("anthropic request failed after %d attempts (context cancelled during backoff): %w", attempts, errs)
+			}
 		}
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 		if err != nil {
