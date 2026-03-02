@@ -3,10 +3,12 @@
 package skills
 
 import (
+	"context"
 	"html"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -384,6 +386,9 @@ func ProjectSkillsDirs(workingDir, gitRoot string) []string {
 // DiscoverInTree finds all skills by walking the directory tree looking for SKILL.md files.
 // If gitRoot is provided, it searches from gitRoot. Otherwise, it searches from workingDir downward.
 func DiscoverInTree(workingDir, gitRoot string) []Skill {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	var skills []Skill
 	seen := make(map[string]bool)
 
@@ -394,6 +399,9 @@ func DiscoverInTree(workingDir, gitRoot string) []Skill {
 	}
 
 	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			return nil // Continue on errors
 		}

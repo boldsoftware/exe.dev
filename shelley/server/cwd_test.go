@@ -30,11 +30,14 @@ func TestWorkingDirectoryConfiguration(t *testing.T) {
 		}
 	})
 
-	t.Run("cwd_root", func(t *testing.T) {
-		h.NewConversation("bash: pwd", "/")
+	t.Run("cwd_other", func(t *testing.T) {
+		dir := t.TempDir()
+		h.NewConversation("bash: pwd", dir)
 		result := strings.TrimSpace(h.WaitToolResult())
-		if result != "/" {
-			t.Errorf("expected '/', got: %s", result)
+		// Resolve symlinks for comparison (on macOS, temp dirs may be symlinked)
+		expected, _ := filepath.EvalSymlinks(dir)
+		if result != expected {
+			t.Errorf("expected %q, got: %s", expected, result)
 		}
 	})
 }
