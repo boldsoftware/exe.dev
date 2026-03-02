@@ -300,7 +300,11 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
   );
 }
 
-const Message = React.memo(function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
+const Message = React.memo(function Message({
+  message,
+  onOpenDiffViewer,
+  onCommentTextChange,
+}: MessageProps) {
   const { markdownMode } = useMarkdown();
 
   // Render system messages with distill_status as status indicators
