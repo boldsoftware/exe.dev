@@ -702,6 +702,11 @@ button {
   gap: 0.5rem;
 }
 
+.messages-list > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
 .message {
   display: flex;
   flex-direction: column;

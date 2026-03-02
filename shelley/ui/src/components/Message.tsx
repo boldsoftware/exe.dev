@@ -300,7 +300,7 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
   );
 }
 
-function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
+const Message = React.memo(function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProps) {
   const { markdownMode } = useMarkdown();
 
   // Render system messages with distill_status as status indicators
@@ -1179,7 +1179,7 @@ function Message({ message, onOpenDiffViewer, onCommentTextChange }: MessageProp
       )}
     </>
   );
-}
+});
 
 // Helper functions
 function hasToolResult(llmMessage: LLMMessage | null): boolean {

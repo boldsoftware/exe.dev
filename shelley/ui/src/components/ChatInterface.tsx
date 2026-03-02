@@ -220,6 +220,20 @@ function ContextUsageBar({
   );
 }
 
+interface CoalescedItem {
+  type: "message" | "tool";
+  message?: Message;
+  toolUseId?: string;
+  toolName?: string;
+  toolInput?: unknown;
+  toolResult?: LLMContent[];
+  toolError?: boolean;
+  toolStartTime?: string | null;
+  toolEndTime?: string | null;
+  hasResult?: boolean;
+  display?: unknown;
+}
+
 interface CoalescedToolCallProps {
   toolName: string;
   toolInput?: unknown;
@@ -256,7 +270,7 @@ const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   browser_clear_console_logs: BrowserConsoleLogsTool,
 };
 
-function CoalescedToolCall({
+const CoalescedToolCall = React.memo(function CoalescedToolCall({
   toolName,
   toolInput,
   toolResult,
@@ -425,7 +439,7 @@ function CoalescedToolCall({
       </div>
     </div>
   );
-}
+});
 
 // Animated "Agent working..." with letter-by-letter bold animation
 function AnimatedWorkingStatus() {
@@ -654,6 +668,12 @@ function ChatInterface({
   const loadingRef = useRef(false);
   // Pending scroll target from loadMessages: undefined = none, null = bottom, number = saved position
   const pendingScrollRef = useRef<number | null | undefined>(undefined);
+
+  const handleOpenDiffViewer = useCallback((commit: string, cwd?: string) => {
+    setDiffViewerInitialCommit(commit);
+    setDiffViewerCwd(cwd);
+    setShowDiffViewer(true);
+  }, []);
 
   // Navigate to next/previous user message when trigger changes
   useEffect(() => {
@@ -1342,27 +1362,13 @@ function ChatInterface({
     return title;
   };
 
-  // Process messages to coalesce tool calls
-  const processMessages = () => {
+  // Process messages to coalesce tool calls (memoized to avoid re-parsing on every render)
+  const coalescedItems = useMemo(() => {
     if (messages.length === 0) {
-      return [];
+      return [] as CoalescedItem[];
     }
 
-    interface CoalescedItem {
-      type: "message" | "tool";
-      message?: Message;
-      toolUseId?: string;
-      toolName?: string;
-      toolInput?: unknown;
-      toolResult?: LLMContent[];
-      toolError?: boolean;
-      toolStartTime?: string | null;
-      toolEndTime?: string | null;
-      hasResult?: boolean;
-      display?: unknown;
-    }
-
-    const coalescedItems: CoalescedItem[] = [];
+    const items: CoalescedItem[] = [];
     const toolResultMap: Record<
       string,
       {
@@ -1437,12 +1443,12 @@ function ChatInterface({
         if (!isDistillStatusMessage(message)) {
           return;
         }
-        coalescedItems.push({ type: "message", message });
+        items.push({ type: "message", message });
         return;
       }
 
       if (message.type === "error") {
-        coalescedItems.push({ type: "message", message });
+        items.push({ type: "message", message });
         return;
       }
 
@@ -1462,7 +1468,7 @@ function ChatInterface({
 
       // If it's a user message without tool results, show it
       if (message.type === "user" && !hasToolResult) {
-        coalescedItems.push({ type: "message", message });
+        items.push({ type: "message", message });
         return;
       }
 
@@ -1496,7 +1502,7 @@ function ChatInterface({
               .join("")
               .trim();
             if (textString) {
-              coalescedItems.push({ type: "message", message });
+              items.push({ type: "message", message });
             }
 
             // Check if this message was truncated (tool calls lost)
@@ -1507,7 +1513,7 @@ function ChatInterface({
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
               const completedViaDisplay = toolUse.ID ? displayResultSet.has(toolUse.ID) : false;
               const displayData = toolUse.ID ? displayDataMap[toolUse.ID] : undefined;
-              coalescedItems.push({
+              items.push({
                 type: "tool",
                 toolUseId: toolUse.ID,
                 toolName: toolUse.ToolName,
@@ -1525,15 +1531,15 @@ function ChatInterface({
           }
         } catch (err) {
           console.error("Failed to parse message LLM data:", err);
-          coalescedItems.push({ type: "message", message });
+          items.push({ type: "message", message });
         }
       } else {
-        coalescedItems.push({ type: "message", message });
+        items.push({ type: "message", message });
       }
     });
 
-    return coalescedItems;
-  };
+    return items;
+  }, [messages]);
 
   const renderMessages = () => {
     if (messages.length === 0) {
@@ -1584,19 +1590,13 @@ function ChatInterface({
       );
     }
 
-    const coalescedItems = processMessages();
-
     const rendered = coalescedItems.map((item, index) => {
       if (item.type === "message" && item.message) {
         return (
           <MessageComponent
             key={item.message.message_id}
             message={item.message}
-            onOpenDiffViewer={(commit, cwd) => {
-              setDiffViewerInitialCommit(commit);
-              setDiffViewerCwd(cwd);
-              setShowDiffViewer(true);
-            }}
+            onOpenDiffViewer={handleOpenDiffViewer}
             onCommentTextChange={setDiffCommentText}
           />
         );
