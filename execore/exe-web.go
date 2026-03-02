@@ -445,6 +445,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// docs.exe.dev → exe.dev/docs (permanent redirect)
+	if domz.Canonicalize(domz.StripPort(r.Host)) == "docs."+s.env.WebHost {
+		target := "https://" + s.env.WebHost + "/docs" + r.URL.Path
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		return
+	}
+
 	// Check if this should be handled by the proxy handler.
 	// Shelley subdomain (vm.shelley.exe.xyz) is also handled as a proxy request.
 	isProxy := s.isProxyRequest(r.Host)
