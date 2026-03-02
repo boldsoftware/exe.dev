@@ -109,8 +109,6 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 }
 
 // toAPIMessages converts database messages to API messages.
-// When display_data is present (tool results), llm_data is omitted to save bandwidth
-// since the display_data contains all information needed for UI rendering.
 func toAPIMessages(messages []generated.Message) []APIMessage {
 	apiMessages := make([]APIMessage, len(messages))
 	for i, msg := range messages {
@@ -121,10 +119,6 @@ func toAPIMessages(messages []generated.Message) []APIMessage {
 				endOfTurnPtr = &endOfTurnCopy
 			}
 		}
-
-		// TODO: Consider omitting llm_data when display_data is present to save bandwidth.
-		// The display_data contains all info needed for UI rendering of tool results,
-		// but the UI currently still uses llm_data for some checks.
 
 		apiMsg := APIMessage{
 			MessageID:      msg.MessageID,

@@ -1378,13 +1378,10 @@ function ChatInterface({
         endTime: string | null;
       }
     > = {};
-    // Some tool results may be delivered only as display_data (e.g., screenshots)
-    const displayResultSet: Set<string> = new Set();
     const displayDataMap: Record<string, unknown> = {};
 
-    // First pass: collect all tool results
+    // First pass: collect all tool results and their display data from llm_data
     messages.forEach((message) => {
-      // Collect tool_result data from llm_data if present
       if (message.llm_data) {
         try {
           const llmData =
@@ -1399,39 +1396,14 @@ function ChatInterface({
                   startTime: content.ToolUseStartTime || null,
                   endTime: content.ToolUseEndTime || null,
                 };
+                if (content.Display) {
+                  displayDataMap[content.ToolUseID] = content.Display;
+                }
               }
             });
           }
         } catch (err) {
           console.error("Failed to parse message LLM data for tool results:", err);
-        }
-      }
-
-      // Also collect tool_use_ids from display_data to mark completion even if llm_data is omitted
-      if (message.display_data) {
-        try {
-          const displays =
-            typeof message.display_data === "string"
-              ? JSON.parse(message.display_data)
-              : message.display_data;
-          if (Array.isArray(displays)) {
-            for (const d of displays) {
-              if (
-                d &&
-                typeof d === "object" &&
-                "tool_use_id" in d &&
-                typeof d.tool_use_id === "string"
-              ) {
-                displayResultSet.add(d.tool_use_id);
-                // Store the display data for this tool use
-                if ("display" in d) {
-                  displayDataMap[d.tool_use_id] = d.display;
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Failed to parse display_data for tool completion:", err);
         }
       }
     });
@@ -1511,7 +1483,6 @@ function ChatInterface({
             // Add tool uses as separate items
             toolUses.forEach((toolUse) => {
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
-              const completedViaDisplay = toolUse.ID ? displayResultSet.has(toolUse.ID) : false;
               const displayData = toolUse.ID ? displayDataMap[toolUse.ID] : undefined;
               items.push({
                 type: "tool",
@@ -1524,7 +1495,7 @@ function ChatInterface({
                 toolStartTime: resultData?.startTime,
                 toolEndTime: resultData?.endTime,
                 // Mark as complete if truncated (tool was lost, not running)
-                hasResult: !!resultData || completedViaDisplay || wasTruncated,
+                hasResult: !!resultData || wasTruncated,
                 display: displayData,
               });
             });
