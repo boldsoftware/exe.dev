@@ -24,6 +24,11 @@ import (
 // PermissionCallback is a function type for checking if a command is allowed to run
 type PermissionCallback func(command string) error
 
+// PreferredToolModels is the ordered list of model IDs preferred for
+// internal tool operations (validation, keyword search, etc.).
+// Every entry must be a model ID registered in models.All().
+var PreferredToolModels = []string{"gpt-oss-20b-fireworks", "claude-sonnet-4.6", "claude-sonnet-4.5", "predictable"}
+
 // BashTool specifies an llm.Tool for executing shell commands.
 type BashTool struct {
 	// CheckPermission is called before running any command, if set
@@ -556,10 +561,7 @@ func (b *BashTool) selectBestLLM() (llm.Service, error) {
 		return nil, fmt.Errorf("no LLM provider available")
 	}
 
-	// Preferred models in order of preference for tool validation (fast, cheap models preferred)
-	preferredModels := []string{"gpt-oss-20b-fireworks", "gpt-5-thinking-mini", "gpt5-mini", "claude-sonnet-4.6", "claude-sonnet-4.5", "predictable"}
-
-	for _, model := range preferredModels {
+	for _, model := range PreferredToolModels {
 		svc, err := b.LLMProvider.GetService(model)
 		if err == nil {
 			return svc, nil

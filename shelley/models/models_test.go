@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/llm"
 )
 
@@ -509,6 +510,18 @@ func TestGetAvailableModelsUnion(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("Expected model %q not found in available models: %v", expected, models)
+		}
+	}
+}
+
+func TestPreferredToolModelsAreRegistered(t *testing.T) {
+	known := make(map[string]bool)
+	for _, m := range All() {
+		known[m.ID] = true
+	}
+	for _, id := range claudetool.PreferredToolModels {
+		if !known[id] {
+			t.Errorf("PreferredToolModels contains %q which is not registered in models.All()", id)
 		}
 	}
 }
