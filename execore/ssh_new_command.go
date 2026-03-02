@@ -22,6 +22,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -357,16 +358,31 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			GroupID: cc.User.ID,
 		}
 
-		// Call CreateInstance
+		// Call CreateInstance with WaitForReady(false) so we fail fast
+		// if the exelet is unreachable, instead of blocking indefinitely.
 		exeletStart := time.Now()
-		stream, err := exeletClient.client.CreateInstance(ctx, createReq)
+		stream, err := exeletClient.client.CreateInstance(ctx, createReq, grpc.WaitForReady(false))
 		if err != nil {
 			CommandLogAddDuration(ctx, "exelet_rpc", time.Since(exeletStart))
+			if ctx.Err() == context.DeadlineExceeded {
+				completionChan <- instanceCompletion{
+					container: nil,
+					err:       cc.Errorf("VM creation timed out, please try again."),
+				}
+				return
+			}
 			// Check if this is a client error (user input issue)
 			if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
 				completionChan <- instanceCompletion{
 					container: nil,
 					err:       cc.Errorf("%s", s.Message()),
+				}
+				return
+			}
+			if s, ok := status.FromError(err); ok && s.Code() == codes.Unavailable {
+				completionChan <- instanceCompletion{
+					container: nil,
+					err:       cc.Errorf("The server is temporarily unreachable, please try again."),
 				}
 				return
 			}
@@ -386,11 +402,25 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			}
 			if err != nil {
 				CommandLogAddDuration(ctx, "exelet_rpc", time.Since(exeletStart))
+				if ctx.Err() == context.DeadlineExceeded {
+					completionChan <- instanceCompletion{
+						container: nil,
+						err:       cc.Errorf("VM creation timed out, please try again."),
+					}
+					return
+				}
 				// Check if this is a client error (user input issue)
 				if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
 					completionChan <- instanceCompletion{
 						container: nil,
 						err:       cc.Errorf("%s", s.Message()),
+					}
+					return
+				}
+				if s, ok := status.FromError(err); ok && s.Code() == codes.Unavailable {
+					completionChan <- instanceCompletion{
+						container: nil,
+						err:       cc.Errorf("The server is temporarily unreachable, please try again."),
 					}
 					return
 				}

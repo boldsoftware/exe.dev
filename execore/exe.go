@@ -3656,14 +3656,21 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
+		if client != nil && !client.up.Load() {
+			s.slog().DebugContext(ctx, "not selecting exelet because it is down", "user", userID, "exelet", maxHost, "userVMCount", maxCnt)
+			client = nil
+		}
+
 		var count int
 		if client != nil {
 			// Don't pick this VM if it is too loaded.
-			count, err = client.countInstances(ctx)
+			countCtx, countCancel := context.WithTimeout(ctx, 15*time.Second)
+			count, err = client.countInstances(countCtx)
+			countCancel()
 			if err != nil {
-				return nil, "", err
-			}
-			if count >= int(client.region.VMHardLimit) {
+				s.slog().WarnContext(ctx, "failed to count instances on preferred exelet, trying others", "user", userID, "exelet", maxHost, "error", err)
+				client = nil
+			} else if count >= int(client.region.VMHardLimit) {
 				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "exelet", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
 				client = nil
 			}
@@ -3679,11 +3686,11 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
-		if client, ok := s.exeletClients[preferredAddr]; ok {
+		if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() {
 			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
 			return client, preferredAddr, nil
 		}
-		// Preferred exelet is not available, log error and fall back
+		// Preferred exelet is not available or down, log and fall back
 		slog.ErrorContext(ctx, "preferred exelet not available, falling back to hash-based selection",
 			"preferred_addr", preferredAddr,
 			"available_addrs", s.exeletAddrs())
