@@ -557,7 +557,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		}
 
 		// Include team VMs for team owners
-		teamBoxes, _ := ss.server.ListTeamBoxesForOwner(ctx, cc.User.ID)
+		teamBoxes, _ := ss.server.ListTeamBoxesForSudoer(ctx, cc.User.ID)
 		var teamVMList []map[string]any
 		for _, vm := range teamBoxes {
 			status := container.ContainerStatus(vm.Status).String()
@@ -593,7 +593,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// Check if user is a team owner and get team boxes (need this early to decide output)
-	teamBoxes, _ := ss.server.ListTeamBoxesForOwner(ctx, cc.User.ID)
+	teamBoxes, _ := ss.server.ListTeamBoxesForSudoer(ctx, cc.User.ID)
 
 	if len(boxes) == 0 && len(teamBoxes) == 0 {
 		cc.Write("No VMs found. Create one with 'new'.\r\n")
@@ -832,7 +832,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 			continue
 		}
 
-		if accessType == TeamBoxAccessTeamOwner {
+		if accessType == TeamBoxAccessTeamSudoer {
 			cc.Writeln("Deleting team VM \033[1m%s\033[0m...", boxName)
 		} else {
 			cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)

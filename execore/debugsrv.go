@@ -4441,14 +4441,14 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add the owner
+	// Add the billing owner
 	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
 		TeamID: teamID,
 		UserID: ownerUserID,
-		Role:   "owner",
+		Role:   "billing_owner",
 	})
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to add owner: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to add billing owner: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -4472,13 +4472,13 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	s.slog().InfoContext(ctx, "created team via debug", "team_id", teamID, "owner", ownerUserID)
+	s.slog().InfoContext(ctx, "created team via debug", "team_id", teamID, "billing_owner", ownerUserID)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "created team %s with owner %s", teamID, ownerUserID)
+	fmt.Fprintf(w, "created team %s with billing_owner %s", teamID, ownerUserID)
 }
 
 // handleDebugTeamAddMember adds a user to an existing team.
-// POST /debug/teams/add-member with team_id, user_id (or email), role (owner or user)
+// POST /debug/teams/add-member with team_id, user_id (or email), role (billing_owner, sudoer, or user)
 // If email is provided and user doesn't exist, creates a pending invite and sends email.
 func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -4499,15 +4499,15 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 				http.Error(w, fmt.Sprintf("team not found: %v", err), http.StatusBadRequest)
 				return
 			}
-			// Use first team owner as the inviter
+			// Use first team admin as the inviter
 			members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, teamID)
 			if err != nil || len(members) == 0 {
-				http.Error(w, "could not find team owner for invite", http.StatusInternalServerError)
+				http.Error(w, "could not find team admin for invite", http.StatusInternalServerError)
 				return
 			}
 			var inviterID string
 			for _, m := range members {
-				if m.Role == "owner" {
+				if m.Role == "billing_owner" || m.Role == "sudoer" {
 					inviterID = m.UserID
 					break
 				}
@@ -4534,8 +4534,8 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 	if role == "" {
 		role = "user"
 	}
-	if role != "owner" && role != "user" {
-		http.Error(w, "role must be 'owner' or 'user'", http.StatusBadRequest)
+	if role != "billing_owner" && role != "sudoer" && role != "user" {
+		http.Error(w, "role must be 'billing_owner', 'sudoer', or 'user'", http.StatusBadRequest)
 		return
 	}
 
@@ -4741,8 +4741,8 @@ func (s *Server) handleDebugTeamUpdateRole(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "team_id, user_id, and role are required", http.StatusBadRequest)
 		return
 	}
-	if role != "owner" && role != "user" {
-		http.Error(w, "role must be 'owner' or 'user'", http.StatusBadRequest)
+	if role != "billing_owner" && role != "sudoer" && role != "user" {
+		http.Error(w, "role must be 'billing_owner', 'sudoer', or 'user'", http.StatusBadRequest)
 		return
 	}
 

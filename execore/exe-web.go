@@ -1351,9 +1351,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get invite count for dashboard", "error", err, "user_id", userID)
 	}
 
-	// Get team VMs for team owners
+	// Get team VMs for team sudoers
 	var teamBoxes []TeamBoxDisplayInfo
-	teamBoxResults, _ := s.ListTeamBoxesForOwner(r.Context(), user.UserID)
+	teamBoxResults, _ := s.ListTeamBoxesForSudoer(r.Context(), user.UserID)
 	for _, result := range teamBoxResults {
 		teamBoxInfo := TeamBoxDisplayInfo{
 			Name:         result.Name,

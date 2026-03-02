@@ -127,7 +127,7 @@ type UserPageData struct {
 	Passkeys     []PasskeyInfo
 	Boxes        []BoxDisplayInfo
 	SharedBoxes  []SharedBoxDisplayInfo
-	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team owners)
+	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team sudoers)
 	SiteSessions []SiteSession
 	ActivePage   string
 	IsLoggedIn   bool

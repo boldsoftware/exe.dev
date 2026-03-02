@@ -449,8 +449,8 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		// Skip this check if SkipBilling is set (for tests)
 		if !s.env.SkipBilling {
 			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-			if err == nil && userNeedsBilling(&billingStatus) {
-				// User is logged in but needs to add billing info.
+			if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), userID) {
+				// User is logged in but needs to add billing info
 				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
 				billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
 				if prompt != "" {

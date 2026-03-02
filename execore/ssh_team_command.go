@@ -10,7 +10,8 @@ import (
 	"exe.dev/exemenu"
 )
 
-var addOwnerFlag = addBoolFlag("owner", "add as team owner instead of regular member")
+var addSudoerFlag = addBoolFlag("sudoer", "add as team sudoer (SSH access to member VMs)")
+var addBillingOwnerFlag = addBoolFlag("billing-owner", "add as team billing owner")
 
 // teamCommand returns the command definition for the team command
 func (ss *SSHServer) teamCommand() *exemenu.Command {
@@ -36,7 +37,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamAddCommand,
 				FlagSetFunc:       jsonOnlyFlags("team-add"),
 				HasPositionalArgs: true,
-				Available:         ss.isTeamOwner,
+				Available:         ss.isTeamAdmin,
 			},
 			{
 				Name:              "remove",
@@ -45,7 +46,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Handler:           ss.handleTeamRemoveCommand,
 				FlagSetFunc:       jsonOnlyFlags("team-remove"),
 				HasPositionalArgs: true,
-				Available:         ss.isTeamOwner,
+				Available:         ss.isTeamAdmin,
 			},
 			{
 				Name:        "auth",
@@ -53,14 +54,14 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Usage:       "team auth",
 				Handler:     ss.handleTeamAuthCommand,
 				FlagSetFunc: jsonOnlyFlags("team-auth"),
-				Available:   ss.isTeamOwner,
+				Available:   ss.isTeamAdmin,
 				Subcommands: ss.teamAuthSubcommands(),
 			},
 			// Root-only commands below
 			{
 				Name:              "create",
 				Description:       "Create a new team",
-				Usage:             "team create <team_id> <display_name> <owner_email>",
+				Usage:             "team create <team_id> <display_name> <billing_owner_email>",
 				Handler:           ss.handleTeamCreateCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
@@ -70,9 +71,9 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			{
 				Name:              "enroll",
 				Description:       "Add a user to any team",
-				Usage:             "team enroll <team_id> <email> [--owner]",
+				Usage:             "team enroll <team_id> <email> [--sudoer|--billing-owner]",
 				Handler:           ss.handleTeamEnrollCommand,
-				FlagSetFunc:       addOwnerFlag(jsonOnlyFlags("team-enroll")),
+				FlagSetFunc:       addSudoerFlag(addBillingOwnerFlag(jsonOnlyFlags("team-enroll"))),
 				HasPositionalArgs: true,
 				Hidden:            true,
 				RequiresSudo:      true,
@@ -90,8 +91,8 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			},
 			{
 				Name:              "promote",
-				Description:       "Promote a team member to owner",
-				Usage:             "team promote <team_id> <email>",
+				Description:       "Promote a team member to sudoer or billing_owner",
+				Usage:             "team promote <team_id> <email> <sudoer|billing_owner>",
 				Handler:           ss.handleTeamPromoteCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
@@ -100,7 +101,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			},
 			{
 				Name:              "demote",
-				Description:       "Demote a team owner to member",
+				Description:       "Demote a team sudoer or billing_owner to member",
 				Usage:             "team demote <team_id> <email>",
 				Handler:           ss.handleTeamDemoteCommand,
 				HasPositionalArgs: true,
@@ -145,12 +146,12 @@ func (ss *SSHServer) isInTeamOrSudo(cc *exemenu.CommandContext) bool {
 	return ss.isInTeam(cc) || ss.isSudoUser(cc)
 }
 
-// isTeamOwner checks if the user is a team owner (for command availability)
-func (ss *SSHServer) isTeamOwner(cc *exemenu.CommandContext) bool {
+// isTeamAdmin checks if the user is a team admin — billing_owner or sudoer (for command availability)
+func (ss *SSHServer) isTeamAdmin(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
 		return false
 	}
-	return ss.server.IsUserTeamOwner(context.Background(), cc.User.ID)
+	return ss.server.IsUserTeamAdmin(context.Background(), cc.User.ID)
 }
 
 // isSudoUser checks if the user has root support privileges
@@ -231,8 +232,11 @@ func (ss *SSHServer) handleTeamMembersCommand(ctx context.Context, cc *exemenu.C
 	cc.Writeln("Team members:")
 	for _, m := range members {
 		roleIndicator := ""
-		if m.Role == "owner" {
-			roleIndicator = " \033[33m(owner)\033[0m"
+		switch m.Role {
+		case "billing_owner":
+			roleIndicator = " \033[35m(billing owner)\033[0m"
+		case "sudoer":
+			roleIndicator = " \033[33m(sudoer)\033[0m"
 		}
 		cc.Writeln("  %s%s", m.Email, roleIndicator)
 	}
@@ -257,9 +261,9 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("You are not part of a team")
 	}
 
-	// Check if user is an owner
-	if team.Role != "owner" {
-		return cc.Errorf("Only team owners can add members")
+	// Check if user is an admin (billing_owner or sudoer)
+	if team.Role == "user" {
+		return cc.Errorf("Only team admins can add members")
 	}
 
 	// Try to find the user by email
@@ -344,15 +348,16 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("You are not part of a team")
 	}
 
-	// Check if user is an owner
-	if team.Role != "owner" {
-		return cc.Errorf("Only team owners can remove members")
+	// Check if user is an admin (billing_owner or sudoer)
+	if team.Role == "user" {
+		return cc.Errorf("Only team admins can remove members")
 	}
 
 	// Find the team member by email
+	ce := canonicalizeEmail(email)
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         team.TeamID,
-		CanonicalEmail: new(canonicalizeEmail(email)),
+		CanonicalEmail: &ce,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in this team", email)
@@ -361,18 +366,17 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 		return err
 	}
 
-	// Prevent owners from removing themselves if they're the last owner
-	if member.Role == "owner" {
-		// Count owners
+	// Prevent removing the last billing_owner
+	if member.Role == "billing_owner" {
 		members, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, team.TeamID)
-		ownerCount := 0
+		billingOwnerCount := 0
 		for _, m := range members {
-			if m.Role == "owner" {
-				ownerCount++
+			if m.Role == "billing_owner" {
+				billingOwnerCount++
 			}
 		}
-		if ownerCount <= 1 {
-			return cc.Errorf("Cannot remove the last owner")
+		if billingOwnerCount <= 1 {
+			return cc.Errorf("Cannot remove the last billing owner")
 		}
 	}
 
@@ -433,16 +437,17 @@ func canonicalizeEmail(email string) string {
 
 func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 3 {
-		return cc.Errorf("usage: team create <team_id> <display_name> <owner_email>")
+		return cc.Errorf("usage: team create <team_id> <display_name> <billing_owner_email>")
 	}
 
 	teamID := cc.Args[0]
 	displayName := cc.Args[1]
-	ownerEmail := cc.Args[2]
+	billingOwnerEmail := cc.Args[2]
 
-	ownerUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(ownerEmail)))
+	ce := canonicalizeEmail(billingOwnerEmail)
+	billingOwnerUserID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("User %q not found", ownerEmail)
+		return cc.Errorf("User %q not found", billingOwnerEmail)
 	}
 	if err != nil {
 		return err
@@ -458,26 +463,31 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 
 	err = withTx1(ss.server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
 		TeamID: teamID,
-		UserID: ownerUserID,
-		Role:   "owner",
+		UserID: billingOwnerUserID,
+		Role:   "billing_owner",
 	})
 	if err != nil {
-		return cc.Errorf("Failed to add owner: %v", err)
+		return cc.Errorf("Failed to add billing owner: %v", err)
 	}
 
-	slog.InfoContext(ctx, "root: created team", "team_id", teamID, "owner", ownerEmail, "by", cc.User.ID)
-	cc.Writeln("Created team %s (%s) with owner %s", teamID, displayName, ownerEmail)
+	slog.InfoContext(ctx, "root: created team", "team_id", teamID, "billing_owner", billingOwnerEmail, "by", cc.User.ID)
+	cc.Writeln("Created team %s (%s) with billing owner %s", teamID, displayName, billingOwnerEmail)
 	return nil
 }
 
 func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: team enroll <team_id> <email> [--owner]")
+		return cc.Errorf("usage: team enroll <team_id> <email> [--sudoer|--billing-owner]")
 	}
 
 	teamID := cc.Args[0]
 	email := cc.Args[1]
-	isOwner := cc.FlagSet.Lookup("owner") != nil && cc.FlagSet.Lookup("owner").Value.String() == "true"
+	isSudoer := cc.FlagSet.Lookup("sudoer") != nil && cc.FlagSet.Lookup("sudoer").Value.String() == "true"
+	isBillingOwner := cc.FlagSet.Lookup("billing-owner") != nil && cc.FlagSet.Lookup("billing-owner").Value.String() == "true"
+
+	if isSudoer && isBillingOwner {
+		return cc.Errorf("Cannot use both --sudoer and --billing-owner")
+	}
 
 	_, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeam, teamID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -487,7 +497,8 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 		return err
 	}
 
-	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, new(canonicalizeEmail(email)))
+	ce := canonicalizeEmail(email)
+	userID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q not found", email)
 	}
@@ -504,8 +515,10 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	role := "user"
-	if isOwner {
-		role = "owner"
+	if isSudoer {
+		role = "sudoer"
+	} else if isBillingOwner {
+		role = "billing_owner"
 	}
 
 	err = withTx1(ss.server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
@@ -532,9 +545,10 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 	teamID := cc.Args[0]
 	email := cc.Args[1]
 
+	ce := canonicalizeEmail(email)
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: new(canonicalizeEmail(email)),
+		CanonicalEmail: &ce,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)
@@ -543,16 +557,16 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 		return err
 	}
 
-	if member.Role == "owner" {
+	if member.Role == "billing_owner" {
 		members, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, teamID)
-		ownerCount := 0
+		billingOwnerCount := 0
 		for _, m := range members {
-			if m.Role == "owner" {
-				ownerCount++
+			if m.Role == "billing_owner" {
+				billingOwnerCount++
 			}
 		}
-		if ownerCount <= 1 {
-			return cc.Errorf("Cannot remove the last owner of team %s", teamID)
+		if billingOwnerCount <= 1 {
+			return cc.Errorf("Cannot remove the last billing owner of team %s", teamID)
 		}
 	}
 
@@ -585,16 +599,22 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 }
 
 func (ss *SSHServer) handleTeamPromoteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: team promote <team_id> <email>")
+	if len(cc.Args) < 3 {
+		return cc.Errorf("usage: team promote <team_id> <email> <sudoer|billing_owner>")
 	}
 
 	teamID := cc.Args[0]
 	email := cc.Args[1]
+	targetRole := cc.Args[2]
 
+	if targetRole != "sudoer" && targetRole != "billing_owner" {
+		return cc.Errorf("role must be 'sudoer' or 'billing_owner'")
+	}
+
+	ce := canonicalizeEmail(email)
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: new(canonicalizeEmail(email)),
+		CanonicalEmail: &ce,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)
@@ -602,12 +622,12 @@ func (ss *SSHServer) handleTeamPromoteCommand(ctx context.Context, cc *exemenu.C
 	if err != nil {
 		return err
 	}
-	if member.Role == "owner" {
-		return cc.Errorf("%s is already an owner", email)
+	if member.Role == targetRole {
+		return cc.Errorf("%s is already a %s", email, targetRole)
 	}
 
 	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
-		Role:   "owner",
+		Role:   targetRole,
 		TeamID: teamID,
 		UserID: member.UserID,
 	})
@@ -615,8 +635,8 @@ func (ss *SSHServer) handleTeamPromoteCommand(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("Failed to promote: %v", err)
 	}
 
-	slog.InfoContext(ctx, "root: promoted team member", "team_id", teamID, "email", email, "by", cc.User.ID)
-	cc.Writeln("Promoted %s to owner in %s", email, teamID)
+	slog.InfoContext(ctx, "root: promoted team member", "team_id", teamID, "email", email, "role", targetRole, "by", cc.User.ID)
+	cc.Writeln("Promoted %s to %s in %s", email, targetRole, teamID)
 	return nil
 }
 
@@ -628,9 +648,10 @@ func (ss *SSHServer) handleTeamDemoteCommand(ctx context.Context, cc *exemenu.Co
 	teamID := cc.Args[0]
 	email := cc.Args[1]
 
+	ce := canonicalizeEmail(email)
 	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
 		TeamID:         teamID,
-		CanonicalEmail: new(canonicalizeEmail(email)),
+		CanonicalEmail: &ce,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("User %q is not in team %s", email, teamID)
@@ -638,19 +659,22 @@ func (ss *SSHServer) handleTeamDemoteCommand(ctx context.Context, cc *exemenu.Co
 	if err != nil {
 		return err
 	}
-	if member.Role != "owner" {
-		return cc.Errorf("%s is not an owner", email)
+	if member.Role == "user" {
+		return cc.Errorf("%s is already a regular member", email)
 	}
 
-	members, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, teamID)
-	ownerCount := 0
-	for _, m := range members {
-		if m.Role == "owner" {
-			ownerCount++
+	// Protect last billing_owner
+	if member.Role == "billing_owner" {
+		members, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, teamID)
+		billingOwnerCount := 0
+		for _, m := range members {
+			if m.Role == "billing_owner" {
+				billingOwnerCount++
+			}
 		}
-	}
-	if ownerCount <= 1 {
-		return cc.Errorf("Cannot demote the last owner of team %s", teamID)
+		if billingOwnerCount <= 1 {
+			return cc.Errorf("Cannot demote the last billing owner of team %s", teamID)
+		}
 	}
 
 	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
@@ -707,8 +731,11 @@ func (ss *SSHServer) handleTeamShowCommand(ctx context.Context, cc *exemenu.Comm
 	cc.Writeln("%s (%s):", team.TeamID, team.DisplayName)
 	for _, m := range members {
 		roleIndicator := ""
-		if m.Role == "owner" {
-			roleIndicator = " (owner)"
+		switch m.Role {
+		case "billing_owner":
+			roleIndicator = " (billing_owner)"
+		case "sudoer":
+			roleIndicator = " (sudoer)"
 		}
 		cc.Writeln("  %s  %s%s", m.UserID, m.Email, roleIndicator)
 	}

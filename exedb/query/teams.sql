@@ -33,7 +33,7 @@ SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email, u.auth_provider
 FROM team_members tm
 JOIN users u ON tm.user_id = u.user_id
 WHERE tm.team_id = ?
-ORDER BY tm.role DESC, tm.created_at ASC;
+ORDER BY CASE tm.role WHEN 'billing_owner' THEN 0 WHEN 'sudoer' THEN 1 ELSE 2 END, tm.created_at ASC;
 
 -- name: GetTeamMemberByEmail :one
 SELECT tm.team_id, tm.user_id, tm.role, tm.created_at, u.email
@@ -41,10 +41,27 @@ FROM team_members tm
 JOIN users u ON tm.user_id = u.user_id
 WHERE tm.team_id = ? AND u.canonical_email = ?;
 
--- name: IsUserTeamOwner :one
-SELECT role = 'owner' as is_owner
+-- name: IsUserTeamAdmin :one
+SELECT role != 'user' as is_admin
 FROM team_members
 WHERE user_id = ?;
+
+-- name: IsUserTeamSudoer :one
+SELECT role != 'user' as is_sudoer
+FROM team_members
+WHERE user_id = ?;
+
+-- name: IsUserTeamBillingOwner :one
+SELECT role = 'billing_owner' as is_billing_owner
+FROM team_members
+WHERE user_id = ?;
+
+-- name: GetTeamBillingOwnerUserID :one
+SELECT tm_billing.user_id
+FROM team_members tm_billing
+JOIN team_members tm_user ON tm_billing.team_id = tm_user.team_id
+WHERE tm_user.user_id = @member_user_id
+AND tm_billing.role = 'billing_owner';
 
 -- name: CountTeamBoxes :one
 SELECT COUNT(*) as count
@@ -52,35 +69,35 @@ FROM boxes b
 JOIN team_members tm ON b.created_by_user_id = tm.user_id
 WHERE tm.team_id = (SELECT tm2.team_id FROM team_members tm2 WHERE tm2.user_id = ?);
 
--- name: ListTeamBoxesForOwner :many
+-- name: ListTeamBoxesForSudoer :many
 SELECT b.id, b.name, b.status, b.image, b.created_at, b.updated_at, b.region,
        u.email as creator_email
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN users u ON b.created_by_user_id = u.user_id
-WHERE tm_creator.team_id = (SELECT tm2.team_id FROM team_members tm2 WHERE tm2.user_id = @owner_user_id)
-AND b.created_by_user_id != @owner_user_id
+WHERE tm_creator.team_id = (SELECT tm2.team_id FROM team_members tm2 WHERE tm2.user_id = @sudoer_user_id)
+AND b.created_by_user_id != @sudoer_user_id
 AND b.status != 'failed'
 ORDER BY b.updated_at DESC;
 
--- name: GetBoxAccessibleByTeamOwner :one
+-- name: GetBoxAccessibleByTeamSudoer :one
 SELECT b.*
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
-JOIN team_members tm_owner ON tm_creator.team_id = tm_owner.team_id
+JOIN team_members tm_sudoer ON tm_creator.team_id = tm_sudoer.team_id
 WHERE b.name = @box_name
-AND tm_owner.user_id = @owner_user_id
-AND tm_owner.role = 'owner';
+AND tm_sudoer.user_id = @sudoer_user_id
+AND tm_sudoer.role != 'user';
 
--- name: GetBoxByTeamOwnerAndShard :one
+-- name: GetBoxByTeamSudoerAndShard :one
 SELECT b.*
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
-JOIN team_members tm_owner ON tm_creator.team_id = tm_owner.team_id
+JOIN team_members tm_sudoer ON tm_creator.team_id = tm_sudoer.team_id
 WHERE bis.ip_shard = @shard
-AND tm_owner.user_id = @owner_user_id
-AND tm_owner.role = 'owner';
+AND tm_sudoer.user_id = @sudoer_user_id
+AND tm_sudoer.role != 'user';
 
 -- name: ListBoxIDsForUser :many
 SELECT b.id

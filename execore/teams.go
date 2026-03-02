@@ -20,13 +20,13 @@ import (
 type TeamBoxAccessType int
 
 const (
-	TeamBoxAccessNone      TeamBoxAccessType = iota
-	TeamBoxAccessOwner                       // User created the box
-	TeamBoxAccessTeamOwner                   // User is team owner, box belongs to team member
+	TeamBoxAccessNone        TeamBoxAccessType = iota
+	TeamBoxAccessOwner                         // User created the box
+	TeamBoxAccessTeamSudoer                    // User is team sudoer, box belongs to team member
 )
 
 // FindAccessibleBox finds a box that the user can access for management operations.
-// First checks direct ownership, then team owner access.
+// First checks direct ownership, then team sudoer access.
 // Returns the box, access type, and error. Returns sql.ErrNoRows if not found.
 func (s *Server) FindAccessibleBox(ctx context.Context, userID, boxName string) (*exedb.Box, TeamBoxAccessType, error) {
 	// 1. Try direct ownership first (most common case)
@@ -41,13 +41,13 @@ func (s *Server) FindAccessibleBox(ctx context.Context, userID, boxName string) 
 		return nil, TeamBoxAccessNone, err
 	}
 
-	// 2. Check team owner access
-	box, err = withRxRes1(s, ctx, (*exedb.Queries).GetBoxAccessibleByTeamOwner, exedb.GetBoxAccessibleByTeamOwnerParams{
-		BoxName:     boxName,
-		OwnerUserID: userID,
+	// 2. Check team sudoer access
+	box, err = withRxRes1(s, ctx, (*exedb.Queries).GetBoxAccessibleByTeamSudoer, exedb.GetBoxAccessibleByTeamSudoerParams{
+		BoxName:      boxName,
+		SudoerUserID: userID,
 	})
 	if err == nil {
-		return &box, TeamBoxAccessTeamOwner, nil
+		return &box, TeamBoxAccessTeamSudoer, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, TeamBoxAccessNone, err
@@ -68,14 +68,23 @@ func (s *Server) GetTeamForUser(ctx context.Context, userID string) (*exedb.GetT
 	return &team, nil
 }
 
-// IsUserTeamOwner checks if the user is a team owner.
+// IsUserTeamAdmin checks if the user is a team admin (billing_owner or sudoer).
 // Returns false if user is not in a team or is a regular member.
-func (s *Server) IsUserTeamOwner(ctx context.Context, userID string) bool {
-	isOwner, err := withRxRes1(s, ctx, (*exedb.Queries).IsUserTeamOwner, userID)
+func (s *Server) IsUserTeamAdmin(ctx context.Context, userID string) bool {
+	isAdmin, err := withRxRes1(s, ctx, (*exedb.Queries).IsUserTeamAdmin, userID)
 	if err != nil {
 		return false
 	}
-	return isOwner
+	return isAdmin
+}
+
+// IsUserTeamSudoer checks if the user is a team sudoer (has SSH access to member VMs).
+func (s *Server) IsUserTeamSudoer(ctx context.Context, userID string) bool {
+	isSudoer, err := withRxRes1(s, ctx, (*exedb.Queries).IsUserTeamSudoer, userID)
+	if err != nil {
+		return false
+	}
+	return isSudoer
 }
 
 // GetEffectiveLimits returns the limits that apply to a user.
@@ -114,17 +123,17 @@ func (s *Server) CountBoxesForLimitCheck(ctx context.Context, userID string) (in
 	return withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, userID)
 }
 
-// ListTeamBoxesForOwner returns boxes created by other team members.
-// Returns nil if user is not a team owner.
-func (s *Server) ListTeamBoxesForOwner(ctx context.Context, userID string) ([]exedb.ListTeamBoxesForOwnerRow, error) {
-	if !s.IsUserTeamOwner(ctx, userID) {
+// ListTeamBoxesForSudoer returns boxes created by other team members.
+// Returns nil if user is not a team sudoer.
+func (s *Server) ListTeamBoxesForSudoer(ctx context.Context, userID string) ([]exedb.ListTeamBoxesForSudoerRow, error) {
+	if !s.IsUserTeamSudoer(ctx, userID) {
 		return nil, nil
 	}
-	return withRxRes1(s, ctx, (*exedb.Queries).ListTeamBoxesForOwner, userID)
+	return withRxRes1(s, ctx, (*exedb.Queries).ListTeamBoxesForSudoer, userID)
 }
 
-// FindTeamBoxByIPShard finds a team member's box by local IP address when requester is a team owner.
-// This enables DNS-based routing (ssh vmname.exe.cloud) for team owners accessing member boxes.
+// FindTeamBoxByIPShard finds a team member's box by local IP address when requester is a team sudoer.
+// This enables DNS-based routing (ssh vmname.exe.cloud) for team sudoers accessing member boxes.
 func (s *Server) FindTeamBoxByIPShard(ctx context.Context, userID, localIP string) *exedb.Box {
 	if userID == "" || localIP == "" {
 		return nil
@@ -140,9 +149,9 @@ func (s *Server) FindTeamBoxByIPShard(ctx context.Context, userID, localIP strin
 		return nil
 	}
 
-	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByTeamOwnerAndShard, exedb.GetBoxByTeamOwnerAndShardParams{
-		Shard:       int64(info.Shard),
-		OwnerUserID: userID,
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByTeamSudoerAndShard, exedb.GetBoxByTeamSudoerAndShardParams{
+		Shard:        int64(info.Shard),
+		SudoerUserID: userID,
 	})
 	if err != nil {
 		return nil

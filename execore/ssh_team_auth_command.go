@@ -34,7 +34,7 @@ func (ss *SSHServer) teamAuthSubcommands() []*exemenu.Command {
 			Handler:           ss.handleTeamAuthSetCommand,
 			FlagSetFunc:       teamAuthSetFlags(jsonOnlyFlags("team-auth-set")),
 			HasPositionalArgs: true,
-			Available:         ss.isTeamOwner,
+			Available:         ss.isTeamAdmin,
 		},
 	}
 }

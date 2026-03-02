@@ -73,11 +73,30 @@ tr.shown td.details-control::before { content: '-'; }
 <p>Email: <input type="text" name="email" id="addMemberEmail" placeholder="user@example.com"></p>
 <p>Role: <select name="role" id="addMemberRole">
 <option value="user">user</option>
-<option value="owner">owner</option>
+<option value="sudoer">sudoer</option>
+<option value="billing_owner">billing_owner</option>
 </select></p>
 <p>
 <button type="submit" class="confirm-btn">Add</button>
 <button type="button" class="cancel-btn" id="addMemberCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
+<dialog id="changeRoleDialog">
+<form id="changeRoleForm">
+<h3>Change Role</h3>
+<p>Member: <strong id="changeRoleEmail"></strong></p>
+<input type="hidden" name="team_id" id="changeRoleTeamId">
+<input type="hidden" name="user_id" id="changeRoleUserId">
+<p>Role: <select name="role" id="changeRoleSelect">
+<option value="user">user</option>
+<option value="sudoer">sudoer</option>
+<option value="billing_owner">billing_owner</option>
+</select></p>
+<p>
+<button type="submit" class="confirm-btn">Save</button>
+<button type="button" class="cancel-btn" id="changeRoleCancelBtn">Cancel</button>
 </p>
 </form>
 </dialog>
@@ -146,9 +165,7 @@ function formatMembers(d) {
         '</tr></thead><tbody>';
     for (var i = 0; i < d.members.length; i++) {
         var m = d.members[i];
-        var roleBtn = m.role === 'owner'
-            ? '<button class="toggle-btn enabled role-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-role="user">Demote</button>'
-            : '<button class="toggle-btn disabled role-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-role="owner">Promote</button>';
+        var roleBtn = '<button class="toggle-btn role-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-email="' + m.email + '" data-role="' + m.role + '">Role</button>';
         var removeBtn = '<button class="toggle-btn danger remove-btn" data-teamid="' + d.team_id + '" data-userid="' + m.user_id + '" data-email="' + m.email + '" data-teamname="' + d.display_name + '">Remove</button>';
         var authBadge = m.auth_provider ? '<span style="background:#007bff;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;">' + m.auth_provider + '</span>' : '-';
         html += '<tr>' +
@@ -388,29 +405,33 @@ document.getElementById('limitsForm').addEventListener('submit', function(e) {
     });
 });
 
-// Role toggle
+// Change role modal
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('role-btn')) {
-        var teamId = e.target.dataset.teamid;
-        var userId = e.target.dataset.userid;
-        var newRole = e.target.dataset.role;
-
-        var body = new URLSearchParams();
-        body.append('team_id', teamId);
-        body.append('user_id', userId);
-        body.append('role', newRole);
-
-        fetch('/debug/teams/update-role', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
-            teamsTable.ajax.reload(null, false);
-        }).catch(function(err) {
-            alert('Failed to update role: ' + err.message);
-        });
+        document.getElementById('changeRoleTeamId').value = e.target.dataset.teamid;
+        document.getElementById('changeRoleUserId').value = e.target.dataset.userid;
+        document.getElementById('changeRoleEmail').textContent = e.target.dataset.email;
+        document.getElementById('changeRoleSelect').value = e.target.dataset.role;
+        document.getElementById('changeRoleDialog').showModal();
     }
+});
+document.getElementById('changeRoleCancelBtn').addEventListener('click', function() {
+    document.getElementById('changeRoleDialog').close();
+});
+document.getElementById('changeRoleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var body = new URLSearchParams(new FormData(this));
+    fetch('/debug/teams/update-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+        document.getElementById('changeRoleDialog').close();
+        teamsTable.ajax.reload(null, false);
+    }).catch(function(err) {
+        alert('Failed to update role: ' + err.message);
+    });
 });
 
 // Remove member

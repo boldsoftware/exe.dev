@@ -55,6 +55,20 @@ func billingDest(status *exedb.GetUserBillingStatusRow) string {
 	return "/select-plan"
 }
 
+// teamBillingCovers checks if the user's team billing_owner has active billing.
+// Returns true if user is in a team and the billing_owner's subscription covers them.
+func (s *Server) teamBillingCovers(ctx context.Context, userID string) bool {
+	billingOwnerID, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamBillingOwnerUserID, userID)
+	if err != nil {
+		return false
+	}
+	status, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, billingOwnerID)
+	if err != nil {
+		return false
+	}
+	return !userNeedsBilling(&status)
+}
+
 // checkCanCreateVM validates that a user is allowed to create a new VM.
 // Returns an error message if blocked, or empty string if allowed.
 // The allowOverride parameter bypasses throttle and disabled checks (used for exelet override).
@@ -76,8 +90,11 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 	// Check if user needs billing
 	if !ss.server.env.SkipBilling {
 		if billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID); err == nil && userNeedsBilling(&billingStatus) {
-			billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-			return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
+			// User doesn't have their own billing — check if team billing_owner covers them
+			if !ss.server.teamBillingCovers(ctx, user.ID) {
+				billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
+				return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
+			}
 		}
 	}
 

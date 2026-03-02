@@ -206,7 +206,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// Check if user needs billing before starting creation
 			if !s.env.SkipBilling {
 				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
-				if err == nil && userNeedsBilling(&billingStatus) {
+				if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), verifiedUserID) {
 					// Preserve hostname/prompt/image through billing flow
 					billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
