@@ -1,4 +1,5 @@
 import React from "react";
+import { useEscapeClose } from "./useEscapeClose";
 
 interface ModalProps {
   isOpen: boolean;
@@ -10,6 +11,8 @@ interface ModalProps {
 }
 
 function Modal({ isOpen, onClose, title, titleRight, children, className }: ModalProps) {
+  useEscapeClose(isOpen, onClose);
+
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {

@@ -1,5 +1,6 @@
 import React from "react";
 import { Usage } from "../types";
+import { useEscapeClose } from "./useEscapeClose";
 
 interface UsageDetailModalProps {
   usage: Usage;
@@ -28,16 +29,7 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
     });
   };
 
-  // Close on escape key
-  React.useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
+  useEscapeClose(true, onClose);
 
   return (
     <div

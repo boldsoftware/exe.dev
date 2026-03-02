@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../services/api";
 import { VersionInfo, CommitInfo } from "../types";
+import { useEscapeClose } from "./useEscapeClose";
 
 interface VersionCheckerProps {
   onUpdateAvailable?: (hasUpdate: boolean) => void;
@@ -29,6 +30,8 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
       loadAutoUpgradeSetting();
     }
   }, [isOpen, versionInfo]);
+
+  useEscapeClose(isOpen, onClose);
 
   const loadAutoUpgradeSetting = async () => {
     setLoadingAutoUpgrade(true);

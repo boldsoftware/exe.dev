@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useId } from "react";
 import { api } from "../services/api";
+import { useEscapeClose } from "./useEscapeClose";
 
 interface DirectoryEntry {
   name: string;
@@ -282,6 +283,8 @@ function DirectoryPickerModal({
       handleCancelCreate();
     }
   };
+
+  useEscapeClose(isOpen, onClose);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
