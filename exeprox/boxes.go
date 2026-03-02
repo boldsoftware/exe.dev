@@ -20,6 +20,10 @@ type boxesData struct {
 	// where the box has been shared with the user's team.
 	// We don't try to keep track of general team membership.
 	boxTeamShares hashtriemap.HashTrieMap[boxShare, struct{}]
+	// boxShelleyShares is a set of pairs of box name and user ID,
+	// where the box has team_shelley sharing enabled and the user
+	// is in the same team as the box creator.
+	boxShelleyShares hashtriemap.HashTrieMap[boxShare, struct{}]
 }
 
 // boxShare is a share of a box with a user.
@@ -104,6 +108,30 @@ func (bd *boxesData) isSharedWithUserTeam(ctx context.Context, exeproxData Exepr
 	return ok, nil
 }
 
+// isShelleySharedWithTeamMember reports whether a box has team_shelley
+// sharing enabled and the user is in the same team as the box creator.
+func (bd *boxesData) isShelleySharedWithTeamMember(ctx context.Context, exeproxData ExeproxData, boxID int, boxName, userID string) (bool, error) {
+	key := boxShare{
+		boxName: boxName,
+		userID:  userID,
+	}
+	_, ok := bd.boxShelleyShares.Load(key)
+	if ok {
+		return ok, nil
+	}
+
+	ok, err := exeproxData.IsBoxShelleySharedWithTeamMember(ctx, boxID, boxName, userID)
+	if err != nil {
+		return false, err
+	}
+
+	if ok {
+		bd.boxShelleyShares.Store(key, struct{}{})
+	}
+
+	return ok, nil
+}
+
 // isShareLinkValid reports whether a share link is valid for a box.
 func (bd *boxesData) isShareLinkValid(ctx context.Context, exeproxData ExeproxData, boxID int, boxName, userID, shareToken string) (bool, error) {
 	// Look in the cache.
@@ -137,6 +165,7 @@ func (bd *boxesData) clear() {
 	bd.boxShares.Clear()
 	bd.boxShareLinks.Clear()
 	bd.boxTeamShares.Clear()
+	bd.boxShelleyShares.Clear()
 }
 
 // deleteBox deletes information about a box.
@@ -160,6 +189,12 @@ func (bd *boxesData) deleteBox(ctx context.Context, boxName string) {
 	for share := range bd.boxTeamShares.All() {
 		if share.boxName == boxName {
 			bd.boxTeamShares.Delete(share)
+		}
+	}
+
+	for share := range bd.boxShelleyShares.All() {
+		if share.boxName == boxName {
+			bd.boxShelleyShares.Delete(share)
 		}
 	}
 }
@@ -201,6 +236,11 @@ func (bd *boxesData) deleteTeamUser(ctx context.Context, userID string) {
 	for share := range bd.boxTeamShares.All() {
 		if share.userID == userID {
 			bd.boxTeamShares.Delete(share)
+		}
+	}
+	for share := range bd.boxShelleyShares.All() {
+		if share.userID == userID {
+			bd.boxShelleyShares.Delete(share)
 		}
 	}
 }

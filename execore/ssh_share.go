@@ -166,6 +166,36 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 					},
 				},
 			},
+			{
+				Name:        "shelley",
+				Description: "Control team Shelley access to a VM",
+				Usage:       "share shelley <allow|disallow> <vm>",
+				Handler:     ss.handleShareShelleyHelp,
+				FlagSetFunc: jsonOnlyFlags("share-shelley"),
+				Available:   ss.isInTeam,
+				Subcommands: []*exemenu.Command{
+					{
+						Name:              "allow",
+						Description:       "Allow team members to access Shelley on a VM",
+						Usage:             "share shelley allow <vm>",
+						Handler:           ss.handleShareShelleyAllowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-shelley-allow"),
+						Available:         ss.isInTeam,
+						HasPositionalArgs: true,
+						CompleterFunc:     ss.completeBoxNames,
+					},
+					{
+						Name:              "disallow",
+						Description:       "Disallow team members from accessing Shelley on a VM",
+						Usage:             "share shelley disallow <vm>",
+						Handler:           ss.handleShareShelleyDisallowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-shelley-disallow"),
+						Available:         ss.isInTeam,
+						HasPositionalArgs: true,
+						CompleterFunc:     ss.completeBoxNames,
+					},
+				},
+			},
 		},
 	}
 }
@@ -295,7 +325,8 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			"users":    users,
 			"links":    links,
 			"teams":    teams,
-			"team_ssh": route.TeamSSH,
+			"team_ssh":     route.TeamSSH,
+			"team_shelley": route.TeamShelley,
 		}
 		if box.SupportAccessAllowed == 1 {
 			result["support_has_root"] = true
@@ -325,6 +356,9 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	}
 	if route.TeamSSH {
 		cc.Writeln("\033[1;32mTeam SSH: ALLOWED\033[0m - Team members can SSH into this VM")
+	}
+	if route.TeamShelley {
+		cc.Writeln("\033[1;32mTeam Shelley: ALLOWED\033[0m - Team members can access Shelley on this VM")
 	}
 	if box.SupportAccessAllowed == 1 {
 		cc.Writeln("\033[1;33mSupport access: ENABLED\033[0m - exe.dev support has root access")
@@ -498,11 +532,12 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 
 	if cc.WantJSON() {
 		result := map[string]any{
-			"vm_name":  boxName,
-			"port":     route.Port,
-			"share":    route.Share,
-			"team_ssh": route.TeamSSH,
-			"status":   "updated",
+			"vm_name":      boxName,
+			"port":         route.Port,
+			"share":        route.Share,
+			"team_ssh":     route.TeamSSH,
+			"team_shelley": route.TeamShelley,
+			"status":       "updated",
 		}
 		cc.WriteJSON(result)
 		return nil
@@ -513,6 +548,9 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 	cc.Writeln("  Share: %s", route.Share)
 	if route.TeamSSH {
 		cc.Writeln("  Team SSH: \033[1;32mallowed\033[0m")
+	}
+	if route.TeamShelley {
+		cc.Writeln("  Team Shelley: \033[1;32mallowed\033[0m")
 	}
 	cc.Writeln("")
 	return nil
@@ -554,6 +592,32 @@ func (ss *SSHServer) handleShareSSHDisallowCmd(ctx context.Context, cc *exemenu.
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.TeamSSH = false
+		return nil
+	})
+}
+
+func (ss *SSHServer) handleShareShelleyHelp(ctx context.Context, cc *exemenu.CommandContext) error {
+	return cc.Errorf("usage: share shelley <allow|disallow> <vm>")
+}
+
+func (ss *SSHServer) handleShareShelleyAllowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share shelley allow <vm>")
+	}
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.TeamShelley = true
+		return nil
+	})
+}
+
+func (ss *SSHServer) handleShareShelleyDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share shelley disallow <vm>")
+	}
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.TeamShelley = false
 		return nil
 	})
 }

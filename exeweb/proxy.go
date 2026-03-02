@@ -205,12 +205,14 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	//   or equals box's default, use box route;
 	// - Otherwise create an ad-hoc private route for the requested port.
 	var route BoxRoute
-	var ownerOnly bool // shares don't apply to non-standard routes
+	var ownerOnly bool       // shares don't apply to non-standard routes
+	var shelleyTeamCheck bool // check team_shelley sharing for Shelley requests
 	boxRoute := box.BoxRoute
 	targetPort := hostHeaderPort
 	if IsShelleyRequest(ps.Env, r.Host) {
 		route = BoxRoute{Port: 9999, Share: "private"}
 		ownerOnly = true
+		shelleyTeamCheck = true
 	} else if targetPort == 0 || targetPort == boxRoute.Port || ps.isDefaultServerPort(targetPort) {
 		route = boxRoute
 	} else {
@@ -266,6 +268,14 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 				// Shares only grant access to the box's standard route,
 				// not to Shelley or ad-hoc ports.
 				hasAccess = !ownerOnly
+			}
+		}
+
+		// Check Shelley team sharing
+		if !hasAccess && shelleyTeamCheck {
+			isShelleyShared, err := ps.Data.IsBoxShelleySharedWithTeamMember(r.Context(), box.ID, box.Name, userID)
+			if err == nil && isShelleyShared {
+				hasAccess = true
 			}
 		}
 

@@ -727,6 +727,10 @@ func (m *mockProxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, 
 	return false, nil
 }
 
+func (m *mockProxyData) IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	return false, nil
+}
+
 func (m *mockProxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
 	return false, nil
 }

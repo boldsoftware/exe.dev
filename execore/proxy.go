@@ -176,6 +176,17 @@ func (s *Server) isBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName
 	return isTeamShared, err
 }
 
+// isBoxShelleySharedWithTeamMember reports whether a box has
+// team_shelley sharing enabled and the user is in the same team
+// as the box creator.
+func (s *Server) isBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	isShared, err := withRxRes1(s, ctx, (*exedb.Queries).IsBoxShelleySharedWithTeamMember, exedb.IsBoxShelleySharedWithTeamMemberParams{
+		BoxID:  boxID,
+		UserID: userID,
+	})
+	return isShared, err
+}
+
 // checkShareLink reports whether a share link is valid.
 // If the share link is valid, it will be used,
 // so this method is also responsible for recording the use,
@@ -388,6 +399,11 @@ func (pd *proxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName,
 // IsBoxSharedWithUserTeam implements [exeweb.ProxyData.IsBoxSharedWithUserTeam].
 func (pd *proxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
 	return pd.s.isBoxSharedWithUserTeam(ctx, boxID, boxName, userID)
+}
+
+// IsBoxShelleySharedWithTeamMember implements [exeweb.ProxyData.IsBoxShelleySharedWithTeamMember].
+func (pd *proxyData) IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	return pd.s.isBoxShelleySharedWithTeamMember(ctx, boxID, boxName, userID)
 }
 
 // CheckShareLink implements [exeweb.ProxyData.CheckShareLink].

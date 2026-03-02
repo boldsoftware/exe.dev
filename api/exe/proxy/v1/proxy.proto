@@ -64,6 +64,11 @@ service ProxyInfoService {
   // a team that has access to a box.
   rpc IsBoxSharedWithUserTeam(IsBoxSharedWithUserTeamRequest) returns (IsBoxSharedWithUserTeamResponse);
 
+  // IsBoxShelleySharedWithTeamMember reports whether a box has
+  // team_shelley sharing enabled and the user is in the same team
+  // as the box creator.
+  rpc IsBoxShelleySharedWithTeamMember(IsBoxShelleySharedWithTeamMemberRequest) returns (IsBoxShelleySharedWithTeamMemberResponse);
+
   // CheckShareLink reports whether a share link is valid.
   // If the share link is valid, it will be used,
   // so this call is also responsible for recording the user,
@@ -283,6 +288,16 @@ message IsBoxSharedWithUserTeamRequest {
 }
 
 message IsBoxSharedWithUserTeamResponse {
+  bool ok = 1;
+}
+
+message IsBoxShelleySharedWithTeamMemberRequest {
+  int64 box_id = 1;
+  string box_name = 2;
+  string user_id = 3;
+}
+
+message IsBoxShelleySharedWithTeamMemberResponse {
   bool ok = 1;
 }
 

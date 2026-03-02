@@ -22,29 +22,30 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	ProxyInfoService_BoxInfo_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/BoxInfo"
-	ProxyInfoService_CookieInfo_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
-	ProxyInfoService_UserInfo_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/UserInfo"
-	ProxyInfoService_GetPublicIPs_FullMethodName                = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
-	ProxyInfoService_GetLobbyIP_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
-	ProxyInfoService_CertForDomain_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
-	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName    = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
-	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName    = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
-	ProxyInfoService_LLMDebitCredit_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
-	ProxyInfoService_LLMUseCredits_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
-	ProxyInfoService_CreateAuthCookie_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/CreateAuthCookie"
-	ProxyInfoService_DeleteAuthCookie_FullMethodName            = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
-	ProxyInfoService_UsedCookie_FullMethodName                  = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
-	ProxyInfoService_HasUserAccessToBox_FullMethodName          = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
-	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName     = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
-	ProxyInfoService_CheckShareLink_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
-	ProxyInfoService_ValidateMagicSecret_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/ValidateMagicSecret"
-	ProxyInfoService_SSHKeyByFingerprint_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
-	ProxyInfoService_HLLNoteEvents_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
-	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
-	ProxyInfoService_SendEmail_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/SendEmail"
-	ProxyInfoService_CheckAndDebitVMEmailCredit_FullMethodName  = "/exe.proxy.v1.ProxyInfoService/CheckAndDebitVMEmailCredit"
-	ProxyInfoService_Changes_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/Changes"
+	ProxyInfoService_BoxInfo_FullMethodName                          = "/exe.proxy.v1.ProxyInfoService/BoxInfo"
+	ProxyInfoService_CookieInfo_FullMethodName                       = "/exe.proxy.v1.ProxyInfoService/CookieInfo"
+	ProxyInfoService_UserInfo_FullMethodName                         = "/exe.proxy.v1.ProxyInfoService/UserInfo"
+	ProxyInfoService_GetPublicIPs_FullMethodName                     = "/exe.proxy.v1.ProxyInfoService/GetPublicIPs"
+	ProxyInfoService_GetLobbyIP_FullMethodName                       = "/exe.proxy.v1.ProxyInfoService/GetLobbyIP"
+	ProxyInfoService_CertForDomain_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/CertForDomain"
+	ProxyInfoService_CheckAndRefreshLLMCredit_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/CheckAndRefreshLLMCredit"
+	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
+	ProxyInfoService_LLMDebitCredit_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
+	ProxyInfoService_LLMUseCredits_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
+	ProxyInfoService_CreateAuthCookie_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/CreateAuthCookie"
+	ProxyInfoService_DeleteAuthCookie_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
+	ProxyInfoService_UsedCookie_FullMethodName                       = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
+	ProxyInfoService_HasUserAccessToBox_FullMethodName               = "/exe.proxy.v1.ProxyInfoService/HasUserAccessToBox"
+	ProxyInfoService_IsBoxSharedWithUserTeam_FullMethodName          = "/exe.proxy.v1.ProxyInfoService/IsBoxSharedWithUserTeam"
+	ProxyInfoService_IsBoxShelleySharedWithTeamMember_FullMethodName = "/exe.proxy.v1.ProxyInfoService/IsBoxShelleySharedWithTeamMember"
+	ProxyInfoService_CheckShareLink_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
+	ProxyInfoService_ValidateMagicSecret_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/ValidateMagicSecret"
+	ProxyInfoService_SSHKeyByFingerprint_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
+	ProxyInfoService_HLLNoteEvents_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
+	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
+	ProxyInfoService_SendEmail_FullMethodName                        = "/exe.proxy.v1.ProxyInfoService/SendEmail"
+	ProxyInfoService_CheckAndDebitVMEmailCredit_FullMethodName       = "/exe.proxy.v1.ProxyInfoService/CheckAndDebitVMEmailCredit"
+	ProxyInfoService_Changes_FullMethodName                          = "/exe.proxy.v1.ProxyInfoService/Changes"
 )
 
 // ProxyInfoServiceClient is the client API for ProxyInfoService service.
@@ -90,6 +91,10 @@ type ProxyInfoServiceClient interface {
 	// IsBoxSharedWithUserTeam reports whethre a user is in
 	// a team that has access to a box.
 	IsBoxSharedWithUserTeam(ctx context.Context, in *IsBoxSharedWithUserTeamRequest, opts ...grpc.CallOption) (*IsBoxSharedWithUserTeamResponse, error)
+	// IsBoxShelleySharedWithTeamMember reports whether a box has
+	// team_shelley sharing enabled and the user is in the same team
+	// as the box creator.
+	IsBoxShelleySharedWithTeamMember(ctx context.Context, in *IsBoxShelleySharedWithTeamMemberRequest, opts ...grpc.CallOption) (*IsBoxShelleySharedWithTeamMemberResponse, error)
 	// CheckShareLink reports whether a share link is valid.
 	// If the share link is valid, it will be used,
 	// so this call is also responsible for recording the user,
@@ -304,6 +309,16 @@ func (c *proxyInfoServiceClient) IsBoxSharedWithUserTeam(ctx context.Context, in
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) IsBoxShelleySharedWithTeamMember(ctx context.Context, in *IsBoxShelleySharedWithTeamMemberRequest, opts ...grpc.CallOption) (*IsBoxShelleySharedWithTeamMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IsBoxShelleySharedWithTeamMemberResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_IsBoxShelleySharedWithTeamMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) CheckShareLink(ctx context.Context, in *CheckShareLinkRequest, opts ...grpc.CallOption) (*CheckShareLinkResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CheckShareLinkResponse)
@@ -450,6 +465,10 @@ type ProxyInfoServiceServer interface {
 	// IsBoxSharedWithUserTeam reports whethre a user is in
 	// a team that has access to a box.
 	IsBoxSharedWithUserTeam(context.Context, *IsBoxSharedWithUserTeamRequest) (*IsBoxSharedWithUserTeamResponse, error)
+	// IsBoxShelleySharedWithTeamMember reports whether a box has
+	// team_shelley sharing enabled and the user is in the same team
+	// as the box creator.
+	IsBoxShelleySharedWithTeamMember(context.Context, *IsBoxShelleySharedWithTeamMemberRequest) (*IsBoxShelleySharedWithTeamMemberResponse, error)
 	// CheckShareLink reports whether a share link is valid.
 	// If the share link is valid, it will be used,
 	// so this call is also responsible for recording the user,
@@ -532,6 +551,9 @@ func (UnimplementedProxyInfoServiceServer) HasUserAccessToBox(context.Context, *
 }
 func (UnimplementedProxyInfoServiceServer) IsBoxSharedWithUserTeam(context.Context, *IsBoxSharedWithUserTeamRequest) (*IsBoxSharedWithUserTeamResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IsBoxSharedWithUserTeam not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) IsBoxShelleySharedWithTeamMember(context.Context, *IsBoxShelleySharedWithTeamMemberRequest) (*IsBoxShelleySharedWithTeamMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IsBoxShelleySharedWithTeamMember not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) CheckShareLink(context.Context, *CheckShareLinkRequest) (*CheckShareLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckShareLink not implemented")
@@ -843,6 +865,24 @@ func _ProxyInfoService_IsBoxSharedWithUserTeam_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_IsBoxShelleySharedWithTeamMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IsBoxShelleySharedWithTeamMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).IsBoxShelleySharedWithTeamMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_IsBoxShelleySharedWithTeamMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).IsBoxShelleySharedWithTeamMember(ctx, req.(*IsBoxShelleySharedWithTeamMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_CheckShareLink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CheckShareLinkRequest)
 	if err := dec(in); err != nil {
@@ -1052,6 +1092,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IsBoxSharedWithUserTeam",
 			Handler:    _ProxyInfoService_IsBoxSharedWithUserTeam_Handler,
+		},
+		{
+			MethodName: "IsBoxShelleySharedWithTeamMember",
+			Handler:    _ProxyInfoService_IsBoxShelleySharedWithTeamMember_Handler,
 		},
 		{
 			MethodName: "CheckShareLink",

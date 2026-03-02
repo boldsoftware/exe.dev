@@ -66,6 +66,11 @@ type ExeproxData interface {
 	// member of a team that has access to a box.
 	IsBoxSharedWithUserTeam(ctx context.Context, boxID int, boxName, userID string) (bool, error)
 
+	// IsBoxShelleySharedWithTeamMember reports whether a box has
+	// team_shelley sharing enabled and the user is in the same team
+	// as the box creator.
+	IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error)
+
 	// CheckShareLink reports whether a share link is valid.
 	// If the share link is valid, it will be used,
 	// so this method is also responsible for recording the use,
@@ -323,6 +328,21 @@ func (ged *grpcExeproxData) IsBoxSharedWithUserTeam(ctx context.Context, boxID i
 		BoxID:            int64(boxID),
 		BoxName:          boxName,
 		SharedWithUserID: userID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.Ok, nil
+}
+
+// IsBoxShelleySharedWithTeamMember reports whether a box has
+// team_shelley sharing enabled and the user is in the same team
+// as the box creator.
+func (ged *grpcExeproxData) IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	resp, err := ged.client.IsBoxShelleySharedWithTeamMember(ctx, &proxyapi.IsBoxShelleySharedWithTeamMemberRequest{
+		BoxID:   int64(boxID),
+		BoxName: boxName,
+		UserID:  userID,
 	})
 	if err != nil {
 		return false, err

@@ -370,6 +370,16 @@ func (es *exeproxServer) IsBoxSharedWithUserTeam(ctx context.Context, req *proxy
 	return ret, nil
 }
 
+// IsBoxShelleySharedWithTeamMember reports whether a box has team_shelley
+// sharing enabled and the user is in the same team as the box creator.
+func (es *exeproxServer) IsBoxShelleySharedWithTeamMember(ctx context.Context, req *proxyapi.IsBoxShelleySharedWithTeamMemberRequest) (*proxyapi.IsBoxShelleySharedWithTeamMemberResponse, error) {
+	isShared, err := es.s.isBoxShelleySharedWithTeamMember(ctx, int(req.BoxID), req.BoxName, req.UserID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &proxyapi.IsBoxShelleySharedWithTeamMemberResponse{Ok: isShared}, nil
+}
+
 // CheckShareLink reports whether a share link is valid.
 // If the share link is valid, it will be used,
 // so this method is also responsible for recording the use,

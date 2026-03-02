@@ -310,6 +310,11 @@ func (epd *exewebProxyData) IsBoxSharedWithUserTeam(ctx context.Context, boxID i
 	return epd.wp.proxy.boxes.isSharedWithUserTeam(ctx, epd.exeproxData(), boxID, boxName, userID)
 }
 
+// IsBoxShelleySharedWithTeamMember implements [exeweb.ProxyData.IsBoxShelleySharedWithTeamMember].
+func (epd *exewebProxyData) IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
+	return epd.wp.proxy.boxes.isShelleySharedWithTeamMember(ctx, epd.exeproxData(), boxID, boxName, userID)
+}
+
 // CheckShareLink implements [exeweb.ProxyData.CheckShareLink].
 func (epd *exewebProxyData) CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error) {
 	return epd.wp.proxy.boxes.isShareLinkValid(ctx, epd.exeproxData(), boxID, boxName, userID, shareToken)

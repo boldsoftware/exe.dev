@@ -7,9 +7,10 @@ import (
 
 // Route represents a routing configuration for a box
 type Route struct {
-	Port    int    `json:"port"`
-	Share   string `json:"share"`
-	TeamSSH bool   `json:"team_ssh,omitempty"`
+	Port        int    `json:"port"`
+	Share       string `json:"share"`
+	TeamSSH     bool   `json:"team_ssh,omitempty"`
+	TeamShelley bool   `json:"team_shelley,omitempty"`
 }
 
 // GetRoute returns the routing configuration for the box

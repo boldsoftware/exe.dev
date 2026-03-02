@@ -696,6 +696,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.isBoxSharedWithUserTeamStmt, err = db.PrepareContext(ctx, isBoxSharedWithUserTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query IsBoxSharedWithUserTeam: %w", err)
 	}
+	if q.isBoxShelleySharedWithTeamMemberStmt, err = db.PrepareContext(ctx, isBoxShelleySharedWithTeamMember); err != nil {
+		return nil, fmt.Errorf("error preparing query IsBoxShelleySharedWithTeamMember: %w", err)
+	}
 	if q.isEmailBouncedStmt, err = db.PrepareContext(ctx, isEmailBounced); err != nil {
 		return nil, fmt.Errorf("error preparing query IsEmailBounced: %w", err)
 	}
@@ -2085,6 +2088,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing isBoxSharedWithUserTeamStmt: %w", cerr)
 		}
 	}
+	if q.isBoxShelleySharedWithTeamMemberStmt != nil {
+		if cerr := q.isBoxShelleySharedWithTeamMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isBoxShelleySharedWithTeamMemberStmt: %w", cerr)
+		}
+	}
 	if q.isEmailBouncedStmt != nil {
 		if cerr := q.isEmailBouncedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing isEmailBouncedStmt: %w", cerr)
@@ -2788,6 +2796,7 @@ type Queries struct {
 	insertTemplateStmt                         *sql.Stmt
 	insertUserStmt                             *sql.Stmt
 	isBoxSharedWithUserTeamStmt                *sql.Stmt
+	isBoxShelleySharedWithTeamMemberStmt       *sql.Stmt
 	isEmailBouncedStmt                         *sql.Stmt
 	isEmailQualityBypassedStmt                 *sql.Stmt
 	isUserTeamAdminStmt                        *sql.Stmt
@@ -3106,6 +3115,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTemplateStmt:                         q.insertTemplateStmt,
 		insertUserStmt:                             q.insertUserStmt,
 		isBoxSharedWithUserTeamStmt:                q.isBoxSharedWithUserTeamStmt,
+		isBoxShelleySharedWithTeamMemberStmt:       q.isBoxShelleySharedWithTeamMemberStmt,
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
 		isEmailQualityBypassedStmt:                 q.isEmailQualityBypassedStmt,
 		isUserTeamAdminStmt:                        q.isUserTeamAdminStmt,

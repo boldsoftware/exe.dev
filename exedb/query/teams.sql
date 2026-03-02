@@ -196,6 +196,17 @@ WHERE bis_new.user_id = @new_user_id
 AND bis_new.ip_shard = bis_existing.ip_shard
 AND bis_existing.user_id != @new_user_id;
 
+-- name: IsBoxShelleySharedWithTeamMember :one
+-- IsBoxShelleySharedWithTeamMember checks whether a box has team_shelley sharing enabled
+-- and the given user is in the same team as the box creator.
+SELECT COUNT(*) > 0 as shared
+FROM boxes b
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_member ON tm_creator.team_id = tm_member.team_id
+WHERE b.id = @box_id
+AND tm_member.user_id = @user_id
+AND json_extract(b.routes, '$.team_shelley') = 1;
+
 -- name: GetBoxByTeamSSHAndName :one
 SELECT b.*
 FROM boxes b

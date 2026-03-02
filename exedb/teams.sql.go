@@ -744,6 +744,30 @@ func (q *Queries) IsBoxSharedWithUserTeam(ctx context.Context, arg IsBoxSharedWi
 	return shared, err
 }
 
+const isBoxShelleySharedWithTeamMember = `-- name: IsBoxShelleySharedWithTeamMember :one
+SELECT COUNT(*) > 0 as shared
+FROM boxes b
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_member ON tm_creator.team_id = tm_member.team_id
+WHERE b.id = ?1
+AND tm_member.user_id = ?2
+AND json_extract(b.routes, '$.team_shelley') = 1
+`
+
+type IsBoxShelleySharedWithTeamMemberParams struct {
+	BoxID  int    `db:"box_id" json:"box_id"`
+	UserID string `db:"user_id" json:"user_id"`
+}
+
+// IsBoxShelleySharedWithTeamMember checks whether a box has team_shelley sharing enabled
+// and the given user is in the same team as the box creator.
+func (q *Queries) IsBoxShelleySharedWithTeamMember(ctx context.Context, arg IsBoxShelleySharedWithTeamMemberParams) (bool, error) {
+	row := q.queryRow(ctx, q.isBoxShelleySharedWithTeamMemberStmt, isBoxShelleySharedWithTeamMember, arg.BoxID, arg.UserID)
+	var shared bool
+	err := row.Scan(&shared)
+	return shared, err
+}
+
 const isUserTeamAdmin = `-- name: IsUserTeamAdmin :one
 SELECT role != 'user' as is_admin
 FROM team_members

@@ -169,3 +169,15 @@ share ssh <allow|disallow> <vm>
 **Options:**
 - `--json`: output in JSON format
 
+### share shelley
+
+Control team Shelley access to a VM
+
+**Usage:**
+```
+share shelley <allow|disallow> <vm>
+```
+
+**Options:**
+- `--json`: output in JSON format
+
