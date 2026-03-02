@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SRI Smoke Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.1" integrity="sha384-NIEnmBZDJa6zQwZWLtsVZJlPYu8tc0CNul8EMJ0WMxf4ZpsKsOfKjtEToHNCoIOH" crossorigin="anonymous"></script>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100 font-mono">
+  <div id="result" class="p-8 rounded-lg shadow bg-white text-center">
+    <p class="text-lg text-red-600 font-bold">FAIL — Tailwind did not load</p>
+  </div>
+  <script>
+    // If Tailwind loaded, the flex/bg-gray-100 classes will have taken effect.
+    // A simple check: the result div should be centered (computed display: flex on body).
+    const body = getComputedStyle(document.body);
+    const ok = body.display === 'flex';
+    const el = document.getElementById('result');
+    if (ok) {
+      el.innerHTML = '<p class="text-lg text-green-600 font-bold">PASS — Tailwind loaded with SRI</p>';
+    }
+  </script>
+</body>
+</html>
