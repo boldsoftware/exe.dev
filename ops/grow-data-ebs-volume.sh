@@ -56,8 +56,9 @@ done
 
 echo "Expanding ZFS pool on $HOSTNAME..."
 PART=$(ssh -lubuntu "$HOSTNAME" "zpool list -vHPp tank | awk '/^\t/{print \$1}'")
-# Strip partition suffix (e.g., /dev/nvme5n1p1 -> /dev/nvme5n1)
-DISK=$(ssh -lubuntu "$HOSTNAME" "echo $PART | sed -E 's/p[0-9]+\$//'")
+# Strip partition suffix (e.g., /dev/nvme5n1p1 -> /dev/nvme5n1,
+#   or /dev/disk/by-id/nvme-...-part1 -> /dev/disk/by-id/nvme-...)
+DISK=$(ssh -lubuntu "$HOSTNAME" "echo $PART | sed -E 's/(-part|p)[0-9]+\$//'")
 echo "Found partition: $PART, disk: $DISK"
 
 ssh -lubuntu "$HOSTNAME" "sudo zpool online -e tank $DISK"

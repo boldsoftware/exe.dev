@@ -382,6 +382,22 @@ echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted socat zfsutils-linux >/dev/null 2>&1
 
+# Resolve a /dev/ path to its /dev/disk/by-id/nvme-* symlink for stable device naming
+resolve_by_id() {
+  local dev="$1"
+  local real
+  real=$(readlink -f "$dev")
+  for link in /dev/disk/by-id/nvme-*; do
+    [ -L "$link" ] || continue
+    if [ "$(readlink -f "$link")" = "$real" ]; then
+      echo "$link"
+      return 0
+    fi
+  done
+  echo "WARNING: no /dev/disk/by-id link found for $dev, using raw path" >&2
+  echo "$dev"
+}
+
 # Detect NVMe devices by model string
 echo "=== Detecting NVMe devices ==="
 INSTANCE_STORE_DEVICES=()
@@ -441,6 +457,17 @@ for dev in "${INSTANCE_STORE_DEVICES[@]}"; do
   SWAP_PARTS+=("${dev}p1")
   DATA_PARTS+=("${dev}p2")
 done
+
+# Resolve data partitions to /dev/disk/by-id paths for stable zpool device names
+echo ""
+echo "=== Resolving device paths to /dev/disk/by-id ==="
+RESOLVED_PARTS=()
+for part in "${DATA_PARTS[@]}"; do
+  resolved=$(resolve_by_id "$part")
+  echo "  $part -> $resolved"
+  RESOLVED_PARTS+=("$resolved")
+done
+DATA_PARTS=("${RESOLVED_PARTS[@]}")
 
 # Enable swap with equal priority for I/O interleaving
 echo ""
@@ -505,6 +532,15 @@ sudo mkdir -p /data/exelet
 
 echo "ZFS pool 'tank' ready:"
 zpool status tank
+
+# Resolve EBS devices to /dev/disk/by-id paths
+RESOLVED_EBS=()
+for dev in "${EBS_DATA_DEVICES[@]}"; do
+  resolved=$(resolve_by_id "$dev")
+  echo "  $dev -> $resolved"
+  RESOLVED_EBS+=("$resolved")
+done
+EBS_DATA_DEVICES=("${RESOLVED_EBS[@]}")
 
 # Create backup pool from EBS volumes (striped for throughput)
 echo ""

@@ -196,6 +196,22 @@ echo "=== Installing required packages ==="
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y gdisk parted zfsutils-linux
 
+# Resolve a /dev/ path to its /dev/disk/by-id/nvme-* symlink for stable device naming
+resolve_by_id() {
+    local dev="$1"
+    local real
+    real=$(readlink -f "$dev")
+    for link in /dev/disk/by-id/nvme-*; do
+        [ -L "$link" ] || continue
+        if [ "$(readlink -f "$link")" = "$real" ]; then
+            echo "$link"
+            return 0
+        fi
+    done
+    echo "WARNING: no /dev/disk/by-id link found for $dev, using raw path" >&2
+    echo "$dev"
+}
+
 echo "=== Setting up NVMe drives with swap and raidz1 ==="
 
 # Find all NVMe drives larger than 1TB (excluding partitions)
@@ -300,6 +316,17 @@ for dev in "${LARGE_NVME_DRIVES[@]}"; do
     SWAP_PARTITIONS+=("$part1")
     DATA_PARTITIONS+=("$part2")
 done
+
+# Resolve data partitions to /dev/disk/by-id paths for stable zpool device names
+echo ""
+echo "=== Resolving device paths to /dev/disk/by-id ==="
+RESOLVED_PARTS=()
+for part in "${DATA_PARTITIONS[@]}"; do
+    resolved=$(resolve_by_id "$part")
+    echo "  $part -> $resolved"
+    RESOLVED_PARTS+=("$resolved")
+done
+DATA_PARTITIONS=("${RESOLVED_PARTS[@]}")
 
 echo ""
 echo "=== Setting up swap partitions ==="
