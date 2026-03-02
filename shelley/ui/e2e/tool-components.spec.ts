@@ -55,7 +55,7 @@ test.describe('Tool Component Verification', () => {
 
     // All tool results are already in the DB; wait for the UI to render them.
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
       undefined,
       { timeout: 30000 },
     );
@@ -105,6 +105,31 @@ test.describe('Tool Component Verification', () => {
     const consoleTool = page.locator('.tool').filter({ hasText: 'console logs' });
     await expect(consoleTool.first()).toBeVisible();
     await expect(consoleTool.locator('.tool-emoji').filter({ hasText: '📋' }).first()).toBeVisible();
+
+    // Verify browser_emulate tool uses BrowserEmulateTool component (has tool class with device emoji)
+    const emulateTool = page.locator('.tool').filter({ hasText: 'iphone_14' });
+    await expect(emulateTool.first()).toBeVisible();
+    await expect(emulateTool.locator('.tool-emoji').filter({ hasText: '📱' }).first()).toBeVisible();
+
+    // Verify browser_network tool uses BrowserNetworkTool component (has tool class with network emoji)
+    const networkTool = page.locator('.tool').filter({ hasText: 'enable' });
+    await expect(networkTool.first()).toBeVisible();
+    await expect(networkTool.locator('.tool-emoji').filter({ hasText: '📡' }).first()).toBeVisible();
+
+    // Verify browser_accessibility tool uses BrowserAccessibilityTool component (has tool class with a11y emoji)
+    const a11yTool = page.locator('.tool').filter({ hasText: 'tree' });
+    await expect(a11yTool.first()).toBeVisible();
+    await expect(a11yTool.locator('.tool-emoji').filter({ hasText: '♿' }).first()).toBeVisible();
+
+    // Verify browser_profile tool uses BrowserProfileTool component (has tool class with profiling emoji)
+    const profileTool = page.locator('.tool').filter({ hasText: 'metrics' });
+    await expect(profileTool.first()).toBeVisible();
+    await expect(profileTool.locator('.tool-emoji').filter({ hasText: '📊' }).first()).toBeVisible();
+
+    // Verify llm_one_shot tool uses LlmOneShotTool component (has tool class with LLM emoji)
+    const llmTool = page.locator('.tool').filter({ hasText: '/tmp/test-prompt.txt' });
+    await expect(llmTool.first()).toBeVisible();
+    await expect(llmTool.locator('.tool-emoji').filter({ hasText: '🤖' }).first()).toBeVisible();
 
     // CRITICAL: Verify that GenericTool (gear emoji ⚙️) is NOT used for any of these tools
     // We check that NO tool has the generic gear icon
@@ -160,7 +185,7 @@ test.describe('Tool Component Verification', () => {
     await page.waitForLoadState('domcontentloaded');
 
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
       undefined,
       { timeout: 30000 },
     );
@@ -218,7 +243,7 @@ test.describe('Tool Component Verification', () => {
     await page.waitForLoadState('domcontentloaded');
 
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 8,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
       undefined,
       { timeout: 30000 },
     );

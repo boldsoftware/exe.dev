@@ -41,9 +41,8 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Clean and enforce prefix restriction
-	clean := p
-	// Do not resolve symlinks here; enforce string prefix restriction only
-	if !(strings.HasPrefix(clean, browse.ScreenshotDir+"/")) {
+	clean := filepath.Clean(p)
+	if !(strings.HasPrefix(clean, browse.ScreenshotDir+"/") || strings.HasPrefix(clean, browse.ConsoleLogsDir+"/")) {
 		http.Error(w, "path not allowed", http.StatusForbidden)
 		return
 	}
@@ -66,6 +65,8 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/webp")
 	case ".svg":
 		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".json":
+		w.Header().Set("Content-Type", "application/json")
 	default:
 		buf := make([]byte, 512)
 		n, _ := f.Read(buf)

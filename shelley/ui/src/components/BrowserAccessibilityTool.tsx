@@ -1,58 +1,57 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface LLMOneShotToolProps {
-  toolInput?: unknown; // { prompt_file: string, output_file?: string, model?: string, system_prompt?: string }
+interface BrowserAccessibilityToolProps {
+  toolInput?: unknown;
   isRunning?: boolean;
   toolResult?: LLMContent[];
   hasError?: boolean;
   executionTime?: string;
 }
 
-function LLMOneShotTool({
+function BrowserAccessibilityTool({
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: LLMOneShotToolProps) {
+}: BrowserAccessibilityToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const input =
     typeof toolInput === "object" && toolInput !== null
       ? (toolInput as {
-          prompt_file?: string;
-          output_file?: string;
-          model?: string;
-          system_prompt?: string;
+          action?: string;
+          depth?: number;
+          name?: string;
+          role?: string;
+          selector?: string;
         })
       : {};
 
-  const promptFile = input.prompt_file || "";
-  const model = input.model || "";
+  const action = input.action || "";
 
-  const resultText =
-    toolResult
-      ?.filter((r) => r.Type === 2)
-      .map((r) => r.Text)
-      .join("\n") || "";
+  const output =
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
   const isComplete = !isRunning && toolResult !== undefined;
 
-  const summaryParts: string[] = [];
-  if (promptFile) summaryParts.push(promptFile);
-  if (model) summaryParts.push(`model: ${model}`);
-  const summary = summaryParts.join(" · ") || "llm_one_shot";
+  // Build compact summary showing action and query params
+  const summaryParts: string[] = [action];
+  if (input.name) summaryParts.push(`name="${input.name}"`);
+  if (input.role) summaryParts.push(`role=${input.role}`);
+  if (input.selector) summaryParts.push(input.selector);
+  if (input.depth !== undefined) summaryParts.push(`depth=${input.depth}`);
+  const summary = summaryParts.filter(Boolean).join(" ") || "accessibility";
 
   return (
     <div className="tool" data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}>
       <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>🤖</span>
-          <span className="tool-name">llm_one_shot</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>♿</span>
+          <span className="tool-command">{summary}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && <span className="tool-success">✓</span>}
-          <span className="tool-command">{summary}</span>
         </div>
         <button
           className="tool-toggle"
@@ -84,40 +83,45 @@ function LLMOneShotTool({
       {isExpanded && (
         <div className="tool-details">
           <div className="tool-section">
-            <div className="tool-label">Prompt file:</div>
-            <pre className="tool-code">{promptFile || "(none)"}</pre>
+            <div className="tool-label">Action:</div>
+            <pre className="tool-code">{action || "(none)"}</pre>
           </div>
 
-          {model && (
+          {input.name && (
             <div className="tool-section">
-              <div className="tool-label">Model:</div>
-              <pre className="tool-code">{model}</pre>
+              <div className="tool-label">Name:</div>
+              <pre className="tool-code">{input.name}</pre>
             </div>
           )}
 
-          {input.system_prompt && (
+          {input.role && (
             <div className="tool-section">
-              <div className="tool-label">System prompt:</div>
-              <pre className="tool-code">{input.system_prompt}</pre>
+              <div className="tool-label">Role:</div>
+              <pre className="tool-code">{input.role}</pre>
             </div>
           )}
 
-          {input.output_file && (
+          {input.selector && (
             <div className="tool-section">
-              <div className="tool-label">Output file:</div>
-              <pre className="tool-code">{input.output_file}</pre>
+              <div className="tool-label">Selector:</div>
+              <pre className="tool-code">{input.selector}</pre>
             </div>
           )}
 
-          {isComplete && (
+          {input.depth !== undefined && (
+            <div className="tool-section">
+              <div className="tool-label">Depth:</div>
+              <pre className="tool-code">{input.depth}</pre>
+            </div>
+          )}
+
+          {isComplete && output && (
             <div className="tool-section">
               <div className="tool-label">
-                Result{hasError ? " (Error)" : ""}:
+                Output{hasError ? " (Error)" : ""}:
                 {executionTime && <span className="tool-time">{executionTime}</span>}
               </div>
-              <pre className={`tool-code ${hasError ? "error" : ""}`}>
-                {resultText || "(no output)"}
-              </pre>
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>{output}</pre>
             </div>
           )}
         </div>
@@ -126,4 +130,4 @@ function LLMOneShotTool({
   );
 }
 
-export default LLMOneShotTool;
+export default BrowserAccessibilityTool;

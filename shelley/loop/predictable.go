@@ -705,6 +705,51 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(consoleInput),
 	})
 
+	// browser_emulate tool
+	emulateInput, _ := json.Marshal(map[string]string{"action": "device", "device": "iphone_14"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_emulate_%d", (baseNano+9)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_emulate",
+		ToolInput: json.RawMessage(emulateInput),
+	})
+
+	// browser_network tool
+	networkInput, _ := json.Marshal(map[string]string{"action": "enable"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_network_%d", (baseNano+10)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_network",
+		ToolInput: json.RawMessage(networkInput),
+	})
+
+	// browser_accessibility tool
+	accessibilityInput, _ := json.Marshal(map[string]string{"action": "tree"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_a11y_%d", (baseNano+11)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_accessibility",
+		ToolInput: json.RawMessage(accessibilityInput),
+	})
+
+	// browser_profile tool
+	profileInput, _ := json.Marshal(map[string]string{"action": "metrics"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_profile_%d", (baseNano+12)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_profile",
+		ToolInput: json.RawMessage(profileInput),
+	})
+
+	// llm_one_shot tool
+	llmInput, _ := json.Marshal(map[string]string{"prompt_file": "/tmp/test-prompt.txt"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_llm_%d", (baseNano+13)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "llm_one_shot",
+		ToolInput: json.RawMessage(llmInput),
+	})
+
 	return &llm.Response{
 		ID:         fmt.Sprintf("pred-smorgasbord-%d", baseNano),
 		Type:       "message",

@@ -1,58 +1,62 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface LLMOneShotToolProps {
-  toolInput?: unknown; // { prompt_file: string, output_file?: string, model?: string, system_prompt?: string }
+interface BrowserEmulateToolProps {
+  toolInput?: unknown;
   isRunning?: boolean;
   toolResult?: LLMContent[];
   hasError?: boolean;
   executionTime?: string;
 }
 
-function LLMOneShotTool({
+function BrowserEmulateTool({
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: LLMOneShotToolProps) {
+}: BrowserEmulateToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const input =
     typeof toolInput === "object" && toolInput !== null
       ? (toolInput as {
-          prompt_file?: string;
-          output_file?: string;
-          model?: string;
-          system_prompt?: string;
+          action?: string;
+          device?: string;
+          width?: number;
+          height?: number;
+          mobile?: boolean;
+          touch?: boolean;
+          device_scale_factor?: number;
+          enabled?: boolean;
+          media?: string;
         })
       : {};
 
-  const promptFile = input.prompt_file || "";
-  const model = input.model || "";
+  const action = input.action || "";
+  const device = input.device || "";
 
-  const resultText =
-    toolResult
-      ?.filter((r) => r.Type === 2)
-      .map((r) => r.Text)
-      .join("\n") || "";
+  const output =
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
   const isComplete = !isRunning && toolResult !== undefined;
 
-  const summaryParts: string[] = [];
-  if (promptFile) summaryParts.push(promptFile);
-  if (model) summaryParts.push(`model: ${model}`);
-  const summary = summaryParts.join(" · ") || "llm_one_shot";
+  // Build compact summary
+  const summaryParts: string[] = [action];
+  if (device) summaryParts.push(device);
+  if (input.width && input.height) summaryParts.push(`${input.width}×${input.height}`);
+  if (input.media) summaryParts.push(input.media);
+  if (input.enabled !== undefined) summaryParts.push(input.enabled ? "on" : "off");
+  const summary = summaryParts.filter(Boolean).join(" ") || "emulate";
 
   return (
     <div className="tool" data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}>
       <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>🤖</span>
-          <span className="tool-name">llm_one_shot</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>📱</span>
+          <span className="tool-command">{summary}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && <span className="tool-success">✓</span>}
-          <span className="tool-command">{summary}</span>
         </div>
         <button
           className="tool-toggle"
@@ -84,40 +88,40 @@ function LLMOneShotTool({
       {isExpanded && (
         <div className="tool-details">
           <div className="tool-section">
-            <div className="tool-label">Prompt file:</div>
-            <pre className="tool-code">{promptFile || "(none)"}</pre>
+            <div className="tool-label">Action:</div>
+            <pre className="tool-code">{action || "(none)"}</pre>
           </div>
 
-          {model && (
+          {device && (
             <div className="tool-section">
-              <div className="tool-label">Model:</div>
-              <pre className="tool-code">{model}</pre>
+              <div className="tool-label">Device:</div>
+              <pre className="tool-code">{device}</pre>
             </div>
           )}
 
-          {input.system_prompt && (
+          {input.width !== undefined && input.height !== undefined && (
             <div className="tool-section">
-              <div className="tool-label">System prompt:</div>
-              <pre className="tool-code">{input.system_prompt}</pre>
+              <div className="tool-label">Dimensions:</div>
+              <pre className="tool-code">
+                {input.width} × {input.height}
+              </pre>
             </div>
           )}
 
-          {input.output_file && (
+          {input.media && (
             <div className="tool-section">
-              <div className="tool-label">Output file:</div>
-              <pre className="tool-code">{input.output_file}</pre>
+              <div className="tool-label">Media:</div>
+              <pre className="tool-code">{input.media}</pre>
             </div>
           )}
 
-          {isComplete && (
+          {isComplete && output && (
             <div className="tool-section">
               <div className="tool-label">
-                Result{hasError ? " (Error)" : ""}:
+                Output{hasError ? " (Error)" : ""}:
                 {executionTime && <span className="tool-time">{executionTime}</span>}
               </div>
-              <pre className={`tool-code ${hasError ? "error" : ""}`}>
-                {resultText || "(no output)"}
-              </pre>
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>{output}</pre>
             </div>
           )}
         </div>
@@ -126,4 +130,4 @@ function LLMOneShotTool({
   );
 }
 
-export default LLMOneShotTool;
+export default BrowserEmulateTool;
