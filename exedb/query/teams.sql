@@ -158,3 +158,33 @@ WHERE id = ?;
 -- name: DeleteExpiredPendingTeamInvites :exec
 DELETE FROM pending_team_invites
 WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL;
+
+-- name: GetBoxByTeamSSHAndShard :one
+SELECT b.*
+FROM boxes b
+JOIN box_ip_shard bis ON b.id = bis.box_id
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
+WHERE bis.ip_shard = @shard
+AND tm_requester.user_id = @user_id
+AND b.created_by_user_id != @user_id
+AND json_extract(b.routes, '$.team_ssh') = 1;
+
+-- name: GetTeamShardCollisions :many
+SELECT bis_new.box_id, bis_new.ip_shard
+FROM box_ip_shard bis_new
+JOIN team_members tm_existing ON tm_existing.team_id = @team_id
+JOIN box_ip_shard bis_existing ON bis_existing.user_id = tm_existing.user_id
+WHERE bis_new.user_id = @new_user_id
+AND bis_new.ip_shard = bis_existing.ip_shard
+AND bis_existing.user_id != @new_user_id;
+
+-- name: GetBoxByTeamSSHAndName :one
+SELECT b.*
+FROM boxes b
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
+WHERE b.name = @box_name
+AND tm_requester.user_id = @user_id
+AND b.created_by_user_id != @user_id
+AND json_extract(b.routes, '$.team_ssh') = 1;

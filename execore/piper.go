@@ -392,6 +392,19 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		return p.handleBoxAccess(ctx, box, userID, connID)
 	}
 
+	// Team SSH sharing: if box owner has enabled team SSH, route team members
+	if box := p.server.FindTeamSSHSharedBoxByIPShard(ctx, userID, localAddress); box != nil {
+		cl.add(slog.String("route", "by_team_ssh_share"))
+		return p.handleBoxAccess(ctx, box, userID, connID)
+	}
+
+	// Team SSH sharing by username: ssh boxname@exe.xyz
+	// Not gated by SSHCommandUsesAt — scoped to team SSH shared boxes only.
+	if box := p.server.FindTeamSSHSharedBoxByName(ctx, userID, username); box != nil {
+		cl.add(slog.String("route", "by_team_ssh_name"))
+		return p.handleBoxAccess(ctx, box, userID, connID)
+	}
+
 	// For all other cases (interactive shell, registration, etc.),
 	// route to exed directly using ephemeral proxy authentication
 	//

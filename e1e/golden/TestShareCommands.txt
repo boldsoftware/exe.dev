@@ -137,6 +137,7 @@ Subcommands:
   add-link        - Create a shareable link for a VM
   remove-link     - Revoke a shareable link
   receive-email   - Enable or disable inbound email for a VM
+  ssh             - Control team SSH access to a VM
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
 1 VM(s) deleted successfully

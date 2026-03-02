@@ -285,6 +285,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByTeamOwnerAndShardStmt, err = db.PrepareContext(ctx, getBoxByTeamOwnerAndShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByTeamOwnerAndShard: %w", err)
 	}
+	if q.getBoxByTeamSSHAndNameStmt, err = db.PrepareContext(ctx, getBoxByTeamSSHAndName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByTeamSSHAndName: %w", err)
+	}
+	if q.getBoxByTeamSSHAndShardStmt, err = db.PrepareContext(ctx, getBoxByTeamSSHAndShard); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByTeamSSHAndShard: %w", err)
+	}
 	if q.getBoxByUserAndShardStmt, err = db.PrepareContext(ctx, getBoxByUserAndShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByUserAndShard: %w", err)
 	}
@@ -503,6 +509,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getTeamSSOProviderByIssuerStmt, err = db.PrepareContext(ctx, getTeamSSOProviderByIssuer); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamSSOProviderByIssuer: %w", err)
+	}
+	if q.getTeamShardCollisionsStmt, err = db.PrepareContext(ctx, getTeamShardCollisions); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamShardCollisions: %w", err)
 	}
 	if q.getTemplateByIDStmt, err = db.PrepareContext(ctx, getTemplateByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateByID: %w", err)
@@ -842,6 +851,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxEmailCreditStmt, err = db.PrepareContext(ctx, updateBoxEmailCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxEmailCredit: %w", err)
+	}
+	if q.updateBoxIPShardStmt, err = db.PrepareContext(ctx, updateBoxIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxIPShard: %w", err)
 	}
 	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
@@ -1376,6 +1388,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByTeamOwnerAndShardStmt: %w", cerr)
 		}
 	}
+	if q.getBoxByTeamSSHAndNameStmt != nil {
+		if cerr := q.getBoxByTeamSSHAndNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByTeamSSHAndNameStmt: %w", cerr)
+		}
+	}
+	if q.getBoxByTeamSSHAndShardStmt != nil {
+		if cerr := q.getBoxByTeamSSHAndShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByTeamSSHAndShardStmt: %w", cerr)
+		}
+	}
 	if q.getBoxByUserAndShardStmt != nil {
 		if cerr := q.getBoxByUserAndShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxByUserAndShardStmt: %w", cerr)
@@ -1739,6 +1761,11 @@ func (q *Queries) Close() error {
 	if q.getTeamSSOProviderByIssuerStmt != nil {
 		if cerr := q.getTeamSSOProviderByIssuerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTeamSSOProviderByIssuerStmt: %w", cerr)
+		}
+	}
+	if q.getTeamShardCollisionsStmt != nil {
+		if cerr := q.getTeamShardCollisionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamShardCollisionsStmt: %w", cerr)
 		}
 	}
 	if q.getTemplateByIDStmt != nil {
@@ -2306,6 +2333,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxEmailCreditStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxIPShardStmt != nil {
+		if cerr := q.updateBoxIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxIPShardStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxMigrationStmt != nil {
 		if cerr := q.updateBoxMigrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxMigrationStmt: %w", cerr)
@@ -2587,6 +2619,8 @@ type Queries struct {
 	getBoxByNameWithEmailReceiveEnabledStmt    *sql.Stmt
 	getBoxByNameWithSupportAccessStmt          *sql.Stmt
 	getBoxByTeamOwnerAndShardStmt              *sql.Stmt
+	getBoxByTeamSSHAndNameStmt                 *sql.Stmt
+	getBoxByTeamSSHAndShardStmt                *sql.Stmt
 	getBoxByUserAndShardStmt                   *sql.Stmt
 	getBoxEmailCreditStmt                      *sql.Stmt
 	getBoxIPShardStmt                          *sql.Stmt
@@ -2660,6 +2694,7 @@ type Queries struct {
 	getTeamSSOProviderStmt                     *sql.Stmt
 	getTeamSSOProviderByIDStmt                 *sql.Stmt
 	getTeamSSOProviderByIssuerStmt             *sql.Stmt
+	getTeamShardCollisionsStmt                 *sql.Stmt
 	getTemplateByIDStmt                        *sql.Stmt
 	getTemplateBySlugStmt                      *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
@@ -2773,6 +2808,7 @@ type Queries struct {
 	updateBoxContainerAndStatusStmt            *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
 	updateBoxEmailCreditStmt                   *sql.Stmt
+	updateBoxIPShardStmt                       *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxNameStmt                          *sql.Stmt
 	updateBoxNameByIDStmt                      *sql.Stmt
@@ -2897,6 +2933,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameWithEmailReceiveEnabledStmt:    q.getBoxByNameWithEmailReceiveEnabledStmt,
 		getBoxByNameWithSupportAccessStmt:          q.getBoxByNameWithSupportAccessStmt,
 		getBoxByTeamOwnerAndShardStmt:              q.getBoxByTeamOwnerAndShardStmt,
+		getBoxByTeamSSHAndNameStmt:                 q.getBoxByTeamSSHAndNameStmt,
+		getBoxByTeamSSHAndShardStmt:                q.getBoxByTeamSSHAndShardStmt,
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
 		getBoxEmailCreditStmt:                      q.getBoxEmailCreditStmt,
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
@@ -2970,6 +3008,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamSSOProviderStmt:                     q.getTeamSSOProviderStmt,
 		getTeamSSOProviderByIDStmt:                 q.getTeamSSOProviderByIDStmt,
 		getTeamSSOProviderByIssuerStmt:             q.getTeamSSOProviderByIssuerStmt,
+		getTeamShardCollisionsStmt:                 q.getTeamShardCollisionsStmt,
 		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
 		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
@@ -3083,6 +3122,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
 		updateBoxEmailCreditStmt:                   q.updateBoxEmailCreditStmt,
+		updateBoxIPShardStmt:                       q.updateBoxIPShardStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxNameByIDStmt:                      q.updateBoxNameByIDStmt,

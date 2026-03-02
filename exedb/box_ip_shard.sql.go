@@ -153,3 +153,17 @@ func (q *Queries) ListIPShardsForUser(ctx context.Context, userID string) ([]int
 	}
 	return items, nil
 }
+
+const updateBoxIPShard = `-- name: UpdateBoxIPShard :exec
+UPDATE box_ip_shard SET ip_shard = ? WHERE box_id = ?
+`
+
+type UpdateBoxIPShardParams struct {
+	IPShard int64 `db:"ip_shard" json:"ip_shard"`
+	BoxID   int   `db:"box_id" json:"box_id"`
+}
+
+func (q *Queries) UpdateBoxIPShard(ctx context.Context, arg UpdateBoxIPShardParams) error {
+	_, err := q.exec(ctx, q.updateBoxIPShardStmt, updateBoxIPShard, arg.IPShard, arg.BoxID)
+	return err
+}

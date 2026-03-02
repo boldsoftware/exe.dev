@@ -157,3 +157,15 @@ share receive-email mybox off
 share receive-email mybox
 ```
 
+### share ssh
+
+Control team SSH access to a VM
+
+**Usage:**
+```
+share ssh <allow|disallow> <vm>
+```
+
+**Options:**
+- `--json`: output in JSON format
+

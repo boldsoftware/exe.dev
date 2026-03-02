@@ -136,6 +136,36 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 					"share receive-email mybox",
 				},
 			},
+			{
+				Name:        "ssh",
+				Description: "Control team SSH access to a VM",
+				Usage:       "share ssh <allow|disallow> <vm>",
+				Handler:     ss.handleShareSSHHelp,
+				FlagSetFunc: jsonOnlyFlags("share-ssh"),
+				Available:   ss.isInTeam,
+				Subcommands: []*exemenu.Command{
+					{
+						Name:              "allow",
+						Description:       "Allow team members to SSH into a VM",
+						Usage:             "share ssh allow <vm>",
+						Handler:           ss.handleShareSSHAllowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-ssh-allow"),
+						Available:         ss.isInTeam,
+						HasPositionalArgs: true,
+						CompleterFunc:     ss.completeBoxNames,
+					},
+					{
+						Name:              "disallow",
+						Description:       "Disallow team members from SSHing into a VM",
+						Usage:             "share ssh disallow <vm>",
+						Handler:           ss.handleShareSSHDisallowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-ssh-disallow"),
+						Available:         ss.isInTeam,
+						HasPositionalArgs: true,
+						CompleterFunc:     ss.completeBoxNames,
+					},
+				},
+			},
 		},
 	}
 }
@@ -258,13 +288,14 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		}
 
 		result := map[string]any{
-			"vm_name": box.Name,
-			"status":  route.Share,
-			"port":    route.Port,
-			"url":     ss.server.boxProxyAddress(box.Name),
-			"users":   users,
-			"links":   links,
-			"teams":   teams,
+			"vm_name":  box.Name,
+			"status":   route.Share,
+			"port":     route.Port,
+			"url":      ss.server.boxProxyAddress(box.Name),
+			"users":    users,
+			"links":    links,
+			"teams":    teams,
+			"team_ssh": route.TeamSSH,
 		}
 		if box.SupportAccessAllowed == 1 {
 			result["support_has_root"] = true
@@ -291,6 +322,9 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this VM without authentication")
 	} else {
 		cc.Writeln("Mode: Private")
+	}
+	if route.TeamSSH {
+		cc.Writeln("\033[1;32mTeam SSH: ALLOWED\033[0m - Team members can SSH into this VM")
 	}
 	if box.SupportAccessAllowed == 1 {
 		cc.Writeln("\033[1;33mSupport access: ENABLED\033[0m - exe.dev support has root access")
@@ -464,10 +498,11 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 
 	if cc.WantJSON() {
 		result := map[string]any{
-			"vm_name": boxName,
-			"port":    route.Port,
-			"share":   route.Share,
-			"status":  "updated",
+			"vm_name":  boxName,
+			"port":     route.Port,
+			"share":    route.Share,
+			"team_ssh": route.TeamSSH,
+			"status":   "updated",
 		}
 		cc.WriteJSON(result)
 		return nil
@@ -476,6 +511,9 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
 	cc.Writeln("  Port: %d", route.Port)
 	cc.Writeln("  Share: %s", route.Share)
+	if route.TeamSSH {
+		cc.Writeln("  Team SSH: \033[1;32mallowed\033[0m")
+	}
 	cc.Writeln("")
 	return nil
 }
@@ -492,6 +530,32 @@ func (ss *SSHServer) updateBoxRouteInDB(ctx context.Context, boxName, userID str
 	}
 	proxyChangeUpdatedBoxRoute(boxName, userID, port, share)
 	return nil
+}
+
+func (ss *SSHServer) handleShareSSHHelp(ctx context.Context, cc *exemenu.CommandContext) error {
+	return cc.Errorf("usage: share ssh <allow|disallow> <vm>")
+}
+
+func (ss *SSHServer) handleShareSSHAllowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share ssh allow <vm>")
+	}
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.TeamSSH = true
+		return nil
+	})
+}
+
+func (ss *SSHServer) handleShareSSHDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share ssh disallow <vm>")
+	}
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.TeamSSH = false
+		return nil
+	})
 }
 
 func formatAge(t *time.Time) string {

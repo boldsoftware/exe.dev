@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"strings"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
@@ -365,6 +366,149 @@ func TestTeamSharing(t *testing.T) {
 	t.Run("Cleanup", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.SendLine("rm " + ownerBox)
+		repl.Want("deleted")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+}
+
+// TestTeamSSHSharing tests the "share ssh allow" and "share ssh disallow" commands.
+func TestTeamSSHSharing(t *testing.T) {
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Register three users - owner, member, and a second member
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-team-ssh.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-team-ssh.example")
+	member2PTY, _, member2KeyFile, member2Email := registerForExeDevWithEmail(t, "member2@test-team-ssh.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+	member2PTY.Disconnect()
+
+	// Create team and add members
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_ssh_e2e", "SSHTeam", ownerEmail)
+	addTeamMember(t, ownerKeyFile, memberEmail)
+	addTeamMember(t, ownerKeyFile, member2Email)
+
+	// Member creates a VM
+	memberPTY = sshToExeDev(t, memberKeyFile)
+	memberBox := newBox(t, memberPTY)
+	memberPTY.Disconnect()
+
+	waitForSSH(t, memberBox, memberKeyFile)
+
+	// Test: Owner cannot SSH into member's box before sharing is enabled
+	t.Run("OwnerCannotSSHBeforeAllow", func(t *testing.T) {
+		cmd := boxSSHCommand(t, memberBox, ownerKeyFile, "hostname")
+		out, _ := cmd.CombinedOutput()
+		// If we reached the box, hostname will contain the box name.
+		// If we reached the REPL, output will be "command not found: hostname".
+		if strings.Contains(string(out), memberBox) {
+			t.Errorf("expected owner NOT to reach box shell, but got: %s", out)
+		}
+	})
+
+	// Test: Member enables SSH sharing for their box
+	t.Run("MemberAllowsSSH", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("share ssh allow " + memberBox)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Test: Owner can SSH into member's box via username routing (ssh boxname@host)
+	t.Run("OwnerCanSSHViaUsername", func(t *testing.T) {
+		pty := sshToBox(t, memberBox, ownerKeyFile)
+		pty.SendLine("echo hello-from-team-ssh")
+		pty.Want("hello-from-team-ssh")
+		pty.Disconnect()
+	})
+
+	// Test: Another team member can SSH into the box (peer-to-peer)
+	t.Run("MemberToMemberSSH", func(t *testing.T) {
+		pty := sshToBox(t, memberBox, member2KeyFile)
+		pty.SendLine("echo hello-from-peer")
+		pty.Want("hello-from-peer")
+		pty.Disconnect()
+	})
+
+	// Test: share show displays team SSH status
+	t.Run("ShareShowDisplaysTeamSSH", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("share show " + memberBox)
+		repl.Want("Team SSH: ALLOWED")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Test: share show JSON includes team_ssh
+	t.Run("ShareShowJSONTeamSSH", func(t *testing.T) {
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), memberKeyFile, "share", "show", memberBox, "--json")
+		if err != nil {
+			t.Fatalf("share show --json failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), `"team_ssh":true`) {
+			t.Fatalf("expected team_ssh:true in JSON output, got: %s", out)
+		}
+	})
+
+	// Test: Member disables SSH sharing
+	t.Run("MemberDisallowsSSH", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("share ssh disallow " + memberBox)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Test: Owner cannot SSH after disallow
+	t.Run("OwnerCannotSSHAfterDisallow", func(t *testing.T) {
+		cmd := boxSSHCommand(t, memberBox, ownerKeyFile, "hostname")
+		out, _ := cmd.CombinedOutput()
+		if strings.Contains(string(out), memberBox) {
+			t.Errorf("expected owner NOT to reach box shell after disallow, but got: %s", out)
+		}
+	})
+
+	// Test: share show no longer displays team SSH
+	t.Run("ShareShowNoTeamSSH", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("share show " + memberBox)
+		repl.Reject("Team SSH")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Test: Non-team user cannot see the share ssh command
+	t.Run("NonTeamNoSSH", func(t *testing.T) {
+		lonelyPTY, _, lonelyKeyFile, _ := registerForExeDevWithEmail(t, "lonely@test-team-ssh.example")
+		lonelyPTY.Disconnect()
+
+		lonelyPTY = sshToExeDev(t, lonelyKeyFile)
+		lonelyBox := newBox(t, lonelyPTY)
+		lonelyPTY.Disconnect()
+
+		waitForSSH(t, lonelyBox, lonelyKeyFile)
+
+		repl := sshToExeDev(t, lonelyKeyFile)
+		repl.SendLine("share ssh allow " + lonelyBox)
+		repl.Want("command not available")
+		repl.WantPrompt()
+
+		// Cleanup
+		repl.SendLine("rm " + lonelyBox)
+		repl.Want("deleted")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Cleanup
+	t.Run("Cleanup", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("rm " + memberBox)
 		repl.Want("deleted")
 		repl.WantPrompt()
 		repl.Disconnect()

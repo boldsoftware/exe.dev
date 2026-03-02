@@ -164,6 +164,101 @@ func (q *Queries) GetBoxByTeamOwnerAndShard(ctx context.Context, arg GetBoxByTea
 	return i, err
 }
 
+const getBoxByTeamSSHAndName = `-- name: GetBoxByTeamSSHAndName :one
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+FROM boxes b
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
+WHERE b.name = ?1
+AND tm_requester.user_id = ?2
+AND b.created_by_user_id != ?2
+AND json_extract(b.routes, '$.team_ssh') = 1
+`
+
+type GetBoxByTeamSSHAndNameParams struct {
+	BoxName string `db:"box_name" json:"box_name"`
+	UserID  string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) GetBoxByTeamSSHAndName(ctx context.Context, arg GetBoxByTeamSSHAndNameParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByTeamSSHAndNameStmt, getBoxByTeamSSHAndName, arg.BoxName, arg.UserID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
+		&i.Region,
+		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
+	)
+	return i, err
+}
+
+const getBoxByTeamSSHAndShard = `-- name: GetBoxByTeamSSHAndShard :one
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+FROM boxes b
+JOIN box_ip_shard bis ON b.id = bis.box_id
+JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
+JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
+WHERE bis.ip_shard = ?1
+AND tm_requester.user_id = ?2
+AND b.created_by_user_id != ?2
+AND json_extract(b.routes, '$.team_ssh') = 1
+`
+
+type GetBoxByTeamSSHAndShardParams struct {
+	Shard  int64  `db:"shard" json:"shard"`
+	UserID string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) GetBoxByTeamSSHAndShard(ctx context.Context, arg GetBoxByTeamSSHAndShardParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByTeamSSHAndShardStmt, getBoxByTeamSSHAndShard, arg.Shard, arg.UserID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
+		&i.Region,
+		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
+	)
+	return i, err
+}
+
 const getBoxTeamShare = `-- name: GetBoxTeamShare :one
 SELECT box_id, team_id, shared_by, created_at FROM box_team_shares WHERE box_id = ? AND team_id = ?
 `
@@ -481,6 +576,49 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID string) ([]GetTeamM
 			&i.Email,
 			&i.AuthProvider,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTeamShardCollisions = `-- name: GetTeamShardCollisions :many
+SELECT bis_new.box_id, bis_new.ip_shard
+FROM box_ip_shard bis_new
+JOIN team_members tm_existing ON tm_existing.team_id = ?1
+JOIN box_ip_shard bis_existing ON bis_existing.user_id = tm_existing.user_id
+WHERE bis_new.user_id = ?2
+AND bis_new.ip_shard = bis_existing.ip_shard
+AND bis_existing.user_id != ?2
+`
+
+type GetTeamShardCollisionsParams struct {
+	TeamID    string `db:"team_id" json:"team_id"`
+	NewUserID string `db:"new_user_id" json:"new_user_id"`
+}
+
+type GetTeamShardCollisionsRow struct {
+	BoxID   int   `db:"box_id" json:"box_id"`
+	IPShard int64 `db:"ip_shard" json:"ip_shard"`
+}
+
+func (q *Queries) GetTeamShardCollisions(ctx context.Context, arg GetTeamShardCollisionsParams) ([]GetTeamShardCollisionsRow, error) {
+	rows, err := q.query(ctx, q.getTeamShardCollisionsStmt, getTeamShardCollisions, arg.TeamID, arg.NewUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTeamShardCollisionsRow{}
+	for rows.Next() {
+		var i GetTeamShardCollisionsRow
+		if err := rows.Scan(&i.BoxID, &i.IPShard); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

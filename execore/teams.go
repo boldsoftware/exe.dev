@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"time"
 
+	"exe.dev/boxname"
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
@@ -149,6 +150,112 @@ func (s *Server) FindTeamBoxByIPShard(ctx context.Context, userID, localIP strin
 	return &box
 }
 
+// FindTeamSSHSharedBoxByIPShard finds a team member's box by IP shard when the box has team SSH enabled.
+// This enables any team member to SSH into boxes where the owner has run `share ssh allow`.
+func (s *Server) FindTeamSSHSharedBoxByIPShard(ctx context.Context, userID, localIP string) *exedb.Box {
+	if userID == "" || localIP == "" {
+		return nil
+	}
+	host := domz.StripPort(localIP)
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
+	}
+
+	info, ok := s.PublicIPs[addr]
+	if !ok {
+		return nil
+	}
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByTeamSSHAndShard, exedb.GetBoxByTeamSSHAndShardParams{
+		Shard:  int64(info.Shard),
+		UserID: userID,
+	})
+	if err != nil {
+		return nil
+	}
+	return &box
+}
+
+// FindTeamSSHSharedBoxByName finds a team member's box by name when the box has team SSH enabled.
+// This enables username routing: ssh boxname@exe.xyz for team SSH shared boxes.
+func (s *Server) FindTeamSSHSharedBoxByName(ctx context.Context, userID, boxName string) *exedb.Box {
+	if userID == "" || boxName == "" || !boxname.IsValid(boxName) {
+		return nil
+	}
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByTeamSSHAndName, exedb.GetBoxByTeamSSHAndNameParams{
+		BoxName: boxName,
+		UserID:  userID,
+	})
+	if err != nil {
+		return nil
+	}
+	return &box
+}
+
+// resolveTeamShardCollisions reassigns IP shards for a newly-joined team member
+// whose existing boxes collide with other team members' shards.
+// This is best-effort: errors are logged but do not fail the join.
+func (s *Server) resolveTeamShardCollisions(ctx context.Context, teamID, newUserID string) {
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		collisions, err := queries.GetTeamShardCollisions(ctx, exedb.GetTeamShardCollisionsParams{
+			TeamID:    teamID,
+			NewUserID: newUserID,
+		})
+		if err != nil {
+			return fmt.Errorf("checking shard collisions: %w", err)
+		}
+		if len(collisions) == 0 {
+			return nil
+		}
+
+		// Get all shards now used by the team (including the new member).
+		allShards, err := queries.ListIPShardsForTeam(ctx, newUserID)
+		if err != nil {
+			return fmt.Errorf("listing team shards: %w", err)
+		}
+		used := make([]bool, s.env.NumShards+1)
+		for _, shard := range allShards {
+			if s.env.ShardIsValid(int(shard)) {
+				used[int(shard)] = true
+			}
+		}
+
+		for _, c := range collisions {
+			// Find first unused shard.
+			var newShard int
+			for candidate := 1; candidate <= s.env.NumShards; candidate++ {
+				if !used[candidate] {
+					newShard = candidate
+					break
+				}
+			}
+			if newShard == 0 {
+				slog.WarnContext(ctx, "no free shard for collision resolution",
+					"box_id", c.BoxID, "old_shard", c.IPShard, "team_id", teamID)
+				continue
+			}
+
+			if err := queries.UpdateBoxIPShard(ctx, exedb.UpdateBoxIPShardParams{
+				IPShard: int64(newShard),
+				BoxID:   c.BoxID,
+			}); err != nil {
+				return fmt.Errorf("reassigning box %d from shard %d to %d: %w", c.BoxID, c.IPShard, newShard, err)
+			}
+
+			used[newShard] = true
+			slog.InfoContext(ctx, "resolved team shard collision",
+				"box_id", c.BoxID, "old_shard", c.IPShard, "new_shard", newShard,
+				"team_id", teamID, "user_id", newUserID)
+		}
+		return nil
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to resolve team shard collisions",
+			"error", err, "team_id", teamID, "user_id", newUserID)
+	}
+}
+
 // deleteTeamMember deletes a member from a team.
 func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) error {
 	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{
@@ -243,6 +350,8 @@ func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userI
 				"error", err, "team_id", invite.TeamID, "user_id", userID)
 			continue
 		}
+
+		s.resolveTeamShardCollisions(ctx, invite.TeamID, userID)
 
 		// Mark invite as accepted
 		if err := withTx1(s, ctx, (*exedb.Queries).MarkPendingTeamInviteAccepted, exedb.MarkPendingTeamInviteAcceptedParams{

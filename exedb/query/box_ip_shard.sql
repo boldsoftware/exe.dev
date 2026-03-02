@@ -16,6 +16,9 @@ VALUES (?, ?, ?);
 -- name: DeleteBoxIPShard :exec
 DELETE FROM box_ip_shard WHERE box_id = ?;
 
+-- name: UpdateBoxIPShard :exec
+UPDATE box_ip_shard SET ip_shard = ? WHERE box_id = ?;
+
 -- name: GetIPShardByBoxName :one
 SELECT s.ip_shard
 FROM box_ip_shard s

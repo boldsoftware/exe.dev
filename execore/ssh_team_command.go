@@ -309,6 +309,8 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("Failed to invite user: %v", err)
 	}
 
+	ss.server.resolveTeamShardCollisions(ctx, team.TeamID, userID)
+
 	slog.InfoContext(ctx, "team member added",
 		"team_id", team.TeamID,
 		"added_user_id", userID,
@@ -514,6 +516,8 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 	if err != nil {
 		return cc.Errorf("Failed to add member: %v", err)
 	}
+
+	ss.server.resolveTeamShardCollisions(ctx, teamID, userID)
 
 	slog.InfoContext(ctx, "root: added team member", "team_id", teamID, "email", email, "role", role, "by", cc.User.ID)
 	cc.Writeln("Added %s to %s as %s", email, teamID, role)

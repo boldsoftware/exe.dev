@@ -1,0 +1,17 @@
+
+
+●
+● ssh localhost
+●
+
+share ssh disallow BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share ssh disallow BOX_NAME
+✓ Route updated successfully
+  Port: 8000
+  Share: private
+
+PROMPT ▶ exit
+Goodbye!
