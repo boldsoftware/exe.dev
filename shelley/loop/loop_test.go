@@ -1796,7 +1796,7 @@ func TestCheckGitStateChange(t *testing.T) {
 	}
 }
 
-func TestHandleToolCallsWithMissingTool(t *testing.T) {
+func TestExecuteToolCallsWithMissingTool(t *testing.T) {
 	var recordedMessages []llm.Message
 	recordFunc := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
 		recordedMessages = append(recordedMessages, message)
@@ -1823,9 +1823,9 @@ func TestHandleToolCallsWithMissingTool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	err := loop.handleToolCalls(ctx, content)
+	err := loop.executeToolCalls(ctx, content)
 	if err != nil {
-		t.Fatalf("handleToolCalls failed: %v", err)
+		t.Fatalf("executeToolCalls failed: %v", err)
 	}
 
 	// Should have recorded a user message with tool result
@@ -1869,7 +1869,7 @@ func TestHandleToolCallsWithMissingTool(t *testing.T) {
 	}
 }
 
-func TestHandleToolCallsWithErrorTool(t *testing.T) {
+func TestExecuteToolCallsWithErrorTool(t *testing.T) {
 	var recordedMessages []llm.Message
 	recordFunc := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
 		recordedMessages = append(recordedMessages, message)
@@ -1906,9 +1906,9 @@ func TestHandleToolCallsWithErrorTool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	err := loop.handleToolCalls(ctx, content)
+	err := loop.executeToolCalls(ctx, content)
 	if err != nil {
-		t.Fatalf("handleToolCalls failed: %v", err)
+		t.Fatalf("executeToolCalls failed: %v", err)
 	}
 
 	// Should have recorded a user message with tool result

@@ -189,138 +189,147 @@ func (l *Loop) ProcessOneTurn(ctx context.Context) error {
 	return l.processLLMRequest(ctx)
 }
 
-// processLLMRequest sends a request to the LLM and handles the response
+// processLLMRequest sends a request to the LLM and handles the response.
+// It loops internally: when the LLM responds with tool calls, it executes
+// the tools and sends another request, repeating until the turn ends or an
+// error occurs. This iterative design avoids the O(n²) peak memory that
+// mutual recursion (processLLMRequest ↔ executeToolCalls) caused, because
+// each iteration's locals are freed before the next iteration starts.
 func (l *Loop) processLLMRequest(ctx context.Context) error {
-	l.mu.Lock()
-	messages := append([]llm.Message(nil), l.history...)
-	tools := l.tools
-	system := l.system
-	llmService := l.llm
-	l.mu.Unlock()
+	for {
+		l.mu.Lock()
+		messages := append([]llm.Message(nil), l.history...)
+		tools := l.tools
+		system := l.system
+		llmService := l.llm
+		l.mu.Unlock()
 
-	// Enable prompt caching: set cache flag on last tool and last user message content
-	// See https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
-	if len(tools) > 0 {
-		// Make a copy of tools to avoid modifying the shared slice
-		tools = append([]*llm.Tool(nil), tools...)
-		// Copy the last tool and enable caching
-		lastTool := *tools[len(tools)-1]
-		lastTool.Cache = true
-		tools[len(tools)-1] = &lastTool
-	}
+		// Enable prompt caching: set cache flag on last tool and last user message content
+		// See https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+		if len(tools) > 0 {
+			// Make a copy of tools to avoid modifying the shared slice
+			tools = append([]*llm.Tool(nil), tools...)
+			// Copy the last tool and enable caching
+			lastTool := *tools[len(tools)-1]
+			lastTool.Cache = true
+			tools[len(tools)-1] = &lastTool
+		}
 
-	// Set cache flag on the last content block of the last user message
-	if len(messages) > 0 {
-		for i := len(messages) - 1; i >= 0; i-- {
-			if messages[i].Role == llm.MessageRoleUser && len(messages[i].Content) > 0 {
-				// Deep copy the message to avoid modifying the shared history
-				msg := messages[i]
-				msg.Content = append([]llm.Content(nil), msg.Content...)
-				msg.Content[len(msg.Content)-1].Cache = true
-				messages[i] = msg
-				break
+		// Set cache flag on the last content block of the last user message
+		if len(messages) > 0 {
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role == llm.MessageRoleUser && len(messages[i].Content) > 0 {
+					// Deep copy the message to avoid modifying the shared history
+					msg := messages[i]
+					msg.Content = append([]llm.Content(nil), msg.Content...)
+					msg.Content[len(msg.Content)-1].Cache = true
+					messages[i] = msg
+					break
+				}
 			}
 		}
-	}
 
-	req := &llm.Request{
-		Messages: messages,
-		Tools:    tools,
-		System:   system,
-	}
-
-	// Insert missing tool results if the previous message had tool_use blocks
-	// without corresponding tool_result blocks. This can happen when a request
-	// is cancelled or fails after the LLM responds but before tools execute.
-	l.insertMissingToolResults(req)
-
-	systemLen := 0
-	for _, sys := range system {
-		systemLen += len(sys.Text)
-	}
-	l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools), "system_items", len(system), "system_length", systemLen)
-
-	// Add a timeout for the LLM request to prevent indefinite hangs
-	llmCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	// Retry LLM requests that fail with retryable errors (EOF, connection reset)
-	const maxRetries = 2
-	var resp *llm.Response
-	var err error
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		resp, err = llmService.Do(llmCtx, req)
-		if err == nil {
-			break
+		req := &llm.Request{
+			Messages: messages,
+			Tools:    tools,
+			System:   system,
 		}
-		if !isRetryableError(err) || attempt == maxRetries {
-			break
+
+		// Insert missing tool results if the previous message had tool_use blocks
+		// without corresponding tool_result blocks. This can happen when a request
+		// is cancelled or fails after the LLM responds but before tools execute.
+		l.insertMissingToolResults(req)
+
+		systemLen := 0
+		for _, sys := range system {
+			systemLen += len(sys.Text)
 		}
-		l.logger.Warn("LLM request failed with retryable error, retrying",
-			"error", err,
-			"attempt", attempt,
-			"max_retries", maxRetries)
-		time.Sleep(time.Second * time.Duration(attempt)) // Simple backoff
-	}
-	if err != nil {
-		// Record the error as a message so it can be displayed in the UI
-		// EndOfTurn must be true so the agent working state is properly updated
-		errorMessage := llm.Message{
-			Role: llm.MessageRoleAssistant,
-			Content: []llm.Content{
-				{
-					Type: llm.ContentTypeText,
-					Text: fmt.Sprintf("LLM request failed: %v", err),
+		l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools), "system_items", len(system), "system_length", systemLen)
+
+		// Add a timeout for the LLM request to prevent indefinite hangs
+		llmCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+
+		// Retry LLM requests that fail with retryable errors (EOF, connection reset)
+		const maxRetries = 2
+		var resp *llm.Response
+		var err error
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			resp, err = llmService.Do(llmCtx, req)
+			if err == nil {
+				break
+			}
+			if !isRetryableError(err) || attempt == maxRetries {
+				break
+			}
+			l.logger.Warn("LLM request failed with retryable error, retrying",
+				"error", err,
+				"attempt", attempt,
+				"max_retries", maxRetries)
+			time.Sleep(time.Second * time.Duration(attempt)) // Simple backoff
+		}
+		cancel()
+
+		if err != nil {
+			// Record the error as a message so it can be displayed in the UI
+			// EndOfTurn must be true so the agent working state is properly updated
+			errorMessage := llm.Message{
+				Role: llm.MessageRoleAssistant,
+				Content: []llm.Content{
+					{
+						Type: llm.ContentTypeText,
+						Text: fmt.Sprintf("LLM request failed: %v", err),
+					},
 				},
-			},
-			EndOfTurn: true,
-			ErrorType: llm.ErrorTypeLLMRequest,
+				EndOfTurn: true,
+				ErrorType: llm.ErrorTypeLLMRequest,
+			}
+			if recordErr := l.recordMessage(ctx, errorMessage, llm.Usage{}); recordErr != nil {
+				l.logger.Error("failed to record error message", "error", recordErr)
+			}
+			return fmt.Errorf("LLM request failed: %w", err)
 		}
-		if recordErr := l.recordMessage(ctx, errorMessage, llm.Usage{}); recordErr != nil {
-			l.logger.Error("failed to record error message", "error", recordErr)
+
+		l.logger.Debug("received LLM response", "content_count", len(resp.Content), "stop_reason", resp.StopReason.String(), "usage", resp.Usage.String())
+
+		// Update total usage
+		l.mu.Lock()
+		l.totalUsage.Add(resp.Usage)
+		l.mu.Unlock()
+
+		// Handle max tokens truncation BEFORE adding to history - truncated responses
+		// should not be added to history normally (they get special handling)
+		if resp.StopReason == llm.StopReasonMaxTokens {
+			l.logger.Warn("LLM response truncated due to max tokens")
+			return l.handleMaxTokensTruncation(ctx, resp)
 		}
-		return fmt.Errorf("LLM request failed: %w", err)
-	}
 
-	l.logger.Debug("received LLM response", "content_count", len(resp.Content), "stop_reason", resp.StopReason.String(), "usage", resp.Usage.String())
+		// Convert response to message and add to history
+		assistantMessage := resp.ToMessage()
+		l.mu.Lock()
+		l.history = append(l.history, assistantMessage)
+		l.mu.Unlock()
 
-	// Update total usage
-	l.mu.Lock()
-	l.totalUsage.Add(resp.Usage)
-	l.mu.Unlock()
+		// Record assistant message with model and timing metadata
+		usageWithMeta := resp.Usage
+		usageWithMeta.Model = resp.Model
+		usageWithMeta.StartTime = resp.StartTime
+		usageWithMeta.EndTime = resp.EndTime
+		if err := l.recordMessage(ctx, assistantMessage, usageWithMeta); err != nil {
+			l.logger.Error("failed to record assistant message", "error", err)
+		}
 
-	// Handle max tokens truncation BEFORE adding to history - truncated responses
-	// should not be added to history normally (they get special handling)
-	if resp.StopReason == llm.StopReasonMaxTokens {
-		l.logger.Warn("LLM response truncated due to max tokens")
-		return l.handleMaxTokensTruncation(ctx, resp)
-	}
+		// If no tool calls, the turn is over
+		if resp.StopReason != llm.StopReasonToolUse {
+			l.checkGitStateChange(ctx)
+			return nil
+		}
 
-	// Convert response to message and add to history
-	assistantMessage := resp.ToMessage()
-	l.mu.Lock()
-	l.history = append(l.history, assistantMessage)
-	l.mu.Unlock()
-
-	// Record assistant message with model and timing metadata
-	usageWithMeta := resp.Usage
-	usageWithMeta.Model = resp.Model
-	usageWithMeta.StartTime = resp.StartTime
-	usageWithMeta.EndTime = resp.EndTime
-	if err := l.recordMessage(ctx, assistantMessage, usageWithMeta); err != nil {
-		l.logger.Error("failed to record assistant message", "error", err)
-	}
-
-	// Handle tool calls if any
-	if resp.StopReason == llm.StopReasonToolUse {
+		// Execute tool calls and loop back for the next LLM request
 		l.logger.Debug("handling tool calls", "content_count", len(resp.Content))
-		return l.handleToolCalls(ctx, resp.Content)
+		if err := l.executeToolCalls(ctx, resp.Content); err != nil {
+			return err
+		}
 	}
-
-	// End of turn - check for git state changes
-	l.checkGitStateChange(ctx)
-
-	return nil
 }
 
 // checkGitStateChange checks if the git state has changed and calls the callback if so.
@@ -408,8 +417,9 @@ func (l *Loop) handleMaxTokensTruncation(ctx context.Context, resp *llm.Response
 	return nil
 }
 
-// handleToolCalls processes tool calls from the LLM response
-func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error {
+// executeToolCalls runs the tools from an LLM response and appends the results
+// to l.history. It does NOT call processLLMRequest — the caller loops instead.
+func (l *Loop) executeToolCalls(ctx context.Context, content []llm.Content) error {
 	var toolResults []llm.Content
 
 	for _, c := range content {
@@ -496,9 +506,6 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 		if err := l.recordMessage(ctx, toolMessage, llm.Usage{}); err != nil {
 			l.logger.Error("failed to record tool result message", "error", err)
 		}
-
-		// Process another LLM request with the tool results
-		return l.processLLMRequest(ctx)
 	}
 
 	return nil
