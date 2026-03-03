@@ -39,6 +39,17 @@ CURRENT=$(aws ec2 describe-volumes \
 NEW_SIZE=$((CURRENT + GROW_BY))
 echo "Current size: ${CURRENT}GB, growing to: ${NEW_SIZE}GB"
 
+echo ""
+echo "The following commands will be executed:"
+echo "  1. aws ec2 modify-volume --volume-id $VOL_ID --size $NEW_SIZE"
+echo "  2. ssh -lubuntu $HOSTNAME 'sudo zpool online -e tank <disk>'"
+echo ""
+read -rp "Proceed? [y/N] " CONFIRM
+if [[ "$CONFIRM" != [yY] ]]; then
+    echo "Aborted."
+    exit 0
+fi
+
 aws ec2 modify-volume --volume-id "$VOL_ID" --size "$NEW_SIZE"
 
 echo "Waiting for volume modification to complete..."
@@ -59,7 +70,8 @@ PART=$(ssh -lubuntu "$HOSTNAME" "zpool list -vHPp tank | awk '/^\t/{print \$1}'"
 # Strip partition suffix (e.g., /dev/nvme5n1p1 -> /dev/nvme5n1,
 #   or /dev/disk/by-id/nvme-...-part1 -> /dev/disk/by-id/nvme-...)
 DISK=$(ssh -lubuntu "$HOSTNAME" "echo $PART | sed -E 's/(-part|p)[0-9]+\$//'")
-echo "Found partition: $PART, disk: $DISK"
+echo "Resolved partition: $PART -> disk: $DISK"
+echo "  Running: sudo zpool online -e tank $DISK"
 
 ssh -lubuntu "$HOSTNAME" "sudo zpool online -e tank $DISK"
 
