@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, david/ci, philip/ci, philip/test-refactor ]
+    branches: [ main, david/ci, philip/ci, philip/test-refactor, shaun/ci ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
