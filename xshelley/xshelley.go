@@ -70,8 +70,7 @@ func getCacheDir() (string, error) {
 	return cacheDir, nil
 }
 
-// GetShelley returns the path to the shelley binary for the specified architecture
-// and whether the result was served from cache.
+// GetShelley returns the path to the shelley binary for the specified architecture.
 // It downloads the binary from the latest GitHub release if not cached, or if the
 // cache is stale (older than refreshInterval).
 //
@@ -80,17 +79,17 @@ func getCacheDir() (string, error) {
 //   - goarch: target architecture (e.g., "amd64", "arm64")
 //
 // Only Linux binaries are available. Results are cached with hourly refresh checks.
-func GetShelley(ctx context.Context, goarch string) (path string, cached bool, err error) {
+func GetShelley(ctx context.Context, goarch string) (path string, err error) {
 	platform := fmt.Sprintf("linux/%s", goarch)
 
 	cacheDirPath, err := getCacheDir()
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	platformDir := filepath.Join(cacheDirPath, fmt.Sprintf("linux-%s", goarch))
 	if err := os.MkdirAll(platformDir, 0o755); err != nil {
-		return "", false, fmt.Errorf("failed to create platform cache directory: %w", err)
+		return "", fmt.Errorf("failed to create platform cache directory: %w", err)
 	}
 
 	metadataPath := filepath.Join(platformDir, metadataFileName)
@@ -99,12 +98,12 @@ func GetShelley(ctx context.Context, goarch string) (path string, cached bool, e
 	// Check if we have a valid cached version (fast path, no lock needed)
 	needsRefresh, currentTag, err := shouldRefresh(metadataPath, platform)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	if !needsRefresh {
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			return shelleyBinaryPath, true, nil
+			return shelleyBinaryPath, nil
 		}
 	}
 
@@ -118,27 +117,27 @@ func GetShelley(ctx context.Context, goarch string) (path string, cached bool, e
 	// Re-check cache under the lock — another goroutine may have just finished.
 	needsRefresh, currentTag, err = shouldRefresh(metadataPath, platform)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if !needsRefresh {
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			return shelleyBinaryPath, true, nil
+			return shelleyBinaryPath, nil
 		}
 	}
 
 	// Fetch the latest release info from GitHub
 	release, err := fetchLatestRelease(ctx)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	// If tag hasn't changed and binary exists, just update metadata
 	if release.TagName == currentTag {
 		if _, err := os.Stat(shelleyBinaryPath); err == nil {
 			if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
-				return "", false, err
+				return "", err
 			}
-			return shelleyBinaryPath, true, nil
+			return shelleyBinaryPath, nil
 		}
 	}
 
@@ -152,19 +151,19 @@ func GetShelley(ctx context.Context, goarch string) (path string, cached bool, e
 		}
 	}
 	if downloadURL == "" {
-		return "", false, fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
+		return "", fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
 	}
 
 	// Download the binary
 	if err := downloadFile(ctx, downloadURL, shelleyBinaryPath); err != nil {
-		return "", false, fmt.Errorf("failed to download shelley: %w", err)
+		return "", fmt.Errorf("failed to download shelley: %w", err)
 	}
 
 	if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
-		return "", false, err
+		return "", err
 	}
 
-	return shelleyBinaryPath, false, nil
+	return shelleyBinaryPath, nil
 }
 
 func fetchLatestRelease(ctx context.Context) (*ghRelease, error) {

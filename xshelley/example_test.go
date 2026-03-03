@@ -12,7 +12,7 @@ func Example() {
 	ctx := context.Background()
 
 	// Get the shelley binary for amd64 architecture (always Linux)
-	path, _, err := xshelley.GetShelley(ctx, "amd64")
+	path, err := xshelley.GetShelley(ctx, "amd64")
 	if err != nil {
 		log.Fatalf("failed to get shelley binary: %v", err)
 	}

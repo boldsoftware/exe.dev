@@ -117,6 +117,5 @@ func (s *Server) renderShelleyDownloadPage(w http.ResponseWriter, _ *http.Reques
 
 // getShelleyBinary is a wrapper that calls xshelley.GetShelley
 func getShelleyBinary(ctx context.Context, goarch string) (string, error) {
-	path, _, err := xshelley.GetShelley(ctx, goarch)
-	return path, err
+	return xshelley.GetShelley(ctx, goarch)
 }

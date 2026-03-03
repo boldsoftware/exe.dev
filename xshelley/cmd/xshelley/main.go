@@ -16,7 +16,7 @@ func main() {
 
 	ctx := context.Background()
 
-	path, _, err := xshelley.GetShelley(ctx, *goarch)
+	path, err := xshelley.GetShelley(ctx, *goarch)
 	if err != nil {
 		log.Fatalf("Failed to get shelley binary: %v", err)
 	}

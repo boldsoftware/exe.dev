@@ -23,12 +23,9 @@ func TestGetShelley(t *testing.T) {
 	}
 
 	// First call - should download (always use Linux binary)
-	path, cached, err := GetShelley(ctx, runtime.GOARCH)
+	path, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley failed: %v", err)
-	}
-	if cached {
-		t.Error("expected first call to not be cached")
 	}
 
 	// Verify the path exists
@@ -42,12 +39,9 @@ func TestGetShelley(t *testing.T) {
 	}
 
 	// Second call - should use cache
-	path2, cached2, err := GetShelley(ctx, runtime.GOARCH)
+	path2, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley (cached) failed: %v", err)
-	}
-	if !cached2 {
-		t.Error("expected second call to be cached")
 	}
 
 	if path != path2 {
@@ -68,7 +62,7 @@ func TestGetShelleyMultipleArchitectures(t *testing.T) {
 	}
 
 	// Test amd64
-	pathAmd64, _, err := GetShelley(ctx, "amd64")
+	pathAmd64, err := GetShelley(ctx, "amd64")
 	if err != nil {
 		t.Fatalf("GetShelley(amd64) failed: %v", err)
 	}
@@ -78,7 +72,7 @@ func TestGetShelleyMultipleArchitectures(t *testing.T) {
 	}
 
 	// Test arm64
-	pathArm64, _, err := GetShelley(ctx, "arm64")
+	pathArm64, err := GetShelley(ctx, "arm64")
 	if err != nil {
 		t.Fatalf("GetShelley(arm64) failed: %v", err)
 	}
@@ -114,7 +108,7 @@ func TestCacheRefresh(t *testing.T) {
 	}
 
 	// First download
-	path, _, err := GetShelley(ctx, runtime.GOARCH)
+	path, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley failed: %v", err)
 	}
@@ -140,7 +134,7 @@ func TestCacheRefresh(t *testing.T) {
 	}
 
 	// Call again - should check for updates but likely use cache if tag matches
-	path2, _, err := GetShelley(ctx, runtime.GOARCH)
+	path2, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley (refresh check) failed: %v", err)
 	}
@@ -168,7 +162,7 @@ func TestCacheInvalidation(t *testing.T) {
 	}
 
 	// First download
-	path, _, err := GetShelley(ctx, runtime.GOARCH)
+	path, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley failed: %v", err)
 	}
@@ -179,7 +173,7 @@ func TestCacheInvalidation(t *testing.T) {
 	}
 
 	// Call again - should re-download since binary is missing
-	path2, _, err := GetShelley(ctx, runtime.GOARCH)
+	path2, err := GetShelley(ctx, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("GetShelley (after deletion) failed: %v", err)
 	}
@@ -218,7 +212,7 @@ func TestInvalidMetadata(t *testing.T) {
 	}
 
 	// Should handle invalid metadata gracefully and re-download
-	path, _, err := GetShelley(ctx, "amd64")
+	path, err := GetShelley(ctx, "amd64")
 	if err != nil {
 		t.Fatalf("GetShelley with invalid metadata failed: %v", err)
 	}
@@ -260,7 +254,7 @@ func TestConcurrentGetShelley(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		go func() {
-			path, _, err := GetShelley(ctx, runtime.GOARCH)
+			path, err := GetShelley(ctx, runtime.GOARCH)
 			results <- result{path, err}
 		}()
 	}
