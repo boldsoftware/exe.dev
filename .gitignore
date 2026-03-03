@@ -51,5 +51,9 @@ docsd
 e1ed
 !cmd/e1ed
 
+# daily brief debug output
+brief_*.md
+mlruns.db
+
 # https://github.com/wedow/ticket tickets
 .tickets
