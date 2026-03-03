@@ -119,9 +119,9 @@ export const fr: TranslationKeys = {
   editModel: "Modifier le modèle",
   loadingModels: "Chargement des modèles...",
   providerApiFormat: "Fournisseur / Format API",
-  endpoint: "Point d'accès",
-  defaultEndpoint: "Point d'accès par défaut",
-  customEndpoint: "Point d'accès personnalisé",
+  endpoint: "Endpoint",
+  defaultEndpoint: "Endpoint par défaut",
+  customEndpoint: "Endpoint personnalisé",
   model: "Modèle",
   displayName: "Nom d'affichage",
   nameShownInSelector: "Nom affiché dans le sélecteur de modèle",
@@ -129,8 +129,9 @@ export const fr: TranslationKeys = {
   enterApiKey: "Saisir la clé API",
   maxContextTokens: "Nombre maximum de tokens de contexte",
   tags: "Étiquettes",
-  tagsPlaceholder: "Ajouter des étiquettes...",
-  tagsTooltip: "Les étiquettes aident à organiser et filtrer les modèles",
+  tagsPlaceholder: "séparées par des virgules, ex : slug, cheap",
+  tagsTooltip:
+    "Étiquettes séparées par des virgules pour ce modèle. Utilisez « slug » pour marquer ce modèle pour la génération de titres de conversation. Si aucun modèle n'a l'étiquette « slug », le modèle de la conversation sera utilisé.",
   testButton: "Tester",
   testingButton: "Test en cours...",
   save: "Enregistrer",
@@ -140,7 +141,8 @@ export const fr: TranslationKeys = {
   modelNameRequired: "Le nom du modèle est requis",
   apiKeyRequired: "La clé API est requise",
   noModelsConfigured: "Aucun modèle configuré",
-  noModelsHint: "Ajoutez un modèle pour commencer",
+  noModelsHint:
+    "Définissez des variables d'environnement comme ANTHROPIC_API_KEY, utilisez le flag -gateway, ou ajoutez un modèle personnalisé ci-dessous.",
 
   // Notifications Modal
   notifications: "Notifications",

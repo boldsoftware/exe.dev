@@ -128,8 +128,9 @@ export const es: TranslationKeys = {
   enterApiKey: "Ingrese la clave de API",
   maxContextTokens: "Tokens de contexto máximos",
   tags: "Etiquetas",
-  tagsPlaceholder: "Agregar etiquetas...",
-  tagsTooltip: "Las etiquetas ayudan a organizar y filtrar modelos",
+  tagsPlaceholder: "separadas por comas, ej., slug, cheap",
+  tagsTooltip:
+    'Etiquetas separadas por comas para este modelo. Use "slug" para marcar este modelo para generar títulos de conversación. Si ningún modelo tiene la etiqueta "slug", se usará el modelo de la conversación.',
   testButton: "Probar",
   testingButton: "Probando...",
   save: "Guardar",
@@ -139,7 +140,8 @@ export const es: TranslationKeys = {
   modelNameRequired: "El nombre del modelo es obligatorio",
   apiKeyRequired: "La clave de API es obligatoria",
   noModelsConfigured: "No hay modelos configurados",
-  noModelsHint: "Agregue un modelo para comenzar",
+  noModelsHint:
+    "Configure variables de entorno como ANTHROPIC_API_KEY, use el flag -gateway, o agregue un modelo personalizado abajo.",
 
   // Notifications Modal
   notifications: "Notificaciones",

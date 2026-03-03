@@ -61,9 +61,9 @@ export const ja: TranslationKeys = {
   notificationSettings: "通知設定",
   configureNotifications: "通知の設定を変更",
   enableMarkdownAgent: "Markdownを有効にする（エージェント）",
-  renderMarkdownAgent: "エージェントメッセージのMarkdownを表示",
+  renderMarkdownAgent: "エージェントメッセージをMarkdownで表示",
   enableMarkdownAll: "Markdownを有効にする（すべて）",
-  renderMarkdownAll: "すべてのメッセージのMarkdownを表示",
+  renderMarkdownAll: "すべてのメッセージをMarkdownで表示",
   disableMarkdown: "Markdownを無効にする",
   showPlainText: "すべてのメッセージをプレーンテキストで表示",
   archiveConversationAction: "会話をアーカイブ",
@@ -76,14 +76,14 @@ export const ja: TranslationKeys = {
   archived: "アーカイブ済み",
   noArchivedConversations: "アーカイブされた会話はありません",
   noConversationsYet: "会話はまだありません",
-  startNewToGetStarted: "新しい会話を始めましょう",
+  startNewToGetStarted: "新しい会話を開始してください",
   backToConversations: "会話一覧に戻る",
   viewArchived: "アーカイブを表示",
   rename: "名前を変更",
   archive: "アーカイブ",
   restore: "復元",
   deletePermanently: "完全に削除",
-  confirmDelete: "本当に削除しますか？この操作は取り消せません。",
+  confirmDelete: "本当に削除しますか？この操作は元に戻せません。",
   duplicateName: "同じ名前の会話がすでに存在します",
   agentIsWorking: "エージェントが作業中...",
   subagentIsWorking: "サブエージェントが作業中...",
@@ -113,9 +113,9 @@ export const ja: TranslationKeys = {
   uploadFailed: "アップロードに失敗しました",
 
   // Models Modal
-  manageModels: "モデル管理",
-  addModel: "モデルを追加",
-  editModel: "モデルを編集",
+  manageModels: "モデルの管理",
+  addModel: "モデルの追加",
+  editModel: "モデルの編集",
   loadingModels: "モデルを読み込み中...",
   providerApiFormat: "プロバイダー / API形式",
   endpoint: "エンドポイント",
@@ -128,8 +128,9 @@ export const ja: TranslationKeys = {
   enterApiKey: "APIキーを入力",
   maxContextTokens: "最大コンテキストトークン数",
   tags: "タグ",
-  tagsPlaceholder: "タグを追加...",
-  tagsTooltip: "タグでモデルを整理・フィルタリングできます",
+  tagsPlaceholder: "カンマ区切り、例: slug, cheap",
+  tagsTooltip:
+    'このモデル用のカンマ区切りのタグ。会話タイトル生成用のモデルとしてマークするには"slug"を使用します。"slug"タグを持つモデルがない場合は、会話のモデルが使用されます。',
   testButton: "テスト",
   testingButton: "テスト中...",
   save: "保存",
@@ -139,7 +140,8 @@ export const ja: TranslationKeys = {
   modelNameRequired: "モデル名は必須です",
   apiKeyRequired: "APIキーは必須です",
   noModelsConfigured: "モデルが設定されていません",
-  noModelsHint: "モデルを追加して始めましょう",
+  noModelsHint:
+    "ANTHROPIC_API_KEY等の環境変数を設定するか、-gatewayフラグを使用するか、以下でカスタムモデルを追加してください。",
 
   // Notifications Modal
   notifications: "通知",
@@ -188,13 +190,13 @@ export const ja: TranslationKeys = {
   welcomeSubtitle: "",
   welcomeMessage:
     "Shelleyは{hostname}で動作するエージェントです。Shelleyに作業を依頼できます。Shelleyでウェブサイトを構築した場合、exe.devのプロキシ機能（{docsLink}を参照）を使用して{proxyLink}からアクセスできます。",
-  sendMessageToStart: "メッセージを送信して会話を始めましょう。",
+  sendMessageToStart: "メッセージを送信して会話を開始してください。",
   noModelsConfiguredHint:
     "AIモデルが設定されていません。Ctrl+K または ⌘+K でモデルを追加してください。",
 
   // Status Bar
-  modelLabel: "モデル：",
-  dirLabel: "ディレクトリ：",
+  modelLabel: "モデル:",
+  dirLabel: "ディレクトリ:",
 
   // Sidebar buttons
   openConversations: "会話を開く",

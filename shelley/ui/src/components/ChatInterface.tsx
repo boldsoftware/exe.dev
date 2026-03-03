@@ -10,7 +10,7 @@ import {
 import { api } from "../services/api";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
 import { useMarkdown } from "../contexts/MarkdownContext";
-import { useI18n } from "../i18n";
+import { useI18n, type Locale, type TranslationKeys } from "../i18n";
 import { setFaviconStatus } from "../services/favicon";
 import {
   handleNotificationEvent,
@@ -505,6 +505,101 @@ interface ChatInterfaceProps {
   setEphemeralTerminals: React.Dispatch<React.SetStateAction<EphemeralTerminal[]>>;
   navigateUserMessageTrigger?: number; // positive = next, negative = previous
   onConversationUnarchived?: (conversation: Conversation) => void;
+}
+
+const LANGUAGE_OPTIONS: { locale: Locale; flag: string; label: string }[] = [
+  { locale: "en", flag: "🇺🇸", label: "English" },
+  { locale: "ja", flag: "🇯🇵", label: "日本語" },
+  { locale: "fr", flag: "🇫🇷", label: "Français" },
+  { locale: "ru", flag: "🇷🇺", label: "Русский" },
+  { locale: "es", flag: "🇪🇸", label: "Español" },
+];
+
+function LanguageDropdown({
+  locale,
+  setLocale,
+  t,
+}: {
+  locale: Locale;
+  setLocale: (l: Locale) => void;
+  t: (key: keyof TranslationKeys) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = LANGUAGE_OPTIONS.find((o) => o.locale === locale)!;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="language-dropdown" ref={ref}>
+      <button
+        className="language-dropdown-trigger"
+        onClick={() => setOpen(!open)}
+        aria-label={t("switchLanguage")}
+      >
+        <span className="language-dropdown-flag">{current.flag}</span>
+        <span className="language-dropdown-text">{current.label}</span>
+        <svg
+          className={`language-dropdown-chevron${open ? " language-dropdown-chevron-open" : ""}`}
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M3 4.5L6 7.5L9 4.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="language-dropdown-menu">
+          {LANGUAGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.locale}
+              className={`language-dropdown-item${opt.locale === locale ? " language-dropdown-item-selected" : ""}`}
+              onClick={() => {
+                setLocale(opt.locale);
+                setOpen(false);
+              }}
+            >
+              <span className="language-dropdown-flag">{opt.flag}</span>
+              <span>{opt.label}</span>
+              {opt.locale === locale && (
+                <svg
+                  className="language-dropdown-check"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                >
+                  <path
+                    d="M3 7L6 10L11 4"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ChatInterface({
@@ -2105,39 +2200,9 @@ function ChatInterface({
 
                 {/* Language selector */}
                 <div className="overflow-menu-divider" />
-                <div className="md-toggle-row">
+                <div className="language-selector-row">
                   <div className="md-toggle-label">{t("language")}</div>
-                  <div className="md-toggle-buttons">
-                    {(["en", "ja", "fr", "ru", "es"] as const).map((loc) => {
-                      const labels: Record<string, string> = {
-                        en: "EN",
-                        ja: "JA",
-                        fr: "FR",
-                        ru: "RU",
-                        es: "ES",
-                      };
-                      return (
-                        <button
-                          key={loc}
-                          onClick={() => setLocale(loc)}
-                          className={`md-toggle-btn${locale === loc ? " md-toggle-btn-selected" : ""}`}
-                          title={t(
-                            loc === "en"
-                              ? "english"
-                              : loc === "ja"
-                                ? "japanese"
-                                : loc === "fr"
-                                  ? "french"
-                                  : loc === "ru"
-                                    ? "russian"
-                                    : "spanish",
-                          )}
-                        >
-                          {labels[loc]}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <LanguageDropdown locale={locale} setLocale={setLocale} t={t} />
                 </div>
               </div>
             )}

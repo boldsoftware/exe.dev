@@ -17,7 +17,7 @@ export const ru: TranslationKeys = {
   archiveConversation: "Архивировать диалог",
   checkForNewVersion: "Проверить обновления",
   markdown: "Markdown",
-  off: "Выкл",
+  off: "Откл",
   agent: "Агент",
   all: "Все",
 
@@ -76,7 +76,7 @@ export const ru: TranslationKeys = {
   archived: "Архив",
   noArchivedConversations: "Нет архивных диалогов",
   noConversationsYet: "Диалогов пока нет",
-  startNewToGetStarted: "Начните новый диалог",
+  startNewToGetStarted: "Начните новый диалог, чтобы приступить к работе",
   backToConversations: "Назад к диалогам",
   viewArchived: "Показать архив",
   rename: "Переименовать",
@@ -128,8 +128,9 @@ export const ru: TranslationKeys = {
   enterApiKey: "Введите API-ключ",
   maxContextTokens: "Макс. токенов контекста",
   tags: "Теги",
-  tagsPlaceholder: "Добавить теги...",
-  tagsTooltip: "Теги помогают упорядочивать и фильтровать модели",
+  tagsPlaceholder: "через запятую, напр., slug, cheap",
+  tagsTooltip:
+    'Теги через запятую для этой модели. Используйте "slug", чтобы отметить модель для генерации заголовков диалогов. Если ни одна модель не имеет тега "slug", будет использована модель диалога.',
   testButton: "Тест",
   testingButton: "Тестирование...",
   save: "Сохранить",
@@ -139,7 +140,8 @@ export const ru: TranslationKeys = {
   modelNameRequired: "Название модели обязательно",
   apiKeyRequired: "API-ключ обязателен",
   noModelsConfigured: "Модели не настроены",
-  noModelsHint: "Добавьте модель, чтобы начать",
+  noModelsHint:
+    "Установите переменные окружения, например ANTHROPIC_API_KEY, используйте флаг -gateway или добавьте пользовательскую модель ниже.",
 
   // Notifications Modal
   notifications: "Уведомления",
