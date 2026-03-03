@@ -87,8 +87,56 @@ func (s *Server) handleTemplateRateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Return updated rating stats so the client can update the UI immediately.
+	stats, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTemplateRatingStats, req.TemplateID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get rating stats", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(struct {
+		Status      string  `json:"status"`
+		AvgRating   float64 `json:"avg_rating"`
+		RatingCount int64   `json:"rating_count"`
+	}{
+		Status:      "ok",
+		AvgRating:   stats.AvgRating,
+		RatingCount: stats.RatingCount,
+	})
+}
+
+// handleMyRatingsAPI serves GET /api/ideas/my-ratings — returns the logged-in user's ratings.
+func (s *Server) handleMyRatingsAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		// Not logged in — return empty object.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+		return
+	}
+
+	ratings, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListUserTemplateRatings, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to list user ratings", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Return as {template_id: rating} map.
+	out := make(map[int64]int64, len(ratings))
+	for _, r := range ratings {
+		out[r.TemplateID] = r.Rating
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // handleTemplateSubmitAPI handles POST /api/ideas/submit.

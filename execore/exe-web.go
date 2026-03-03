@@ -708,6 +708,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ideas/rate":
 		s.handleTemplateRateAPI(w, r)
 		return
+	case "/api/ideas/my-ratings":
+		s.handleMyRatingsAPI(w, r)
+		return
 	case "/api/ideas/submit":
 		s.handleTemplateSubmitAPI(w, r)
 		return

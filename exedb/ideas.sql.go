@@ -191,6 +191,26 @@ func (q *Queries) GetTemplateBySlugAny(ctx context.Context, slug string) (VmTemp
 	return i, err
 }
 
+const getTemplateRatingStats = `-- name: GetTemplateRatingStats :one
+SELECT
+    CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
+    CAST(COUNT(r.id) AS INTEGER) AS rating_count
+FROM template_ratings r
+WHERE r.template_id = ?
+`
+
+type GetTemplateRatingStatsRow struct {
+	AvgRating   float64 `db:"avg_rating" json:"avg_rating"`
+	RatingCount int64   `db:"rating_count" json:"rating_count"`
+}
+
+func (q *Queries) GetTemplateRatingStats(ctx context.Context, templateID int64) (GetTemplateRatingStatsRow, error) {
+	row := q.queryRow(ctx, q.getTemplateRatingStatsStmt, getTemplateRatingStats, templateID)
+	var i GetTemplateRatingStatsRow
+	err := row.Scan(&i.AvgRating, &i.RatingCount)
+	return i, err
+}
+
 const getUserTemplateRating = `-- name: GetUserTemplateRating :one
 SELECT rating FROM template_ratings WHERE template_id = ? AND user_id = ?
 `
@@ -436,6 +456,38 @@ func (q *Queries) ListTemplatesByAuthor(ctx context.Context, authorUserID *strin
 			&i.Image,
 			&i.DeployCount,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserTemplateRatings = `-- name: ListUserTemplateRatings :many
+SELECT template_id, rating FROM template_ratings WHERE user_id = ?
+`
+
+type ListUserTemplateRatingsRow struct {
+	TemplateID int64 `db:"template_id" json:"template_id"`
+	Rating     int64 `db:"rating" json:"rating"`
+}
+
+func (q *Queries) ListUserTemplateRatings(ctx context.Context, userID string) ([]ListUserTemplateRatingsRow, error) {
+	rows, err := q.query(ctx, q.listUserTemplateRatingsStmt, listUserTemplateRatings, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserTemplateRatingsRow{}
+	for rows.Next() {
+		var i ListUserTemplateRatingsRow
+		if err := rows.Scan(&i.TemplateID, &i.Rating); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

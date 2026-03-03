@@ -57,6 +57,16 @@ ON CONFLICT(template_id, user_id) DO UPDATE SET rating = excluded.rating, update
 -- name: GetUserTemplateRating :one
 SELECT rating FROM template_ratings WHERE template_id = ? AND user_id = ?;
 
+-- name: ListUserTemplateRatings :many
+SELECT template_id, rating FROM template_ratings WHERE user_id = ?;
+
+-- name: GetTemplateRatingStats :one
+SELECT
+    CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
+    CAST(COUNT(r.id) AS INTEGER) AS rating_count
+FROM template_ratings r
+WHERE r.template_id = ?;
+
 -- name: GetApprovedTemplateByShortname :one
 SELECT
     t.*,

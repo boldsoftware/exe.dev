@@ -17,6 +17,8 @@
 
   const config = window.__IDEA_CONFIG__ || {};
   let ideas = [];
+  // Map of template_id -> user's rating (1-5), populated for logged-in users.
+  let myRatings = {};
   let currentSlug = null;
 
   function getSlugFromPath() {
@@ -25,9 +27,21 @@
   }
 
   async function init() {
+    const fetches = [fetch('/api/ideas').then(r => r.ok ? r.json() : [])];
+    if (config.canRate) {
+      fetches.push(fetch('/api/ideas/my-ratings').then(r => r.ok ? r.json() : {}));
+    }
+
     try {
-      const res = await fetch('/api/ideas');
-      if (res.ok) ideas = await res.json();
+      const results = await Promise.all(fetches);
+      ideas = results[0] || [];
+      if (results[1]) {
+        // API returns string keys from JSON; convert to int.
+        const raw = results[1];
+        for (const k of Object.keys(raw)) {
+          myRatings[parseInt(k, 10)] = raw[k];
+        }
+      }
     } catch (e) {
       // Ideas unavailable
     }
@@ -90,12 +104,7 @@
     </button>`;
   }
 
-  function openModal(slug) {
-    const t = ideas.find(x => x.slug === slug);
-    if (!t) return;
-
-    currentSlug = slug;
-
+  function populateModal(t) {
     const icon = t.icon_url || '\uD83D\uDCE6';
     const isEmoji = !icon.startsWith('http') && !icon.startsWith('/');
     $('#modal-icon').innerHTML = isEmoji ? icon : `<img src="${esc(icon)}" style="width:40px;height:40px;border-radius:8px;">`;
@@ -126,9 +135,6 @@
     if (t.image) params.set('image', t.image);
     if (t.vm_shortname) {
       params.set('name', t.vm_shortname + '-' + randomSuffix());
-    }
-    // Use idea= param so /new picks it up properly
-    if (t.vm_shortname) {
       params.set('idea', t.vm_shortname);
     }
     $('#modal-use-btn').href = '/new?' + params.toString();
@@ -137,10 +143,21 @@
     const ratingSection = $('#modal-rating-section');
     if (config.canRate) {
       ratingSection.style.display = '';
-      renderStars(t.id, 0);
+      const userRating = myRatings[t.id] || 0;
+      const label = $('#modal-rating-label');
+      label.textContent = userRating ? 'You rated this:' : 'Rate this idea';
+      renderStars(t.id, userRating);
     } else {
       ratingSection.style.display = 'none';
     }
+  }
+
+  function openModal(slug) {
+    const t = ideas.find(x => x.slug === slug);
+    if (!t) return;
+
+    currentSlug = slug;
+    populateModal(t);
 
     // Update URL
     history.pushState({ ideaSlug: slug }, '', '/idea/' + slug);
@@ -167,9 +184,26 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template_id: templateId, rating: rating }),
       });
-      if (res.ok) {
-        renderStars(templateId, rating);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Update local state
+      myRatings[templateId] = rating;
+      const t = ideas.find(x => x.id === templateId);
+      if (t) {
+        t.avg_rating = data.avg_rating;
+        t.rating_count = data.rating_count;
       }
+
+      // Update modal stars and label
+      renderStars(templateId, rating);
+      const label = $('#modal-rating-label');
+      if (label) label.textContent = 'You rated this:';
+
+      // Re-render cards so the grid reflects the new average
+      const searchInput = $('#idea-search');
+      const query = searchInput ? searchInput.value.trim() : '';
+      filterIdeas(query);
     } catch (e) {
       // Rating failed silently
     }
@@ -263,53 +297,15 @@
     window.addEventListener('popstate', e => {
       const slug = getSlugFromPath();
       if (slug) {
-        // Re-open without pushing state again
         const t = ideas.find(x => x.slug === slug);
         if (t) {
           currentSlug = slug;
+          populateModal(t);
           const modal = $('#idea-modal');
-          // Populate modal content directly
-          const icon = t.icon_url || '\uD83D\uDCE6';
-          const isEmoji = !icon.startsWith('http') && !icon.startsWith('/');
-          $('#modal-icon').innerHTML = isEmoji ? icon : `<img src="${esc(icon)}" style="width:40px;height:40px;border-radius:8px;">`;
-          $('#modal-title').textContent = t.title;
-          $('#modal-desc').textContent = t.short_description;
-          $('#modal-category').textContent = categoryLabels[t.category] || t.category;
-          const promptSection = $('#modal-prompt-section');
-          const imageSection = $('#modal-image-section');
-          if (t.prompt) {
-            promptSection.style.display = '';
-            imageSection.style.display = 'none';
-            $('#modal-prompt').value = t.prompt;
-          } else if (t.image) {
-            promptSection.style.display = 'none';
-            imageSection.style.display = '';
-            $('#modal-image').textContent = t.image;
-          } else {
-            promptSection.style.display = '';
-            imageSection.style.display = 'none';
-            $('#modal-prompt').value = '';
-          }
-          const params = new URLSearchParams();
-          if (t.prompt) params.set('prompt', t.prompt);
-          if (t.image) params.set('image', t.image);
-          if (t.vm_shortname) {
-            params.set('name', t.vm_shortname + '-' + randomSuffix());
-            params.set('idea', t.vm_shortname);
-          }
-          $('#modal-use-btn').href = '/new?' + params.toString();
-          const ratingSection = $('#modal-rating-section');
-          if (config.canRate) {
-            ratingSection.style.display = '';
-            renderStars(t.id, 0);
-          } else {
-            ratingSection.style.display = 'none';
-          }
           modal.classList.add('open');
           document.body.style.overflow = 'hidden';
         }
       } else {
-        // Back to list
         const modal = $('#idea-modal');
         modal.classList.remove('open');
         document.body.style.overflow = '';

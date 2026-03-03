@@ -1,6 +1,8 @@
 package execore
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -212,5 +214,109 @@ func TestIdeaAPIIncludesDeployCount(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, `"deploy_count"`) {
 		t.Fatalf("/api/ideas: expected deploy_count in JSON response")
+	}
+}
+
+func ideaTestUserCookie(t *testing.T, server *Server) (string, *http.Cookie) {
+	t.Helper()
+	user, err := server.createUser(t.Context(), testSSHPubKey, "test-idea@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("createAuthCookie: %v", err)
+	}
+	return user.UserID, &http.Cookie{Name: "exe-auth", Value: cookieValue}
+}
+
+func TestIdeaRateReturnsUpdatedStats(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	_, cookie := ideaTestUserCookie(t, server)
+
+	// Get template ID for openclaw
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+
+	// Rate the template
+	body := strings.NewReader(fmt.Sprintf(`{"template_id":%d,"rating":4}`, tmpl.ID))
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/rate", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/api/ideas/rate: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Status      string  `json:"status"`
+		AvgRating   float64 `json:"avg_rating"`
+		RatingCount int64   `json:"rating_count"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", resp.Status)
+	}
+	if resp.AvgRating != 4.0 {
+		t.Fatalf("expected avg_rating=4.0, got %f", resp.AvgRating)
+	}
+	if resp.RatingCount != 1 {
+		t.Fatalf("expected rating_count=1, got %d", resp.RatingCount)
+	}
+}
+
+func TestIdeaMyRatings(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	userID, cookie := ideaTestUserCookie(t, server)
+
+	// Get template ID
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+
+	// Rate it
+	if err := withTx1(server, t.Context(), (*exedb.Queries).UpsertTemplateRating, exedb.UpsertTemplateRatingParams{
+		TemplateID: tmpl.ID,
+		UserID:     userID,
+		Rating:     3,
+	}); err != nil {
+		t.Fatalf("UpsertTemplateRating failed: %v", err)
+	}
+
+	// Fetch my-ratings
+	req := httptest.NewRequest(http.MethodGet, "/api/ideas/my-ratings", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/api/ideas/my-ratings: expected 200, got %d", w.Code)
+	}
+
+	var ratings map[string]int64
+	if err := json.NewDecoder(w.Body).Decode(&ratings); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	key := fmt.Sprintf("%d", tmpl.ID)
+	if ratings[key] != 3 {
+		t.Fatalf("expected rating=3 for template %d, got %d", tmpl.ID, ratings[key])
 	}
 }
