@@ -742,12 +742,15 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: Perform migration
 	var sshPort *int64
+	var coldBooted bool
 	dbStatus := "running"
 
 	if live {
 		writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-		liveSshPort, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+		var liveSshPort int64
+		var err error
+		liveSshPort, coldBooted, err = s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
 		if err != nil {
 			writeError("live migration failed: %v", err)
 			restartSource(err.Error())
@@ -755,6 +758,9 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		}
 		sshPort = &liveSshPort
 		writeProgress("Live migration complete — VM is running on target.")
+		if coldBooted {
+			writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
+		}
 	} else {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
@@ -807,9 +813,9 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	}
 	writeProgress("Database updated.")
 
-	// Only send maintenance email if the VM was rebooted (non-live migration).
-	// Live migration preserves process state, so no user-visible disruption.
-	if !live {
+	// Send maintenance email if the VM was rebooted (non-live migration or
+	// live migration that fell back to cold boot).
+	if !live || coldBooted {
 		go s.sendBoxMaintenanceEmail(context.Background(), boxName)
 	}
 
@@ -1040,14 +1046,14 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 // migrateVMLive performs a live migration using CH snapshot/restore.
 // It coordinates the SendVM(live=true)/ReceiveVM(live=true) streams, SSHes into the VM
 // to reconfigure its IP, and returns the new SSH port on the target.
-func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient.Client, instanceID string, box exedb.Box, progress func(string, ...any)) (int64, error) {
+func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient.Client, instanceID string, box exedb.Box, progress func(string, ...any)) (int64, bool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Start SendVM on source with live=true
 	sendStream, err := source.SendVM(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to start SendVM: %w", err)
+		return 0, false, fmt.Errorf("failed to start SendVM: %w", err)
 	}
 
 	progress("Requesting VM metadata from source (live)...")
@@ -1061,17 +1067,17 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 			},
 		},
 	}); err != nil {
-		return 0, fmt.Errorf("failed to send start request: %w", err)
+		return 0, false, fmt.Errorf("failed to send start request: %w", err)
 	}
 
 	// Receive metadata from source
 	resp, err := sendStream.Recv()
 	if err != nil {
-		return 0, fmt.Errorf("failed to receive metadata: %w", err)
+		return 0, false, fmt.Errorf("failed to receive metadata: %w", err)
 	}
 	metadata := resp.GetMetadata()
 	if metadata == nil {
-		return 0, fmt.Errorf("expected metadata, got %T", resp.Type)
+		return 0, false, fmt.Errorf("expected metadata, got %T", resp.Type)
 	}
 
 	progress("Received metadata: image=%s, encrypted=%v", metadata.Instance.Image, metadata.Encrypted)
@@ -1079,7 +1085,7 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 	// Start ReceiveVM on target with live=true
 	recvStream, err := target.ReceiveVM(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to start ReceiveVM: %w", err)
+		return 0, false, fmt.Errorf("failed to start ReceiveVM: %w", err)
 	}
 
 	progress("Initiating live receive on target...")
@@ -1097,7 +1103,7 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 			},
 		},
 	}); err != nil {
-		return 0, fmt.Errorf("failed to send receive start: %w", err)
+		return 0, false, fmt.Errorf("failed to send receive start: %w", err)
 	}
 
 	progress("Waiting for target to prepare (replication sync, memory check)...")
@@ -1105,16 +1111,16 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 	// Wait for ready from target — includes allocated network interface
 	recvResp, err := recvStream.Recv()
 	if err != nil {
-		return 0, fmt.Errorf("failed to receive ready: %w", err)
+		return 0, false, fmt.Errorf("failed to receive ready: %w", err)
 	}
 	ready := recvResp.GetReady()
 	if ready == nil {
-		return 0, fmt.Errorf("expected ready, got %T", recvResp.Type)
+		return 0, false, fmt.Errorf("expected ready, got %T", recvResp.Type)
 	}
 
 	targetNetwork := ready.TargetNetwork
 	if targetNetwork == nil || targetNetwork.IP == nil {
-		return 0, fmt.Errorf("target did not provide network interface")
+		return 0, false, fmt.Errorf("target did not provide network interface")
 	}
 
 	progress("Target ready (target_ip=%s)", targetNetwork.IP.IPV4)
@@ -1131,7 +1137,7 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 			break
 		}
 		if err != nil {
-			return 0, fmt.Errorf("failed to receive from source: %w", err)
+			return 0, false, fmt.Errorf("failed to receive from source: %w", err)
 		}
 
 		switch v := resp.Type.(type) {
@@ -1152,9 +1158,9 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 				},
 			}); err != nil {
 				if recvErr := recvTargetError(recvStream); recvErr != nil {
-					return 0, fmt.Errorf("target error: %w", recvErr)
+					return 0, false, fmt.Errorf("target error: %w", recvErr)
 				}
-				return 0, fmt.Errorf("failed to send to target: %w", err)
+				return 0, false, fmt.Errorf("failed to send to target: %w", err)
 			}
 
 		case *computeapi.SendVMResponse_PhaseComplete:
@@ -1165,9 +1171,9 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 				},
 			}); err != nil {
 				if recvErr := recvTargetError(recvStream); recvErr != nil {
-					return 0, fmt.Errorf("target error: %w", recvErr)
+					return 0, false, fmt.Errorf("target error: %w", recvErr)
 				}
-				return 0, fmt.Errorf("failed to send phase complete to target: %w", err)
+				return 0, false, fmt.Errorf("failed to send phase complete to target: %w", err)
 			}
 
 		case *computeapi.SendVMResponse_AwaitControl:
@@ -1175,12 +1181,12 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 			progress("Source requesting IP reconfiguration...")
 			sourceNetwork := v.AwaitControl.SourceNetwork
 			if sourceNetwork == nil || sourceNetwork.IP == nil {
-				return 0, fmt.Errorf("source did not provide network info in AwaitControl")
+				return 0, false, fmt.Errorf("source did not provide network info in AwaitControl")
 			}
 
 			// SSH into the running VM and change its IP to the target's IP
 			if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, progress); err != nil {
-				return 0, fmt.Errorf("failed to reconfigure VM IP: %w", err)
+				return 0, false, fmt.Errorf("failed to reconfigure VM IP: %w", err)
 			}
 
 			// Tell source to proceed with pause
@@ -1192,7 +1198,7 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 					},
 				},
 			}); err != nil {
-				return 0, fmt.Errorf("failed to send control: %w", err)
+				return 0, false, fmt.Errorf("failed to send control: %w", err)
 			}
 
 		case *computeapi.SendVMResponse_SnapshotData:
@@ -1216,9 +1222,9 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 				},
 			}); err != nil {
 				if recvErr := recvTargetError(recvStream); recvErr != nil {
-					return 0, fmt.Errorf("target error: %w", recvErr)
+					return 0, false, fmt.Errorf("target error: %w", recvErr)
 				}
-				return 0, fmt.Errorf("failed to send snapshot data to target: %w", err)
+				return 0, false, fmt.Errorf("failed to send snapshot data to target: %w", err)
 			}
 
 		case *computeapi.SendVMResponse_Complete:
@@ -1231,49 +1237,55 @@ func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient
 				},
 			}); err != nil {
 				if recvErr := recvTargetError(recvStream); recvErr != nil {
-					return 0, fmt.Errorf("target error: %w", recvErr)
+					return 0, false, fmt.Errorf("target error: %w", recvErr)
 				}
-				return 0, fmt.Errorf("failed to send complete: %w", err)
+				return 0, false, fmt.Errorf("failed to send complete: %w", err)
 			}
 
 		default:
-			return 0, fmt.Errorf("unexpected response type from source: %T", resp.Type)
+			return 0, false, fmt.Errorf("unexpected response type from source: %T", resp.Type)
 		}
 	}
 
 	progress("Total transferred: %d MB", totalBytes/(1024*1024))
 
 	if err := recvStream.CloseSend(); err != nil {
-		return 0, fmt.Errorf("failed to close send: %w", err)
+		return 0, false, fmt.Errorf("failed to close send: %w", err)
 	}
 
 	// Wait for result from target
 	progress("Waiting for target to restore VM...")
 	var resultInstance *computeapi.Instance
+	var coldBooted bool
 	for {
 		recvResp, err := recvStream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return 0, fmt.Errorf("failed to receive result: %w", err)
+			return 0, false, fmt.Errorf("failed to receive result: %w", err)
 		}
 
 		if result := recvResp.GetResult(); result != nil {
 			if result.Error != "" {
-				return 0, fmt.Errorf("target error: %s", result.Error)
+				return 0, false, fmt.Errorf("target error: %s", result.Error)
 			}
 			resultInstance = result.Instance
-			progress("VM restored and running on target.")
+			coldBooted = result.ColdBooted
+			if coldBooted {
+				progress("VM restored via cold boot fallback (snapshot restore failed).")
+			} else {
+				progress("VM restored and running on target.")
+			}
 			break
 		}
 	}
 
 	if resultInstance == nil {
-		return 0, fmt.Errorf("no result instance from target")
+		return 0, false, fmt.Errorf("no result instance from target")
 	}
 
-	return int64(resultInstance.SSHPort), nil
+	return int64(resultInstance.SSHPort), coldBooted, nil
 }
 
 // reconfigureVMIP SSHes into the running VM and changes its IP from source to target.
@@ -1596,12 +1608,13 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		}
 
 		var sshPort *int64
+		var coldBooted bool
 		dbStatus := "running"
 
 		if live {
 			writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			liveSshPort, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+			liveSshPort, cb, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
 			if err != nil {
 				writeError("live migration failed: %v", err)
 				restartSource(err.Error())
@@ -1609,8 +1622,12 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 				writeProgress("")
 				continue
 			}
+			coldBooted = cb
 			sshPort = &liveSshPort
 			writeProgress("Live migration complete — VM is running on target.")
+			if coldBooted {
+				writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
+			}
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
@@ -1668,7 +1685,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		}
 		writeProgress("Database updated.")
 
-		if !live {
+		if !live || coldBooted {
 			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
 		}
 

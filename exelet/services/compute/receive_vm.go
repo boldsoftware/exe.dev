@@ -437,7 +437,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 
 	// Live migration: edit snapshot config, restore from snapshot, resume VM
 	if startReq.Live {
-		newInstance, err := s.finalizeLiveReceive(ctx, instanceID, instanceDir, snapshotDir, sourceInstance, startReq.GroupID, targetNetwork, rb)
+		newInstance, coldBooted, err := s.finalizeLiveReceive(ctx, instanceID, instanceDir, snapshotDir, sourceInstance, startReq.GroupID, targetNetwork, rb)
 		if err != nil {
 			receiveErr = err
 			return receiveErr
@@ -445,7 +445,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 
 		if err := stream.Send(&api.ReceiveVMResponse{
 			Type: &api.ReceiveVMResponse_Result{
-				Result: &api.ReceiveVMResult{Instance: newInstance},
+				Result: &api.ReceiveVMResult{Instance: newInstance, ColdBooted: coldBooted},
 			},
 		}); err != nil {
 			receiveErr = status.Errorf(codes.Internal, "failed to send result: %v", err)
@@ -499,24 +499,24 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 }
 
 // finalizeLiveReceive edits the CH snapshot config, restores the VM, and saves instance config as RUNNING.
-func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceDir, snapshotDir string, sourceInstance *api.Instance, groupID string, targetNetwork *api.NetworkInterface, rb *receiveVMRollback) (*api.Instance, error) {
+func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceDir, snapshotDir string, sourceInstance *api.Instance, groupID string, targetNetwork *api.NetworkInterface, rb *receiveVMRollback) (*api.Instance, bool, error) {
 	// Load disk to get the target zvol path
 	instanceFS, err := s.context.StorageManager.Load(ctx, instanceID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to load storage: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to load storage: %v", err)
 	}
 
 	kernelPath := filepath.Join(instanceDir, kernelName)
 
 	// Edit CH snapshot config to fix disk path, kernel path, and boot args
 	if err := editSnapshotConfig(snapshotDir, instanceFS.Path, kernelPath, sourceInstance.VMConfig, targetNetwork); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to edit snapshot config: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to edit snapshot config: %v", err)
 	}
 
 	// Restore from snapshot (starts CH daemon, restores, resumes)
 	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create VMM: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to create VMM: %v", err)
 	}
 
 	s.log.InfoContext(ctx, "live: restoring VM from snapshot", "instance", instanceID)
@@ -574,23 +574,23 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 			GroupID:   groupID,
 		}
 		if err := s.saveInstanceConfig(newInstance); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to save instance config after restore failure: %v", err)
+			return nil, false, status.Errorf(codes.Internal, "failed to save instance config after restore failure: %v", err)
 		}
 
 		// Cold boot the VM — startInstance handles migrated VMs (creates VMM config, allocates network)
 		s.log.InfoContext(ctx, "live: cold-booting VM after restore failure", "instance", instanceID)
 		if err := s.startInstance(ctx, instanceID); err != nil {
-			return nil, status.Errorf(codes.Internal,
+			return nil, false, status.Errorf(codes.Internal,
 				"snapshot restore failed (%v) and cold boot also failed: %v", restoreErr, err)
 		}
 
 		// Reload the instance config (startInstance updated state, network, ssh port)
 		coldInstance, err := s.loadInstanceConfig(instanceID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to reload instance after cold boot: %v", err)
+			return nil, false, status.Errorf(codes.Internal, "failed to reload instance after cold boot: %v", err)
 		}
 
-		return coldInstance, nil
+		return coldInstance, true, nil
 	}
 
 	// Snapshot files are no longer needed after a successful restore.
@@ -605,22 +605,22 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 	// Set up SSH proxy
 	sshPort, err := s.portAllocator.Allocate()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to allocate SSH port: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to allocate SSH port: %v", err)
 	}
 
 	vmIP := ""
 	if targetNetwork.IP != nil && targetNetwork.IP.IPV4 != "" {
 		ipAddr, _, err := net.ParseCIDR(targetNetwork.IP.IPV4)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to parse VM IP: %v", err)
+			return nil, false, status.Errorf(codes.Internal, "failed to parse VM IP: %v", err)
 		}
 		vmIP = ipAddr.String()
 	} else {
-		return nil, status.Errorf(codes.Internal, "no IP address in target network")
+		return nil, false, status.Errorf(codes.Internal, "no IP address in target network")
 	}
 
 	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to start SSH proxy: %v", err)
 	}
 
 	newInstance := &api.Instance{
@@ -637,7 +637,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 
 	// Save instance and VMM configs
 	if err := s.saveInstanceConfig(newInstance); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to save instance config: %v", err)
+		return nil, false, status.Errorf(codes.Internal, "failed to save instance config: %v", err)
 	}
 
 	// Save VMM config (so cold boot on target works correctly later)
@@ -645,7 +645,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 		s.log.WarnContext(ctx, "live: failed to save VMM config", "instance", instanceID, "error", err)
 	}
 
-	return newInstance, nil
+	return newInstance, false, nil
 }
 
 // editSnapshotConfig modifies the CH snapshot's config.json to point to the target's

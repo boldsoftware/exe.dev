@@ -404,6 +404,7 @@ message ReceiveVMReady {
 message ReceiveVMResult {
   Instance instance = 1;  // Created instance
   string error = 2;       // Error message if failed
+  bool cold_booted = 3;   // True if live migration fell back to cold boot (VM was restarted)
 }
 
 message GrowDiskRequest {
