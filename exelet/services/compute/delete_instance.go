@@ -74,6 +74,14 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 		}
 		s.mu.Unlock()
 
+		// Suspend replication for this volume to prevent the replication worker
+		// from creating snapshots on a dataset we're about to destroy.
+		if rs := s.context.ReplicationSuspender; rs != nil {
+			rs.SuspendVolume(instance.ID)
+			defer rs.ResumeVolume(instance.ID)
+			rs.WaitVolumeIdle(ctx, instance.ID)
+		}
+
 		// remove instance filesystem
 		if err := s.context.StorageManager.Delete(ctx, instance.ID); err != nil {
 			return nil, status.Errorf(codes.Internal, "error removing instance fs: %s", err)
