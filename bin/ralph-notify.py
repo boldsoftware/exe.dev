@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Push Ralph's fix (if any) and notify Slack.
 
-Usage: ralph-notify.py <branch> <commit_subject> <slack_id> <run_url> <before_sha> <ralph_run_url>
+Usage: ralph-notify.py <branch> <commit_subject> <slack_id> <run_url> <before_sha> <ralph_run_url> <actor>
 
 Checks if HEAD moved since <before_sha>. If it did, pushes to
 refs/queue-ralph/<branch> and posts a success message. Otherwise
@@ -33,6 +33,7 @@ def post_slack(webhook_url: str, text: str) -> None:
 
 def main() -> None:
     branch, commit_subject, slack_id, run_url, before_sha, ralph_run_url = sys.argv[1:7]
+    actor = sys.argv[7] if len(sys.argv) > 7 else ""
 
     webhook_url = os.environ.get("NTFY_SLACK_WEBHOOK_URL", "").strip()
     if not webhook_url:
@@ -41,7 +42,12 @@ def main() -> None:
 
     after_sha = git("rev-parse", "HEAD")
 
-    mention = f"<@{slack_id}> " if slack_id else ""
+    if slack_id:
+        mention = f"<@{slack_id}> "
+    elif actor:
+        mention = f"{actor} "
+    else:
+        mention = ""
 
     repo_url = run_url.rsplit("/actions/runs/", 1)[0]
 

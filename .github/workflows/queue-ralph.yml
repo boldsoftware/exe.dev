@@ -77,16 +77,23 @@ jobs:
         run: |
           set -euo pipefail
           ACTOR="${{ inputs.actor }}"
+          # If the actor is a bot (e.g. autoformatter), resolve the real
+          # human from the previous commit's author.
+          if [[ "$ACTOR" == *"[bot]"* ]]; then
+            ACTOR=$(git log --format='%an' -1 HEAD~1)
+          fi
           SLACK_ID=$(python3 -c "
           import json, sys
+          actor = '''$ACTOR'''
           team = json.load(open('.github/team.json'))
           for m in team:
-              if m.get('github') == '$ACTOR' or '$ACTOR' in m.get('aliases', []):
+              if m.get('github') == actor or actor in m.get('aliases', []) or m.get('name') == actor:
                   print(m['slack_member_id'])
                   sys.exit(0)
           print('')
           ")
           echo "slack_id=$SLACK_ID" >> "$GITHUB_OUTPUT"
+          echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
 
       - name: Record pre-Claude state
         id: before
@@ -164,4 +171,5 @@ jobs:
             "${{ steps.slack.outputs.slack_id }}" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}" \
             "${{ steps.before.outputs.sha }}" \
-            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "${{ steps.slack.outputs.actor }}"
