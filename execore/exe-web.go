@@ -714,7 +714,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/idea":
 		s.handleIdeaPage(w, r)
 		return
+	case "/ideas":
+		http.Redirect(w, r, "/idea", http.StatusMovedPermanently)
+		return
 	default:
+		// /idea/<slug> is the idea page with a specific idea pre-opened
+		if _, ok := strings.CutPrefix(path, "/idea/"); ok {
+			s.handleIdeaPage(w, r)
+			return
+		}
 		// /new/<shortname> is equivalent to /new?idea=<shortname>
 		if shortname, ok := strings.CutPrefix(path, "/new/"); ok && shortname != "" {
 			q := r.URL.Query()

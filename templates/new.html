@@ -1,6 +1,7 @@
 {{define "new_content"}}
 <div class="new-page">
     <form id="create-vm-form" method="POST" action="/create-vm"{{if .IdeaSlug}} data-idea="{{.IdeaSlug}}"{{end}}>
+        {{if .IdeaSlug}}<input type="hidden" name="idea_slug" value="{{.IdeaSlug}}">{{end}}
         {{if .InviteCode}}<input type="hidden" name="invite" value="{{.InviteCode}}">{{end}}
 
         <h1 class="new-title">Create a New VM</h1>

@@ -15,7 +15,14 @@
     'other': 'Other',
   };
 
+  const config = window.__IDEA_CONFIG__ || {};
   let ideas = [];
+  let currentSlug = null;
+
+  function getSlugFromPath() {
+    const m = location.pathname.match(/^\/idea\/([a-z0-9][a-z0-9-]+[a-z0-9])$/);
+    return m ? m[1] : null;
+  }
 
   async function init() {
     try {
@@ -26,6 +33,12 @@
     }
     render(ideas);
     bindEvents();
+
+    // Open idea from URL path if present
+    const slugFromPath = getSlugFromPath();
+    if (slugFromPath) {
+      openModal(slugFromPath);
+    }
   }
 
   function render(list) {
@@ -56,7 +69,6 @@
 
     const catLabel = categoryLabels[t.category] || t.category;
 
-
     let stars = '';
     for (let i = 1; i <= 5; i++) {
       stars += i <= Math.round(t.avg_rating)
@@ -82,32 +94,95 @@
     const t = ideas.find(x => x.slug === slug);
     if (!t) return;
 
+    currentSlug = slug;
+
     const icon = t.icon_url || '\uD83D\uDCE6';
     const isEmoji = !icon.startsWith('http') && !icon.startsWith('/');
     $('#modal-icon').innerHTML = isEmoji ? icon : `<img src="${esc(icon)}" style="width:40px;height:40px;border-radius:8px;">`;
     $('#modal-title').textContent = t.title;
     $('#modal-desc').textContent = t.short_description;
     $('#modal-category').textContent = categoryLabels[t.category] || t.category;
-    const ta = $('#modal-prompt');
-    ta.value = t.prompt;
 
-    // Build /new URL with prompt prefilled and shortname-based VM name
+    // Show prompt or image section
+    const promptSection = $('#modal-prompt-section');
+    const imageSection = $('#modal-image-section');
+    if (t.prompt) {
+      promptSection.style.display = '';
+      imageSection.style.display = 'none';
+      $('#modal-prompt').value = t.prompt;
+    } else if (t.image) {
+      promptSection.style.display = 'none';
+      imageSection.style.display = '';
+      $('#modal-image').textContent = t.image;
+    } else {
+      promptSection.style.display = '';
+      imageSection.style.display = 'none';
+      $('#modal-prompt').value = '';
+    }
+
+    // Build /new URL
     const params = new URLSearchParams();
-    params.set('prompt', t.prompt);
+    if (t.prompt) params.set('prompt', t.prompt);
+    if (t.image) params.set('image', t.image);
     if (t.vm_shortname) {
       params.set('name', t.vm_shortname + '-' + randomSuffix());
     }
+    // Use idea= param so /new picks it up properly
+    if (t.vm_shortname) {
+      params.set('idea', t.vm_shortname);
+    }
     $('#modal-use-btn').href = '/new?' + params.toString();
+
+    // Rating section
+    const ratingSection = $('#modal-rating-section');
+    if (config.canRate) {
+      ratingSection.style.display = '';
+      renderStars(t.id, 0);
+    } else {
+      ratingSection.style.display = 'none';
+    }
+
+    // Update URL
+    history.pushState({ ideaSlug: slug }, '', '/idea/' + slug);
 
     const modal = $('#idea-modal');
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
   }
 
+  function renderStars(templateId, userRating) {
+    const container = $('#modal-stars');
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+      const filled = i <= userRating ? 'filled' : '';
+      html += `<button type="button" class="idea-modal-star-btn ${filled}" data-template-id="${templateId}" data-rating="${i}">\u2605</button>`;
+    }
+    container.innerHTML = html;
+  }
+
+  async function submitRating(templateId, rating) {
+    try {
+      const res = await fetch('/api/ideas/rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: templateId, rating: rating }),
+      });
+      if (res.ok) {
+        renderStars(templateId, rating);
+      }
+    } catch (e) {
+      // Rating failed silently
+    }
+  }
+
   function closeModal() {
     const modal = $('#idea-modal');
     modal.classList.remove('open');
     document.body.style.overflow = '';
+    currentSlug = null;
+
+    // Restore URL to /idea
+    history.pushState(null, '', '/idea');
   }
 
   function filterIdeas(query) {
@@ -133,6 +208,15 @@
         openModal(card.dataset.slug);
         return;
       }
+
+      // Star rating clicks
+      const starBtn = e.target.closest('.idea-modal-star-btn');
+      if (starBtn) {
+        const templateId = parseInt(starBtn.dataset.templateId, 10);
+        const rating = parseInt(starBtn.dataset.rating, 10);
+        submitRating(templateId, rating);
+        return;
+      }
     });
 
     // Modal close
@@ -143,16 +227,102 @@
 
     // Escape key
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        // Close search if open, otherwise close modal
+        const searchWrap = $('#idea-search-wrap');
+        if (searchWrap && !searchWrap.hidden) {
+          searchWrap.hidden = true;
+          $('#idea-search-toggle').style.display = '';
+          $('#idea-search').value = '';
+          filterIdeas('');
+          return;
+        }
+        closeModal();
+      }
     });
 
-    // Search
+    // Search toggle
+    const searchToggle = $('#idea-search-toggle');
+    const searchWrap = $('#idea-search-wrap');
     const searchInput = $('#idea-search');
-    if (searchInput) {
+    if (searchToggle && searchWrap && searchInput) {
+      searchToggle.addEventListener('click', () => {
+        searchWrap.hidden = false;
+        searchToggle.style.display = 'none';
+        searchInput.focus();
+      });
+
       let debounce;
       searchInput.addEventListener('input', () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => filterIdeas(searchInput.value.trim()), 150);
+      });
+    }
+
+    // Browser back/forward
+    window.addEventListener('popstate', e => {
+      const slug = getSlugFromPath();
+      if (slug) {
+        // Re-open without pushing state again
+        const t = ideas.find(x => x.slug === slug);
+        if (t) {
+          currentSlug = slug;
+          const modal = $('#idea-modal');
+          // Populate modal content directly
+          const icon = t.icon_url || '\uD83D\uDCE6';
+          const isEmoji = !icon.startsWith('http') && !icon.startsWith('/');
+          $('#modal-icon').innerHTML = isEmoji ? icon : `<img src="${esc(icon)}" style="width:40px;height:40px;border-radius:8px;">`;
+          $('#modal-title').textContent = t.title;
+          $('#modal-desc').textContent = t.short_description;
+          $('#modal-category').textContent = categoryLabels[t.category] || t.category;
+          const promptSection = $('#modal-prompt-section');
+          const imageSection = $('#modal-image-section');
+          if (t.prompt) {
+            promptSection.style.display = '';
+            imageSection.style.display = 'none';
+            $('#modal-prompt').value = t.prompt;
+          } else if (t.image) {
+            promptSection.style.display = 'none';
+            imageSection.style.display = '';
+            $('#modal-image').textContent = t.image;
+          } else {
+            promptSection.style.display = '';
+            imageSection.style.display = 'none';
+            $('#modal-prompt').value = '';
+          }
+          const params = new URLSearchParams();
+          if (t.prompt) params.set('prompt', t.prompt);
+          if (t.image) params.set('image', t.image);
+          if (t.vm_shortname) {
+            params.set('name', t.vm_shortname + '-' + randomSuffix());
+            params.set('idea', t.vm_shortname);
+          }
+          $('#modal-use-btn').href = '/new?' + params.toString();
+          const ratingSection = $('#modal-rating-section');
+          if (config.canRate) {
+            ratingSection.style.display = '';
+            renderStars(t.id, 0);
+          } else {
+            ratingSection.style.display = 'none';
+          }
+          modal.classList.add('open');
+          document.body.style.overflow = 'hidden';
+        }
+      } else {
+        // Back to list
+        const modal = $('#idea-modal');
+        modal.classList.remove('open');
+        document.body.style.overflow = '';
+        currentSlug = null;
+      }
+    });
+
+    // Submit idea link
+    const submitLink = $('#idea-submit-link');
+    if (submitLink) {
+      submitLink.addEventListener('click', e => {
+        e.preventDefault();
+        window.location.href = 'mailto:ideas@exe.dev?subject=Idea%20submission';
       });
     }
   }

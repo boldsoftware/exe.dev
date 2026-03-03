@@ -482,6 +482,13 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Increment deploy count if this VM was created from an idea template
+		if ideaSlug := strings.TrimSpace(r.FormValue("idea_slug")); ideaSlug != "" {
+			if err := withTx1(s, r.Context(), (*exedb.Queries).IncrementTemplateDeployCount, ideaSlug); err != nil {
+				s.slog().ErrorContext(r.Context(), "Failed to increment template deploy count", "slug", ideaSlug, "error", err)
+			}
+		}
+
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, image, userID)
 		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)

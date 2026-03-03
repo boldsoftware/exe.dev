@@ -531,6 +531,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTemplateBySlugAnyStmt, err = db.PrepareContext(ctx, getTemplateBySlugAny); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateBySlugAny: %w", err)
 	}
+	if q.getTemplateRatingStatsStmt, err = db.PrepareContext(ctx, getTemplateRatingStats); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTemplateRatingStats: %w", err)
+	}
 	if q.getUserAuthProviderStmt, err = db.PrepareContext(ctx, getUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserAuthProvider: %w", err)
 	}
@@ -596,6 +599,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.incrementShareLinkUsageStmt, err = db.PrepareContext(ctx, incrementShareLinkUsage); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementShareLinkUsage: %w", err)
+	}
+	if q.incrementTemplateDeployCountStmt, err = db.PrepareContext(ctx, incrementTemplateDeployCount); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementTemplateDeployCount: %w", err)
 	}
 	if q.incrementUserEmailCountStmt, err = db.PrepareContext(ctx, incrementUserEmailCount); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementUserEmailCount: %w", err)
@@ -776,6 +782,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listUnusedSystemInviteCodesStmt, err = db.PrepareContext(ctx, listUnusedSystemInviteCodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedSystemInviteCodes: %w", err)
+	}
+	if q.listUserTemplateRatingsStmt, err = db.PrepareContext(ctx, listUserTemplateRatings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUserTemplateRatings: %w", err)
 	}
 	if q.markPendingTeamInviteAcceptedStmt, err = db.PrepareContext(ctx, markPendingTeamInviteAccepted); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkPendingTeamInviteAccepted: %w", err)
@@ -1819,6 +1828,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTemplateBySlugAnyStmt: %w", cerr)
 		}
 	}
+	if q.getTemplateRatingStatsStmt != nil {
+		if cerr := q.getTemplateRatingStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTemplateRatingStatsStmt: %w", cerr)
+		}
+	}
 	if q.getUserAuthProviderStmt != nil {
 		if cerr := q.getUserAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserAuthProviderStmt: %w", cerr)
@@ -1927,6 +1941,11 @@ func (q *Queries) Close() error {
 	if q.incrementShareLinkUsageStmt != nil {
 		if cerr := q.incrementShareLinkUsageStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing incrementShareLinkUsageStmt: %w", cerr)
+		}
+	}
+	if q.incrementTemplateDeployCountStmt != nil {
+		if cerr := q.incrementTemplateDeployCountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementTemplateDeployCountStmt: %w", cerr)
 		}
 	}
 	if q.incrementUserEmailCountStmt != nil {
@@ -2227,6 +2246,11 @@ func (q *Queries) Close() error {
 	if q.listUnusedSystemInviteCodesStmt != nil {
 		if cerr := q.listUnusedSystemInviteCodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listUnusedSystemInviteCodesStmt: %w", cerr)
+		}
+	}
+	if q.listUserTemplateRatingsStmt != nil {
+		if cerr := q.listUserTemplateRatingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUserTemplateRatingsStmt: %w", cerr)
 		}
 	}
 	if q.markPendingTeamInviteAcceptedStmt != nil {
@@ -2757,6 +2781,7 @@ type Queries struct {
 	getTemplateByIDStmt                        *sql.Stmt
 	getTemplateBySlugStmt                      *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
+	getTemplateRatingStatsStmt                 *sql.Stmt
 	getUserAuthProviderStmt                    *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
@@ -2779,6 +2804,7 @@ type Queries struct {
 	incrementEmailVerificationCodeAttemptsStmt *sql.Stmt
 	incrementSeenOnHostsStmt                   *sql.Stmt
 	incrementShareLinkUsageStmt                *sql.Stmt
+	incrementTemplateDeployCountStmt           *sql.Stmt
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
 	insertAppTokenStmt                         *sql.Stmt
@@ -2839,6 +2865,7 @@ type Queries struct {
 	listTemplatesByAuthorStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
+	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
@@ -3078,6 +3105,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
 		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
+		getTemplateRatingStatsStmt:                 q.getTemplateRatingStatsStmt,
 		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
@@ -3100,6 +3128,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementEmailVerificationCodeAttemptsStmt: q.incrementEmailVerificationCodeAttemptsStmt,
 		incrementSeenOnHostsStmt:                   q.incrementSeenOnHostsStmt,
 		incrementShareLinkUsageStmt:                q.incrementShareLinkUsageStmt,
+		incrementTemplateDeployCountStmt:           q.incrementTemplateDeployCountStmt,
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
 		insertAppTokenStmt:                         q.insertAppTokenStmt,
@@ -3160,6 +3189,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTemplatesByAuthorStmt:                  q.listTemplatesByAuthorStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
+		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,

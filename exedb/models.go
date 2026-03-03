@@ -511,6 +511,7 @@ type VmTemplate struct {
 	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
 	Image            string     `db:"image" json:"image"`
+	DeployCount      int64      `db:"deploy_count" json:"deploy_count"`
 }
 
 type Waitlist struct {

@@ -7,25 +7,35 @@
     <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
-    <link rel="stylesheet" href="/static/idea.css?v=2">
+    <link rel="stylesheet" href="/static/idea.css?v=3">
 </head>
 <body>
     {{template "topbar" .}}
     <div class="idea-page">
         <div class="idea-hero">
-            <h1 class="idea-hero-title">You can build a thousand things on exe.dev.</h1>
-            <p class="idea-hero-subtitle">Here are some ideas to get you started:</p>
-            <div class="idea-search-wrap">
-                <svg class="idea-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <input type="text" id="idea-search" class="idea-search" placeholder="Search ideas..." autocomplete="off" />
+            <div class="idea-hero-row">
+                <h1 class="idea-hero-title">Some ideas to get you started</h1>
+                <button type="button" id="idea-search-toggle" class="idea-search-toggle" aria-label="Search ideas">
+                    <svg class="idea-search-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </button>
+                <div id="idea-search-wrap" class="idea-search-wrap" hidden>
+                    <svg class="idea-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="idea-search" class="idea-search" placeholder="Search ideas..." autocomplete="off" />
+                </div>
             </div>
         </div>
         <div id="idea-grid" class="idea-grid"></div>
         <div id="idea-empty" class="idea-empty" style="display:none">
             No ideas match your search.
+        </div>
+        <div class="idea-footer">
+            <a href="/api/ideas/submit" class="idea-submit-link" id="idea-submit-link">Submit an idea →</a>
         </div>
     </div>
 
@@ -38,12 +48,27 @@
             <h2 class="idea-modal-title" id="modal-title"></h2>
             <p class="idea-modal-desc" id="modal-desc"></p>
             <div class="idea-modal-category" id="modal-category"></div>
-            <label class="idea-modal-prompt-label">Prompt</label>
-            <textarea class="idea-modal-prompt" id="modal-prompt" readonly></textarea>
+            <div id="modal-prompt-section">
+                <label class="idea-modal-prompt-label">Prompt</label>
+                <textarea class="idea-modal-prompt" id="modal-prompt" readonly></textarea>
+            </div>
+            <div id="modal-image-section" style="display:none">
+                <label class="idea-modal-prompt-label">Image</label>
+                <div class="idea-modal-image-tag" id="modal-image"></div>
+            </div>
+            <div id="modal-rating-section" class="idea-modal-rating" style="display:none">
+                <label class="idea-modal-prompt-label">Rate this idea</label>
+                <div class="idea-modal-stars" id="modal-stars"></div>
+            </div>
             <a id="modal-use-btn" href="/new" class="idea-modal-use-btn">Use this idea</a>
         </div>
     </div>
 
-    <script src="/static/idea.js?v=3"></script>
+    <script>
+        window.__IDEA_CONFIG__ = {
+            canRate: {{.CanRate}},
+        };
+    </script>
+    <script src="/static/idea.js?v=4"></script>
 </body>
 </html>

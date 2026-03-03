@@ -128,3 +128,89 @@ func TestSeedDefaultTemplatesUpdatesExistingTemplatePrompt(t *testing.T) {
 		t.Fatalf("expected prompt to change from stale value")
 	}
 }
+
+func TestIdeasRedirect(t *testing.T) {
+	server := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/ideas", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("/ideas: expected 301, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/idea" {
+		t.Fatalf("/ideas: expected redirect to /idea, got %q", loc)
+	}
+}
+
+func TestIdeaSlugPath(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/idea/openclaw", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/idea/openclaw: expected 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "idea-page") {
+		t.Fatalf("/idea/openclaw: expected idea page content")
+	}
+}
+
+func TestIdeaDeployCountIncrement(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	// Check initial deploy count is 0
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+	if tmpl.DeployCount != 0 {
+		t.Fatalf("expected initial deploy_count=0, got %d", tmpl.DeployCount)
+	}
+
+	// Increment
+	if err := withTx1(server, t.Context(), (*exedb.Queries).IncrementTemplateDeployCount, "openclaw"); err != nil {
+		t.Fatalf("IncrementTemplateDeployCount failed: %v", err)
+	}
+
+	tmpl, err = withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+	if tmpl.DeployCount != 1 {
+		t.Fatalf("expected deploy_count=1, got %d", tmpl.DeployCount)
+	}
+}
+
+func TestIdeaAPIIncludesDeployCount(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ideas", nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/api/ideas: expected 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"deploy_count"`) {
+		t.Fatalf("/api/ideas: expected deploy_count in JSON response")
+	}
+}

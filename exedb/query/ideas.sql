@@ -72,3 +72,6 @@ DELETE FROM vm_templates WHERE id = ?;
 
 -- name: ListTemplatesByAuthor :many
 SELECT * FROM vm_templates WHERE author_user_id = ? ORDER BY created_at DESC;
+
+-- name: IncrementTemplateDeployCount :exec
+UPDATE vm_templates SET deploy_count = deploy_count + 1 WHERE slug = ?;

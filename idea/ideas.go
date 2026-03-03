@@ -55,6 +55,7 @@ type JSON struct {
 	RatingCount      int64   `json:"rating_count"`
 	VMShortname      string  `json:"vm_shortname"`
 	Image            string  `json:"image"`
+	DeployCount      int64   `json:"deploy_count"`
 }
 
 // ApprovedRowToJSON converts a database row to its API representation.
@@ -73,6 +74,7 @@ func ApprovedRowToJSON(r exedb.ListApprovedTemplatesRow) JSON {
 		RatingCount:      r.RatingCount,
 		VMShortname:      r.VMShortname,
 		Image:            r.Image,
+		DeployCount:      r.DeployCount,
 	}
 }
 
@@ -102,5 +104,6 @@ func AllRowToJSON(t exedb.ListAllTemplatesRow) JSON {
 		RatingCount:      t.RatingCount,
 		VMShortname:      t.VMShortname,
 		Image:            t.Image,
+		DeployCount:      t.DeployCount,
 	}
 }

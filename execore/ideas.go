@@ -175,19 +175,30 @@ func (s *Server) handleTemplateSubmitAPI(w http.ResponseWriter, r *http.Request)
 
 // handleIdeaPage renders the /idea browsing page.
 func (s *Server) handleIdeaPage(w http.ResponseWriter, r *http.Request) {
-	_, err := s.validateAuthCookie(r)
+	userID, err := s.validateAuthCookie(r)
 	isLoggedIn := err == nil
+
+	canRate := false
+	if isLoggedIn && !s.env.SkipBilling {
+		if status, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID); err == nil && userIsPaying(&status) {
+			canRate = true
+		}
+	} else if isLoggedIn && s.env.SkipBilling {
+		canRate = true
+	}
 
 	data := struct {
 		stage.Env
 		IsLoggedIn bool
 		ActivePage string
 		BasicUser  bool
+		CanRate    bool
 	}{
 		Env:        s.env,
 		IsLoggedIn: isLoggedIn,
 		ActivePage: "",
 		BasicUser:  false,
+		CanRate:    canRate,
 	}
 	s.renderTemplate(r.Context(), w, "idea.html", data)
 }
