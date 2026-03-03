@@ -131,6 +131,8 @@
                 {{.Author}}
                 {{if and $.ShowHidden (not .Published)}}
                 <span class="unpublished-note">[unpublished]</span>
+                {{else if and $.ShowHidden (not .Embargo.IsZero) (.Embargo.After $.Now)}}
+                <span class="unpublished-note">[embargoed]</span>
                 {{end}}
               </span>
             </div>

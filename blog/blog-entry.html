@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}} - exe.dev blog</title>
+    <title>{{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{else if and .ShowHidden (not .Entry.Embargo.IsZero) (.Entry.Embargo.After .Now)}} [embargoed]{{end}} - exe.dev blog</title>
     <meta name="description" content="{{.Entry.Description}}">
     <link rel="canonical" href="https://blog.exe.dev{{.Entry.Path}}">
     <meta property="og:title" content="{{.Entry.Title}} - exe.dev blog">
@@ -255,6 +255,8 @@
             {{.Entry.Author}}
             {{if and .ShowHidden (not .Entry.Published)}}
             <span class="unpublished-note">[unpublished]</span>
+            {{else if and .ShowHidden (not .Entry.Embargo.IsZero) (.Entry.Embargo.After .Now)}}
+            <span class="unpublished-note">[embargoed]</span>
             {{end}}
           </span>
         </div>

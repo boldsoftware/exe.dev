@@ -99,10 +99,22 @@ type Entry struct {
 	Description string
 	Tags        []string
 	Published   bool
+	Embargo     time.Time
 	Date        time.Time
 	DateString  string
 	DateRFC3339 string
 	Content     template.HTML
+}
+
+// IsPublic reports whether the entry should be visible to the public at the given time.
+func (e *Entry) IsPublic(now time.Time) bool {
+	if !e.Published {
+		return false
+	}
+	if !e.Embargo.IsZero() && now.Before(e.Embargo) {
+		return false
+	}
+	return true
 }
 
 type Store struct {
@@ -265,6 +277,7 @@ type Handler struct {
 	templates    *template.Template
 	atomTemplate *template.Template
 	metrics      *Metrics
+	now          func() time.Time
 }
 
 // NewHandler creates a handler that uses the embedded templates.
@@ -283,6 +296,7 @@ func NewHandlerWithTemplates(store *Store, showHidden bool, templates, atom *tem
 		showHidden:   showHidden,
 		templates:    templates,
 		atomTemplate: atom,
+		now:          time.Now,
 	}
 }
 
@@ -319,9 +333,10 @@ func (h *Handler) entries(showHidden bool) []*Entry {
 	if showHidden {
 		return all
 	}
+	now := h.now()
 	filtered := make([]*Entry, 0, len(all))
 	for _, entry := range all {
-		if entry.Published {
+		if entry.IsPublic(now) {
 			filtered = append(filtered, entry)
 		}
 	}
@@ -380,7 +395,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if entry, ok := h.store.Entry(path); ok {
-		if !showHidden && !entry.Published {
+		if !showHidden && !entry.IsPublic(h.now()) {
 			http.Redirect(w, r, "/__exe.dev/login?redirect="+path, http.StatusFound)
 			return true
 		}
@@ -404,6 +419,7 @@ func (h *Handler) renderEntry(w http.ResponseWriter, r *http.Request, entry *Ent
 		"Entries":    h.entries(showHidden),
 		"ShowHidden": showHidden,
 		"ActivePage": "blog",
+		"Now":        h.now(),
 	}
 
 	if err := h.templates.ExecuteTemplate(buf, "blog-entry.html", data); err != nil {
@@ -421,6 +437,7 @@ func (h *Handler) renderList(w http.ResponseWriter, r *http.Request, showHidden 
 		"Entries":    h.entries(showHidden),
 		"ShowHidden": showHidden,
 		"ActivePage": "blog",
+		"Now":        h.now(),
 	}
 
 	if err := h.templates.ExecuteTemplate(buf, "blog-list.html", data); err != nil {
@@ -567,6 +584,20 @@ func entryFromMetadata(path string, metadata map[string]any, fileDate time.Time)
 			return Entry{}, err
 		}
 		entry.Published = published
+	}
+
+	if _, ok := metadata["embargo"]; ok {
+		embargoStr, err := metadataString(metadata, "embargo", false)
+		if err != nil {
+			return Entry{}, err
+		}
+		if embargoStr != "" {
+			embargo, err := time.Parse(time.RFC3339, embargoStr)
+			if err != nil {
+				return Entry{}, fmt.Errorf("parsing front matter embargo %q: %w", embargoStr, err)
+			}
+			entry.Embargo = embargo
+		}
 	}
 
 	return entry, nil
