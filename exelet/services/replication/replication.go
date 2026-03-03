@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -49,6 +50,11 @@ type Service struct {
 
 	// restoringVolumes tracks volumes currently being restored (skip replication for these)
 	restoringVolumes map[string]struct{}
+
+	// orphanCandidates tracks dataset IDs that appeared orphaned in the previous
+	// replication cycle. A dataset is only deleted if it appears orphaned in two
+	// consecutive cycles (and a point-check confirms the instance is gone).
+	orphanCandidates map[string]struct{}
 }
 
 // New creates a new replication service
@@ -237,9 +243,12 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 		return
 	}
 
-	// Build instance name lookup (best-effort, for logging only)
+	// Build instance name lookup (best-effort, for logging only).
+	// instancesOK tracks whether Instances() succeeded so the orphan cleanup
+	// can distinguish "no instances" from "call failed".
 	nameByID := make(map[string]string)
 	instances, err := s.context.ComputeService.Instances(ctx)
+	instancesOK := err == nil
 	if err != nil {
 		s.log.WarnContext(ctx, "failed to get instances for name lookup", "error", err)
 	} else {
@@ -300,9 +309,65 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 		}
 	}
 
+	// Clean up orphaned VM datasets (requires two-cycle confirmation + point check).
+	if s.config.ReplicationPrune {
+		s.cleanOrphanedVMDatasets(ctx, datasetIDs, nameByID, instancesOK)
+	}
+
 	duration := time.Since(startTime)
 	s.metrics.SetLastSuccessTimestamp(float64(time.Now().Unix()))
 	s.log.InfoContext(ctx, "replication cycle complete", "duration", duration, "volumes", len(volumes))
+}
+
+// cleanOrphanedVMDatasets removes VM datasets whose instances no longer exist.
+// Two safety layers protect against accidental deletion:
+//  1. Two-cycle confirmation: a dataset must appear orphaned in two consecutive
+//     cycles before deletion.
+//  2. Point check: GetInstanceByID is called to verify the instance is gone
+//     (guards against incomplete Instances() results).
+//
+// If instancesOK is false (Instances() failed), orphanCandidates is reset so a
+// failed cycle never counts toward confirmation.
+func (s *Service) cleanOrphanedVMDatasets(ctx context.Context, datasetIDs []string, nameByID map[string]string, instancesOK bool) {
+	if !instancesOK {
+		s.orphanCandidates = nil
+		return
+	}
+
+	currentOrphans := make(map[string]struct{})
+	for _, id := range datasetIDs {
+		if !isVMInstanceID(id) {
+			continue
+		}
+		if _, ok := nameByID[id]; ok {
+			continue
+		}
+		currentOrphans[id] = struct{}{}
+	}
+
+	for id := range currentOrphans {
+		if _, wasPrev := s.orphanCandidates[id]; !wasPrev {
+			continue
+		}
+		// Confirmed orphan across two cycles — point-check before deleting.
+		// Only proceed when GetInstanceByID returns a definitive ErrNotFound.
+		// Transient errors (read races, VMM unavailable) must not trigger deletion.
+		inst, err := s.context.ComputeService.GetInstanceByID(ctx, id)
+		if err == nil && inst != nil {
+			s.log.InfoContext(ctx, "skipping orphan deletion, instance still exists", "id", id)
+			continue
+		}
+		if !errors.Is(err, computeapi.ErrNotFound) {
+			s.log.WarnContext(ctx, "skipping orphan deletion, point check inconclusive", "id", id, "error", err)
+			continue
+		}
+		s.log.InfoContext(ctx, "deleting orphaned VM dataset", "id", id)
+		if err := s.context.StorageManager.Delete(ctx, id); err != nil {
+			s.log.ErrorContext(ctx, "failed to delete orphaned VM dataset", "id", id, "error", err)
+		}
+	}
+
+	s.orphanCandidates = currentOrphans
 }
 
 // GetStorageManager returns the storage manager (for use by other packages)

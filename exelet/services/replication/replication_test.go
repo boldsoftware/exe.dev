@@ -1,6 +1,61 @@
 package replication
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"slices"
+	"sort"
+	"testing"
+
+	"exe.dev/exelet/services"
+	"exe.dev/exelet/storage"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
+)
+
+// mockCompute implements services.InstanceLookup for testing.
+type mockCompute struct {
+	instanceByID map[string]*computeapi.Instance
+	// errByID overrides the default ErrNotFound for specific IDs.
+	// Use nil value to simulate (nil, nil) read-race returns.
+	errByID map[string]error
+}
+
+func (m *mockCompute) Instances(context.Context) ([]*computeapi.Instance, error) {
+	panic("not called by cleanOrphanedVMDatasets")
+}
+
+func (m *mockCompute) GetInstanceByID(_ context.Context, id string) (*computeapi.Instance, error) {
+	if inst, ok := m.instanceByID[id]; ok {
+		return inst, nil
+	}
+	if err, ok := m.errByID[id]; ok {
+		return nil, err
+	}
+	return nil, fmt.Errorf("%w: instance %s", computeapi.ErrNotFound, id)
+}
+
+func (m *mockCompute) GetInstanceByIP(context.Context, string) (string, string, error) {
+	panic("not called")
+}
+
+func (m *mockCompute) StopInstanceByID(context.Context, string) error { panic("not called") }
+func (m *mockCompute) StartInstanceByID(context.Context, string) error {
+	panic("not called")
+}
+
+// mockStorage implements storage.StorageManager for testing.
+// Only Delete is functional; embedded interface satisfies the rest.
+type mockStorage struct {
+	storage.StorageManager
+	deleted []string
+}
+
+func (m *mockStorage) Delete(_ context.Context, id string) error {
+	m.deleted = append(m.deleted, id)
+	return nil
+}
 
 func TestIsVMInstanceID(t *testing.T) {
 	tests := []struct {
@@ -33,6 +88,127 @@ func TestIsVMInstanceID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newTestService(compute services.InstanceLookup, store storage.StorageManager) *Service {
+	return &Service{
+		context: &services.ServiceContext{
+			ComputeService: compute,
+			StorageManager: store,
+		},
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func TestCleanOrphanedVMDatasets(t *testing.T) {
+	ctx := context.Background()
+	datasets := []string{"vm000123-blue-falcon", "vm000456-red-eagle", "data"}
+
+	t.Run("single cycle does not delete", func(t *testing.T) {
+		store := &mockStorage{}
+		svc := newTestService(&mockCompute{}, store)
+
+		svc.cleanOrphanedVMDatasets(ctx, datasets, map[string]string{}, true)
+
+		if len(store.deleted) != 0 {
+			t.Fatalf("expected no deletions after one cycle, got %v", store.deleted)
+		}
+	})
+
+	t.Run("empty instance list deletes all VM datasets after two cycles", func(t *testing.T) {
+		store := &mockStorage{}
+		svc := newTestService(&mockCompute{}, store)
+
+		nameByID := map[string]string{}
+
+		// Cycle 1: candidates recorded, nothing deleted.
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+		if len(store.deleted) != 0 {
+			t.Fatalf("expected no deletions after first cycle, got %v", store.deleted)
+		}
+
+		// Cycle 2: confirmed orphans deleted.
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+		sort.Strings(store.deleted)
+		want := []string{"vm000123-blue-falcon", "vm000456-red-eagle"}
+		if !slices.Equal(store.deleted, want) {
+			t.Fatalf("deleted = %v, want %v", store.deleted, want)
+		}
+	})
+
+	t.Run("only missing instance is deleted", func(t *testing.T) {
+		store := &mockStorage{}
+		svc := newTestService(&mockCompute{}, store)
+
+		nameByID := map[string]string{"vm000123-blue-falcon": "my-vm"}
+
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+
+		if !slices.Equal(store.deleted, []string{"vm000456-red-eagle"}) {
+			t.Fatalf("deleted = %v, want [vm000456-red-eagle]", store.deleted)
+		}
+	})
+
+	t.Run("instances call failure resets candidates", func(t *testing.T) {
+		store := &mockStorage{}
+		svc := newTestService(&mockCompute{}, store)
+
+		vmOnly := []string{"vm000123-blue-falcon"}
+
+		// Cycle 1: successful, records candidates.
+		svc.cleanOrphanedVMDatasets(ctx, vmOnly, map[string]string{}, true)
+		// Cycle 2: Instances() failed — resets candidates.
+		svc.cleanOrphanedVMDatasets(ctx, vmOnly, map[string]string{}, false)
+		// Cycle 3: successful, but only first cycle since reset — no deletion.
+		svc.cleanOrphanedVMDatasets(ctx, vmOnly, map[string]string{}, true)
+
+		if len(store.deleted) != 0 {
+			t.Fatalf("expected no deletions after failed-cycle reset, got %v", store.deleted)
+		}
+	})
+
+	t.Run("point check finds instance skips deletion", func(t *testing.T) {
+		store := &mockStorage{}
+		compute := &mockCompute{
+			instanceByID: map[string]*computeapi.Instance{
+				"vm000123-blue-falcon": {ID: "vm000123-blue-falcon"},
+			},
+		}
+		svc := newTestService(compute, store)
+
+		nameByID := map[string]string{} // both appear orphaned by list
+
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+
+		// vm000123 survived the point check; only vm000456 is deleted.
+		if !slices.Equal(store.deleted, []string{"vm000456-red-eagle"}) {
+			t.Fatalf("deleted = %v, want [vm000456-red-eagle]", store.deleted)
+		}
+	})
+
+	t.Run("transient GetInstanceByID error skips deletion", func(t *testing.T) {
+		store := &mockStorage{}
+		compute := &mockCompute{
+			errByID: map[string]error{
+				// Simulate read-race (nil, nil) and VMM error — both transient.
+				"vm000123-blue-falcon": nil,
+				"vm000456-red-eagle":   fmt.Errorf("VMM connection refused"),
+			},
+		}
+		svc := newTestService(compute, store)
+
+		nameByID := map[string]string{}
+
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+		svc.cleanOrphanedVMDatasets(ctx, datasets, nameByID, true)
+
+		// Neither should be deleted — errors are not definitive ErrNotFound.
+		if len(store.deleted) != 0 {
+			t.Fatalf("expected no deletions on transient errors, got %v", store.deleted)
+		}
+	})
 }
 
 func TestRemoteVolumeID(t *testing.T) {
