@@ -286,6 +286,7 @@ type Server struct {
 
 	exeproxServiceServer  *grpc.Server
 	exeproxServiceMetrics *grpcprom.ServerMetrics
+	loopbackProxyData     exeweb.ProxyData
 
 	certManager         *autocert.Manager
 	wildcardCertManager *wildcardcert.Manager
@@ -1070,6 +1071,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.setupProxyServers()
 	s.setupSSHServer()
 	s.setupExeproxServer()
+	s.setupLoopbackProxyData()
 
 	// Initialize billing subscription poller to sync subscription events from Stripe.
 	if s.billing != nil && !cfg.Env.SkipBilling {

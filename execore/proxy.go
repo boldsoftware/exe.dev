@@ -254,10 +254,20 @@ func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, box
 	})
 }
 
+// proxyData returns the ProxyData implementation to use.
+// By default, this is the in-process implementation.
+// Set EXED_USE_LOOPBACK=1 to use the gRPC loopback implementation.
+func (s *Server) proxyData() exeweb.ProxyData {
+	if os.Getenv("EXED_USE_LOOPBACK") != "" {
+		return s.loopbackProxyData
+	}
+	return &proxyData{s: s}
+}
+
 // proxyServer returns an exeweb.ProxyServer that refers to s.
 func (s *Server) proxyServer() *exeweb.ProxyServer {
 	ps := &exeweb.ProxyServer{
-		Data:            &proxyData{s: s},
+		Data:            s.proxyData(),
 		Lg:              s.slog(),
 		Env:             &s.env,
 		PiperdPort:      s.piperdPort,
