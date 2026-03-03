@@ -2,284 +2,184 @@ package xshelley
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestGetShelley(t *testing.T) {
-	ctx := context.Background()
-
-	// Clean up any existing cache to ensure fresh download
-	cacheDirPath, err := getCacheDir()
-	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
-	}
-
-	// First call - should download (always use Linux binary)
-	path, err := GetShelley(ctx, runtime.GOARCH)
-	if err != nil {
-		t.Fatalf("GetShelley failed: %v", err)
-	}
-
-	// Verify the path exists
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("shelley binary not found at %s: %v", path, err)
-	}
-
-	// Verify the file is in the expected cache location
-	if !strings.HasPrefix(path, cacheDirPath+string(filepath.Separator)) {
-		t.Errorf("Expected path to be in cache dir %s, got %s", cacheDirPath, path)
-	}
-
-	// Second call - should use cache
-	path2, err := GetShelley(ctx, runtime.GOARCH)
-	if err != nil {
-		t.Fatalf("GetShelley (cached) failed: %v", err)
-	}
-
-	if path != path2 {
-		t.Errorf("Expected same path from cache, got %s vs %s", path, path2)
-	}
-}
-
 func TestGetShelleyMultipleArchitectures(t *testing.T) {
-	ctx := context.Background()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/releases/latest":
+			serveRelease(w, r)
+		case strings.HasPrefix(r.URL.Path, "/download/"):
+			w.Write([]byte("fake-binary"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	resetTestGlobals(t, handler)
 
-	// Clean cache
-	cacheDirPath, err := getCacheDir()
-	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
-	}
-
-	// Test amd64
-	pathAmd64, err := GetShelley(ctx, "amd64")
+	pathAmd64, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
 		t.Fatalf("GetShelley(amd64) failed: %v", err)
 	}
 
-	if _, err := os.Stat(pathAmd64); err != nil {
-		t.Fatalf("amd64 binary not found: %v", err)
-	}
-
-	// Test arm64
-	pathArm64, err := GetShelley(ctx, "arm64")
+	pathArm64, err := GetShelley(context.Background(), "arm64")
 	if err != nil {
 		t.Fatalf("GetShelley(arm64) failed: %v", err)
 	}
 
-	if _, err := os.Stat(pathArm64); err != nil {
-		t.Fatalf("arm64 binary not found: %v", err)
-	}
-
-	// Paths should be different
 	if pathAmd64 == pathArm64 {
-		t.Errorf("Expected different paths for different architectures")
-	}
-
-	// Both should be in cache
-	if !strings.HasPrefix(pathAmd64, cacheDirPath+string(filepath.Separator)) {
-		t.Errorf("amd64 path not in cache dir")
-	}
-	if !strings.HasPrefix(pathArm64, cacheDirPath+string(filepath.Separator)) {
-		t.Errorf("arm64 path not in cache dir")
+		t.Errorf("expected different paths for different architectures")
 	}
 }
 
 func TestCacheRefresh(t *testing.T) {
-	ctx := context.Background()
+	var apiCalls atomic.Int32
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/releases/latest":
+			apiCalls.Add(1)
+			serveRelease(w, r)
+		case strings.HasPrefix(r.URL.Path, "/download/"):
+			w.Write([]byte("fake-binary"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	resetTestGlobals(t, handler)
 
-	// Clean cache
-	cacheDirPath, err := getCacheDir()
+	// First call — downloads and caches.
+	path, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
+		t.Fatalf("first GetShelley failed: %v", err)
 	}
 
-	// First download
-	path, err := GetShelley(ctx, runtime.GOARCH)
+	// Second call — cache is fresh, no API call expected.
+	beforeCached := apiCalls.Load()
+	path2, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
-		t.Fatalf("GetShelley failed: %v", err)
+		t.Fatalf("cached GetShelley failed: %v", err)
+	}
+	if path != path2 {
+		t.Errorf("expected same path from cache")
+	}
+	if apiCalls.Load() != beforeCached {
+		t.Errorf("expected no additional API call for fresh cache")
 	}
 
-	// Get the metadata file
-	platformDir := filepath.Dir(path)
-	metadataPath := filepath.Join(platformDir, metadataFileName)
-
-	// Verify metadata was created
-	metaData, err := os.ReadFile(metadataPath)
+	// Age the metadata by rewriting last_checked to 2 hours ago.
+	metadataPath := filepath.Join(filepath.Dir(path), metadataFileName)
+	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		t.Fatalf("failed to read metadata: %v", err)
 	}
-
-	if len(metaData) == 0 {
-		t.Fatal("metadata file is empty")
+	var meta cacheMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		t.Fatalf("failed to parse metadata: %v", err)
 	}
-
-	// Manually set old timestamp by modifying the file
-	oldTime := time.Now().Add(-2 * time.Hour)
-	if err := os.Chtimes(metadataPath, oldTime, oldTime); err != nil {
-		t.Logf("Warning: failed to change metadata time: %v", err)
-	}
-
-	// Call again - should check for updates but likely use cache if tag matches
-	path2, err := GetShelley(ctx, runtime.GOARCH)
+	meta.LastChecked = time.Now().Add(-2 * time.Hour)
+	data, err = json.Marshal(meta)
 	if err != nil {
-		t.Fatalf("GetShelley (refresh check) failed: %v", err)
+		t.Fatalf("failed to marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metadataPath, data, 0o644); err != nil {
+		t.Fatalf("failed to write aged metadata: %v", err)
 	}
 
-	if path != path2 {
-		t.Errorf("Expected same path after refresh check")
+	// Third call — stale cache should trigger refresh.
+	beforeRefresh := apiCalls.Load()
+	path3, err := GetShelley(context.Background(), "amd64")
+	if err != nil {
+		t.Fatalf("refresh GetShelley failed: %v", err)
 	}
-
-	// Verify binary still exists and is executable
-	if _, err := os.Stat(path2); err != nil {
-		t.Fatalf("binary disappeared after refresh: %v", err)
+	if path3 != path {
+		t.Errorf("expected same path after refresh (same tag)")
+	}
+	if apiCalls.Load() == beforeRefresh {
+		t.Errorf("expected API call for stale cache")
 	}
 }
 
 func TestCacheInvalidation(t *testing.T) {
-	ctx := context.Background()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/releases/latest":
+			serveRelease(w, r)
+		case strings.HasPrefix(r.URL.Path, "/download/"):
+			w.Write([]byte("fake-binary"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	resetTestGlobals(t, handler)
 
-	// Clean cache
-	cacheDirPath, err := getCacheDir()
-	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
-	}
-
-	// First download
-	path, err := GetShelley(ctx, runtime.GOARCH)
+	path, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
 		t.Fatalf("GetShelley failed: %v", err)
 	}
 
-	// Delete the binary but keep metadata
+	// Delete the binary but keep metadata.
 	if err := os.Remove(path); err != nil {
 		t.Fatalf("failed to remove binary: %v", err)
 	}
 
-	// Call again - should re-download since binary is missing
-	path2, err := GetShelley(ctx, runtime.GOARCH)
+	// Should re-download since binary is missing.
+	path2, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
-		t.Fatalf("GetShelley (after deletion) failed: %v", err)
+		t.Fatalf("GetShelley after deletion failed: %v", err)
 	}
-
 	if path != path2 {
-		t.Errorf("Expected same path after re-download")
+		t.Errorf("expected same path after re-download")
 	}
-
-	// Verify binary was re-downloaded
 	if _, err := os.Stat(path2); err != nil {
 		t.Fatalf("binary not re-downloaded: %v", err)
 	}
 }
 
 func TestInvalidMetadata(t *testing.T) {
-	ctx := context.Background()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/releases/latest":
+			serveRelease(w, r)
+		case strings.HasPrefix(r.URL.Path, "/download/"):
+			w.Write([]byte("fake-binary"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	resetTestGlobals(t, handler)
 
-	// Clean cache
-	cacheDirPath, err := getCacheDir()
-	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
-	}
-
-	// Create cache dir with invalid metadata
+	// Pre-create the platform dir with invalid metadata.
+	cacheDirPath, _ := getCacheDir()
 	platformDir := filepath.Join(cacheDirPath, "linux-amd64")
 	if err := os.MkdirAll(platformDir, 0o755); err != nil {
 		t.Fatalf("failed to create platform dir: %v", err)
 	}
-
 	metadataPath := filepath.Join(platformDir, metadataFileName)
 	if err := os.WriteFile(metadataPath, []byte("invalid json"), 0o644); err != nil {
 		t.Fatalf("failed to write invalid metadata: %v", err)
 	}
 
-	// Should handle invalid metadata gracefully and re-download
-	path, err := GetShelley(ctx, "amd64")
+	path, err := GetShelley(context.Background(), "amd64")
 	if err != nil {
 		t.Fatalf("GetShelley with invalid metadata failed: %v", err)
 	}
-
-	// Verify binary exists
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("binary not found after invalid metadata: %v", err)
+		t.Fatalf("binary not found: %v", err)
 	}
 
-	// Verify metadata was fixed
-	metaData, err := os.ReadFile(metadataPath)
+	fixed, err := os.ReadFile(metadataPath)
 	if err != nil {
-		t.Fatalf("failed to read fixed metadata: %v", err)
+		t.Fatalf("failed to read metadata: %v", err)
 	}
-
-	if string(metaData) == "invalid json" {
+	if string(fixed) == "invalid json" {
 		t.Error("metadata was not fixed")
-	}
-}
-
-func TestConcurrentGetShelley(t *testing.T) {
-	ctx := context.Background()
-
-	// Clean cache
-	cacheDirPath, err := getCacheDir()
-	if err != nil {
-		t.Fatalf("failed to get cache dir: %v", err)
-	}
-	if err := os.RemoveAll(cacheDirPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to clean cache: %v", err)
-	}
-
-	const n = 10
-	type result struct {
-		path string
-		err  error
-	}
-	results := make(chan result, n)
-
-	for i := 0; i < n; i++ {
-		go func() {
-			path, err := GetShelley(ctx, runtime.GOARCH)
-			results <- result{path, err}
-		}()
-	}
-
-	var paths []string
-	for i := 0; i < n; i++ {
-		r := <-results
-		if r.err != nil {
-			t.Errorf("concurrent GetShelley failed: %v", r.err)
-			continue
-		}
-		paths = append(paths, r.path)
-	}
-
-	// All should return the same path
-	for i := 1; i < len(paths); i++ {
-		if paths[i] != paths[0] {
-			t.Errorf("got different paths: %s vs %s", paths[0], paths[i])
-		}
-	}
-
-	// Binary should exist
-	if len(paths) > 0 {
-		if _, err := os.Stat(paths[0]); err != nil {
-			t.Errorf("binary not found at %s: %v", paths[0], err)
-		}
 	}
 }

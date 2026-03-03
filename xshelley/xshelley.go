@@ -7,34 +7,66 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
+
+	"tailscale.com/util/singleflight"
 )
 
 const (
-	latestReleaseURL = "https://api.github.com/repos/boldsoftware/shelley/releases/latest"
 	refreshInterval  = 1 * time.Hour
 	metadataFileName = "metadata.json"
 	shelleyFileName  = "shelley"
+
+	// maxRetries must be > 0; retryableGet returns (nil, nil) if 0.
+	maxRetries = 3
+
+	// singleflightTimeout bounds the total lifetime of a singleflight
+	// download worker, including retries and Retry-After waits for both
+	// the release-fetch and binary-download phases.
+	singleflightTimeout = 10 * time.Minute
 )
 
 var (
+	latestReleaseURL = "https://api.github.com/repos/boldsoftware/shelley/releases/latest"
+	retryBaseWait    = 1 * time.Second
+
 	cacheDirOnce sync.Once
 	cacheDir     string
 	cacheDirErr  error
 
-	// downloadMu serializes downloads per architecture to prevent concurrent
-	// goroutines from racing on the same .tmp file.
-	downloadMu sync.Map // goarch -> *sync.Mutex
+	sfGroup = &singleflight.Group[string, string]{}
+
+	// httpTransport clones DefaultTransport to preserve proxy support,
+	// keep-alive, and idle-connection management, then overrides
+	// phase-specific timeouts so stuck phases fail fast.
+	httpTransport = func() *http.Transport {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.DialContext = (&net.Dialer{Timeout: 10 * time.Second}).DialContext
+		t.TLSHandshakeTimeout = 5 * time.Second
+		t.ResponseHeaderTimeout = 10 * time.Second
+		return t
+	}()
+
+	// httpClient pairs the transport with a generous overall deadline
+	// as a safety net for stalled body reads (server alive but not
+	// sending data). The shelley binary is a few MB; 5 minutes is
+	// never the bottleneck for a real download.
+	httpClient = &http.Client{
+		Transport: httpTransport,
+		Timeout:   5 * time.Minute,
+	}
 )
 
 type cacheMetadata struct {
 	ReleaseTag  string    `json:"release_tag"`
 	LastChecked time.Time `json:"last_checked"`
-	Platform    string    `json:"platform"`
 }
 
 type ghRelease struct {
@@ -80,8 +112,6 @@ func getCacheDir() (string, error) {
 //
 // Only Linux binaries are available. Results are cached with hourly refresh checks.
 func GetShelley(ctx context.Context, goarch string) (path string, err error) {
-	platform := fmt.Sprintf("linux/%s", goarch)
-
 	cacheDirPath, err := getCacheDir()
 	if err != nil {
 		return "", err
@@ -95,27 +125,13 @@ func GetShelley(ctx context.Context, goarch string) (path string, err error) {
 	metadataPath := filepath.Join(platformDir, metadataFileName)
 	shelleyBinaryPath := filepath.Join(platformDir, shelleyFileName)
 
-	// Check if we have a valid cached version (fast path, no lock needed)
-	needsRefresh, currentTag, err := shouldRefresh(metadataPath, platform)
-	if err != nil {
-		return "", err
-	}
+	// Sample jitter once so this goroutine's fast-path and its
+	// singleflight closure agree on staleness if it becomes the
+	// executing goroutine.
+	interval := jitteredRefreshInterval()
 
-	if !needsRefresh {
-		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			return shelleyBinaryPath, nil
-		}
-	}
-
-	// Serialize downloads per architecture to prevent concurrent goroutines
-	// from racing on the same .tmp file.
-	muI, _ := downloadMu.LoadOrStore(goarch, &sync.Mutex{})
-	mu := muI.(*sync.Mutex)
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Re-check cache under the lock — another goroutine may have just finished.
-	needsRefresh, currentTag, err = shouldRefresh(metadataPath, platform)
+	// Fast path: valid cache and binary on disk.
+	needsRefresh, _, err := shouldRefresh(metadataPath, interval)
 	if err != nil {
 		return "", err
 	}
@@ -125,55 +141,132 @@ func GetShelley(ctx context.Context, goarch string) (path string, err error) {
 		}
 	}
 
-	// Fetch the latest release info from GitHub
-	release, err := fetchLatestRelease(ctx)
-	if err != nil {
-		return "", err
-	}
+	// Slow path: fetch from GitHub. Singleflight collapses N concurrent
+	// callers into one download. We use DoChan (not DoChanContext) with a
+	// background context so the download runs to completion even if all
+	// callers bail — the result is cached on disk, so finishing a
+	// partially-complete download benefits the next wave of callers.
+	// singleflightTimeout bounds the overall goroutine lifetime.
+	ch := sfGroup.DoChan(goarch, func() (string, error) {
+		// Re-check shouldRefresh inside the closure so currentTag is
+		// derived by the executing goroutine, not captured from a caller.
+		_, currentTag, err := shouldRefresh(metadataPath, interval)
+		if err != nil {
+			return "", err
+		}
 
-	// If tag hasn't changed and binary exists, just update metadata
-	if release.TagName == currentTag {
-		if _, err := os.Stat(shelleyBinaryPath); err == nil {
-			if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
-				return "", err
+		// Use a background context with an overall deadline: once started,
+		// finish the download regardless of whether individual callers are
+		// still waiting, but don't let a stuck worker pin the singleflight
+		// key indefinitely.
+		dlCtx, dlCancel := context.WithTimeout(context.Background(), singleflightTimeout)
+		defer dlCancel()
+
+		release, err := fetchLatestRelease(dlCtx)
+		if err != nil {
+			return "", err
+		}
+
+		// Tag unchanged and binary present: just refresh the timestamp.
+		if release.TagName == currentTag {
+			if _, err := os.Stat(shelleyBinaryPath); err == nil {
+				if err := updateMetadata(metadataPath, release.TagName); err != nil {
+					return "", err
+				}
+				return shelleyBinaryPath, nil
 			}
-			return shelleyBinaryPath, nil
 		}
-	}
 
-	// Find the asset for this architecture
-	assetName := fmt.Sprintf("shelley_linux_%s", goarch)
-	var downloadURL string
-	for _, asset := range release.Assets {
-		if asset.Name == assetName {
-			downloadURL = asset.BrowserDownloadURL
-			break
+		assetName := fmt.Sprintf("shelley_linux_%s", goarch)
+		var downloadURL string
+		for _, asset := range release.Assets {
+			if asset.Name == assetName {
+				downloadURL = asset.BrowserDownloadURL
+				break
+			}
 		}
-	}
-	if downloadURL == "" {
-		return "", fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
-	}
+		if downloadURL == "" {
+			return "", fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
+		}
 
-	// Download the binary
-	if err := downloadFile(ctx, downloadURL, shelleyBinaryPath); err != nil {
-		return "", fmt.Errorf("failed to download shelley: %w", err)
-	}
+		if err := downloadFile(dlCtx, downloadURL, shelleyBinaryPath); err != nil {
+			return "", fmt.Errorf("failed to download shelley: %w", err)
+		}
 
-	if err := updateMetadata(metadataPath, release.TagName, platform); err != nil {
-		return "", err
-	}
+		if err := updateMetadata(metadataPath, release.TagName); err != nil {
+			return "", err
+		}
 
-	return shelleyBinaryPath, nil
+		return shelleyBinaryPath, nil
+	})
+
+	// Wait for either the shared result or our caller's cancellation.
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return "", res.Err
+		}
+		return res.Val, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// retryableGet performs an HTTP GET with per-request timeouts and retries on
+// transient failures (5xx, 429, and 403-with-Retry-After status codes and
+// network errors). For 429 responses, the Retry-After header is respected.
+func retryableGet(ctx context.Context, url string, header http.Header) (*http.Response, error) {
+	client := httpClient
+	var lastErr error
+	var retryAfter time.Duration
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			wait := max(retryBaseWait*time.Duration(1<<(attempt-1)), retryAfter) // exponential: 1s, 2s
+			retryAfter = 0
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, vs := range header {
+			for _, v := range vs {
+				req.Header.Add(k, v)
+			}
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 ||
+			(resp.StatusCode == http.StatusForbidden && resp.Header.Get("Retry-After") != "") {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+			// GitHub sends Retry-After as integer seconds (confirmed by docs
+			// and go-github). The HTTP spec also allows HTTP-date format, but
+			// GitHub doesn't use it; we intentionally don't parse it.
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+					retryAfter = time.Duration(secs) * time.Second
+				}
+			}
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func fetchLatestRelease(ctx context.Context) (*ghRelease, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := http.DefaultClient.Do(req)
+	hdr := http.Header{"Accept": {"application/vnd.github+json"}}
+	resp, err := retryableGet(ctx, latestReleaseURL, hdr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
@@ -191,12 +284,7 @@ func fetchLatestRelease(ctx context.Context) (*ghRelease, error) {
 }
 
 func downloadFile(ctx context.Context, url, dest string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := retryableGet(ctx, url, nil)
 	if err != nil {
 		return err
 	}
@@ -212,6 +300,9 @@ func downloadFile(ctx context.Context, url, dest string) error {
 		return err
 	}
 
+	// The temp path is deterministic per architecture. This is safe because
+	// singleflight deduplicates concurrent downloads within this process;
+	// if multiple processes download the same architecture, they race here.
 	tmp := dest + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
@@ -231,7 +322,14 @@ func downloadFile(ctx context.Context, url, dest string) error {
 	return os.Rename(tmp, dest)
 }
 
-func shouldRefresh(metadataPath, platform string) (bool, string, error) {
+// jitteredRefreshInterval returns refreshInterval +/-10% to prevent
+// fleet-wide cache expiry synchronization.
+func jitteredRefreshInterval() time.Duration {
+	jitter := refreshInterval / 10
+	return refreshInterval - jitter + time.Duration(rand.Int64N(int64(2*jitter)))
+}
+
+func shouldRefresh(metadataPath string, interval time.Duration) (bool, string, error) {
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -245,18 +343,17 @@ func shouldRefresh(metadataPath, platform string) (bool, string, error) {
 		return true, "", nil // Invalid metadata, refresh
 	}
 
-	if time.Since(meta.LastChecked) < refreshInterval {
+	if time.Since(meta.LastChecked) < interval {
 		return false, meta.ReleaseTag, nil
 	}
 
 	return true, meta.ReleaseTag, nil
 }
 
-func updateMetadata(metadataPath, tag, platform string) error {
+func updateMetadata(metadataPath, tag string) error {
 	meta := cacheMetadata{
 		ReleaseTag:  tag,
 		LastChecked: time.Now(),
-		Platform:    platform,
 	}
 
 	data, err := json.Marshal(meta)
