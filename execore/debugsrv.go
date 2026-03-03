@@ -111,6 +111,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/test-sso", s.handleDebugTeamTestSSO)
 	mux.HandleFunc("GET /debug/ideas", s.handleDebugTemplateReview)
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
+	mux.HandleFunc("/debug/glb-rollout", s.handleDebugGLBRollout)
+	mux.HandleFunc("POST /debug/glb-rollout", s.handleDebugGLBRolloutPost)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -5071,4 +5073,106 @@ func (s *Server) handleDebugDeleteUser(w http.ResponseWriter, r *http.Request) {
 		"deleted_by", deletedBy, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "deleted user %s (%s), %d boxes deleted", userID, user.Email, len(boxIDs))
+}
+
+// loadGLBRolloutPrefixes reads the GLB rollout prefixes from the database and
+// parses them from JSON. Returns nil (not an error) if no prefixes are set.
+func (s *Server) loadGLBRolloutPrefixes(ctx context.Context) ([]string, error) {
+	raw, err := withRxRes0(s, ctx, (*exedb.Queries).GetGLBRolloutPrefixes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil // no row = no prefixes
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load glb_rollout_prefixes: %w", err)
+	}
+	var prefixes []string
+	if err := json.Unmarshal([]byte(raw), &prefixes); err != nil {
+		return nil, fmt.Errorf("parse glb_rollout_prefixes: %w", err)
+	}
+	return prefixes, nil
+}
+
+// handleDebugGLBRollout displays the GLB rollout prefix configuration page.
+func (s *Server) handleDebugGLBRollout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	prefixes, err := s.loadGLBRolloutPrefixes(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to load prefixes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type prefixInfo struct {
+		Prefix   string
+		Coverage string
+	}
+	var infos []prefixInfo
+	for _, p := range prefixes {
+		coverage := 100.0 / float64(int(1)<<len(p))
+		infos = append(infos, prefixInfo{
+			Prefix:   p,
+			Coverage: fmt.Sprintf("%.4g%%", coverage),
+		})
+	}
+
+	tmpl, err := debug_templates.Parse()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Prefixes    []prefixInfo
+		PrefixesRaw string
+	}{
+		Prefixes:    infos,
+		PrefixesRaw: strings.Join(prefixes, "\n"),
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "glb-rollout.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute glb-rollout template", "error", err)
+	}
+}
+
+// handleDebugGLBRolloutPost handles saving the GLB rollout prefixes.
+func (s *Server) handleDebugGLBRolloutPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	raw := strings.TrimSpace(r.FormValue("prefixes"))
+	var prefixes []string
+	if raw != "" {
+		for _, line := range strings.Split(raw, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			for _, c := range line {
+				if c != '0' && c != '1' {
+					http.Error(w, fmt.Sprintf("invalid prefix %q: must contain only 0 and 1", line), http.StatusBadRequest)
+					return
+				}
+			}
+			prefixes = append(prefixes, line)
+		}
+	}
+
+	jsonBytes, err := json.Marshal(prefixes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to marshal prefixes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := withTx1(s, ctx, (*exedb.Queries).SetGLBRolloutPrefixes, string(jsonBytes)); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save prefixes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if s.dnsServer != nil {
+		s.dnsServer.SetGLBRolloutPrefixes(prefixes)
+	}
+
+	s.slog().InfoContext(ctx, "GLB rollout prefixes updated via debug page", "prefixes", prefixes)
+
+	http.Redirect(w, r, "/debug/glb-rollout", http.StatusSeeOther)
 }

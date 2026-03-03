@@ -10,6 +10,7 @@ package exens
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net"
@@ -48,6 +49,12 @@ type Server struct {
 	// Value: list of TXT values
 	txtMu      sync.RWMutex
 	txtRecords map[string][]string
+
+	// GLB rollout prefixes for hash-prefix gating.
+	// Each prefix is a binary string (e.g., "0101").
+	// A user matches if the binary representation of SHA-256(userID) starts with any prefix.
+	glbPrefixMu sync.RWMutex
+	glbPrefixes []string
 }
 
 // NewServer creates a new DNS server backed by the given database.
@@ -162,6 +169,49 @@ func (s *Server) GetTXTRecords(name string) []string {
 	s.txtMu.RLock()
 	defer s.txtMu.RUnlock()
 	return append([]string{}, s.txtRecords[name]...)
+}
+
+// SetGLBRolloutPrefixes sets the binary prefixes used for hash-prefix gating
+// of the GLB rollout. Each prefix is a binary string (e.g., "0101").
+func (s *Server) SetGLBRolloutPrefixes(prefixes []string) {
+	s.glbPrefixMu.Lock()
+	defer s.glbPrefixMu.Unlock()
+	s.glbPrefixes = prefixes
+}
+
+// GLBRolloutPrefixes returns a copy of the current GLB rollout prefixes.
+func (s *Server) GLBRolloutPrefixes() []string {
+	s.glbPrefixMu.RLock()
+	defer s.glbPrefixMu.RUnlock()
+	return append([]string{}, s.glbPrefixes...)
+}
+
+// userMatchesGLBPrefix returns true if the user ID matches any of the
+// configured GLB rollout prefixes. It hashes the user ID with SHA-256,
+// converts the hash to a binary string, and checks whether any prefix
+// is a prefix of that string.
+func (s *Server) userMatchesGLBPrefix(userID string) bool {
+	s.glbPrefixMu.RLock()
+	prefixes := s.glbPrefixes
+	s.glbPrefixMu.RUnlock()
+
+	if len(prefixes) == 0 {
+		return false
+	}
+
+	hash := sha256.Sum256([]byte(userID))
+	var bin strings.Builder
+	for _, b := range hash {
+		fmt.Fprintf(&bin, "%08b", b)
+	}
+	binStr := bin.String()
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(binStr, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // handleDNS processes DNS queries.
@@ -396,6 +446,8 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 
 	shardSub := publicips.ShardSub(int(row.IPShard))
 	if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
+		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+	} else if row.GlobalLoadBalancer == nil && s.userMatchesGLBPrefix(row.CreatedByUserID) {
 		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
 	}
 	target := shardSub + "." + domain + "."

@@ -50,6 +50,13 @@ SELECT value FROM server_meta WHERE key = 'ip_abuse_filter_disabled';
 INSERT INTO server_meta (key, value, updated_at) VALUES ('ip_abuse_filter_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
 
+-- name: GetGLBRolloutPrefixes :one
+SELECT value FROM server_meta WHERE key = 'glb_rollout_prefixes';
+
+-- name: SetGLBRolloutPrefixes :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('glb_rollout_prefixes', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
 -- name: GetLastBouncesPoll :one
 SELECT value FROM server_meta WHERE key = 'last_bounces_poll';
 
