@@ -318,13 +318,13 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		}
 
 		result := map[string]any{
-			"vm_name":  box.Name,
-			"status":   route.Share,
-			"port":     route.Port,
-			"url":      ss.server.boxProxyAddress(box.Name),
-			"users":    users,
-			"links":    links,
-			"teams":    teams,
+			"vm_name":      box.Name,
+			"status":       route.Share,
+			"port":         route.Port,
+			"url":          ss.server.boxProxyAddress(box.Name),
+			"users":        users,
+			"links":        links,
+			"teams":        teams,
 			"team_ssh":     route.TeamSSH,
 			"team_shelley": route.TeamShelley,
 		}

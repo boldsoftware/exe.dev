@@ -10,8 +10,10 @@ import (
 	"exe.dev/exemenu"
 )
 
-var addSudoerFlag = addBoolFlag("sudoer", "add as team sudoer (SSH access to member VMs)")
-var addBillingOwnerFlag = addBoolFlag("billing-owner", "add as team billing owner")
+var (
+	addSudoerFlag       = addBoolFlag("sudoer", "add as team sudoer (SSH access to member VMs)")
+	addBillingOwnerFlag = addBoolFlag("billing-owner", "add as team billing owner")
+)
 
 // teamCommand returns the command definition for the team command
 func (ss *SSHServer) teamCommand() *exemenu.Command {

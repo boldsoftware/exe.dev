@@ -205,7 +205,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	//   or equals box's default, use box route;
 	// - Otherwise create an ad-hoc private route for the requested port.
 	var route BoxRoute
-	var ownerOnly bool       // shares don't apply to non-standard routes
+	var ownerOnly bool        // shares don't apply to non-standard routes
 	var shelleyTeamCheck bool // check team_shelley sharing for Shelley requests
 	boxRoute := box.BoxRoute
 	targetPort := hostHeaderPort
