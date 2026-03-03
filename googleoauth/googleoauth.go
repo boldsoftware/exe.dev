@@ -35,6 +35,9 @@ type Client struct {
 	ClientID     string
 	ClientSecret string
 	WebBaseURL   string // e.g. "https://exe.dev"
+
+	// TestTokenEndpoint overrides Google's token endpoint for testing.
+	TestTokenEndpoint string
 }
 
 // Enabled returns true if Google OAuth credentials are configured.
@@ -44,12 +47,19 @@ func (c *Client) Enabled() bool {
 
 // OAuth2Config returns the oauth2.Config for Google.
 func (c *Client) OAuth2Config() *oauth2.Config {
+	endpoint := google.Endpoint
+	if c.TestTokenEndpoint != "" {
+		endpoint = oauth2.Endpoint{
+			AuthURL:  google.Endpoint.AuthURL,
+			TokenURL: c.TestTokenEndpoint,
+		}
+	}
 	return &oauth2.Config{
 		ClientID:     c.ClientID,
 		ClientSecret: c.ClientSecret,
 		RedirectURL:  c.WebBaseURL + "/oauth/google/callback",
 		Scopes:       []string{"openid", "email"},
-		Endpoint:     google.Endpoint,
+		Endpoint:     endpoint,
 	}
 }
 

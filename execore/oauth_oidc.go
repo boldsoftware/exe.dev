@@ -281,6 +281,19 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 	}
 	setExeAuthCookie(w, r, cookieValue)
 
+	// Honor redirect/return_host that were stored in the OAuth state.
+	var redirectURL, returnHost string
+	if oauthState.RedirectUrl != nil {
+		redirectURL = *oauthState.RedirectUrl
+	}
+	if oauthState.ReturnHost != nil {
+		returnHost = *oauthState.ReturnHost
+	}
+	if redirectURL != "" || returnHost != "" {
+		s.redirectAfterAuthWithParams(w, r, userID, redirectURL, returnHost)
+		return
+	}
+
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 

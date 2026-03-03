@@ -296,6 +296,19 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 	}
 	setExeAuthCookie(w, r, cookieValue)
 
+	// Honor redirect/return_host that were stored in the OAuth state.
+	var redirectURL, returnHost string
+	if oauthState.RedirectUrl != nil {
+		redirectURL = *oauthState.RedirectUrl
+	}
+	if oauthState.ReturnHost != nil {
+		returnHost = *oauthState.ReturnHost
+	}
+	if redirectURL != "" || returnHost != "" {
+		s.redirectAfterAuthWithParams(w, r, userID, redirectURL, returnHost)
+		return
+	}
+
 	data := struct {
 		stage.Env
 		SSHCommand   string
