@@ -18,23 +18,25 @@ func TestResolveTeamShardCollisions(t *testing.T) {
 
 	// Create a box for each user (noShard), then manually assign both to shard 1.
 	aliceBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:  aliceID,
-		ctrhost: "tcp://fake:9080",
-		name:    "alice-vm",
-		image:   "ubuntu:latest",
-		noShard: true,
-		region:  "pdx",
+		userID:        aliceID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "alice-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	bobBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:  bobID,
-		ctrhost: "tcp://fake:9080",
-		name:    "bob-vm",
-		image:   "ubuntu:latest",
-		noShard: true,
-		region:  "pdx",
+		userID:        bobID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "bob-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -130,23 +132,25 @@ func TestResolveTeamShardCollisions_NoCollision(t *testing.T) {
 	bobID := createTestUser(t, server, "bob@no-collision.example")
 
 	aliceBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:  aliceID,
-		ctrhost: "tcp://fake:9080",
-		name:    "alice-nc-vm",
-		image:   "ubuntu:latest",
-		noShard: true,
-		region:  "pdx",
+		userID:        aliceID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "alice-nc-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	bobBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:  bobID,
-		ctrhost: "tcp://fake:9080",
-		name:    "bob-nc-vm",
-		image:   "ubuntu:latest",
-		noShard: true,
-		region:  "pdx",
+		userID:        bobID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "bob-nc-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 1,
 	})
 	if err != nil {
 		t.Fatal(err)

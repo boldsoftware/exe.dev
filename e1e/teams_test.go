@@ -377,6 +377,7 @@ func TestTeamSharing(t *testing.T) {
 // TestTeamSSHSharing tests the "share ssh allow" and "share ssh disallow" commands.
 func TestTeamSSHSharing(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 2)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
