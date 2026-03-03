@@ -210,6 +210,21 @@ func (sf *SlackFeed) InviteRequest(ctx context.Context, email string, hasBilling
 	}()
 }
 
+// IdeaSubmitted notifies Slack that a user submitted a new idea template.
+func (sf *SlackFeed) IdeaSubmitted(ctx context.Context, email, title, slug string) {
+	message := fmt.Sprintf("new idea submitted: *%s* (`%s`) by `%s`", title, slug, email)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, false))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post idea submission to feed channel", "error", err)
+		}
+	}()
+}
+
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
 func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {

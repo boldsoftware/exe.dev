@@ -320,3 +320,134 @@ func TestIdeaMyRatings(t *testing.T) {
 		t.Fatalf("expected rating=3 for template %d, got %d", tmpl.ID, ratings[key])
 	}
 }
+
+func TestIdeaSubmitCreatesAndSlackNotifies(t *testing.T) {
+	server := newTestServer(t)
+	_, cookie := ideaTestUserCookie(t, server)
+
+	body := strings.NewReader(`{"title":"My Cool Idea","slug":"my-cool-idea","short_description":"A test idea","category":"dev-tools","prompt":"Build something cool"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/submit", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("/api/ideas/submit: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["status"] != "submitted" {
+		t.Fatalf("expected status=submitted, got %q", resp["status"])
+	}
+
+	// Verify it's pending and not visible in approved list
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "my-cool-idea")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+	if tmpl.Status != "pending" {
+		t.Fatalf("expected status=pending, got %q", tmpl.Status)
+	}
+	if tmpl.Title != "My Cool Idea" {
+		t.Fatalf("expected title='My Cool Idea', got %q", tmpl.Title)
+	}
+
+	// Should not appear in approved list
+	approved, err := withRxRes0(server, t.Context(), (*exedb.Queries).ListApprovedTemplates)
+	if err != nil {
+		t.Fatalf("ListApprovedTemplates failed: %v", err)
+	}
+	for _, a := range approved {
+		if a.Slug == "my-cool-idea" {
+			t.Fatal("submitted idea should not appear in approved list")
+		}
+	}
+
+	// Should appear in all templates list (admin view)
+	all, err := withRxRes0(server, t.Context(), (*exedb.Queries).ListAllTemplates)
+	if err != nil {
+		t.Fatalf("ListAllTemplates failed: %v", err)
+	}
+	found := false
+	for _, a := range all {
+		if a.Slug == "my-cool-idea" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("submitted idea should appear in all templates list")
+	}
+}
+
+func TestIdeaSubmitRequiresAuth(t *testing.T) {
+	server := newTestServer(t)
+
+	body := strings.NewReader(`{"title":"Test","slug":"test-idea","prompt":"test"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/submit", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("/api/ideas/submit without auth: expected 401, got %d", w.Code)
+	}
+}
+
+func TestIdeaSubmitValidation(t *testing.T) {
+	server := newTestServer(t)
+	_, cookie := ideaTestUserCookie(t, server)
+
+	// Missing title
+	body := strings.NewReader(`{"slug":"test","prompt":"test"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/submit", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("submit with missing title: expected 400, got %d", w.Code)
+	}
+
+	// Missing prompt
+	body = strings.NewReader(`{"title":"Test","slug":"test-idea"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/ideas/submit", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("submit with missing prompt: expected 400, got %d", w.Code)
+	}
+}
+
+func TestIdeaSubmitDuplicateSlug(t *testing.T) {
+	server := newTestServer(t)
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+	_, cookie := ideaTestUserCookie(t, server)
+
+	// Try to submit with an existing slug
+	body := strings.NewReader(`{"title":"Openclaw Copy","slug":"openclaw","prompt":"duplicate"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/submit", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("submit with duplicate slug: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}

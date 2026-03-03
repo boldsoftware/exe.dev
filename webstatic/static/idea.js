@@ -20,6 +20,9 @@
   // Map of template_id -> user's rating (1-5), populated for logged-in users.
   let myRatings = {};
   let currentSlug = null;
+  // True when the modal was opened by pushing a history entry (card click).
+  // False when the page loaded with a slug already in the URL.
+  let modalPushedState = false;
 
   function getSlugFromPath() {
     const m = location.pathname.match(/^\/idea\/([a-z0-9][a-z0-9-]+[a-z0-9])$/);
@@ -48,9 +51,12 @@
     render(ideas);
     bindEvents();
 
-    // Open idea from URL path if present
+    // Open idea from URL path if present (direct navigation to /idea/<slug>).
+    // Replace the current history entry with /idea, then push the slug on top
+    // so browser-back closes the modal and lands on /idea.
     const slugFromPath = getSlugFromPath();
     if (slugFromPath) {
+      history.replaceState(null, '', '/idea');
       openModal(slugFromPath);
     }
   }
@@ -157,9 +163,10 @@
     if (!t) return;
 
     currentSlug = slug;
+    modalPushedState = true;
     populateModal(t);
 
-    // Update URL
+    // Push a new history entry so browser-back closes the modal.
     history.pushState({ ideaSlug: slug }, '', '/idea/' + slug);
 
     const modal = $('#idea-modal');
@@ -210,13 +217,18 @@
   }
 
   function closeModal() {
+    if (!currentSlug) return;
+    currentSlug = null;
+
     const modal = $('#idea-modal');
     modal.classList.remove('open');
     document.body.style.overflow = '';
-    currentSlug = null;
 
-    // Restore URL to /idea
-    history.pushState(null, '', '/idea');
+    // Pop the history entry that openModal pushed.
+    if (modalPushedState) {
+      modalPushedState = false;
+      history.back();
+    }
   }
 
   function filterIdeas(query) {
@@ -232,6 +244,80 @@
       (categoryLabels[t.category] || '').toLowerCase().includes(q)
     );
     render(filtered);
+  }
+
+  function slugify(str) {
+    return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64);
+  }
+
+  function openSubmitModal() {
+    const modal = $('#idea-submit-modal');
+    // Reset form state
+    const form = $('#idea-submit-form');
+    if (form) form.reset();
+    $('#submit-error').hidden = true;
+    $('#submit-success').hidden = true;
+    $('#submit-btn').disabled = false;
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    const titleInput = $('#submit-title');
+    if (titleInput) titleInput.focus();
+  }
+
+  function closeSubmitModal() {
+    const modal = $('#idea-submit-modal');
+    modal.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const errEl = $('#submit-error');
+    const successEl = $('#submit-success');
+    const btn = $('#submit-btn');
+    errEl.hidden = true;
+    successEl.hidden = true;
+
+    const title = $('#submit-title').value.trim();
+    const desc = $('#submit-desc').value.trim();
+    const category = $('#submit-category').value;
+    const prompt = $('#submit-prompt').value.trim();
+    const slug = slugify(title);
+
+    if (!title || !prompt) {
+      errEl.textContent = 'Title and prompt are required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (slug.length < 3) {
+      errEl.textContent = 'Title must produce a valid slug (at least 3 characters).';
+      errEl.hidden = false;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+      const res = await fetch('/api/ideas/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, slug, short_description: desc, category, prompt }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Submission failed');
+      }
+      successEl.hidden = false;
+      btn.textContent = 'Submitted!';
+      // Close after a moment
+      setTimeout(closeSubmitModal, 1500);
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    }
   }
 
   function bindEvents() {
@@ -253,16 +339,22 @@
       }
     });
 
-    // Modal close
-    const backdrop = $('.idea-modal-backdrop');
+    // Detail modal close
+    const backdrop = $('#idea-modal .idea-modal-backdrop');
     if (backdrop) backdrop.addEventListener('click', closeModal);
-    const closeBtn = $('.idea-modal-close');
+    const closeBtn = $('#idea-modal .idea-modal-close');
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
 
     // Escape key
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        // Close search if open, otherwise close modal
+        // Close submit modal if open
+        const submitModal = $('#idea-submit-modal');
+        if (submitModal && submitModal.classList.contains('open')) {
+          closeSubmitModal();
+          return;
+        }
+        // Close search if open, otherwise close detail modal
         const searchWrap = $('#idea-search-wrap');
         if (searchWrap && !searchWrap.hidden) {
           searchWrap.hidden = true;
@@ -297,29 +389,48 @@
     window.addEventListener('popstate', e => {
       const slug = getSlugFromPath();
       if (slug) {
+        // Forward navigation into a modal
         const t = ideas.find(x => x.slug === slug);
         if (t) {
           currentSlug = slug;
+          modalPushedState = false; // arrived via popstate, not pushState
           populateModal(t);
           const modal = $('#idea-modal');
           modal.classList.add('open');
           document.body.style.overflow = 'hidden';
         }
       } else {
+        // Back navigation out of a modal
         const modal = $('#idea-modal');
         modal.classList.remove('open');
         document.body.style.overflow = '';
         currentSlug = null;
+        modalPushedState = false;
       }
     });
 
-    // Submit idea link
+    // Submit idea
     const submitLink = $('#idea-submit-link');
     if (submitLink) {
-      submitLink.addEventListener('click', e => {
-        e.preventDefault();
-        window.location.href = 'mailto:ideas@exe.dev?subject=Idea%20submission';
+      submitLink.addEventListener('click', () => {
+        if (!config.isLoggedIn) {
+          window.location.href = '/auth?redirect=/idea';
+          return;
+        }
+        openSubmitModal();
       });
+    }
+
+    // Submit modal close
+    const submitBackdrop = $('#idea-submit-modal .idea-modal-backdrop');
+    if (submitBackdrop) submitBackdrop.addEventListener('click', closeSubmitModal);
+    const submitClose = $('.idea-submit-close');
+    if (submitClose) submitClose.addEventListener('click', closeSubmitModal);
+
+    // Submit form
+    const submitForm = $('#idea-submit-form');
+    if (submitForm) {
+      submitForm.addEventListener('submit', handleSubmit);
     }
   }
 

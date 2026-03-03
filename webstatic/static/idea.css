@@ -423,6 +423,90 @@ body {
     background: #333;
 }
 
+/* ===== Submit form ===== */
+
+.idea-submit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.idea-submit-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 12px;
+}
+
+.idea-submit-label:first-child {
+    margin-top: 0;
+}
+
+.idea-submit-input,
+.idea-submit-textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fafafa;
+    color: #333;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+
+.idea-submit-input:focus,
+.idea-submit-textarea:focus {
+    outline: none;
+    border-color: #bbb;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+}
+
+.idea-submit-textarea {
+    resize: vertical;
+    line-height: 1.6;
+    min-height: 120px;
+}
+
+.idea-submit-error {
+    color: #dc3545;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.idea-submit-error[hidden] {
+    display: none;
+}
+
+.idea-submit-success {
+    color: #28a745;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+.idea-submit-success[hidden] {
+    display: none;
+}
+
+.idea-footer button.idea-submit-link {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    color: #666;
+    padding: 0;
+    transition: color 0.15s;
+}
+
+.idea-footer button.idea-submit-link:hover {
+    color: #111;
+}
+
 /* ===== Mobile ===== */
 
 @media (max-width: 600px) {
@@ -608,5 +692,30 @@ body {
 
     .idea-modal-use-btn:hover {
         background: #d1d5db;
+    }
+
+    .idea-submit-input,
+    .idea-submit-textarea {
+        background: #222;
+        border-color: #333;
+        color: #ddd;
+    }
+
+    .idea-submit-input:focus,
+    .idea-submit-textarea:focus {
+        border-color: #555;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+    }
+
+    .idea-submit-label {
+        color: #666;
+    }
+
+    .idea-footer button.idea-submit-link {
+        color: #888;
+    }
+
+    .idea-footer button.idea-submit-link:hover {
+        color: #ddd;
     }
 }

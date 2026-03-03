@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
-    <link rel="stylesheet" href="/static/idea.css?v=3">
+    <link rel="stylesheet" href="/static/idea.css?v=4">
 </head>
 <body>
     {{template "topbar" .}}
@@ -35,7 +35,42 @@
             No ideas match your search.
         </div>
         <div class="idea-footer">
-            <a href="/api/ideas/submit" class="idea-submit-link" id="idea-submit-link">Submit an idea →</a>
+            <button type="button" class="idea-submit-link" id="idea-submit-link">Submit an idea →</button>
+        </div>
+    </div>
+
+    <!-- Submit idea modal -->
+    <div id="idea-submit-modal" class="idea-modal">
+        <div class="idea-modal-backdrop"></div>
+        <div class="idea-modal-panel">
+            <button type="button" class="idea-modal-close idea-submit-close" aria-label="Close">← Back</button>
+            <h2 class="idea-modal-title">Submit an idea</h2>
+            <p class="idea-modal-desc">Share an idea for others to try. It’ll be reviewed before going live.</p>
+            <form id="idea-submit-form" class="idea-submit-form">
+                <label class="idea-submit-label" for="submit-title">Title</label>
+                <input type="text" id="submit-title" class="idea-submit-input" required maxlength="100" placeholder="e.g. Self-hosted Gitea">
+
+                <label class="idea-submit-label" for="submit-desc">Short description</label>
+                <input type="text" id="submit-desc" class="idea-submit-input" maxlength="300" placeholder="A quick summary of the idea">
+
+                <label class="idea-submit-label" for="submit-category">Category</label>
+                <select id="submit-category" class="idea-submit-input">
+                    <option value="dev-tools">Dev Tools</option>
+                    <option value="web-apps">Web Apps</option>
+                    <option value="ai-ml">AI &amp; ML</option>
+                    <option value="databases">Databases</option>
+                    <option value="games">Games &amp; Fun</option>
+                    <option value="self-hosted">Self-Hosted</option>
+                    <option value="other" selected>Other</option>
+                </select>
+
+                <label class="idea-submit-label" for="submit-prompt">Prompt</label>
+                <textarea id="submit-prompt" class="idea-submit-textarea" required maxlength="5000" rows="6" placeholder="What should Shelley build?"></textarea>
+
+                <div id="submit-error" class="idea-submit-error" hidden></div>
+                <div id="submit-success" class="idea-submit-success" hidden>Submitted! We’ll review it soon.</div>
+                <button type="submit" id="submit-btn" class="idea-modal-use-btn">Submit</button>
+            </form>
         </div>
     </div>
 
@@ -67,8 +102,9 @@
     <script>
         window.__IDEA_CONFIG__ = {
             canRate: {{.CanRate}},
+            isLoggedIn: {{.IsLoggedIn}},
         };
     </script>
-    <script src="/static/idea.js?v=4"></script>
+    <script src="/static/idea.js?v=5"></script>
 </body>
 </html>

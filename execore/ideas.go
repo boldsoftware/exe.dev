@@ -216,6 +216,14 @@ func (s *Server) handleTemplateSubmitAPI(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Look up user email for Slack notification.
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	email := userID
+	if err == nil {
+		email = user.Email
+	}
+	s.slackFeed.IdeaSubmitted(r.Context(), email, req.Title, req.Slug)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"status": "submitted"})
