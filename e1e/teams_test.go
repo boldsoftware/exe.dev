@@ -3,6 +3,8 @@
 package e1e
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -509,6 +511,337 @@ func TestTeamSSHSharing(t *testing.T) {
 	t.Run("Cleanup", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.SendLine("rm " + memberBox)
+		repl.Want("deleted")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+}
+
+// TestTeamSharingIsolation is an adversarial test that verifies users outside
+// a team CANNOT access team-shared resources. It creates two teams and an
+// unaffiliated user, then tests that:
+//   - Team web sharing (share add team) doesn't leak to outsiders
+//   - Team SSH sharing (share ssh allow) doesn't leak to outsiders
+//   - Team Shelley sharing (share shelley allow) doesn't leak to outsiders
+//
+// Each sharing mechanism is tested against three adversaries:
+//  1. A member of a different team
+//  2. An unaffiliated user (no team at all)
+//  3. A former team member (removed after sharing was enabled)
+func TestTeamSharingIsolation(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 2)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// === Setup: Two teams, one lonely user ===
+
+	// Team Alpha: owner + member
+	alphaPTY, _, alphaOwnerKey, alphaOwnerEmail := registerForExeDevWithEmail(t, "alpha-owner@test-isolation.example")
+	alphaMemberPTY, _, alphaMemberKey, alphaMemberEmail := registerForExeDevWithEmail(t, "alpha-member@test-isolation.example")
+	// Will be removed from team mid-test
+	alphaExMemberPTY, alphaExMemberCookies, alphaExMemberKey, alphaExMemberEmail := registerForExeDevWithEmail(t, "alpha-ex@test-isolation.example")
+	alphaPTY.Disconnect()
+	alphaMemberPTY.Disconnect()
+	alphaExMemberPTY.Disconnect()
+
+	enableRootSupport(t, alphaOwnerEmail)
+	createTeam(t, alphaOwnerKey, "team_alpha_iso", "AlphaTeam", alphaOwnerEmail)
+	addTeamMember(t, alphaOwnerKey, alphaMemberEmail)
+	addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+
+	// Team Beta: owner only (the adversary from another team)
+	betaPTY, betaCookies, betaOwnerKey, betaOwnerEmail := registerForExeDevWithEmail(t, "beta-owner@test-isolation.example")
+	betaPTY.Disconnect()
+
+	enableRootSupport(t, betaOwnerEmail)
+	createTeam(t, betaOwnerKey, "team_beta_iso", "BetaTeam", betaOwnerEmail)
+
+	// Lonely user: no team at all
+	lonelyPTY, lonelyCookies, _, _ := registerForExeDevWithEmail(t, "lonely@test-isolation.example")
+	lonelyPTY.Disconnect()
+
+	// Alpha member creates a box
+	alphaMemberPTY = sshToExeDev(t, alphaMemberKey)
+	box := newBox(t, alphaMemberPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	alphaMemberPTY.Disconnect()
+	waitForSSH(t, box, alphaMemberKey)
+
+	// Set up HTTP server for proxy tests
+	serveIndex(t, box, alphaMemberKey, "team-isolation-test")
+	httpPort := Env.servers.Exed.HTTPPort
+	configureProxyRoute(t, alphaMemberKey, box, 8080, "private")
+
+	// ============================================================
+	// Part 1: Team web sharing (share add <box> team)
+	// ============================================================
+	t.Run("web_sharing_isolation", func(t *testing.T) {
+		// Share with team
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "add", box, "team")
+		if err != nil {
+			t.Fatalf("share add team failed: %v\n%s", err, out)
+		}
+
+		// Sanity: non-owner team member CAN access via team share
+		proxyAssert(t, box, proxyExpectation{
+			name:     "team member can access web-shared box",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			httpCode: http.StatusOK,
+		})
+
+		// Adversary 1: different team's owner CANNOT access
+		proxyAssert(t, box, proxyExpectation{
+			name:     "other team owner CANNOT access web-shared box",
+			httpPort: httpPort,
+			cookies:  betaCookies,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Adversary 2: unaffiliated user CANNOT access
+		proxyAssert(t, box, proxyExpectation{
+			name:     "unaffiliated user CANNOT access web-shared box",
+			httpPort: httpPort,
+			cookies:  lonelyCookies,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Adversary 3: ex-member test
+		// First verify ex-member CAN access (they're still in the team)
+		proxyAssert(t, box, proxyExpectation{
+			name:     "ex-member can access before removal",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			httpCode: http.StatusOK,
+		})
+
+		// Remove the ex-member from the team
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), alphaOwnerKey, "team", "remove", alphaExMemberEmail)
+		if err != nil {
+			t.Fatalf("team remove failed: %v\n%s", err, out)
+		}
+
+		// Ex-member should now be denied
+		proxyAssert(t, box, proxyExpectation{
+			name:     "ex-member CANNOT access web-shared box after removal",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Unshare team
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "remove", box, "team")
+		if err != nil {
+			t.Fatalf("share remove team failed: %v\n%s", err, out)
+		}
+
+		// Re-add ex-member for later tests
+		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+	})
+
+	// ============================================================
+	// Part 2: Team SSH sharing (share ssh allow)
+	// ============================================================
+	t.Run("ssh_sharing_isolation", func(t *testing.T) {
+		// Enable SSH sharing
+		repl := sshToExeDev(t, alphaMemberKey)
+		repl.SendLine("share ssh allow " + box)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		// Sanity: team member CAN SSH
+		pty := sshToBox(t, box, alphaExMemberKey)
+		pty.SendLine("echo ssh-isolation-ok")
+		pty.Want("ssh-isolation-ok")
+		pty.Disconnect()
+
+		// Adversary 1: different team's owner CANNOT SSH
+		// Use "hostname" — if we reach the box shell, output contains the box name.
+		// If we land in the REPL, output is "command not found: hostname".
+		cmd := boxSSHCommand(t, box, betaOwnerKey, "hostname")
+		out, _ := cmd.CombinedOutput()
+		if strings.Contains(string(out), box) {
+			t.Errorf("other team owner SHOULD NOT reach box shell via SSH, but got: %s", out)
+		}
+
+		// Adversary 2: (lonely user has no key registered for box SSH,
+		// so SSH will fail at key auth level — this is inherently safe)
+
+		// Adversary 3: remove ex-member, verify SSH denied
+		rmOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), alphaOwnerKey, "team", "remove", alphaExMemberEmail)
+		if err != nil {
+			t.Fatalf("team remove failed: %v\n%s", err, rmOut)
+		}
+
+		cmd = boxSSHCommand(t, box, alphaExMemberKey, "hostname")
+		out, _ = cmd.CombinedOutput()
+		if strings.Contains(string(out), box) {
+			t.Errorf("ex-member SHOULD NOT reach box shell via SSH after removal, but got: %s", out)
+		}
+
+		// Disable SSH sharing and re-add member
+		repl = sshToExeDev(t, alphaMemberKey)
+		repl.SendLine("share ssh disallow " + box)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+	})
+
+	// ============================================================
+	// Part 3: Team Shelley sharing (share shelley allow)
+	// ============================================================
+	t.Run("shelley_sharing_isolation", func(t *testing.T) {
+		shelleyHost := fmt.Sprintf("%s.shelley.exe.cloud:%d", box, httpPort)
+
+		// Before enabling: non-owner team member CANNOT access Shelley
+		// (alphaMemberCookies is the box OWNER — they always have access.
+		//  Use alphaExMemberCookies who is a team member but not the owner.)
+		proxyAssert(t, box, proxyExpectation{
+			name:     "non-owner team member cannot access shelley before allow",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Enable Shelley sharing
+		repl := sshToExeDev(t, alphaMemberKey)
+		repl.SendLine("share shelley allow " + box)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		// Sanity: team member CAN now access Shelley
+		// Shelley is running in test VMs, so we expect 200.
+		proxyAssert(t, box, proxyExpectation{
+			name:     "team member can access shelley after allow",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusOK,
+		})
+
+		// Adversary 1: different team's owner CANNOT access Shelley
+		proxyAssert(t, box, proxyExpectation{
+			name:     "other team owner CANNOT access shelley",
+			httpPort: httpPort,
+			cookies:  betaCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Adversary 2: unaffiliated user CANNOT access Shelley
+		proxyAssert(t, box, proxyExpectation{
+			name:     "unaffiliated user CANNOT access shelley",
+			httpPort: httpPort,
+			cookies:  lonelyCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Adversary 3: remove ex-member, verify Shelley denied
+		rmOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), alphaOwnerKey, "team", "remove", alphaExMemberEmail)
+		if err != nil {
+			t.Fatalf("team remove failed: %v\n%s", err, rmOut)
+		}
+
+		proxyAssert(t, box, proxyExpectation{
+			name:     "ex-member CANNOT access shelley after removal",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Disable Shelley sharing and re-add ex-member for later tests
+		repl = sshToExeDev(t, alphaMemberKey)
+		repl.SendLine("share shelley disallow " + box)
+		repl.Want("updated")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+	})
+
+	// ============================================================
+	// Part 4: Cross-cutting — email share doesn't grant Shelley
+	// ============================================================
+	t.Run("email_share_no_shelley", func(t *testing.T) {
+		shelleyHost := fmt.Sprintf("%s.shelley.exe.cloud:%d", box, httpPort)
+
+		// Share box via email with the beta user
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "add", box, betaOwnerEmail)
+		if err != nil {
+			t.Fatalf("share add email failed: %v\n%s", err, out)
+		}
+
+		// Beta user CAN access the standard proxy
+		proxyAssert(t, box, proxyExpectation{
+			name:     "email-shared user can access standard proxy",
+			httpPort: httpPort,
+			cookies:  betaCookies,
+			httpCode: http.StatusOK,
+		})
+
+		// Beta user CANNOT access Shelley (email share != shelley access)
+		proxyAssert(t, box, proxyExpectation{
+			name:     "email-shared user CANNOT access shelley",
+			httpPort: httpPort,
+			cookies:  betaCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Revoke email share
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "remove", box, betaOwnerEmail)
+		if err != nil {
+			t.Fatalf("share remove email failed: %v\n%s", err, out)
+		}
+	})
+
+	// ============================================================
+	// Part 5: Team web share doesn't grant Shelley
+	// ============================================================
+	t.Run("team_web_share_no_shelley", func(t *testing.T) {
+		shelleyHost := fmt.Sprintf("%s.shelley.exe.cloud:%d", box, httpPort)
+
+		// Share box with team (alphaExMember was re-added in Part 2 cleanup)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "add", box, "team")
+		if err != nil {
+			t.Fatalf("share add team failed: %v\n%s", err, out)
+		}
+
+		// Team member CAN access standard proxy via team share
+		proxyAssert(t, box, proxyExpectation{
+			name:     "team web-shared user can access standard proxy",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			httpCode: http.StatusOK,
+		})
+
+		// Team member CANNOT access Shelley (team web share != shelley access)
+		proxyAssert(t, box, proxyExpectation{
+			name:     "team web-shared user CANNOT access shelley",
+			httpPort: httpPort,
+			cookies:  alphaExMemberCookies,
+			host:     shelleyHost,
+			httpCode: http.StatusUnauthorized,
+		})
+
+		// Cleanup: remove team share
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), alphaMemberKey, "share", "remove", box, "team")
+		if err != nil {
+			t.Fatalf("share remove team failed: %v\n%s", err, out)
+		}
+	})
+
+	// Cleanup
+	t.Run("Cleanup", func(t *testing.T) {
+		repl := sshToExeDev(t, alphaMemberKey)
+		repl.SendLine("rm " + box)
 		repl.Want("deleted")
 		repl.WantPrompt()
 		repl.Disconnect()

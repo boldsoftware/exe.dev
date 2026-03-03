@@ -1,0 +1,35 @@
+
+
+●
+● ssh localhost
+●
+
+share shelley allow BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share shelley allow BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+  Team Shelley: allowed
+
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+share shelley disallow BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share shelley disallow BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+
+PROMPT ▶ exit
+Goodbye!

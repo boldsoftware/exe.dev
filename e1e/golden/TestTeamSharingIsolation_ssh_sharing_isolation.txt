@@ -1,0 +1,53 @@
+
+
+●
+● ssh localhost
+●
+
+share ssh allow BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share ssh allow BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+  Team SSH: allowed
+
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh BOX_NAME@localhost
+●
+
+
+You are on BOX_NAME.exe.xyz. The disk is persistent. You have 'sudo'.
+
+For support and documentation, "ssh exe.dev" or visit https://exe.dev/
+
+MOTD HINT
+
+exedev@BOX_NAME:~$ bind 'set enable-bracketed-paste off'
+exedev@BOX_NAME:~$ echo ssh-isolation-ok
+ssh-isolation-ok
+exedev@BOX_NAME:~$ exit
+logout
+
+
+●
+● ssh localhost
+●
+
+share ssh disallow BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share ssh disallow BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+
+PROMPT ▶ exit
+Goodbye!
