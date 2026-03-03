@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { ConversationWithState } from "../types";
 import { api } from "../services/api";
 import { useMarkdown } from "../contexts/MarkdownContext";
-import { useI18n } from "../i18n";
+import { useI18n, type Locale } from "../i18n";
 
 interface CommandItem {
   id: string;
@@ -462,52 +462,75 @@ function CommandPalette({
       });
     }
 
-    // Language switcher
-    const localeNames: Record<string, string> = {
-      en: t("english"),
-      ja: t("japanese"),
-      fr: t("french"),
-      ru: t("russian"),
-      es: t("spanish"),
-    };
-    const localeOrder: Array<"en" | "ja" | "fr" | "ru" | "es"> = ["en", "ja", "fr", "ru", "es"];
-    const currentIndex = localeOrder.indexOf(locale);
-    const nextLocale = localeOrder[(currentIndex + 1) % localeOrder.length];
-    items.push({
-      id: "switch-language",
-      type: "action",
-      title: `${t("language")}: ${localeNames[locale]}`,
-      subtitle: `${t("switchLanguage")} → ${localeNames[nextLocale]}`,
-      icon: (
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
-          />
-        </svg>
-      ),
-      action: () => {
-        setLocale(nextLocale);
-        onClose();
+    // Language switcher — one action per language
+    const languageOptions: {
+      loc: Locale;
+      flag: string;
+      name: "english" | "japanese" | "french" | "russian" | "spanish";
+      nativeName: string;
+      keywords: string[];
+    }[] = [
+      {
+        loc: "en",
+        flag: "\ud83c\uddfa\ud83c\uddf8",
+        name: "english",
+        nativeName: "English",
+        keywords: ["english", "en"],
       },
-      keywords: [
-        "language",
-        "locale",
-        "translate",
-        "i18n",
-        "english",
-        "japanese",
-        "french",
-        "russian",
-        "spanish",
-        "日本語",
-        "français",
-        "русский",
-        "español",
-      ],
-    });
+      {
+        loc: "ja",
+        flag: "\ud83c\uddef\ud83c\uddf5",
+        name: "japanese",
+        nativeName: "\u65e5\u672c\u8a9e",
+        keywords: ["japanese", "ja", "\u65e5\u672c\u8a9e", "nihongo"],
+      },
+      {
+        loc: "fr",
+        flag: "\ud83c\uddeb\ud83c\uddf7",
+        name: "french",
+        nativeName: "Fran\u00e7ais",
+        keywords: ["french", "fr", "fran\u00e7ais"],
+      },
+      {
+        loc: "ru",
+        flag: "\ud83c\uddf7\ud83c\uddfa",
+        name: "russian",
+        nativeName: "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+        keywords: ["russian", "ru", "\u0440\u0443\u0441\u0441\u043a\u0438\u0439"],
+      },
+      {
+        loc: "es",
+        flag: "\ud83c\uddea\ud83c\uddf8",
+        name: "spanish",
+        nativeName: "Espa\u00f1ol",
+        keywords: ["spanish", "es", "espa\u00f1ol"],
+      },
+    ];
+    const langIcon = (
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+        />
+      </svg>
+    );
+    for (const opt of languageOptions) {
+      if (opt.loc === locale) continue;
+      items.push({
+        id: `switch-language-${opt.loc}`,
+        type: "action",
+        title: `${opt.flag} ${opt.nativeName}`,
+        subtitle: `${t("switchLanguage")} — ${t(opt.name)}`,
+        icon: langIcon,
+        action: () => {
+          setLocale(opt.loc);
+          onClose();
+        },
+        keywords: ["language", "locale", "translate", "i18n", ...opt.keywords],
+      });
+    }
 
     return items;
   }, [
