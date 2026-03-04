@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { MultiFileDiff } from "@pierre/diffs/react";
-import type { FileContents, SupportedLanguages, ThemeTypes, ThemesType } from "@pierre/diffs";
+import { PatchDiff } from "@pierre/diffs/react";
+import type { ThemeTypes, ThemesType } from "@pierre/diffs";
 import { LLMContent } from "../types";
 import { isDarkModeActive } from "../services/theme";
 
@@ -32,8 +32,6 @@ function setSideBySidePreference(value: boolean): void {
 // Display data structure from the patch tool
 interface PatchDisplayData {
   path: string;
-  oldContent: string;
-  newContent: string;
   diff: string;
 }
 
@@ -50,73 +48,9 @@ interface PatchToolProps {
   onCommentTextChange?: (text: string) => void;
 }
 
-// Map file extension to language for syntax highlighting
-function getLanguageFromPath(path: string): SupportedLanguages {
-  const ext = path.split(".").pop()?.toLowerCase() || "";
-  const langMap: Record<string, SupportedLanguages> = {
-    ts: "typescript",
-    tsx: "tsx",
-    js: "javascript",
-    jsx: "jsx",
-    py: "python",
-    rb: "ruby",
-    go: "go",
-    rs: "rust",
-    java: "java",
-    c: "c",
-    cpp: "cpp",
-    h: "c",
-    hpp: "cpp",
-    cs: "csharp",
-    php: "php",
-    swift: "swift",
-    kt: "kotlin",
-    scala: "scala",
-    sh: "bash",
-    bash: "bash",
-    zsh: "bash",
-    fish: "fish",
-    ps1: "powershell",
-    sql: "sql",
-    html: "html",
-    htm: "html",
-    css: "css",
-    scss: "scss",
-    sass: "sass",
-    less: "less",
-    json: "json",
-    xml: "xml",
-    yaml: "yaml",
-    yml: "yaml",
-    toml: "toml",
-    ini: "ini",
-    md: "markdown",
-    markdown: "markdown",
-    txt: "text",
-    dockerfile: "dockerfile",
-    makefile: "makefile",
-    cmake: "cmake",
-    lua: "lua",
-    perl: "perl",
-    r: "r",
-    vue: "vue",
-    svelte: "svelte",
-    astro: "astro",
-  };
-  return langMap[ext] || "text";
-}
-
-// Diff view component using @pierre/diffs
-function DiffView({
-  displayData,
-  sideBySide,
-}: {
-  displayData: PatchDisplayData;
-  sideBySide: boolean;
-}) {
+function DiffView({ patch, sideBySide }: { patch: string; sideBySide: boolean }) {
   const [themeType, setThemeType] = useState<ThemeTypes>(isDarkModeActive() ? "dark" : "light");
 
-  // Listen for theme changes
   useEffect(() => {
     const updateTheme = () => {
       setThemeType(isDarkModeActive() ? "dark" : "light");
@@ -134,20 +68,6 @@ function DiffView({
     return () => observer.disconnect();
   }, []);
 
-  const lang = getLanguageFromPath(displayData.path);
-
-  const oldFile: FileContents = {
-    name: displayData.path,
-    contents: displayData.oldContent,
-    lang,
-  };
-
-  const newFile: FileContents = {
-    name: displayData.path,
-    contents: displayData.newContent,
-    lang,
-  };
-
   const theme: ThemesType = {
     dark: "github-dark",
     light: "github-light",
@@ -155,9 +75,8 @@ function DiffView({
 
   return (
     <div className="patch-tool-diffs-container">
-      <MultiFileDiff
-        oldFile={oldFile}
-        newFile={newFile}
+      <PatchDiff
+        patch={patch}
         options={{
           diffStyle: sideBySide ? "split" : "unified",
           theme,
@@ -271,13 +190,13 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, display }: Patc
         ? toolInput
         : "";
 
-  // Parse display data (structured format from backend)
+  // Supports both current {path,diff} payloads and legacy {path,oldContent,newContent,diff} payloads.
   const displayData: PatchDisplayData | null =
     display &&
     typeof display === "object" &&
     "path" in display &&
-    "oldContent" in display &&
-    "newContent" in display
+    "diff" in display &&
+    typeof display.diff === "string"
       ? (display as PatchDisplayData)
       : null;
 
@@ -287,11 +206,13 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, display }: Patc
 
   const isComplete = !isRunning && toolResult !== undefined;
 
+  const diff = displayData?.diff ?? null;
+
   // Extract filename from path or diff headers
   const filename = displayData?.path || path || "patch";
 
   // Show toggle only on desktop when expanded and complete with diff data
-  const showDiffToggle = !isMobile && isExpanded && isComplete && !hasError && displayData;
+  const showDiffToggle = !isMobile && isExpanded && isComplete && !hasError && diff;
 
   return (
     <div
@@ -337,9 +258,9 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, display }: Patc
 
       {isExpanded && (
         <div className="patch-tool-details">
-          {isComplete && !hasError && displayData && (
+          {isComplete && !hasError && diff && (
             <div className="patch-tool-section">
-              <DiffView displayData={displayData} sideBySide={sideBySide} />
+              <DiffView patch={diff} sideBySide={sideBySide} />
             </div>
           )}
 

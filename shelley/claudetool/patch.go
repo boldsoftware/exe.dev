@@ -262,10 +262,8 @@ type PatchInputOneString struct {
 
 // PatchDisplayData is the structured data sent to the UI for display.
 type PatchDisplayData struct {
-	Path       string `json:"path"`
-	OldContent string `json:"oldContent"`
-	NewContent string `json:"newContent"`
-	Diff       string `json:"diff"`
+	Path string `json:"path"`
+	Diff string `json:"diff"`
 }
 
 // PatchRequest represents a single patch operation.
@@ -551,12 +549,10 @@ func (p *PatchTool) patchRun(ctx context.Context, input *PatchInput) llm.ToolOut
 
 	diff := generateUnifiedDiff(input.Path, string(orig), string(patched))
 
-	// Display data for the UI includes structured content for Monaco diff editor
+	// Display data for the UI includes the unified diff only.
 	displayData := PatchDisplayData{
-		Path:       input.Path,
-		OldContent: string(orig),
-		NewContent: string(patched),
-		Diff:       diff,
+		Path: input.Path,
+		Diff: diff,
 	}
 
 	return llm.ToolOut{

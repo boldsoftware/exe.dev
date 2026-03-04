@@ -640,3 +640,69 @@ func TestPatchTool_CallbackFunction(t *testing.T) {
 		t.Errorf("callback received error: %v", capturedOutput.Error)
 	}
 }
+
+func TestPatchTool_DisplayDataContainsUnifiedDiffOnly(t *testing.T) {
+	tempDir := t.TempDir()
+	patch := &PatchTool{WorkingDir: NewMutableWorkingDir(tempDir)}
+	ctx := context.Background()
+
+	testFile := filepath.Join(tempDir, "display.txt")
+	input := PatchInput{
+		Path: testFile,
+		Patches: []PatchRequest{{
+			Operation: "overwrite",
+			NewText:   "before\n",
+		}},
+	}
+
+	msg, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("failed to marshal patch input: %v", err)
+	}
+	result := patch.Run(ctx, msg)
+	if result.Error != nil {
+		t.Fatalf("initial overwrite failed: %v", result.Error)
+	}
+
+	input = PatchInput{
+		Path: testFile,
+		Patches: []PatchRequest{{
+			Operation: "replace",
+			OldText:   "before",
+			NewText:   "after",
+		}},
+	}
+	msg, err = json.Marshal(input)
+	if err != nil {
+		t.Fatalf("failed to marshal patch input: %v", err)
+	}
+	result = patch.Run(ctx, msg)
+	if result.Error != nil {
+		t.Fatalf("replace failed: %v", result.Error)
+	}
+
+	display, ok := result.Display.(PatchDisplayData)
+	if !ok {
+		t.Fatalf("expected PatchDisplayData display payload, got %T", result.Display)
+	}
+	if display.Path != testFile {
+		t.Fatalf("display path = %q, want %q", display.Path, testFile)
+	}
+	if display.Diff == "" {
+		t.Fatal("display diff should not be empty")
+	}
+	if !strings.Contains(display.Diff, "@@") {
+		t.Fatalf("display diff does not look like unified diff: %q", display.Diff)
+	}
+
+	displayJSON, err := json.Marshal(display)
+	if err != nil {
+		t.Fatalf("failed to marshal display payload: %v", err)
+	}
+	if strings.Contains(string(displayJSON), "oldContent") {
+		t.Fatalf("display payload should not include oldContent: %s", string(displayJSON))
+	}
+	if strings.Contains(string(displayJSON), "newContent") {
+		t.Fatalf("display payload should not include newContent: %s", string(displayJSON))
+	}
+}
