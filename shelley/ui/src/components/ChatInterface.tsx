@@ -513,6 +513,7 @@ const LANGUAGE_OPTIONS: { locale: Locale; flag: string; label: string }[] = [
   { locale: "fr", flag: "🇫🇷", label: "Français" },
   { locale: "ru", flag: "🇷🇺", label: "Русский" },
   { locale: "es", flag: "🇪🇸", label: "Español" },
+  { locale: "upgoer5", flag: "🚀", label: "Up-Goer Five" },
 ];
 
 function LanguageDropdown({

@@ -466,7 +466,7 @@ function CommandPalette({
     const languageOptions: {
       loc: Locale;
       flag: string;
-      name: "english" | "japanese" | "french" | "russian" | "spanish";
+      name: "english" | "japanese" | "french" | "russian" | "spanish" | "upgoerFive";
       nativeName: string;
       keywords: string[];
     }[] = [
@@ -504,6 +504,13 @@ function CommandPalette({
         name: "spanish",
         nativeName: "Espa\u00f1ol",
         keywords: ["spanish", "es", "espa\u00f1ol"],
+      },
+      {
+        loc: "upgoer5",
+        flag: "\ud83d\ude80",
+        name: "upgoerFive",
+        nativeName: "Up-Goer Five",
+        keywords: ["upgoer", "upgoer5", "simple", "xkcd", "ten hundred"],
       },
     ];
     const langIcon = (

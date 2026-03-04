@@ -5,6 +5,7 @@ import { ja } from "./ja";
 import { fr } from "./fr";
 import { ru } from "./ru";
 import { es } from "./es";
+import { upgoer5 } from "./upgoer5";
 
 const LOCALE_STORAGE_KEY = "shelley-locale";
 
@@ -14,6 +15,7 @@ const translations: Record<Locale, TranslationKeys> = {
   fr,
   ru,
   es,
+  upgoer5,
 };
 
 function getStoredLocale(): Locale {

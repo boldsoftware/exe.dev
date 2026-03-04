@@ -1,4 +1,4 @@
-export type Locale = "en" | "ja" | "fr" | "ru" | "es";
+export type Locale = "en" | "ja" | "fr" | "ru" | "es" | "upgoer5";
 
 export interface TranslationKeys {
   // App-level
@@ -206,4 +206,5 @@ export interface TranslationKeys {
   french: string;
   russian: string;
   spanish: string;
+  upgoerFive: string;
 }

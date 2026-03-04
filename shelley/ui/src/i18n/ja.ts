@@ -210,4 +210,5 @@ export const ja: TranslationKeys = {
   french: "Français",
   russian: "Русский",
   spanish: "Español",
+  upgoerFive: "Up-Goer Five",
 };

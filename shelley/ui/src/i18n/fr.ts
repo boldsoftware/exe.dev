@@ -211,4 +211,5 @@ export const fr: TranslationKeys = {
   french: "Français",
   russian: "Русский",
   spanish: "Español",
+  upgoerFive: "Up-Goer Five",
 };
