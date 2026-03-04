@@ -452,6 +452,12 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 			if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), userID) {
 				// User is logged in but needs to add billing info
 				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
+				s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
+					"user_id", userID,
+					"source", "web",
+					"hostname", hostname,
+					"billing_status", billingStatus.BillingStatus,
+				)
 				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 				if prompt != "" {
 					billingURL += "&prompt=" + url.QueryEscape(prompt)

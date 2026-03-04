@@ -298,6 +298,13 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	s.slog().InfoContext(ctx, "passkey registered",
+		"user_id", userID,
+		"email", user.Email,
+		"passkey_name", passkeyName,
+		"is_first_passkey", len(existingPasskeys) == 0,
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

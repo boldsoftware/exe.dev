@@ -144,6 +144,10 @@ func (s *Server) handleOAuthGoogleCallback(w http.ResponseWriter, r *http.Reques
 	code := r.URL.Query().Get("code")
 	stateParam := r.URL.Query().Get("state")
 	if code == "" || stateParam == "" {
+		s.slog().WarnContext(ctx, "google oauth callback missing params",
+			"has_code", code != "",
+			"has_state", stateParam != "",
+		)
 		s.showAuthError(w, r, "Invalid authentication response. Please try again.", "")
 		return
 	}
@@ -173,6 +177,9 @@ func (s *Server) handleOAuthGoogleCallback(w http.ResponseWriter, r *http.Reques
 	}
 
 	if !claims.EmailVerified {
+		s.slog().InfoContext(ctx, "google oauth email not verified",
+			"email", oauthState.Email,
+		)
 		s.showAuthError(w, r, "Your Google email is not verified. Please verify your email with Google first.", "")
 		return
 	}
@@ -248,12 +255,25 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		return err
 	})
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to create user during google oauth", "error", err)
+		s.slog().ErrorContext(ctx, "failed to create user during google oauth",
+			"error", err,
+			"email", oauthState.Email,
+			"is_gmail", email.IsGmailAddress(oauthState.Email),
+		)
 		s.showAuthError(w, r, "Failed to create account. Please try again.", "")
 		return
 	}
 
 	s.maybeSetGoogleAuthProvider(ctx, userID, claims.Sub, oauthState.TeamInviteToken)
+
+	s.slog().InfoContext(ctx, "new user created",
+		"user_id", userID,
+		"email", oauthState.Email,
+		"source", "google_oauth",
+		"is_gmail", email.IsGmailAddress(oauthState.Email),
+		"has_invite", oauthState.InviteCodeID != nil,
+		"has_team_invite", oauthState.TeamInviteToken != nil,
+	)
 
 	source := "web"
 	if oauthState.ReturnHost != nil {
@@ -325,6 +345,14 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		Email:      oauthState.Email,
 		IsWelcome:  true,
 	}
+	s.slog().InfoContext(ctx, "email verified page shown",
+		"user_id", userID,
+		"email", oauthState.Email,
+		"source", "google_oauth",
+		"is_welcome", true,
+		"has_passkeys", false,
+		"is_gmail", email.IsGmailAddress(oauthState.Email),
+	)
 	s.renderTemplate(ctx, w, "email-verified.html", data)
 }
 

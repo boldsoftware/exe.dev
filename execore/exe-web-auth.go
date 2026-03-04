@@ -206,8 +206,21 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// Check if user needs billing before starting creation
 			if !s.env.SkipBilling {
 				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
-				if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), verifiedUserID) {
+				if err != nil {
+					s.slog().WarnContext(r.Context(), "billing status lookup failed during email verification",
+						"user_id", verifiedUserID,
+						"email", verifiedEmail,
+						"error", err,
+					)
+				} else if userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), verifiedUserID) {
 					// Preserve hostname/prompt/image through billing flow
+					s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
+						"user_id", verifiedUserID,
+						"email", verifiedEmail,
+						"source", "email_verification",
+						"hostname", hostname,
+						"billing_status", billingStatus.BillingStatus,
+					)
 					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
 						billingURL += "&prompt=" + url.QueryEscape(prompt)
@@ -260,6 +273,14 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		BillingToken: "",
 		IsWelcome:    isWelcome,
 	}
+	s.slog().InfoContext(r.Context(), "email verified page shown",
+		"user_id", verifiedUserID,
+		"email", verifiedEmail,
+		"source", source,
+		"is_welcome", isWelcome,
+		"has_passkeys", hasPasskeys,
+		"is_gmail", email.IsGmailAddress(verifiedEmail),
+	)
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
 }
 
@@ -384,6 +405,12 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
 		subParams.TrialEnd = time.Now().Add(15 * 24 * time.Hour)
+		s.slog().InfoContext(r.Context(), "trial granted at checkout",
+			"user_id", userID,
+			"email", user.Email,
+			"trial_days", 15,
+			"is_gmail", email.IsGmailAddress(user.Email),
+		)
 	}
 	redirectURL, err := s.billing.Subscribe(r.Context(), accountID, subParams)
 	if err != nil {
@@ -1593,6 +1620,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		if returnHost := r.FormValue("return_host"); returnHost != "" {
 			source = "login " + returnHost
 		}
+		s.slog().InfoContext(r.Context(), "new user created",
+			"user_id", userID,
+			"email", addr,
+			"source", "email",
+			"is_gmail", email.IsGmailAddress(addr),
+			"has_invite", invite != nil,
+		)
 		s.slackFeed.NewUser(r.Context(), userID, addr, source, inviterEmail)
 		// Check email quality and disable VM creation if disposable
 		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, addr); err != nil {

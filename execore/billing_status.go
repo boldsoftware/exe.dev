@@ -79,9 +79,23 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 
 	// Check if user needs billing
 	if !ss.server.env.SkipBilling {
-		if billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID); err == nil && userNeedsBilling(&billingStatus) {
+		billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID)
+		if err != nil {
+			ss.server.slog().WarnContext(ctx, "billing status lookup failed",
+				"user_id", user.ID,
+				"email", user.Email,
+				"source", "ssh",
+				"error", err,
+			)
+		} else if userNeedsBilling(&billingStatus) {
 			// User doesn't have their own billing — check if team billing_owner covers them
 			if !ss.server.teamBillingCovers(ctx, user.ID) {
+				ss.server.slog().InfoContext(ctx, "vm creation blocked by billing requirement",
+					"user_id", user.ID,
+					"email", user.Email,
+					"source", "ssh",
+					"billing_status", billingStatus.BillingStatus,
+				)
 				billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
 				return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
 			}
