@@ -45,16 +45,6 @@ func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
 	return true
 }
 
-// billingDest returns the billing destination path for a user who needs billing.
-// Canceled users go directly to /billing/update (they already know the product);
-// everyone else sees /select-plan first.
-func billingDest(status *exedb.GetUserBillingStatusRow) string {
-	if status.BillingStatus == "canceled" {
-		return "/billing/update"
-	}
-	return "/select-plan"
-}
-
 // teamBillingCovers checks if the user's team billing_owner has active billing.
 // Returns true if user is in a team and the billing_owner's subscription covers them.
 func (s *Server) teamBillingCovers(ctx context.Context, userID string) bool {

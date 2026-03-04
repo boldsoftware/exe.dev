@@ -208,7 +208,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
 				if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), verifiedUserID) {
 					// Preserve hostname/prompt/image through billing flow
-					billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
+					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 					if prompt != "" {
 						billingURL += "&prompt=" + url.QueryEscape(prompt)
 					}
@@ -261,48 +261,6 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		IsWelcome:    isWelcome,
 	}
 	s.renderTemplate(r.Context(), w, "email-verified.html", data)
-}
-
-// billingQueryAllowlist is the set of query parameters forwarded through the
-// billing flow (select-plan → auth → billing/update). "token" is added
-// separately where needed (e.g., pending registration token).
-var billingQueryAllowlist = []string{"source", "name", "prompt", "image"}
-
-// handleSelectPlan shows the plan selection interstitial before redirecting to Stripe.
-// Allowed query parameters are forwarded to /billing/update when the user selects a plan.
-func (s *Server) handleSelectPlan(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	// Forward known-safe query params to /billing/update (same allowlist as handleAuthEmailSubmission).
-	q := make(url.Values)
-	for _, k := range append([]string{"token"}, billingQueryAllowlist...) {
-		if vs, ok := r.URL.Query()[k]; ok {
-			q[k] = vs
-		}
-	}
-	billingURL := "/billing/update"
-	if encoded := q.Encode(); encoded != "" {
-		billingURL += "?" + encoded
-	}
-
-	s.slog().InfoContext(r.Context(), "plan selection page viewed",
-		"has_token", r.URL.Query().Get("token") != "",
-		"source", r.URL.Query().Get("source"),
-		"name", r.URL.Query().Get("name"),
-	)
-
-	data := struct {
-		stage.Env
-		BillingURL string
-		Source     string
-	}{
-		Env:        s.env,
-		BillingURL: billingURL,
-		Source:     r.URL.Query().Get("source"),
-	}
-	s.renderTemplate(r.Context(), w, "select-plan.html", data)
 }
 
 // handleBillingUpdate manages billing for authenticated users.
@@ -1355,20 +1313,11 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Show authentication form with query parameters.
-	// When the user arrives from the plan selection page (/select-plan →
-	// /billing/update → /auth), they've already decided to sign up, so
-	// "Enter your email" is clearer than "Login (or create an account)".
-	redirect := q.Get("redirect")
-	var heading string
-	if u, err := url.Parse(redirect); err == nil && u.Path == "/billing/update" {
-		heading = "Enter your email"
-	}
+	// Show authentication form with query parameters
 	data := authFormData{
 		Env:               s.env,
-		Heading:           heading,
 		SSHCommand:        s.replSSHConnectionCommand(),
-		RedirectURL:       redirect,
+		RedirectURL:       q.Get("redirect"),
 		ReturnHost:        returnHost,
 		InviteCode:        inviteCodeStr,
 		InviteCodeValid:   inviteCodeValid,
@@ -1551,28 +1500,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.showAuthError(w, r, "Failed to start registration. Please try again.", "")
 			return
 		}
-		// If the user arrived here via /billing/update (i.e. they clicked
-		// "Get started" on the plan page, were unauthenticated, and got
-		// bounced through /auth), skip /select-plan and go straight to
-		// /billing/update. Without this check the user would see the plan
-		// selection page twice:
-		//   /select-plan → /billing/update → /auth → /select-plan (again!)
-		dest := "/select-plan"
-		redirect := r.FormValue("redirect")
-		redirectURL, _ := url.Parse(redirect)
-		if redirectURL != nil && redirectURL.Path == "/billing/update" {
-			dest = "/billing/update"
-		}
-		// Forward known-safe query params from the original redirect URL.
-		q := url.Values{"token": {token}}
-		if redirectURL != nil {
-			for _, k := range billingQueryAllowlist {
-				if vs, ok := redirectURL.Query()[k]; ok {
-					q[k] = vs
-				}
-			}
-		}
-		http.Redirect(w, r, dest+"?"+q.Encode(), http.StatusSeeOther)
+		http.Redirect(w, r, "/billing/update?token="+url.QueryEscape(token), http.StatusSeeOther)
 		return
 	}
 

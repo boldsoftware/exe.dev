@@ -91,13 +91,12 @@ Latest event's `event_type` per `account_id` determines billing status. Unique i
 ## User Flows
 
 **Creating subscription (no active subscription):**
-1. User attempts VM creation → `/select-plan` (canceled users skip to step 3)
-2. User selects a plan → `/billing/update`
-3. Redirect to Stripe Checkout (subscription mode)
-4. User completes payment → Stripe redirects to `/billing/success?session_id={CHECKOUT_SESSION_ID}`
-5. Server calls `billing.VerifyCheckout(session_id)` to confirm payment
-6. If verified: insert `billing_events` row with `event_type='active'`
-7. User can now create VMs
+1. User attempts VM creation → `/billing/update`
+2. Redirect to Stripe Checkout (subscription mode)
+3. User completes payment → Stripe redirects to `/billing/success?session_id={CHECKOUT_SESSION_ID}`
+4. Server calls `billing.VerifyCheckout(session_id)` to confirm payment
+5. If verified: insert `billing_events` row with `event_type='active'`
+6. User can now create VMs
 
 **Managing subscription (active subscription):**
 1. User visits `/billing/update` or profile page

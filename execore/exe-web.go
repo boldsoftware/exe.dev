@@ -603,9 +603,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/pricing":
 		http.Redirect(w, r, "/docs/pricing", http.StatusTemporaryRedirect)
 		return
-	case "/select-plan":
-		s.handleSelectPlan(w, r)
-		return
 	case "/love":
 		s.handleLovePage(w, r)
 	case "/jobs":
@@ -1601,7 +1598,7 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !userIsPaying(&billingStatus) {
-		http.Redirect(w, r, billingDest(&billingStatus)+"?source=credits", http.StatusSeeOther)
+		http.Redirect(w, r, "/billing/update?source=credits", http.StatusSeeOther)
 		return
 	}
 

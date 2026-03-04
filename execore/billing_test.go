@@ -104,9 +104,9 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	}
 
 	location := w.Header().Get("Location")
-	// Should redirect to /select-plan with VM name and prompt preserved
-	if !strings.HasPrefix(location, "/select-plan?") {
-		t.Errorf("Expected redirect to /select-plan with params, got %q", location)
+	// Should redirect to /billing/update with VM name and prompt preserved
+	if !strings.HasPrefix(location, "/billing/update?") {
+		t.Errorf("Expected redirect to /billing/update with params, got %q", location)
 	}
 	if !strings.Contains(location, "name=test-vm") {
 		t.Errorf("Expected name param in redirect URL, got %q", location)
@@ -344,7 +344,7 @@ func TestBillingBypassBug(t *testing.T) {
 	// This test reproduces a critical billing bypass bug:
 	// 1. New user signs up (requires billing)
 	// 2. User fills out /new form and clicks "Create VM"
-	// 3. /create-vm redirects to /select-plan, then /billing/update creates account and redirects to Stripe
+	// 3. /create-vm redirects to /billing/update which creates account and redirects to Stripe
 	// 4. User hits browser back button (never completes Stripe checkout)
 	// 5. User tries to create VM again -> should still be blocked!
 	//
@@ -430,8 +430,8 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Errorf("Expected redirect (303), got %d - user bypassed billing!", w.Code)
 	}
 	location = w.Header().Get("Location")
-	if !strings.HasPrefix(location, "/select-plan") {
-		t.Errorf("Expected redirect to /select-plan, got %q - billing was bypassed!", location)
+	if !strings.HasPrefix(location, "/billing/update") {
+		t.Errorf("Expected redirect to /billing/update, got %q - billing was bypassed!", location)
 	}
 }
 
@@ -694,9 +694,9 @@ func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 	}
 
 	location := w.Header().Get("Location")
-	// Should redirect to /select-plan with name and prompt params
-	if !strings.HasPrefix(location, "/select-plan?") {
-		t.Errorf("Expected redirect to /select-plan with params, got %q", location)
+	// Should redirect to /billing/update with name and prompt params
+	if !strings.HasPrefix(location, "/billing/update?") {
+		t.Errorf("Expected redirect to /billing/update with params, got %q", location)
 	}
 	if !strings.Contains(location, "name=test-vm-name") {
 		t.Errorf("Expected name param in redirect URL, got %q", location)
@@ -873,8 +873,8 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 func TestBillingCancelCreatesNoVMState(t *testing.T) {
 	// Prove that canceling billing creates no VM state:
 	// 1. User fills form on /new and clicks "Create VM"
-	// 2. /create-vm redirects to /select-plan (no startBoxCreation called)
-	// 3. /billing/update (via select-plan) redirects to Stripe (only account record created, no VM state)
+	// 2. /create-vm redirects to /billing/update (no startBoxCreation called)
+	// 3. /billing/update redirects to Stripe (only account record created, no VM state)
 	// 4. User cancels → redirected to /new (no VM state created)
 	//
 	// This test verifies no boxes are created during this flow.
@@ -929,8 +929,8 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 		t.Fatalf("Expected redirect, got %d", w.Code)
 	}
 	location := w.Header().Get("Location")
-	if !strings.HasPrefix(location, "/select-plan") {
-		t.Fatalf("Expected redirect to /select-plan, got %q", location)
+	if !strings.HasPrefix(location, "/billing/update") {
+		t.Fatalf("Expected redirect to /billing/update, got %q", location)
 	}
 
 	// Verify no boxes were created
@@ -1008,7 +1008,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 
 func TestNewUserBillingFirstFlow(t *testing.T) {
 	// Test the new billing-first flow for new users:
-	// /auth with new email -> redirect to /select-plan with token -> /billing/update -> Stripe
+	// /auth with new email -> redirect to /billing/update with token -> Stripe
 	server := newBillingTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
@@ -1024,13 +1024,13 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	// Should redirect to /select-plan with token
+	// Should redirect to /billing/update with token
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("Expected redirect 303, got %d. Body: %s", w.Code, w.Body.String())
 	}
 	location := w.Header().Get("Location")
-	if !strings.HasPrefix(location, "/select-plan?token=") {
-		t.Fatalf("Expected redirect to /select-plan?token=..., got %q", location)
+	if !strings.HasPrefix(location, "/billing/update?token=") {
+		t.Fatalf("Expected redirect to /billing/update?token=..., got %q", location)
 	}
 
 	// Extract token from redirect URL
@@ -1067,9 +1067,8 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 		t.Error("User should NOT be created before Stripe checkout")
 	}
 
-	// Step 2: Visit /billing/update?token=... (simulates clicking "Get started" on the plan page)
-	billingURL := strings.Replace(location, "/select-plan?", "/billing/update?", 1)
-	req = httptest.NewRequest("GET", billingURL, nil)
+	// Step 2: Visit /billing/update?token=... (simulates following the redirect)
+	req = httptest.NewRequest("GET", location, nil)
 	req.Host = server.env.WebHost
 	w = httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -1081,169 +1080,6 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 	stripeLocation := w.Header().Get("Location")
 	if !strings.Contains(stripeLocation, "checkout.stripe.com") {
 		t.Fatalf("Expected redirect to Stripe checkout, got %q", stripeLocation)
-	}
-}
-
-func TestNewUserFromSelectPlanSkipsPlanPage(t *testing.T) {
-	// Test that unauthenticated users arriving at /billing/update (because they
-	// clicked "Get started" on /select-plan) do NOT see the plan page a second
-	// time after entering their email.
-	//
-	// The full flow being tested:
-	//   /select-plan → click "Get started" → /billing/update (unauth)
-	//   → /auth?redirect=/billing/update → POST email
-	//   → should go to /billing/update?token=... (NOT /select-plan again)
-	server := newBillingTestServer(t)
-	server.env.SkipBilling = false
-
-	email := "plan-page-once@example.com"
-
-	// POST to /auth with redirect=/billing/update (simulates the flow where
-	// an unauthenticated user clicked "Get started" on /select-plan,
-	// hit /billing/update, and was bounced to /auth with a redirect param).
-	form := url.Values{}
-	form.Add("email", email)
-	form.Add("redirect", "/billing/update")
-	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
-	req.Host = server.env.WebHost
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("Expected redirect 303, got %d. Body: %s", w.Code, w.Body.String())
-	}
-	location := w.Header().Get("Location")
-
-	// Must go directly to /billing/update, NOT /select-plan.
-	if strings.HasPrefix(location, "/select-plan") {
-		t.Fatalf("User who already saw the plan page was sent back to /select-plan: %s", location)
-	}
-	if !strings.HasPrefix(location, "/billing/update?token=") {
-		t.Fatalf("Expected redirect to /billing/update?token=..., got %q", location)
-	}
-}
-
-func TestNewUserDirectSignupSeesSelectPlan(t *testing.T) {
-	// Test that new users signing up directly at /auth (without coming from
-	// /select-plan first) DO see the plan page. This is the complement of
-	// TestNewUserFromSelectPlanSkipsPlanPage: no redirect param means the
-	// user hasn't seen the plan page yet.
-	server := newBillingTestServer(t)
-	server.env.SkipBilling = false
-
-	email := "direct-signup@example.com"
-
-	// POST to /auth with NO redirect param (direct signup).
-	form := url.Values{}
-	form.Add("email", email)
-	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
-	req.Host = server.env.WebHost
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("Expected redirect 303, got %d. Body: %s", w.Code, w.Body.String())
-	}
-	location := w.Header().Get("Location")
-
-	// Must go to /select-plan so the user sees pricing first.
-	if !strings.HasPrefix(location, "/select-plan?token=") {
-		t.Fatalf("Expected redirect to /select-plan?token=..., got %q", location)
-	}
-}
-
-func TestSelectPlanRendersWithParams(t *testing.T) {
-	// Test that GET /select-plan returns 200 and that the rendered BillingURL
-	// contains the forwarded query params.
-	server := newBillingTestServer(t)
-
-	req := httptest.NewRequest("GET", "/select-plan?source=test&name=my-vm&prompt=hello", nil)
-	req.Host = server.env.WebHost
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	body := w.Body.String()
-	// The BillingURL should be /billing/update with the same query params (url.Values sorts keys).
-	if !strings.Contains(body, "/billing/update?name=my-vm&amp;prompt=hello&amp;source=test") {
-		t.Errorf("Expected BillingURL with forwarded params in rendered page, got:\n%s", body)
-	}
-}
-
-func TestCanceledUserSkipsSelectPlan(t *testing.T) {
-	// Test that canceled users creating a VM are sent to /billing/update
-	// directly, skipping /select-plan.
-	server := newBillingTestServer(t)
-	server.env.SkipBilling = false
-
-	email := "canceled-skip@example.com"
-	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Set created_at after billing requirement date
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update created_at: %v", err)
-	}
-
-	// Create an account and activate it, then cancel
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_canceled_skip",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("InsertAccount: %v", err)
-	}
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: "exe_canceled_skip",
-		EventType: "active",
-		EventAt:   time.Now().Add(-time.Hour),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(active): %v", err)
-	}
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: "exe_canceled_skip",
-		EventType: "canceled",
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(canceled): %v", err)
-	}
-
-	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
-	}
-
-	// POST to /create-vm
-	form := url.Values{}
-	form.Add("hostname", "test-vm")
-	req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
-	req.Host = server.env.WebHost
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("Expected 303, got %d: %s", w.Code, w.Body.String())
-	}
-	location := w.Header().Get("Location")
-	if !strings.HasPrefix(location, "/billing/update?") {
-		t.Errorf("Expected canceled user to go directly to /billing/update, got %q", location)
-	}
-	if strings.HasPrefix(location, "/select-plan") {
-		t.Errorf("Canceled user should skip /select-plan, got %q", location)
 	}
 }
 
@@ -1263,10 +1099,9 @@ func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	// Get the redirect to select-plan, then follow through to billing/update
+	// Get the Stripe redirect
 	location := w.Header().Get("Location")
-	billingURL := strings.Replace(location, "/select-plan?", "/billing/update?", 1)
-	req = httptest.NewRequest("GET", billingURL, nil)
+	req = httptest.NewRequest("GET", location, nil)
 	req.Host = server.env.WebHost
 	w = httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -1314,7 +1149,7 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 	// or redirect to verification (depends on implementation)
 	if w.Code == http.StatusSeeOther {
 		location := w.Header().Get("Location")
-		if strings.Contains(location, "/select-plan") || strings.Contains(location, "/billing/update") {
+		if strings.Contains(location, "/billing/update") {
 			t.Error("Existing user should NOT be redirected to billing")
 		}
 	}
@@ -1381,7 +1216,7 @@ func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
 	// Expected: Show "check your email" page (200), NOT redirect to billing
 	if w.Code == http.StatusSeeOther {
 		location := w.Header().Get("Location")
-		if strings.Contains(location, "/select-plan") || strings.Contains(location, "/billing/update") {
+		if strings.Contains(location, "/billing/update") {
 			t.Errorf("BUG: New user with valid invite code should NOT be redirected to billing! Got redirect to: %s", location)
 		}
 	}
@@ -1415,7 +1250,7 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 	// Should NOT redirect to billing
 	if w.Code == http.StatusSeeOther {
 		location := w.Header().Get("Location")
-		if strings.Contains(location, "/select-plan") || strings.Contains(location, "/billing/update") {
+		if strings.Contains(location, "/billing/update") {
 			t.Fatalf("Login-with-exe users should NOT be redirected to billing! Got redirect to: %s", location)
 		}
 	}
@@ -1738,7 +1573,7 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 	// Should NOT redirect to billing
 	if w.Code == http.StatusSeeOther {
 		location := w.Header().Get("Location")
-		if strings.HasPrefix(location, "/select-plan") || strings.HasPrefix(location, "/billing/update") {
+		if strings.HasPrefix(location, "/billing/update") {
 			t.Errorf("User with active billing on one account was redirected to billing! Location: %s", location)
 		}
 	}
@@ -1904,7 +1739,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Error("BUG: Canceled legacy user should need billing - they cannot bypass by being grandfathered!")
 		}
 
-		// Try to create VM - should redirect to billing (directly to /billing/update for canceled users)
+		// Try to create VM - should redirect to billing
 		cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 		if err != nil {
 			t.Fatalf("Failed to create auth cookie: %v", err)
@@ -1925,7 +1760,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		}
 		location := w.Header().Get("Location")
 		if !strings.HasPrefix(location, "/billing/update") {
-			t.Errorf("Expected canceled user redirect to /billing/update, got %q", location)
+			t.Errorf("Expected redirect to /billing/update, got %q - billing was bypassed!", location)
 		}
 	})
 
@@ -2154,7 +1989,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// Should not redirect to billing (should redirect to / or create VM)
 		if w.Code == http.StatusSeeOther {
 			location := w.Header().Get("Location")
-			if strings.Contains(location, "/select-plan") || strings.Contains(location, "/billing/update") {
+			if strings.Contains(location, "/billing/update") {
 				t.Errorf("Reactivated user should not be redirected to billing, got %q", location)
 			}
 		}
@@ -2537,7 +2372,7 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 	}
 	location := w.Header().Get("Location")
 	if !strings.HasPrefix(location, "/billing/update") {
-		t.Errorf("Expected canceled user redirect to /billing/update, got %q", location)
+		t.Errorf("Expected redirect to billing update, got %q", location)
 	}
 	if strings.Contains(location, "checkout.stripe.com") {
 		t.Errorf("Expected no Stripe checkout redirect for canceled billing, got %q", location)

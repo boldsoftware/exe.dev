@@ -452,7 +452,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 			if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), userID) {
 				// User is logged in but needs to add billing info
 				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
-				billingURL := billingDest(&billingStatus) + "?name=" + url.QueryEscape(hostname)
+				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 				if prompt != "" {
 					billingURL += "&prompt=" + url.QueryEscape(prompt)
 				}
@@ -525,7 +525,6 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 type authFormData struct {
 	stage.Env
-	Heading           string // page heading; empty defaults to "Login (or create an account)"
 	RedirectURL       string
 	ReturnHost        string
 	LoginWithExe      bool

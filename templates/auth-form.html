@@ -17,7 +17,7 @@
 </head>
 <body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6">{{if .Heading}}{{.Heading}}{{else}}Login (or create an account){{end}}</h1>
+    <h1 class="text-4xl font-semibold mb-6">Login (or create an account)</h1>
     {{if .TeamInvite}}
     <p class="text-green-600 dark:text-green-400 mb-4">&#10003; You've been invited to join {{.TeamInviteName}}</p>
     {{else if .InviteCodeValid}}
