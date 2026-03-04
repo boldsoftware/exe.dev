@@ -618,6 +618,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleSitemap(w, r)
 	case "/robots.txt":
 		s.handleRobots(w, r)
+	case "/blog":
+		http.Redirect(w, r, "https://blog.exe.dev", http.StatusTemporaryRedirect)
+		return
 	case "/about":
 		http.Redirect(w, r, "/docs/what-is-exe", http.StatusTemporaryRedirect)
 		return
