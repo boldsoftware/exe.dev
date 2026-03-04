@@ -11,13 +11,18 @@ fi
 MACHINE_NAME="$1"
 
 # Validate machine name format
-if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]]; then
-    echo "Error: Machine name must be in format exe-ctr-NN or exe-ctr-staging-NN (e.g., exe-ctr-01, exe-ctr-staging-01)"
-    exit 1
+if [ "${SKIP_NAME_CHECK:-}" = "1" ]; then
+    echo "Warning: SKIP_NAME_CHECK is set, bypassing machine name validation"
+else
+    if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]]; then
+        echo "Error: Machine name must be in format exe-ctr-NN or exe-ctr-staging-NN (e.g., exe-ctr-01, exe-ctr-staging-01)"
+        echo "Set SKIP_NAME_CHECK=1 to bypass this check"
+        exit 1
+    fi
 fi
 
 # Determine stage based on machine name
-if [[ "$MACHINE_NAME" =~ ^exe-ctr-staging- ]]; then
+if [[ "$MACHINE_NAME" =~ ^exe-ctr-staging- ]] || [ "${SKIP_NAME_CHECK:-}" = "1" ]; then
     STAGE="staging"
 else
     STAGE="production"
@@ -35,16 +40,122 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLOUD_HYPERVISOR_VERSION="48.0"
 VIRTIOFSD_VERSION="1.13.2"
 
-REGION="us-west-2"
-AZ="us-west-2b"
+REGION="${REGION:-us-west-2}"
+AZ="${ZONE:-us-west-2b}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-m5d.metal}"
 ROOT_VOLUME_SIZE="50"
 BACKUP_VOLUME_SIZE="500"
 SECURITY_GROUP_NAME="exe-ctr-sg"
 INSTANCE_ROLE_NAME="exe-ctr-instance-role"
 INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
-# Use the private subnet with NAT Gateway
-SUBNET_ID="subnet-0c7d538b08cd1cecd"
+
+# Look up a private subnet in the requested AZ (or create one)
+if [ -n "${SUBNET_ID:-}" ]; then
+    echo "Using provided SUBNET_ID: ${SUBNET_ID}"
+else
+    echo "Looking up private subnet in ${AZ}..."
+    SUBNET_ID=$(aws ec2 describe-subnets \
+        --filters "Name=availability-zone,Values=${AZ}" "Name=tag:Name,Values=*private*" \
+        --query 'Subnets[0].SubnetId' \
+        --output text \
+        --region ${REGION})
+    if [ -z "$SUBNET_ID" ] || [ "$SUBNET_ID" = "None" ]; then
+        echo "No private subnet found in ${AZ}, creating one..."
+
+        # Find the VPC by looking at an existing exe-ctr subnet in another AZ
+        VPC_ID=$(aws ec2 describe-subnets \
+            --filters "Name=tag:Name,Values=*private*" \
+            --query 'Subnets[0].VpcId' \
+            --output text \
+            --region ${REGION})
+        if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "Error: Could not find VPC from existing subnets. Set SUBNET_ID explicitly."
+            exit 1
+        fi
+        echo "Found VPC: ${VPC_ID}"
+
+        # Find existing subnet CIDRs to pick the next /20 block
+        VPC_CIDR=$(aws ec2 describe-vpcs \
+            --vpc-ids ${VPC_ID} \
+            --query 'Vpcs[0].CidrBlock' \
+            --output text \
+            --region ${REGION})
+        echo "VPC CIDR: ${VPC_CIDR}"
+
+        EXISTING_CIDRS=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'Subnets[].CidrBlock' \
+            --output text \
+            --region ${REGION})
+
+        # Pick the next available /20 block within the VPC CIDR
+        # VPC is typically 172.31.0.0/16, subnets are /20 (172.31.0.0/20, 172.31.16.0/20, ...)
+        VPC_PREFIX=$(echo "${VPC_CIDR}" | cut -d. -f1-2)  # e.g. "172.31"
+        for THIRD_OCTET in $(seq 0 16 240); do
+            CANDIDATE="${VPC_PREFIX}.${THIRD_OCTET}.0/20"
+            if ! echo "$EXISTING_CIDRS" | grep -q "$CANDIDATE"; then
+                NEW_CIDR="$CANDIDATE"
+                break
+            fi
+        done
+
+        if [ -z "${NEW_CIDR:-}" ]; then
+            echo "Error: Could not find an available /20 CIDR block in ${VPC_CIDR}"
+            exit 1
+        fi
+
+        # Find the NAT route table before confirming so we can show it
+        NAT_RT=$(aws ec2 describe-route-tables \
+            --filters "Name=vpc-id,Values=${VPC_ID}" "Name=route.nat-gateway-id,Values=*" \
+            --query 'RouteTables[0].RouteTableId' \
+            --output text \
+            --region ${REGION})
+
+        echo ""
+        echo "Will create a new private subnet:"
+        echo "  VPC:         ${VPC_ID}"
+        echo "  AZ:          ${AZ}"
+        echo "  CIDR:        ${NEW_CIDR}"
+        echo "  Name tag:    exe-ctr-private-${AZ}"
+        if [ -n "$NAT_RT" ] && [ "$NAT_RT" != "None" ]; then
+            echo "  Route table: ${NAT_RT} (NAT gateway)"
+        else
+            echo "  Route table: (none with NAT found — subnet may lack internet access)"
+        fi
+        echo ""
+        read -r -p "Proceed? [y/N] " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+            echo "Aborted."
+            exit 1
+        fi
+
+        SUBNET_ID=$(aws ec2 create-subnet \
+            --vpc-id ${VPC_ID} \
+            --cidr-block ${NEW_CIDR} \
+            --availability-zone ${AZ} \
+            --query 'Subnet.SubnetId' \
+            --output text \
+            --region ${REGION})
+        echo "Created subnet ${SUBNET_ID}"
+
+        aws ec2 create-tags \
+            --resources ${SUBNET_ID} \
+            --tags Key=Name,Value="exe-ctr-private-${AZ}" \
+            --region ${REGION}
+
+        # Associate with the NAT route table found earlier
+        if [ -n "$NAT_RT" ] && [ "$NAT_RT" != "None" ]; then
+            aws ec2 associate-route-table \
+                --subnet-id ${SUBNET_ID} \
+                --route-table-id ${NAT_RT} \
+                --region ${REGION} >/dev/null
+            echo "Associated subnet with NAT route table ${NAT_RT}"
+        else
+            echo "Warning: No route table with NAT gateway found. Subnet may not have internet access."
+        fi
+    fi
+    echo "Using subnet ${SUBNET_ID} in ${AZ}"
+fi
 
 # Check if machine name already exists in AWS
 echo "Checking if machine name ${MACHINE_NAME} is available..."
@@ -490,31 +601,15 @@ elif [ "$NDISKS" -eq 2 ]; then
   echo "Two drives, creating tank as mirror"
   sudo zpool create -o ashift=12 -m none tank mirror "${DATA_PARTS[@]}"
 else
-  # Build raidz1 vdevs of 3-5 drives each, preferring wider vdevs for capacity
-  VDEV_WIDTH=3
-  for w in 5 4 3; do
-    if [ $((NDISKS % w)) -eq 0 ]; then
-      VDEV_WIDTH=$w
-      break
-    fi
-  done
+  # Build mirrored vdevs (pairs of 2 drives each)
+  if [ $((NDISKS % 2)) -ne 0 ]; then
+    echo "ERROR: odd number of drives ($NDISKS), cannot create mirrored vdevs"
+    exit 1
+  fi
 
   ZPOOL_ARGS=()
-  IDX=0
-  REMAINING=$NDISKS
-  while [ $REMAINING -gt 0 ]; do
-    WIDTH=$VDEV_WIDTH
-    # If leftover after this vdev would be < 3 (too small for raidz1), absorb it
-    LEFTOVER=$((REMAINING - WIDTH))
-    if [ $LEFTOVER -gt 0 ] && [ $LEFTOVER -lt 3 ]; then
-      WIDTH=$((WIDTH + LEFTOVER))
-    fi
-    ZPOOL_ARGS+=("raidz1")
-    for ((d = 0; d < WIDTH; d++)); do
-      ZPOOL_ARGS+=("${DATA_PARTS[$IDX]}")
-      IDX=$((IDX + 1))
-    done
-    REMAINING=$((REMAINING - WIDTH))
+  for ((i = 0; i < NDISKS; i += 2)); do
+    ZPOOL_ARGS+=("mirror" "${DATA_PARTS[$i]}" "${DATA_PARTS[$((i + 1))]}")
   done
 
   echo "Creating tank: ${ZPOOL_ARGS[*]}"

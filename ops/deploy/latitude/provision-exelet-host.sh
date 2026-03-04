@@ -372,14 +372,29 @@ if zpool list tank >/dev/null 2>&1; then
     echo "ZFS pool 'tank' already exists"
     zpool status tank
 else
-    if [ ${#DATA_PARTITIONS[@]} -eq 1 ]; then
+    NDISKS=${#DATA_PARTITIONS[@]}
+    if [ "$NDISKS" -eq 1 ]; then
         # Single drive - no redundancy possible
         echo "Creating ZFS pool 'tank' with single drive..."
         zpool create -f -m none tank "${DATA_PARTITIONS[0]}"
+    elif [ "$NDISKS" -eq 2 ]; then
+        # Two drives - single mirror
+        echo "Creating ZFS pool 'tank' as mirror..."
+        zpool create -f -m none tank mirror "${DATA_PARTITIONS[@]}"
     else
-        # Multiple drives - use raidz1
-        echo "Creating ZFS pool 'tank' with raidz1 using ${#DATA_PARTITIONS[@]} drives..."
-        zpool create -f -m none tank raidz1 "${DATA_PARTITIONS[@]}"
+        # 3+ drives - mirrored vdevs (pairs of 2)
+        if [ $((NDISKS % 2)) -ne 0 ]; then
+            echo "ERROR: odd number of drives ($NDISKS), cannot create mirrored vdevs"
+            exit 1
+        fi
+
+        ZPOOL_ARGS=()
+        for ((i = 0; i < NDISKS; i += 2)); do
+            ZPOOL_ARGS+=("mirror" "${DATA_PARTITIONS[$i]}" "${DATA_PARTITIONS[$((i + 1))]}")
+        done
+
+        echo "Creating ZFS pool 'tank' with ${#DATA_PARTITIONS[@]} drives as mirrored vdevs..."
+        zpool create -f -m none tank "${ZPOOL_ARGS[@]}"
     fi
 
     # Create data dataset
