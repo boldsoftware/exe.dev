@@ -41,6 +41,7 @@ var (
 	flagCinema          = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 	flagCoverProfile    = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 	flagPlaywright      = flag.Bool("playwright", true, "enable Playwright browser tests (requires installed browsers)")
+	flagDefaultExeprox  = flag.Bool("default-exeprox", false, "default to connecting to exeprox rather than exed")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
@@ -322,6 +323,18 @@ type testEnv struct {
 
 func (e *testEnv) sshPort() int {
 	return e.servers.SSHProxy.Port()
+}
+
+// HTTPPort returns the HTTP port on localhost to use to reach
+// either exed or exeprox. By default we connect to exed.
+// The -default-exeprox flag changes that to default to exeprox.
+// This lets us test that both exed and exeprox have the same
+// behavior for incoming requests.
+func (e *testEnv) HTTPPort() int {
+	if *flagDefaultExeprox {
+		return e.servers.Exeprox.HTTPPort
+	}
+	return e.servers.Exed.HTTPPort
 }
 
 func (e *testEnv) context(t *testing.T) context.Context {
@@ -758,12 +771,31 @@ func noRedirectClient(jar http.CookieJar) *http.Client {
 	}
 }
 
+// followRedirects follows redirections when using a noRedirectClient.
+// This will call resp.Body.Close for any response that are not returned.
+func followRedirects(t *testing.T, client *http.Client, resp *http.Response) (*http.Response, error) {
+	t.Helper()
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		resp.Body.Close()
+		location, err := resp.Location()
+		if err != nil {
+			return nil, err
+		}
+		t.Logf("redirecting to %q", location)
+		resp, err = client.Get(location.String())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return resp, nil
+}
+
 // newClientWithCookies creates an http.Client with a cookie jar pre-populated
 // with the given cookies for the exed HTTP port.
 func newClientWithCookies(t testing.TB, cookies []*http.Cookie) *http.Client {
 	t.Helper()
 	jar, _ := cookiejar.New(nil) // no error possible
-	setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort), cookies)
+	setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", Env.HTTPPort()), cookies)
 	return &http.Client{Jar: jar, Timeout: 10 * time.Second}
 }
 

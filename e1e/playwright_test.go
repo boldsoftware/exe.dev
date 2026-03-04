@@ -38,7 +38,7 @@ func TestProxyLoginFlow_Playwright(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 
 	// Step 1: Register user via SSH, create VM, start httpd, configure private proxy route.
 	pty, _, keyFile, email := registerForExeDev(t)

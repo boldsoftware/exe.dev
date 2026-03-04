@@ -45,7 +45,7 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Minute}
 
-	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	// 1) GET /new (logged-out) shows create page
 	resp, err := client.Get(base + "/new")
@@ -221,7 +221,7 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
-	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	// Test 1: Logged out - GET /new should render the create box form
 	t.Run("logged_out", func(t *testing.T) {

@@ -32,7 +32,7 @@ func TestBoxSharing(t *testing.T) {
 	serveIndex(t, box, ownerKeyFile, "alive")
 
 	// httpPort is the exed HTTP proxy port, not the port inside the box
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	// Verify owner can access the box via HTTPS proxy
@@ -83,7 +83,7 @@ func TestBoxSharing(t *testing.T) {
 		})
 
 		client2 := newClientWithCookies(t, guestCookies)
-		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
+		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)
 		}
@@ -317,7 +317,7 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 
 	serveIndex(t, box, ownerKeyFile, "public-content")
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "public")
 
 	// Register a guest user (no share to this box)
@@ -362,6 +362,22 @@ func TestPublicBoxAccessByLoggedInUser(t *testing.T) {
 		t.Fatalf("expected redirect from /auth, got status %d. Body: %s", resp.StatusCode, body)
 	}
 	resp.Body.Close()
+
+	// Check for a redirect from exeprox to exed.
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		location, err := resp.Location()
+		if err != nil {
+			t.Fatalf("failed to get redirect location: %v", err)
+		}
+		// A redirect to /auth is a redirect to exed.
+		if location.Path != "/auth" {
+			break
+		}
+		resp, err = client.Get(location.String())
+		if err != nil {
+			t.Fatalf("failed to follow redirection to %q: %v", location, err)
+		}
+	}
 
 	// Follow the redirect chain to complete the auth dance
 	location, err := resp.Location()
@@ -409,7 +425,7 @@ func TestPendingShareResolvedOnRegistration(t *testing.T) {
 
 	serveIndex(t, box, ownerKeyFile, "shared-content")
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	// KEY STEP: Share with an email that doesn't exist yet
@@ -515,7 +531,7 @@ func TestPendingShareResolvedOnWebLogin(t *testing.T) {
 
 	serveIndex(t, box, ownerKeyFile, "shared-content")
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	// Share with an email that doesn't exist yet - creates PENDING share
@@ -602,7 +618,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 	// is rejected for box2 at the proxy layer, so box2's SSH doesn't need to be up.
 
 	const boxInternalPort = 8080
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 
 	// Set up HTTP server only in box1. Box2 doesn't need one because the test
 	// verifies cookie rejection at the proxy level, before reaching box2's internal server.
@@ -611,7 +627,7 @@ func TestProxyCookieIsolation(t *testing.T) {
 	configureProxyRoute(t, user2KeyFile, box2, boxInternalPort, "private")
 
 	// User 1 logs in to box1 through the proxy and gets a proxy auth cookie
-	fixture1 := newProxyAuthFixture(t, box1, httpPort, Env.servers.Exed.HTTPPort, user1Cookies)
+	fixture1 := newProxyAuthFixture(t, box1, httpPort, Env.HTTPPort(), user1Cookies)
 	jar1 := fixture1.newJar()
 	fixture1.loginThroughProxy(jar1)
 
@@ -680,7 +696,7 @@ func TestBasicUserDashboard(t *testing.T) {
 	client := newClientWithCookies(t, cookies)
 
 	// Access the dashboard - basic users should be redirected to /user
-	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort)
+	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.HTTPPort())
 	resp, err := client.Get(dashboardURL)
 	if err != nil {
 		t.Fatalf("failed to get dashboard: %v", err)
@@ -742,7 +758,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 
 	serveIndex(t, box, ownerKeyFile, "hello-from-box")
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
@@ -1022,6 +1038,18 @@ func (f *loginWithExeFlow) submitEmailForAuth() {
 	}
 	defer resp.Body.Close()
 
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		location, err := resp.Location()
+		if err != nil {
+			f.t.Fatalf("missing Location from email redirect: %v", err)
+		}
+		resp, err = f.client.PostForm(location.String(), formData)
+		if err != nil {
+			f.t.Fatalf("failed to follow redirection to %q while posting email: %v", location, err)
+		}
+		defer resp.Body.Close()
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		f.t.Fatalf("POST /auth failed with status %d: %s", resp.StatusCode, body)
@@ -1076,6 +1104,23 @@ func (f *loginWithExeFlow) completeEmailVerification() {
 	postResp, err := f.client.PostForm(postURL, formData)
 	if err != nil {
 		f.t.Fatalf("failed to submit verification form: %v", err)
+	}
+
+	// Check for a redirect from exeprox to exed.
+	for postResp.StatusCode == http.StatusTemporaryRedirect {
+		location, err := postResp.Location()
+		if err != nil {
+			f.t.Fatalf("missing Location from verify redirect: %v", err)
+		}
+		// A redirect to /verify-email is a redirect to exed.
+		if location.Path != "/verify-email" {
+			break
+		}
+		postResp.Body.Close()
+		postResp, err = f.client.PostForm(location.String(), formData)
+		if err != nil {
+			f.t.Fatalf("failed to follow redirection to %q while verifying email: %v", location, err)
+		}
 	}
 
 	// The response should be a redirect to /auth/confirm
@@ -1237,11 +1282,14 @@ func TestShareOnlyGrantsStandardPortAccess(t *testing.T) {
 	const boxInternalPort = 8080
 	serveIndex(t, box, ownerKeyFile, "alive")
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	// Start an HTTP server on a non-standard port inside the box.
 	altPort := Env.servers.Exed.ExtraPorts[0]
+	if *flagDefaultExeprox {
+		altPort = Env.servers.Exeprox.ExtraPorts[0]
+	}
 	startHTTPServer(t, box, ownerKeyFile, altPort)
 
 	// Register guest and share the box with them.

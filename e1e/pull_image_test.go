@@ -13,7 +13,7 @@ func TestPullExeuntuEverywhere(t *testing.T) {
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 
-	url := fmt.Sprintf("http://localhost:%d/pull-exeuntu-everywhere-517c8a904?tag=latest", Env.servers.Exed.HTTPPort)
+	url := fmt.Sprintf("http://localhost:%d/pull-exeuntu-everywhere-517c8a904?tag=latest", Env.HTTPPort())
 	t.Logf("pulling image via %s", url)
 
 	resp, err := http.Get(url)

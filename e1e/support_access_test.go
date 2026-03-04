@@ -44,7 +44,7 @@ func TestSupportAccess(t *testing.T) {
 
 	const boxInternalPort = 8080
 	serveIndex(t, box, ownerKeyFile, "support-proxy-test")
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
 
 	supportBox := "support+" + box
@@ -215,7 +215,7 @@ func TestSupportAccess(t *testing.T) {
 func enableRootSupport(t *testing.T, email string) {
 	t.Helper()
 
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.HTTPPort()))
 	if err != nil {
 		t.Fatalf("failed to get users list: %v", err)
 	}
@@ -252,7 +252,7 @@ func enableRootSupport(t *testing.T, email string) {
 	form.Add("confirm_email", email)
 
 	postResp, err := http.PostForm(
-		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.servers.Exed.HTTPPort),
+		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.HTTPPort()),
 		form,
 	)
 	if err != nil {

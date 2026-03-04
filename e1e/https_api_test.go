@@ -32,7 +32,7 @@ func newExecAPIClient(t *testing.T, keyFile string) *execAPIClient {
 	t.Helper()
 	return &execAPIClient{
 		t:       t,
-		baseURL: fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort),
+		baseURL: fmt.Sprintf("http://localhost:%d", Env.HTTPPort()),
 		signer:  loadTestSigner(t, keyFile),
 	}
 }
@@ -238,7 +238,7 @@ func TestExecAPIInvalidTokens(t *testing.T) {
 	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	t.Run("missing_authorization_header", func(t *testing.T) {
 		req, err := http.NewRequest("POST", baseURL+"/exec", strings.NewReader("whoami"))
@@ -542,7 +542,7 @@ func TestExecAPISigBlobErrors(t *testing.T) {
 	pty, _, _, _ := registerForExeDev(t)
 	pty.Disconnect()
 
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	t.Run("invalid_sigblob_base64", func(t *testing.T) {
 		payload := []byte(`{}`)
@@ -775,7 +775,7 @@ func TestExecAPIStrictJSONValidation(t *testing.T) {
 	pty.Disconnect()
 
 	client := newExecAPIClient(t, keyFile)
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	tests := []struct {
 		name       string

@@ -226,10 +226,10 @@ func TestRename(t *testing.T) {
 		// Create index.html and start HTTP server on box2
 		serveIndex(t, box2, keyFile, "alive")
 		configureProxyRoute(t, keyFile, box2, 8080, "private")
-		port := Env.servers.Exed.HTTPPort
+		port := Env.HTTPPort()
 
 		// Login through proxy to get an auth cookie for this box
-		fixture := newProxyAuthFixture(t, box2, port, Env.servers.Exed.HTTPPort, cookies)
+		fixture := newProxyAuthFixture(t, box2, port, Env.HTTPPort(), cookies)
 		jar := fixture.newJar()
 		fixture.loginThroughProxy(jar)
 		authCookie := fixture.authCookie(jar)

@@ -337,7 +337,7 @@ func TestVanillaBox(t *testing.T) {
 		// Test that Shelley is accessible via the subdomain URL (vm.shelley.exe.cloud)
 		// This tests the shelley subdomain routing added in proxy.go
 
-		httpPort := Env.servers.Exed.HTTPPort
+		httpPort := Env.HTTPPort()
 		client := newClientWithCookies(t, cookies)
 
 		// Make a request to Shelley's /version endpoint via subdomain routing
@@ -601,7 +601,7 @@ func TestVanillaBox(t *testing.T) {
 
 		// Fetch dashboard and check proxy port display
 		client := newClientWithCookies(t, cookies)
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
 		if err != nil {
 			t.Fatalf("failed to get dashboard: %v", err)
 		}
@@ -624,7 +624,7 @@ func TestVanillaBox(t *testing.T) {
 		configureProxyRoute(t, keyFile, boxName, 3000, "private")
 
 		// Fetch dashboard again
-		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort))
+		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
 		if err != nil {
 			t.Fatalf("failed to get dashboard after update: %v", err)
 		}
@@ -1323,7 +1323,7 @@ func TestRestart(t *testing.T) {
 	pty.Disconnect()
 	waitForSSH(t, boxName, keyFile)
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, keyFile, boxName, 8080, "public")
 
 	makeProxyRequest := func() (*http.Response, error) {

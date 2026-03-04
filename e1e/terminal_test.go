@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -23,17 +24,17 @@ func terminalRequest(t *testing.T, boxName string, cookies []*http.Cookie) (*htt
 		panic(err)
 	}
 	if cookies != nil {
-		u := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+		u := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 		setCookiesForJar(t, jar, u, cookies)
 	}
 	client := noRedirectClient(jar)
 
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.HTTPPort())
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
 	if err != nil {
 		t.Fatalf("failed to make http request: %v", err)
 	}
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.HTTPPort())
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to do http request: %v", err)
@@ -55,17 +56,17 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 		panic(err)
 	}
 	// Set cookies for the main domain
-	u := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	u := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 	setCookiesForJar(t, jar, u, cookies)
 
 	client := noRedirectClient(jar)
 
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.HTTPPort())
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
 	if err != nil {
 		t.Fatalf("failed to make http request: %v", err)
 	}
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.HTTPPort())
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to do http request: %v", err)
@@ -185,15 +186,15 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	}
 
 	// Set base cookies for main domain
-	mainURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	mainURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 	setCookiesForJar(t, jar, mainURL, baseCookies)
 
 	client := noRedirectClient(jar)
 
 	// Start with terminal page request
-	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.servers.Exed.HTTPPort)
+	terminalURL := fmt.Sprintf("http://%s.xterm.exe.cloud:%d/", boxName, Env.HTTPPort())
 	req, _ := localhostRequestWithHostHeader("GET", terminalURL, nil)
-	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
+	req.Host = fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.HTTPPort())
 
 	// Follow the redirect chain
 	for range 10 {
@@ -246,11 +247,11 @@ func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client,
 	sessionName := "test-session"
 	terminalID := "test-terminal-1"
 	// Use localhost in the URL but set the Host header to the subdomain
-	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.servers.Exed.HTTPPort, terminalID, sessionName)
+	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.HTTPPort(), terminalID, sessionName)
 	if workingDir != "" {
 		wsURL += "&d=" + url.QueryEscape(workingDir)
 	}
-	originalHost := fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.servers.Exed.HTTPPort)
+	originalHost := fmt.Sprintf("%s.xterm.exe.cloud:%d", boxName, Env.HTTPPort())
 
 	// Create context for the WebSocket connection
 	ctx := context.Background()
@@ -289,14 +290,17 @@ func connectShellWebSocket(t *testing.T, cookies []*http.Cookie) (*websocket.Con
 	}
 
 	// Set cookies for the main exe.dev domain
-	mainURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	mainURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 	setCookiesForJar(t, jar, mainURL, cookies)
 
-	client := noRedirectClient(jar)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 10 * time.Second,
+	}
 
 	// Connect to /shell/ws on the main domain (WebHost, not BoxHost)
-	wsURL := fmt.Sprintf("ws://localhost:%d/shell/ws", Env.servers.Exed.HTTPPort)
-	originalHost := fmt.Sprintf("localhost:%d", Env.servers.Exed.HTTPPort)
+	wsURL := fmt.Sprintf("ws://localhost:%d/shell/ws", Env.HTTPPort())
+	originalHost := fmt.Sprintf("localhost:%d", Env.HTTPPort())
 
 	ctx := context.Background()
 

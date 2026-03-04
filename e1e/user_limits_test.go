@@ -123,7 +123,7 @@ func setUserLimits(t *testing.T, email, limitsJSON string) {
 	t.Helper()
 
 	// Get user ID from email
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.HTTPPort()))
 	if err != nil {
 		t.Fatalf("failed to get users list: %v", err)
 	}
@@ -158,7 +158,7 @@ func setUserLimits(t *testing.T, email, limitsJSON string) {
 	form.Add("limits", limitsJSON)
 
 	resp, err = http.PostForm(
-		fmt.Sprintf("http://localhost:%d/debug/users/set-limits", Env.servers.Exed.HTTPPort),
+		fmt.Sprintf("http://localhost:%d/debug/users/set-limits", Env.HTTPPort()),
 		form,
 	)
 	if err != nil {

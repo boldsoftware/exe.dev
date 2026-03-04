@@ -22,7 +22,7 @@ func TestNewThrottleGlobalBlock(t *testing.T) {
 	defer pty.Disconnect()
 
 	// Enable global throttle via debug page
-	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.servers.Exed.HTTPPort)
+	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.HTTPPort())
 	resp, err := http.PostForm(throttleURL, url.Values{
 		"enabled":        {"true"},
 		"email_patterns": {""},
@@ -83,7 +83,7 @@ func TestNewThrottleEmailPattern(t *testing.T) {
 	domain := parts[1]
 
 	// Set email pattern throttle via debug page
-	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.servers.Exed.HTTPPort)
+	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.HTTPPort())
 	resp, err := http.PostForm(throttleURL, url.Values{
 		"enabled":        {""}, // global toggle off
 		"email_patterns": {".*@" + strings.ReplaceAll(domain, ".", `\.`) + "$"},
@@ -134,7 +134,7 @@ func TestNewThrottleDebugPageJSON(t *testing.T) {
 	noGolden(t)
 
 	// Test the JSON endpoint of the debug page
-	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle?format=json", Env.servers.Exed.HTTPPort)
+	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle?format=json", Env.HTTPPort())
 	resp, err := http.Get(throttleURL)
 	if err != nil {
 		t.Fatalf("failed to get throttle config: %v", err)
@@ -174,7 +174,7 @@ func TestNewThrottleDefaultMessage(t *testing.T) {
 	defer pty.Disconnect()
 
 	// Enable global throttle with no custom message
-	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.servers.Exed.HTTPPort)
+	throttleURL := fmt.Sprintf("http://localhost:%d/debug/new-throttle", Env.HTTPPort())
 	resp, err := http.PostForm(throttleURL, url.Values{
 		"enabled":        {"true"},
 		"email_patterns": {""},

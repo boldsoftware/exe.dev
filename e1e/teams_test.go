@@ -570,7 +570,7 @@ func TestTeamSharingIsolation(t *testing.T) {
 
 	// Set up HTTP server for proxy tests
 	serveIndex(t, box, alphaMemberKey, "team-isolation-test")
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.HTTPPort()
 	configureProxyRoute(t, alphaMemberKey, box, 8080, "private")
 
 	// ============================================================

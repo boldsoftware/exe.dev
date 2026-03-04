@@ -84,7 +84,7 @@ func TestDeviceVerificationDoubleClick(t *testing.T) {
 	// Determine form action
 	actionPath := testinfra.ExtractFormAction(htmlBody, "/verify-device")
 
-	postURL := fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
+	postURL := fmt.Sprintf("http://localhost:%d%s", Env.HTTPPort(), actionPath)
 
 	// Step 5: Make multiple concurrent POST requests (simulating double-click)
 	const nRequests = 2
@@ -226,7 +226,7 @@ func TestDeviceVerificationKeyTheft(t *testing.T) {
 
 		actionPath := testinfra.ExtractFormAction(htmlBody, "/verify-device")
 
-		postURL = fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
+		postURL = fmt.Sprintf("http://localhost:%d%s", Env.HTTPPort(), actionPath)
 		return postURL, formData
 	}
 

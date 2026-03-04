@@ -72,11 +72,11 @@ To fetch verification emails:
   curl http://localhost:%d/emails?to=user@example.com
 `,
 		Env.sshPort(),
-		Env.servers.Exed.HTTPPort,
+		Env.HTTPPort(),
 		Env.servers.Exed.SSHPort,
 		Env.servers.Email.Port,
 		Env.sshPort(),
-		Env.servers.Exed.HTTPPort,
+		Env.HTTPPort(),
 		Env.servers.Email.Port,
 		Env.servers.Email.Port,
 	)
@@ -90,12 +90,12 @@ To fetch verification emails:
 
 SSH port: %d
 HTTP port: %d
-`, Env.sshPort(), Env.servers.Exed.HTTPPort)
+`, Env.sshPort(), Env.HTTPPort())
 
 	ctx := Env.context(t)
 
 	t.Logf("Running AI agent")
-	t.Logf("SSH port: %d, HTTP port: %d", Env.sshPort(), Env.servers.Exed.HTTPPort)
+	t.Logf("SSH port: %d, HTTP port: %d", Env.sshPort(), Env.HTTPPort())
 
 	cmd := exec.CommandContext(ctx, sketchPath,
 		"-one-shot",

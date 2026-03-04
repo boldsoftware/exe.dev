@@ -130,7 +130,7 @@ func TestWebInviteCodeAlreadyUsed(t *testing.T) {
 	}
 
 	// Now try to visit /auth?invite=<used_code> - should show error message
-	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.HTTPPort(), inviteCode)
 	resp, err := http.Get(authURL)
 	if err != nil {
 		t.Fatalf("failed to GET /auth: %v", err)
@@ -210,7 +210,7 @@ func TestInviteAllocation(t *testing.T) {
 	}
 
 	// POST to /invite to allocate first invite
-	inviteURL := fmt.Sprintf("http://localhost:%d/invite", Env.servers.Exed.HTTPPort)
+	inviteURL := fmt.Sprintf("http://localhost:%d/invite", Env.HTTPPort())
 	req, err := http.NewRequest("POST", inviteURL, nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -305,7 +305,7 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 	}
 
 	// Visit dashboard - should show "0 invites" with "Request More" link
-	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.servers.Exed.HTTPPort)
+	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.HTTPPort())
 	req, err := http.NewRequest("GET", dashboardURL, nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -380,7 +380,7 @@ func TestInviteCodePassthrough(t *testing.T) {
 	}
 
 	// Step 1: GET /new?invite=CODE should include invite in hidden form field
-	newURL := fmt.Sprintf("http://localhost:%d/new?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	newURL := fmt.Sprintf("http://localhost:%d/new?invite=%s", Env.HTTPPort(), inviteCode)
 	resp, err := http.Get(newURL)
 	if err != nil {
 		t.Fatalf("failed to GET /new: %v", err)
@@ -399,7 +399,7 @@ func TestInviteCodePassthrough(t *testing.T) {
 	}
 
 	// Step 2: POST /create-vm with invite should pass it to auth form with "Invite code accepted"
-	createURL := fmt.Sprintf("http://localhost:%d/create-vm", Env.servers.Exed.HTTPPort)
+	createURL := fmt.Sprintf("http://localhost:%d/create-vm", Env.HTTPPort())
 	resp2, err := http.PostForm(createURL, map[string][]string{
 		"hostname": {"testvm"},
 		"prompt":   {"test prompt"},

@@ -125,7 +125,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 
 	email := t.Name() + testinfra.FakeEmailSuffix
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	resp, err := http.PostForm(baseURL+"/auth", url.Values{"email": {email}})
 	if err != nil {

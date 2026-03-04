@@ -208,22 +208,35 @@ func TestTeamOIDCWebLogin(t *testing.T) {
 	inviteToken := getTeamInviteToken(t, memberEmail)
 	t.Logf("team invite token: %s", inviteToken)
 
-	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
 	// Submit email to web login with the team invite token.
 	// Exed should detect OIDC and redirect to the fake IdP.
 	jar, _ := cookiejar.New(nil)
 	client := noRedirectClient(jar)
 
-	resp, err := client.PostForm(base+"/auth", url.Values{
+	formData := url.Values{
 		"email":       {memberEmail},
 		"team_invite": {inviteToken},
-	})
+	}
+	resp, err := client.PostForm(base+"/auth", formData)
 	if err != nil {
 		t.Fatalf("POST /auth failed: %v", err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
+
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		location, err := resp.Location()
+		if err != nil {
+			t.Fatalf("missing Location from auth redirect: %v", err)
+		}
+		resp, err = client.PostForm(location.String(), formData)
+		if err != nil {
+			t.Fatalf("failed to follow auth redirection to %q: %v", location, err)
+		}
+		resp.Body.Close()
+	}
 
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected 303 redirect to OIDC, got %d, body: %s", resp.StatusCode, respBody)
@@ -277,6 +290,7 @@ func TestTeamOIDCWebLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /shell failed: %v", err)
 	}
+	resp, err = followRedirects(t, authClient, resp)
 	resp.Body.Close()
 	// An authenticated user gets 200; unauthenticated gets a redirect to /auth.
 	if resp.StatusCode != http.StatusOK {
@@ -326,18 +340,32 @@ func TestTeamOIDCSSHNewDevice(t *testing.T) {
 
 	// Register the member via web OIDC flow first (so user exists with auth_provider=oidc).
 	inviteToken := getTeamInviteToken(t, memberEmail)
-	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	base := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 	jar, _ := cookiejar.New(nil)
 	client := noRedirectClient(jar)
 
-	resp, err := client.PostForm(base+"/auth", url.Values{
+	formData := url.Values{
 		"email":       {memberEmail},
 		"team_invite": {inviteToken},
-	})
+	}
+	resp, err := client.PostForm(base+"/auth", formData)
 	if err != nil {
 		t.Fatalf("POST /auth failed: %v", err)
 	}
 	resp.Body.Close()
+
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		location, err := resp.Location()
+		if err != nil {
+			t.Fatalf("missing Location from auth redirect: %v", err)
+		}
+		resp, err = client.PostForm(location.String(), formData)
+		if err != nil {
+			t.Fatalf("failed to follow auth redirection to %q: %v", location, err)
+		}
+		resp.Body.Close()
+	}
+
 	oidcAuthURL := resp.Header.Get("Location")
 
 	resp, err = client.Get(oidcAuthURL)
