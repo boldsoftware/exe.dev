@@ -73,6 +73,7 @@ type Service struct {
 	exedURL        string
 	exedTargetURL  *url.URL
 	listenAddr     string // actual address to bind to (may differ from MetadataIP for isolation)
+	gatewayDev     bool   // true in local/test stages; relaxes outbound local-address checks
 
 	gatewayRequests *prometheus.CounterVec
 
@@ -97,9 +98,11 @@ type integrationCacheEntry struct {
 // Exported so tests can shorten it.
 var IntegrationCacheTTL = 1 * time.Minute
 
-// NewService creates a new metadata service
-// listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80")
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, registry *prometheus.Registry) (*Service, error) {
+// NewService creates a new metadata service.
+// listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80").
+// gatewayDev relaxes outbound local-address checks for dev environments
+// where connections legitimately route through private interfaces.
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}
@@ -131,6 +134,7 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 		exedURL:          exedURL,
 		exedTargetURL:    targetURL,
 		listenAddr:       listenAddr,
+		gatewayDev:       gatewayDev,
 		gatewayRequests:  gatewayRequests,
 		integrationCache: make(map[integrationCacheKey]*integrationCacheEntry),
 	}
@@ -640,17 +644,50 @@ func (s *Service) integrationTransport() *http.Transport {
 					return nil, fmt.Errorf("integration target connected to private IP")
 				}
 			}
-			if localAddr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-				localIP, ok := netip.AddrFromSlice(localAddr.IP)
-				if ok && tsaddr.IsTailscaleIP(localIP.Unmap()) {
-					conn.Close()
-					return nil, fmt.Errorf("integration target routed through tailscale interface")
-				}
+			if err := s.checkLocalAddr(conn); err != nil {
+				conn.Close()
+				return nil, err
 			}
 
 			return conn, nil
 		},
 	}
+}
+
+// checkLocalAddr validates the local (source) address of an outbound integration
+// connection. In production the local address must be a global unicast, non-private,
+// non-Tailscale IP — i.e. the connection must leave through a real internet-facing
+// interface. In dev mode (GatewayDev) we only reject loopback, since dev machines
+// legitimately route through private IPs like 192.168.x.x or 10.x.x.
+func (s *Service) checkLocalAddr(conn net.Conn) error {
+	tcpAddr, ok := conn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return nil
+	}
+	localIP, ok := netip.AddrFromSlice(tcpAddr.IP)
+	if !ok {
+		return nil
+	}
+	localIP = localIP.Unmap()
+
+	if s.gatewayDev {
+		if localIP.IsLoopback() {
+			return fmt.Errorf("integration target routed through loopback interface")
+		}
+		return nil
+	}
+
+	// Production: must be global unicast and not private/tailscale.
+	if !localIP.IsGlobalUnicast() {
+		return fmt.Errorf("integration target routed through non-global-unicast interface (%s)", localIP)
+	}
+	if localIP.IsPrivate() {
+		return fmt.Errorf("integration target routed through private interface (%s)", localIP)
+	}
+	if tsaddr.IsTailscaleIP(localIP) {
+		return fmt.Errorf("integration target routed through tailscale interface")
+	}
+	return nil
 }
 
 // isPrivateIP reports whether ip is non-public. Uses an allowlist approach:

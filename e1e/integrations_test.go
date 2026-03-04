@@ -20,7 +20,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.WantPrompt()
 
 	// Add an http-proxy integration.
-	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com/api --header=X-Auth:secret123")
+	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123")
 	pty.Want("Added integration myproxy")
 	pty.WantPrompt()
 
@@ -28,7 +28,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.SendLine("integrations list")
 	pty.Want("myproxy")
 	pty.Want("http-proxy")
-	pty.Want("target=https://example.com/api")
+	pty.Want("target=https://example.com")
 	pty.WantPrompt()
 
 	// Add another integration.
@@ -98,12 +98,12 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.WantPrompt()
 
 	// Test validation: http instead of https.
-	pty.SendLine("integrations add http-proxy --name=bad --target=http://example.com/api --header=X-Foo:bar")
+	pty.SendLine("integrations add http-proxy --name=bad --target=http://example.com --header=X-Foo:bar")
 	pty.Want("scheme must be https")
 	pty.WantPrompt()
 
 	// Test validation: non-443 port.
-	pty.SendLine("integrations add http-proxy --name=bad --target=https://example.com:8080/api --header=X-Foo:bar")
+	pty.SendLine("integrations add http-proxy --name=bad --target=https://example.com:8080 --header=X-Foo:bar")
 	pty.Want("port 443")
 	pty.WantPrompt()
 
@@ -118,7 +118,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.WantPrompt()
 
 	// Test validation: bare IP address.
-	pty.SendLine("integrations add http-proxy --name=bad --target=https://192.168.1.1/api --header=X-Foo:bar")
+	pty.SendLine("integrations add http-proxy --name=bad --target=https://192.168.1.1 --header=X-Foo:bar")
 	pty.Want("hostname, not an IP")
 	pty.WantPrompt()
 
@@ -152,7 +152,7 @@ func TestIntegrationsAttachDetach(t *testing.T) {
 	pty.WantPrompt()
 
 	// Add an integration.
-	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com/api --header=X-Auth:secret123")
+	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123")
 	pty.Want("Added integration myproxy")
 	pty.WantPrompt()
 
@@ -199,7 +199,7 @@ func TestIntegrationsRename(t *testing.T) {
 	pty, _, _, _ := registerForExeDev(t)
 
 	// Add an integration.
-	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com/api --header=X-Auth:secret123")
+	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123")
 	pty.Want("Added integration myproxy")
 	pty.WantPrompt()
 

@@ -125,5 +125,8 @@ func validateTargetURL(raw string) error {
 	if strings.HasSuffix(lower, ".exe.dev") {
 		return fmt.Errorf("target URL must not use a .exe.dev domain")
 	}
+	if u.Path != "" && u.Path != "/" {
+		return fmt.Errorf("target URL must not contain a path (got %q); the proxy appends the request path automatically", u.Path)
+	}
 	return nil
 }

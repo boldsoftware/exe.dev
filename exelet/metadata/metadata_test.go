@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -24,7 +25,7 @@ func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id
 func TestMetadataService404(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -83,7 +84,7 @@ func TestMetadataService404(t *testing.T) {
 func TestMetadataServiceRootResponse(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestMetadataServiceLoggingMiddleware(t *testing.T) {
 	tracingHandler := tracing.NewHandler(jsonHandler)
 	log := slog.New(tracingHandler)
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestMetadataServiceEmailProxyHandler(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, backend.URL, "127.0.0.1:18080", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, backend.URL, "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -239,7 +240,7 @@ func TestMetadataServiceEmailProxyNoBox(t *testing.T) {
 	// Mock that returns empty box name (box not found)
 	emptyLookup := &emptyInstanceLookup{}
 
-	svc, err := NewService(log, emptyLookup, "http://localhost:8080", "127.0.0.1:18080", nil)
+	svc, err := NewService(log, emptyLookup, "http://localhost:8080", "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -270,7 +271,7 @@ func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -345,7 +346,9 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 	defer fakeExed.Close()
 
 	log := slog.Default()
-	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", nil)
+	// Use gatewayDev=true because we're running in a test environment where
+	// outbound connections go through private interfaces.
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", true, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -387,7 +390,7 @@ func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 	defer fakeExed.Close()
 
 	log := slog.Default()
-	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -411,7 +414,7 @@ func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 func TestMetadataServiceIntegrationProxyNoBox(t *testing.T) {
 	log := slog.Default()
 	lookup := &failingInstanceLookup{}
-	svc, err := NewService(log, lookup, "http://localhost:9999", "127.0.0.1:0", nil)
+	svc, err := NewService(log, lookup, "http://localhost:9999", "127.0.0.1:0", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -487,4 +490,52 @@ func TestIsPrivateIP(t *testing.T) {
 			t.Errorf("isPrivateIP(%s) = true, want false", s)
 		}
 	}
+}
+
+func TestCheckLocalAddr(t *testing.T) {
+	prodService := &Service{gatewayDev: false}
+	devService := &Service{gatewayDev: true}
+
+	tests := []struct {
+		name     string
+		localIP  string
+		wantProd bool // true = error expected in production
+		wantDev  bool // true = error expected in dev
+	}{
+		{"loopback", "127.0.0.1", true, true},
+		{"private-192", "192.168.1.50", true, false},
+		{"private-10", "10.0.0.5", true, false},
+		{"private-172", "172.16.0.1", true, false},
+		{"tailscale", "100.100.100.100", true, false},
+		{"link-local", "169.254.1.1", true, false},
+		{"public", "8.8.8.8", false, false},
+		{"public-other", "52.1.2.3", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := netip.MustParseAddr(tt.localIP)
+			conn := &fakeConn{localIP: ip}
+
+			errProd := prodService.checkLocalAddr(conn)
+			if (errProd != nil) != tt.wantProd {
+				t.Errorf("prod: checkLocalAddr(%s) error=%v, wantErr=%v", tt.localIP, errProd, tt.wantProd)
+			}
+
+			errDev := devService.checkLocalAddr(conn)
+			if (errDev != nil) != tt.wantDev {
+				t.Errorf("dev: checkLocalAddr(%s) error=%v, wantErr=%v", tt.localIP, errDev, tt.wantDev)
+			}
+		})
+	}
+}
+
+// fakeConn implements net.Conn with a controllable LocalAddr.
+type fakeConn struct {
+	net.Conn
+	localIP netip.Addr
+}
+
+func (f *fakeConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: f.localIP.AsSlice(), Port: 12345}
 }

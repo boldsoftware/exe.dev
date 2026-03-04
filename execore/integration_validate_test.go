@@ -54,10 +54,10 @@ func TestValidateHTTPHeader(t *testing.T) {
 
 func TestValidateTargetURL(t *testing.T) {
 	good := []string{
-		"https://example.com/api",
-		"https://api.example.com/v1/",
-		"https://httpbin.org/anything",
-		"https://user:pass@example.com/api", // credentials are allowed
+		"https://example.com",
+		"https://api.example.com/",
+		"https://httpbin.org",
+		"https://user:pass@example.com", // credentials are allowed
 	}
 	for _, u := range good {
 		if err := validateTargetURL(u); err != nil {
@@ -81,6 +81,9 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://myhost.tail1234.ts.net", // Tailscale subdomain
 		"https://test.exe.cloud",         // exe.cloud
 		"https://test.exe.dev",           // exe.dev
+		"https://example.com/api",        // path not allowed
+		"https://api.example.com/v1/",    // path not allowed
+		"https://httpbin.org/anything",   // path not allowed
 	}
 	for _, u := range bad {
 		if err := validateTargetURL(u); err == nil {
