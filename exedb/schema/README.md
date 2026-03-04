@@ -5,11 +5,11 @@ This directory contains database migration files for exe.dev.
 ## How to Add a SQL Migration
 
 1. Create a new file with the naming convention `XXX-description.sql` where:
-   - `XXX` is a 3-digit number higher than the current highest
+   - `XXX` is a 3-digit number (typically the next available, but duplicates are allowed)
    - `description` is a brief description of what the migration does
    - Example: `079-add-user-preferences.sql`
 
-2. The migration number must be unique (see test in `migrations_test.go`)
+2. The **filename** must be unique (see test in `migrations_test.go`). Multiple migrations may share the same number prefix — they run in lexicographical order within the same number.
 
 3. Write your SQL statements in the file. The migration system will execute the entire file as-is.
 
@@ -30,8 +30,8 @@ existing data), use a code migration:
 3. Add an entry to `codeMigrations` in `exedb.go`:
 
 ```go
-var codeMigrations = map[int]func(tx *sql.Tx) error{
-    79: backfillSomething,  // add your entry here
+var codeMigrations = map[string]func(tx *sql.Tx) error{
+    "079-backfill-something.sql": backfillSomething,  // add your entry here
 }
 ```
 
@@ -56,8 +56,8 @@ Do not commit or rollback; the framework handles that. Use error returns to sign
 
 - On first run (when the `migrations` table doesn't exist), all migrations are executed
 - On subsequent runs, only new migrations that haven't been executed are run
-- The system tracks executed migrations in the `migrations` table
-- Migrations are executed in numerical order
+- The system tracks executed migrations by **filename** in the `migrations` table
+- Migrations are executed in numerical order, then lexicographically for the same number
 - Empty SQL files require a corresponding `codeMigrations` entry
 - Non-empty SQL files must not have a `codeMigrations` entry
 - **Base migrations** (files ending in `-base.sql`) are skipped on existing databases

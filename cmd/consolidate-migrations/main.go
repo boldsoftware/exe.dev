@@ -181,8 +181,8 @@ func run() error {
 	// Include ALL consolidated migrations so they're recorded in fresh databases.
 	buf.WriteString("-- Pre-populate migrations table with all consolidated migrations.\n")
 	for _, m := range migrations {
-		buf.WriteString(fmt.Sprintf("INSERT INTO migrations (migration_number, migration_name) VALUES (%d, '%s');\n",
-			m.number, m.name))
+		buf.WriteString(fmt.Sprintf("INSERT INTO migrations (migration_name, migration_number) VALUES ('%s', %d);\n",
+			m.name, m.number))
 	}
 
 	// Write the new base file
@@ -225,7 +225,7 @@ func run() error {
 
 	// Replace the codeMigrations map with an empty one
 	// Pattern: var codeMigrations = map[int]func(tx *sql.Tx) error{ ... }
-	codeMigrationsRe := regexp.MustCompile(`(?s)(var codeMigrations = map\[int\]func\(tx \*sql\.Tx\) error)\{[^}]*\}`)
+	codeMigrationsRe := regexp.MustCompile(`(?s)(var codeMigrations = map\[string\]func\(tx \*sql\.Tx\) error)\{[^}]*\}`)
 	newContent := codeMigrationsRe.ReplaceAll(exedbContent, []byte("$1{}"))
 
 	if bytes.Equal(exedbContent, newContent) {

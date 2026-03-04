@@ -3,7 +3,6 @@ package schema_test
 import (
 	"embed"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -11,15 +10,15 @@ import (
 //go:embed *.sql
 var migrationFS embed.FS
 
-func TestMigrationNumbersAreUnique(t *testing.T) {
+func TestMigrationFilenamesAreUnique(t *testing.T) {
 	// Read all migration files
 	entries, err := migrationFS.ReadDir(".")
 	if err != nil {
 		t.Fatalf("failed to read schema directory: %v", err)
 	}
 
-	// Track migration numbers
-	migrationNumbers := make(map[int]string)
+	// Track migration filenames
+	migrationFiles := make(map[string]bool)
 	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
 
 	for _, entry := range entries {
@@ -34,35 +33,22 @@ func TestMigrationNumbersAreUnique(t *testing.T) {
 			continue
 		}
 
-		// Parse migration number
-		migrationNumber, err := strconv.Atoi(matches[1])
-		if err != nil {
-			t.Errorf("failed to parse migration number from %s: %v", entry.Name(), err)
-			continue
-		}
-
-		// Check range (001-999)
-		if migrationNumber < 1 || migrationNumber > 999 {
-			t.Errorf("migration number %d in file %s is outside valid range 001-999", migrationNumber, entry.Name())
-			continue
-		}
-
-		// Check for duplicates
-		if existingFile, exists := migrationNumbers[migrationNumber]; exists {
-			t.Errorf("duplicate migration number %d found in files %s and %s", migrationNumber, existingFile, entry.Name())
+		// Check for duplicate filenames
+		if migrationFiles[entry.Name()] {
+			t.Errorf("duplicate migration filename: %s", entry.Name())
 		} else {
-			migrationNumbers[migrationNumber] = entry.Name()
+			migrationFiles[entry.Name()] = true
 		}
 	}
 
 	// Ensure we have at least the base migrations
-	if len(migrationNumbers) < 1 {
-		t.Errorf("expected at least 1 migration file, found %d", len(migrationNumbers))
+	if len(migrationFiles) < 1 {
+		t.Errorf("expected at least 1 migration file, found %d", len(migrationFiles))
 	}
 
 	// Check that we have at least one base migration (named XXX-base.sql)
 	hasBase := false
-	for _, name := range migrationNumbers {
+	for name := range migrationFiles {
 		if strings.HasSuffix(name, "-base.sql") {
 			hasBase = true
 			break

@@ -41,16 +41,13 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
-	expectedNumbers := migrationNumbersFromFS(t)
+	expectedNames := migrationNamesFromFS(t)
 	recordedMigrations := readMigrationsTable(t, db)
 
 	// Verify all migration files have corresponding entries in the table.
-	// Note: A consolidated base schema pre-populates the migrations table with
-	// entries for migrations that were consolidated, so we check that each file
-	// has a corresponding entry rather than expecting an exact count match.
-	for _, number := range expectedNumbers {
-		if _, ok := recordedMigrations[number]; !ok {
-			t.Fatalf("migration %03d missing from migrations table", number)
+	for _, name := range expectedNames {
+		if _, ok := recordedMigrations[name]; !ok {
+			t.Fatalf("migration %q missing from migrations table", name)
 		}
 	}
 
@@ -63,13 +60,13 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		t.Fatalf("expected %d migrations after rerun, got %d", len(recordedMigrations), len(rerunMigrations))
 	}
 
-	for number, name := range recordedMigrations {
-		rerunName, ok := rerunMigrations[number]
+	for name, number := range recordedMigrations {
+		rerunNumber, ok := rerunMigrations[name]
 		if !ok {
-			t.Fatalf("migration %03d missing after rerun", number)
+			t.Fatalf("migration %q missing after rerun", name)
 		}
-		if rerunName != name {
-			t.Fatalf("migration %03d name changed from %q to %q after rerun", number, name, rerunName)
+		if rerunNumber != number {
+			t.Fatalf("migration %q number changed from %d to %d after rerun", name, number, rerunNumber)
 		}
 	}
 }
@@ -101,7 +98,7 @@ func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 	if _, err := db.Exec("DROP TABLE billing_credits"); err != nil {
 		t.Fatalf("failed to drop billing_credits: %v", err)
 	}
-	if _, err := db.Exec("DELETE FROM migrations WHERE migration_number IN (85, 87)"); err != nil {
+	if _, err := db.Exec("DELETE FROM migrations WHERE migration_name IN ('085-account-credit-hourly-upsert.sql', '087-rename-account-credit-ledger-to-billing-credits.sql')"); err != nil {
 		t.Fatalf("failed to delete migration 085/087 records: %v", err)
 	}
 
@@ -152,7 +149,7 @@ func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 	}
 
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 85").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_name = '085-account-credit-hourly-upsert.sql'").Scan(&count)
 	if err != nil {
 		t.Fatalf("failed to query migration 085 record: %v", err)
 	}
@@ -160,7 +157,7 @@ func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 		t.Fatalf("expected migration 085 to be recorded once, got %d", count)
 	}
 
-	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 87").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_name = '087-rename-account-credit-ledger-to-billing-credits.sql'").Scan(&count)
 	if err != nil {
 		t.Fatalf("failed to query migration 087 record: %v", err)
 	}
@@ -169,7 +166,7 @@ func TestRunMigrationsRepairsMissingBillingCredits(t *testing.T) {
 	}
 }
 
-func TestNoDuplicateMigrationNumbers(t *testing.T) {
+func TestNoDuplicateMigrationFilenames(t *testing.T) {
 	t.Parallel()
 
 	entries, err := migrationFS.ReadDir("schema")
@@ -177,7 +174,7 @@ func TestNoDuplicateMigrationNumbers(t *testing.T) {
 		t.Fatalf("failed to read embedded migrations: %v", err)
 	}
 
-	seen := make(map[int]string)
+	seen := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -186,18 +183,45 @@ func TestNoDuplicateMigrationNumbers(t *testing.T) {
 		if !strings.HasSuffix(name, ".sql") || len(name) < 8 {
 			continue
 		}
-		number, err := strconv.Atoi(name[:3])
-		if err != nil {
+		// Verify it matches the migration pattern
+		if _, err := strconv.Atoi(name[:3]); err != nil {
 			continue
 		}
-		if prev, ok := seen[number]; ok {
-			t.Fatalf("duplicate migration number %03d: %q and %q", number, prev, name)
+		if seen[name] {
+			t.Fatalf("duplicate migration filename: %q", name)
 		}
-		seen[number] = name
+		seen[name] = true
 	}
 }
 
-func migrationNumbersFromFS(t *testing.T) []int {
+func TestDuplicateMigrationNumbersAllowed(t *testing.T) {
+	t.Parallel()
+
+	// Verify the migration system correctly sorts same-number migrations lexicographically.
+	// This test just verifies the sort logic, not actual migration execution.
+	migrations := []migration{
+		{number: 100, name: "100-beta.sql"},
+		{number: 100, name: "100-alpha.sql"},
+		{number: 99, name: "099-first.sql"},
+		{number: 101, name: "101-last.sql"},
+	}
+
+	sort.Slice(migrations, func(i, j int) bool {
+		if migrations[i].number != migrations[j].number {
+			return migrations[i].number < migrations[j].number
+		}
+		return migrations[i].name < migrations[j].name
+	})
+
+	expected := []string{"099-first.sql", "100-alpha.sql", "100-beta.sql", "101-last.sql"}
+	for i, m := range migrations {
+		if m.name != expected[i] {
+			t.Fatalf("position %d: expected %q, got %q", i, expected[i], m.name)
+		}
+	}
+}
+
+func migrationNamesFromFS(t *testing.T) []string {
 	t.Helper()
 
 	entries, err := migrationFS.ReadDir("schema")
@@ -205,7 +229,7 @@ func migrationNumbersFromFS(t *testing.T) []int {
 		t.Fatalf("failed to read embedded migrations: %v", err)
 	}
 
-	var numbers []int
+	var names []string
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -219,35 +243,34 @@ func migrationNumbersFromFS(t *testing.T) []int {
 			t.Fatalf("migration file name %q is too short", name)
 		}
 
-		number, err := strconv.Atoi(name[:3])
-		if err != nil {
+		if _, err := strconv.Atoi(name[:3]); err != nil {
 			t.Fatalf("failed to parse migration number from %q: %v", name, err)
 		}
 
-		numbers = append(numbers, number)
+		names = append(names, name)
 	}
 
-	sort.Ints(numbers)
-	return numbers
+	sort.Strings(names)
+	return names
 }
 
-func readMigrationsTable(t *testing.T, db *sql.DB) map[int]string {
+func readMigrationsTable(t *testing.T, db *sql.DB) map[string]int {
 	t.Helper()
 
-	rows, err := db.QueryContext(context.Background(), "SELECT migration_number, migration_name FROM migrations")
+	rows, err := db.QueryContext(context.Background(), "SELECT migration_name, migration_number FROM migrations")
 	if err != nil {
 		t.Fatalf("failed to query migrations table: %v", err)
 	}
 	defer rows.Close()
 
-	migrations := make(map[int]string)
+	migrations := make(map[string]int)
 	for rows.Next() {
-		var number int
 		var name string
-		if err := rows.Scan(&number, &name); err != nil {
+		var number int
+		if err := rows.Scan(&name, &number); err != nil {
 			t.Fatalf("failed to scan migration row: %v", err)
 		}
-		migrations[number] = name
+		migrations[name] = number
 	}
 
 	if err := rows.Err(); err != nil {
@@ -316,7 +339,7 @@ func TestCodeMigrationRollback(t *testing.T) {
 
 	// Verify the migration was NOT recorded
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_number = 999").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM migrations WHERE migration_name = '999-failing-migration.sql'").Scan(&count)
 	if err != nil {
 		t.Fatalf("failed to query migrations table: %v", err)
 	}

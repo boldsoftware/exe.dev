@@ -240,8 +240,8 @@ type LatitudeIPShard struct {
 }
 
 type Migration struct {
-	MigrationNumber int64      `db:"migration_number" json:"migration_number"`
 	MigrationName   string     `db:"migration_name" json:"migration_name"`
+	MigrationNumber int64      `db:"migration_number" json:"migration_number"`
 	ExecutedAt      *time.Time `db:"executed_at" json:"executed_at"`
 }
 

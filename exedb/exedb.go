@@ -18,11 +18,11 @@ import (
 //go:embed schema/*.sql
 var migrationFS embed.FS
 
-// codeMigrations maps migration numbers to code migration functions.
+// codeMigrations maps migration filenames to code migration functions.
 // Each code migration must have a corresponding empty .sql file in schema/
 // to establish ordering. Add entries directly to this map.
 // Code migrations receive a transaction; they must not commit or rollback.
-var codeMigrations = map[int]func(tx *sql.Tx) error{}
+var codeMigrations = map[string]func(tx *sql.Tx) error{}
 
 // SSHDetails holds SSH connection information for a machine
 type SSHDetails struct {
@@ -43,6 +43,8 @@ type migration struct {
 
 // RunMigrations executes database migrations in order.
 // SQL files establish ordering. Empty SQL files indicate code migrations.
+// Migrations are sorted by number, then lexicographically for the same number.
+// Each filename is migrated at most once.
 func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Read all migration files
 	entries, err := migrationFS.ReadDir("schema")
@@ -53,6 +55,7 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Filter and validate migration files
 	var migrations []migration
 	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
+	seenFilenames := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -60,6 +63,11 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 		if !migrationPattern.MatchString(entry.Name()) {
 			continue
 		}
+
+		if seenFilenames[entry.Name()] {
+			return fmt.Errorf("duplicate migration filename: %s", entry.Name())
+		}
+		seenFilenames[entry.Name()] = true
 
 		matches := migrationPattern.FindStringSubmatch(entry.Name())
 		number, err := strconv.Atoi(matches[1])
@@ -73,13 +81,13 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 		}
 
 		isEmpty := len(bytes.TrimSpace(content)) == 0
-		codeFn, hasCode := codeMigrations[number]
+		codeFn, hasCode := codeMigrations[entry.Name()]
 
 		if isEmpty && !hasCode {
-			return fmt.Errorf("empty migration file %s has no corresponding code migration in codeMigrations[%d]", entry.Name(), number)
+			return fmt.Errorf("empty migration file %s has no corresponding code migration in codeMigrations[%q]", entry.Name(), entry.Name())
 		}
 		if !isEmpty && hasCode {
-			return fmt.Errorf("migration file %s is not empty but has code migration in codeMigrations[%d]", entry.Name(), number)
+			return fmt.Errorf("migration file %s is not empty but has code migration in codeMigrations[%q]", entry.Name(), entry.Name())
 		}
 
 		migrations = append(migrations, migration{
@@ -91,39 +99,38 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	}
 
 	// Check for code migrations without corresponding SQL files
-	sqlNumbers := make(map[int]bool)
-	for _, m := range migrations {
-		sqlNumbers[m.number] = true
-	}
-	for number := range codeMigrations {
-		if !sqlNumbers[number] {
-			return fmt.Errorf("code migration %d has no corresponding SQL file in schema/", number)
+	for name := range codeMigrations {
+		if !seenFilenames[name] {
+			return fmt.Errorf("code migration %q has no corresponding SQL file in schema/", name)
 		}
 	}
 
-	// Sort migrations by number
+	// Sort migrations by number, then lexicographically for the same number
 	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].number < migrations[j].number
+		if migrations[i].number != migrations[j].number {
+			return migrations[i].number < migrations[j].number
+		}
+		return migrations[i].name < migrations[j].name
 	})
 
-	// Get executed migrations
-	executedMigrations := make(map[int]bool)
+	// Get executed migrations (tracked by filename)
+	executedMigrations := make(map[string]bool)
 	var tableName string
 	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'").Scan(&tableName)
 	if err == nil {
-		// Migrations table exists, load executed migrations
-		rows, err := db.Query("SELECT migration_number FROM migrations")
+		// Migrations table exists, load executed migrations by name
+		rows, err := db.Query("SELECT migration_name FROM migrations")
 		if err != nil {
 			return fmt.Errorf("failed to query executed migrations: %w", err)
 		}
 		defer rows.Close()
 
 		for rows.Next() {
-			var migrationNumber int
-			if err := rows.Scan(&migrationNumber); err != nil {
-				return fmt.Errorf("failed to scan migration number: %w", err)
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return fmt.Errorf("failed to scan migration name: %w", err)
 			}
-			executedMigrations[migrationNumber] = true
+			executedMigrations[name] = true
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to check migrations table: %w", err)
@@ -135,7 +142,7 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Run any migrations that haven't been executed
 	dbAlreadyExists := len(executedMigrations) > 0
 	for _, m := range migrations {
-		if executedMigrations[m.number] {
+		if executedMigrations[m.name] {
 			continue
 		}
 
@@ -176,7 +183,7 @@ func runMigration(slog *slog.Logger, db *sql.DB, m migration) error {
 		}
 	}
 
-	_, err = tx.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", m.number, m.name)
+	_, err = tx.Exec("INSERT INTO migrations (migration_name, migration_number) VALUES (?, ?)", m.name, m.number)
 	if err != nil {
 		return fmt.Errorf("failed to record migration %s in migrations table: %w", m.name, err)
 	}
