@@ -366,6 +366,11 @@ func (s *Server) handleGoogleOAuthExistingUser(w http.ResponseWriter, r *http.Re
 		s.slog().ErrorContext(ctx, "failed to resolve pending team invites", "error", err)
 	}
 
+	// Apply invite code for login-with-exe users who are re-authenticating with an invite code.
+	if oauthState.InviteCodeID != nil {
+		s.maybeApplyInviteCode(ctx, s.lookupInviteCodeByID(ctx, *oauthState.InviteCodeID), userID)
+	}
+
 	s.finishOAuthWebLogin(w, r, userID, oauthState)
 }
 

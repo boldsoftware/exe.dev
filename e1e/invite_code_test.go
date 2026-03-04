@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -423,4 +424,145 @@ func TestInviteCodePassthrough(t *testing.T) {
 	if !strings.Contains(string(body2), `name="invite"`) {
 		t.Errorf("expected invite hidden field for valid code")
 	}
+}
+
+// TestLoginWithExeUserCanApplyInviteCode tests that a user who was created via
+// the login-with-exe flow (proxy auth) can later visit /auth?invite=CODE while
+// already authenticated and have the invite code applied.
+func TestLoginWithExeUserCanApplyInviteCode(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a user through the login-with-exe flow.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies := webLoginWithExe(t, email)
+
+	// Step 2: Create an invite code.
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 3: Visit /auth?invite=CODE while already authenticated.
+	// The server should apply the invite code for this login-with-exe user.
+	client := newClientWithCookies(t, cookies)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to GET /auth with invite: %v", err)
+	}
+	resp.Body.Close()
+
+	// Step 4: Verify the invite code was applied — user should have a billing exemption.
+	exemption := getUserBillingExemption(t, email)
+	if exemption != "free" {
+		t.Errorf("expected billing_exemption='free' for login-with-exe user after invite, got %q", exemption)
+	}
+}
+
+// TestExistingUserCannotApplyInviteCode tests that a regular existing user
+// (NOT created via login-with-exe) visiting /auth?invite=CODE while already
+// authenticated does NOT get the invite code applied.
+func TestExistingUserCannotApplyInviteCode(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a regular user via web login.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies, err := Env.servers.WebLoginWithEmail(email)
+	if err != nil {
+		t.Fatalf("web login failed: %v", err)
+	}
+
+	// Step 2: Create an invite code.
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 3: Visit /auth?invite=CODE while already authenticated.
+	// The server should NOT apply the invite code for a regular existing user.
+	client := newClientWithCookies(t, cookies)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to GET /auth with invite: %v", err)
+	}
+	resp.Body.Close()
+
+	// Step 4: Verify the invite code was NOT applied — user should have no billing exemption.
+	exemption := getUserBillingExemption(t, email)
+	if exemption != "" {
+		t.Errorf("expected no billing_exemption for regular existing user, got %q", exemption)
+	}
+
+	// Step 5: Verify the invite code is still unused — a new user should be able to use it.
+	newEmail := t.Name() + "-second" + testinfra.FakeEmailSuffix
+	if _, err := Env.servers.WebLoginWithInvite(newEmail, inviteCode); err != nil {
+		t.Errorf("invite code should still be usable after regular user visited /auth with it: %v", err)
+	}
+}
+
+// getUserBillingExemption returns the billing exemption string for a user,
+// or "" if none is set. It queries the debug API to find the user and then
+// scrapes the debug user page for the billing exemption field.
+func getUserBillingExemption(t *testing.T, email string) string {
+	t.Helper()
+	httpPort := Env.servers.Exed.HTTPPort
+
+	// Look up user_id from the debug users JSON endpoint.
+	usersURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
+	resp, err := http.Get(usersURL)
+	if err != nil {
+		t.Fatalf("failed to query debug users API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var users []struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		t.Fatalf("failed to decode debug users response: %v", err)
+	}
+
+	var userID string
+	for _, u := range users {
+		if strings.EqualFold(u.Email, email) {
+			userID = u.UserID
+			break
+		}
+	}
+	if userID == "" {
+		t.Fatalf("user %q not found in debug API", email)
+	}
+
+	// Fetch the debug user page and look for billing exemption.
+	userURL := fmt.Sprintf("http://localhost:%d/debug/user?userId=%s", httpPort, userID)
+	resp2, err := http.Get(userURL)
+	if err != nil {
+		t.Fatalf("failed to query debug user page: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	body, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		t.Fatalf("failed to read debug user page: %v", err)
+	}
+	page := string(body)
+
+	// The template renders: <th>Billing Exemption</th><td>free</td>
+	// only when a billing exemption is set.
+	if !strings.Contains(page, "Billing Exemption") {
+		return ""
+	}
+	if strings.Contains(page, "<td>free</td>") {
+		return "free"
+	}
+	if strings.Contains(page, "<td>trial</td>") {
+		return "trial"
+	}
+	return "unknown"
 }

@@ -1292,6 +1292,12 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		if s.completeAuthWithAppToken(w, r, userID, flow, false) {
 			return
 		}
+
+		// Apply invite code for login-with-exe users who visit with an invite code.
+		if code := r.URL.Query().Get("invite"); code != "" {
+			s.maybeApplyInviteCode(r.Context(), s.lookupUnusedInviteCode(r.Context(), code), userID)
+		}
+
 		// User is already authenticated, handle redirect
 		s.redirectAfterAuth(w, r, userID)
 		return
@@ -1591,10 +1597,12 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Use the invite code we already looked up (needed for new user notification and email verification)
+	// Use the invite code we already looked up (needed for new user notification and email verification).
+	// For existing users, only allow invite codes for login-with-exe users — regular existing
+	// users cannot apply invite codes post-facto.
 	var inviteCodeID *int64
 	var inviterEmail string
-	if invite != nil {
+	if invite != nil && (isNewUser || s.isLoginWithExeOnly(r.Context(), userID)) {
 		inviteCodeID = &invite.ID
 		inviterEmail = s.getInviteGiverEmail(r.Context(), invite)
 		s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", invite.Code)
