@@ -874,7 +874,7 @@ func TestTeamRemoveMemberWithVMs(t *testing.T) {
 
 	enableRootSupport(t, ownerEmail)
 	createTeam(t, ownerKeyFile, "team_rm_member_vms", "RmMemberVMsTeam", ownerEmail)
-	addTeamMember(t, ownerKeyFile, memberEmail)
+	addTeamMember(t, "team_rm_member_vms", memberEmail)
 
 	// Member creates a VM
 	repl := sshToExeDev(t, memberKeyFile)
