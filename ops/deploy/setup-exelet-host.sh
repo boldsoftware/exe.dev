@@ -90,7 +90,7 @@ else
 
         # Pick the next available /20 block within the VPC CIDR
         # VPC is typically 172.31.0.0/16, subnets are /20 (172.31.0.0/20, 172.31.16.0/20, ...)
-        VPC_PREFIX=$(echo "${VPC_CIDR}" | cut -d. -f1-2)  # e.g. "172.31"
+        VPC_PREFIX=$(echo "${VPC_CIDR}" | cut -d. -f1-2) # e.g. "172.31"
         for THIRD_OCTET in $(seq 0 16 240); do
             CANDIDATE="${VPC_PREFIX}.${THIRD_OCTET}.0/20"
             if ! echo "$EXISTING_CIDRS" | grep -q "$CANDIDATE"; then

@@ -54,8 +54,8 @@ run_bench() {
     local rw_key bw iops
     # Determine which JSON key to read based on the workload
     case "$1" in
-        --rw=write|--rw=randwrite) rw_key="write" ;;
-        *) rw_key="read" ;;
+    --rw=write | --rw=randwrite) rw_key="write" ;;
+    *) rw_key="read" ;;
     esac
 
     bw=$(echo "$output" | jq -r ".jobs[0].${rw_key}.bw_bytes")
@@ -72,9 +72,9 @@ run_bench() {
 
 RESULTS=()
 
-run_bench "seq-write"  --rw=write     --bs=1M --numjobs=4
-run_bench "seq-read"   --rw=read      --bs=1M --numjobs=4
-run_bench "rand-read"  --rw=randread  --bs=4K --numjobs=16 --iodepth=32
+run_bench "seq-write" --rw=write --bs=1M --numjobs=4
+run_bench "seq-read" --rw=read --bs=1M --numjobs=4
+run_bench "rand-read" --rw=randread --bs=4K --numjobs=16 --iodepth=32
 run_bench "rand-write" --rw=randwrite --bs=4K --numjobs=16 --iodepth=32
 
 echo ""
@@ -84,7 +84,7 @@ echo "==============================="
 printf "%-12s %12s %10s\n" "TEST" "BANDWIDTH" "IOPS"
 printf "%-12s %12s %10s\n" "----" "---------" "----"
 for row in "${RESULTS[@]}"; do
-    IFS='|' read -r test bw iops <<< "$row"
+    IFS='|' read -r test bw iops <<<"$row"
     printf "%-12s %12s %10s\n" "$test" "$bw" "$iops"
 done
 echo "==============================="
