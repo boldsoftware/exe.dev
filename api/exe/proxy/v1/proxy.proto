@@ -30,6 +30,9 @@ service ProxyInfoService {
   // CertForDomain returns a certificate for a wildcard domain.
   rpc CertForDomain(CertForDomainRequest) returns (CertForDomainResponse);
 
+  // TopLevelCert returns a certificate for a top-level domain.
+  rpc TopLevelCert(TopLevelCertRequest) returns (TopLevelCertResponse);
+
   // CheckAndRefreshLLMCredit takes a user ID and checks if the user
   // has any LLM credit available (after refresh).
   // See llmgateway.CreditManager.CheckAndRefreshCredit.
@@ -197,6 +200,21 @@ message CertForDomainRequest {
 }
 
 message CertForDomainResponse {
+  string cert = 1; // encoded using wildcardcert.EncodeCertificate
+}
+
+message TopLevelCertRequest {
+  repeated uint32 cipher_suites = 1;
+  string server_name = 2;
+  repeated uint32 supported_curves = 3;
+  repeated uint32 supported_points = 4;
+  repeated uint32 signature_schemes = 5;
+  repeated string supported_protos = 6;
+  repeated uint32 supported_versions = 7;
+  repeated uint32 extensions = 8;
+}
+
+message TopLevelCertResponse {
   string cert = 1; // encoded using wildcardcert.EncodeCertificate
 }
 

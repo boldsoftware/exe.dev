@@ -46,6 +46,9 @@ type ExeproxData interface {
 	// CertForDomain returns the wildcard cert for a subdomain.
 	CertForDomain(ctx context.Context, serverName string) (*tls.Certificate, error)
 
+	// TopLevelCert returns a cert for a top-level domain.
+	TopLevelCert(ctx context.Context, hello *tls.ClientHelloInfo) (*tls.Certificate, error)
+
 	// LLMGateway returns the data to use for the LLM gateway functions.
 	LLMGateway() llmgateway.GatewayData
 
@@ -266,6 +269,37 @@ func (ged *grpcExeproxData) CertForDomain(ctx context.Context, serverName string
 		return nil, fmt.Errorf("CertForDomain decode failed: %v", err)
 	}
 	return cert, nil
+}
+
+// TopLevelCert returns a cert for a top-level domain.
+func (ged *grpcExeproxData) TopLevelCert(ctx context.Context, hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	resp, err := ged.client.TopLevelCert(ctx, &proxyapi.TopLevelCertRequest{
+		CipherSuites:      toUint32(hello.CipherSuites),
+		ServerName:        hello.ServerName,
+		SupportedCurves:   toUint32(hello.SupportedCurves),
+		SupportedPoints:   toUint32(hello.SupportedPoints),
+		SignatureSchemes:  toUint32(hello.SignatureSchemes),
+		SupportedProtos:   hello.SupportedProtos,
+		SupportedVersions: toUint32(hello.SupportedVersions),
+		Extensions:        toUint32(hello.Extensions),
+	})
+	if err != nil {
+		return nil, err
+	}
+	cert, err := wildcardcert.DecodeCertificate([]byte(resp.Cert))
+	if err != nil {
+		return nil, fmt.Errorf("TopLevelCert decode failed: %v", err)
+	}
+	return cert, nil
+}
+
+// toUint32 is a helper for TopLevelCert.
+func toUint32[E ~uint16 | ~uint8](s []E) []uint32 {
+	r := make([]uint32, len(s))
+	for i, v := range s {
+		r[i] = uint32(v)
+	}
+	return r
 }
 
 // LLMGateway returns the data to use for the llmgateway functions.

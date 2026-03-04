@@ -30,7 +30,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale"
 	"tailscale.com/net/tsaddr"
@@ -56,8 +55,6 @@ type WebProxy struct {
 	httpMetrics *exeweb.HTTPMetrics
 
 	proxyLns []*listener // additional listeners for specific ports
-
-	certManager *autocert.Manager
 
 	// Tailscale HTTPS (preloaded at startup)
 	tsCertMu sync.Mutex
@@ -138,12 +135,6 @@ func (wp *WebProxy) setupHTTPServer() {
 func (wp *WebProxy) setupHTTPSServer() {
 	if wp.httpsLn == nil {
 		return
-	}
-
-	wp.certManager = &autocert.Manager{
-		Cache:      autocert.DirCache("certs"),
-		Prompt:     autocert.AcceptTOS,
-		HostPolicy: wp.validateHostForTLSCert,
 	}
 
 	// TODO: Set up cobble for local development?
@@ -320,42 +311,6 @@ func (wp *WebProxy) logIPResolver() {
 	wp.lg().Info("public IP assignments loaded", "assignments", assignments)
 }
 
-// validateHostForTLSCert checks if the given host is valid
-// for TLS certificate issuance.
-func (wp *WebProxy) validateHostForTLSCert(ctx context.Context, host string) error {
-	// TODO: exeprox should probably never see a request to exe.dev.
-	// Do we need to issue certificates here?
-	host = domz.Canonicalize(host)
-	if domz.FirstMatch(host, wp.env.BoxHost, wp.env.WebHost) != "" {
-		return nil
-	}
-	if host == "exe.new" {
-		return nil
-	}
-	if host == "bold.dev" {
-		return nil
-	}
-
-	boxName, err := wp.resolveCustomDomainBoxName(ctx, host)
-	if err != nil {
-		return err
-	}
-	if boxName == "" {
-		wp.lg().WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host, "boxName", boxName)
-		return fmt.Errorf("unable to resolve VM for %s", host)
-	}
-	_, exists, err := wp.proxy.boxes.lookup(ctx, wp.proxy.exeproxData, boxName)
-	if err != nil {
-		wp.lg().WarnContext(ctx, "hostPolicy: failed to lookup box", "host", host, "boxName", boxName, "error", err)
-		return err
-	}
-	if !exists {
-		wp.lg().WarnContext(ctx, "hostPolicy: no box found for subdomain", "host", host, "boxName", boxName)
-		return fmt.Errorf("box not found: %s", boxName)
-	}
-	return nil
-}
-
 // resolveCustomDomainBoxName determines the box name
 // associated with a custom domain.
 func (wp *WebProxy) resolveCustomDomainBoxName(ctx context.Context, host string) (string, error) {
@@ -401,16 +356,11 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	}
 
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
-	if wp.certManager == nil {
-		wp.lg().ErrorContext(hello.Context(), "no certificate manager configured; was https enabled at startup?", "serverName", serverName)
-		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)
-	}
-
-	cert, err := wp.certManager.GetCertificate(hello)
+	// Pass on to exed.
+	cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)
 	if err != nil {
-		wp.lg().WarnContext(hello.Context(), "getting certificate failed", "serverName", hello.ServerName, "error", err)
+		wp.lg().ErrorContext(hello.Context(), "top level cert retrieval failed", "serverName", serverName, "error", err)
 	}
-
 	return cert, err
 }
 

@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -248,6 +249,59 @@ func (es *exeproxServer) CertForDomain(ctx context.Context, req *proxyapi.CertFo
 		Cert: string(bytes),
 	}
 	return ret, nil
+}
+
+// TopLevelCert returns a certificate for a top level domain.
+func (es *exeproxServer) TopLevelCert(ctx context.Context, req *proxyapi.TopLevelCertRequest) (*proxyapi.TopLevelCertResponse, error) {
+	if es.s.certManager == nil {
+		return nil, status.Error(codes.Internal, "no certificate manager configured")
+	}
+
+	// We construct an incomplete ClientHelloInfo that we
+	// can pass to autocert. Fortunately autocert doesn't need
+	// all the fields, but this is definitely a hack.
+
+	hello := &tls.ClientHelloInfo{
+		CipherSuites:      fromUint32[uint16](req.CipherSuites),
+		ServerName:        req.ServerName,
+		SupportedCurves:   fromUint32[tls.CurveID](req.SupportedCurves),
+		SupportedPoints:   fromUint32[uint8](req.SupportedPoints),
+		SignatureSchemes:  fromUint32[tls.SignatureScheme](req.SignatureSchemes),
+		SupportedProtos:   req.SupportedProtos,
+		SupportedVersions: fromUint32[uint16](req.SupportedVersions),
+		Extensions:        fromUint32[uint16](req.Extensions),
+	}
+
+	// Note that behind the scenes it is possible that this
+	// will trigger a request to some exeprox to verify
+	// a token. The exeprox will forward that request back to us,
+	// we will hand off to the certManager, and the right
+	// thing will happen. In other words, this might be a recursive
+	// call here.
+
+	cert, err := es.s.certManager.GetCertificate(hello)
+	if err != nil {
+		es.s.slog().WarnContext(ctx, "getting certificate failed in TopLevelCert", "serverName", req.ServerName, "error", err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	bytes, err := wildcardcert.EncodeCertificate(cert)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.TopLevelCertResponse{
+		Cert: string(bytes),
+	}
+	return ret, nil
+}
+
+// fromUint32 is a helper for TopLevelCert.
+func fromUint32[E ~uint16 | ~uint8](s []uint32) []E {
+	r := make([]E, len(s))
+	for i, v := range s {
+		r[i] = E(v)
+	}
+	return r
 }
 
 // CheckAndRefreshLLMCredit takes a user ID and checks if the user
