@@ -1,16 +1,22 @@
 package execore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"exe.dev/container"
 	"exe.dev/exemenu"
+	"exe.dev/exeweb"
 	"exe.dev/xshelley"
 )
 
@@ -30,6 +36,15 @@ func (ss *SSHServer) shelleyCommand() *exemenu.Command {
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 			},
+			{
+				Name:              "prompt",
+				Description:       "Send a prompt to Shelley on a VM",
+				Usage:             "shelley prompt <vm> <prompt>",
+				Handler:           ss.handleShelleyPrompt,
+				HasPositionalArgs: true,
+				RawArgs:           true,
+				CompleterFunc:     ss.completeBoxNames,
+			},
 		},
 	}
 }
@@ -41,7 +56,8 @@ func (ss *SSHServer) handleShelleyHelp(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("Usage: shelley <subcommand>")
 	cc.Writeln("")
 	cc.Writeln("Available subcommands:")
-	cc.Writeln("  install <vm>   Install/upgrade Shelley to the current version")
+	cc.Writeln("  install <vm>          Install/upgrade Shelley to the current version")
+	cc.Writeln("  prompt <vm> <prompt>  Send a prompt to Shelley on a VM")
 	cc.Writeln("")
 	return nil
 }
@@ -158,4 +174,114 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 
 	cc.Writeln("\033[1;32m✓ Shelley installation complete\033[0m")
 	return nil
+}
+
+// handleShelleyPrompt handles "shelley prompt <vm> <prompt-text>"
+func (ss *SSHServer) handleShelleyPrompt(ctx context.Context, cc *exemenu.CommandContext) error {
+	// RawArgs: args[0] is vm name, args[1:] is the prompt text
+	if len(cc.Args) < 2 {
+		return cc.Errorf("usage: shelley prompt <vm> <prompt>")
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+	prompt := strings.Join(cc.Args[1:], " ")
+
+	if strings.TrimSpace(prompt) == "" {
+		return cc.Errorf("prompt text is required")
+	}
+
+	// Look up the box
+	box, err := ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
+	if errors.Is(err, sql.ErrNoRows) || (err != nil && strings.Contains(err.Error(), "not found")) {
+		return cc.Errorf("VM %q not found", boxName)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to look up VM: %w", err)
+	}
+
+	// Validate box has SSH credentials
+	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
+		return cc.Errorf("VM %q does not have SSH configured", boxName)
+	}
+
+	// Create SSH signer
+	sshSigner, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
+	if err != nil {
+		return fmt.Errorf("failed to create SSH signer: %w", err)
+	}
+
+	shelleyBaseURL := ss.server.shelleyURL(box.Name)
+
+	// Non-interactive mode (web /cmd, /exec API): create conversation and return URL.
+	if cc.SSHSession == nil {
+		sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
+		httpClient := &http.Client{
+			Transport: ss.server.createSSHTunnelTransport(sshHost, box, sshSigner),
+			Timeout:   30 * time.Second,
+		}
+
+		conversationID, err := ss.createConversation(ctx, httpClient, prompt, cc.User.ID)
+		if err != nil {
+			return fmt.Errorf("failed to create Shelley conversation: %w", err)
+		}
+
+		json.NewEncoder(cc.Output).Encode(map[string]string{
+			"conversation_id": conversationID,
+			"shelley_url":     shelleyBaseURL + "/c/" + conversationID,
+		})
+		return nil
+	}
+
+	// Interactive SSH mode: stream the conversation
+	model := shelleyDefaultModel
+	if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, prompt, shelleyBaseURL, model); err != nil {
+		cc.WriteError("Error running Shelley prompt: %v", err)
+		cc.Write("Connect to Shelley at %s\r\n", shelleyBaseURL)
+	}
+
+	return nil
+}
+
+// createConversation creates a Shelley conversation without streaming.
+// It POSTs to the Shelley API via the SSH tunnel and returns the conversation ID.
+func (ss *SSHServer) createConversation(ctx context.Context, httpClient *http.Client, prompt, userID string) (string, error) {
+	chatReq := ShelleyChatRequest{
+		Message: prompt,
+		Model:   "claude-sonnet-4.5",
+	}
+	reqBody, err := json.Marshal(chatReq)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost:9999/api/conversations/new", bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Shelley-Request", "1")
+	req.Header.Set("X-Exedev-Userid", userID)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to Shelley: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Shelley returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp struct {
+		ConversationID string `json:"conversation_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+	if chatResp.ConversationID == "" {
+		return "", fmt.Errorf("no conversation ID in response")
+	}
+
+	return chatResp.ConversationID, nil
 }

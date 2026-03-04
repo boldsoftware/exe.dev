@@ -781,6 +781,80 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Prompt modal
+const promptModal = {
+    open() {
+        const overlay = document.getElementById('prompt-modal-overlay');
+        overlay.classList.add('visible');
+        document.getElementById('prompt-text').focus();
+    },
+    close() {
+        const overlay = document.getElementById('prompt-modal-overlay');
+        overlay.classList.remove('visible');
+        document.getElementById('prompt-error').style.display = 'none';
+    },
+};
+
+function shellQuote(s) {
+    return "'" + s.replace(/'/g, "'\\''" ) + "'";
+}
+
+// Shelley prompt submission
+async function submitPrompt(event) {
+    event.preventDefault();
+
+    const vmSelect = document.getElementById('prompt-vm');
+    const promptInput = document.getElementById('prompt-text');
+    const submitBtn = document.getElementById('prompt-btn');
+    const errorEl = document.getElementById('prompt-error');
+
+    const vmName = vmSelect.value;
+    const prompt = promptInput.value.trim();
+
+    if (!prompt) {
+        promptInput.focus();
+        return false;
+    }
+
+    if (vmName === '__new__') {
+        window.location.href = '/new?prompt=' + encodeURIComponent(prompt);
+        return false;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    errorEl.style.display = 'none';
+
+    try {
+        const response = await fetch('/cmd', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: `shelley prompt ${vmName} ${shellQuote(prompt)}` }),
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || result.output || 'Request failed');
+        }
+
+        // The command outputs JSON with shelley_url
+        const inner = JSON.parse(result.output);
+        if (inner.shelley_url) {
+            window.location.href = inner.shelley_url;
+        } else {
+            throw new Error('No conversation URL returned');
+        }
+    } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send';
+    }
+
+    return false;
+}
+
 // Initialize on page load
 function initDashboard() {
     restoreExpandedState();

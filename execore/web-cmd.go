@@ -31,6 +31,7 @@ var allowedCommands = map[string]bool{
 	"ssh-key remove":    true,
 	"ssh-key rename":    true,
 	"ssh-key list":      true,
+	"shelley prompt":    true,
 }
 
 // isCommandAllowed checks if a command is in the allowlist
@@ -126,8 +127,9 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		Logger: s.slog(),
 	}
 
-	// Execute the command with 10 second timeout
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// Execute the command with a 30 second timeout.
+	// Most commands finish in <1s; shelley prompt needs up to 30s for the API call.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
 	// Pre-create the command log so we can tag the source.

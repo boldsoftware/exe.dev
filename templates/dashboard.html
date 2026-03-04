@@ -23,7 +23,7 @@
         .main-container {
             max-width: 1000px;
             margin: 0 auto;
-            padding: 40px 20px;
+            padding: 24px 20px;
         }
         
         .section-title {
@@ -38,8 +38,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            gap: 20px;
+            margin-bottom: 12px;
+            gap: 16px;
         }
         
         .section-left {
@@ -79,7 +79,7 @@
         
         .box-row {
             background: #fff;
-            padding: 16px 20px;
+            padding: 12px 16px;
             display: flex;
             flex-direction: column;
             gap: 12px;
@@ -424,7 +424,157 @@
             font-size: 13px;
             border: 1px solid #e0e0e0;
         }
-        
+
+        /* Prompt modal */
+        .prompt-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+        }
+
+        .prompt-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .prompt-modal {
+            background: #fff;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .prompt-modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .prompt-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .prompt-modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #999;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .prompt-modal-close:hover {
+            color: #333;
+        }
+
+        .prompt-modal-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .prompt-field-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .prompt-vm-select {
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: inherit;
+            background: #fff;
+            color: #333;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .prompt-vm-select:focus {
+            outline: none;
+            border-color: #999;
+        }
+
+        .prompt-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: inherit;
+            background: #fff;
+            color: #333;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .prompt-input:focus {
+            outline: none;
+            border-color: #999;
+        }
+
+        .prompt-input::placeholder {
+            color: #999;
+        }
+
+        .prompt-modal-footer {
+            padding: 12px 20px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .prompt-error {
+            font-size: 12px;
+            color: #dc2626;
+            display: none;
+        }
+
+        .prompt-submit {
+            padding: 8px 20px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #000;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            white-space: nowrap;
+            margin-left: auto;
+            transition: background 0.15s ease;
+        }
+
+        .prompt-submit:hover {
+            background: #333;
+        }
+
+        .prompt-submit:disabled {
+            background: #999;
+            border-color: #999;
+            cursor: not-allowed;
+        }
+
         .ssh-command-display {
             font-family: inherit;
             background: #f5f5f5;
@@ -551,6 +701,10 @@
 
             .invite-info {
                 padding: 0 12px;
+            }
+
+            .prompt-modal {
+                width: 95%;
             }
         }
 
@@ -1358,6 +1512,75 @@
             [style*="border-top: 1px solid #e5e7eb"] {
                 border-top-color: #333 !important;
             }
+
+            /* Prompt modal dark mode */
+            .prompt-modal {
+                background: #1f1f1f;
+            }
+
+            .prompt-modal-header {
+                border-bottom-color: #333;
+            }
+
+            .prompt-modal-title {
+                color: #f3f4f6;
+            }
+
+            .prompt-modal-close {
+                color: #6b7280;
+            }
+
+            .prompt-modal-close:hover {
+                color: #f3f4f6;
+            }
+
+            .prompt-field-label {
+                color: #9ca3af;
+            }
+
+            .prompt-vm-select {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .prompt-vm-select:focus {
+                border-color: #555;
+            }
+
+            .prompt-input {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .prompt-input::placeholder {
+                color: #6b7280;
+            }
+
+            .prompt-input:focus {
+                border-color: #555;
+            }
+
+            .prompt-submit {
+                background: #f3f4f6;
+                color: #111;
+                border-color: #f3f4f6;
+            }
+
+            .prompt-submit:hover {
+                background: #d1d5db;
+            }
+
+            .prompt-submit:disabled {
+                background: #4b5563;
+                border-color: #4b5563;
+                color: #9ca3af;
+            }
+
+            .prompt-error {
+                color: #fca5a5;
+            }
         }
     </style>
 </head>
@@ -1370,6 +1593,7 @@
             <div class="section-left">
                 <a href="/" class="section-title" style="text-decoration: none;">My VMs</a>
                 <a href="/new" class="new-box-btn">+ New</a>
+                <button class="new-box-btn" onclick="promptModal.open()">✨ Prompt</button>
             </div>
             <div class="search-box">
                 <input type="text"
@@ -1390,7 +1614,7 @@
             {{end}}
         </div>
 
-        <div class="boxes-list" style="margin-bottom: 40px;">
+        <div class="boxes-list" style="margin-bottom: 24px;">
             {{range .Boxes}}
             <div class="box-row"{{if .CreationLog}} data-has-log="true"{{end}}>
                 <div class="box-main" onclick="handleBoxRowClick(event, this)">
@@ -1595,11 +1819,12 @@
             {{end}}
         </div>
         {{else}}
-        <div style="margin-bottom: 40px;">
+        <div style="margin-bottom: 24px;">
             <div class="section-header">
                 <div class="section-left">
                     <div class="section-title">My VMs</div>
                     <a href="/new" class="new-box-btn">+ New</a>
+                    <button class="new-box-btn" onclick="promptModal.open()">✨ Prompt</button>
                 </div>
             </div>
             <div class="invite-info" style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
@@ -1626,7 +1851,7 @@
             </div>
         </div>
 
-        <div class="boxes-list" style="margin-bottom: 40px;">
+        <div class="boxes-list" style="margin-bottom: 24px;">
             {{range .TeamBoxes}}
             <div class="box-row">
                 <div class="box-main" onclick="handleBoxRowClick(event, this)">
@@ -1687,6 +1912,36 @@
     </div>
 
     <!-- Command Modal -->
+    <div id="prompt-modal-overlay" class="prompt-modal-overlay" onclick="promptModal.close()">
+        <div class="prompt-modal" onclick="event.stopPropagation()">
+            <div class="prompt-modal-header">
+                <span class="prompt-modal-title">Prompt Shelley</span>
+                <button class="prompt-modal-close" onclick="promptModal.close()">&times;</button>
+            </div>
+            <form onsubmit="return submitPrompt(event)">
+                <div class="prompt-modal-body">
+                    <div>
+                        <div class="prompt-field-label">VM</div>
+                        <select class="prompt-vm-select" id="prompt-vm">
+                            {{range .Boxes}}{{if .ShelleyURL}}
+                            <option value="{{.Name}}">{{.Name}}</option>
+                            {{end}}{{end}}
+                            <option value="__new__">+ New VM</option>
+                        </select>
+                    </div>
+                    <div>
+                        <div class="prompt-field-label">Prompt</div>
+                        <textarea class="prompt-input" id="prompt-text" placeholder="Ask Shelley to do something..." autocomplete="off"></textarea>
+                    </div>
+                </div>
+                <div class="prompt-modal-footer">
+                    <div class="prompt-error" id="prompt-error"></div>
+                    <button type="submit" class="prompt-submit" id="prompt-btn">Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="cmd-modal-overlay" class="cmd-modal-overlay" onclick="cmdModal.close()">
         <div class="cmd-modal" onclick="event.stopPropagation()">
             <div class="cmd-modal-header">

@@ -27,3 +27,12 @@ Install or upgrade Shelley to the current version
 shelley install <vm>
 ```
 
+### shelley prompt
+
+Send a prompt to Shelley on a VM
+
+**Usage:**
+```
+shelley prompt <vm> <prompt>
+```
+
