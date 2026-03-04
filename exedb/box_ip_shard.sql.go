@@ -169,3 +169,17 @@ func (q *Queries) UpdateBoxIPShard(ctx context.Context, arg UpdateBoxIPShardPara
 	_, err := q.exec(ctx, q.updateBoxIPShardStmt, updateBoxIPShard, arg.IPShard, arg.BoxID)
 	return err
 }
+
+const updateBoxIPShardUser = `-- name: UpdateBoxIPShardUser :exec
+UPDATE box_ip_shard SET user_id = ? WHERE box_id = ?
+`
+
+type UpdateBoxIPShardUserParams struct {
+	UserID string `db:"user_id" json:"user_id"`
+	BoxID  int    `db:"box_id" json:"box_id"`
+}
+
+func (q *Queries) UpdateBoxIPShardUser(ctx context.Context, arg UpdateBoxIPShardUserParams) error {
+	_, err := q.exec(ctx, q.updateBoxIPShardUserStmt, updateBoxIPShardUser, arg.UserID, arg.BoxID)
+	return err
+}

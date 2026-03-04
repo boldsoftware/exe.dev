@@ -111,6 +111,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/add-member", s.handleDebugTeamAddMember)
 	mux.HandleFunc("GET /debug/teams/members", s.handleDebugTeamMembers)
 	mux.HandleFunc("POST /debug/teams/remove-member", s.handleDebugTeamRemoveMember)
+	mux.HandleFunc("GET /debug/teams/member-vm-count", s.handleDebugTeamMemberVMCount)
 	mux.HandleFunc("POST /debug/teams/update-role", s.handleDebugTeamUpdateRole)
 	mux.HandleFunc("POST /debug/teams/set-limits", s.handleDebugTeamSetLimits)
 	mux.HandleFunc("POST /debug/teams/set-auth-provider", s.handleDebugTeamSetAuthProvider)
@@ -5324,6 +5325,12 @@ func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	confirmUserID := r.FormValue("confirm_user_id")
+	if confirmUserID != userID {
+		http.Error(w, "confirm_user_id must match user_id", http.StatusBadRequest)
+		return
+	}
+
 	boxIDs, err := withRxRes1(s, ctx, (*exedb.Queries).ListBoxIDsForUser, userID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to check member's VMs: %v", err), http.StatusInternalServerError)
@@ -5342,6 +5349,26 @@ func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Requ
 	s.slog().InfoContext(ctx, "removed team member via debug", "team_id", teamID, "user_id", userID)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "removed %s from team %s", userID, teamID)
+}
+
+// handleDebugTeamMemberVMCount returns the number of VMs a user has.
+// GET /debug/teams/member-vm-count?user_id=...
+func (s *Server) handleDebugTeamMemberVMCount(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	count, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to count VMs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"count":%d}`, count)
 }
 
 // handleDebugTeamUpdateRole changes a team member's role.

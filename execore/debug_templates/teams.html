@@ -113,11 +113,23 @@ tr.shown td.details-control::before { content: '-'; }
 <form id="removeForm">
 <h3>Remove Team Member</h3>
 <p>Remove <strong id="removeMemberEmail"></strong> from <strong id="removeTeamDisplay"></strong>?</p>
+<<<<<<< HEAD
 <p style="color: #dc3545; font-weight: bold;">This will delete all of their VMs.</p>
+=======
+<div id="removeVmWarning" style="display:none; background:#fff3cd; border:1px solid #ffc107; padding:10px; border-radius:4px; margin:10px 0;">
+<strong style="color:#856404;">Warning:</strong> This user has <strong id="removeVmCount"></strong> VM(s). They must delete or transfer their VMs before removal.
+</div>
+>>>>>>> fe4590fe (execore: intra-team VM ownership transfers)
 <input type="hidden" name="team_id" id="removeTeamId">
 <input type="hidden" name="user_id" id="removeUserId">
+<p style="margin-top:10px;">Type the user ID (<code id="removeUserIdDisplay"></code>) to confirm:</p>
+<p><input type="text" id="removeConfirmInput" placeholder="paste user_id here" autocomplete="off"></p>
 <p>
+<<<<<<< HEAD
 <button type="submit" class="danger-btn">Remove &amp; Delete VMs</button>
+=======
+<button type="submit" class="danger-btn" id="removeSubmitBtn" disabled>Remove</button>
+>>>>>>> fe4590fe (execore: intra-team VM ownership transfers)
 <button type="button" class="cancel-btn" id="removeCancelBtn">Cancel</button>
 </p>
 </form>
@@ -439,12 +451,32 @@ document.getElementById('changeRoleForm').addEventListener('submit', function(e)
 // Remove member
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('remove-btn')) {
+        var userId = e.target.dataset.userid;
         document.getElementById('removeTeamId').value = e.target.dataset.teamid;
-        document.getElementById('removeUserId').value = e.target.dataset.userid;
+        document.getElementById('removeUserId').value = userId;
         document.getElementById('removeMemberEmail').textContent = e.target.dataset.email;
         document.getElementById('removeTeamDisplay').textContent = e.target.dataset.teamname;
+        document.getElementById('removeUserIdDisplay').textContent = userId;
+        document.getElementById('removeConfirmInput').value = '';
+        document.getElementById('removeSubmitBtn').disabled = true;
+        document.getElementById('removeVmWarning').style.display = 'none';
+
+        // Check VM count
+        fetch('/debug/teams/member-vm-count?user_id=' + encodeURIComponent(userId))
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.count > 0) {
+                    document.getElementById('removeVmCount').textContent = data.count;
+                    document.getElementById('removeVmWarning').style.display = '';
+                }
+            });
+
         document.getElementById('removeDialog').showModal();
     }
+});
+document.getElementById('removeConfirmInput').addEventListener('input', function() {
+    var expected = document.getElementById('removeUserId').value;
+    document.getElementById('removeSubmitBtn').disabled = (this.value !== expected);
 });
 document.getElementById('removeCancelBtn').addEventListener('click', function() {
     document.getElementById('removeDialog').close();
@@ -453,10 +485,17 @@ document.getElementById('removeForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var teamId = document.getElementById('removeTeamId').value;
     var userId = document.getElementById('removeUserId').value;
+    var confirmUserId = document.getElementById('removeConfirmInput').value;
+
+    if (confirmUserId !== userId) {
+        alert('User ID does not match');
+        return;
+    }
 
     var body = new URLSearchParams();
     body.append('team_id', teamId);
     body.append('user_id', userId);
+    body.append('confirm_user_id', confirmUserId);
 
     fetch('/debug/teams/remove-member', {
         method: 'POST',

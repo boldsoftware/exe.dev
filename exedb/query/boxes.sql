@@ -125,6 +125,7 @@ LIMIT ?;
 -- name: SetBoxCgroupOverrides :exec
 UPDATE boxes SET cgroup_overrides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
+<<<<<<< HEAD
 -- name: GetBoxByContainerID :one
 SELECT * FROM boxes WHERE container_id = ?;
 
@@ -144,3 +145,7 @@ UPDATE boxes SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
 -- name: GetBoxTags :one
 SELECT tags FROM boxes WHERE id = ?;
+=======
+-- name: UpdateBoxOwner :exec
+UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+>>>>>>> fe4590fe (execore: intra-team VM ownership transfers)

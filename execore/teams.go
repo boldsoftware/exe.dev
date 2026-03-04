@@ -265,6 +265,55 @@ func (s *Server) resolveTeamShardCollisions(ctx context.Context, teamID, newUser
 	}
 }
 
+// transferBox transfers ownership of a box to a new user within the same team.
+// It updates the box owner, IP shard user, and cleans up all shares (individual + team).
+func (s *Server) transferBox(ctx context.Context, box exedb.Box, newOwnerID string) error {
+	// Look up shares before the transaction so we can notify the proxy after.
+	individualShares, _ := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(box.ID))
+	teamShares, _ := withRxRes1(s, ctx, (*exedb.Queries).GetBoxTeamSharesByBoxID, int64(box.ID))
+
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.UpdateBoxOwner(ctx, exedb.UpdateBoxOwnerParams{
+			CreatedByUserID: newOwnerID,
+			ID:              box.ID,
+		}); err != nil {
+			return fmt.Errorf("updating box owner: %w", err)
+		}
+		if err := queries.UpdateBoxIPShardUser(ctx, exedb.UpdateBoxIPShardUserParams{
+			UserID: newOwnerID,
+			BoxID:  box.ID,
+		}); err != nil {
+			return fmt.Errorf("updating box IP shard user: %w", err)
+		}
+		if err := queries.DeleteBoxSharesByBox(ctx, int64(box.ID)); err != nil {
+			return fmt.Errorf("deleting individual shares: %w", err)
+		}
+		for _, ts := range teamShares {
+			if err := queries.DeleteBoxTeamShare(ctx, exedb.DeleteBoxTeamShareParams{
+				BoxID:  ts.BoxID,
+				TeamID: ts.TeamID,
+			}); err != nil {
+				return fmt.Errorf("deleting team share: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Notify proxy to evict cached data for this box.
+	proxyChangeDeletedBox(box.Name)
+	for _, share := range individualShares {
+		proxyChangeDeletedBoxShare(box.Name, share.SharedWithUserID)
+	}
+	for _, ts := range teamShares {
+		proxyChangeDeletedBoxShareTeam(ts.TeamID, int(ts.BoxID), box.Name)
+	}
+
+	return nil
+}
+
 // deleteTeamMember deletes a member from a team.
 func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) error {
 	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{

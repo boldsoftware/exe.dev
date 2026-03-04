@@ -884,6 +884,20 @@ func (q *Queries) UpdateBoxNameByID(ctx context.Context, arg UpdateBoxNameByIDPa
 	return err
 }
 
+const updateBoxOwner = `-- name: UpdateBoxOwner :exec
+UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateBoxOwnerParams struct {
+	CreatedByUserID string `db:"created_by_user_id" json:"created_by_user_id"`
+	ID              int    `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxOwner(ctx context.Context, arg UpdateBoxOwnerParams) error {
+	_, err := q.exec(ctx, q.updateBoxOwnerStmt, updateBoxOwner, arg.CreatedByUserID, arg.ID)
+	return err
+}
+
 const updateBoxRoutes = `-- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?
 `

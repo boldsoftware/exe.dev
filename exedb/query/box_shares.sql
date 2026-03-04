@@ -35,6 +35,9 @@ ORDER BY bs.created_at DESC;
 DELETE FROM box_shares
 WHERE box_id = ? AND shared_with_user_id = ?;
 
+-- name: DeleteBoxSharesByBox :exec
+DELETE FROM box_shares WHERE box_id = ?;
+
 -- name: HasUserAccessToBox :one
 SELECT COUNT(*) > 0 as has_access
 FROM box_shares

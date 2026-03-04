@@ -74,6 +74,15 @@ func (q *Queries) DeleteBoxShareByBoxAndUser(ctx context.Context, arg DeleteBoxS
 	return err
 }
 
+const deleteBoxSharesByBox = `-- name: DeleteBoxSharesByBox :exec
+DELETE FROM box_shares WHERE box_id = ?
+`
+
+func (q *Queries) DeleteBoxSharesByBox(ctx context.Context, boxID int64) error {
+	_, err := q.exec(ctx, q.deleteBoxSharesByBoxStmt, deleteBoxSharesByBox, boxID)
+	return err
+}
+
 const getBoxSharesByBoxID = `-- name: GetBoxSharesByBoxID :many
 SELECT bs.id, bs.box_id, bs.shared_with_user_id, bs.shared_by_user_id, bs.message, bs.created_at, u.email as shared_with_user_email
 FROM box_shares bs

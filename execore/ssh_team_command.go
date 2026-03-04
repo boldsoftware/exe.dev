@@ -13,6 +13,7 @@ import (
 var (
 	addSudoerFlag       = addBoolFlag("sudoer", "add as team sudoer (SSH access to member VMs)")
 	addBillingOwnerFlag = addBoolFlag("billing-owner", "add as team billing owner")
+	addForceFlag        = addBoolFlag("force", "force operation even if user has VMs")
 )
 
 // teamCommand returns the command definition for the team command
@@ -51,6 +52,15 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Available:         ss.isTeamAdmin,
 			},
 			{
+				Name:              "transfer",
+				Description:       "Transfer a VM to another team member",
+				Usage:             "team transfer <vm_name> <target_email>",
+				Handler:           ss.handleTeamTransferCommand,
+				FlagSetFunc:       jsonOnlyFlags("team-transfer"),
+				HasPositionalArgs: true,
+				Available:         ss.isTeamAdmin,
+			},
+			{
 				Name:        "auth",
 				Description: "View and manage team auth settings",
 				Usage:       "team auth",
@@ -84,8 +94,9 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			{
 				Name:              "unenroll",
 				Description:       "Remove a user from any team",
-				Usage:             "team unenroll <team_id> <email>",
+				Usage:             "team unenroll <team_id> <email> [--force]",
 				Handler:           ss.handleTeamUnenrollCommand,
+				FlagSetFunc:       addForceFlag(jsonOnlyFlags("team-unenroll")),
 				HasPositionalArgs: true,
 				Hidden:            true,
 				RequiresSudo:      true,
@@ -525,19 +536,21 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 		}
 	}
 
+	force := cc.FlagSet.Lookup("force") != nil && cc.FlagSet.Lookup("force").Value.String() == "true"
+
 	boxIDs, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListBoxIDsForUser, member.UserID)
 	if err != nil {
 		return cc.Errorf("Failed to check member's VMs: %v", err)
 	}
-	if len(boxIDs) > 0 {
-		return cc.Errorf("Cannot remove %s: they still have %d VM(s). Ask them to delete their VMs first.", email, len(boxIDs))
+	if len(boxIDs) > 0 && !force {
+		return cc.Errorf("Cannot remove %s: they still have %d VM(s). Use --force to remove anyway (VMs will be orphaned from the team).", email, len(boxIDs))
 	}
 
 	if err := ss.server.deleteTeamMember(ctx, teamID, member.UserID); err != nil {
 		return cc.Errorf("Failed to remove member: %v", err)
 	}
 
-	slog.InfoContext(ctx, "root: removed team member", "team_id", teamID, "email", email, "by", cc.User.ID)
+	slog.InfoContext(ctx, "root: removed team member", "team_id", teamID, "email", email, "force", force, "by", cc.User.ID)
 	cc.Writeln("Removed %s from %s", email, teamID)
 	return nil
 }
@@ -683,5 +696,73 @@ func (ss *SSHServer) handleTeamShowCommand(ctx context.Context, cc *exemenu.Comm
 		}
 		cc.Writeln("  %s  %s%s", m.UserID, m.Email, roleIndicator)
 	}
+	return nil
+}
+
+// handleTeamTransferCommand transfers a VM from one team member to another.
+func (ss *SSHServer) handleTeamTransferCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) < 2 {
+		return cc.Errorf("usage: team transfer <vm_name> <target_email>")
+	}
+
+	boxName := cc.Args[0]
+	targetEmail := cc.Args[1]
+
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		return cc.Errorf("You are not part of a team")
+	}
+	if team.Role == "user" {
+		return cc.Errorf("Only team admins can transfer VMs")
+	}
+
+	// Find the box (checks direct ownership + sudoer access)
+	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, boxName)
+	if err != nil {
+		return cc.Errorf("VM %q not found", boxName)
+	}
+
+	// Resolve target user — must be in the same team
+	ce := canonicalizeEmail(targetEmail)
+	target, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
+		TeamID:         team.TeamID,
+		CanonicalEmail: &ce,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("User %q is not in this team", targetEmail)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Reject no-op
+	if box.CreatedByUserID == target.UserID {
+		return cc.Errorf("VM %q is already owned by %s", boxName, targetEmail)
+	}
+
+	if err := ss.server.transferBox(ctx, *box, target.UserID); err != nil {
+		return cc.Errorf("Failed to transfer VM: %v", err)
+	}
+
+	slog.InfoContext(ctx, "team VM transferred",
+		"team_id", team.TeamID,
+		"box_name", boxName,
+		"from_user", box.CreatedByUserID,
+		"to_user", target.UserID,
+		"by", cc.User.ID)
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"transferred": boxName,
+			"to":          targetEmail,
+			"status":      "ok",
+		})
+		return nil
+	}
+
+	cc.Writeln("Transferred %s to %s", boxName, targetEmail)
 	return nil
 }
