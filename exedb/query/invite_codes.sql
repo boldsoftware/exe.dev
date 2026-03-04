@@ -78,7 +78,8 @@ WHERE assigned_to_user_id = ?;
 UPDATE users SET
     billing_exemption = ?,
     billing_trial_ends_at = ?,
-    signed_up_with_invite_id = ?
+    signed_up_with_invite_id = ?,
+    created_for_login_with_exe = 0
 WHERE user_id = ?;
 
 -- name: GetUserBillingExemption :one

@@ -461,6 +461,46 @@ func TestLoginWithExeUserCanApplyInviteCode(t *testing.T) {
 	}
 }
 
+// TestInviteCodePromotesLoginWithExeUser tests that a login-with-exe user who
+// accepts an invite code gets promoted to a full developer (created_for_login_with_exe
+// becomes false). This ensures the user can create VMs after accepting an invite.
+func TestInviteCodePromotesLoginWithExeUser(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a user through the login-with-exe flow.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies := webLoginWithExe(t, email)
+
+	// Verify the user starts as a login-with-exe user.
+	if !isLoginWithExeUser(t, email) {
+		t.Fatal("expected user to start as login-with-exe user")
+	}
+
+	// Step 2: Create an invite code and accept it.
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	client := newClientWithCookies(t, cookies)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to GET /auth with invite: %v", err)
+	}
+	resp.Body.Close()
+
+	// Step 3: Verify the user is now a full developer, not a login-with-exe user.
+	if isLoginWithExeUser(t, email) {
+		t.Error("expected user to be promoted from login-with-exe to developer after accepting invite")
+	}
+	if exemption := getUserBillingExemption(t, email); exemption != "free" {
+		t.Errorf("expected billing_exemption='free', got %q", exemption)
+	}
+}
+
 // TestExistingUserCannotApplyInviteCode tests that a regular existing user
 // (NOT created via login-with-exe) visiting /auth?invite=CODE while already
 // authenticated does NOT get the invite code applied.
@@ -533,4 +573,33 @@ func getUserBillingExemption(t *testing.T, email string) string {
 	}
 	t.Fatalf("user %q not found in debug API", email)
 	return ""
+}
+
+// isLoginWithExeUser reports whether the user has created_for_login_with_exe set.
+func isLoginWithExeUser(t *testing.T, email string) bool {
+	t.Helper()
+	httpPort := Env.servers.Exed.HTTPPort
+
+	usersURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
+	resp, err := http.Get(usersURL)
+	if err != nil {
+		t.Fatalf("failed to query debug users API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var users []struct {
+		Email                  string `json:"email"`
+		CreatedForLoginWithExe bool   `json:"created_for_login_with_exe"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		t.Fatalf("failed to decode debug users response: %v", err)
+	}
+
+	for _, u := range users {
+		if strings.EqualFold(u.Email, email) {
+			return u.CreatedForLoginWithExe
+		}
+	}
+	t.Fatalf("user %q not found in debug API", email)
+	return false
 }
