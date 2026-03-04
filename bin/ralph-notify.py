@@ -66,7 +66,7 @@ def main() -> None:
             f"Ralph run: {ralph_run_url}\n"
             f"Commit: {commit_url}\n"
             f"To review: `git fetch origin refs/queue-ralph/{branch} && git log -1 -p FETCH_HEAD`\n"
-            f"To land: `git push origin FETCH_HEAD:refs/heads/{branch}`"
+            f"To land: `git fetch origin refs/queue-ralph/{branch} && git push origin FETCH_HEAD:refs/heads/{branch}`"
         )
     else:
         # Claude couldn't fix it.
