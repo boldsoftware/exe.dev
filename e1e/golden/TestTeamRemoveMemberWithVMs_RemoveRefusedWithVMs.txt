@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team remove member@test-rm-member-vms.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team remove member@test-rm-member-vms.example
+Cannot remove member@test-rm-member-vms.example: they still have 1 VM(s). Ask them to delete their VMs first.
+PROMPT ▶ exit
+Goodbye!
