@@ -335,6 +335,8 @@ This invite expires in 30 days.
 
 // resolvePendingTeamInvites adds users to teams when they have pending invites.
 // Called after user creation or login, following the same pattern as resolvePendingShares.
+// Only processes invites for users whose account was created after the invite,
+// to prevent accidentally merging existing accounts into teams.
 func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userID string) error {
 	ce := canonicalizeEmail(userEmail)
 	invites, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingTeamInvitesByEmail, ce)
@@ -346,7 +348,23 @@ func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userI
 		return nil
 	}
 
+	// Look up when the user account was created.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		return fmt.Errorf("looking up user for team invite resolution: %w", err)
+	}
+
 	for _, invite := range invites {
+		// Only allow the invite if the user account was created after the invite.
+		// This prevents existing users from being silently merged into a team
+		// when they happen to log in after someone invited their email.
+		if invite.CreatedAt != nil && user.CreatedAt.Before(*invite.CreatedAt) {
+			slog.WarnContext(ctx, "skipping team invite for pre-existing user",
+				"team_id", invite.TeamID, "user_id", userID, "email", userEmail,
+				"user_created_at", user.CreatedAt, "invite_created_at", invite.CreatedAt)
+			continue
+		}
+
 		// Try to add user to the team
 		err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
 			TeamID: invite.TeamID,

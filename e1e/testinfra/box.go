@@ -652,3 +652,26 @@ func (se *ServerEnv) GiveInvitesToUser(email string, count int, planType string)
 
 	return nil
 }
+
+// DebugAddTeamMember adds an existing user to a team via the debug API.
+// This bypasses the SSH `team add` restriction that prevents adding existing users.
+func (se *ServerEnv) DebugAddTeamMember(teamID, email, role string) error {
+	addURL := fmt.Sprintf("http://localhost:%d/debug/teams/add-member", se.Exed.HTTPPort)
+	resp, err := http.PostForm(addURL, url.Values{
+		"team_id":          {teamID},
+		"email":            {email},
+		"role":             {role},
+		"confirm_existing": {"true"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to POST to /debug/teams/add-member: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("POST /debug/teams/add-member failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	return nil
+}

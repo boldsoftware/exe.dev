@@ -315,24 +315,36 @@ document.getElementById('addMemberForm').addEventListener('submit', function(e) 
         alert('Email is required');
         return;
     }
+    submitAddMember(teamId, email, role, false);
+});
 
+function submitAddMember(teamId, email, role, confirmExisting) {
     var body = new URLSearchParams();
     body.append('team_id', teamId);
     body.append('email', email);
     body.append('role', role);
+    if (confirmExisting) body.append('confirm_existing', 'true');
 
     fetch('/debug/teams/add-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body.toString()
     }).then(function(resp) {
+        if (resp.status === 409) {
+            return resp.text().then(function(t) {
+                var msg = t.replace('EXISTING_USER: ', '');
+                if (confirm(msg + '\n\nAre you sure you want to proceed?')) {
+                    submitAddMember(teamId, email, role, true);
+                }
+            });
+        }
         if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
         document.getElementById('addMemberDialog').close();
         teamsTable.ajax.reload(null, false);
     }).catch(function(err) {
         alert('Failed to add member: ' + err.message);
     });
-});
+}
 
 // Edit Limits
 document.addEventListener('click', function(e) {

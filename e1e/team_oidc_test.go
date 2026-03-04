@@ -202,7 +202,7 @@ func TestTeamOIDCWebLogin(t *testing.T) {
 	t.Logf("team auth set oidc output: %s", out)
 
 	// Invite member (creates pending invite with auth_provider=oidc).
-	addTeamMember(t, ownerKeyFile, memberEmail)
+	inviteToTeam(t, ownerKeyFile, memberEmail)
 
 	// Wait for the invite email and extract the team_invite token.
 	inviteToken := getTeamInviteToken(t, memberEmail)
@@ -336,7 +336,7 @@ func TestTeamOIDCSSHNewDevice(t *testing.T) {
 	t.Logf("team auth set oidc output: %s", out)
 
 	// Invite member.
-	addTeamMember(t, ownerKeyFile, memberEmail)
+	inviteToTeam(t, ownerKeyFile, memberEmail)
 
 	// Register the member via web OIDC flow first (so user exists with auth_provider=oidc).
 	inviteToken := getTeamInviteToken(t, memberEmail)

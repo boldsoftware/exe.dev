@@ -4510,6 +4510,7 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 	role := r.FormValue("role")
 
 	// Resolve email to user_id if provided instead
+	confirmExisting := r.FormValue("confirm_existing") == "true"
 	if userID == "" && addr != "" {
 		ce := canonicalizeEmail(addr)
 		uid, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
@@ -4543,6 +4544,13 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 			s.slog().InfoContext(ctx, "created pending team invite via debug", "team_id", teamID, "email", addr)
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintf(w, "invited %s to team %s (pending signup)", addr, teamID)
+			return
+		}
+		// User exists — require confirmation since their VMs will be folded into the team.
+		if !confirmExisting {
+			boxCount, _ := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, uid)
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprintf(w, "EXISTING_USER: %s already has an account with %d VM(s). Adding them will fold their VMs into the team.", addr, boxCount)
 			return
 		}
 		userID = uid

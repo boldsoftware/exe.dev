@@ -21,13 +21,23 @@ func createTeam(t *testing.T, ownerKeyFile, teamID, displayName, ownerEmail stri
 	}
 }
 
-// addTeamMember adds a member to the team via the SSH `team add` command.
-// Must be called as a team owner.
-func addTeamMember(t *testing.T, ownerKeyFile, memberEmail string) {
+// addTeamMember adds an existing user to the team via the debug API.
+// The SSH `team add` command only allows inviting users who don't have accounts yet;
+// for existing users, we go through the debug panel.
+func addTeamMember(t *testing.T, teamID, memberEmail string) {
+	t.Helper()
+	if err := Env.servers.DebugAddTeamMember(teamID, memberEmail, "user"); err != nil {
+		t.Fatalf("debug add team member %s failed: %v", memberEmail, err)
+	}
+}
+
+// inviteToTeam invites a non-existent user to a team via the SSH `team add` command.
+// The user must NOT have an account yet; this creates a pending invite and sends an email.
+func inviteToTeam(t *testing.T, ownerKeyFile, memberEmail string) {
 	t.Helper()
 	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "team", "add", memberEmail)
 	if err != nil {
-		t.Fatalf("team add %s failed: %v\noutput: %s", memberEmail, err, out)
+		t.Fatalf("team add (invite) %s failed: %v\noutput: %s", memberEmail, err, out)
 	}
 }
 
@@ -49,8 +59,8 @@ func TestTeams(t *testing.T) {
 	enableRootSupport(t, ownerEmail)
 	createTeam(t, ownerKeyFile, "team_test_e2e", "TestTeam", ownerEmail)
 
-	// Add the member via SSH `team add`
-	addTeamMember(t, ownerKeyFile, memberEmail)
+	// Add the member via debug API (team add only works for non-existent users)
+	addTeamMember(t, "team_test_e2e", memberEmail)
 
 	// Test: Owner can see team command and get team info
 	t.Run("OwnerTeamInfo", func(t *testing.T) {
@@ -212,10 +222,10 @@ func TestTeamOwnerCanManageMemberVMs(t *testing.T) {
 	ownerPTY.Disconnect()
 	memberPTY.Disconnect()
 
-	// Create team and add member via SSH commands
+	// Create team and add member
 	enableRootSupport(t, ownerEmail)
 	createTeam(t, ownerKeyFile, "team_manage_e2e", "ManageTeam", ownerEmail)
-	addTeamMember(t, ownerKeyFile, memberEmail)
+	addTeamMember(t, "team_manage_e2e", memberEmail)
 
 	// Member creates a VM
 	memberPTY = sshToExeDev(t, memberKeyFile)
@@ -279,11 +289,11 @@ func TestTeamSharing(t *testing.T) {
 	member1PTY.Disconnect()
 	member2PTY.Disconnect()
 
-	// Create team and add members via SSH commands
+	// Create team and add members
 	enableRootSupport(t, ownerEmail)
 	createTeam(t, ownerKeyFile, "team_share_e2e", "ShareTeam", ownerEmail)
-	addTeamMember(t, ownerKeyFile, member1Email)
-	addTeamMember(t, ownerKeyFile, member2Email)
+	addTeamMember(t, "team_share_e2e", member1Email)
+	addTeamMember(t, "team_share_e2e", member2Email)
 
 	// Owner creates a VM
 	ownerPTY = sshToExeDev(t, ownerKeyFile)
@@ -392,8 +402,8 @@ func TestTeamSSHSharing(t *testing.T) {
 	// Create team and add members
 	enableRootSupport(t, ownerEmail)
 	createTeam(t, ownerKeyFile, "team_ssh_e2e", "SSHTeam", ownerEmail)
-	addTeamMember(t, ownerKeyFile, memberEmail)
-	addTeamMember(t, ownerKeyFile, member2Email)
+	addTeamMember(t, "team_ssh_e2e", memberEmail)
+	addTeamMember(t, "team_ssh_e2e", member2Email)
 
 	// Member creates a VM
 	memberPTY = sshToExeDev(t, memberKeyFile)
@@ -548,8 +558,8 @@ func TestTeamSharingIsolation(t *testing.T) {
 
 	enableRootSupport(t, alphaOwnerEmail)
 	createTeam(t, alphaOwnerKey, "team_alpha_iso", "AlphaTeam", alphaOwnerEmail)
-	addTeamMember(t, alphaOwnerKey, alphaMemberEmail)
-	addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+	addTeamMember(t, "team_alpha_iso", alphaMemberEmail)
+	addTeamMember(t, "team_alpha_iso", alphaExMemberEmail)
 
 	// Team Beta: owner only (the adversary from another team)
 	betaPTY, betaCookies, betaOwnerKey, betaOwnerEmail := registerForExeDevWithEmail(t, "beta-owner@test-isolation.example")
@@ -637,7 +647,7 @@ func TestTeamSharingIsolation(t *testing.T) {
 		}
 
 		// Re-add ex-member for later tests
-		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+		addTeamMember(t, "team_alpha_iso", alphaExMemberEmail)
 	})
 
 	// ============================================================
@@ -688,7 +698,7 @@ func TestTeamSharingIsolation(t *testing.T) {
 		repl.WantPrompt()
 		repl.Disconnect()
 
-		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+		addTeamMember(t, "team_alpha_iso", alphaExMemberEmail)
 	})
 
 	// ============================================================
@@ -764,7 +774,7 @@ func TestTeamSharingIsolation(t *testing.T) {
 		repl.WantPrompt()
 		repl.Disconnect()
 
-		addTeamMember(t, alphaOwnerKey, alphaExMemberEmail)
+		addTeamMember(t, "team_alpha_iso", alphaExMemberEmail)
 	})
 
 	// ============================================================
