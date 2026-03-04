@@ -269,9 +269,18 @@ runcmd:
       echo "ZFS pool 'tank' already exists"
     fi
 bootcmd:
+  # On snapshot boots the machine-id is stale (non-empty) and networkd may
+  # already be doing DHCP with the snapshot's DUID.  Stop it, regenerate
+  # identity, then restart with MAC-based DHCP.
+  # On fresh cloud-image boots machine-id is empty — skip the bounce.
+  - |
+    if [ -s /etc/machine-id ]; then
+      echo "bootcmd: snapshot boot detected, stopping networkd for identity reset"
+      systemctl stop systemd-networkd
+    fi
   # Regenerate machine-id so DHCP/leases don't persist across clones
   - [bash, -c, 'rm -f /etc/machine-id /var/lib/dbus/machine-id; systemd-machine-id-setup']
-  # Remove systemd-networkd DUID to force fresh DHCP client ID on each clone
+  # Remove systemd-networkd DUID/lease state to force fresh DHCP client ID
   - [bash, -c, 'rm -rf /var/lib/systemd/networkd/*']
   # Import ZFS pool from cloned disk (force to generate new pool GUID)
   - |
@@ -300,6 +309,12 @@ bootcmd:
           dhcp-identifier: mac
     NETPLAN
   - [netplan, generate]
+  # Restart networkd only if we stopped it (snapshot boot)
+  - |
+    if ! systemctl is-active --quiet systemd-networkd; then
+      echo "bootcmd: restarting networkd with fresh identity"
+      systemctl restart systemd-networkd
+    fi
 EOF
 
 cat >"${TMPDIR}/meta-data" <<EOF
