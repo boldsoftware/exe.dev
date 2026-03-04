@@ -204,6 +204,7 @@ export const upgoer5: TranslationKeys = {
   // Language
   language: "Words",
   switchLanguage: "Change words",
+  reportBug: "Tell us something is broken",
   english: "English",
   japanese: "日本語",
   french: "Français",

@@ -2202,7 +2202,18 @@ function ChatInterface({
                 {/* Language selector */}
                 <div className="overflow-menu-divider" />
                 <div className="language-selector-row">
-                  <div className="md-toggle-label">{t("language")}</div>
+                  <div className="md-toggle-label">
+                    {t("language")}{" "}
+                    <a
+                      href={`https://github.com/boldsoftware/shelley/issues/new?labels=translation&title=${encodeURIComponent("Translation issue: ")}&body=${encodeURIComponent("**Language:** \n**Where in the UI:** \n**Current text:** \n**Suggested text:** \n")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="report-bug-link"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      [{t("reportBug")}]
+                    </a>
+                  </div>
                   <LanguageDropdown locale={locale} setLocale={setLocale} t={t} />
                 </div>
               </div>

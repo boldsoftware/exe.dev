@@ -205,6 +205,7 @@ export const ja: TranslationKeys = {
   // Language
   language: "言語",
   switchLanguage: "言語を切り替える",
+  reportBug: "バグを報告",
   english: "English",
   japanese: "日本語",
   french: "Français",

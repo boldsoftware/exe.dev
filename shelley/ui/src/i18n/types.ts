@@ -201,6 +201,7 @@ export interface TranslationKeys {
   // Language
   language: string;
   switchLanguage: string;
+  reportBug: string;
   english: string;
   japanese: string;
   french: string;

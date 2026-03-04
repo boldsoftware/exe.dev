@@ -204,6 +204,7 @@ export const en: TranslationKeys = {
   // Language
   language: "Language",
   switchLanguage: "Switch language",
+  reportBug: "Report a Bug",
   english: "English",
   japanese: "日本語",
   french: "Français",

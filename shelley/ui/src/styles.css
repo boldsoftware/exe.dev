@@ -2446,7 +2446,7 @@ svg {
   box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  min-width: 10rem;
+  min-width: 16rem;
   z-index: 50;
 }
 
@@ -2462,6 +2462,7 @@ svg {
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s;
+  white-space: nowrap;
 }
 
 .overflow-menu-item:hover {
@@ -2476,6 +2477,17 @@ svg {
 .overflow-menu-item:last-child {
   border-bottom-left-radius: 0.5rem;
   border-bottom-right-radius: 0.5rem;
+}
+
+.report-bug-link {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.report-bug-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
 }
 
 .overflow-menu-divider {

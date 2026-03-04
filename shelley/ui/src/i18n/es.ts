@@ -205,6 +205,7 @@ export const es: TranslationKeys = {
   // Language
   language: "Idioma",
   switchLanguage: "Cambiar idioma",
+  reportBug: "Reportar un error",
   english: "English",
   japanese: "日本語",
   french: "Français",

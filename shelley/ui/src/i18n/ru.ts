@@ -204,6 +204,7 @@ export const ru: TranslationKeys = {
   // Language
   language: "Язык",
   switchLanguage: "Сменить язык",
+  reportBug: "Сообщить об ошибке",
   english: "English",
   japanese: "日本語",
   french: "Français",
