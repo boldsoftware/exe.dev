@@ -96,6 +96,10 @@ func main() {
 		serveStaticFile(w, r, "favicon.ico")
 	})
 
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		serveStaticFile(w, r, "robots.txt")
+	})
+
 	// Serve embedded static assets under /static/
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
 		filename := strings.TrimPrefix(r.URL.Path, "/static/")
