@@ -12,4 +12,8 @@
 set -euo pipefail
 
 ref="${1:-HEAD}"
-git push --force -q root@edric:/data/e1ed/push.git "$ref":refs/e1e/test
+commit=$(git rev-parse "$ref")
+# Create a unique commit (same tree, new hash) so re-pushing the same ref
+# isn't a no-op.
+junk=$(git commit-tree "$commit^{tree}" -p "$commit" -m "e1e $(date +%s)")
+git push --force -q root@edric:/data/e1ed/push.git "$junk":refs/e1e/test
