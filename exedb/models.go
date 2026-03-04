@@ -198,6 +198,21 @@ type IPShard struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
+type Integration struct {
+	IntegrationID string     `db:"integration_id" json:"integration_id"`
+	OwnerUserID   string     `db:"owner_user_id" json:"owner_user_id"`
+	Type          string     `db:"type" json:"type"`
+	Name          string     `db:"name" json:"name"`
+	Config        string     `db:"config" json:"config"`
+	CreatedAt     *time.Time `db:"created_at" json:"created_at"`
+}
+
+type IntegrationAttachment struct {
+	IntegrationID string     `db:"integration_id" json:"integration_id"`
+	BoxID         int64      `db:"box_id" json:"box_id"`
+	CreatedAt     *time.Time `db:"created_at" json:"created_at"`
+}
+
 type InviteCode struct {
 	ID               int64      `db:"id" json:"id"`
 	Code             string     `db:"code" json:"code"`

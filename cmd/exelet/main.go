@@ -507,6 +507,9 @@ func serveAction(clix *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if env.GatewayDev {
+		metadata.IntegrationCacheTTL = 2 * time.Second
+	}
 	if err := metadataSvc.Start(ctx); err != nil {
 		return err
 	}

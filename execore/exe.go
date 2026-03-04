@@ -3525,13 +3525,18 @@ func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, user
 	return perms, nil
 }
 
-// generateUserID creates a new user ID with "usr" prefix + 13 random characters
-func generateUserID() (string, error) {
+// generateID creates a new ID with the given prefix + 13 random characters.
+func generateID(prefix string) (string, error) {
 	randomPart := crand.Text()
 	if len(randomPart) < 13 {
 		return "", fmt.Errorf("random text too short: %d", len(randomPart))
 	}
-	return "usr" + randomPart[:13], nil
+	return prefix + randomPart[:13], nil
+}
+
+// generateUserID creates a new user ID with "usr" prefix + 13 random characters.
+func generateUserID() (string, error) {
+	return generateID("usr")
 }
 
 // getUserIDByPublicKey gets user_id from an SSH public key and updates last_used_at

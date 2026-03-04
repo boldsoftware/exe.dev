@@ -69,6 +69,7 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
 	servMux.HandleFunc("POST /_/gateway/email/send", s.handleVMEmailSend)
+	servMux.HandleFunc("GET /_/integration-config", s.handleIntegrationConfig)
 	servMux.Handle("/", cop.Handler(s))
 
 	h := s.httpMetrics.Wrap(servMux)

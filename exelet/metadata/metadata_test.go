@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"exe.dev/tracing"
@@ -293,5 +294,197 @@ func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
 
 	if len(seen) != 100 {
 		t.Errorf("expected 100 unique trace_ids, got %d", len(seen))
+	}
+}
+
+func TestIntegrationHostName(t *testing.T) {
+	tests := []struct {
+		host     string
+		wantName string
+		wantOK   bool
+	}{
+		{"myproxy.int.exe.cloud", "myproxy", true},
+		{"myproxy.int.exe.cloud:80", "myproxy", true},
+		{"my-proxy.int.exe.cloud", "my-proxy", true},
+		{"test123.int.exe.cloud:8080", "test123", true},
+		{".int.exe.cloud", "", false},     // empty name
+		{"int.exe.cloud", "", false},      // no subdomain
+		{"example.com", "", false},        // wrong domain
+		{"169.254.169.254", "", false},    // IP address
+		{"169.254.169.254:80", "", false}, // IP with port
+		{"", "", false},                   // empty
+	}
+	for _, tt := range tests {
+		gotName, gotOK := integrationHostName(tt.host)
+		if gotName != tt.wantName || gotOK != tt.wantOK {
+			t.Errorf("integrationHostName(%q) = (%q, %v), want (%q, %v)",
+				tt.host, gotName, gotOK, tt.wantName, tt.wantOK)
+		}
+	}
+}
+
+func TestMetadataServiceIntegrationProxy(t *testing.T) {
+	cfgJSON := `{"target":"https://httpbin.org/anything","header":"X-Custom-Auth:secret123"}`
+
+	// Fake exed that serves /_/integration-config.
+	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_/integration-config" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("vm_name") == "" {
+			t.Error("expected vm_name query parameter")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":     true,
+			"type":   "http-proxy",
+			"config": cfgJSON,
+		})
+	}))
+	defer fakeExed.Close()
+
+	log := slog.Default()
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	// This test verifies the handler logic (config lookup, routing, type dispatch)
+	// and the actual proxy to httpbin.org (public IP, passes dial guard).
+	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/some/path", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	rr := httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the response is from httpbin and includes our injected header.
+	var result map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &result); err == nil {
+		if headers, ok := result["headers"].(map[string]any); ok {
+			if got := headers["X-Custom-Auth"]; got != "secret123" {
+				t.Errorf("expected X-Custom-Auth=secret123, got %v", got)
+			}
+		}
+	}
+}
+
+func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
+	// Fake exed returns ok=false (integration not found).
+	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": false})
+	}))
+	defer fakeExed.Close()
+
+	log := slog.Default()
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	rr := httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for not-found integration, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMetadataServiceIntegrationProxyNoBox(t *testing.T) {
+	log := slog.Default()
+	lookup := &failingInstanceLookup{}
+	svc, err := NewService(log, lookup, "http://localhost:9999", "127.0.0.1:0", nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.99:12345"
+	rr := httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for unknown box, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// failingInstanceLookup always returns an error.
+type failingInstanceLookup struct{}
+
+func (f *failingInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
+	return "", "", context.DeadlineExceeded
+}
+
+func TestIsValidIntegrationName(t *testing.T) {
+	good := []string{"a", "myproxy", "my-proxy", "a1", "test-123"}
+	for _, name := range good {
+		if !isValidIntegrationName(name) {
+			t.Errorf("isValidIntegrationName(%q) = false, want true", name)
+		}
+	}
+
+	bad := []string{
+		"", "-start", "end-", "UPPER", "has space", "has.dot",
+		"has_underscore", "a/b",
+		string(make([]byte, 64)), // 64 chars
+	}
+	for _, name := range bad {
+		if isValidIntegrationName(name) {
+			t.Errorf("isValidIntegrationName(%q) = true, want false", name)
+		}
+	}
+}
+
+func TestIsPrivateIP(t *testing.T) {
+	private := []string{
+		"127.0.0.1",       // loopback
+		"10.0.0.1",        // RFC1918
+		"192.168.1.1",     // RFC1918
+		"172.16.0.1",      // RFC1918
+		"169.254.169.254", // link-local
+		"100.100.100.100", // CGNAT/Tailscale
+		"0.0.0.0",         // unspecified
+	}
+	for _, s := range private {
+		ip := netip.MustParseAddr(s)
+		if !isPrivateIP(ip) {
+			t.Errorf("isPrivateIP(%s) = false, want true", s)
+		}
+	}
+
+	public := []string{
+		"8.8.8.8",
+		"1.1.1.1",
+		"52.0.0.1",
+	}
+	for _, s := range public {
+		ip := netip.MustParseAddr(s)
+		if isPrivateIP(ip) {
+			t.Errorf("isPrivateIP(%s) = true, want false", s)
+		}
 	}
 }

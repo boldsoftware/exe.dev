@@ -325,6 +325,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 		},
 		ss.defaultsCommand(),
+		ss.integrationsCommand(),
 		ss.teamCommand(),
 		ss.shelleyCommand(),
 		{
