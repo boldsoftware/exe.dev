@@ -430,7 +430,13 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	}
 
 	// Generate favicon as data URI
-	faviconSVG := generateFaviconSVG(hostname)
+	// Include the listening port in the hash so demo servers on different ports
+	// get visually distinct favicons.
+	faviconKey := hostname
+	if s.listenPort != 0 {
+		faviconKey = fmt.Sprintf("%s:%d", hostname, s.listenPort)
+	}
+	faviconSVG := generateFaviconSVG(faviconKey)
 	faviconDataURI := "data:image/svg+xml," + url.PathEscape(faviconSVG)
 	faviconLink := fmt.Sprintf(`<link rel="icon" type="image/svg+xml" href="%s"/>`, faviconDataURI)
 

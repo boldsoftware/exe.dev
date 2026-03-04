@@ -232,6 +232,7 @@ type Server struct {
 	versionChecker      *VersionChecker
 	notifDispatcher     *notifications.Dispatcher
 	shutdownCh          chan struct{} // Signals background routines to stop
+	listenPort          int           // TCP port the server is listening on
 }
 
 // NewServer creates a new server instance
@@ -1163,6 +1164,7 @@ func (s *Server) StartWithListeners(tcpListener net.Listener, socketPath string)
 
 	// Get actual port from listener
 	actualPort := tcpListener.Addr().(*net.TCPAddr).Port
+	s.listenPort = actualPort
 
 	// Start TCP server in goroutine
 	serverErrCh := make(chan error, 2)
