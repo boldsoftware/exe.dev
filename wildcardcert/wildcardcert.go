@@ -561,16 +561,26 @@ func EncodeCertificate(cert *tls.Certificate) ([]byte, error) {
 		return nil, fmt.Errorf("certificate is nil")
 	}
 
-	key, ok := cert.PrivateKey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("unsupported private key type %T", cert.PrivateKey)
-	}
-
-	keyBytes := x509.MarshalPKCS1PrivateKey(key)
-
 	var buf bytes.Buffer
-	if err := pem.Encode(&buf, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes}); err != nil {
-		return nil, err
+	switch key := cert.PrivateKey.(type) {
+	case *rsa.PrivateKey:
+		keyBytes := x509.MarshalPKCS1PrivateKey(key)
+
+		if err := pem.Encode(&buf, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes}); err != nil {
+			return nil, err
+		}
+
+	default:
+		// We could use this for rsa.PrivateKey too,
+		// if we're OK with storing different data.
+		keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := pem.Encode(&buf, &pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes}); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, der := range cert.Certificate {
