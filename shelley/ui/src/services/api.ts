@@ -85,12 +85,61 @@ class ApiService {
     return response.json();
   }
 
-  async getConversation(conversationId: string): Promise<StreamResponse> {
+  async getConversationWithProgress(
+    conversationId: string,
+    onProgress?: (progress: {
+      phase: "downloading" | "parsing";
+      bytesDownloaded: number;
+      bytesTotal?: number;
+    }) => void,
+  ): Promise<StreamResponse> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}`);
     if (!response.ok) {
       throw new Error(`Failed to get messages: ${response.statusText}`);
     }
-    return response.json();
+
+    const contentLengthHeader = response.headers.get("Content-Length");
+    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
+
+    if (!response.body) {
+      onProgress?.({
+        phase: "parsing",
+        bytesDownloaded: contentLength ?? 0,
+        bytesTotal: contentLength,
+      });
+      return response.json();
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    let bytesDownloaded = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytesDownloaded += value.byteLength;
+      onProgress?.({
+        phase: "downloading",
+        bytesDownloaded,
+        bytesTotal: contentLength,
+      });
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+
+    chunks.push(decoder.decode());
+    onProgress?.({
+      phase: "parsing",
+      bytesDownloaded,
+      bytesTotal: contentLength,
+    });
+
+    try {
+      return JSON.parse(chunks.join("")) as StreamResponse;
+    } catch {
+      throw new Error("Failed to parse conversation response");
+    }
   }
 
   async sendMessage(conversationId: string, request: ChatRequest): Promise<void> {

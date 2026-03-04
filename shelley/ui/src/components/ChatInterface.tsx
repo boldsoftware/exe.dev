@@ -603,6 +603,12 @@ function LanguageDropdown({
   );
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function ChatInterface({
   conversationId,
   onOpenDrawer,
@@ -628,6 +634,12 @@ function ChatInterface({
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLoadingProgressUI, setShowLoadingProgressUI] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<{
+    phase: "downloading" | "parsing";
+    bytesDownloaded: number;
+    bytesTotal?: number;
+  } | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<
@@ -767,7 +779,33 @@ function ChatInterface({
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [lastKnownMessageCount, setLastKnownMessageCount] = useState<number | null>(null);
   const [terminalInjectedText, setTerminalInjectedText] = useState<string | null>(null);
+
+  const messageCountStore = useMemo(() => {
+    const key = conversationId ? `shelley_msg_count_${conversationId}` : null;
+    return {
+      save(count: number) {
+        if (!key) return;
+        try {
+          localStorage.setItem(key, String(count));
+        } catch {
+          // Ignore localStorage failures (private mode/quota restrictions)
+        }
+      },
+      load(): number | null {
+        if (!key) return null;
+        try {
+          const v = localStorage.getItem(key);
+          if (v == null) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        } catch {
+          return null;
+        }
+      },
+    };
+  }, [conversationId]);
   const [terminalAutoFocusId, setTerminalAutoFocusId] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -782,6 +820,7 @@ function ChatInterface({
   const loadingRef = useRef(false);
   // Pending scroll target from loadMessages: undefined = none, null = bottom, number = saved position
   const pendingScrollRef = useRef<number | null | undefined>(undefined);
+  const loadingProgressDelayRef = useRef<number | null>(null);
 
   const handleOpenDiffViewer = useCallback((commit: string, cwd?: string) => {
     setDiffViewerInitialCommit(commit);
@@ -870,6 +909,12 @@ function ChatInterface({
       // No conversation yet, show empty state
       setMessages([]);
       setContextWindowSize(0);
+      if (loadingProgressDelayRef.current) {
+        clearTimeout(loadingProgressDelayRef.current);
+        loadingProgressDelayRef.current = null;
+      }
+      setShowLoadingProgressUI(false);
+      setLoadingProgress(null);
       loadingRef.current = false;
       setLoading(false);
     }
@@ -886,6 +931,10 @@ function ChatInterface({
       }
       if (heartbeatTimeoutRef.current) {
         clearTimeout(heartbeatTimeoutRef.current);
+      }
+      if (loadingProgressDelayRef.current) {
+        clearTimeout(loadingProgressDelayRef.current);
+        loadingProgressDelayRef.current = null;
       }
       // Reset sequence ID and connection tracking when conversation changes
       lastSequenceIdRef.current = -1;
@@ -1058,12 +1107,32 @@ function ChatInterface({
       loadingRef.current = true;
       setLoading(true);
       setError(null);
-      const response = await api.getConversation(conversationId);
+      setShowLoadingProgressUI(false);
+      if (loadingProgressDelayRef.current) {
+        clearTimeout(loadingProgressDelayRef.current);
+      }
+      loadingProgressDelayRef.current = window.setTimeout(() => {
+        setShowLoadingProgressUI(true);
+      }, 500);
+      setLastKnownMessageCount(messageCountStore.load());
+      setLoadingProgress({ phase: "downloading", bytesDownloaded: 0 });
+      const response = await api.getConversationWithProgress(conversationId, (progress) => {
+        setLoadingProgress(progress);
+      });
       // Set pending scroll target before state updates so useLayoutEffect can handle it.
       pendingScrollRef.current = scrollStore.load();
-      setMessages(response.messages ?? []);
+      const loadedMessages = response.messages ?? [];
+      setMessages(loadedMessages);
+      setLastKnownMessageCount(loadedMessages.length);
+      messageCountStore.save(loadedMessages.length);
       loadingRef.current = false;
       setLoading(false);
+      if (loadingProgressDelayRef.current) {
+        clearTimeout(loadingProgressDelayRef.current);
+        loadingProgressDelayRef.current = null;
+      }
+      setShowLoadingProgressUI(false);
+      setLoadingProgress(null);
       // ConversationState is sent via the streaming endpoint, not on initial load
       // We don't update agentWorking here - the stream will provide the current state
       // Always update context window size when loading a conversation.
@@ -1077,6 +1146,12 @@ function ChatInterface({
       setError("Failed to load messages");
       loadingRef.current = false;
       setLoading(false);
+      if (loadingProgressDelayRef.current) {
+        clearTimeout(loadingProgressDelayRef.current);
+        loadingProgressDelayRef.current = null;
+      }
+      setShowLoadingProgressUI(false);
+      setLoadingProgress(null);
     }
   };
 
@@ -2227,9 +2302,50 @@ function ChatInterface({
       <div className="messages-area-wrapper">
         <div className="messages-container scrollable" ref={messagesContainerRef}>
           {loading ? (
-            <div className="flex items-center justify-center full-height">
-              <div className="spinner"></div>
-            </div>
+            showLoadingProgressUI ? (
+              <div className="conversation-loading full-height">
+                <div className="spinner"></div>
+                <div className="conversation-loading-title">
+                  {loadingProgress?.phase === "parsing"
+                    ? "Rendering conversation…"
+                    : "Loading conversation…"}
+                </div>
+                <div className="conversation-loading-subtitle">
+                  {loadingProgress
+                    ? loadingProgress.bytesTotal && loadingProgress.bytesTotal > 0
+                      ? `${formatBytes(loadingProgress.bytesDownloaded)} of ${formatBytes(loadingProgress.bytesTotal)}`
+                      : `${formatBytes(loadingProgress.bytesDownloaded)} downloaded`
+                    : "Starting…"}
+                  {lastKnownMessageCount !== null
+                    ? ` • ~${lastKnownMessageCount} messages last time`
+                    : ""}
+                </div>
+                <div className="conversation-loading-bar">
+                  <div
+                    className={`conversation-loading-bar-fill${
+                      loadingProgress?.phase === "parsing"
+                        ? " parsing"
+                        : !loadingProgress?.bytesTotal || loadingProgress.bytesTotal <= 0
+                          ? " indeterminate"
+                          : ""
+                    }`}
+                    style={
+                      loadingProgress?.phase === "parsing"
+                        ? undefined
+                        : loadingProgress?.bytesTotal && loadingProgress.bytesTotal > 0
+                          ? {
+                              width: `${Math.min(100, (loadingProgress.bytesDownloaded / loadingProgress.bytesTotal) * 100)}%`,
+                            }
+                          : undefined
+                    }
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center full-height">
+                <div className="spinner"></div>
+              </div>
+            )
           ) : (
             <div className="messages-list">{renderMessages()}</div>
           )}
