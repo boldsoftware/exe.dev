@@ -350,22 +350,13 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 		}
 	}
 
-	// Get the member's boxes - they will be deleted
+	// Refuse to remove a member who still has VMs.
 	boxIDs, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListBoxIDsForUser, member.UserID)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to list boxes for removed member", "error", err)
+		return cc.Errorf("Failed to check member's VMs: %v", err)
 	}
-
-	// Delete the member's boxes
-	for _, boxID := range boxIDs {
-		box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxByID, boxID)
-		if err != nil {
-			continue
-		}
-		if err := ss.server.deleteBox(ctx, box); err != nil {
-			slog.ErrorContext(ctx, "failed to delete box for removed member",
-				"box_id", boxID, "user_id", member.UserID, "error", err)
-		}
+	if len(boxIDs) > 0 {
+		return cc.Errorf("Cannot remove %s: they still have %d VM(s). Ask them to delete their VMs first.", email, len(boxIDs))
 	}
 
 	// Remove the member from the team
@@ -376,23 +367,17 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 	slog.InfoContext(ctx, "team member removed",
 		"team_id", team.TeamID,
 		"removed_user_id", member.UserID,
-		"removed_by", cc.User.ID,
-		"boxes_deleted", len(boxIDs))
+		"removed_by", cc.User.ID)
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"removed":       email,
-			"boxes_deleted": len(boxIDs),
-			"status":        "ok",
+			"removed": email,
+			"status":  "ok",
 		})
 		return nil
 	}
 
-	if len(boxIDs) > 0 {
-		cc.Writeln("Removed %s from the team (%d VMs deleted)", email, len(boxIDs))
-	} else {
-		cc.Writeln("Removed %s from the team", email)
-	}
+	cc.Writeln("Removed %s from the team", email)
 	return nil
 }
 
@@ -542,29 +527,18 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 
 	boxIDs, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListBoxIDsForUser, member.UserID)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to list boxes for removed member", "error", err)
+		return cc.Errorf("Failed to check member's VMs: %v", err)
 	}
-	for _, boxID := range boxIDs {
-		box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxByID, boxID)
-		if err != nil {
-			continue
-		}
-		if err := ss.server.deleteBox(ctx, box); err != nil {
-			slog.ErrorContext(ctx, "failed to delete box for removed member",
-				"box_id", boxID, "user_id", member.UserID, "error", err)
-		}
+	if len(boxIDs) > 0 {
+		return cc.Errorf("Cannot remove %s: they still have %d VM(s). Ask them to delete their VMs first.", email, len(boxIDs))
 	}
 
 	if err := ss.server.deleteTeamMember(ctx, teamID, member.UserID); err != nil {
 		return cc.Errorf("Failed to remove member: %v", err)
 	}
 
-	slog.InfoContext(ctx, "root: removed team member", "team_id", teamID, "email", email, "boxes_deleted", len(boxIDs), "by", cc.User.ID)
-	if len(boxIDs) > 0 {
-		cc.Writeln("Removed %s from %s (%d VMs deleted)", email, teamID, len(boxIDs))
-	} else {
-		cc.Writeln("Removed %s from %s", email, teamID)
-	}
+	slog.InfoContext(ctx, "root: removed team member", "team_id", teamID, "email", email, "by", cc.User.ID)
+	cc.Writeln("Removed %s from %s", email, teamID)
 	return nil
 }
 

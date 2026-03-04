@@ -4718,7 +4718,8 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDebugTeamRemoveMember removes a member from a team, deleting their boxes.
+// handleDebugTeamRemoveMember removes a member from a team.
+// Refuses if the member still has VMs.
 // POST /debug/teams/remove-member with team_id, user_id
 func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -4731,20 +4732,14 @@ func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Delete the member's boxes (full cascade like SSH command)
 	boxIDs, err := withRxRes1(s, ctx, (*exedb.Queries).ListBoxIDsForUser, userID)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to list boxes for removed member", "error", err)
+		http.Error(w, fmt.Sprintf("failed to check member's VMs: %v", err), http.StatusInternalServerError)
+		return
 	}
-	for _, boxID := range boxIDs {
-		box, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByID, boxID)
-		if err != nil {
-			continue
-		}
-		if err := s.deleteBox(ctx, box); err != nil {
-			s.slog().ErrorContext(ctx, "failed to delete box for removed member",
-				"box_id", boxID, "user_id", userID, "error", err)
-		}
+	if len(boxIDs) > 0 {
+		http.Error(w, fmt.Sprintf("cannot remove %s: they still have %d VM(s)", userID, len(boxIDs)), http.StatusConflict)
+		return
 	}
 
 	if err := s.deleteTeamMember(ctx, teamID, userID); err != nil {
@@ -4752,9 +4747,9 @@ func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.slog().InfoContext(ctx, "removed team member via debug", "team_id", teamID, "user_id", userID, "boxes_deleted", len(boxIDs))
+	s.slog().InfoContext(ctx, "removed team member via debug", "team_id", teamID, "user_id", userID)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "removed %s from team %s (%d boxes deleted)", userID, teamID, len(boxIDs))
+	fmt.Fprintf(w, "removed %s from team %s", userID, teamID)
 }
 
 // handleDebugTeamUpdateRole changes a team member's role.

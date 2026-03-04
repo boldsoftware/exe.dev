@@ -858,3 +858,53 @@ func TestTeamSharingIsolation(t *testing.T) {
 		repl.Disconnect()
 	})
 }
+
+// TestTeamRemoveMemberWithVMs tests that removing a team member who still
+// has VMs is refused, and that removal succeeds once they delete their VMs.
+func TestTeamRemoveMemberWithVMs(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-rm-member-vms.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-rm-member-vms.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_rm_member_vms", "RmMemberVMsTeam", ownerEmail)
+	addTeamMember(t, ownerKeyFile, memberEmail)
+
+	// Member creates a VM
+	repl := sshToExeDev(t, memberKeyFile)
+	box := newBox(t, repl)
+	repl.Disconnect()
+	waitForSSH(t, box, memberKeyFile)
+
+	// Owner tries to remove the member — should be refused
+	t.Run("RemoveRefusedWithVMs", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team remove " + memberEmail)
+		repl.Want("still have")
+		repl.Want("VM")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Member deletes their VM
+	repl = sshToExeDev(t, memberKeyFile)
+	repl.SendLine("rm " + box)
+	repl.Want("deleted")
+	repl.WantPrompt()
+	repl.Disconnect()
+
+	// Now removal should succeed
+	t.Run("RemoveSucceedsAfterVMDeleted", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team remove " + memberEmail)
+		repl.Want("Removed")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+}
