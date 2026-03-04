@@ -1013,12 +1013,17 @@ func (s *Server) publishConversationListUpdate(update ConversationListUpdate) {
 // conversation streams. This allows clients to see the working state of other conversations.
 func (s *Server) publishConversationState(state ConversationState) {
 	// When the agent finishes working, emit a notification event.
+	// Skip notifications for subagent conversations — they're internal
+	// and would just be noise for the user.
 	var notifEvent *notifications.Event
 	if !state.Working {
+		conv, convErr := s.db.GetConversationByID(context.Background(), state.ConversationID)
+		isSubagent := convErr == nil && conv.ParentConversationID != nil
+
 		payload := notifications.AgentDonePayload{
 			Model: state.Model,
 		}
-		if conv, err := s.db.GetConversationByID(context.Background(), state.ConversationID); err == nil && conv.Slug != nil {
+		if convErr == nil && conv.Slug != nil {
 			payload.ConversationTitle = *conv.Slug
 		}
 		if msg, err := s.db.GetLatestMessage(context.Background(), state.ConversationID); err == nil && msg.Type == string(db.MessageTypeAgent) && msg.LlmData != nil {
@@ -1042,7 +1047,10 @@ func (s *Server) publishConversationState(state ConversationState) {
 			Timestamp:      time.Now(),
 			Payload:        payload,
 		}
-		s.notifDispatcher.Dispatch(context.Background(), event)
+		if !isSubagent {
+			s.notifDispatcher.Dispatch(context.Background(), event)
+		}
+		// Still set notifEvent so the SSE stream broadcasts it to the UI.
 		notifEvent = &event
 	}
 
