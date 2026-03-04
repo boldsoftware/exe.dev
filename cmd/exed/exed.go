@@ -373,6 +373,16 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 		return "", "", nil, fmt.Errorf("gateway address is empty")
 	}
 
+	// Verify mDNS resolution for each host. The .local suffix relies on
+	// multicast DNS (avahi inside the VM). After a VM restart, avahi may
+	// detect a stale mDNS record held by macOS and register with a "-2"
+	// suffix, causing all direct TCP connections to the host to fail.
+	for _, host := range hosts {
+		if err := verifyOrFixMDNS(ctx, host); err != nil {
+			return "", "", nil, err
+		}
+	}
+
 	// Set up a little single-use net.Listener to detect connectivity.
 	// We do this because the HTTP server (which is the natural thing to use) isn't started yet.
 	tmpLn, err := net.Listen("tcp", ":0")
@@ -785,6 +795,45 @@ func waitForExeletAddress(host string) (string, error) {
 
 	slog.Info("exelet startup complete", "address", exeletAddr)
 	return exeletAddr, nil
+}
+
+// verifyOrFixMDNS checks that a .local hostname resolves via mDNS. If it
+// doesn't, it restarts avahi-daemon inside the VM (via SSH) and retries.
+// Avahi can pick a suffixed name (e.g. "lima-exe-ctr-2.local") when it sees a
+// stale mDNS record held by macOS from a previous VM run. Restarting avahi
+// re-probes and usually reclaims the correct name.
+func verifyOrFixMDNS(ctx context.Context, host string) error {
+	if resolveMDNS(host) {
+		return nil
+	}
+
+	slog.WarnContext(ctx, "mDNS resolution failed, restarting avahi-daemon", "host", host)
+	if out, err := sshExec(ctx, host, "sudo systemctl restart avahi-daemon"); err != nil {
+		slog.WarnContext(ctx, "failed to restart avahi-daemon", "host", host, "error", err, "output", out)
+	} else {
+		// Give avahi a moment to re-probe the network.
+		time.Sleep(2 * time.Second)
+	}
+
+	if resolveMDNS(host) {
+		slog.InfoContext(ctx, "mDNS resolution recovered after avahi restart", "host", host)
+		return nil
+	}
+
+	return fmt.Errorf("mDNS resolution failed for %s — the VM's avahi-daemon may have registered "+
+		"with a suffixed name (e.g. %s-2) due to a stale macOS mDNS cache.\n"+
+		"Try: sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder\n"+
+		"Then: limactl shell %s -- sudo systemctl restart avahi-daemon",
+		host, strings.TrimSuffix(host, ".local"),
+		strings.TrimSuffix(strings.TrimPrefix(host, "lima-"), ".local"))
+}
+
+// resolveMDNS attempts a quick DNS lookup for host, returning true if it resolves.
+func resolveMDNS(host string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+	return err == nil && len(addrs) > 0
 }
 
 // startMetricsdLocal builds and starts metricsd locally, returning the URL and a cleanup function.
