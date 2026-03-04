@@ -355,6 +355,12 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 		return cert, err
 	}
 
+	// Check that the host is valid before contacting exed.
+	if err := wp.proxyServer().ValidateHostForTLSCert(hello.Context(), hello.ServerName); err != nil {
+		wp.lg().WarnContext(hello.Context(), "not requesting top level cert for invalid host", "serverName", hello.ServerName, "error", err)
+		return nil, err
+	}
+
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
 	// Pass on to exed.
 	cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)

@@ -298,6 +298,20 @@ type proxyData struct {
 
 // BoxInfo implements [exeweb.ProxyData.BoxInfo].
 func (pd *proxyData) BoxInfo(ctx context.Context, boxName string) (exeweb.BoxData, bool, error) {
+	if pd.s.boxExistsFunc != nil {
+		if !pd.s.boxExistsFunc(ctx, boxName) {
+			return exeweb.BoxData{}, false, nil
+		}
+		// This is sometimes called for testing with
+		// an incomplete Server.
+		if pd.s.db == nil {
+			bd := exeweb.BoxData{
+				Name: boxName,
+			}
+			return bd, true, nil
+		}
+	}
+
 	box, err := exedb.WithRxRes1(pd.s.db, ctx, (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

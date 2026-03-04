@@ -401,6 +401,42 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ValidateHostForTLSCert checks whether the given host
+// is valid for TLS certificate issuance.
+// The trace_id is added by ConnContext in httpsServer,
+// so it's available in the context during TLS handshakes.
+func (ps *ProxyServer) ValidateHostForTLSCert(ctx context.Context, host string) error {
+	host = domz.Canonicalize(host)
+	if domz.FirstMatch(host, ps.Env.BoxHost, ps.Env.WebHost) != "" {
+		return nil
+	}
+	if host == "exe.new" {
+		return nil
+	}
+	if host == "bold.dev" {
+		return nil
+	}
+
+	boxName, err := ps.domainResolver().ResolveCustomDomainBoxName(ctx, host)
+	if err != nil {
+		return err
+	}
+	if boxName == "" {
+		ps.Lg.WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
+		return fmt.Errorf("unable to resolve VM for %s", host)
+	}
+	_, exists, err := ps.Data.BoxInfo(ctx, boxName)
+	if err != nil {
+		ps.Lg.WarnContext(ctx, "failed to get box info", "boxName", boxName, "error", err)
+		return fmt.Errorf("box not found: %s", boxName)
+	}
+	if !exists {
+		ps.Lg.WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host, "boxName", boxName)
+		return fmt.Errorf("box not found: %s", boxName)
+	}
+	return nil
+}
+
 // domainResolver returns a [DomainResolver] for ps.
 func (ps *ProxyServer) domainResolver() *DomainResolver {
 	return &DomainResolver{

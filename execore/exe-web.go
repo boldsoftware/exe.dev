@@ -229,33 +229,8 @@ func (s *Server) setupHTTPSServer() {
 }
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
-// The trace_id is added by ConnContext in httpsServer, so it's available in the context
-// during TLS handshakes.
 func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
-	host = domz.Canonicalize(host)
-	if domz.FirstMatch(host, s.env.BoxHost, s.env.WebHost) != "" {
-		return nil
-	}
-	if host == "exe.new" {
-		return nil
-	}
-	if host == "bold.dev" {
-		return nil
-	}
-
-	boxName, err := s.resolveCustomDomainBoxName(ctx, host)
-	if err != nil {
-		return err
-	}
-	if boxName == "" {
-		s.slog().WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
-		return fmt.Errorf("unable to resolve VM for %s", host)
-	}
-	if !s.boxExists(ctx, boxName) {
-		s.slog().WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host)
-		return fmt.Errorf("box not found: %s", boxName)
-	}
-	return nil
+	return s.proxyServer().ValidateHostForTLSCert(ctx, host)
 }
 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
