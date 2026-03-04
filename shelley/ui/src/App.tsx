@@ -9,6 +9,7 @@ import ModelsModal from "./components/ModelsModal";
 import NotificationsModal from "./components/NotificationsModal";
 import { Conversation, ConversationWithState, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
+import { conversationCache } from "./services/conversationCache";
 import { useI18n } from "./i18n";
 
 // Worker pool configuration for @pierre/diffs syntax highlighting
@@ -354,6 +355,7 @@ function App() {
       });
     } else if (update.type === "delete" && update.conversation_id) {
       setConversations((prev) => prev.filter((c) => c.conversation_id !== update.conversation_id));
+      conversationCache.delete(update.conversation_id);
     }
   }, []);
 
@@ -481,6 +483,7 @@ function App() {
 
   const handleConversationArchived = (conversationId: string) => {
     setConversations((prev) => prev.filter((conv) => conv.conversation_id !== conversationId));
+    conversationCache.delete(conversationId);
     // If the archived conversation was current, switch to another or clear
     if (currentConversationId === conversationId) {
       const remaining = conversations.filter((conv) => conv.conversation_id !== conversationId);

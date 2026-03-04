@@ -8,6 +8,7 @@ import {
   isDistillStatusMessage,
 } from "../types";
 import { api } from "../services/api";
+import { conversationCache } from "../services/conversationCache";
 import { ThemeMode, getStoredTheme, setStoredTheme, applyTheme } from "../services/theme";
 import { useMarkdown } from "../contexts/MarkdownContext";
 import { useI18n, type Locale, type TranslationKeys } from "../i18n";
@@ -936,6 +937,15 @@ function ChatInterface({
         clearTimeout(loadingProgressDelayRef.current);
         loadingProgressDelayRef.current = null;
       }
+      // Save the latest sequence ID to cache before resetting, so when we
+      // switch back we can resume the SSE stream from where we left off.
+      // Note: conversationId in this closure is the *old* one being cleaned up.
+      if (conversationId && lastSequenceIdRef.current >= 0) {
+        const cached = conversationCache.peek(conversationId);
+        if (cached) {
+          cached.lastSequenceId = lastSequenceIdRef.current;
+        }
+      }
       // Reset sequence ID and connection tracking when conversation changes
       lastSequenceIdRef.current = -1;
       hasConnectedRef.current = false;
@@ -1103,6 +1113,26 @@ function ChatInterface({
 
   const loadMessages = async () => {
     if (!conversationId) return;
+
+    // Check cache first — if we have this conversation cached, restore instantly
+    const cached = conversationCache.get(conversationId);
+    if (cached) {
+      pendingScrollRef.current = scrollStore.load();
+      setMessages(cached.messages);
+      setLastKnownMessageCount(cached.messages.length);
+      messageCountStore.save(cached.messages.length);
+      setContextWindowSize(cached.contextWindowSize);
+      lastSequenceIdRef.current = cached.lastSequenceId;
+      loadingRef.current = false;
+      setLoading(false);
+      setShowLoadingProgressUI(false);
+      setLoadingProgress(null);
+      if (onConversationUpdate) {
+        onConversationUpdate(cached.conversation);
+      }
+      return;
+    }
+
     try {
       loadingRef.current = true;
       setLoading(true);
@@ -1141,6 +1171,11 @@ function ChatInterface({
       if (onConversationUpdate) {
         onConversationUpdate(response.conversation);
       }
+      // Populate cache with the fetched data.
+      // Compute max sequence_id from loaded messages for SSE resume.
+      const loadedMaxSeqId =
+        loadedMessages.length > 0 ? Math.max(...loadedMessages.map((m) => m.sequence_id)) : -1;
+      conversationCache.set(conversationId, response, loadedMaxSeqId);
     } catch (err) {
       console.error("Failed to load messages:", err);
       setError("Failed to load messages");
@@ -1227,11 +1262,19 @@ function ChatInterface({
             }
             return result;
           });
+          // Keep the cache in sync with streaming updates
+          if (conversationId) {
+            conversationCache.updateMessages(conversationId, incomingMessages);
+          }
         }
 
         // Update conversation data if provided
         if (onConversationUpdate && streamResponse.conversation) {
           onConversationUpdate(streamResponse.conversation);
+        }
+        // Keep cache conversation metadata in sync
+        if (conversationId && streamResponse.conversation) {
+          conversationCache.updateConversation(conversationId, streamResponse.conversation);
         }
 
         // Handle conversation list updates (for other conversations)
@@ -1262,6 +1305,13 @@ function ChatInterface({
 
         if (typeof streamResponse.context_window_size === "number") {
           setContextWindowSize(streamResponse.context_window_size);
+          // Keep cache in sync
+          if (conversationId) {
+            conversationCache.updateContextWindowSize(
+              conversationId,
+              streamResponse.context_window_size,
+            );
+          }
         }
       } catch (err) {
         console.error("Failed to parse message stream data:", err);
