@@ -1999,6 +1999,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			DiscordID              string  `json:"discord_id,omitempty"`
 			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
+			BillingExemption       string  `json:"billing_exemption,omitempty"`
 			Limits                 string  `json:"limits,omitempty"`
 		}
 		var usersJSON []userInfo
@@ -2025,6 +2026,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				DiscordID:              ptrStr(u.DiscordID),
 				DiscordUsername:        ptrStr(u.DiscordUsername),
 				InviteCount:            invitesByUser[u.UserID],
+				BillingExemption:       ptrStr(u.BillingExemption),
 				Limits:                 ptrStr(u.Limits),
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {

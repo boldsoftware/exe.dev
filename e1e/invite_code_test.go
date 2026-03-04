@@ -506,13 +506,11 @@ func TestExistingUserCannotApplyInviteCode(t *testing.T) {
 }
 
 // getUserBillingExemption returns the billing exemption string for a user,
-// or "" if none is set. It queries the debug API to find the user and then
-// scrapes the debug user page for the billing exemption field.
+// or "" if none is set. It queries the debug users JSON API.
 func getUserBillingExemption(t *testing.T, email string) string {
 	t.Helper()
 	httpPort := Env.servers.Exed.HTTPPort
 
-	// Look up user_id from the debug users JSON endpoint.
 	usersURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
 	resp, err := http.Get(usersURL)
 	if err != nil {
@@ -521,48 +519,18 @@ func getUserBillingExemption(t *testing.T, email string) string {
 	defer resp.Body.Close()
 
 	var users []struct {
-		UserID string `json:"user_id"`
-		Email  string `json:"email"`
+		Email            string `json:"email"`
+		BillingExemption string `json:"billing_exemption"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
 		t.Fatalf("failed to decode debug users response: %v", err)
 	}
 
-	var userID string
 	for _, u := range users {
 		if strings.EqualFold(u.Email, email) {
-			userID = u.UserID
-			break
+			return u.BillingExemption
 		}
 	}
-	if userID == "" {
-		t.Fatalf("user %q not found in debug API", email)
-	}
-
-	// Fetch the debug user page and look for billing exemption.
-	userURL := fmt.Sprintf("http://localhost:%d/debug/user?userId=%s", httpPort, userID)
-	resp2, err := http.Get(userURL)
-	if err != nil {
-		t.Fatalf("failed to query debug user page: %v", err)
-	}
-	defer resp2.Body.Close()
-
-	body, err := io.ReadAll(resp2.Body)
-	if err != nil {
-		t.Fatalf("failed to read debug user page: %v", err)
-	}
-	page := string(body)
-
-	// The template renders: <th>Billing Exemption</th><td>free</td>
-	// only when a billing exemption is set.
-	if !strings.Contains(page, "Billing Exemption") {
-		return ""
-	}
-	if strings.Contains(page, "<td>free</td>") {
-		return "free"
-	}
-	if strings.Contains(page, "<td>trial</td>") {
-		return "trial"
-	}
-	return "unknown"
+	t.Fatalf("user %q not found in debug API", email)
+	return ""
 }
