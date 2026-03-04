@@ -217,6 +217,14 @@ class ApiService {
     return response.json();
   }
 
+  async getConversationPreviews(): Promise<Record<string, { text: string; updated_at: string }>> {
+    const response = await fetch(`${this.baseUrl}/conversations/previews`);
+    if (!response.ok) {
+      throw new Error(`Failed to get conversation previews: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async getArchivedConversations(): Promise<Conversation[]> {
     const response = await fetch(`${this.baseUrl}/conversations/archived`);
     if (!response.ok) {

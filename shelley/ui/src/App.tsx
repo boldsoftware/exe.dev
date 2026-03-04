@@ -7,6 +7,7 @@ import ConversationDrawer from "./components/ConversationDrawer";
 import CommandPalette from "./components/CommandPalette";
 import ModelsModal from "./components/ModelsModal";
 import NotificationsModal from "./components/NotificationsModal";
+import HomeFeed from "./components/HomeFeed";
 import { Conversation, ConversationWithState, ConversationListUpdate } from "./types";
 import { api } from "./services/api";
 import { conversationCache } from "./services/conversationCache";
@@ -69,9 +70,14 @@ function getSlugFromPath(): string | null {
   return null;
 }
 
+function isInboxPath(): boolean {
+  return window.location.pathname === "/inbox";
+}
+
 // Capture the initial slug from URL BEFORE React renders, so it won't be affected
 // by the useEffect that updates the URL based on current conversation.
 const initialSlugFromUrl = getSlugFromPath();
+const initialIsInbox = isInboxPath();
 
 // Update the URL to reflect the current conversation slug
 function updateUrlWithSlug(conversation: Conversation | undefined) {
@@ -109,6 +115,7 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   // Track viewed conversation separately (needed for subagents which aren't in main list)
   const [viewedConversation, setViewedConversation] = useState<Conversation | null>(null);
+  const [showInbox, setShowInbox] = useState(initialIsInbox);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -278,8 +285,17 @@ function App() {
   // Handle popstate events (browser back/forward and SubagentTool navigation)
   useEffect(() => {
     const handlePopState = async () => {
+      if (isInboxPath()) {
+        setShowInbox(true);
+        setCurrentConversationId(null);
+        setViewedConversation(null);
+        return;
+      }
+      setShowInbox(false);
       const slug = getSlugFromPath();
-      if (!slug) return;
+      if (!slug) {
+        return;
+      }
 
       // Try to find in existing conversations first
       const existingConv = conversations.find((c) => c.slug === slug);
@@ -406,13 +422,11 @@ function App() {
       if (slugConv) {
         setCurrentConversationId(slugConv.conversation_id);
         setViewedConversation(slugConv);
-      } else if (!currentConversationId && convs.length > 0) {
-        // If we have conversations and no current one selected, select the first
+      } else if (!showInbox && convs.length > 0) {
+        // No slug in URL and not on /inbox — select the most recent conversation
         setCurrentConversationId(convs[0].conversation_id);
         setViewedConversation(convs[0]);
       }
-      // If no conversations exist, leave currentConversationId as null
-      // The UI will show the welcome screen and create conversation on first message
     } catch (err) {
       console.error("Failed to load conversations:", err);
       setError("Failed to load conversations. Please refresh the page.");
@@ -452,9 +466,19 @@ function App() {
   };
 
   const selectConversation = (conversation: Conversation) => {
+    const wasOnInbox = showInbox;
     setCurrentConversationId(conversation.conversation_id);
     setViewedConversation(conversation);
+    setShowInbox(false);
     setDrawerOpen(false);
+    // Use pushState when navigating from inbox so back button returns there
+    if (wasOnInbox) {
+      const slug =
+        conversation.slug && !isGeneratedId(conversation.slug) ? conversation.slug : null;
+      if (slug) {
+        window.history.pushState({}, "", `/c/${slug}`);
+      }
+    }
   };
 
   const toggleDrawerCollapsed = () => {
@@ -581,6 +605,7 @@ function App() {
       // Fetch the new conversation details
       const updatedConvs = await api.getConversations();
       setConversations(updatedConvs);
+      setShowInbox(false);
       setCurrentConversationId(newConversationId);
     } catch (err) {
       console.error("Failed to send first message:", err);
@@ -615,10 +640,10 @@ function App() {
       highlighterOptions={diffsHighlighterOptions}
     >
       <div className="app-container">
-        {/* Conversations drawer */}
+        {/* Conversations drawer - hidden on inbox */}
         <ConversationDrawer
           isOpen={drawerOpen}
-          isCollapsed={drawerCollapsed}
+          isCollapsed={showInbox || drawerCollapsed}
           onClose={() => setDrawerOpen(false)}
           onToggleCollapse={toggleDrawerCollapsed}
           conversations={conversations}
@@ -634,34 +659,61 @@ function App() {
           showActiveTrigger={showActiveTrigger}
         />
 
-        {/* Main chat interface */}
+        {/* Main content: Home feed or Chat interface */}
         <div className="main-content">
-          <ChatInterface
-            conversationId={currentConversationId}
-            onOpenDrawer={() => setDrawerOpen(true)}
-            onNewConversation={startNewConversation}
-            onArchiveConversation={async (conversationId: string) => {
-              await api.archiveConversation(conversationId);
-              handleConversationArchived(conversationId);
-            }}
-            currentConversation={currentConversation}
-            onConversationUpdate={updateConversation}
-            onConversationListUpdate={handleConversationListUpdate}
-            onConversationStateUpdate={handleConversationStateUpdate}
-            onFirstMessage={handleFirstMessage}
-            onDistillConversation={handleDistillConversation}
-            mostRecentCwd={mostRecentCwd}
-            isDrawerCollapsed={drawerCollapsed}
-            onToggleDrawerCollapse={toggleDrawerCollapsed}
-            openDiffViewerTrigger={diffViewerTrigger}
-            modelsRefreshTrigger={modelsRefreshTrigger}
-            onOpenModelsModal={() => setModelsModalOpen(true)}
-            onReconnect={refreshConversations}
-            ephemeralTerminals={ephemeralTerminals}
-            setEphemeralTerminals={setEphemeralTerminals}
-            navigateUserMessageTrigger={navigateUserMessageTrigger}
-            onConversationUnarchived={handleConversationUnarchived}
-          />
+          {showInbox ? (
+            <HomeFeed
+              conversations={conversations}
+              onSelectConversation={selectConversation}
+              onNewConversation={startNewConversation}
+              onArchiveConversation={async (conversationId: string) => {
+                await api.archiveConversation(conversationId);
+                handleConversationArchived(conversationId);
+              }}
+              onFirstMessage={handleFirstMessage}
+              onReplyToConversation={async (conversationId: string, message: string) => {
+                // Send the reply and stay on inbox
+                try {
+                  await api.sendMessage(conversationId, { message });
+                } catch (err) {
+                  console.error("Failed to send reply:", err);
+                }
+              }}
+              mostRecentCwd={mostRecentCwd}
+              onOpenModelsModal={() => setModelsModalOpen(true)}
+              onOpenDrawer={() => setDrawerOpen(true)}
+              models={window.__SHELLEY_INIT__?.models || []}
+              defaultModel={window.__SHELLEY_INIT__?.default_model || ""}
+              hostname={window.__SHELLEY_INIT__?.hostname || "localhost"}
+            />
+          ) : (
+            <ChatInterface
+              conversationId={currentConversationId}
+              onOpenDrawer={() => setDrawerOpen(true)}
+              onNewConversation={startNewConversation}
+              onArchiveConversation={async (conversationId: string) => {
+                await api.archiveConversation(conversationId);
+                handleConversationArchived(conversationId);
+              }}
+              currentConversation={currentConversation}
+              onConversationUpdate={updateConversation}
+              onConversationListUpdate={handleConversationListUpdate}
+              onConversationStateUpdate={handleConversationStateUpdate}
+              onFirstMessage={handleFirstMessage}
+              onDistillConversation={handleDistillConversation}
+              mostRecentCwd={mostRecentCwd}
+              isDrawerCollapsed={drawerCollapsed}
+              onToggleDrawerCollapse={toggleDrawerCollapsed}
+              openDiffViewerTrigger={diffViewerTrigger}
+              modelsRefreshTrigger={modelsRefreshTrigger}
+              onOpenModelsModal={() => setModelsModalOpen(true)}
+              onReconnect={refreshConversations}
+              ephemeralTerminals={ephemeralTerminals}
+              setEphemeralTerminals={setEphemeralTerminals}
+              navigateUserMessageTrigger={navigateUserMessageTrigger}
+              onConversationUnarchived={handleConversationUnarchived}
+            />
+          )}
         </div>
 
         {/* Command Palette */}

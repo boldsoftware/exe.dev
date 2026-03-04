@@ -65,3 +65,15 @@ UPDATE messages SET user_data = ? WHERE message_id = ?;
 
 -- name: UpdateMessageExcludedFromContext :exec
 UPDATE messages SET excluded_from_context = ? WHERE message_id = ?;
+
+-- name: GetLatestAgentMessagesForConversations :many
+SELECT m.* FROM messages m
+INNER JOIN (
+  SELECT msg.conversation_id, MAX(msg.sequence_id) AS max_seq
+  FROM messages msg
+  INNER JOIN conversations c ON msg.conversation_id = c.conversation_id
+  WHERE msg.type = 'agent' AND c.archived = FALSE AND c.parent_conversation_id IS NULL
+  GROUP BY msg.conversation_id
+  ORDER BY max_seq DESC
+  LIMIT 50
+) latest ON m.conversation_id = latest.conversation_id AND m.sequence_id = latest.max_seq;

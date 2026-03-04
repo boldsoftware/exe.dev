@@ -272,6 +272,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// API routes - wrap with gzip where beneficial
 	mux.Handle("/api/conversations", gzipHandler(http.HandlerFunc(s.handleConversations)))
 	mux.Handle("/api/conversations/archived", gzipHandler(http.HandlerFunc(s.handleArchivedConversations)))
+	mux.Handle("/api/conversations/previews", gzipHandler(http.HandlerFunc(s.handleConversationPreviews)))
 	mux.Handle("/api/conversations/new", http.HandlerFunc(s.handleNewConversation))         // Small response
 	mux.Handle("/api/conversations/distill", http.HandlerFunc(s.handleDistillConversation)) // Small response
 	mux.Handle("/api/conversation/", http.StripPrefix("/api/conversation", s.conversationMux()))

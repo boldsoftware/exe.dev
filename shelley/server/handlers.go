@@ -191,6 +191,10 @@ func isConversationSlugPath(path string) bool {
 	return strings.HasPrefix(path, "/c/")
 }
 
+func isSPARoute(path string) bool {
+	return path == "/inbox"
+}
+
 // acceptsGzip reports whether r accepts gzip encoding.
 func acceptsGzip(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
@@ -231,7 +235,7 @@ func (s *Server) staticHandler(fsys http.FileSystem) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Inject initialization data into index.html
-		if r.URL.Path == "/" || r.URL.Path == "/index.html" || isConversationSlugPath(r.URL.Path) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" || isConversationSlugPath(r.URL.Path) || isSPARoute(r.URL.Path) {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
@@ -1109,6 +1113,61 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.getModelList())
+}
+
+// handleConversationPreviews handles GET /api/conversations/previews
+// Returns a map of conversation_id -> last agent message text preview
+func (s *Server) handleConversationPreviews(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx := r.Context()
+
+	var messages []generated.Message
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.GetLatestAgentMessagesForConversations(ctx)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("Failed to get conversation previews", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract text content from each agent message
+	type Preview struct {
+		Text      string `json:"text"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	result := make(map[string]Preview, len(messages))
+	for _, msg := range messages {
+		if msg.LlmData == nil {
+			continue
+		}
+		var llmMsg llm.Message
+		if err := json.Unmarshal([]byte(*msg.LlmData), &llmMsg); err != nil {
+			continue
+		}
+		// Use the last text block — in agent messages with tool calls,
+		// the final text block is typically the summary/conclusion.
+		var text string
+		for _, c := range llmMsg.Content {
+			if c.Type == llm.ContentTypeText && c.Text != "" {
+				text = c.Text
+			}
+		}
+		if text != "" {
+			result[msg.ConversationID] = Preview{
+				Text:      text,
+				UpdatedAt: msg.CreatedAt.UTC().Format(time.RFC3339),
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // handleArchivedConversations handles GET /api/conversations/archived

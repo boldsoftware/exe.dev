@@ -8,7 +8,7 @@
    and can fabricate some inputs and outputs. To test things, launch shelley with the relevant flag
    to only expose this model, and use shelley with a browser.
 6. Build the UI (`make ui` or `cd ui && pnpm install && pnpm run build`) before running Go tests so `ui/dist` exists for the embed.
-7. Run TypeScript type checking with `cd ui && pnpm run type-check`. Run linting with `pnpm run lint`.
+7. **Always run `cd ui && pnpm run type-check` after modifying any `.ts` or `.tsx` file.** Fix all errors before committing. Run linting with `pnpm run lint`.
 8. Run Go unit tests with `go test ./server` (or narrower packages while iterating) once the UI bundle is built.
 9. To programmatically type into the React message input (e.g., in browser automation), you must use React's internal setter:
    ```javascript

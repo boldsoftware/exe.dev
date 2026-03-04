@@ -104,6 +104,53 @@ func (q *Queries) DeleteMessage(ctx context.Context, messageID string) error {
 	return err
 }
 
+const getLatestAgentMessagesForConversations = `-- name: GetLatestAgentMessagesForConversations :many
+SELECT m.message_id, m.conversation_id, m.sequence_id, m.type, m.llm_data, m.user_data, m.usage_data, m.created_at, m.display_data, m.excluded_from_context FROM messages m
+INNER JOIN (
+  SELECT msg.conversation_id, MAX(msg.sequence_id) AS max_seq
+  FROM messages msg
+  INNER JOIN conversations c ON msg.conversation_id = c.conversation_id
+  WHERE msg.type = 'agent' AND c.archived = FALSE AND c.parent_conversation_id IS NULL
+  GROUP BY msg.conversation_id
+  ORDER BY max_seq DESC
+  LIMIT 50
+) latest ON m.conversation_id = latest.conversation_id AND m.sequence_id = latest.max_seq
+`
+
+func (q *Queries) GetLatestAgentMessagesForConversations(ctx context.Context) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getLatestAgentMessagesForConversations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.ConversationID,
+			&i.SequenceID,
+			&i.Type,
+			&i.LlmData,
+			&i.UserData,
+			&i.UsageData,
+			&i.CreatedAt,
+			&i.DisplayData,
+			&i.ExcludedFromContext,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLatestMessage = `-- name: GetLatestMessage :one
 SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at, display_data, excluded_from_context FROM messages
 WHERE conversation_id = ?
