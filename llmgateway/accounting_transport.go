@@ -194,7 +194,10 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 					// Process the event data, which may include details for accounting.
 					// For SSE, we use processResponseDataSSE which stores usage for later
 					if err := a.processResponseDataSSE([]byte(data)); err != nil {
-						a.log.ErrorContext(ctx, "Proxy SSE scanner", "processResponseData error", err)
+						a.log.ErrorContext(ctx, "Proxy SSE scanner",
+							"processResponseData error", err,
+							"raw_line", truncateQuote(line, 512),
+						)
 					}
 				}
 				if _, err := fmt.Fprintln(bodyWriter, line); err != nil {
@@ -747,4 +750,15 @@ func isGzipped(contentEncoding string, data []byte) bool {
 	}
 	// Fallback: check gzip magic bytes
 	return len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b
+}
+
+// truncateQuote returns fmt.Sprintf(%q, s), center-truncated to maxLen
+// source bytes (before quoting). Useful for logging potentially large or
+// binary strings without blowing up log lines.
+func truncateQuote(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return fmt.Sprintf("%q", s)
+	}
+	half := maxLen / 2
+	return fmt.Sprintf("%q...<%d bytes omitted>...%q", s[:half], len(s)-maxLen, s[len(s)-half:])
 }
