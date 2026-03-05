@@ -211,12 +211,12 @@ func resizeCommandFlags() *flag.FlagSet {
 func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	commands := []*exemenu.Command{
 		{
-			Name:              "help",
-			Description:       "Show help information",
-			Handler:           ss.handleHelpCommand,
-			FlagSetFunc:       jsonOnlyFlags("help"),
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeCommandNames,
+			Name:          "help",
+			Description:   "Show help information",
+			Handler:       ss.handleHelpCommand,
+			FlagSetFunc:   jsonOnlyFlags("help"), // not used at runtime (RawArgs), but picked up by doc generator
+			RawArgs:       true,
+			CompleterFunc: ss.completeCommandNames,
 		},
 		{
 			Name:              "doc",
@@ -465,9 +465,23 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 		ss.server.recordUserEventBestEffort(ctx, cc.User.ID, userEventHasRunHelp)
 	}
 
-	if len(cc.Args) > 0 {
+	// RawArgs mode: manually extract --json and filter flags out of the
+	// command path so that "help integrations add --header foo" finds
+	// "integrations add" instead of failing on unknown flags.
+	var cmdPath []string
+	for _, a := range cc.Args {
+		if a == "--json" {
+			cc.ForceJSON = true
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		cmdPath = append(cmdPath, a)
+	}
+
+	if len(cmdPath) > 0 {
 		// Help for specific command
-		cmdPath := cc.Args
 		cmd := ss.commands.FindCommand(cmdPath)
 		if cmd == nil {
 			if cc.WantJSON() {

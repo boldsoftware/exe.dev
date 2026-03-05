@@ -410,16 +410,13 @@ func TestCommandFlagParsing(t *testing.T) {
 			},
 		},
 		{
-			name:         "help command has json flag",
+			name:         "help command uses raw args",
 			commandPath:  []string{"help"},
 			expectedArgs: []string{},
 			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
-				if cc.FlagSet == nil {
-					t.Fatal("Expected FlagSet to be set for help command")
-				}
-				jsonFlag := cc.FlagSet.Lookup("json")
-				if jsonFlag == nil {
-					t.Error("Expected --json flag on help command")
+				// help uses RawArgs so flags are not parsed by the framework
+				if cc.FlagSet != nil {
+					t.Error("Expected FlagSet to be nil for RawArgs help command")
 				}
 			},
 		},
