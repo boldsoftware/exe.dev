@@ -72,16 +72,16 @@ func (x *BoxInfoRequest) GetBoxName() string {
 type BoxInfoResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	BoxExists            bool                   `protobuf:"varint,1,opt,name=box_exists,json=boxExists,proto3" json:"box_exists,omitempty"`                                     // false if no box by that name
-	BoxId                int64                  `protobuf:"varint,2,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`                                                 // box ID
+	BoxID                int64                  `protobuf:"varint,2,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`                                                 // box ID
 	Status               string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                                                             // box status
 	Ctrhost              string                 `protobuf:"bytes,4,opt,name=ctrhost,proto3" json:"ctrhost,omitempty"`                                                           // exelet name
-	CreatedByUserId      string                 `protobuf:"bytes,5,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`                // user ID that created the box
+	CreatedByUserID      string                 `protobuf:"bytes,5,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`                // user ID that created the box
 	Image                string                 `protobuf:"bytes,6,opt,name=image,proto3" json:"image,omitempty"`                                                               // image used to create box
 	Route                *BoxRoute              `protobuf:"bytes,7,opt,name=route,proto3" json:"route,omitempty"`                                                               // box routing configuration
-	SshServerIdentityKey string                 `protobuf:"bytes,8,opt,name=ssh_server_identity_key,json=sshServerIdentityKey,proto3" json:"ssh_server_identity_key,omitempty"` // SSH server identity private key
-	SshClientPrivateKey  string                 `protobuf:"bytes,9,opt,name=ssh_client_private_key,json=sshClientPrivateKey,proto3" json:"ssh_client_private_key,omitempty"`    // box SSH private key
-	SshPort              int32                  `protobuf:"varint,10,opt,name=ssh_port,json=sshPort,proto3" json:"ssh_port,omitempty"`                                          // box SSH port
-	SshUser              string                 `protobuf:"bytes,11,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`                                           // box SSH user
+	SSHServerIdentityKey string                 `protobuf:"bytes,8,opt,name=ssh_server_identity_key,json=sshServerIdentityKey,proto3" json:"ssh_server_identity_key,omitempty"` // SSH server identity private key
+	SSHClientPrivateKey  string                 `protobuf:"bytes,9,opt,name=ssh_client_private_key,json=sshClientPrivateKey,proto3" json:"ssh_client_private_key,omitempty"`    // box SSH private key
+	SSHPort              int32                  `protobuf:"varint,10,opt,name=ssh_port,json=sshPort,proto3" json:"ssh_port,omitempty"`                                          // box SSH port
+	SSHUser              string                 `protobuf:"bytes,11,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`                                           // box SSH user
 	SupportAccessAllowed int64                  `protobuf:"varint,12,opt,name=support_access_allowed,json=supportAccessAllowed,proto3" json:"support_access_allowed,omitempty"` // root support can access box
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
@@ -124,9 +124,9 @@ func (x *BoxInfoResponse) GetBoxExists() bool {
 	return false
 }
 
-func (x *BoxInfoResponse) GetBoxId() int64 {
+func (x *BoxInfoResponse) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -145,9 +145,9 @@ func (x *BoxInfoResponse) GetCtrhost() string {
 	return ""
 }
 
-func (x *BoxInfoResponse) GetCreatedByUserId() string {
+func (x *BoxInfoResponse) GetCreatedByUserID() string {
 	if x != nil {
-		return x.CreatedByUserId
+		return x.CreatedByUserID
 	}
 	return ""
 }
@@ -166,30 +166,30 @@ func (x *BoxInfoResponse) GetRoute() *BoxRoute {
 	return nil
 }
 
-func (x *BoxInfoResponse) GetSshServerIdentityKey() string {
+func (x *BoxInfoResponse) GetSSHServerIdentityKey() string {
 	if x != nil {
-		return x.SshServerIdentityKey
+		return x.SSHServerIdentityKey
 	}
 	return ""
 }
 
-func (x *BoxInfoResponse) GetSshClientPrivateKey() string {
+func (x *BoxInfoResponse) GetSSHClientPrivateKey() string {
 	if x != nil {
-		return x.SshClientPrivateKey
+		return x.SSHClientPrivateKey
 	}
 	return ""
 }
 
-func (x *BoxInfoResponse) GetSshPort() int32 {
+func (x *BoxInfoResponse) GetSSHPort() int32 {
 	if x != nil {
-		return x.SshPort
+		return x.SSHPort
 	}
 	return 0
 }
 
-func (x *BoxInfoResponse) GetSshUser() string {
+func (x *BoxInfoResponse) GetSSHUser() string {
 	if x != nil {
-		return x.SshUser
+		return x.SSHUser
 	}
 	return ""
 }
@@ -310,7 +310,7 @@ type CookieInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CookieExists  bool                   `protobuf:"varint,1,opt,name=cookie_exists,json=cookieExists,proto3" json:"cookie_exists,omitempty"` // false if no such cookie
 	CookieValue   string                 `protobuf:"bytes,2,opt,name=cookie_value,json=cookieValue,proto3" json:"cookie_value,omitempty"`     // cookie value
-	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                    // user authenticated by cookie
+	UserID        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                    // user authenticated by cookie
 	Domain        string                 `protobuf:"bytes,4,opt,name=domain,proto3" json:"domain,omitempty"`                                  // cookie domain
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`           // expiration time
 	unknownFields protoimpl.UnknownFields
@@ -361,9 +361,9 @@ func (x *CookieInfoResponse) GetCookieValue() string {
 	return ""
 }
 
-func (x *CookieInfoResponse) GetUserId() string {
+func (x *CookieInfoResponse) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -384,7 +384,7 @@ func (x *CookieInfoResponse) GetExpiresAt() *timestamppb.Timestamp {
 
 type UserInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -419,9 +419,9 @@ func (*UserInfoRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *UserInfoRequest) GetUserId() string {
+func (x *UserInfoRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -489,12 +489,12 @@ func (x *UserInfoResponse) GetUserInfo() *UserInfo {
 // UserInfo is information we send about a user.
 type UserInfo struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	UserId               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                                               // user ID
+	UserID               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                                               // user ID
 	Email                string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`                                                               // user email
 	RootSupport          int64                  `protobuf:"varint,3,opt,name=root_support,json=rootSupport,proto3" json:"root_support,omitempty"`                               // root support setting
 	IsLockedOut          bool                   `protobuf:"varint,4,opt,name=is_locked_out,json=isLockedOut,proto3" json:"is_locked_out,omitempty"`                             // whether user is locked out
-	AccountId            string                 `protobuf:"bytes,5,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`                                      // user accounting ID
-	TeamBillingAccountId string                 `protobuf:"bytes,6,opt,name=team_billing_account_id,json=teamBillingAccountId,proto3" json:"team_billing_account_id,omitempty"` // team billing_owner's account ID (empty if none)
+	AccountID            string                 `protobuf:"bytes,5,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`                                      // user accounting ID
+	TeamBillingAccountID string                 `protobuf:"bytes,6,opt,name=team_billing_account_id,json=teamBillingAccountId,proto3" json:"team_billing_account_id,omitempty"` // team billing_owner's account ID (empty if none)
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -529,9 +529,9 @@ func (*UserInfo) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *UserInfo) GetUserId() string {
+func (x *UserInfo) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -557,16 +557,16 @@ func (x *UserInfo) GetIsLockedOut() bool {
 	return false
 }
 
-func (x *UserInfo) GetAccountId() string {
+func (x *UserInfo) GetAccountID() string {
 	if x != nil {
-		return x.AccountId
+		return x.AccountID
 	}
 	return ""
 }
 
-func (x *UserInfo) GetTeamBillingAccountId() string {
+func (x *UserInfo) GetTeamBillingAccountID() string {
 	if x != nil {
-		return x.TeamBillingAccountId
+		return x.TeamBillingAccountID
 	}
 	return ""
 }
@@ -613,7 +613,7 @@ func (*GetPublicIPsRequest) Descriptor() ([]byte, []int) {
 type GetPublicIPsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Addr          string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`                         // private local IP address
-	PublicIp      *PublicIP              `protobuf:"bytes,2,opt,name=public_ip,json=publicIp,proto3" json:"public_ip,omitempty"` // public IP / domain / shard
+	PublicIP      *PublicIP              `protobuf:"bytes,2,opt,name=public_ip,json=publicIp,proto3" json:"public_ip,omitempty"` // public IP / domain / shard
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -655,9 +655,9 @@ func (x *GetPublicIPsResponse) GetAddr() string {
 	return ""
 }
 
-func (x *GetPublicIPsResponse) GetPublicIp() *PublicIP {
+func (x *GetPublicIPsResponse) GetPublicIP() *PublicIP {
 	if x != nil {
-		return x.PublicIp
+		return x.PublicIP
 	}
 	return nil
 }
@@ -665,7 +665,7 @@ func (x *GetPublicIPsResponse) GetPublicIp() *PublicIP {
 // PublicIP is the protobuf version of publicips.PublicIP.
 type PublicIP struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ip            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`         // public IP address
+	IP            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`         // public IP address
 	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"` // full domain, such "s007.exe.xyz"
 	Shard         int32                  `protobuf:"varint,3,opt,name=shard,proto3" json:"shard,omitempty"`  // shard number
 	unknownFields protoimpl.UnknownFields
@@ -702,9 +702,9 @@ func (*PublicIP) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *PublicIP) GetIp() string {
+func (x *PublicIP) GetIP() string {
 	if x != nil {
-		return x.Ip
+		return x.IP
 	}
 	return ""
 }
@@ -763,7 +763,7 @@ func (*GetLobbyIPRequest) Descriptor() ([]byte, []int) {
 // GetLobbyIPResponse is the type returned by GetLobbyIP.
 type GetLobbyIPResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ip            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
+	IP            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -798,9 +798,9 @@ func (*GetLobbyIPResponse) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *GetLobbyIPResponse) GetIp() string {
+func (x *GetLobbyIPResponse) GetIP() string {
 	if x != nil {
-		return x.Ip
+		return x.IP
 	}
 	return ""
 }
@@ -895,7 +895,7 @@ func (x *CertForDomainResponse) GetCert() string {
 
 type CheckAndRefreshLLMCreditRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -930,9 +930,9 @@ func (*CheckAndRefreshLLMCreditRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *CheckAndRefreshLLMCreditRequest) GetUserId() string {
+func (x *CheckAndRefreshLLMCreditRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -1129,7 +1129,7 @@ func (x *Plan) GetCreditExhaustedError() string {
 
 type TopUpOnLLMBillingUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1164,9 +1164,9 @@ func (*TopUpOnLLMBillingUpgradeRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *TopUpOnLLMBillingUpgradeRequest) GetUserId() string {
+func (x *TopUpOnLLMBillingUpgradeRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -1209,7 +1209,7 @@ func (*TopUpOnLLMBillingUpgradeResponse) Descriptor() ([]byte, []int) {
 
 type LLMDebitCreditRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	CostUsd       float64                `protobuf:"fixed64,2,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1245,9 +1245,9 @@ func (*LLMDebitCreditRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *LLMDebitCreditRequest) GetUserId() string {
+func (x *LLMDebitCreditRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -1305,7 +1305,7 @@ func (x *LLMDebitCreditResponse) GetCreditInfo() *CreditInfo {
 
 type LLMUseCreditsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountID     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	Quantity      int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	Microcents    int64                  `protobuf:"varint,3,opt,name=microcents,proto3" json:"microcents,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1342,9 +1342,9 @@ func (*LLMUseCreditsRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *LLMUseCreditsRequest) GetAccountId() string {
+func (x *LLMUseCreditsRequest) GetAccountID() string {
 	if x != nil {
-		return x.AccountId
+		return x.AccountID
 	}
 	return ""
 }
@@ -1409,7 +1409,7 @@ func (x *LLMUseCreditsResponse) GetMicrocents() int64 {
 
 type CreateAuthCookieRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1445,9 +1445,9 @@ func (*CreateAuthCookieRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *CreateAuthCookieRequest) GetUserId() string {
+func (x *CreateAuthCookieRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -1665,9 +1665,9 @@ func (*UsedCookieResponse) Descriptor() ([]byte, []int) {
 
 type HasUserAccessToBoxRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	BoxId            int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	BoxID            int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
 	BoxName          string                 `protobuf:"bytes,2,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
-	SharedWithUserId string                 `protobuf:"bytes,3,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
+	SharedWithUserID string                 `protobuf:"bytes,3,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1702,9 +1702,9 @@ func (*HasUserAccessToBoxRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *HasUserAccessToBoxRequest) GetBoxId() int64 {
+func (x *HasUserAccessToBoxRequest) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -1716,9 +1716,9 @@ func (x *HasUserAccessToBoxRequest) GetBoxName() string {
 	return ""
 }
 
-func (x *HasUserAccessToBoxRequest) GetSharedWithUserId() string {
+func (x *HasUserAccessToBoxRequest) GetSharedWithUserID() string {
 	if x != nil {
-		return x.SharedWithUserId
+		return x.SharedWithUserID
 	}
 	return ""
 }
@@ -1769,9 +1769,9 @@ func (x *HasUserAccessToBoxResponse) GetOk() bool {
 
 type IsBoxSharedWithUserTeamRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	BoxId            int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	BoxID            int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
 	BoxName          string                 `protobuf:"bytes,2,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
-	SharedWithUserId string                 `protobuf:"bytes,3,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
+	SharedWithUserID string                 `protobuf:"bytes,3,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1806,9 +1806,9 @@ func (*IsBoxSharedWithUserTeamRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{33}
 }
 
-func (x *IsBoxSharedWithUserTeamRequest) GetBoxId() int64 {
+func (x *IsBoxSharedWithUserTeamRequest) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -1820,9 +1820,9 @@ func (x *IsBoxSharedWithUserTeamRequest) GetBoxName() string {
 	return ""
 }
 
-func (x *IsBoxSharedWithUserTeamRequest) GetSharedWithUserId() string {
+func (x *IsBoxSharedWithUserTeamRequest) GetSharedWithUserID() string {
 	if x != nil {
-		return x.SharedWithUserId
+		return x.SharedWithUserID
 	}
 	return ""
 }
@@ -1873,9 +1873,9 @@ func (x *IsBoxSharedWithUserTeamResponse) GetOk() bool {
 
 type CheckShareLinkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	BoxId         int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	BoxID         int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
 	BoxName       string                 `protobuf:"bytes,2,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
-	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	ShareToken    string                 `protobuf:"bytes,4,opt,name=share_token,json=shareToken,proto3" json:"share_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1911,9 +1911,9 @@ func (*CheckShareLinkRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{35}
 }
 
-func (x *CheckShareLinkRequest) GetBoxId() int64 {
+func (x *CheckShareLinkRequest) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -1925,9 +1925,9 @@ func (x *CheckShareLinkRequest) GetBoxName() string {
 	return ""
 }
 
-func (x *CheckShareLinkRequest) GetUserId() string {
+func (x *CheckShareLinkRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2030,7 +2030,7 @@ func (x *ValidateMagicSecretRequest) GetSecret() string {
 type ValidateMagicSecretResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ErrorMessage  string                 `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // if not empty, other fields are empty
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	BoxName       string                 `protobuf:"bytes,3,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
 	RedirectUrl   string                 `protobuf:"bytes,4,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2074,9 +2074,9 @@ func (x *ValidateMagicSecretResponse) GetErrorMessage() string {
 	return ""
 }
 
-func (x *ValidateMagicSecretResponse) GetUserId() string {
+func (x *ValidateMagicSecretResponse) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2142,7 +2142,7 @@ func (x *SSHKeyByFingerprintRequest) GetFingerprint() string {
 type SSHKeyByFingerprintResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KeyExists     bool                   `protobuf:"varint,1,opt,name=key_exists,json=keyExists,proto3" json:"key_exists,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	PublicKey     string                 `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2185,9 +2185,9 @@ func (x *SSHKeyByFingerprintResponse) GetKeyExists() bool {
 	return false
 }
 
-func (x *SSHKeyByFingerprintResponse) GetUserId() string {
+func (x *SSHKeyByFingerprintResponse) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2201,7 +2201,7 @@ func (x *SSHKeyByFingerprintResponse) GetPublicKey() string {
 
 type HLLNoteEventsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	Events        []string               `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2237,9 +2237,9 @@ func (*HLLNoteEventsRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{41}
 }
 
-func (x *HLLNoteEventsRequest) GetUserId() string {
+func (x *HLLNoteEventsRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2289,7 +2289,7 @@ func (*HLLNoteEventsResponse) Descriptor() ([]byte, []int) {
 
 type CheckAndIncrementEmailQuotaRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2324,9 +2324,9 @@ func (*CheckAndIncrementEmailQuotaRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{43}
 }
 
-func (x *CheckAndIncrementEmailQuotaRequest) GetUserId() string {
+func (x *CheckAndIncrementEmailQuotaRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2373,7 +2373,7 @@ type SendEmailRequest struct {
 	To            string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
 	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	UserId        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2436,9 +2436,9 @@ func (x *SendEmailRequest) GetBody() string {
 	return ""
 }
 
-func (x *SendEmailRequest) GetUserId() string {
+func (x *SendEmailRequest) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -2481,7 +2481,7 @@ func (*SendEmailResponse) Descriptor() ([]byte, []int) {
 
 type CheckAndDebitVMEmailCreditRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	BoxId         int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	BoxID         int64                  `protobuf:"varint,1,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2516,9 +2516,9 @@ func (*CheckAndDebitVMEmailCreditRequest) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{47}
 }
 
-func (x *CheckAndDebitVMEmailCreditRequest) GetBoxId() int64 {
+func (x *CheckAndDebitVMEmailCreditRequest) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -2724,10 +2724,10 @@ func (x *ChangesResponse) GetDeletedBoxShareLink() *DeletedBoxShareLink {
 	return nil
 }
 
-func (x *ChangesResponse) GetDeletedSshKey() *DeletedSSHKey {
+func (x *ChangesResponse) GetDeletedSSHKey() *DeletedSSHKey {
 	if x != nil {
-		if x, ok := x.Action.(*ChangesResponse_DeletedSshKey); ok {
-			return x.DeletedSshKey
+		if x, ok := x.Action.(*ChangesResponse_DeletedSSHKey); ok {
+			return x.DeletedSSHKey
 		}
 	}
 	return nil
@@ -2788,8 +2788,8 @@ type ChangesResponse_DeletedBoxShareLink struct {
 	DeletedBoxShareLink *DeletedBoxShareLink `protobuf:"bytes,6,opt,name=deleted_box_share_link,json=deletedBoxShareLink,proto3,oneof"`
 }
 
-type ChangesResponse_DeletedSshKey struct {
-	DeletedSshKey *DeletedSSHKey `protobuf:"bytes,7,opt,name=deleted_ssh_key,json=deletedSshKey,proto3,oneof"`
+type ChangesResponse_DeletedSSHKey struct {
+	DeletedSSHKey *DeletedSSHKey `protobuf:"bytes,7,opt,name=deleted_ssh_key,json=deletedSshKey,proto3,oneof"`
 }
 
 type ChangesResponse_UserChanged struct {
@@ -2816,7 +2816,7 @@ func (*ChangesResponse_DeletedBoxShare) isChangesResponse_Action() {}
 
 func (*ChangesResponse_DeletedBoxShareLink) isChangesResponse_Action() {}
 
-func (*ChangesResponse_DeletedSshKey) isChangesResponse_Action() {}
+func (*ChangesResponse_DeletedSSHKey) isChangesResponse_Action() {}
 
 func (*ChangesResponse_UserChanged) isChangesResponse_Action() {}
 
@@ -2926,7 +2926,7 @@ func (x *RenamedBox) GetNewBoxName() string {
 type UpdatedBoxRoute struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	BoxName         string                 `protobuf:"bytes,1,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
-	CreatedByUserId string                 `protobuf:"bytes,2,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"` // this is used by exedb.UpdateBoxRoutes; not sure why
+	CreatedByUserID string                 `protobuf:"bytes,2,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"` // this is used by exedb.UpdateBoxRoutes; not sure why
 	Route           *BoxRoute              `protobuf:"bytes,3,opt,name=route,proto3" json:"route,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -2969,9 +2969,9 @@ func (x *UpdatedBoxRoute) GetBoxName() string {
 	return ""
 }
 
-func (x *UpdatedBoxRoute) GetCreatedByUserId() string {
+func (x *UpdatedBoxRoute) GetCreatedByUserID() string {
 	if x != nil {
-		return x.CreatedByUserId
+		return x.CreatedByUserID
 	}
 	return ""
 }
@@ -3046,10 +3046,10 @@ func (x *DeletedCookie) GetCookieValue() string {
 	return ""
 }
 
-func (x *DeletedCookie) GetUserId() string {
+func (x *DeletedCookie) GetUserID() string {
 	if x != nil {
-		if x, ok := x.Key.(*DeletedCookie_UserId); ok {
-			return x.UserId
+		if x, ok := x.Key.(*DeletedCookie_UserID); ok {
+			return x.UserID
 		}
 	}
 	return ""
@@ -3063,19 +3063,19 @@ type DeletedCookie_CookieValue struct {
 	CookieValue string `protobuf:"bytes,1,opt,name=cookie_value,json=cookieValue,proto3,oneof"`
 }
 
-type DeletedCookie_UserId struct {
-	UserId string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3,oneof"`
+type DeletedCookie_UserID struct {
+	UserID string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3,oneof"`
 }
 
 func (*DeletedCookie_CookieValue) isDeletedCookie_Key() {}
 
-func (*DeletedCookie_UserId) isDeletedCookie_Key() {}
+func (*DeletedCookie_UserID) isDeletedCookie_Key() {}
 
 // DeletedBoxShare is sent when a box share is deleted.
 type DeletedBoxShare struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	BoxName          string                 `protobuf:"bytes,1,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
-	SharedWithUserId string                 `protobuf:"bytes,2,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
+	SharedWithUserID string                 `protobuf:"bytes,2,opt,name=shared_with_user_id,json=sharedWithUserId,proto3" json:"shared_with_user_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -3117,9 +3117,9 @@ func (x *DeletedBoxShare) GetBoxName() string {
 	return ""
 }
 
-func (x *DeletedBoxShare) GetSharedWithUserId() string {
+func (x *DeletedBoxShare) GetSharedWithUserID() string {
 	if x != nil {
-		return x.SharedWithUserId
+		return x.SharedWithUserID
 	}
 	return ""
 }
@@ -3180,8 +3180,8 @@ func (x *DeletedBoxShareLink) GetShareToken() string {
 // DeletedSSHKey is sent when an SSH key is deleted.
 type DeletedSSHKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ID            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserID        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	PublicKey     string                 `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
 	Fingerprint   string                 `protobuf:"bytes,4,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -3218,16 +3218,16 @@ func (*DeletedSSHKey) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{57}
 }
 
-func (x *DeletedSSHKey) GetId() int64 {
+func (x *DeletedSSHKey) GetID() int64 {
 	if x != nil {
-		return x.Id
+		return x.ID
 	}
 	return 0
 }
 
-func (x *DeletedSSHKey) GetUserId() string {
+func (x *DeletedSSHKey) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -3312,8 +3312,8 @@ func (x *UserChanged) GetUserInfo() *UserInfo {
 // DeletedTeamMember is sent when we delete a member from a team.
 type DeletedTeamMember struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	TeamID        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	UserID        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3348,16 +3348,16 @@ func (*DeletedTeamMember) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{59}
 }
 
-func (x *DeletedTeamMember) GetTeamId() string {
+func (x *DeletedTeamMember) GetTeamID() string {
 	if x != nil {
-		return x.TeamId
+		return x.TeamID
 	}
 	return ""
 }
 
-func (x *DeletedTeamMember) GetUserId() string {
+func (x *DeletedTeamMember) GetUserID() string {
 	if x != nil {
-		return x.UserId
+		return x.UserID
 	}
 	return ""
 }
@@ -3365,8 +3365,8 @@ func (x *DeletedTeamMember) GetUserId() string {
 // DeletedBoxShareTeam is sent when we stop sharing a box with a team.
 type DeletedBoxShareTeam struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	BoxId         int64                  `protobuf:"varint,2,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	TeamID        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	BoxID         int64                  `protobuf:"varint,2,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
 	BoxName       string                 `protobuf:"bytes,3,opt,name=box_name,json=boxName,proto3" json:"box_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3402,16 +3402,16 @@ func (*DeletedBoxShareTeam) Descriptor() ([]byte, []int) {
 	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{60}
 }
 
-func (x *DeletedBoxShareTeam) GetTeamId() string {
+func (x *DeletedBoxShareTeam) GetTeamID() string {
 	if x != nil {
-		return x.TeamId
+		return x.TeamID
 	}
 	return ""
 }
 
-func (x *DeletedBoxShareTeam) GetBoxId() int64 {
+func (x *DeletedBoxShareTeam) GetBoxID() int64 {
 	if x != nil {
-		return x.BoxId
+		return x.BoxID
 	}
 	return 0
 }
@@ -3844,14 +3844,14 @@ func file_exe_proxy_v1_proxy_proto_init() {
 		(*ChangesResponse_DeletedCookie)(nil),
 		(*ChangesResponse_DeletedBoxShare)(nil),
 		(*ChangesResponse_DeletedBoxShareLink)(nil),
-		(*ChangesResponse_DeletedSshKey)(nil),
+		(*ChangesResponse_DeletedSSHKey)(nil),
 		(*ChangesResponse_UserChanged)(nil),
 		(*ChangesResponse_DeletedTeamMember)(nil),
 		(*ChangesResponse_DeletedBoxShareTeam)(nil),
 	}
 	file_exe_proxy_v1_proxy_proto_msgTypes[54].OneofWrappers = []any{
 		(*DeletedCookie_CookieValue)(nil),
-		(*DeletedCookie_UserId)(nil),
+		(*DeletedCookie_UserID)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

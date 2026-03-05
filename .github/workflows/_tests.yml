@@ -61,6 +61,22 @@ jobs:
             exit 1
           fi
 
+      - name: Verify protobuf generated code unchanged
+        run: |
+          set -euo pipefail
+          echo "Running 'make protos' to verify protobuf generated code is up-to-date..."
+          make protos
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ 'make protos' produced uncommitted changes. Commit generated code." >&2
+            echo
+            echo "Changed files:" >&2
+            git status --porcelain >&2
+            echo
+            echo "Diff:" >&2
+            git diff >&2
+            exit 1
+          fi
+
       - name: Ensure non-test code doesn't import tslog
         run: |
           set -euo pipefail
