@@ -313,14 +313,16 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the model is in our allowlist (only if a model was specified)
-	if model != "" {
-		sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
-		if !llmpricing.IsModelAllowed(provider, model) {
-			sloghttp.AddCustomAttributes(r, slog.String("unknown_model", model))
-			m.httpError(w, r, fmt.Sprintf("model %q is not supported", model), http.StatusBadRequest, boxName, nil)
-			return
-		}
+	// Require a model and check it's in our allowlist.
+	if model == "" {
+		m.httpError(w, r, "missing required \"model\" field in request body", http.StatusBadRequest, boxName, nil)
+		return
+	}
+	sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+	if !llmpricing.IsModelAllowed(provider, model) {
+		sloghttp.AddCustomAttributes(r, slog.String("unknown_model", model))
+		m.httpError(w, r, fmt.Sprintf("model %q is not supported", model), http.StatusBadRequest, boxName, nil)
+		return
 	}
 
 	// Restore the body for the proxy

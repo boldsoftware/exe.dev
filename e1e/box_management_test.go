@@ -460,22 +460,26 @@ func TestVanillaBox(t *testing.T) {
 		Provider     string
 		Path         string
 		ExtraHeaders []string
+		Body         string
 		WantStrings  []string
 	}{
 		{
 			Provider:     "anthropic",
 			Path:         "anthropic/v1/messages",
 			ExtraHeaders: []string{`-H "anthropic-version: 2023-06-01"`},
+			Body:         `{"model":"claude-sonnet-4-20250514"}`,
 			WantStrings:  []string{`"request_id"`},
 		},
 		{
 			Provider:    "openai",
 			Path:        "openai/v1/chat/completions",
+			Body:        `{"model":"gpt-4o"}`,
 			WantStrings: []string{`"error"`, `"type"`},
 		},
 		{
 			Provider:    "fireworks",
 			Path:        "fireworks/inference/v1/chat/completions",
+			Body:        `{"model":"accounts/fireworks/models/qwen3-8b"}`,
 			WantStrings: []string{`"error"`},
 		},
 	} {
@@ -486,7 +490,7 @@ func TestVanillaBox(t *testing.T) {
 				extra.WriteByte(' ')
 				extra.WriteString(h)
 			}
-			cmd := fmt.Sprintf(`curl --max-time 10 -s http://169.254.169.254/gateway/llm/%s -H "content-type: application/json"%s -d '{}'`, tc.Path, extra.String())
+			cmd := fmt.Sprintf(`curl --max-time 10 -s http://169.254.169.254/gateway/llm/%s -H "content-type: application/json"%s -d '%s'`, tc.Path, extra.String(), tc.Body)
 			var response string
 			deadline := time.Now().Add(30 * time.Second)
 			for {

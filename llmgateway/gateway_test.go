@@ -881,6 +881,21 @@ func TestGateway_UnknownModelRejected(t *testing.T) {
 			body:  `{"model": "accounts/fireworks/models/unknown-model", "messages": []}`,
 			model: "accounts/fireworks/models/unknown-model",
 		},
+		{
+			name: "empty model rejected for anthropic",
+			path: "/_/gateway/anthropic/v1/messages",
+			body: `{"messages": []}`,
+		},
+		{
+			name: "empty model rejected for openai",
+			path: "/_/gateway/openai/v1/chat/completions",
+			body: `{"messages": []}`,
+		},
+		{
+			name: "empty model rejected for fireworks",
+			path: "/_/gateway/fireworks/inference/v1/chat/completions",
+			body: `{"messages": []}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -896,8 +911,15 @@ func TestGateway_UnknownModelRejected(t *testing.T) {
 			if w.Code != http.StatusBadRequest {
 				t.Errorf("got status %d, want 400 for unknown model", w.Code)
 			}
-			if !strings.Contains(w.Body.String(), tt.model) {
-				t.Errorf("response body %q should mention the model %q", w.Body.String(), tt.model)
+			body := w.Body.String()
+			if tt.model != "" {
+				if !strings.Contains(body, tt.model) {
+					t.Errorf("response body %q should mention the model %q", body, tt.model)
+				}
+			} else {
+				if !strings.Contains(body, "missing required") {
+					t.Errorf("response body %q should mention missing required model", body)
+				}
 			}
 		})
 	}
