@@ -18,14 +18,17 @@ func startTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
 
 // ServerEnv describes the various servers running for an end-to-end test.
 type ServerEnv struct {
-	Exed       *ExedInstance
-	Exelets    []*ExeletInstance
-	Exeprox    *ExeproxInstance
-	SSHProxy   *TCPProxy
-	TCPProxies []*TCPProxy
-	SSHPiperd  *SSHPiperdInstance
-	Email      *EmailServer
-	Metricsd   *MetricsdInstance
+	Exed                 *ExedInstance
+	Exelets              []*ExeletInstance
+	Exeprox              *ExeproxInstance
+	SSHProxy             *TCPProxy
+	ExedHTTPProxy        *TCPProxy
+	ExedPiperPluginProxy *TCPProxy
+	ExedExeproxProxy     *TCPProxy
+	TCPProxies           []*TCPProxy
+	SSHPiperd            *SSHPiperdInstance
+	Email                *EmailServer
+	Metricsd             *MetricsdInstance
 }
 
 // StartServers takes a list of exelets that have already been started,
@@ -49,23 +52,16 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 		Metricsd:   metricsd,
 	}
 
-	// We have a circular dependency around ports.
+	// We have circular dependencies around ports.
 	// (This is not a problem in production,
 	// because we use fixed port numbers.)
 	//
-	// We need to start exed, which needs to know
-	// what port sshpiper is listening on,
-	// in order to give correct port numbers out to clients.
-	//
-	// We need to start sshpiper,
-	// which needs to know what exed's piper plugin port is.
-	//
-	// To work around this, we start a simple TCP proxy first,
-	// which will act as the sshpiper port.
-	// We then forward traffic from the proxy to
-	// the actual sshpiper instance.
-	// TODO: figure out why we're seeing connections
-	// before SetDestPort is called, and stop doing that.
+	// We use TCP proxies to break the cycles:
+	// services connect to stable proxy ports,
+	// and we retarget the proxies once actual ports are known.
+	// On exed restart, the proxies are retargeted to the new ports
+	// so that sshpiperd, exeprox, and exelets never see exed's actual ports.
+
 	sshProxy, err := startTCPProxy(ctx, "sshProxy")
 	if err != nil {
 		return env, err
@@ -75,6 +71,40 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 	if logPorts {
 		slog.InfoContext(ctx, "ssh proxy listening", "port", sshProxy.Port())
 	}
+
+	// Adopt "exedHTTPProxy" from tcpProxies.
+	var exedHTTPProxy *TCPProxy
+	for _, tp := range tcpProxies {
+		if tp.Name == "exedHTTPProxy" {
+			exedHTTPProxy = tp
+			break
+		}
+	}
+	if exedHTTPProxy == nil {
+		return env, fmt.Errorf("exedHTTPProxy not found in tcpProxies")
+	}
+	env.ExedHTTPProxy = exedHTTPProxy
+
+	// Remove adopted proxy from TCPProxies to avoid double-close in Stop.
+	filtered := make([]*TCPProxy, 0, len(env.TCPProxies))
+	for _, tp := range env.TCPProxies {
+		if tp != exedHTTPProxy {
+			filtered = append(filtered, tp)
+		}
+	}
+	env.TCPProxies = filtered
+
+	exedPiperPluginProxy, err := startTCPProxy(ctx, "exedPiperPluginProxy")
+	if err != nil {
+		return env, err
+	}
+	env.ExedPiperPluginProxy = exedPiperPluginProxy
+
+	exedExeproxProxy, err := startTCPProxy(ctx, "exedExeproxProxy")
+	if err != nil {
+		return env, err
+	}
+	env.ExedExeproxProxy = exedExeproxProxy
 
 	// Start email server first so we can pass its URL to exed.
 	es, err := StartEmailServer(ctx, verboseEmailServer)
@@ -102,13 +132,35 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 	}
 	env.Exed = ei
 
-	epi, err := StartExeprox(ctx, ei.HTTPPort, ei.ExeproxPort, []int{0, 0}, exeproxLog, logPorts)
+	// Point the proxies at exed's actual ports.
+	exedHTTPProxy.SetDestPort(ei.HTTPPort)
+	exedPiperPluginProxy.SetDestPort(ei.PiperPluginPort)
+	exedExeproxProxy.SetDestPort(ei.ExeproxPort)
+
+	// On restart, retarget all three proxies.
+	ei.onRestart = func(ei *ExedInstance) {
+		exedHTTPProxy.SetDestPort(ei.HTTPPort)
+		exedPiperPluginProxy.SetDestPort(ei.PiperPluginPort)
+		exedExeproxProxy.SetDestPort(ei.ExeproxPort)
+	}
+
+	// Exeprox uses -exed-http-port only for constructing redirect URLs
+	// to exed's web host (auth pages, logout, etc.), not for backend
+	// communication (which goes over gRPC via the exeprox proxy).
+	// Pass exed's actual HTTP port so redirect URLs reach exed directly.
+	//
+	// Limitation: after exed restarts, the port here becomes stale,
+	// so redirect URLs built by exeprox will point to the old port.
+	// No current tests exercise auth redirects after restart.
+	// We can't use the proxy port here because exed's
+	// isRequestOnMainPort rejects Host headers with non-main ports.
+	epi, err := StartExeprox(ctx, ei.HTTPPort, exedExeproxProxy.Port(), []int{0, 0}, exeproxLog, logPorts)
 	if err != nil {
 		return env, err
 	}
 	env.Exeprox = epi
 
-	pi, err := StartSSHPiperd(ctx, ei.PiperPluginPort, piperLog)
+	pi, err := StartSSHPiperd(ctx, exedPiperPluginProxy.Port(), piperLog)
 	if err != nil {
 		return env, err
 	}
@@ -133,6 +185,15 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 	if env.SSHProxy != nil {
 		env.SSHProxy.Close()
+	}
+	if env.ExedHTTPProxy != nil {
+		env.ExedHTTPProxy.Close()
+	}
+	if env.ExedPiperPluginProxy != nil {
+		env.ExedPiperPluginProxy.Close()
+	}
+	if env.ExedExeproxProxy != nil {
+		env.ExedExeproxProxy.Close()
 	}
 	for _, tcpProxy := range env.TCPProxies {
 		tcpProxy.Close()

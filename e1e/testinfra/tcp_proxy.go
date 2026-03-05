@@ -21,9 +21,6 @@ import (
 // need to know each other's address but we have to start one first.
 // In production this isn't an issue because we start them with
 // known, fixed, addresses and port numbers.
-//
-// TODO: figure out why we're seeing connections before SetDestPort is called,
-// and stop doing that.
 type TCPProxy struct {
 	Name     string                      // an arbitrary name used in logs
 	listener *net.TCPListener            // where to listen for connections

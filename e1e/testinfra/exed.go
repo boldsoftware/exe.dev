@@ -43,6 +43,8 @@ type ExedInstance struct {
 	emailServerURL string    // port for fake email server
 	whoamiPath     string    // -gh-whoami exed parameter
 	exedLoggerDone chan bool // closed when logging goroutine done
+
+	onRestart func(*ExedInstance) // called after a successful restart
 }
 
 // guidRegex picks out exed logs that are sent on the
@@ -566,11 +568,11 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	exedCmd := exec.Command(ei.binPath,
 		"-db="+ei.dbPath,
 		"-stage=test",
-		"-http=:"+strconv.Itoa(ei.HTTPPort),
-		"-ssh=:"+strconv.Itoa(ei.SSHPort),
-		"-piper-plugin=:"+strconv.Itoa(ei.PiperPluginPort),
+		"-http=:0",
+		"-ssh=localhost:0",
+		"-piper-plugin=localhost:0",
 		"-piperd-port="+strconv.Itoa(ei.piperPort),
-		"-exeprox-service-port="+strconv.Itoa(ei.ExeproxPort),
+		"-exeprox-service-port=0",
 		"-fake-email-server="+ei.emailServerURL,
 		"-gh-whoami="+ei.whoamiPath,
 		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
@@ -584,13 +586,13 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		"GOCOVERDIR="+ei.CoverDir,
 	)
 
-	if len(ei.ExtraPorts) > 0 {
-		portStrs := make([]string, len(ei.ExtraPorts))
-		for i, port := range ei.ExtraPorts {
-			portStrs[i] = strconv.Itoa(port)
+	// Pass 0s to let the OS assign fresh ports, avoiding port-reuse races.
+	if n := len(ei.ExtraPorts); n > 0 {
+		portStrs := make([]string, n)
+		for i := range portStrs {
+			portStrs[i] = "0"
 		}
-		extraPortsStr := strings.Join(portStrs, ",")
-		exedCmd.Env = append(exedCmd.Env, "TEST_PROXY_PORTS="+extraPortsStr)
+		exedCmd.Env = append(exedCmd.Env, "TEST_PROXY_PORTS="+strings.Join(portStrs, ","))
 	}
 
 	exedCmd.Env = addExedEnvKeys(exedCmd.Env)
@@ -637,6 +639,10 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.Errors = result.Errors
 	ei.GUIDLog = result.GUIDLog
 	ei.exedLoggerDone = result.LoggerDone
+
+	if ei.onRestart != nil {
+		ei.onRestart(ei)
+	}
 
 	elapsed := time.Since(start.Truncate(100 * time.Millisecond))
 	slog.InfoContext(ctx, "restarted exed", "elapsed", elapsed)

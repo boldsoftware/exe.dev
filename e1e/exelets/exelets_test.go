@@ -27,6 +27,9 @@ var serverEnv *testinfra.ServerEnv
 // exeletBinary is the exelet binary we build.
 var exeletBinary string
 
+// exeproxHTTPProxy is the TCP proxy in front of exeprox's HTTP port.
+var exeproxHTTPProxy *testinfra.TCPProxy
+
 // exeletLogFile is the file for exelet logs.
 var exeletLogFile *os.File
 
@@ -120,7 +123,7 @@ func TestMain(m *testing.M) {
 	}
 	go exedHTTPProxy.Serve()
 
-	exeproxHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exeproxHTTPProxy")
+	exeproxHTTPProxy, err = testinfra.NewTCPProxy(context.Background(), "exeproxHTTPProxy")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create exeprox HTTP proxy: %v\n", err)
 		exit(1)
@@ -158,7 +161,6 @@ func TestMain(m *testing.M) {
 		exit(1)
 	}
 
-	exedHTTPProxy.SetDestPort(serverEnv.Exed.HTTPPort)
 	exeproxHTTPProxy.SetDestPort(serverEnv.Exeprox.HTTPPort)
 
 	m.Run()
@@ -185,7 +187,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	}
 
 	for len(exelets) < count {
-		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.Exed.HTTPPort, serverEnv.Exeprox.HTTPPort, exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
+		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.ExedHTTPProxy.Port(), exeproxHTTPProxy.Port(), exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
 		if err != nil {
 			return fmt.Errorf("error starting exelet %d: %v", len(exelets), err)
 		}

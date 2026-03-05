@@ -396,13 +396,9 @@ func (e *testEnv) Close() error {
 func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{}
 
-	// We have a circular dependency:
-	// exelet needs to know exed's HTTP port,
-	// but exed needs to know exelet's address.
-	// Start a TCP proxy for exed HTTP that
-	// we can give to exelet immediately.
-	// TODO: figure out why we're seeing connections
-	// before setDestPort is called, and stop doing that.
+	// We use a TCP proxy for exed HTTP so that services connect
+	// to a stable proxy port. On exed restart, the proxy is
+	// retargeted to the new port.
 	exedHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exedHTTPProxy")
 	if err != nil {
 		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
@@ -441,6 +437,8 @@ func setup(ctrHost string) (*testEnv, error) {
 		Interval:  20 * time.Second,
 	}
 
+	// Both exedPort and metadataPort use the exed proxy because infra tests
+	// don't run exeprox; exed handles metadata requests directly.
 	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil, metricsConfig)
 	if err != nil {
 		return env, err
@@ -475,8 +473,6 @@ func setup(ctrHost string) (*testEnv, error) {
 	if err != nil {
 		return env, err
 	}
-
-	exedHTTPProxy.SetDestPort(serverEnv.Exed.HTTPPort)
 
 	return env, nil
 }
