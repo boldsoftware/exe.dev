@@ -1589,6 +1589,87 @@ func TestParseSSEStreamError(t *testing.T) {
 	}
 }
 
+func TestDoRetriesOnInvalidThinkingSignature(t *testing.T) {
+	// When the API returns "Invalid `signature` in `thinking` block",
+	// Do should retry with all thinking blocks stripped.
+	invalidSigResponse := `{"type":"error","error":{"type":"invalid_request_error","message":"messages.11.content.0: Invalid ` + "`" + `signature` + "`" + ` in ` + "`" + `thinking` + "`" + ` block"}}`
+	successResponse := mockSSEResponse("msg_retry", Claude46Opus, "It works!", 100, 50)
+
+	callCount := 0
+	transport := &roundTripFunc{fn: func(req *http.Request) (*http.Response, error) {
+		callCount++
+		if callCount == 1 {
+			// First call: return invalid signature error
+			return &http.Response{
+				StatusCode: 400,
+				Body:       io.NopCloser(strings.NewReader(invalidSigResponse)),
+				Header:     http.Header{"Content-Type": {"application/json"}},
+			}, nil
+		}
+		// Second call: check that thinking content blocks were stripped, return success.
+		// The request-level "thinking" config (budget_tokens) is fine; we check for
+		// signature which only appears in thinking content blocks.
+		body, _ := io.ReadAll(req.Body)
+		if strings.Contains(string(body), `"signature"`) {
+			t.Errorf("retry request still contains thinking signature")
+		}
+		if strings.Contains(string(body), `"old thinking"`) {
+			t.Errorf("retry request still contains thinking text")
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader(successResponse)),
+			Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		}, nil
+	}}
+
+	s := &Service{
+		APIKey:        "test-key",
+		Model:         Claude46Opus,
+		ThinkingLevel: llm.ThinkingLevelMedium,
+		HTTPC:         &http.Client{Transport: transport},
+		Backoff:       []time.Duration{time.Millisecond}, // fast backoff for tests
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "What is 2+2?"},
+			}},
+			{Role: llm.MessageRoleAssistant, Content: []llm.Content{
+				{Type: llm.ContentTypeThinking, Thinking: "old thinking", Signature: "bad-sig"},
+				{Type: llm.ContentTypeText, Text: "4"},
+			}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "And 3+3?"},
+			}},
+		},
+	}
+
+	resp, err := s.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do() error = %v, want nil", err)
+	}
+	if resp == nil {
+		t.Fatal("Do() response = nil")
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 HTTP calls, got %d", callCount)
+	}
+	if resp.Content[0].Text != "It works!" {
+		t.Errorf("unexpected response text: %q", resp.Content[0].Text)
+	}
+}
+
+// roundTripFunc implements http.RoundTripper using a function.
+type roundTripFunc struct {
+	fn func(*http.Request) (*http.Response, error)
+}
+
+func (f *roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f.fn(req)
+}
+
 func TestDoClientError(t *testing.T) {
 	// Create a mock HTTP client that returns a client error
 	mockResponse := `{"error": "bad request"}`

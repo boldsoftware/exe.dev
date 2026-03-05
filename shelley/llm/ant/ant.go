@@ -513,6 +513,49 @@ func (s *Service) fromLLMRequest(r *llm.Request) *request {
 	return req
 }
 
+// fromLLMRequestStrippingAllThinking is like fromLLMRequest but strips thinking
+// blocks from ALL assistant messages (including the last one). Used as a fallback
+// when the API rejects thinking signatures — e.g. after model version rotation.
+func (s *Service) fromLLMRequestStrippingAllThinking(r *llm.Request) *request {
+	model := cmp.Or(s.Model, DefaultModel)
+	maxTokens := cmp.Or(s.MaxTokens, maxOutputTokens(model))
+
+	var messages []message
+	for _, m := range r.Messages {
+		if m.Role == llm.MessageRoleAssistant {
+			m = stripThinkingBlocks(m)
+		}
+		msg := fromLLMMessage(m)
+		if len(msg.Content) > 0 {
+			messages = append(messages, msg)
+		}
+	}
+	req := &request{
+		Model:      model,
+		Messages:   messages,
+		MaxTokens:  maxTokens,
+		ToolChoice: fromLLMToolChoice(r.ToolChoice),
+		Tools:      mapped(r.Tools, fromLLMTool),
+		System:     mapped(r.System, fromLLMSystem),
+	}
+
+	if s.ThinkingLevel != llm.ThinkingLevelOff {
+		budget := s.ThinkingLevel.ThinkingBudgetTokens()
+		if maxTokens <= budget {
+			req.MaxTokens = budget + 1024
+		}
+		req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
+	}
+
+	if limit := s.maxOutputTokens(); req.MaxTokens > limit {
+		req.MaxTokens = limit
+		if req.Thinking != nil && req.Thinking.BudgetTokens >= req.MaxTokens {
+			req.Thinking.BudgetTokens = req.MaxTokens - 1024
+		}
+	}
+	return req
+}
+
 func toLLMUsage(u usage) llm.Usage {
 	return llm.Usage{
 		InputTokens:              u.InputTokens,
@@ -901,6 +944,10 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	}
 	payload = append(payload, '\n')
 
+	// strippedPayload is built lazily on the first "Invalid signature" error.
+	// It strips ALL thinking blocks from the request as a fallback.
+	var strippedPayload []byte
+
 	backoff := s.Backoff
 	if backoff == nil {
 		backoff = []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
@@ -981,6 +1028,23 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 				errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %v (url=%s, model=%s): %s", attempts+1, time.Now().Format(time.DateTime), resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 				continue
 			case resp.StatusCode >= 400 && resp.StatusCode < 500:
+				// Check for "Invalid signature" in thinking blocks — this happens
+				// when the model version rotated and old signatures are no longer valid.
+				// Retry once with ALL thinking blocks stripped from the request.
+				if strippedPayload == nil && strings.Contains(string(buf), "Invalid `signature`") {
+					slog.WarnContext(ctx, "anthropic_invalid_thinking_signature, retrying without thinking blocks",
+						"response", string(buf), "url", url, "model", s.Model)
+					strippedReq := s.fromLLMRequestStrippingAllThinking(ir)
+					strippedReq.Stream = true
+					strippedPayload, err = json.Marshal(strippedReq)
+					if err != nil {
+						return nil, errors.Join(errs, fmt.Errorf("failed to marshal stripped request: %w", err))
+					}
+					strippedPayload = append(strippedPayload, '\n')
+					payload = strippedPayload
+					errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: invalid thinking signature, retrying without thinking blocks", attempts+1, time.Now().Format(time.DateTime)))
+					continue
+				}
 				// some other 400, probably unrecoverable
 				slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
 				return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: status %v (url=%s, model=%s): %s", attempts+1, time.Now().Format(time.DateTime), resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
