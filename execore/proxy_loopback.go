@@ -250,6 +250,19 @@ func (lb *loopbackProxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerp
 	return resp.UserID, resp.PublicKey, nil
 }
 
+func (lb *loopbackProxyData) ResolveExe1Token(ctx context.Context, exe1Token string) (string, error) {
+	resp, err := lb.client.ResolveExe1Token(ctx, &proxyapi.ResolveExe1TokenRequest{
+		Exe1Token: exe1Token,
+	})
+	if err != nil {
+		return "", err
+	}
+	if !resp.TokenExists {
+		return "", errors.New("invalid token")
+	}
+	return resp.Exe0Token, nil
+}
+
 func (lb *loopbackProxyData) HLLNoteEvents(ctx context.Context, userID string, events []string) {
 	lb.client.HLLNoteEvents(ctx, &proxyapi.HLLNoteEventsRequest{
 		UserID: userID,

@@ -18,6 +18,7 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
+	"exe.dev/sshkey"
 	"exe.dev/tracing"
 	"exe.dev/wildcardcert"
 
@@ -465,6 +466,31 @@ func (es *exeproxServer) SSHKeyByFingerprint(ctx context.Context, req *proxyapi.
 		KeyExists: true,
 		UserID:    userID,
 		PublicKey: publicKey,
+	}
+	return ret, nil
+}
+
+// ResolveExe1Token resolves an exe1 token to its exe0 equivalent.
+func (es *exeproxServer) ResolveExe1Token(ctx context.Context, req *proxyapi.ResolveExe1TokenRequest) (*proxyapi.ResolveExe1TokenResponse, error) {
+	if !sshkey.ValidExe1Token(req.Exe1Token) {
+		return &proxyapi.ResolveExe1TokenResponse{TokenExists: false}, nil
+	}
+	exe0, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetExe1Token, exedb.GetExe1TokenParams{
+		Exe1:      req.Exe1Token,
+		ExpiresAt: time.Now().Truncate(time.Second),
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ret := &proxyapi.ResolveExe1TokenResponse{
+				TokenExists: false,
+			}
+			return ret, nil
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	ret := &proxyapi.ResolveExe1TokenResponse{
+		TokenExists: true,
+		Exe0Token:   exe0,
 	}
 	return ret, nil
 }

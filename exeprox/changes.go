@@ -47,6 +47,7 @@ func (p *Proxy) watchChanges() {
 		p.cookies.clear()
 		p.users.clear()
 		p.sshKeys.clear()
+		p.exe1Tokens.clear()
 	}
 }
 

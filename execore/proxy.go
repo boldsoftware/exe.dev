@@ -10,12 +10,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
+	"exe.dev/sshkey"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://vmname.exe.dev/,
@@ -447,6 +449,21 @@ func (pd *proxyData) ValidateMagicSecret(ctx context.Context, secret string) (us
 // GetSSHKeyByFingerprint implements [exeweb.ProxyData.GetSSHKeyByFingerprint].
 func (pd *proxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (userID, key string, err error) {
 	return pd.s.getSSHKeyByFingerprint(ctx, fingerprint)
+}
+
+// ResolveExe1Token implements [exeweb.ProxyData.ResolveExe1Token].
+func (pd *proxyData) ResolveExe1Token(ctx context.Context, exe1Token string) (string, error) {
+	if !sshkey.ValidExe1Token(exe1Token) {
+		return "", errors.New("invalid token")
+	}
+	exe0, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetExe1Token, exedb.GetExe1TokenParams{
+		Exe1:      exe1Token,
+		ExpiresAt: time.Now().Truncate(time.Second),
+	})
+	if err != nil {
+		return "", errors.New("invalid token")
+	}
+	return exe0, nil
 }
 
 // HLLNoteEvents implements [exeweb.ProxyData.HLLNoteEvents].

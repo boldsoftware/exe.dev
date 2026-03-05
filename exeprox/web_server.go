@@ -13,6 +13,7 @@ import (
 	"exe.dev/email"
 	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
+	"exe.dev/sshkey"
 
 	sloghttp "github.com/samber/slog-http"
 )
@@ -335,6 +336,21 @@ func (epd *exewebProxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerpr
 		return "", "", errors.New("invalid token")
 	}
 	return skd.userID, skd.publicKey, nil
+}
+
+// ResolveExe1Token implements [exeweb.ProxyData.ResolveExe1Token].
+func (epd *exewebProxyData) ResolveExe1Token(ctx context.Context, exe1Token string) (string, error) {
+	if !sshkey.ValidExe1Token(exe1Token) {
+		return "", errors.New("invalid token")
+	}
+	exe0, exists, err := epd.wp.proxy.exe1Tokens.lookup(ctx, epd.exeproxData(), exe1Token)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", errors.New("invalid token")
+	}
+	return exe0, nil
 }
 
 // HLLNoteEvents implements [exeweb.ProxyData.HLLNoteEvents].

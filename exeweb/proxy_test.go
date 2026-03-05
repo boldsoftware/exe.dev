@@ -215,6 +215,24 @@ func TestStripExeDevAuth(t *testing.T) {
 			comment: "invalid basic header should not be stripped",
 		},
 		{
+			name:    "bearer_exe1",
+			auth:    "Bearer exe1.opaque-token-value",
+			strip:   true,
+			comment: "exe1 token bearer auth should be stripped",
+		},
+		{
+			name:    "bearer_exe1_prefix_only",
+			auth:    "Bearer exe1.",
+			strip:   true,
+			comment: "exe1 token prefix with empty body should be stripped",
+		},
+		{
+			name:    "basic_exe1_password",
+			auth:    makeBasicAuth("anyuser", "exe1.opaque-token-value"),
+			strip:   true,
+			comment: "exe1 token basic password should be stripped",
+		},
+		{
 			name:    "digest_scheme",
 			auth:    `Digest username="admin", realm="test"`,
 			strip:   false,
@@ -753,6 +771,10 @@ func (m *mockProxyData) SendEmail(ctx context.Context, emailType email.Type, to,
 
 func (m *mockProxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error {
 	return nil
+}
+
+func (m *mockProxyData) ResolveExe1Token(ctx context.Context, exe1Token string) (string, error) {
+	return "", fmt.Errorf("not implemented")
 }
 
 func (m *mockProxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {

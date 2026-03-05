@@ -69,6 +69,9 @@ type ProxyData interface {
 	// It returns the user ID and SSH key.
 	GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (userID, key string, err error)
 
+	// ResolveExe1Token resolves an exe1 token to the underlying exe0 token.
+	ResolveExe1Token(ctx context.Context, exe1Token string) (exe0Token string, err error)
+
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(ctx context.Context, userID string, events []string)
 

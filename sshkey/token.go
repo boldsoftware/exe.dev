@@ -19,11 +19,34 @@ import (
 )
 
 const (
-	TokenPrefix      = "exe0."    // Token version prefix
+	TokenPrefix      = "exe0." // Token version prefix
+	Exe1TokenPrefix  = "exe1."
 	MaxTokenSize     = 8 * 1024   // 8KB token limit
 	MinUnixTimestamp = 946684800  // Jan 1, 2000
 	MaxUnixTimestamp = 4102444800 // Jan 1, 2100
+
+	// minExe1TokenBodyLen is the minimum length of the random body
+	// of an exe1 token (after the "exe1." prefix).
+	minExe1TokenBodyLen = 20
+	// maxExe1TokenBodyLen is the maximum length of the random body.
+	// crypto/rand.Text returns 26 chars; allow some headroom.
+	maxExe1TokenBodyLen = 40
 )
+
+// ValidExe1Token reports whether token has the expected exe1 token format:
+// the prefix "exe1." followed by at least 20 base32 characters (A-Z, 2-7).
+func ValidExe1Token(token string) bool {
+	body, ok := strings.CutPrefix(token, Exe1TokenPrefix)
+	if !ok || len(body) < minExe1TokenBodyLen || len(body) > maxExe1TokenBodyLen {
+		return false
+	}
+	for _, c := range body {
+		if !((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7')) {
+			return false
+		}
+	}
+	return true
+}
 
 // StrictInt is an integer type that rejects non-plain-integer JSON representations.
 // It rejects: decimals (.0), exponents (1e10), leading zeros, hex/octal, NaN/Infinity.
@@ -307,6 +330,37 @@ func ValidateToken(ctx context.Context, lg *slog.Logger, token, namespace string
 	}, nil
 }
 
+// claimCheck defines a single claim validation step.
+type claimCheck struct {
+	check         func(t *ParsedToken, now time.Time) error
+	forExe0ToExe1 bool
+}
+
+// claimChecks is the single source of truth for all claim validations.
+// Each entry specifies whether it applies during exe0-to-exe1 token trades.
+var claimChecks = []claimCheck{
+	{check: (*ParsedToken).validateExp, forExe0ToExe1: true},
+	{check: (*ParsedToken).validateNbf, forExe0ToExe1: false},
+}
+
+func (t *ParsedToken) validateExp(now time.Time) error {
+	if exp, ok := t.PayloadJSON["exp"].(float64); ok {
+		if int64(exp) < now.Unix() {
+			return errors.New("invalid token: token has expired")
+		}
+	}
+	return nil
+}
+
+func (t *ParsedToken) validateNbf(now time.Time) error {
+	if nbf, ok := t.PayloadJSON["nbf"].(float64); ok {
+		if int64(nbf) > now.Unix() {
+			return errors.New("invalid token: token is not yet valid")
+		}
+	}
+	return nil
+}
+
 // ValidateClaims checks the exp and nbf claims in the token payload.
 // Returns an error if the token is expired or not yet valid.
 func (t *ParsedToken) ValidateClaims() error {
@@ -316,15 +370,28 @@ func (t *ParsedToken) ValidateClaims() error {
 // ValidateClaimsAt checks the exp and nbf claims against a specific time.
 // This is useful for testing.
 func (t *ParsedToken) ValidateClaimsAt(now time.Time) error {
-	unixNow := now.Unix()
-	if exp, ok := t.PayloadJSON["exp"].(float64); ok {
-		if int64(exp) < unixNow {
-			return errors.New("invalid token: token has expired")
+	for _, c := range claimChecks {
+		if err := c.check(t, now); err != nil {
+			return err
 		}
 	}
-	if nbf, ok := t.PayloadJSON["nbf"].(float64); ok {
-		if int64(nbf) > unixNow {
-			return errors.New("invalid token: token is not yet valid")
+	return nil
+}
+
+// ValidateClaimsForTrade checks only the claims that apply during
+// exe0-to-exe1 token trades (exp but not nbf).
+func (t *ParsedToken) ValidateClaimsForTrade() error {
+	return t.ValidateClaimsForTradeAt(time.Now())
+}
+
+// ValidateClaimsForTradeAt is like ValidateClaimsForTrade but against a specific time.
+func (t *ParsedToken) ValidateClaimsForTradeAt(now time.Time) error {
+	for _, c := range claimChecks {
+		if !c.forExe0ToExe1 {
+			continue
+		}
+		if err := c.check(t, now); err != nil {
+			return err
 		}
 	}
 	return nil

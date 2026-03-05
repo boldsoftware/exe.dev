@@ -3671,6 +3671,102 @@ func (x *DeletedBoxShareTeam) GetBoxName() string {
 	return ""
 }
 
+type ResolveExe1TokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exe1Token     string                 `protobuf:"bytes,1,opt,name=exe1_token,json=exe1Token,proto3" json:"exe1_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveExe1TokenRequest) Reset() {
+	*x = ResolveExe1TokenRequest{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveExe1TokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveExe1TokenRequest) ProtoMessage() {}
+
+func (x *ResolveExe1TokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveExe1TokenRequest.ProtoReflect.Descriptor instead.
+func (*ResolveExe1TokenRequest) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *ResolveExe1TokenRequest) GetExe1Token() string {
+	if x != nil {
+		return x.Exe1Token
+	}
+	return ""
+}
+
+type ResolveExe1TokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TokenExists   bool                   `protobuf:"varint,1,opt,name=token_exists,json=tokenExists,proto3" json:"token_exists,omitempty"`
+	Exe0Token     string                 `protobuf:"bytes,2,opt,name=exe0_token,json=exe0Token,proto3" json:"exe0_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveExe1TokenResponse) Reset() {
+	*x = ResolveExe1TokenResponse{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveExe1TokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveExe1TokenResponse) ProtoMessage() {}
+
+func (x *ResolveExe1TokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveExe1TokenResponse.ProtoReflect.Descriptor instead.
+func (*ResolveExe1TokenResponse) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *ResolveExe1TokenResponse) GetTokenExists() bool {
+	if x != nil {
+		return x.TokenExists
+	}
+	return false
+}
+
+func (x *ResolveExe1TokenResponse) GetExe0Token() string {
+	if x != nil {
+		return x.Exe0Token
+	}
+	return ""
+}
+
 var File_exe_proxy_v1_proxy_proto protoreflect.FileDescriptor
 
 const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
@@ -3918,7 +4014,14 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x13DeletedBoxShareTeam\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12\x15\n" +
 	"\x06box_id\x18\x02 \x01(\x03R\x05boxId\x12\x19\n" +
-	"\bbox_name\x18\x03 \x01(\tR\aboxName2\xb7\x13\n" +
+	"\bbox_name\x18\x03 \x01(\tR\aboxName\"8\n" +
+	"\x17ResolveExe1TokenRequest\x12\x1d\n" +
+	"\n" +
+	"exe1_token\x18\x01 \x01(\tR\texe1Token\"\\\n" +
+	"\x18ResolveExe1TokenResponse\x12!\n" +
+	"\ftoken_exists\x18\x01 \x01(\bR\vtokenExists\x12\x1d\n" +
+	"\n" +
+	"exe0_token\x18\x02 \x01(\tR\texe0Token2\x9a\x14\n" +
 	"\x10ProxyInfoService\x12F\n" +
 	"\aBoxInfo\x12\x1c.exe.proxy.v1.BoxInfoRequest\x1a\x1d.exe.proxy.v1.BoxInfoResponse\x12O\n" +
 	"\n" +
@@ -3942,7 +4045,8 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	" IsBoxShelleySharedWithTeamMember\x125.exe.proxy.v1.IsBoxShelleySharedWithTeamMemberRequest\x1a6.exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse\x12[\n" +
 	"\x0eCheckShareLink\x12#.exe.proxy.v1.CheckShareLinkRequest\x1a$.exe.proxy.v1.CheckShareLinkResponse\x12j\n" +
 	"\x13ValidateMagicSecret\x12(.exe.proxy.v1.ValidateMagicSecretRequest\x1a).exe.proxy.v1.ValidateMagicSecretResponse\x12j\n" +
-	"\x13SSHKeyByFingerprint\x12(.exe.proxy.v1.SSHKeyByFingerprintRequest\x1a).exe.proxy.v1.SSHKeyByFingerprintResponse\x12X\n" +
+	"\x13SSHKeyByFingerprint\x12(.exe.proxy.v1.SSHKeyByFingerprintRequest\x1a).exe.proxy.v1.SSHKeyByFingerprintResponse\x12a\n" +
+	"\x10ResolveExe1Token\x12%.exe.proxy.v1.ResolveExe1TokenRequest\x1a&.exe.proxy.v1.ResolveExe1TokenResponse\x12X\n" +
 	"\rHLLNoteEvents\x12\".exe.proxy.v1.HLLNoteEventsRequest\x1a#.exe.proxy.v1.HLLNoteEventsResponse\x12\x82\x01\n" +
 	"\x1bCheckAndIncrementEmailQuota\x120.exe.proxy.v1.CheckAndIncrementEmailQuotaRequest\x1a1.exe.proxy.v1.CheckAndIncrementEmailQuotaResponse\x12L\n" +
 	"\tSendEmail\x12\x1e.exe.proxy.v1.SendEmailRequest\x1a\x1f.exe.proxy.v1.SendEmailResponse\x12\x7f\n" +
@@ -3961,7 +4065,7 @@ func file_exe_proxy_v1_proxy_proto_rawDescGZIP() []byte {
 	return file_exe_proxy_v1_proxy_proto_rawDescData
 }
 
-var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 65)
+var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
 var file_exe_proxy_v1_proxy_proto_goTypes = []any{
 	(*BoxInfoRequest)(nil),                           // 0: exe.proxy.v1.BoxInfoRequest
 	(*BoxInfoResponse)(nil),                          // 1: exe.proxy.v1.BoxInfoResponse
@@ -4028,16 +4132,18 @@ var file_exe_proxy_v1_proxy_proto_goTypes = []any{
 	(*UserChanged)(nil),                              // 62: exe.proxy.v1.UserChanged
 	(*DeletedTeamMember)(nil),                        // 63: exe.proxy.v1.DeletedTeamMember
 	(*DeletedBoxShareTeam)(nil),                      // 64: exe.proxy.v1.DeletedBoxShareTeam
-	(*timestamppb.Timestamp)(nil),                    // 65: google.protobuf.Timestamp
+	(*ResolveExe1TokenRequest)(nil),                  // 65: exe.proxy.v1.ResolveExe1TokenRequest
+	(*ResolveExe1TokenResponse)(nil),                 // 66: exe.proxy.v1.ResolveExe1TokenResponse
+	(*timestamppb.Timestamp)(nil),                    // 67: google.protobuf.Timestamp
 }
 var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	2,  // 0: exe.proxy.v1.BoxInfoResponse.route:type_name -> exe.proxy.v1.BoxRoute
-	65, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
-	65, // 2: exe.proxy.v1.UserInfoResponse.when:type_name -> google.protobuf.Timestamp
+	67, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
+	67, // 2: exe.proxy.v1.UserInfoResponse.when:type_name -> google.protobuf.Timestamp
 	7,  // 3: exe.proxy.v1.UserInfoResponse.user_info:type_name -> exe.proxy.v1.UserInfo
 	10, // 4: exe.proxy.v1.GetPublicIPsResponse.public_ip:type_name -> exe.proxy.v1.PublicIP
 	19, // 5: exe.proxy.v1.CheckAndRefreshLLMCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
-	65, // 6: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
+	67, // 6: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
 	20, // 7: exe.proxy.v1.CreditInfo.plan:type_name -> exe.proxy.v1.Plan
 	19, // 8: exe.proxy.v1.LLMDebitCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
 	55, // 9: exe.proxy.v1.ChangesResponse.deleted_box:type_name -> exe.proxy.v1.DeletedBox
@@ -4051,7 +4157,7 @@ var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	63, // 17: exe.proxy.v1.ChangesResponse.deleted_team_member:type_name -> exe.proxy.v1.DeletedTeamMember
 	64, // 18: exe.proxy.v1.ChangesResponse.deleted_box_share_team:type_name -> exe.proxy.v1.DeletedBoxShareTeam
 	2,  // 19: exe.proxy.v1.UpdatedBoxRoute.route:type_name -> exe.proxy.v1.BoxRoute
-	65, // 20: exe.proxy.v1.UserChanged.when:type_name -> google.protobuf.Timestamp
+	67, // 20: exe.proxy.v1.UserChanged.when:type_name -> google.protobuf.Timestamp
 	7,  // 21: exe.proxy.v1.UserChanged.user_info:type_name -> exe.proxy.v1.UserInfo
 	0,  // 22: exe.proxy.v1.ProxyInfoService.BoxInfo:input_type -> exe.proxy.v1.BoxInfoRequest
 	3,  // 23: exe.proxy.v1.ProxyInfoService.CookieInfo:input_type -> exe.proxy.v1.CookieInfoRequest
@@ -4073,38 +4179,40 @@ var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	39, // 39: exe.proxy.v1.ProxyInfoService.CheckShareLink:input_type -> exe.proxy.v1.CheckShareLinkRequest
 	41, // 40: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:input_type -> exe.proxy.v1.ValidateMagicSecretRequest
 	43, // 41: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:input_type -> exe.proxy.v1.SSHKeyByFingerprintRequest
-	45, // 42: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:input_type -> exe.proxy.v1.HLLNoteEventsRequest
-	47, // 43: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:input_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
-	49, // 44: exe.proxy.v1.ProxyInfoService.SendEmail:input_type -> exe.proxy.v1.SendEmailRequest
-	51, // 45: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:input_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
-	53, // 46: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
-	1,  // 47: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
-	4,  // 48: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
-	6,  // 49: exe.proxy.v1.ProxyInfoService.UserInfo:output_type -> exe.proxy.v1.UserInfoResponse
-	9,  // 50: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
-	12, // 51: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
-	14, // 52: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
-	16, // 53: exe.proxy.v1.ProxyInfoService.TopLevelCert:output_type -> exe.proxy.v1.TopLevelCertResponse
-	18, // 54: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
-	22, // 55: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
-	24, // 56: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
-	26, // 57: exe.proxy.v1.ProxyInfoService.LLMUseCredits:output_type -> exe.proxy.v1.LLMUseCreditsResponse
-	28, // 58: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:output_type -> exe.proxy.v1.CreateAuthCookieResponse
-	30, // 59: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:output_type -> exe.proxy.v1.DeleteAuthCookieResponse
-	32, // 60: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
-	34, // 61: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:output_type -> exe.proxy.v1.HasUserAccessToBoxResponse
-	36, // 62: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:output_type -> exe.proxy.v1.IsBoxSharedWithUserTeamResponse
-	38, // 63: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:output_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
-	40, // 64: exe.proxy.v1.ProxyInfoService.CheckShareLink:output_type -> exe.proxy.v1.CheckShareLinkResponse
-	42, // 65: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:output_type -> exe.proxy.v1.ValidateMagicSecretResponse
-	44, // 66: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:output_type -> exe.proxy.v1.SSHKeyByFingerprintResponse
-	46, // 67: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:output_type -> exe.proxy.v1.HLLNoteEventsResponse
-	48, // 68: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:output_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
-	50, // 69: exe.proxy.v1.ProxyInfoService.SendEmail:output_type -> exe.proxy.v1.SendEmailResponse
-	52, // 70: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:output_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
-	54, // 71: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
-	47, // [47:72] is the sub-list for method output_type
-	22, // [22:47] is the sub-list for method input_type
+	65, // 42: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:input_type -> exe.proxy.v1.ResolveExe1TokenRequest
+	45, // 43: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:input_type -> exe.proxy.v1.HLLNoteEventsRequest
+	47, // 44: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:input_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
+	49, // 45: exe.proxy.v1.ProxyInfoService.SendEmail:input_type -> exe.proxy.v1.SendEmailRequest
+	51, // 46: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:input_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
+	53, // 47: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
+	1,  // 48: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
+	4,  // 49: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
+	6,  // 50: exe.proxy.v1.ProxyInfoService.UserInfo:output_type -> exe.proxy.v1.UserInfoResponse
+	9,  // 51: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
+	12, // 52: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
+	14, // 53: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
+	16, // 54: exe.proxy.v1.ProxyInfoService.TopLevelCert:output_type -> exe.proxy.v1.TopLevelCertResponse
+	18, // 55: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
+	22, // 56: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
+	24, // 57: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
+	26, // 58: exe.proxy.v1.ProxyInfoService.LLMUseCredits:output_type -> exe.proxy.v1.LLMUseCreditsResponse
+	28, // 59: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:output_type -> exe.proxy.v1.CreateAuthCookieResponse
+	30, // 60: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:output_type -> exe.proxy.v1.DeleteAuthCookieResponse
+	32, // 61: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
+	34, // 62: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:output_type -> exe.proxy.v1.HasUserAccessToBoxResponse
+	36, // 63: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:output_type -> exe.proxy.v1.IsBoxSharedWithUserTeamResponse
+	38, // 64: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:output_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
+	40, // 65: exe.proxy.v1.ProxyInfoService.CheckShareLink:output_type -> exe.proxy.v1.CheckShareLinkResponse
+	42, // 66: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:output_type -> exe.proxy.v1.ValidateMagicSecretResponse
+	44, // 67: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:output_type -> exe.proxy.v1.SSHKeyByFingerprintResponse
+	66, // 68: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:output_type -> exe.proxy.v1.ResolveExe1TokenResponse
+	46, // 69: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:output_type -> exe.proxy.v1.HLLNoteEventsResponse
+	48, // 70: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:output_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
+	50, // 71: exe.proxy.v1.ProxyInfoService.SendEmail:output_type -> exe.proxy.v1.SendEmailResponse
+	52, // 72: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:output_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
+	54, // 73: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
+	48, // [48:74] is the sub-list for method output_type
+	22, // [22:48] is the sub-list for method input_type
 	22, // [22:22] is the sub-list for extension type_name
 	22, // [22:22] is the sub-list for extension extendee
 	0,  // [0:22] is the sub-list for field type_name
@@ -4137,7 +4245,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_proxy_v1_proxy_proto_rawDesc), len(file_exe_proxy_v1_proxy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   65,
+			NumMessages:   67,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

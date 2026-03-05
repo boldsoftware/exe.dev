@@ -1,0 +1,6 @@
+CREATE TABLE exe1_tokens (
+    exe1 TEXT PRIMARY KEY,
+    exe0 TEXT NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

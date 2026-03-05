@@ -84,6 +84,10 @@ type ExeproxData interface {
 	// The bool result reports whether the key exists.
 	SSHKeyByFingerprint(ctx context.Context, fingerprint string) (sshKeyData, bool, error)
 
+	// ResolveExe1Token resolves an exe1 token to its exe0 equivalent.
+	// The bool result reports whether the token exists.
+	ResolveExe1Token(ctx context.Context, exe1Token string) (exe0Token string, exists bool, err error)
+
 	// ValidateMagicSecret consumes and validates a magic secret
 	// created by exed during the authentication flow.
 	// TODO(ian): There should be a better approach,
@@ -418,6 +422,20 @@ func (ged *grpcExeproxData) SSHKeyByFingerprint(ctx context.Context, fingerprint
 		publicKey:   resp.PublicKey,
 	}
 	return skd, true, nil
+}
+
+// ResolveExe1Token resolves an exe1 token via gRPC.
+func (ged *grpcExeproxData) ResolveExe1Token(ctx context.Context, exe1Token string) (string, bool, error) {
+	resp, err := ged.client.ResolveExe1Token(ctx, &proxyapi.ResolveExe1TokenRequest{
+		Exe1Token: exe1Token,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if !resp.TokenExists {
+		return "", false, nil
+	}
+	return resp.Exe0Token, true, nil
 }
 
 // ValidateMagicSecret consumes and validates a magic secret.

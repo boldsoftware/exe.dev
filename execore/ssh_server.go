@@ -22,6 +22,7 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/googleoauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/sshkey"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
 	"github.com/anmitsu/go-shlex"
@@ -555,7 +556,11 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		if line == "" {
 			continue
 		}
-		ss.server.slog().DebugContext(ctx, "command received", "line", line)
+		debugParts, _ := shlex.Split(line, true)
+		if debugParts == nil {
+			debugParts = strings.Fields(line)
+		}
+		ss.server.slog().DebugContext(ctx, "command received", "line", redactCommand(debugParts))
 
 		// Add to shell history in database (best-effort), skip sensitive content
 		if shouldSaveToHistory(line) {
@@ -608,8 +613,8 @@ func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.
 
 	rc := ss.commands.ExecuteCommand(ctx, cc, parts)
 
-	// Build log attributes
-	cmdStr := strings.Join(parts, " ")
+	// Build log attributes, redacting bearer tokens from exe0-to-exe1.
+	cmdStr := redactCommand(parts)
 	attrs := []any{
 		"log_type", "ssh_command",
 		"command", cmdStr,
@@ -1538,5 +1543,27 @@ func (ss *SSHServer) normalizeBoxName(name string) string {
 }
 
 func shouldSaveToHistory(line string) bool {
-	return !strings.Contains(line, "PRIVATE KEY")
+	if strings.Contains(line, "PRIVATE KEY") {
+		return false
+	}
+	if strings.Contains(line, "exe0-to-exe1") {
+		return false
+	}
+	return true
+}
+
+// redactCommand joins command parts into a string, replacing exe0/exe1
+// bearer tokens with [REDACTED].
+func redactCommand(parts []string) string {
+	redacted := make([]string, len(parts))
+	for i, p := range parts {
+		if strings.HasPrefix(p, sshkey.TokenPrefix) {
+			redacted[i] = sshkey.TokenPrefix + "[REDACTED]"
+		} else if strings.HasPrefix(p, sshkey.Exe1TokenPrefix) {
+			redacted[i] = sshkey.Exe1TokenPrefix + "[REDACTED]"
+		} else {
+			redacted[i] = p
+		}
+	}
+	return strings.Join(redacted, " ")
 }

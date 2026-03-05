@@ -708,6 +708,16 @@ func (ps *ProxyServer) ValidateVMToken(ctx context.Context, token, boxName strin
 // validateToken validates an SSH-signed token and
 // returns the user ID and payload.
 func (ps *ProxyServer) validateToken(ctx context.Context, token, namespace string) (*sshkey.TokenResult, error) {
+	if strings.HasPrefix(token, sshkey.Exe1TokenPrefix) {
+		if !sshkey.ValidExe1Token(token) {
+			return nil, errors.New("invalid token")
+		}
+		resolved, err := ps.Data.ResolveExe1Token(ctx, token)
+		if err != nil {
+			return nil, errors.New("invalid token")
+		}
+		token = resolved
+	}
 	tr, err := sshkey.ValidateToken(ctx, ps.Lg, token, namespace, ps.Data.GetSSHKeyByFingerprint)
 	if err != nil {
 		return nil, err
@@ -1331,13 +1341,13 @@ func stripExeDevAuth(req *http.Request) {
 	const bearer = "Bearer "
 	if len(auth) >= len(bearer) && strings.EqualFold(auth[:len(bearer)], bearer) {
 		token := strings.TrimSpace(auth[len(bearer):])
-		if strings.HasPrefix(token, sshkey.TokenPrefix) || strings.HasPrefix(token, AppTokenPrefix) {
+		if strings.HasPrefix(token, sshkey.TokenPrefix) || strings.HasPrefix(token, sshkey.Exe1TokenPrefix) || strings.HasPrefix(token, AppTokenPrefix) {
 			req.Header.Del("Authorization")
 		}
 		return
 	}
 	if _, password, ok := req.BasicAuth(); ok {
-		if strings.HasPrefix(password, sshkey.TokenPrefix) || strings.HasPrefix(password, AppTokenPrefix) {
+		if strings.HasPrefix(password, sshkey.TokenPrefix) || strings.HasPrefix(password, sshkey.Exe1TokenPrefix) || strings.HasPrefix(password, AppTokenPrefix) {
 			req.Header.Del("Authorization")
 		}
 	}

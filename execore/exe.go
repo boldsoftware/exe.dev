@@ -689,6 +689,13 @@ var bootCleanups = []struct {
 			return exedb.WithTx1(db, ctx, (*exedb.Queries).DeleteOldCheckoutParams, cutoff)
 		},
 	},
+	{
+		name: "expired exe1 tokens",
+		fn: func(ctx context.Context, _ *slog.Logger, db *sqlite.DB) error {
+			cutoff := sqlite.NormalizeTime(time.Now())
+			return exedb.WithTx1(db, ctx, (*exedb.Queries).DeleteExpiredExe1Tokens, cutoff)
+		},
+	},
 }
 
 func cleanupOnBoot(slog *slog.Logger, db *sqlite.DB) {

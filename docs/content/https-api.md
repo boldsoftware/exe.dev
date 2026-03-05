@@ -134,6 +134,23 @@ git config credential.helper '!f() { echo "password=$(cat ~/.ssh/exe_dev_token)"
 ```bash
 git clone https://myvm.exe.xyz/repo.git
 ```
+## Shorter tokens
+
+exe0 tokens are long and contain some information in plaintext.
+
+If you want a short, opaque token, you may ask exe.dev to provide an exe1 token, which is nothing more than a handle for an exe0 token.
+
+```bash
+ssh exe.dev exe0-to-exe1 "$TOKEN"
+```
+
+This returns an exe1 token. The server validates the exe0 token before issuing an exe1 token. If the exe0 token is [for a particular VM](#authentication-to-vms), you must specify that for the validation to succeed.
+
+```bash
+ssh exe.dev exe0-to-exe1 --vm=vm-name "$TOKEN"
+```
+
+exe1 tokens work everywhere exe0 tokens work, in exactly the same way.
 
 ## Token details
 
@@ -149,7 +166,7 @@ Available fields:
 
 - `nbf`: specifies a UTC unix timestamp before which the token is not yet valid. For example, `{"nbf": 1922918400}` means this token cannot be used until Dec 5, 2030. The default `nbf` is the distant past.
 
-- `cmds`: specifies which exe.dev commands this token can execute. Subcommands are specified as a single string, such as `"ssh-key list"`. Including a parent command like `"ssh-key"` does _not_ grant access to its subcommands. Flags, arguments, and options (like `--json`) are always allowed when the base command is permitted; `cmds` controls command names only. The default `cmds` is `["help","ls","new","whoami","ssh-key list","share show"]`.
+- `cmds`: specifies which exe.dev commands this token can execute. Subcommands are specified as a single string, such as `"ssh-key list"`. Including a parent command like `"ssh-key"` does _not_ grant access to its subcommands. Flags, arguments, and options (like `--json`) are always allowed when the base command is permitted; `cmds` controls command names only. The default `cmds` is `["help","ls","new","whoami","ssh-key list","share show","exe0-to-exe1"]`.
 
 - `ctx`: uninterpreted by exe.dev. Can be used to differentiate otherwise-identical tokens, or to pass data to your VM server (see [Authentication to VMs](#authentication-to-vms)). Must contain valid JSON that complies with the restrictions in the next section.
 

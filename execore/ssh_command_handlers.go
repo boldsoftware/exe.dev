@@ -437,6 +437,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
+			Name:              "exe0-to-exe1",
+			Hidden:            true,
+			Description:       "Trade an exe0 token for a shorter exe1 token",
+			Usage:             "exe0-to-exe1 [--vm=VMNAME] <exe0-token>",
+			HasPositionalArgs: true,
+			FlagSetFunc:       exe0ToExe1Flags,
+			Handler:           ss.handleExe0ToExe1Command,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {

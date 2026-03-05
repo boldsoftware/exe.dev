@@ -582,6 +582,9 @@ func TestTokenCmdsAllow(t *testing.T) {
 		if !tokenCmdsAllow(nil, "share show") {
 			t.Error("expected share show to be allowed with nil cmds")
 		}
+		if !tokenCmdsAllow(nil, "exe0-to-exe1") {
+			t.Error("expected exe0-to-exe1 to be allowed with nil cmds")
+		}
 		// ssh-key add is NOT in default list
 		if tokenCmdsAllow(nil, "ssh-key add") {
 			t.Error("expected ssh-key add to be blocked with nil cmds")

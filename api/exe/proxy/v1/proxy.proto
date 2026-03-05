@@ -87,6 +87,9 @@ service ProxyInfoService {
   // SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
   rpc SSHKeyByFingerprint(SSHKeyByFingerprintRequest) returns (SSHKeyByFingerprintResponse);
 
+  // ResolveExe1Token resolves an exe1 token to its corresponding exe0 token.
+  rpc ResolveExe1Token(ResolveExe1TokenRequest) returns (ResolveExe1TokenResponse);
+
   // HLLNoteEvents notes events for the HyperLogLog tracker.
   rpc HLLNoteEvents(HLLNoteEventsRequest) returns (HLLNoteEventsResponse);
 
@@ -474,4 +477,13 @@ message DeletedBoxShareTeam {
   string team_id = 1;
   int64 box_id = 2;
   string box_name = 3;
+}
+
+message ResolveExe1TokenRequest {
+  string exe1_token = 1;
+}
+
+message ResolveExe1TokenResponse {
+  bool token_exists = 1;
+  string exe0_token = 2;
 }

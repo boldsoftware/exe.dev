@@ -171,6 +171,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
+	if q.deleteExpiredExe1TokensStmt, err = db.PrepareContext(ctx, deleteExpiredExe1Tokens); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteExpiredExe1Tokens: %w", err)
+	}
 	if q.deleteExpiredPendingTeamInvitesStmt, err = db.PrepareContext(ctx, deleteExpiredPendingTeamInvites); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingTeamInvites: %w", err)
 	}
@@ -371,6 +374,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
+	}
+	if q.getExe1TokenStmt, err = db.PrepareContext(ctx, getExe1Token); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExe1Token: %w", err)
+	}
+	if q.getExe1TokenByExe0Stmt, err = db.PrepareContext(ctx, getExe1TokenByExe0); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExe1TokenByExe0: %w", err)
 	}
 	if q.getGLBRolloutPrefixesStmt, err = db.PrepareContext(ctx, getGLBRolloutPrefixes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGLBRolloutPrefixes: %w", err)
@@ -662,6 +671,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
+	}
+	if q.insertExe1TokenStmt, err = db.PrepareContext(ctx, insertExe1Token); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertExe1Token: %w", err)
 	}
 	if q.insertIntegrationStmt, err = db.PrepareContext(ctx, insertIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertIntegration: %w", err)
@@ -1261,6 +1273,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteExpiredExe1TokensStmt != nil {
+		if cerr := q.deleteExpiredExe1TokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteExpiredExe1TokensStmt: %w", cerr)
+		}
+	}
 	if q.deleteExpiredPendingTeamInvitesStmt != nil {
 		if cerr := q.deleteExpiredPendingTeamInvitesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteExpiredPendingTeamInvitesStmt: %w", cerr)
@@ -1594,6 +1611,16 @@ func (q *Queries) Close() error {
 	if q.getEmailVerificationByTokenStmt != nil {
 		if cerr := q.getEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getExe1TokenStmt != nil {
+		if cerr := q.getExe1TokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExe1TokenStmt: %w", cerr)
+		}
+	}
+	if q.getExe1TokenByExe0Stmt != nil {
+		if cerr := q.getExe1TokenByExe0Stmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExe1TokenByExe0Stmt: %w", cerr)
 		}
 	}
 	if q.getGLBRolloutPrefixesStmt != nil {
@@ -2079,6 +2106,11 @@ func (q *Queries) Close() error {
 	if q.insertEmailVerificationStmt != nil {
 		if cerr := q.insertEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertEmailVerificationStmt: %w", cerr)
+		}
+	}
+	if q.insertExe1TokenStmt != nil {
+		if cerr := q.insertExe1TokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertExe1TokenStmt: %w", cerr)
 		}
 	}
 	if q.insertIntegrationStmt != nil {
@@ -2749,6 +2781,7 @@ type Queries struct {
 	deleteEmailBounceStmt                         *sql.Stmt
 	deleteEmailQualityBypassStmt                  *sql.Stmt
 	deleteEmailVerificationByTokenStmt            *sql.Stmt
+	deleteExpiredExe1TokensStmt                   *sql.Stmt
 	deleteExpiredPendingTeamInvitesStmt           *sql.Stmt
 	deleteIntegrationStmt                         *sql.Stmt
 	deleteIntegrationAttachmentStmt               *sql.Stmt
@@ -2816,6 +2849,8 @@ type Queries struct {
 	getEmailVerificationByEmailStmt               *sql.Stmt
 	getEmailVerificationByPartialTokenStmt        *sql.Stmt
 	getEmailVerificationByTokenStmt               *sql.Stmt
+	getExe1TokenStmt                              *sql.Stmt
+	getExe1TokenByExe0Stmt                        *sql.Stmt
 	getGLBRolloutPrefixesStmt                     *sql.Stmt
 	getHLLSketchStmt                              *sql.Stmt
 	getIPAbuseFilterDisabledStmt                  *sql.Stmt
@@ -2913,6 +2948,7 @@ type Queries struct {
 	insertEmailBounceStmt                         *sql.Stmt
 	insertEmailQualityBypassStmt                  *sql.Stmt
 	insertEmailVerificationStmt                   *sql.Stmt
+	insertExe1TokenStmt                           *sql.Stmt
 	insertIntegrationStmt                         *sql.Stmt
 	insertIntegrationAttachmentStmt               *sql.Stmt
 	insertOAuthStateStmt                          *sql.Stmt
@@ -3084,6 +3120,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailBounceStmt:                         q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:                  q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:            q.deleteEmailVerificationByTokenStmt,
+		deleteExpiredExe1TokensStmt:                   q.deleteExpiredExe1TokensStmt,
 		deleteExpiredPendingTeamInvitesStmt:           q.deleteExpiredPendingTeamInvitesStmt,
 		deleteIntegrationStmt:                         q.deleteIntegrationStmt,
 		deleteIntegrationAttachmentStmt:               q.deleteIntegrationAttachmentStmt,
@@ -3151,6 +3188,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByEmailStmt:               q.getEmailVerificationByEmailStmt,
 		getEmailVerificationByPartialTokenStmt:        q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:               q.getEmailVerificationByTokenStmt,
+		getExe1TokenStmt:                              q.getExe1TokenStmt,
+		getExe1TokenByExe0Stmt:                        q.getExe1TokenByExe0Stmt,
 		getGLBRolloutPrefixesStmt:                     q.getGLBRolloutPrefixesStmt,
 		getHLLSketchStmt:                              q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:                  q.getIPAbuseFilterDisabledStmt,
@@ -3248,6 +3287,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertEmailBounceStmt:                         q.insertEmailBounceStmt,
 		insertEmailQualityBypassStmt:                  q.insertEmailQualityBypassStmt,
 		insertEmailVerificationStmt:                   q.insertEmailVerificationStmt,
+		insertExe1TokenStmt:                           q.insertExe1TokenStmt,
 		insertIntegrationStmt:                         q.insertIntegrationStmt,
 		insertIntegrationAttachmentStmt:               q.insertIntegrationAttachmentStmt,
 		insertOAuthStateStmt:                          q.insertOAuthStateStmt,

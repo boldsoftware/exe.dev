@@ -42,6 +42,7 @@ const (
 	ProxyInfoService_CheckShareLink_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/CheckShareLink"
 	ProxyInfoService_ValidateMagicSecret_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/ValidateMagicSecret"
 	ProxyInfoService_SSHKeyByFingerprint_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/SSHKeyByFingerprint"
+	ProxyInfoService_ResolveExe1Token_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/ResolveExe1Token"
 	ProxyInfoService_HLLNoteEvents_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/HLLNoteEvents"
 	ProxyInfoService_CheckAndIncrementEmailQuota_FullMethodName      = "/exe.proxy.v1.ProxyInfoService/CheckAndIncrementEmailQuota"
 	ProxyInfoService_SendEmail_FullMethodName                        = "/exe.proxy.v1.ProxyInfoService/SendEmail"
@@ -110,6 +111,8 @@ type ProxyInfoServiceClient interface {
 	ValidateMagicSecret(ctx context.Context, in *ValidateMagicSecretRequest, opts ...grpc.CallOption) (*ValidateMagicSecretResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(ctx context.Context, in *SSHKeyByFingerprintRequest, opts ...grpc.CallOption) (*SSHKeyByFingerprintResponse, error)
+	// ResolveExe1Token resolves an exe1 token to its corresponding exe0 token.
+	ResolveExe1Token(ctx context.Context, in *ResolveExe1TokenRequest, opts ...grpc.CallOption) (*ResolveExe1TokenResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(ctx context.Context, in *HLLNoteEventsRequest, opts ...grpc.CallOption) (*HLLNoteEventsResponse, error)
 	// CheckAndIncrementEmailQuota checks if the user is under
@@ -348,6 +351,16 @@ func (c *proxyInfoServiceClient) SSHKeyByFingerprint(ctx context.Context, in *SS
 	return out, nil
 }
 
+func (c *proxyInfoServiceClient) ResolveExe1Token(ctx context.Context, in *ResolveExe1TokenRequest, opts ...grpc.CallOption) (*ResolveExe1TokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveExe1TokenResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_ResolveExe1Token_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyInfoServiceClient) HLLNoteEvents(ctx context.Context, in *HLLNoteEventsRequest, opts ...grpc.CallOption) (*HLLNoteEventsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HLLNoteEventsResponse)
@@ -468,6 +481,8 @@ type ProxyInfoServiceServer interface {
 	ValidateMagicSecret(context.Context, *ValidateMagicSecretRequest) (*ValidateMagicSecretResponse, error)
 	// SSHKeyByFingerprint returns the user ID and SSH key for a fingerprint.
 	SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error)
+	// ResolveExe1Token resolves an exe1 token to its corresponding exe0 token.
+	ResolveExe1Token(context.Context, *ResolveExe1TokenRequest) (*ResolveExe1TokenResponse, error)
 	// HLLNoteEvents notes events for the HyperLogLog tracker.
 	HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error)
 	// CheckAndIncrementEmailQuota checks if the user is under
@@ -556,6 +571,9 @@ func (UnimplementedProxyInfoServiceServer) ValidateMagicSecret(context.Context, 
 }
 func (UnimplementedProxyInfoServiceServer) SSHKeyByFingerprint(context.Context, *SSHKeyByFingerprintRequest) (*SSHKeyByFingerprintResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SSHKeyByFingerprint not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) ResolveExe1Token(context.Context, *ResolveExe1TokenRequest) (*ResolveExe1TokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveExe1Token not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) HLLNoteEvents(context.Context, *HLLNoteEventsRequest) (*HLLNoteEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HLLNoteEvents not implemented")
@@ -946,6 +964,24 @@ func _ProxyInfoService_SSHKeyByFingerprint_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyInfoService_ResolveExe1Token_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveExe1TokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).ResolveExe1Token(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_ResolveExe1Token_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).ResolveExe1Token(ctx, req.(*ResolveExe1TokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyInfoService_HLLNoteEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HLLNoteEventsRequest)
 	if err := dec(in); err != nil {
@@ -1111,6 +1147,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SSHKeyByFingerprint",
 			Handler:    _ProxyInfoService_SSHKeyByFingerprint_Handler,
+		},
+		{
+			MethodName: "ResolveExe1Token",
+			Handler:    _ProxyInfoService_ResolveExe1Token_Handler,
 		},
 		{
 			MethodName: "HLLNoteEvents",

@@ -18,12 +18,25 @@ import (
 )
 
 // DefaultTokenCmds is the list of commands allowed when a token does not specify cmds.
-var DefaultTokenCmds = []string{"help", "ls", "new", "whoami", "ssh-key list", "share show"}
+var DefaultTokenCmds = []string{"help", "ls", "new", "whoami", "ssh-key list", "share show", "exe0-to-exe1"}
 
 // validateToken validates an SSH-signed token and returns the user ID and payload.
 // The namespace parameter specifies the expected signing namespace (e.g., "v0@" + env.WebHost).
 // Returns an error if the token is invalid, expired, or the signature doesn't verify.
 func (s *Server) validateToken(ctx context.Context, token, namespace string) (*sshkey.TokenResult, error) {
+	if strings.HasPrefix(token, sshkey.Exe1TokenPrefix) {
+		if !sshkey.ValidExe1Token(token) {
+			return nil, errors.New("invalid token")
+		}
+		exe0, err := withRxRes1(s, ctx, (*exedb.Queries).GetExe1Token, exedb.GetExe1TokenParams{
+			Exe1:      token,
+			ExpiresAt: time.Now().Truncate(time.Second),
+		})
+		if err != nil {
+			return nil, errors.New("invalid token")
+		}
+		token = exe0
+	}
 	tr, err := sshkey.ValidateToken(ctx, s.slog(), token, namespace, s.getSSHKeyByFingerprint)
 	if err != nil {
 		return nil, err

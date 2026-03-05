@@ -185,6 +185,13 @@ type EmailVerification struct {
 	VerificationCodeAttempts int64      `db:"verification_code_attempts" json:"verification_code_attempts"`
 }
 
+type Exe1Token struct {
+	Exe1      string     `db:"exe1" json:"exe1"`
+	Exe0      string     `db:"exe0" json:"exe0"`
+	ExpiresAt time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
 type HllSketch struct {
 	Key       string     `db:"key" json:"key"`
 	Data      []byte     `db:"data" json:"data"`

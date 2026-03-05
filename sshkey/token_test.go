@@ -994,3 +994,100 @@ func TestParsedTokenVerify(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateClaimsForTrade(t *testing.T) {
+	_, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(privKey)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+
+	t.Run("expired_fails", func(t *testing.T) {
+		token := createTestToken(t, signer, map[string]any{"exp": float64(1500000000)}, "v0@exe.dev")
+		parsed, err := ParseToken(token)
+		if err != nil {
+			t.Fatalf("ParseToken failed: %v", err)
+		}
+		// Time after exp — should fail.
+		err = parsed.ValidateClaimsForTradeAt(time.Unix(1600000000, 0))
+		if err == nil {
+			t.Error("expected error for expired token in trade")
+		}
+		if !strings.Contains(err.Error(), "expired") {
+			t.Errorf("expected expired error, got: %v", err)
+		}
+	})
+
+	t.Run("future_nbf_passes", func(t *testing.T) {
+		token := createTestToken(t, signer, map[string]any{"nbf": float64(2000000000)}, "v0@exe.dev")
+		parsed, err := ParseToken(token)
+		if err != nil {
+			t.Fatalf("ParseToken failed: %v", err)
+		}
+		// Time before nbf — should pass for trade (nbf not checked).
+		err = parsed.ValidateClaimsForTradeAt(time.Unix(1600000000, 0))
+		if err != nil {
+			t.Errorf("expected future nbf to pass for trade, got: %v", err)
+		}
+	})
+
+	t.Run("future_exp_future_nbf_passes_trade_fails_use", func(t *testing.T) {
+		token := createTestToken(t, signer, map[string]any{
+			"exp": float64(2000000000),
+			"nbf": float64(1900000000),
+		}, "v0@exe.dev")
+		parsed, err := ParseToken(token)
+		if err != nil {
+			t.Fatalf("ParseToken failed: %v", err)
+		}
+		now := time.Unix(1800000000, 0) // before nbf, before exp
+
+		// Trade should pass (only checks exp).
+		if err := parsed.ValidateClaimsForTradeAt(now); err != nil {
+			t.Errorf("expected trade to pass, got: %v", err)
+		}
+
+		// Use should fail (checks nbf too).
+		err = parsed.ValidateClaimsAt(now)
+		if err == nil {
+			t.Error("expected use-time validation to fail for not-yet-valid token")
+		}
+		if !strings.Contains(err.Error(), "not yet valid") {
+			t.Errorf("expected not-yet-valid error, got: %v", err)
+		}
+	})
+}
+
+func TestValidExe1Token(t *testing.T) {
+	tests := []struct {
+		token string
+		want  bool
+	}{
+		{"exe1.ABCDEFGHIJKLMNOPQRSTUVWXYZ", true},                 // 26 uppercase letters, all valid base32
+		{"exe1.22222222222222222222222222", true},                 // all 2s
+		{"exe1.77777777777777777777777777", true},                 // all 7s
+		{"exe1.ABCDEFGHIJ234567ABCDEFGHIJ", true},                 // mixed valid base32
+		{"exe1.ABCDEFGHIJKLMNOPQRST", true},                       // exactly 20 chars, minimum valid
+		{"exe1.ABCDEFGHIJKLMNOPQRS", false},                       // 19 chars, too short
+		{"exe1.ABCDEFGHIJKLMNOPQRST89", false},                    // invalid chars 8, 9
+		{"exe1.abcdefghijklmnopqrstuvwxyz", false},                // lowercase not valid
+		{"exe1.", false},                                          // empty body
+		{"exe1.short", false},                                     // too short
+		{"exe0.ABCDEFGHIJKLMNOPQRSTUVWXYZ", false},                // wrong prefix
+		{"exe1.ABCDEFGHIJKLMNOP01234567AB", false},                // contains 0 and 1
+		{"doesnotexist", false},                                   // no prefix
+		{"", false},                                               // empty
+		{"exe1.ABCDEFGHIJKLMNOPQRST VWXYZ", false},                // contains space
+		{"exe1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", true},   // 40 chars, at max
+		{"exe1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", false}, // 41 chars, over max
+		{"exe1." + strings.Repeat("A", 1000), false},              // way too long
+	}
+	for _, tt := range tests {
+		if got := ValidExe1Token(tt.token); got != tt.want {
+			t.Errorf("ValidExe1Token(%q) = %v, want %v", tt.token, got, tt.want)
+		}
+	}
+}

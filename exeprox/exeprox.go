@@ -47,10 +47,11 @@ type Proxy struct {
 	grpcClient  proxyapi.ProxyInfoServiceClient
 	exeproxData ExeproxData // source for data needed to proxy requests
 
-	boxes   boxesData
-	cookies cookiesData
-	users   usersData
-	sshKeys sshKeysData
+	boxes      boxesData
+	cookies    cookiesData
+	users      usersData
+	sshKeys    sshKeysData
+	exe1Tokens exe1TokensData
 
 	web WebProxy
 
