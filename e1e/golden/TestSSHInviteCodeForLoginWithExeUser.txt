@@ -1,0 +1,37 @@
+
+
+●
+● ssh with invite code for login-with-exe user
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+
+✓ Invite code accepted: free account
+To sign up, please verify your email.
+
+Please enter your email address: TestSSHInviteCodeForLoginWithExeUser@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-device?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestSSHInviteCodeForLoginWithExeUser@example.com
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your new ssh key has been added to your existing account.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ exit
+Goodbye!

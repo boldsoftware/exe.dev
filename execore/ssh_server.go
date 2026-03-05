@@ -895,6 +895,11 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}
+		// Apply invite code for existing login-with-exe users.
+		// New users have their invite applied during email verification,
+		// but existing login-with-exe users go through device verification
+		// which doesn't handle invites.
+		ss.server.maybeApplyInviteCode(ctx, inviteCode, user.UserID)
 	} else {
 		// Email matches GitHub's. Rely on their verification; create user directly now.
 		ss.server.slog().InfoContext(ctx, "email matches GitHub, skipping verification", "email", email)

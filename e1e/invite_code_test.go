@@ -501,6 +501,64 @@ func TestInviteCodePromotesLoginWithExeUser(t *testing.T) {
 	}
 }
 
+// TestSSHInviteCodeForLoginWithExeUser tests that a login-with-exe user who
+// SSHes with an invite code as the username and provides their existing email
+// gets the invite code applied and is promoted to a full developer.
+// This is the SSH equivalent of TestLoginWithExeUserCanApplyInviteCode.
+func TestSSHInviteCodeForLoginWithExeUser(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a user through the login-with-exe flow.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	_ = webLoginWithExe(t, email)
+
+	// Verify the user starts as a login-with-exe user with no billing exemption.
+	if !isLoginWithExeUser(t, email) {
+		t.Fatal("expected user to start as login-with-exe user")
+	}
+	if exemption := getUserBillingExemption(t, email); exemption != "" {
+		t.Fatalf("expected no billing exemption initially, got %q", exemption)
+	}
+
+	// Step 2: Create an invite code.
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 3: SSH with the invite code as the username (new SSH key).
+	keyFile, _ := genSSHKey(t)
+	pty := makePty(t, "ssh with invite code for login-with-exe user")
+	cmd, err := Env.servers.SSHWithUserName(Env.context(t), pty.PTY(), inviteCode, keyFile)
+	if err != nil {
+		t.Fatalf("failed to start SSH: %v", err)
+	}
+	t.Cleanup(func() { _ = cmd.Wait() })
+	pty.SetPrompt(testinfra.ExeDevPrompt)
+
+	// Step 4: Go through registration, entering the same email as the existing user.
+	pty.Want(testinfra.Banner)
+	pty.Want("Invite code accepted: free account")
+	pty.Want("email")
+	pty.SendLine(email)
+	// Existing user gets "new ssh key" device verification email.
+	waitForEmailAndVerify(t, email)
+	pty.Want("new ssh key has been added")
+	pty.WantPrompt()
+
+	// Step 5: Verify the invite code was applied and user was promoted.
+	if exemption := getUserBillingExemption(t, email); exemption != "free" {
+		t.Errorf("expected billing_exemption='free' after SSH invite, got %q", exemption)
+	}
+	if isLoginWithExeUser(t, email) {
+		t.Error("expected user to be promoted from login-with-exe to developer after SSH invite")
+	}
+
+	pty.Disconnect()
+}
+
 // TestExistingUserCannotApplyInviteCode tests that a regular existing user
 // (NOT created via login-with-exe) visiting /auth?invite=CODE while already
 // authenticated does NOT get the invite code applied.
