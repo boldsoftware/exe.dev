@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -192,6 +193,16 @@ func ParseToken(token string) (*ParsedToken, error) {
 	// - StrictInt validates exp/nbf format
 	var tp tokenPayload
 	if err := jsonv2.Unmarshal(payload, &tp, jsonv2.RejectUnknownMembers(true)); err != nil {
+		// Surface the field name for unknown-field errors; the payload is
+		// client-authored, so this doesn't leak anything sensitive.
+		if errMsg := err.Error(); strings.Contains(errMsg, "unknown object member name") {
+			if i := strings.Index(errMsg, `unknown object member name "`); i >= 0 {
+				rest := errMsg[i+len(`unknown object member name "`):]
+				if j := strings.IndexByte(rest, '"'); j >= 0 {
+					return nil, fmt.Errorf("invalid token: unknown field %q", rest[:j])
+				}
+			}
+		}
 		return nil, errors.New("invalid token: invalid JSON")
 	}
 

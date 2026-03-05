@@ -823,6 +823,24 @@ func TestExecAPIStrictJSONValidation(t *testing.T) {
 			}
 		})
 	}
+
+	// Verify that unknown fields produce a helpful error message (not just "invalid JSON").
+	t.Run("unknown_key_error_message", func(t *testing.T) {
+		token := generateToken(t, client.signer, `{"foo":"bar"}`, execAPINamespace)
+		resp, err := client.exec(token, "whoami")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		var errResp struct{ Error string }
+		if err := json.Unmarshal(body, &errResp); err != nil {
+			t.Fatalf("failed to parse error response: %s", body)
+		}
+		if !strings.Contains(errResp.Error, `unknown field "foo"`) {
+			t.Errorf("expected error to mention unknown field, got: %s", errResp.Error)
+		}
+	})
 }
 
 // TestExecAPICmds tests that the cmds token field correctly restricts which commands

@@ -431,8 +431,8 @@ func TestParseTokenStrictValidation(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for unknown key")
 		}
-		if !strings.Contains(err.Error(), "invalid JSON") {
-			t.Errorf("expected invalid JSON error, got: %v", err)
+		if !strings.Contains(err.Error(), `unknown field "foo"`) {
+			t.Errorf("expected unknown field error, got: %v", err)
 		}
 	})
 
@@ -680,7 +680,7 @@ func TestParseTokenInvalidJSON(t *testing.T) {
 		payload string
 		want    string
 	}{
-		{"unknown_field", `{"admin":true}`, "invalid token: invalid JSON"},
+		{"unknown_field", `{"admin":true}`, `invalid token: unknown field "admin"`},
 		{"exp_wrong_type", `{"exp":"2000000000"}`, "invalid token: invalid JSON"},
 		{"exp_decimal", `{"exp":2000000000.5}`, "invalid token: invalid JSON"},
 		{"cmds_wrong_type", `{"cmds":[1]}`, "invalid token: invalid JSON"},

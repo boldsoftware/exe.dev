@@ -109,7 +109,7 @@ VM tokens work just like API tokens, with two differences:
 Tokens can be provided in two ways:
 
 - **Bearer token**: Add an `Authorization: Bearer <token>` HTTP header
-- **Basic auth**: Username is ignored; password is the token. This works with tools like `git` that use basic auth for HTTPS.
+- **Basic auth**: Username is ignored; password is the token. This works with tools like `git` that use basic auth for HTTPS. (VM proxy only, not `/exec`.)
 
 ### What your server receives
 
@@ -151,6 +151,8 @@ ssh exe.dev exe0-to-exe1 --vm=vm-name "$TOKEN"
 ```
 
 exe1 tokens work everywhere exe0 tokens work, in exactly the same way.
+
+An exe1 token is validated through its underlying exe0 token on every use. To revoke an exe1 token, revoke the underlying exe0 token.
 
 ## Token details
 
