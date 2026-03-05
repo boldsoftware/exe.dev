@@ -21,4 +21,8 @@ type NetworkManager interface {
 	ApplyConnectionLimit(ctx context.Context, ip string) error
 	// ApplyBandwidthLimit applies bandwidth limiting to an existing TAP device
 	ApplyBandwidthLimit(ctx context.Context, id string) error
+	// ReconcileLeases releases any IPAM leases whose IPs are not in validIPs.
+	// Returns the list of released IPs. It is safe to call concurrently with
+	// DeleteInterface — releasing an already-released IP is a no-op.
+	ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error)
 }

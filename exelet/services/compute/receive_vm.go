@@ -584,6 +584,11 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 				"snapshot restore failed (%v) and cold boot also failed: %v", restoreErr, err)
 		}
 
+		// Reconcile IPAM leases: if DeleteInterface above failed silently,
+		// the old live-migration IP is orphaned. startInstance already persisted
+		// the new IP to config, so the reconciler can safely identify the orphan.
+		go s.reconcileIPLeases()
+
 		// Reload the instance config (startInstance updated state, network, ssh port)
 		coldInstance, err := s.loadInstanceConfig(instanceID)
 		if err != nil {

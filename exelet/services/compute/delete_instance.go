@@ -96,5 +96,13 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 
 		return &api.DeleteInstanceResponse{}, nil
 	})
+	if err == nil {
+		// Best-effort reconciliation. This re-fetches the instance list from
+		// disk, so there is a small TOCTOU window where a concurrent
+		// CreateInstance/startInstance may have allocated an IPAM lease not
+		// yet persisted to config. The CREATING/STARTING state guard in
+		// reconcileIPLeasesFromInstances prevents releasing those leases.
+		go s.reconcileIPLeases()
+	}
 	return resp, err
 }

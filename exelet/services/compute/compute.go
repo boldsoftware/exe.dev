@@ -31,8 +31,14 @@ type Service struct {
 	proxyManager        *sshproxy.Manager
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
-	stopLogRotation     func()
-	migratingInstances  sync.Map // map[instanceID]struct{} - instances currently being migrated
+	stopLogRotation      func()
+	migratingInstances   sync.Map // map[instanceID]struct{} - instances currently being migrated
+	reconcileGroup       singleflight.Group[string, struct{}]
+	// reconcileCtx is stored in the struct (rather than passed per-call) because
+	// background reconcile goroutines outlive the gRPC request that triggers them.
+	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
+	reconcileCtx         context.Context
+	reconcileCancel      context.CancelFunc
 }
 
 // New returns a new service.
@@ -78,13 +84,58 @@ func (s *Service) Requires() []services.Type {
 
 // Start runs the service.
 func (s *Service) Start(ctx context.Context) error {
+	s.reconcileCtx, s.reconcileCancel = context.WithCancel(context.Background())
+
+	instances, err := s.initServiceState(ctx)
+	if err != nil {
+		s.reconcileCancel()
+		return err
+	}
+
+	// Ensure log rotation is stopped if Start fails after initServiceState succeeds
+	startSucceeded := false
+	defer func() {
+		if !startSucceeded && s.stopLogRotation != nil {
+			s.stopLogRotation()
+			s.stopLogRotation = nil
+		}
+	}()
+
+	// Reconcile IPAM leases against known instances to release any orphaned IPs
+	// from previous crashes, failed migrations, or incomplete deletions.
+	// Runs outside s.mu since it only touches NetworkManager/IPAM (their own locks).
+	// Must run before startInstance loop below — starting instances allocates new
+	// IPs, which would be seen as orphans if reconciliation ran after.
+	// Uses the Start ctx directly (not s.reconcileCtx) since this is synchronous
+	// and should respect the startup context's lifecycle.
+	s.reconcileIPLeasesFromInstances(ctx, instances)
+
+	// start stopped instances if enabled
+	if s.config.EnableInstanceBootOnStartup {
+		s.log.InfoContext(ctx, "booting stopped instances")
+		for _, i := range instances {
+			if i.State == api.VMState_STOPPED {
+				if err := s.startInstance(ctx, i.ID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	startSucceeded = true
+	return nil
+}
+
+// initServiceState loads instances, recovers processes, and initializes service
+// state. Acquires s.mu for the duration to serialize with concurrent operations.
+func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Load existing instances
 	instances, err := s.listInstances(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Mark SSH ports as allocated in the port allocator
@@ -134,7 +185,7 @@ func (s *Service) Start(ctx context.Context) error {
 	// This will adopt any still-running processes and clean up stale metadata
 	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := vmm.RecoverProcesses(ctx); err != nil {
 		s.log.WarnContext(ctx, "failed to recover VMM processes", "error", err)
@@ -156,29 +207,65 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	s.stopLogRotation = vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
 
-	// Ensure rotation is stopped if Start fails after this point
-	startSucceeded := false
-	defer func() {
-		if !startSucceeded && s.stopLogRotation != nil {
-			s.stopLogRotation()
-			s.stopLogRotation = nil
-		}
-	}()
+	return instances, nil
+}
 
-	// start stopped instances if enabled
-	if s.config.EnableInstanceBootOnStartup {
-		s.log.InfoContext(ctx, "booting stopped instances")
-		for _, i := range instances {
-			if i.State == api.VMState_STOPPED {
-				if err := s.startInstance(ctx, i.ID); err != nil {
-					return err
-				}
+// reconcileIPLeases loads current instances and releases any orphaned IPAM leases.
+// Uses singleflight to deduplicate calls that arrive while a reconcile is already
+// in progress. Sequential callers after completion each run a new pass.
+func (s *Service) reconcileIPLeases() {
+	s.reconcileGroup.Do("reconcile", func() (struct{}, error) {
+		ctx := s.reconcileCtx
+		instances, err := s.listInstances(ctx)
+		if err != nil {
+			s.log.WarnContext(ctx, "failed to list instances for IP reconciliation", "error", err)
+			return struct{}{}, nil
+		}
+		s.reconcileIPLeasesFromInstances(ctx, instances)
+		return struct{}{}, nil
+	})
+}
+
+// reconcileIPLeasesFromInstances compares IPAM leases against the given instances
+// and releases any orphaned leases. Skips reconciliation if any instance is in a
+// transient state (CREATING/STARTING) to avoid racing with in-flight IP allocations.
+func (s *Service) reconcileIPLeasesFromInstances(ctx context.Context, instances []*api.Instance) {
+	// Build set of IPs that belong to known instances.
+	// Skip reconciliation entirely if any instance is mid-creation/start,
+	// since its IP may be allocated in IPAM but not yet persisted to config.
+	validIPs := make(map[string]struct{})
+	for _, inst := range instances {
+		switch inst.State {
+		case api.VMState_CREATING, api.VMState_STARTING:
+			s.log.DebugContext(ctx, "aborting IP reconciliation: instance in transient state", "instance", inst.ID, "state", inst.State)
+			return
+		case api.VMState_RUNNING, api.VMState_PAUSED, api.VMState_STOPPING, api.VMState_STOPPED,
+			api.VMState_ERROR, api.VMState_CREATED, api.VMState_DELETED, api.VMState_UPDATING, api.VMState_UNKNOWN:
+			// IP (if any) is persisted to config; handled below.
+			// STOPPED instances may retain a persisted IP after a failed DeleteInterface.
+		default:
+			s.log.WarnContext(ctx, "aborting IP reconciliation: unknown instance state", "instance", inst.ID, "state", inst.State)
+			return
+		}
+		if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+			ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
+			ip, _, err := net.ParseCIDR(ipStr)
+			if err != nil {
+				s.log.ErrorContext(ctx, "aborting IP reconciliation: failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
+				return
 			}
+			validIPs[ip.String()] = struct{}{}
 		}
 	}
 
-	startSucceeded = true
-	return nil
+	released, err := s.context.NetworkManager.ReconcileLeases(ctx, validIPs)
+	if err != nil {
+		s.log.WarnContext(ctx, "IP lease reconciliation failed", "error", err)
+		return
+	}
+	if len(released) > 0 {
+		s.log.InfoContext(ctx, "released orphaned IP leases", "count", len(released), "ips", released)
+	}
 }
 
 // Stop stops the service.
@@ -187,6 +274,10 @@ func (s *Service) Stop(ctx context.Context) error {
 	// Socat processes run in their own process group and survive exelet restarts.
 	// On next startup, RecoverProxies will adopt still-running proxies seamlessly,
 	// avoiding any SSH connectivity gap during restarts.
+
+	if s.reconcileCancel != nil {
+		s.reconcileCancel()
+	}
 
 	if s.stopLogRotation != nil {
 		s.stopLogRotation()

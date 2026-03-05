@@ -54,6 +54,10 @@ func (n *NAT) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	return errNotSupported
 }
 
+func (n *NAT) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
+	return nil, errNotSupported
+}
+
 func (n *NAT) Close() error {
 	return errNotSupported
 }

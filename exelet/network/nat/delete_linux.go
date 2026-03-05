@@ -47,6 +47,29 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	return nil
 }
 
+// ReconcileLeases releases any IPAM leases whose IPs are not in validIPs.
+// This cleans up orphaned leases from failed migrations or incomplete deletions.
+func (n *NAT) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
+	leases, err := n.ipam.ListLeases()
+	if err != nil {
+		return nil, err
+	}
+
+	var released []string
+	for _, lease := range leases {
+		if _, ok := validIPs[lease.IP]; !ok {
+			n.log.WarnContext(ctx, "releasing orphaned IP lease", "ip", lease.IP, "mac", lease.MACAddress)
+			if err := n.ipam.Release(lease.IP); err != nil {
+				n.log.WarnContext(ctx, "failed to release orphaned IP lease", "ip", lease.IP, "error", err)
+				continue
+			}
+			released = append(released, lease.IP)
+		}
+	}
+
+	return released, nil
+}
+
 // getTapBridge returns the bridge name that a TAP interface belongs to
 func (n *NAT) getTapBridge(tapName string) string {
 	link, err := netlink.LinkByName(tapName)
