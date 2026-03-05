@@ -421,7 +421,7 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	// start HTTP server
-	if err := srv.StartHTTPServer(httpAddr, srv.MetricsRegistry()); err != nil {
+	if _, err := srv.StartHTTPServer(httpAddr, srv.MetricsRegistry()); err != nil {
 		return err
 	}
 

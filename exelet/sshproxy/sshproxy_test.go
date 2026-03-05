@@ -3,6 +3,7 @@ package sshproxy
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"testing"
@@ -21,7 +22,13 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	}))
 
 	instanceDir := t.TempDir()
-	port := 29876 // Below Linux ephemeral range (32768-60999)
+	// Allocate a dynamic port to avoid hardcoded port conflicts in CI.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to allocate port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
 	targetIP := "127.0.0.1"
 
 	// Start socat manually (simulating a socat that survived exelet restart)

@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -33,28 +32,21 @@ func TestHTTPServer(t *testing.T) {
 	}
 
 	// Use port 0 for tests to avoid collisions
-	httpTestAddr := "127.0.0.1:0"
-	if err := srv.StartHTTPServer(httpTestAddr, srv.MetricsRegistry()); err != nil {
+	if _, err := srv.StartHTTPServer("127.0.0.1:0", srv.MetricsRegistry()); err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
 	}
 
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	// Since we used port 0, we need a deterministic port for testing
-	// Use a fixed high port that's unlikely to conflict
-	httpFixedAddr := "127.0.0.1:18080"
 	registry2 := prometheus.NewRegistry()
 	srv2, err := NewExelet(cfg, log, stage.Test(), WithMetricsRegistry(registry2))
 	if err != nil {
 		t.Fatalf("failed to create exelet: %v", err)
 	}
-	if err := srv2.StartHTTPServer(httpFixedAddr, srv2.MetricsRegistry()); err != nil {
+	actualAddr, err := srv2.StartHTTPServer("127.0.0.1:0", srv2.MetricsRegistry())
+	if err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
 
-	baseURL := "http://" + httpFixedAddr
+	baseURL := "http://" + actualAddr
 
 	// Test version endpoint
 	t.Run("version", func(t *testing.T) {

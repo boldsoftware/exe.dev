@@ -15,7 +15,8 @@ import (
 )
 
 // StartHTTPServer starts the HTTP server with debug endpoints, version, and metrics.
-func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) error {
+// It returns the actual address the server is listening on (useful when addr uses port 0).
+func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (string, error) {
 	s.log.Info("starting HTTP server", "addr", addr)
 
 	mux := http.NewServeMux()
@@ -50,7 +51,7 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) err
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	actualAddr := ln.Addr().String()
@@ -66,7 +67,7 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) err
 		}
 	}()
 
-	return nil
+	return actualAddr, nil
 }
 
 func (s *Exelet) handleDebugIndex(w http.ResponseWriter, r *http.Request) {

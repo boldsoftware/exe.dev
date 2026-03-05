@@ -44,8 +44,7 @@ func TestCreateSSHProxy(t *testing.T) {
 
 	// Start a mock TCP server to simulate the VM's SSH service
 	vmIP := "127.0.0.1"
-	vmSSHPort := 22222 // Use a non-privileged port for testing
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", vmIP, vmSSHPort))
+	listener, err := net.Listen("tcp", vmIP+":0")
 	if err != nil {
 		t.Fatalf("failed to start mock VM SSH server: %v", err)
 	}
@@ -64,7 +63,13 @@ func TestCreateSSHProxy(t *testing.T) {
 
 	// Create instance directory
 	instanceID := "test-instance-123"
-	sshPort := 20022 // Use port in test range (20000-30000)
+	// Allocate a dynamic port for the SSH proxy to avoid hardcoded port conflicts.
+	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to allocate proxy port: %v", err)
+	}
+	sshPort := proxyLn.Addr().(*net.TCPAddr).Port
+	proxyLn.Close()
 	instanceDir := computeSvc.getInstanceDir(instanceID)
 	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("failed to create instance directory: %v", err)
