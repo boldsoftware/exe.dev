@@ -393,6 +393,21 @@ func fromLLMToolUse(tu *llm.ToolUse) *toolUse {
 	}
 }
 
+// stripThinkingBlocks returns a copy of the message with thinking and
+// redacted_thinking content blocks removed. Used to strip stale thinking
+// from older assistant turns before sending to the API.
+func stripThinkingBlocks(msg llm.Message) llm.Message {
+	var filtered []llm.Content
+	for _, c := range msg.Content {
+		if c.Type == llm.ContentTypeThinking || c.Type == llm.ContentTypeRedactedThinking {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	msg.Content = filtered
+	return msg
+}
+
 func fromLLMMessage(msg llm.Message) message {
 	var contents []content
 	for _, c := range msg.Content {
@@ -442,8 +457,27 @@ func (s *Service) fromLLMRequest(r *llm.Request) *request {
 	model := cmp.Or(s.Model, DefaultModel)
 	maxTokens := cmp.Or(s.MaxTokens, maxOutputTokens(model))
 
+	// Find the last assistant message index so we can strip thinking blocks
+	// from all earlier assistant messages. The Anthropic API validates thinking
+	// signatures, and they become invalid when the underlying model version
+	// rotates (e.g. "claude-opus-4-6" points to a new version). Only the
+	// most recent assistant turn's thinking blocks need to be preserved.
+	lastAssistantIdx := -1
+	for i := len(r.Messages) - 1; i >= 0; i-- {
+		if r.Messages[i].Role == llm.MessageRoleAssistant {
+			lastAssistantIdx = i
+			break
+		}
+	}
+
 	var messages []message
-	for _, m := range r.Messages {
+	for i, m := range r.Messages {
+		// Strip thinking/redacted_thinking blocks from all assistant messages
+		// except the last one. This avoids "Invalid signature" errors when
+		// the model version has changed since the thinking was generated.
+		if m.Role == llm.MessageRoleAssistant && i != lastAssistantIdx {
+			m = stripThinkingBlocks(m)
+		}
 		msg := fromLLMMessage(m)
 		if len(msg.Content) > 0 {
 			messages = append(messages, msg)

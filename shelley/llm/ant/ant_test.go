@@ -580,6 +580,75 @@ func abs(x float64) float64 {
 	return x
 }
 
+func TestFromLLMRequestStripsOldThinkingBlocks(t *testing.T) {
+	s := &Service{Model: Claude46Opus, ThinkingLevel: llm.ThinkingLevelMedium}
+
+	// Simulate a conversation with multiple assistant turns containing thinking blocks.
+	// Only the last assistant turn's thinking should be preserved.
+	req := s.fromLLMRequest(&llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "first question"},
+			}},
+			{Role: llm.MessageRoleAssistant, Content: []llm.Content{
+				{Type: llm.ContentTypeThinking, Thinking: "old thinking", Signature: "old-sig-1"},
+				{Type: llm.ContentTypeText, Text: "first answer"},
+			}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "second question"},
+			}},
+			{Role: llm.MessageRoleAssistant, Content: []llm.Content{
+				{Type: llm.ContentTypeThinking, Thinking: "old thinking 2", Signature: "old-sig-2"},
+				{Type: llm.ContentTypeRedactedThinking, Data: "redacted", Signature: "old-sig-3"},
+				{Type: llm.ContentTypeText, Text: "second answer"},
+			}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "third question"},
+			}},
+			{Role: llm.MessageRoleAssistant, Content: []llm.Content{
+				{Type: llm.ContentTypeThinking, Thinking: "latest thinking", Signature: "valid-sig"},
+				{Type: llm.ContentTypeText, Text: "third answer"},
+				{Type: llm.ContentTypeToolUse, ID: "tool1", ToolName: "bash", ToolInput: json.RawMessage(`{}`)},
+			}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{
+				{Type: llm.ContentTypeToolResult, ToolUseID: "tool1", ToolResult: []llm.Content{{Type: llm.ContentTypeText, Text: "output"}}},
+			}},
+		},
+	})
+
+	// Should have 7 messages (no messages dropped)
+	if len(req.Messages) != 7 {
+		t.Fatalf("expected 7 messages, got %d", len(req.Messages))
+	}
+
+	// First assistant (index 1): thinking should be stripped, only text remains
+	firstAssistant := req.Messages[1]
+	if len(firstAssistant.Content) != 1 {
+		t.Errorf("first assistant: expected 1 content block, got %d", len(firstAssistant.Content))
+	}
+	if firstAssistant.Content[0].Type != "text" {
+		t.Errorf("first assistant content[0]: expected text, got %s", firstAssistant.Content[0].Type)
+	}
+
+	// Second assistant (index 3): thinking + redacted_thinking stripped, only text remains
+	secondAssistant := req.Messages[3]
+	if len(secondAssistant.Content) != 1 {
+		t.Errorf("second assistant: expected 1 content block, got %d", len(secondAssistant.Content))
+	}
+
+	// Last assistant (index 5): thinking preserved
+	lastAssistant := req.Messages[5]
+	if len(lastAssistant.Content) != 3 {
+		t.Errorf("last assistant: expected 3 content blocks, got %d", len(lastAssistant.Content))
+	}
+	if lastAssistant.Content[0].Type != "thinking" {
+		t.Errorf("last assistant content[0]: expected thinking, got %s", lastAssistant.Content[0].Type)
+	}
+	if lastAssistant.Content[0].Signature != "valid-sig" {
+		t.Errorf("last assistant thinking signature not preserved")
+	}
+}
+
 func TestFromLLMRequest(t *testing.T) {
 	s := &Service{
 		Model:     Claude45Sonnet,
