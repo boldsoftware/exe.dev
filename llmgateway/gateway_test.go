@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -21,6 +23,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tslog"
+	sloghttp "github.com/samber/slog-http"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
@@ -1058,4 +1061,231 @@ func TestSSEStreamingNotBuffered(t *testing.T) {
 				i, i-1, delay, minExpectedDelayMs)
 		}
 	}
+}
+
+// TestGateway_SSE_SlogAttributes verifies that the sloghttp middleware log line
+// for SSE streaming requests includes all the expected LLM attributes (model,
+// tokens, cost, etc.). This tests the full flow: sloghttp middleware wraps the
+// gateway handler which proxies to a mock Anthropic server.
+func TestGateway_SSE_SlogAttributes(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.apiKeys.Anthropic = "test-anthropic-key"
+	gateway.creditMgr = NewCreditManager(gateway.data)
+
+	// Build a realistic Anthropic SSE stream
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_test123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":10,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":10,"output_tokens":25}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
+
+	mockAnthropic := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		w.Write(sseBuf.Bytes())
+	}))
+	defer mockAnthropic.Close()
+
+	mockURL, _ := url.Parse(mockAnthropic.URL)
+
+	// Set up accounting transport pointing at mock
+	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          gateway.log,
+		creditMgr:    gateway.creditMgr,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user-test-box",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Verify the sseUsage was stored with correct values
+	require.NotNil(t, transport.sseUsage, "sseUsage should be stored")
+	require.Equal(t, "claude-sonnet-4-5-20250929", transport.sseUsage.Model)
+	require.Equal(t, "msg_test123", transport.sseUsage.MessageID)
+	require.Equal(t, uint64(50), transport.sseUsage.Usage.InputTokens)
+	require.Equal(t, uint64(25), transport.sseUsage.Usage.OutputTokens)
+	require.Equal(t, uint64(10), transport.sseUsage.Usage.CacheReadInputTokens)
+	require.Greater(t, transport.sseUsage.Usage.CostUSD, 0.0, "cost should be > 0")
+
+	// Verify the SSE body was streamed through.
+	require.Contains(t, rr.Body.String(), "Hello")
+
+	// Verify cost calculation
+	expectedMicroCents := uint64(50)*300 + uint64(25)*1500 + uint64(10)*30
+	expectedUSD := float64(expectedMicroCents) / 100_000_000
+	require.InDelta(t, expectedUSD, transport.sseUsage.Usage.CostUSD, 0.0000001)
+}
+
+// TestGateway_SSE_SlogMiddlewareIntegration verifies that when the gateway handles
+// an SSE streaming request wrapped by sloghttp middleware, the final log line
+// includes the LLM-specific attributes (model, tokens, cost).
+// This is the end-to-end test for the "200: OK" log line.
+func TestGateway_SSE_SlogMiddlewareIntegration(t *testing.T) {
+	// Build a realistic Anthropic SSE stream
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_integ123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi there"}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":40}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
+
+	mockAnthropic := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		w.Write(sseBuf.Bytes())
+	}))
+	defer mockAnthropic.Close()
+
+	mockURL, _ := url.Parse(mockAnthropic.URL)
+
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	// Create a gateway handler that uses our mock server
+	gatewayHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gw := &llmGateway{
+			now:       time.Now,
+			data:      &DBGatewayData{db},
+			apiKeys:   APIKeys{Anthropic: "test-key"},
+			env:       stage.Test(),
+			log:       logger,
+			creditMgr: NewCreditManager(&DBGatewayData{db}),
+		}
+
+		boxName := r.Header.Get("X-Exedev-Box")
+		r.Header.Del("X-Exedev-Box")
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "gateway"))
+
+		// Parse model from body
+		model, bodyBytes, _ := extractModelFromRequest(r)
+		if bodyBytes != nil {
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.ContentLength = int64(len(bodyBytes))
+		}
+		if model != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+		}
+
+		userID := "test-user-test-box"
+		gw.creditMgr.CheckAndRefreshCredit(r.Context(), userID) //nolint:errcheck
+
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/_/gateway/anthropic")
+
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			provider:     llmpricing.ProviderAnthropic,
+			log:          logger,
+			creditMgr:    gw.creditMgr,
+			incomingReq:  r,
+			boxName:      boxName,
+			userID:       userID,
+		}
+		proxy := &httputil.ReverseProxy{
+			FlushInterval: -1,
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.Out.URL.Scheme = "http"
+				pr.Out.URL.Host = mockURL.Host
+				pr.Out.Host = mockURL.Host
+			},
+			Transport:      transport,
+			ModifyResponse: transport.modifyResponse,
+		}
+		proxy.ServeHTTP(w, r)
+		transport.WaitAndAddSSEAttributes()
+	})
+
+	// Wrap with sloghttp middleware (same as production)
+	slogConfig := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+		WithUserAgent:    true,
+	}
+	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
+
+	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Parse the sloghttp log output — find the "200: OK" line
+	logLines := bytes.Split(logBuf.Bytes(), []byte("\n"))
+	var foundLogLine map[string]any
+	for _, line := range logLines {
+		if len(line) == 0 {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if msg, ok := entry["msg"].(string); ok && msg == "200: OK" {
+			foundLogLine = entry
+			break
+		}
+	}
+
+	if foundLogLine == nil {
+		t.Logf("All log lines:\n%s", logBuf.String())
+		t.Fatal("no '200: OK' log line found from sloghttp middleware")
+	}
+
+	t.Logf("200: OK log line: %v", foundLogLine)
+
+	// Verify LLM-specific attributes are present in the log line
+	require.Equal(t, "claude-sonnet-4-5-20250929", foundLogLine["llm_model"],
+		"log line should include llm_model")
+	require.Equal(t, "test-box", foundLogLine["vm_name"],
+		"log line should include vm_name")
+	require.Equal(t, "test-user-test-box", foundLogLine["user_id"],
+		"log line should include user_id")
+	require.Equal(t, "gateway", foundLogLine["request_type"],
+		"log line should include request_type=gateway")
+
+	// Token counts (JSON numbers are float64)
+	require.Equal(t, float64(100), foundLogLine["input_tokens"],
+		"log line should include input_tokens")
+	require.Equal(t, float64(40), foundLogLine["output_tokens"],
+		"log line should include output_tokens")
+
+	// Cost should be > 0
+	costUSD, ok := foundLogLine["cost_usd"].(float64)
+	require.True(t, ok, "cost_usd should be a float64")
+	require.Greater(t, costUSD, 0.0, "cost_usd should be > 0")
 }

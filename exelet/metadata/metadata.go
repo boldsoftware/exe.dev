@@ -293,6 +293,7 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 
 	// Create a reverse proxy for this request
 	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(s.exedTargetURL)
 			pr.Out.URL.Path = pr.In.URL.Path
