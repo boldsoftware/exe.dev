@@ -2380,6 +2380,35 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 	_ = user
 }
 
+func TestCreditPurchase_BuyNoAccount(t *testing.T) {
+	server := newBillingTestServer(t)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "credits-noaccount@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("dollars", "123")
+	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	if location != "/billing/update?source=credits" {
+		t.Errorf("Expected redirect to /billing/update?source=credits, got %q", location)
+	}
+}
+
 func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
 	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-invalid@example.com", "exe_invalid_credits")

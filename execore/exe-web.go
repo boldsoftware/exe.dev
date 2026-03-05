@@ -1585,9 +1585,13 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Redirect(w, r, "/billing/update?source=credits", http.StatusSeeOther)
+		return
+	}
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "no billing account for credit purchase", "error", err, "user_id", userID)
-		http.Error(w, "No billing account", http.StatusBadRequest)
+		s.slog().ErrorContext(r.Context(), "failed to get billing account for credit purchase", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load billing account", http.StatusInternalServerError)
 		return
 	}
 

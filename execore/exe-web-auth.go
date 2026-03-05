@@ -380,8 +380,8 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	// Cancel URL for checkout (if user cancels)
 	// Both should always go back to where the user came from
 	var returnURL, cancelURL string
-	if source == "profile" || hasActiveBilling {
-		// User came from profile page OR has active billing (managing subscription)
+	if source == "profile" || source == "credits" || hasActiveBilling {
+		// User came from profile/credits page OR has active billing (managing subscription)
 		// Always return to /user profile page for active subscribers
 		returnURL = baseURL + "/user"
 		cancelURL = baseURL + "/user"
@@ -553,8 +553,8 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redirect based on source
-	if source == "profile" {
-		// User came from profile page, redirect back to profile
+	if source == "profile" || source == "credits" {
+		// User came from profile page or credits purchase, redirect back to profile
 		http.Redirect(w, r, "/user", http.StatusSeeOther)
 		return
 	} else if source != "exemenu" {
