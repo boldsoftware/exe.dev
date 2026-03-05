@@ -197,7 +197,11 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 						a.log.ErrorContext(ctx, "Proxy SSE scanner", "processResponseData error", err)
 					}
 				}
-				fmt.Fprintln(bodyWriter, line)
+				if _, err := fmt.Fprintln(bodyWriter, line); err != nil {
+					// Downstream reader closed the pipe (client disconnect).
+					// Stop consuming the upstream response.
+					break
+				}
 			}
 			if err := scanner.Err(); err != nil {
 				switch {
