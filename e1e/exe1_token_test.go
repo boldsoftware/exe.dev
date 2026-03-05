@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 	"exe.dev/stage"
@@ -775,6 +776,117 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Errorf("expected X-ExeDev-UserID header to be set")
 		}
 	})
+
+	cleanupBox(t, keyFile, box)
+}
+
+// TestExe1TokenDeletedKeyProxy tests that an exe1 token used for proxy auth
+// is rejected when the underlying SSH key has been deleted.
+func TestExe1TokenDeletedKeyProxy(t *testing.T) {
+	testExe1TokenDeletedKeyProxy(t, Env.servers.Exed.HTTPPort)
+}
+
+func TestExe1TokenDeletedKeyProxyExeprox(t *testing.T) {
+	testExe1TokenDeletedKeyProxy(t, Env.servers.Exeprox.HTTPPort)
+}
+
+func testExe1TokenDeletedKeyProxy(t *testing.T, httpPort int) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Add a second SSH key — this one will back the token and then be deleted.
+	// The first key stays for SSH access and cleanup.
+	secondKeyPath, secondPubKey, err := testinfra.GenSSHKey(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to generate second key: %v", err)
+	}
+	pty.SendLine("ssh-key add '" + secondPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
+
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.Disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Start HTTP server on the box.
+	serveIndex(t, box, keyFile, "deleted-key-proxy-test")
+
+	// Configure as private route.
+	configureProxyRoute(t, keyFile, box, 8080, "private")
+
+	// Generate exe0 token with second key, scoped to the VM, trade for exe1.
+	secondSigner := loadTestSigner(t, secondKeyPath)
+	exe0Token := generateToken(t, secondSigner, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+	exe1Token, err := tradeExe0ForExe1(t, keyFile, exe0Token, "--vm="+box)
+	if err != nil {
+		t.Fatalf("trade failed: %v", err)
+	}
+
+	// Verify exe1 token works for proxy auth before key deletion.
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
+	client := noRedirectClient(nil)
+	{
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+exe1Token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 before key deletion, got %d: %s", resp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "deleted-key-proxy-test") {
+			t.Fatalf("expected body to contain 'deleted-key-proxy-test', got: %s", body)
+		}
+	}
+
+	// Delete the second SSH key (use first key for SSH auth).
+	fingerprint := ssh.FingerprintSHA256(secondSigner.PublicKey())
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "remove", fingerprint)
+	if err != nil {
+		t.Fatalf("ssh-key remove failed: %v\n%s", err, out)
+	}
+
+	// Verify exe1 token is rejected for proxy auth.
+	// Poll briefly to allow the DeletedSSHKey change to propagate via gRPC.
+	var lastStatus int
+	var lastBody string
+	for range 20 {
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+exe1Token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		lastStatus = resp.StatusCode
+		lastBody = string(body)
+		if resp.StatusCode == http.StatusUnauthorized {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if lastStatus != http.StatusUnauthorized {
+		t.Fatalf("expected 401 after key deletion, got %d: %s", lastStatus, lastBody)
+	}
 
 	cleanupBox(t, keyFile, box)
 }
