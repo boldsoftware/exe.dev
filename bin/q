@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# q — push to a CI queue branch and wait for the run to finish.
+#
+# Pushes the given ref (default HEAD) to queue-main-$USER-$BRANCH on origin,
+# then polls GitHub Actions until the run completes.
+#
+# Usage:
+#   q [ref]
+
+set -euo pipefail
+
+REF="${1:-HEAD}"
+COMMIT="$(git rev-parse "$REF")"
+SHORT="${COMMIT:0:7}"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+QUEUE_BRANCH="queue-main-${USER}-${BRANCH}"
+
+# --- Validation ---
+
+if [ "$BRANCH" = "HEAD" ]; then
+	echo "q: detached HEAD; check out a branch first" >&2
+	exit 1
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+	echo "q: gh CLI not found" >&2
+	exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+	echo "q: jq not found" >&2
+	exit 1
+fi
+
+# --- Push ---
+
+echo "q: pushing ${SHORT} to ${QUEUE_BRANCH}" >&2
+git push -f origin "${COMMIT}:refs/heads/${QUEUE_BRANCH}"
+
+# --- Find the CI run ---
+
+echo "q: waiting for run..." >&2
+
+RUN_ID=""
+for _ in $(seq 1 20); do
+	RUNS="$(gh run list --branch "$QUEUE_BRANCH" --json headSha,databaseId --limit 10 2>/dev/null || echo '[]')"
+	RUN_ID="$(echo "$RUNS" | jq -r --arg sha "$COMMIT" '.[] | select(.headSha == $sha) | .databaseId' | head -1)"
+	if [ -n "$RUN_ID" ]; then
+		break
+	fi
+	sleep 3
+done
+
+if [ -z "$RUN_ID" ]; then
+	echo "q: no run found for ${SHORT} after 60s" >&2
+	exit 1
+fi
+
+echo "q: run ${RUN_ID}" >&2
+
+# --- Poll loop ---
+
+START_TIME="$(date +%s)"
+
+while true; do
+	RUN_JSON="$(gh run view "$RUN_ID" --json status,conclusion 2>/dev/null || echo '{}')"
+	STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+	CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+
+	ELAPSED=$(( $(date +%s) - START_TIME ))
+	MINS=$(( ELAPSED / 60 ))
+	SECS=$(( ELAPSED % 60 ))
+
+	if [ "$STATUS" = "completed" ]; then
+		echo "" >&2
+		break
+	fi
+
+	printf "\rq: running [%dm%02ds]" "$MINS" "$SECS" >&2
+	sleep 15
+done
+
+# --- Result ---
+
+if [ "$CONCLUSION" = "success" ]; then
+	echo "q: passed [${MINS}m${SECS}s]" >&2
+	git fetch origin main --quiet 2>/dev/null || true
+else
+	RUN_URL="$(gh run view "$RUN_ID" --json url -q '.url' 2>/dev/null || echo "(unknown)")"
+	echo "q: FAILED [${MINS}m${SECS}s]" >&2
+	echo "$RUN_URL" >&2
+	exit 1
+fi
