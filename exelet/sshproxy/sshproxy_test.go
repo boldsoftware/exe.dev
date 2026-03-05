@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"runtime"
 	"testing"
 	"time"
 )
@@ -13,9 +12,6 @@ import (
 // TestStartAdoptsExistingProcess verifies that Start() adopts an existing socat
 // process listening on the same port instead of spawning a duplicate.
 func TestStartAdoptsExistingProcess(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("test requires Linux /proc filesystem")
-	}
 	if _, err := exec.LookPath("socat"); err != nil {
 		t.Skip("socat not found in PATH, skipping test")
 	}
