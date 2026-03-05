@@ -15,7 +15,7 @@ import (
 
 // tradeExe0ForExe1 generates an exe0 token, runs the exe0-to-exe1 SSH command,
 // and returns the resulting exe1 token.
-func tradeExe0ForExe1(t *testing.T, keyFile string, exe0Token string, extraArgs ...string) (string, error) {
+func tradeExe0ForExe1(t *testing.T, keyFile, exe0Token string, extraArgs ...string) (string, error) {
 	t.Helper()
 	args := append([]string{"exe0-to-exe1"}, extraArgs...)
 	args = append(args, exe0Token)
@@ -29,7 +29,7 @@ func tradeExe0ForExe1(t *testing.T, keyFile string, exe0Token string, extraArgs 
 
 // tradeExe0ForExe1JSON generates an exe0 token, runs the exe0-to-exe1 --json SSH command,
 // and returns the raw JSON output.
-func tradeExe0ForExe1JSON(t *testing.T, keyFile string, exe0Token string, extraArgs ...string) ([]byte, error) {
+func tradeExe0ForExe1JSON(t *testing.T, keyFile, exe0Token string, extraArgs ...string) ([]byte, error) {
 	t.Helper()
 	args := append([]string{"exe0-to-exe1", "--json"}, extraArgs...)
 	args = append(args, exe0Token)
