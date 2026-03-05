@@ -11,6 +11,5 @@ restart BOX_NAME
 PROMPT ▶ restart BOX_NAME
 Restarting BOX_NAME...
 VM "BOX_NAME" restarted successfully
-'ls' may not reflect the correct VM state for a few minutes...
 PROMPT ▶ exit
 Goodbye!

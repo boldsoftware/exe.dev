@@ -829,8 +829,6 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		return nil
 	}
 	cc.Writeln("\033[1;32mVM %q restarted successfully\033[0m", boxName)
-	// TODO: Block `restart` on changing the `ls` state changing, warning banner for now.
-	cc.Writeln("\033[1;32m'ls' may not reflect the correct VM state for a few minutes...\033[0m")
 	return nil
 }
 
