@@ -31,14 +31,14 @@ type Service struct {
 	proxyManager        *sshproxy.Manager
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
-	stopLogRotation      func()
-	migratingInstances   sync.Map // map[instanceID]struct{} - instances currently being migrated
-	reconcileGroup       singleflight.Group[string, struct{}]
+	stopLogRotation     func()
+	migratingInstances  sync.Map // map[instanceID]struct{} - instances currently being migrated
+	reconcileGroup      singleflight.Group[string, struct{}]
 	// reconcileCtx is stored in the struct (rather than passed per-call) because
 	// background reconcile goroutines outlive the gRPC request that triggers them.
 	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
-	reconcileCtx         context.Context
-	reconcileCancel      context.CancelFunc
+	reconcileCtx    context.Context
+	reconcileCancel context.CancelFunc
 }
 
 // New returns a new service.

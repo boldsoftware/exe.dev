@@ -14,17 +14,17 @@ import (
 
 // mockNetworkManager implements network.NetworkManager for testing reconciliation.
 type mockNetworkManager struct {
-	mu             sync.Mutex
-	reconcileCalls []map[string]struct{}
-	reconcileRet   []string
-	reconcileErr   error
+	mu               sync.Mutex
+	reconcileCalls   []map[string]struct{}
+	reconcileRet     []string
+	reconcileErr     error
 	reconcileBlock   chan struct{} // if non-nil, ReconcileLeases blocks until closed
 	reconcileEntered chan struct{} // if non-nil, signalled when ReconcileLeases is entered
 }
 
-func (m *mockNetworkManager) Start(ctx context.Context) error   { return nil }
-func (m *mockNetworkManager) Stop(ctx context.Context) error    { return nil }
-func (m *mockNetworkManager) Config(ctx context.Context) any    { return nil }
+func (m *mockNetworkManager) Start(ctx context.Context) error { return nil }
+func (m *mockNetworkManager) Stop(ctx context.Context) error  { return nil }
+func (m *mockNetworkManager) Config(ctx context.Context) any  { return nil }
 func (m *mockNetworkManager) CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error) {
 	return nil, nil
 }
@@ -32,9 +32,11 @@ func (m *mockNetworkManager) DeleteInterface(ctx context.Context, id, ip string)
 func (m *mockNetworkManager) ApplyConnectionLimit(ctx context.Context, ip string) error {
 	return nil
 }
+
 func (m *mockNetworkManager) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	return nil
 }
+
 func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
 	if m.reconcileEntered != nil {
 		select {
