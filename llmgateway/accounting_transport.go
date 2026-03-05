@@ -203,15 +203,16 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 					break
 				}
 			}
-			if err := scanner.Err(); err != nil {
+			scanErr := scanner.Err()
+			if scanErr != nil {
 				switch {
-				case errors.Is(err, context.Canceled), errorz.HasType[http2.StreamError](err):
+				case errors.Is(scanErr, context.Canceled), errorz.HasType[http2.StreamError](scanErr):
 					// common, uninteresting error, ignore
 				default:
-					a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", err)
+					a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", scanErr)
 				}
 			}
-			bodyWriter.Close()
+			bodyWriter.CloseWithError(scanErr)
 		}()
 	default:
 		// We just log this rather than return an error, so that the request still gets
