@@ -332,14 +332,10 @@ func TestReconcileIPLeasesSingleflightDedup(t *testing.T) {
 	close(nm.reconcileBlock)
 	wg.Wait()
 
-	// Verify dedup: the entry latch ensures the singleflight key is set before
-	// we unblock, so goroutines that enter Do while the flight is in-progress
-	// coalesce. Under typical scheduling all 10 coalesce into 1 call; in theory
-	// a goroutine could be delayed past flight completion and start a second
-	// flight, but this is vanishingly unlikely given the goroutines are already
-	// unblocked and the flight does disk I/O (listInstances) before reaching
-	// ReconcileLeases.
-	if calls := nm.callCount(); calls != 1 {
-		t.Fatalf("expected singleflight to collapse to 1 reconcile call, got %d", calls)
+	// Verify dedup occurred: 10 concurrent callers should produce significantly
+	// fewer than 10 ReconcileLeases calls. We allow up to 2 since a goroutine
+	// may be scheduled after the first flight completes, starting a second flight.
+	if calls := nm.callCount(); calls == 0 || calls > 2 {
+		t.Fatalf("expected singleflight dedup (1-2 calls for 10 goroutines), got %d", calls)
 	}
 }
