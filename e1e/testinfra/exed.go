@@ -49,6 +49,201 @@ type ExedInstance struct {
 // ExedInstance.GuidLog channel.
 var guidRegex = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 
+// exedPorts holds the ports parsed from exed's log output.
+type exedPorts struct {
+	SSH         int
+	HTTP        int
+	PiperPlugin int
+	Exeprox     int
+	Extra       []int
+}
+
+func (p *exedPorts) setPort(typ string, port int) {
+	switch typ {
+	case "ssh":
+		p.SSH = port
+	case "http":
+		p.HTTP = port
+	case "plugin":
+		p.PiperPlugin = port
+	case "exeprox-service":
+		p.Exeprox = port
+	default:
+		slog.Warn("unknown listener type in exed log", "type", typ, "port", port)
+	}
+}
+
+// exedLogResult holds everything produced by watchExedLogs.
+type exedLogResult struct {
+	Ports      exedPorts
+	Errors     chan string
+	GUIDLog    chan string
+	LoggerDone chan bool
+}
+
+// watchExedLogs launches a goroutine that scans r for exed's JSON log
+// output, parses port announcements, and forwards errors/GUIDs to
+// channels. It blocks until "server started" is seen or timeout expires.
+//
+// logFile, if non-nil, receives a copy of every line.
+// logPorts controls whether port announcements are logged via slog.
+// expectedExtraPorts is the expected len of the "proxy listeners set up" ports array.
+func watchExedLogs(ctx context.Context, r io.Reader, logFile io.Writer, logPorts bool, expectedExtraPorts int, timeout time.Duration) (*exedLogResult, error) {
+	var teeMu sync.Mutex
+	tee := new(strings.Builder)
+	type listen struct {
+		typ  string
+		port int
+	}
+	listeningC := make(chan listen, 4)
+	proxyPortsC := make(chan []int, 1)
+	startedC := make(chan bool)
+	exedSlogErrC := make(chan string, 16)
+	exedGUIDLogC := make(chan string, 128)
+	exedLoggerDone := make(chan bool)
+
+	go func() {
+		defer close(exedLoggerDone)
+		started := false
+		seenPanic := false
+		scan := bufio.NewScanner(r)
+		for scan.Scan() {
+			line := scan.Bytes()
+			teeMu.Lock()
+			tee.Write(line)
+			tee.WriteString("\n")
+			teeMu.Unlock()
+
+			if logFile != nil {
+				fmt.Fprintf(logFile, "%s\n", line)
+			}
+			if seenPanic {
+				fmt.Printf("%s\n", line)
+			}
+
+			// Parse JSON log line.
+			if !json.Valid(line) {
+				// Invalid JSON could be a stray fmt.Printf...
+				// or a panic.
+				// If it's a panic, dup all output to stdout.
+				if bytes.Contains(line, []byte("panic:")) {
+					seenPanic = true
+					// Dump what we have so far.
+					// From here on out,
+					// we'll print as we go.
+					teeMu.Lock()
+					fmt.Print(tee.String())
+					teeMu.Unlock()
+				}
+				if guidRegex.Match(line) {
+					select {
+					case exedGUIDLogC <- string(line):
+					default:
+					}
+				}
+				continue
+			}
+
+			var entry map[string]any
+			if err := json.Unmarshal(line, &entry); err != nil {
+				slog.ErrorContext(ctx, "failed to parse exed log file", "error", err, "line", string(line))
+				continue
+			}
+			if level, ok := entry["level"].(string); ok && level == "ERROR" {
+				select {
+				case exedSlogErrC <- string(line):
+				default:
+				}
+			}
+			if guid, ok := entry["guid"].(string); ok && guid != "" {
+				select {
+				case exedGUIDLogC <- string(line):
+				default:
+				}
+			}
+
+			switch entry["msg"] {
+			case "listening":
+				listeningC <- listen{typ: entry["type"].(string), port: int(entry["port"].(float64))}
+				if logPorts {
+					slog.InfoContext(ctx, "exed listening", "type", entry["type"], "port", entry["port"])
+				}
+
+			case "proxy listeners set up":
+				// Parse proxy ports from the "ports" array
+				// in the log entry
+				if portsVal, ok := entry["ports"].([]any); ok {
+					ports := make([]int, len(portsVal))
+					for i, p := range portsVal {
+						ports[i] = int(p.(float64))
+					}
+					select {
+					case proxyPortsC <- ports:
+					default:
+					}
+					if logPorts {
+						slog.InfoContext(ctx, "exed proxy ports", "ports", ports)
+					}
+				}
+
+			case "server started":
+				if !started {
+					close(startedC)
+					started = true
+				}
+			}
+		}
+		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			slog.ErrorContext(ctx, "error scanning exed output", "error", err)
+		}
+	}()
+
+	var ports exedPorts
+processLogs:
+	for {
+		select {
+		case ln := <-listeningC:
+			ports.setPort(ln.typ, ln.port)
+		case ports.Extra = <-proxyPortsC:
+			// Received proxy ports from "proxy listeners set up"
+			// log message
+		case <-startedC:
+			break processLogs
+		case <-time.After(timeout):
+			teeMu.Lock()
+			out := tee.String()
+			teeMu.Unlock()
+			return nil, fmt.Errorf("timeout waiting for exed to start. Output:\n%s", out)
+		}
+	}
+
+	// Drain any listening/proxy events buffered before "server started".
+drainListening:
+	for {
+		select {
+		case ln := <-listeningC:
+			ports.setPort(ln.typ, ln.port)
+		case ports.Extra = <-proxyPortsC:
+		default:
+			break drainListening
+		}
+	}
+
+	if ports.SSH == 0 || ports.HTTP == 0 || ports.PiperPlugin == 0 || ports.Exeprox == 0 {
+		return nil, fmt.Errorf("failed to get all required ports (ssh %d http %d piper %d exeprox %d)", ports.SSH, ports.HTTP, ports.PiperPlugin, ports.Exeprox)
+	}
+	if len(ports.Extra) != expectedExtraPorts {
+		return nil, fmt.Errorf("got %d proxy ports, expected %d", len(ports.Extra), expectedExtraPorts)
+	}
+
+	return &exedLogResult{
+		Ports:      ports,
+		Errors:     exedSlogErrC,
+		GUIDLog:    exedGUIDLogC,
+		LoggerDone: exedLoggerDone,
+	}, nil
+}
+
 // StartExed starts the exed process.
 //
 // emailServerPort is a port on the local host,
@@ -180,155 +375,14 @@ func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPo
 		return nil, fmt.Errorf("failed to start exed: %w", err)
 	}
 
-	// Parse output to find ports
-	var teeMu sync.Mutex
-	tee := new(strings.Builder)
-	type listen struct {
-		typ  string
-		port int
-	}
-	listeningC := make(chan listen, 3)
-	proxyPortsC := make(chan []int, 1)
-	startedC := make(chan bool)
-	exedSlogErrC := make(chan string, 16)
-	exedGUIDLogC := make(chan string, 128)
-	exedLoggerDone := make(chan bool)
-
-	go func() {
-		defer close(exedLoggerDone)
-		started := false
-		seenPanic := false
-		scan := bufio.NewScanner(cmdOut)
-		for scan.Scan() {
-			line := scan.Bytes()
-			teeMu.Lock()
-			tee.Write(line)
-			tee.WriteString("\n")
-			teeMu.Unlock()
-
-			if logFile != nil {
-				fmt.Fprintf(logFile, "%s\n", line)
-			}
-			if seenPanic {
-				fmt.Printf("%s\n", line)
-			}
-
-			// Parse JSON log line.
-			if !json.Valid(line) {
-				// Invalid JSON could be a stray fmt.Printf...
-				// or a panic.
-				// If it's a panic, dup all output to stdout.
-				if bytes.Contains(line, []byte("panic:")) {
-					seenPanic = true
-					// Dump what we have so far.
-					// From here on out,
-					// we'll print as we go.
-					teeMu.Lock()
-					fmt.Print(tee.String())
-					teeMu.Unlock()
-				}
-				if guidRegex.Match(line) {
-					select {
-					case exedGUIDLogC <- string(line):
-					default:
-					}
-				}
-				continue
-			}
-
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				slog.ErrorContext(ctx, "failed to parse exed log file", "error", err, "line", string(line))
-				continue
-			}
-			if level, ok := entry["level"].(string); ok && level == "ERROR" {
-				select {
-				case exedSlogErrC <- string(line):
-				default:
-				}
-			}
-			if guid, ok := entry["guid"].(string); ok && guid != "" {
-				select {
-				case exedGUIDLogC <- string(line):
-				default:
-				}
-			}
-
-			switch entry["msg"] {
-			case "listening":
-				listeningC <- listen{typ: entry["type"].(string), port: int(entry["port"].(float64))}
-				if logPorts {
-					slog.InfoContext(ctx, "exed listening", "type", entry["type"], "port", entry["port"])
-				}
-
-			case "proxy listeners set up":
-				// Parse proxy ports from the "ports" array
-				// in the log entry
-				if portsVal, ok := entry["ports"].([]any); ok {
-					ports := make([]int, len(portsVal))
-					for i, p := range portsVal {
-						ports[i] = int(p.(float64))
-					}
-					select {
-					case proxyPortsC <- ports:
-					default:
-					}
-					if logPorts {
-						slog.InfoContext(ctx, "exed proxy ports", "ports", ports)
-					}
-				}
-
-			case "server started":
-				if !started {
-					close(startedC)
-					started = true
-				}
-			}
-		}
-		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
-			slog.ErrorContext(ctx, "error scanning exed output", "error", err)
-		}
-	}()
-
 	timeout := time.Minute
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
 	}
 
-	var sshPort, httpPort, piperPluginPort, exeproxPort int
-	var proxyPorts []int
-	expectedProxyPorts := len(extraProxyPorts)
-ProcessLogs:
-	for {
-		select {
-		case ln := <-listeningC:
-			switch ln.typ {
-			case "ssh":
-				sshPort = ln.port
-			case "http":
-				httpPort = ln.port
-			case "plugin":
-				piperPluginPort = ln.port
-			case "exeprox-service":
-				exeproxPort = ln.port
-			}
-		case proxyPorts = <-proxyPortsC:
-			// Received proxy ports from "proxy listeners set up"
-			// log message
-		case <-startedC:
-			break ProcessLogs
-		case <-time.After(timeout):
-			teeMu.Lock()
-			out := tee.String()
-			teeMu.Unlock()
-			return nil, fmt.Errorf("timeout waiting for exed to start. Output:\n%s", out)
-		}
-	}
-	if sshPort == 0 || httpPort == 0 || piperPluginPort == 0 || exeproxPort == 0 {
-		return nil, fmt.Errorf("failed to start all required ports (ssh %d http %d piper %d exeprox %d)", sshPort, httpPort, piperPluginPort, exeproxPort)
-	}
-	if len(proxyPorts) != expectedProxyPorts {
-		return nil, fmt.Errorf("got %d proxy ports, expected %d", len(proxyPorts), expectedProxyPorts)
+	result, err := watchExedLogs(ctx, cmdOut, logFile, logPorts, len(extraProxyPorts), timeout)
+	if err != nil {
+		return nil, err
 	}
 
 	cmdCtx, cancel := context.WithCancel(ctx)
@@ -346,21 +400,21 @@ ProcessLogs:
 		Cause:           cause,
 		Cmd:             exedCmd,
 		dbPath:          dbPath.Name(),
-		SSHPort:         sshPort,
-		HTTPPort:        httpPort,
-		PiperPluginPort: piperPluginPort,
-		ExeproxPort:     exeproxPort,
-		ExtraPorts:      proxyPorts,
+		SSHPort:         result.Ports.SSH,
+		HTTPPort:        result.Ports.HTTP,
+		PiperPluginPort: result.Ports.PiperPlugin,
+		ExeproxPort:     result.Ports.Exeprox,
+		ExtraPorts:      result.Ports.Extra,
 		CoverDir:        coverDir,
-		Errors:          exedSlogErrC,
-		GUIDLog:         exedGUIDLogC,
+		Errors:          result.Errors,
+		GUIDLog:         result.GUIDLog,
 		LMTPSocketPath:  lmtpSocketPath,
 		binPath:         binPath,
 		logFile:         logFile,
 		piperPort:       piperPort,
 		emailServerURL:  emailServerURL,
 		whoamiPath:      whoamiPath,
-		exedLoggerDone:  exedLoggerDone,
+		exedLoggerDone:  result.LoggerDone,
 	}
 
 	AddCanonicalization(instance.SSHPort, "EXED_SSH_PORT")
@@ -552,87 +606,14 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		return fmt.Errorf("failed to restart exed: %v", err)
 	}
 
-	var teeMu sync.Mutex
-	tee := new(strings.Builder)
-	startedC := make(chan bool)
-	exedSlogErrC := make(chan string, 16)
-	exedGUIDLogC := make(chan string, 128)
-	exedLoggerDone := make(chan bool)
+	timeout := time.Minute
+	if os.Getenv("CI") != "" {
+		timeout = 2 * time.Minute
+	}
 
-	go func() {
-		defer close(exedLoggerDone)
-		started := false
-		seenPanic := false
-		scan := bufio.NewScanner(cmdOut)
-		for scan.Scan() {
-			line := scan.Bytes()
-
-			teeMu.Lock()
-			tee.Write(line)
-			tee.WriteString("\n")
-			teeMu.Unlock()
-
-			if ei.logFile != nil {
-				fmt.Fprintf(ei.logFile, "%s\n", line)
-			}
-			if seenPanic {
-				fmt.Printf("%s\n", line)
-			}
-
-			if !json.Valid(line) {
-				if bytes.Contains(line, []byte("panic:")) {
-					seenPanic = true
-					teeMu.Lock()
-					fmt.Print(tee.String())
-					teeMu.Unlock()
-				}
-				if guidRegex.Match(line) {
-					select {
-					case exedGUIDLogC <- string(line):
-					default:
-					}
-				}
-				continue
-			}
-
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				slog.ErrorContext(ctx, "failed to parse exed log file", "error", err, "line", string(line))
-				continue
-			}
-			if level, ok := entry["level"].(string); ok && level == "ERROR" {
-				select {
-				case exedSlogErrC <- string(line):
-				default:
-				}
-			}
-			if guid, ok := entry["guid"].(string); ok && guid != "" {
-				select {
-				case exedGUIDLogC <- string(line):
-				default:
-				}
-			}
-
-			if entry["msg"] == "server started" {
-				if !started {
-					close(startedC)
-					started = true
-				}
-			}
-		}
-
-		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
-			slog.ErrorContext(ctx, "error scanning exed output", "error", err)
-		}
-	}()
-
-	select {
-	case <-startedC:
-	case <-time.After(2 * time.Minute):
-		teeMu.Lock()
-		out := tee.String()
-		teeMu.Unlock()
-		return fmt.Errorf("timeout waiting for exed to restart; output:\n%s", out)
+	result, err := watchExedLogs(ctx, cmdOut, ei.logFile, false, len(ei.ExtraPorts), timeout)
+	if err != nil {
+		return err
 	}
 
 	cmdCtx, cancel := context.WithCancel(ctx)
@@ -648,9 +629,14 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.Exited = cmdCtx.Done()
 	ei.Cause = cause
 	ei.Cmd = exedCmd
-	ei.Errors = exedSlogErrC
-	ei.GUIDLog = exedGUIDLogC
-	ei.exedLoggerDone = exedLoggerDone
+	ei.SSHPort = result.Ports.SSH
+	ei.HTTPPort = result.Ports.HTTP
+	ei.PiperPluginPort = result.Ports.PiperPlugin
+	ei.ExeproxPort = result.Ports.Exeprox
+	ei.ExtraPorts = result.Ports.Extra
+	ei.Errors = result.Errors
+	ei.GUIDLog = result.GUIDLog
+	ei.exedLoggerDone = result.LoggerDone
 
 	elapsed := time.Since(start.Truncate(100 * time.Millisecond))
 	slog.InfoContext(ctx, "restarted exed", "elapsed", elapsed)

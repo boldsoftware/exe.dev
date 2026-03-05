@@ -62,6 +62,90 @@ func TestTCPProxy(t *testing.T) {
 	wg.Wait()
 }
 
+// TestTCPProxyRetarget verifies that calling SetDestPort a second time
+// redirects new connections to the new destination.
+func TestTCPProxyRetarget(t *testing.T) {
+	// Backend A
+	lnA, err := net.ListenTCP("tcp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lnA.Close()
+
+	// Backend B
+	lnB, err := net.ListenTCP("tcp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lnB.Close()
+
+	p, err := NewTCPProxy("retarget-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.SetDestPort(lnA.Addr().(*net.TCPAddr).Port)
+
+	var serveWG sync.WaitGroup
+	serveWG.Go(func() {
+		p.Serve(t.Context())
+	})
+
+	// Verify traffic reaches A.
+	const msgA = "hello A\n"
+	c1, err := net.DialTCP("tcp", nil, p.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c1.Write([]byte(msgA)); err != nil {
+		t.Fatal(err)
+	}
+	c1.Close()
+
+	lnA.SetDeadline(time.Now().Add(5 * time.Second))
+	rc, err := lnA.AcceptTCP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bufio.NewReader(rc).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != msgA {
+		t.Fatalf("backend A: got %q want %q", got, msgA)
+	}
+	rc.Close()
+
+	// Retarget to B.
+	p.SetDestPort(lnB.Addr().(*net.TCPAddr).Port)
+
+	const msgB = "hello B\n"
+	c2, err := net.DialTCP("tcp", nil, p.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c2.Write([]byte(msgB)); err != nil {
+		t.Fatal(err)
+	}
+	c2.Close()
+
+	lnB.SetDeadline(time.Now().Add(5 * time.Second))
+	rc2, err := lnB.AcceptTCP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, err := bufio.NewReader(rc2).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2 != msgB {
+		t.Fatalf("backend B: got %q want %q", got2, msgB)
+	}
+	rc2.Close()
+
+	p.Close()
+	serveWG.Wait()
+}
+
 // TestTCPProxyHalfClose verifies that when the destination side closes
 // the connection, the proxy goroutines clean up promptly rather than
 // leaking goroutines stuck in io.Copy/splice.

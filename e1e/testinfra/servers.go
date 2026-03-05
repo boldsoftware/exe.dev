@@ -7,6 +7,15 @@ import (
 	"log/slog"
 )
 
+func startTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
+	p, err := NewTCPProxy(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s: %w", name, err)
+	}
+	go p.Serve(ctx)
+	return p, nil
+}
+
 // ServerEnv describes the various servers running for an end-to-end test.
 type ServerEnv struct {
 	Exed       *ExedInstance
@@ -57,11 +66,10 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 	// the actual sshpiper instance.
 	// TODO: figure out why we're seeing connections
 	// before SetDestPort is called, and stop doing that.
-	sshProxy, err := NewTCPProxy("sshProxy")
+	sshProxy, err := startTCPProxy(ctx, "sshProxy")
 	if err != nil {
-		return env, fmt.Errorf("failed to create ssh proxy: %w", err)
+		return env, err
 	}
-	go sshProxy.Serve(ctx)
 	env.SSHProxy = sshProxy
 
 	if logPorts {

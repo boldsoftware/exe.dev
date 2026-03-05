@@ -29,7 +29,6 @@ type TCPProxy struct {
 	listener *net.TCPListener            // where to listen for connections
 	address  *net.TCPAddr                // listening address
 	dst      atomic.Pointer[net.TCPAddr] // destination to connect to
-	ch       chan bool                   // channel closed when dst set
 	cancel   context.CancelFunc          // closes connections
 	latency  time.Duration               // latency to add to each read
 }
@@ -47,7 +46,6 @@ func NewTCPProxy(name string) (*TCPProxy, error) {
 		Name:     name,
 		listener: ln,
 		address:  address,
-		ch:       make(chan bool),
 	}
 	return ret, nil
 }
@@ -102,7 +100,13 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 	defer c.Close()
 
 	// Wait for destination address to be set.
-	<-p.ch
+	for p.dst.Load() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 
 	dstAddr := p.dst.Load()
 	dst, err := net.DialTCP("tcp", nil, dstAddr)
@@ -157,13 +161,15 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 }
 
 // SetDestPort sets the destination address to port on localhost.
+// It may be called more than once to retarget the proxy.
+// New connections after the call use the new destination;
+// existing connections continue to use their original destination.
 func (p *TCPProxy) SetDestPort(port int) {
 	addr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: port,
 	}
 	p.dst.Store(addr)
-	close(p.ch)
 }
 
 // SetLatency sets a latency to add to each read operation.
