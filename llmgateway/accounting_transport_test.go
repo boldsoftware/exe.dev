@@ -841,10 +841,12 @@ func TestAccountingTransport_Anthropic_WebSearch_SSE(t *testing.T) {
 	logs := &logCapture{}
 	logger := slog.New(logs.handler())
 
-	// Build an SSE stream: message_start has model/id, message_delta has usage with server_tool_use
+	// Build a realistic SSE stream: message_start has model/id nested inside "message",
+	// message_delta has usage with server_tool_use at top level.
 	var sseBuf bytes.Buffer
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5","id":"msg_sse_ws","type":"message","role":"assistant","content":[],"usage":{"input_tokens":10698,"output_tokens":3}}}` + "\n\n")
 	sseBuf.WriteString("data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n")
-	sseBuf.WriteString(`data: {"type":"message_delta","id":"msg_sse_ws","model":"claude-sonnet-4-5","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10698,"output_tokens":131,"server_tool_use":{"web_search_requests":1,"web_fetch_requests":0}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10698,"output_tokens":131,"server_tool_use":{"web_search_requests":1,"web_fetch_requests":0}}}` + "\n\n")
 	sseData := sseBuf.String()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -979,5 +981,255 @@ func assertAttrUint(t *testing.T, attrs map[string]any, key string, want uint64)
 	}
 	if gotUint != want {
 		t.Errorf("log attr %q = %d, want %d", key, gotUint, want)
+	}
+}
+
+// TestAccountingTransport_Anthropic_SSE verifies accounting for Anthropic SSE
+// streaming with the real event format. Anthropic SSE has:
+//   - message_start: model/id nested inside a "message" wrapper
+//   - message_delta: usage at top level but NO model or id
+//
+// This test verifies that the gateway correctly extracts the model from
+// message_start and pairs it with the final usage from message_delta.
+func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	// Build a realistic Anthropic SSE stream (from actual curl output).
+	// Key: message_start has model/id inside "message", message_delta has usage but NO model/id.
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString("event: message_start\n")
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_017N87RsTpk77EtJoeyifnHh","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString("event: content_block_start\n")
+	sseBuf.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n")
+	sseBuf.WriteString("event: ping\n")
+	sseBuf.WriteString(`data: {"type": "ping"}` + "\n\n")
+	sseBuf.WriteString("event: content_block_delta\n")
+	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello! How"}}` + "\n\n")
+	sseBuf.WriteString("event: content_block_delta\n")
+	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" can I help you today?"}}` + "\n\n")
+	sseBuf.WriteString("event: content_block_stop\n")
+	sseBuf.WriteString(`data: {"type":"content_block_stop","index":0}` + "\n\n")
+	sseBuf.WriteString("event: message_delta\n")
+	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":12}}` + "\n\n")
+	sseBuf.WriteString("event: message_stop\n")
+	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
+	sseData := sseBuf.String()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(sseData))
+	}))
+	defer backend.Close()
+
+	mockURL, _ := url.Parse(backend.URL)
+
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[],"stream":true}`))
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "http"
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the SSE body was passed through
+	body := rr.Body.String()
+	if !strings.Contains(body, "Hello! How") {
+		t.Errorf("SSE body missing expected content: %s", body)
+	}
+
+	// Verify stored usage
+	if transport.sseUsage == nil {
+		t.Fatal("sseUsage was not stored")
+	}
+	if transport.sseUsage.Model != "claude-sonnet-4-5-20250929" {
+		t.Errorf("sseUsage.Model = %q, want %q", transport.sseUsage.Model, "claude-sonnet-4-5-20250929")
+	}
+	if transport.sseUsage.MessageID != "msg_017N87RsTpk77EtJoeyifnHh" {
+		t.Errorf("sseUsage.MessageID = %q, want %q", transport.sseUsage.MessageID, "msg_017N87RsTpk77EtJoeyifnHh")
+	}
+	if transport.sseUsage.Usage.InputTokens != 10 {
+		t.Errorf("sseUsage.InputTokens = %d, want 10", transport.sseUsage.Usage.InputTokens)
+	}
+	if transport.sseUsage.Usage.OutputTokens != 12 {
+		t.Errorf("sseUsage.OutputTokens = %d, want 12", transport.sseUsage.Usage.OutputTokens)
+	}
+
+	// Verify cost is correctly calculated (not zero!)
+	// claude-sonnet-4-5-20250929: Input=300, Output=1500 (cents per million tokens)
+	// Cost = (10 * 300 + 12 * 1500) / 100_000_000 = 21000 / 100_000_000
+	expectedMicroCents := uint64(10)*300 + uint64(12)*1500
+	expectedUSD := float64(expectedMicroCents) / 100_000_000
+	gotCost := transport.sseUsage.Usage.CostUSD
+	if gotCost <= 0 {
+		t.Errorf("sseUsage.CostUSD should be > 0, got %f (model was likely empty)", gotCost)
+	}
+	if fmt.Sprintf("%.10f", gotCost) != fmt.Sprintf("%.10f", expectedUSD) {
+		t.Errorf("cost mismatch: got %.10f, want %.10f", gotCost, expectedUSD)
+	}
+	t.Logf("SSE cost: got=%.10f expected=%.10f", gotCost, expectedUSD)
+
+	// Check debitResponse log record. The last one (from message_delta) should have
+	// the correct model and token counts.
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found in SSE stream")
+	}
+	attrs := attrMap(debit)
+	t.Logf("SSE debitResponse attrs: %v", attrs)
+
+	assertAttr(t, attrs, "model", "claude-sonnet-4-5-20250929")
+	assertAttr(t, attrs, "message_id", "msg_017N87RsTpk77EtJoeyifnHh")
+	assertAttrUint(t, attrs, "input_tokens", 10)
+	assertAttrUint(t, attrs, "output_tokens", 12)
+}
+
+// TestAccountingTransport_Anthropic_SSE_Live makes a real streaming request
+// to the Anthropic API and verifies the gateway accounts for it correctly.
+func TestAccountingTransport_Anthropic_SSE_Live(t *testing.T) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping live test")
+	}
+
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	reqBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":20,"stream":true,"messages":[{"role":"user","content":"Say hello in one word."}]}`
+
+	anthrURL, _ := url.Parse("https://api.anthropic.com")
+
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	incomingReq.Header.Set("X-Exedev-Box", "test-box")
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "https"
+			r.Out.URL.Host = anthrURL.Host
+			r.Out.URL.Path = "/v1/messages"
+			r.Out.Host = anthrURL.Host
+			r.Out.Header.Set("x-api-key", apiKey)
+			r.Out.Header.Set("anthropic-version", "2023-06-01")
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Log the raw SSE body for debugging
+	t.Logf("Raw SSE body (first 2000 chars):\n%s", rr.Body.String()[:min(2000, rr.Body.Len())])
+
+	// Verify stored usage
+	if transport.sseUsage == nil {
+		t.Fatal("sseUsage was not stored")
+	}
+
+	t.Logf("Live SSE usage: model=%s message_id=%s input=%d output=%d cost=%.10f",
+		transport.sseUsage.Model,
+		transport.sseUsage.MessageID,
+		transport.sseUsage.Usage.InputTokens,
+		transport.sseUsage.Usage.OutputTokens,
+		transport.sseUsage.Usage.CostUSD)
+
+	// Model should be set (not empty!) - this is the core bug we're testing
+	if transport.sseUsage.Model == "" {
+		t.Error("sseUsage.Model is empty - model not extracted from message_start")
+	}
+	// Should be some variant of claude-haiku-4-5
+	if !strings.Contains(transport.sseUsage.Model, "claude-haiku-4-5") {
+		t.Errorf("sseUsage.Model = %q, want something containing 'claude-haiku-4-5'", transport.sseUsage.Model)
+	}
+
+	// Message ID should be set
+	if transport.sseUsage.MessageID == "" {
+		t.Error("sseUsage.MessageID is empty - id not extracted from message_start")
+	}
+	if !strings.HasPrefix(transport.sseUsage.MessageID, "msg_") {
+		t.Errorf("sseUsage.MessageID = %q, want prefix 'msg_'", transport.sseUsage.MessageID)
+	}
+
+	// Token counts should be non-zero
+	if transport.sseUsage.Usage.InputTokens == 0 {
+		t.Error("sseUsage.InputTokens should not be 0")
+	}
+	if transport.sseUsage.Usage.OutputTokens == 0 {
+		t.Error("sseUsage.OutputTokens should not be 0")
+	}
+
+	// Cost should be > 0 (this is the billing bug - cost is 0 when model is empty)
+	if transport.sseUsage.Usage.CostUSD <= 0 {
+		t.Errorf("sseUsage.CostUSD should be > 0, got %f (billing bug: model was likely empty)", transport.sseUsage.Usage.CostUSD)
+	}
+
+	// Verify cost matches our pricing calculation
+	expectedCost := llmpricing.CalculateCost(llmpricing.ProviderAnthropic, transport.sseUsage.Model, llmpricing.Usage{
+		InputTokens:              transport.sseUsage.Usage.InputTokens,
+		OutputTokens:             transport.sseUsage.Usage.OutputTokens,
+		CacheCreationInputTokens: transport.sseUsage.Usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     transport.sseUsage.Usage.CacheReadInputTokens,
+	})
+	if fmt.Sprintf("%.10f", transport.sseUsage.Usage.CostUSD) != fmt.Sprintf("%.10f", expectedCost) {
+		t.Errorf("cost mismatch: got %.10f, want %.10f", transport.sseUsage.Usage.CostUSD, expectedCost)
+	}
+
+	// Verify log record
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	t.Logf("Live SSE debitResponse attrs: %v", attrs)
+
+	// The model in logs should match
+	if modelAttr, ok := attrs["model"]; !ok || fmt.Sprint(modelAttr) == "" {
+		t.Errorf("debitResponse log missing or empty model attr: %v", attrs["model"])
 	}
 }

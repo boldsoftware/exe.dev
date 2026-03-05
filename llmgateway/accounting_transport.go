@@ -60,6 +60,11 @@ type accountingTransport struct {
 	// For SSE responses, we store the usage data and add attributes after the stream completes
 	sseDone  chan struct{}
 	sseUsage *UsageDebit
+
+	// sseModel and sseMessageID track the model/id from message_start events,
+	// since Anthropic SSE sends model/id in message_start but final usage in message_delta.
+	sseModel     string
+	sseMessageID string
 }
 
 // getBodyCannotReplay is an http.Request.GetBody implementation that returns a sentinel error.
@@ -396,28 +401,54 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 
 	switch m.provider {
 	case llmpricing.ProviderAnthropic:
-		var ui anthropicResponseUsageInfo
-		if err := json.Unmarshal(data, &ui); err != nil {
+		// Anthropic SSE has two relevant event types:
+		// 1. message_start: {"type":"message_start","message":{"model":"...","id":"...","usage":{...}}}
+		//    - model/id are nested inside "message"
+		// 2. message_delta: {"type":"message_delta","usage":{"input_tokens":X,"output_tokens":Y}}
+		//    - has final usage at top level, but NO model or id
+		//
+		// We extract model/id from message_start and store them, then use them
+		// when we see the final usage in message_delta.
+		var envelope struct {
+			Type    string                      `json:"type"`
+			Message *anthropicResponseUsageInfo `json:"message"`
+			Usage   *anthropicUsageData         `json:"usage"`
+		}
+		if err := json.Unmarshal(data, &envelope); err != nil {
 			// SSE events that aren't JSON are common (empty lines, etc.)
 			return nil
 		}
-		if ui.Usage == nil {
-			// Nothing to bill for here.
+
+		// message_start: extract and remember model/id from nested message
+		if envelope.Type == "message_start" && envelope.Message != nil {
+			if envelope.Message.Model != "" {
+				m.sseModel = envelope.Message.Model
+			}
+			if envelope.Message.ID != "" {
+				m.sseMessageID = envelope.Message.ID
+			}
+			// message_start has initial usage estimates; skip billing on those
 			return nil
 		}
-		usageDebit.Usage = ui.Usage.toUsage()
-		usageDebit.Model = ui.Model
-		usageDebit.MessageID = ui.ID
-		logArgs := []any{
-			"message_id", ui.ID,
-			"model", ui.Model,
-			"input_tokens", ui.Usage.InputTokens,
-			"output_tokens", ui.Usage.OutputTokens,
-			"cache_creation_tokens", ui.Usage.CacheCreationInputTokens,
-			"cache_read_tokens", ui.Usage.CacheReadInputTokens,
+
+		// For any other event, check for top-level usage (message_delta has it)
+		if envelope.Usage == nil {
+			return nil
 		}
-		if len(ui.Usage.ServerToolUse) > 0 {
-			for k, v := range ui.Usage.ServerToolUse {
+
+		usageDebit.Usage = envelope.Usage.toUsage()
+		usageDebit.Model = m.sseModel
+		usageDebit.MessageID = m.sseMessageID
+		logArgs := []any{
+			"message_id", m.sseMessageID,
+			"model", m.sseModel,
+			"input_tokens", envelope.Usage.InputTokens,
+			"output_tokens", envelope.Usage.OutputTokens,
+			"cache_creation_tokens", envelope.Usage.CacheCreationInputTokens,
+			"cache_read_tokens", envelope.Usage.CacheReadInputTokens,
+		}
+		if len(envelope.Usage.ServerToolUse) > 0 {
+			for k, v := range envelope.Usage.ServerToolUse {
 				logArgs = append(logArgs, k, v)
 			}
 		}
