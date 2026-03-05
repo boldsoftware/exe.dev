@@ -634,6 +634,102 @@ func sanitizeJSONControlChars(data []byte) []byte {
 	return buf.Bytes()
 }
 
+// sseEvent represents a parsed Server-Sent Event per the SSE spec.
+// See https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
+type sseEvent struct {
+	EventType string // from "event:" field; empty if not set
+	Data      string // from "data:" field(s); multiple data lines joined with "\n"
+}
+
+// iterSSEEvents reads an SSE stream and yields parsed events.
+// It follows the SSE spec: events are delimited by blank lines,
+// multiple "data:" lines are joined with "\n", and the "event:" field
+// sets the event type.
+func iterSSEEvents(r io.Reader, yield func(sseEvent) error) error {
+	scanner := bufio.NewScanner(r)
+	// SSE lines can be large (e.g. tool input JSON).
+	// Max buffer: 10MB to handle very large content blocks.
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+	var (
+		eventType string
+		dataLines []string
+		hasData   bool
+	)
+
+	dispatch := func() error {
+		if !hasData {
+			// Reset and skip — no data fields means no event to dispatch
+			eventType = ""
+			return nil
+		}
+		ev := sseEvent{
+			EventType: eventType,
+			Data:      strings.Join(dataLines, "\n"),
+		}
+		// Reset state
+		eventType = ""
+		dataLines = dataLines[:0]
+		hasData = false
+		return yield(ev)
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Blank line dispatches the event
+		if line == "" {
+			if err := dispatch(); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Lines starting with ':' are comments
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+
+		// Split into field name and value
+		var field, value string
+		if idx := strings.IndexByte(line, ':'); idx >= 0 {
+			field = line[:idx]
+			value = line[idx+1:]
+			// SSE spec: if value starts with a space, remove it
+			if strings.HasPrefix(value, " ") {
+				value = value[1:]
+			}
+		} else {
+			field = line
+		}
+
+		switch field {
+		case "event":
+			eventType = value
+		case "data":
+			dataLines = append(dataLines, value)
+			hasData = true
+			// "id" and "retry" fields are ignored for our use case
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading SSE stream: %w", err)
+	}
+
+	// Dispatch any trailing event (stream ended without final blank line)
+	return dispatch()
+}
+
+// truncateForError returns a string representation of data suitable for error messages,
+// truncating to a reasonable length.
+func truncateForError(data string, maxLen int) string {
+	if len(data) <= maxLen {
+		return data
+	}
+	return data[:maxLen] + fmt.Sprintf("... (%d bytes total)", len(data))
+}
+
 // parseSSEStream reads an SSE stream and assembles the complete response.
 func parseSSEStream(r io.Reader) (*response, error) {
 	var (
@@ -642,37 +738,29 @@ func parseSSEStream(r io.Reader) (*response, error) {
 		messageDone bool
 	)
 
-	scanner := bufio.NewScanner(r)
-	// SSE lines can be large (e.g. tool input JSON)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := line[len("data: "):]
+	err := iterSSEEvents(r, func(sse sseEvent) error {
+		data := sse.Data
 		if data == "[DONE]" {
-			break
+			return nil
 		}
 
 		var event streamEvent
 		if err := json.Unmarshal(sanitizeJSONControlChars([]byte(data)), &event); err != nil {
-			return nil, fmt.Errorf("parsing SSE event: %w", err)
+			return fmt.Errorf("parsing SSE event (event=%q, data=%s): %w",
+				sse.EventType, truncateForError(data, 512), err)
 		}
 
 		switch event.Type {
 		case "message_start":
 			if event.Message == nil {
-				return nil, fmt.Errorf("message_start event has no message")
+				return fmt.Errorf("message_start event has no message")
 			}
 			resp = event.Message
 			resp.Content = nil // will be rebuilt from content blocks
 
 		case "content_block_start":
 			if event.ContentBlock == nil {
-				return nil, fmt.Errorf("content_block_start event has no content_block")
+				return fmt.Errorf("content_block_start event has no content_block")
 			}
 			// Grow slice to accommodate index
 			for len(contents) <= event.Index {
@@ -688,11 +776,11 @@ func parseSSEStream(r io.Reader) (*response, error) {
 
 		case "content_block_delta":
 			if event.Index >= len(contents) {
-				return nil, fmt.Errorf("content_block_delta index %d out of range", event.Index)
+				return fmt.Errorf("content_block_delta index %d out of range", event.Index)
 			}
 			var delta streamDelta
 			if err := json.Unmarshal(event.Delta, &delta); err != nil {
-				return nil, fmt.Errorf("parsing content_block_delta: %w", err)
+				return fmt.Errorf("parsing content_block_delta: %w", err)
 			}
 			c := &contents[event.Index]
 			switch delta.Type {
@@ -719,7 +807,7 @@ func parseSSEStream(r io.Reader) (*response, error) {
 		case "message_delta":
 			var delta streamDelta
 			if err := json.Unmarshal(event.Delta, &delta); err != nil {
-				return nil, fmt.Errorf("parsing message_delta: %w", err)
+				return fmt.Errorf("parsing message_delta: %w", err)
 			}
 			if resp != nil {
 				resp.StopReason = delta.StopReason
@@ -737,12 +825,12 @@ func parseSSEStream(r io.Reader) (*response, error) {
 			// keepalive, ignore
 
 		case "error":
-			return nil, fmt.Errorf("stream error event: %s", data)
+			return fmt.Errorf("stream error event: %s", data)
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading SSE stream: %w", err)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if resp == nil {

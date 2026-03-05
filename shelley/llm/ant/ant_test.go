@@ -2011,3 +2011,132 @@ func TestDoFailsAfterMaxRetriesOnTruncatedStream(t *testing.T) {
 		t.Errorf("expected 11 attempts, got %d", transport.calls)
 	}
 }
+
+func TestParseSSEStreamMultiLineData(t *testing.T) {
+	// SSE spec allows multiple "data:" lines which should be joined with "\n".
+	// This tests that our parser correctly handles this case.
+	var b strings.Builder
+	// Use multi-line data format for message_start
+	b.WriteString("event: message_start\n")
+	b.WriteString("data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_multi\",\n")
+	b.WriteString("data: \"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\n")
+	b.WriteString("data: \"content\":[],\"stop_reason\":null,\n")
+	b.WriteString("data: \"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n")
+	b.WriteString("\n") // blank line dispatches event
+
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if resp.ID != "msg_multi" {
+		t.Errorf("resp.ID = %q, want %q", resp.ID, "msg_multi")
+	}
+	if len(resp.Content) != 1 || *resp.Content[0].Text != "hello" {
+		t.Errorf("unexpected content: %+v", resp.Content)
+	}
+}
+
+func TestParseSSEStreamErrorIncludesData(t *testing.T) {
+	// When JSON parsing fails, the error should include the raw data for debugging.
+	var b strings.Builder
+	b.WriteString("event: message_start\n")
+	b.WriteString("data: {\"type\": \"message_start\" \"broken json}\n")
+	b.WriteString("\n")
+
+	_, err := parseSSEStream(strings.NewReader(b.String()))
+	if err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+	// Error should contain the event type and the raw data
+	if !strings.Contains(err.Error(), "message_start") {
+		t.Errorf("error should contain event type, got: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "broken json") {
+		t.Errorf("error should contain raw data, got: %q", err.Error())
+	}
+}
+
+func TestParseSSEStreamTruncatedJSON(t *testing.T) {
+	// Simulate what happens when the connection drops mid-JSON (the actual bug we're debugging).
+	// The data line contains incomplete JSON that would cause "unexpected end of JSON input".
+	var b strings.Builder
+	b.WriteString("event: content_block_delta\n")
+	b.WriteString("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_del\n")
+	b.WriteString("\n")
+
+	_, err := parseSSEStream(strings.NewReader(b.String()))
+	if err == nil {
+		t.Fatal("expected error for truncated JSON")
+	}
+	// Should include the event type for context
+	if !strings.Contains(err.Error(), "content_block_delta") {
+		t.Errorf("error should contain event type, got: %q", err.Error())
+	}
+	// Should include the truncated data
+	if !strings.Contains(err.Error(), "text_del") {
+		t.Errorf("error should contain the truncated data, got: %q", err.Error())
+	}
+}
+
+func TestIterSSEEventsComments(t *testing.T) {
+	// Comments (lines starting with ':') should be ignored.
+	stream := ": this is a comment\nevent: ping\ndata: {}\n\n"
+	var events []sseEvent
+	err := iterSSEEvents(strings.NewReader(stream), func(ev sseEvent) error {
+		events = append(events, ev)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("iterSSEEvents() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].EventType != "ping" {
+		t.Errorf("event type = %q, want %q", events[0].EventType, "ping")
+	}
+}
+
+func TestIterSSEEventsNoTrailingNewline(t *testing.T) {
+	// Stream that ends without a trailing blank line should still dispatch.
+	stream := "event: ping\ndata: {}"
+	var events []sseEvent
+	err := iterSSEEvents(strings.NewReader(stream), func(ev sseEvent) error {
+		events = append(events, ev)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("iterSSEEvents() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+}
+
+func TestParseSSEStreamInvalidCharInJSON(t *testing.T) {
+	// Simulate the "invalid character '\"' after object key:value pair" error
+	// mentioned in the bug report. This can happen when JSON is split across
+	// what the old parser thought were separate lines.
+	var b strings.Builder
+	b.WriteString("event: message_start\n")
+	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_ok","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"usage":{"input_tokens":1,"output_tokens":0}}}` + "\n\n")
+	b.WriteString("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+	b.WriteString("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n")
+	b.WriteString("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	b.WriteString("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
+	b.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+
+	resp, err := parseSSEStream(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("parseSSEStream() error = %v", err)
+	}
+	if resp.ID != "msg_ok" {
+		t.Errorf("resp.ID = %q, want %q", resp.ID, "msg_ok")
+	}
+}
