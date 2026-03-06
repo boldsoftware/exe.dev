@@ -43,15 +43,15 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 			},
 			{
 				Name:              "attach",
-				Description:       "Attach an integration to a VM",
-				Usage:             "integrations attach <name> <vm-name>",
+				Description:       "Attach an integration to a VM, tag, or all VMs",
+				Usage:             "integrations attach <name> <spec>",
 				Handler:           ss.handleIntegrationsAttach,
 				HasPositionalArgs: true,
 			},
 			{
 				Name:              "detach",
-				Description:       "Detach an integration from a VM",
-				Usage:             "integrations detach <name> <vm-name>",
+				Description:       "Detach an integration from a VM, tag, or all VMs",
+				Usage:             "integrations detach <name> <spec>",
 				Handler:           ss.handleIntegrationsDetach,
 				HasPositionalArgs: true,
 			},
@@ -97,7 +97,12 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 		return nil
 	}
 	for _, ig := range integrations {
-		cc.Writeln("%s  %s  %s", ig.Name, ig.Type, summarizeConfig(ig.Type, ig.Config))
+		attachments := ig.GetAttachments()
+		attachStr := "(none)"
+		if len(attachments) > 0 {
+			attachStr = strings.Join(attachments, " ")
+		}
+		cc.Writeln("%s  %s  %s  %s", ig.Name, ig.Type, summarizeConfig(ig.Type, ig.Config), attachStr)
 	}
 	return nil
 }
@@ -205,6 +210,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 			Type:          "http-proxy",
 			Config:        string(cfgJSON),
 			Name:          name,
+			Attachments:   "[]",
 		})
 	})
 	if err != nil {
@@ -238,65 +244,127 @@ func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.C
 	return nil
 }
 
+// parseAttachmentSpec normalises a user-supplied attachment spec.
+// Bare names (no colon) are treated as vm:<name> for backward compatibility.
+func parseAttachmentSpec(spec string) (string, error) {
+	if !strings.Contains(spec, ":") {
+		// Bare VM name for backward compatibility.
+		return "vm:" + spec, nil
+	}
+	if spec == "auto:all" {
+		return spec, nil
+	}
+	if strings.HasPrefix(spec, "vm:") && len(spec) > 3 {
+		return spec, nil
+	}
+	if strings.HasPrefix(spec, "tag:") && len(spec) > 4 {
+		return spec, nil
+	}
+	return "", fmt.Errorf("invalid attachment spec %q: must be vm:<name>, tag:<name>, or auto:all", spec)
+}
+
 func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: integrations attach <name> <vm-name>")
+		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name")
 	}
 	name := cc.Args[0]
-	vmName := cc.Args[1]
+	rawSpec := cc.Args[1]
+
+	spec, err := parseAttachmentSpec(rawSpec)
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, name)
 	if err != nil {
 		return err
 	}
 
-	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
-	if err != nil {
-		return cc.Errorf("vm %q not found", vmName)
+	// Validate the spec target exists / is well-formed.
+	switch {
+	case strings.HasPrefix(spec, "vm:"):
+		vmName := spec[3:]
+		_, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
+		if err != nil {
+			return cc.Errorf("vm %q not found", vmName)
+		}
+	case strings.HasPrefix(spec, "tag:"):
+		tagName := spec[4:]
+		if !tagNameRe.MatchString(tagName) {
+			return cc.Errorf("invalid tag name %q: must match %s", tagName, tagNameRe.String())
+		}
+	case spec == "auto:all":
+		// Nothing to validate.
 	}
 
+	// Add to attachments list, checking for duplicates.
+	attachments := ig.GetAttachments()
+	for _, a := range attachments {
+		if a == spec {
+			return cc.Errorf("%s is already attached via %s", name, spec)
+		}
+	}
+	attachments = append(attachments, spec)
+
 	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertIntegrationAttachment(ctx, exedb.InsertIntegrationAttachmentParams{
+		return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+			Attachments:   exedb.AttachmentsJSON(attachments),
 			IntegrationID: ig.IntegrationID,
-			BoxID:         int64(box.ID),
+			OwnerUserID:   cc.User.ID,
 		})
 	})
 	if err != nil {
-		return cc.Errorf("failed to attach: %s may already be attached to %s", name, vmName)
+		return cc.Errorf("failed to attach %s via %s", name, spec)
 	}
 
-	cc.Writeln("Attached %s to %s", name, vmName)
+	cc.Writeln("Attached %s to %s", name, spec)
 	return nil
 }
 
 func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: integrations detach <name> <vm-name>")
+		return cc.Errorf("usage: integrations detach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name")
 	}
 	name := cc.Args[0]
-	vmName := cc.Args[1]
+	rawSpec := cc.Args[1]
+
+	spec, err := parseAttachmentSpec(rawSpec)
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, name)
 	if err != nil {
 		return err
 	}
 
-	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
-	if err != nil {
-		return cc.Errorf("vm %q not found", vmName)
+	// Remove the spec from the attachments list.
+	attachments := ig.GetAttachments()
+	found := false
+	newAttachments := make([]string, 0, len(attachments))
+	for _, a := range attachments {
+		if a == spec {
+			found = true
+		} else {
+			newAttachments = append(newAttachments, a)
+		}
+	}
+	if !found {
+		return cc.Errorf("%s is not attached via %s", name, spec)
 	}
 
 	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeleteIntegrationAttachment(ctx, exedb.DeleteIntegrationAttachmentParams{
+		return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+			Attachments:   exedb.AttachmentsJSON(newAttachments),
 			IntegrationID: ig.IntegrationID,
-			BoxID:         int64(box.ID),
+			OwnerUserID:   cc.User.ID,
 		})
 	})
 	if err != nil {
-		return cc.Errorf("failed to detach")
+		return cc.Errorf("failed to detach %s from %s", name, spec)
 	}
 
-	cc.Writeln("Detached %s from %s", name, vmName)
+	cc.Writeln("Detached %s from %s", name, spec)
 	return nil
 }
 

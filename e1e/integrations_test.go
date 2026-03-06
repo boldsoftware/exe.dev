@@ -207,12 +207,12 @@ func TestIntegrationsAttachDetach(t *testing.T) {
 
 	// Attach by name.
 	pty.SendLine(fmt.Sprintf("integrations attach myproxy %s", bn))
-	pty.Want("Attached myproxy to " + bn)
+	pty.Want("Attached myproxy to vm:" + bn)
 	pty.WantPrompt()
 
 	// Detach by name.
 	pty.SendLine(fmt.Sprintf("integrations detach myproxy %s", bn))
-	pty.Want("Detached myproxy from " + bn)
+	pty.Want("Detached myproxy from vm:" + bn)
 	pty.WantPrompt()
 
 	// Error: attach nonexistent integration.

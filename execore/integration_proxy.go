@@ -59,10 +59,9 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	integration, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetAttachedIntegrationByOwnerNameAndBoxID, exedb.GetAttachedIntegrationByOwnerNameAndBoxIDParams{
+	integration, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIntegrationByOwnerAndName, exedb.GetIntegrationByOwnerAndNameParams{
 		OwnerUserID: box.CreatedByUserID,
 		Name:        integrationName,
-		BoxID:       int64(box.ID),
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -71,6 +70,11 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 		}
 		s.slog().ErrorContext(ctx, "integration config: lookup failed", "error", err, "vm_name", vmName, "integration", integrationName)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if !exedb.IntegrationMatchesBox(&integration, &box) {
+		notFound()
 		return
 	}
 

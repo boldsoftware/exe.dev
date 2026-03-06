@@ -37,7 +37,7 @@ func TestIntegrationsProxy(t *testing.T) {
 
 	// Attach the integration to the VM.
 	pty.SendLine(fmt.Sprintf("integrations attach echoproxy %s", bn))
-	pty.Want("Attached echoproxy to " + bn)
+	pty.Want("Attached echoproxy to vm:" + bn)
 	pty.WantPrompt()
 
 	// Helper to curl from inside the VM with retry.
@@ -104,13 +104,13 @@ func TestIntegrationsProxy(t *testing.T) {
 
 	t.Run("detached_forbidden", func(t *testing.T) {
 		pty.SendLine(fmt.Sprintf("integrations detach echoproxy %s", bn))
-		pty.Want("Detached echoproxy from " + bn)
+		pty.Want("Detached echoproxy from vm:" + bn)
 		pty.WantPrompt()
 
 		curlRetry(t, "-o /dev/null -w '%{http_code}' http://echoproxy.int.exe.cloud/", "403")
 
 		pty.SendLine(fmt.Sprintf("integrations attach echoproxy %s", bn))
-		pty.Want("Attached echoproxy to " + bn)
+		pty.Want("Attached echoproxy to vm:" + bn)
 		pty.WantPrompt()
 	})
 
@@ -131,7 +131,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.Want("Added integration authproxy")
 		pty.WantPrompt()
 		pty.SendLine(fmt.Sprintf("integrations attach authproxy %s", bn))
-		pty.Want("Attached authproxy to " + bn)
+		pty.Want("Attached authproxy to vm:" + bn)
 		pty.WantPrompt()
 
 		response := curlRetry(t, "http://authproxy.int.exe.cloud/anything", "Authorization")
@@ -152,7 +152,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.Want("Added integration badtarget")
 		pty.WantPrompt()
 		pty.SendLine(fmt.Sprintf("integrations attach badtarget %s", bn))
-		pty.Want("Attached badtarget to " + bn)
+		pty.Want("Attached badtarget to vm:" + bn)
 		pty.WantPrompt()
 
 		response := curlRetry(t, "-w '\n%{http_code}' http://badtarget.int.exe.cloud/", "502")

@@ -1,9 +1,12 @@
 -- name: InsertIntegration :exec
-INSERT INTO integrations (integration_id, owner_user_id, type, config, name)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: UpdateIntegrationName :exec
 UPDATE integrations SET name = ? WHERE integration_id = ? AND owner_user_id = ?;
+
+-- name: UpdateIntegrationAttachments :exec
+UPDATE integrations SET attachments = ? WHERE integration_id = ? AND owner_user_id = ?;
 
 -- name: GetIntegration :one
 SELECT *
@@ -23,9 +26,3 @@ ORDER BY created_at DESC, rowid DESC;
 
 -- name: DeleteIntegration :exec
 DELETE FROM integrations WHERE integration_id = ? AND owner_user_id = ?;
-
--- name: GetAttachedIntegrationByOwnerNameAndBoxID :one
-SELECT integrations.*
-FROM integrations
-JOIN integration_attachments ON integrations.integration_id = integration_attachments.integration_id
-WHERE integrations.owner_user_id = ? AND integrations.name = ? AND integration_attachments.box_id = ?;

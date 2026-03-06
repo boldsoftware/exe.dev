@@ -23,35 +23,8 @@ func (q *Queries) DeleteIntegration(ctx context.Context, arg DeleteIntegrationPa
 	return err
 }
 
-const getAttachedIntegrationByOwnerNameAndBoxID = `-- name: GetAttachedIntegrationByOwnerNameAndBoxID :one
-SELECT integrations.integration_id, integrations.owner_user_id, integrations.type, integrations.name, integrations.config, integrations.created_at
-FROM integrations
-JOIN integration_attachments ON integrations.integration_id = integration_attachments.integration_id
-WHERE integrations.owner_user_id = ? AND integrations.name = ? AND integration_attachments.box_id = ?
-`
-
-type GetAttachedIntegrationByOwnerNameAndBoxIDParams struct {
-	OwnerUserID string `db:"owner_user_id" json:"owner_user_id"`
-	Name        string `db:"name" json:"name"`
-	BoxID       int64  `db:"box_id" json:"box_id"`
-}
-
-func (q *Queries) GetAttachedIntegrationByOwnerNameAndBoxID(ctx context.Context, arg GetAttachedIntegrationByOwnerNameAndBoxIDParams) (Integration, error) {
-	row := q.queryRow(ctx, q.getAttachedIntegrationByOwnerNameAndBoxIDStmt, getAttachedIntegrationByOwnerNameAndBoxID, arg.OwnerUserID, arg.Name, arg.BoxID)
-	var i Integration
-	err := row.Scan(
-		&i.IntegrationID,
-		&i.OwnerUserID,
-		&i.Type,
-		&i.Name,
-		&i.Config,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getIntegration = `-- name: GetIntegration :one
-SELECT integration_id, owner_user_id, type, name, config, created_at
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
 FROM integrations
 WHERE integration_id = ?
 `
@@ -66,12 +39,13 @@ func (q *Queries) GetIntegration(ctx context.Context, integrationID string) (Int
 		&i.Name,
 		&i.Config,
 		&i.CreatedAt,
+		&i.Attachments,
 	)
 	return i, err
 }
 
 const getIntegrationByOwnerAndName = `-- name: GetIntegrationByOwnerAndName :one
-SELECT integration_id, owner_user_id, type, name, config, created_at
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
 FROM integrations
 WHERE owner_user_id = ? AND name = ?
 `
@@ -91,13 +65,14 @@ func (q *Queries) GetIntegrationByOwnerAndName(ctx context.Context, arg GetInteg
 		&i.Name,
 		&i.Config,
 		&i.CreatedAt,
+		&i.Attachments,
 	)
 	return i, err
 }
 
 const insertIntegration = `-- name: InsertIntegration :exec
-INSERT INTO integrations (integration_id, owner_user_id, type, config, name)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertIntegrationParams struct {
@@ -106,6 +81,7 @@ type InsertIntegrationParams struct {
 	Type          string `db:"type" json:"type"`
 	Config        string `db:"config" json:"config"`
 	Name          string `db:"name" json:"name"`
+	Attachments   string `db:"attachments" json:"attachments"`
 }
 
 func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationParams) error {
@@ -115,12 +91,13 @@ func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationPa
 		arg.Type,
 		arg.Config,
 		arg.Name,
+		arg.Attachments,
 	)
 	return err
 }
 
 const listIntegrationsByUser = `-- name: ListIntegrationsByUser :many
-SELECT integration_id, owner_user_id, type, name, config, created_at
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
 FROM integrations
 WHERE owner_user_id = ?
 ORDER BY created_at DESC, rowid DESC
@@ -142,6 +119,7 @@ func (q *Queries) ListIntegrationsByUser(ctx context.Context, ownerUserID string
 			&i.Name,
 			&i.Config,
 			&i.CreatedAt,
+			&i.Attachments,
 		); err != nil {
 			return nil, err
 		}
@@ -154,6 +132,21 @@ func (q *Queries) ListIntegrationsByUser(ctx context.Context, ownerUserID string
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateIntegrationAttachments = `-- name: UpdateIntegrationAttachments :exec
+UPDATE integrations SET attachments = ? WHERE integration_id = ? AND owner_user_id = ?
+`
+
+type UpdateIntegrationAttachmentsParams struct {
+	Attachments   string `db:"attachments" json:"attachments"`
+	IntegrationID string `db:"integration_id" json:"integration_id"`
+	OwnerUserID   string `db:"owner_user_id" json:"owner_user_id"`
+}
+
+func (q *Queries) UpdateIntegrationAttachments(ctx context.Context, arg UpdateIntegrationAttachmentsParams) error {
+	_, err := q.exec(ctx, q.updateIntegrationAttachmentsStmt, updateIntegrationAttachments, arg.Attachments, arg.IntegrationID, arg.OwnerUserID)
+	return err
 }
 
 const updateIntegrationName = `-- name: UpdateIntegrationName :exec

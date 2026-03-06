@@ -213,12 +213,7 @@ type Integration struct {
 	Name          string     `db:"name" json:"name"`
 	Config        string     `db:"config" json:"config"`
 	CreatedAt     *time.Time `db:"created_at" json:"created_at"`
-}
-
-type IntegrationAttachment struct {
-	IntegrationID string     `db:"integration_id" json:"integration_id"`
-	BoxID         int64      `db:"box_id" json:"box_id"`
-	CreatedAt     *time.Time `db:"created_at" json:"created_at"`
+	Attachments   string     `db:"attachments" json:"attachments"`
 }
 
 type InviteCode struct {

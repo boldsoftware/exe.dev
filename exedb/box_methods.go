@@ -3,6 +3,7 @@ package exedb
 import (
 	"encoding/json"
 	"log"
+	"strings"
 )
 
 // Route represents a routing configuration for a box
@@ -79,4 +80,52 @@ func TagsJSON(tags []string) string {
 		panic("failed to marshal tags: " + err.Error())
 	}
 	return string(data)
+}
+
+// GetAttachments parses the attachments JSON column and returns the list of attachment specs.
+func (ig *Integration) GetAttachments() []string {
+	if ig.Attachments == "" || ig.Attachments == "[]" {
+		return nil
+	}
+	var attachments []string
+	if err := json.Unmarshal([]byte(ig.Attachments), &attachments); err != nil {
+		log.Printf("failed to unmarshal integration attachments: %v", err)
+		return nil
+	}
+	return attachments
+}
+
+// AttachmentsJSON encodes an attachments slice as JSON for storage.
+func AttachmentsJSON(attachments []string) string {
+	if len(attachments) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(attachments)
+	if err != nil {
+		panic("failed to marshal attachments: " + err.Error())
+	}
+	return string(data)
+}
+
+// IntegrationMatchesBox checks if an integration's attachments match a given box.
+// The box must belong to the same owner as the integration.
+// Match logic: any of vm:<box.Name>, tag:<any-box-tag>, or auto:all matches.
+func IntegrationMatchesBox(ig *Integration, box *Box) bool {
+	for _, a := range ig.GetAttachments() {
+		if a == "auto:all" {
+			return true
+		}
+		if strings.HasPrefix(a, "vm:") && a[3:] == box.Name {
+			return true
+		}
+		if strings.HasPrefix(a, "tag:") {
+			tagName := a[4:]
+			for _, t := range box.GetTags() {
+				if t == tagName {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
