@@ -407,8 +407,17 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if we got a response
-	if len(response.Content) == 0 || response.Content[0].Text == "" {
+	// Check if we got a response with actual text content
+	// (skip thinking blocks which may appear first)
+	var responseText string
+	for _, content := range response.Content {
+		if content.Type == llm.ContentTypeText && content.Text != "" {
+			responseText = content.Text
+			break
+		}
+	}
+
+	if responseText == "" {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -420,6 +429,6 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Test successful! Response: %s", response.Content[0].Text),
+		"message": fmt.Sprintf("Test successful! Response: %s", responseText),
 	})
 }
