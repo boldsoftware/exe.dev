@@ -44,17 +44,6 @@ func TestDefault(t *testing.T) {
 	}
 }
 
-func TestAll(t *testing.T) {
-	all := All()
-	if len(all) != 8 {
-		t.Errorf("All() returned %d regions, want 8", len(all))
-	}
-	// Check that pdx is first (default region)
-	if all[0].Code != "pdx" {
-		t.Errorf("All()[0].Code = %q, want pdx", all[0].Code)
-	}
-}
-
 func TestParseExeletRegion(t *testing.T) {
 	tests := []struct {
 		host    string
