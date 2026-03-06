@@ -681,65 +681,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		writeProgress("VM stopped.")
 	}
 
-	// restartSource restarts the VM on source if migration fails.
-	// For live migration, the VM may be paused — cold reboot (stop+start) is needed.
-	// For two-phase, the VM may still be running if failure occurred before stop.
-	// Uses exponential backoff retry in case the exelet is temporarily unavailable.
 	restartSource := func(reason string) {
-		if !wasRunning {
-			writeProgress("Source VM was already stopped, nothing to restart.")
-			return
-		}
-
-		// Check current state to decide what to do
-		inst, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-		if err == nil && inst.Instance.State == computeapi.VMState_RUNNING {
-			writeProgress("VM is still running on source (failed before stop).")
-			return
-		}
-
-		// For live migration, the VM is paused — need to stop then start (cold reboot).
-		// For non-live, the VM was stopped — just need to start.
-		if live {
-			writeProgress("Stopping paused VM on source for cold reboot...")
-			s.slog().ErrorContext(ctx, "live migration failed, cold rebooting VM on source",
-				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
-			delay := 100 * time.Millisecond
-			deadline := time.Now().Add(10 * time.Second)
-			for attempt := 1; ; attempt++ {
-				if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err == nil {
-					break
-				} else if time.Now().After(deadline) {
-					writeProgress("ERROR: failed to stop paused VM on source after %d attempts: %v", attempt, err)
-					return
-				} else {
-					writeProgress("Stop attempt %d failed (%v), retrying...", attempt, err)
-				}
-				time.Sleep(delay)
-				delay *= 2
-			}
-		}
-
-		writeProgress("Restarting VM on source exelet to restore service...")
-		s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
-			"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
-		delay := 100 * time.Millisecond
-		deadline := time.Now().Add(10 * time.Second)
-		for attempt := 1; ; attempt++ {
-			if _, err := sourceClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err == nil {
-				writeProgress("VM restarted on source.")
-				return
-			} else if time.Now().After(deadline) {
-				writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
-				s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
-					"box", boxName, "container_id", containerID, "source", box.Ctrhost, "attempts", attempt, "error", err)
-				return
-			} else {
-				writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
-			}
-			time.Sleep(delay)
-			delay *= 2
-		}
+		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, reason, wasRunning, live, writeProgress)
 	}
 
 	// Step 2: Perform migration
@@ -1551,62 +1494,8 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
 		live := wasRunning // Use live migration for running VMs
 
-		// restartSource restarts the VM on source if migration fails.
-		// Uses exponential backoff retry in case the exelet is temporarily unavailable.
 		restartSource := func(reason string) {
-			if !wasRunning {
-				writeProgress("Source VM was already stopped, nothing to restart.")
-				return
-			}
-
-			// Check if VM is still running (failed before pause/stop)
-			inst, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-			if err == nil && inst.Instance.State == computeapi.VMState_RUNNING {
-				writeProgress("VM is still running on source (failed before stop).")
-				return
-			}
-
-			// For live migration, the VM may be paused — stop it first
-			if live {
-				writeProgress("Stopping paused VM on source for cold reboot...")
-				s.slog().ErrorContext(ctx, "live migration failed, cold rebooting VM on source",
-					"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
-				delay := 100 * time.Millisecond
-				deadline := time.Now().Add(10 * time.Second)
-				for attempt := 1; ; attempt++ {
-					if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err == nil {
-						break
-					} else if time.Now().After(deadline) {
-						writeProgress("ERROR: failed to stop paused VM on source after %d attempts: %v", attempt, err)
-						return
-					} else {
-						writeProgress("Stop attempt %d failed (%v), retrying...", attempt, err)
-					}
-					time.Sleep(delay)
-					delay *= 2
-				}
-			}
-
-			writeProgress("Restarting VM on source exelet to restore service...")
-			s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
-				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "reason", reason)
-			delay := 100 * time.Millisecond
-			deadline := time.Now().Add(10 * time.Second)
-			for attempt := 1; ; attempt++ {
-				if _, err := sourceClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err == nil {
-					writeProgress("VM restarted on source.")
-					return
-				} else if time.Now().After(deadline) {
-					writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
-					s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
-						"box", boxName, "container_id", containerID, "source", box.Ctrhost, "attempts", attempt, "error", err)
-					return
-				} else {
-					writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
-				}
-				time.Sleep(delay)
-				delay *= 2
-			}
+			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, reason, wasRunning, live, writeProgress)
 		}
 
 		var sshPort *int64
@@ -4315,6 +4204,65 @@ func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Reque
 	params.Set("userId", userID)
 	params.Set("invite_posted", "1")
 	http.Redirect(w, r, "/debug/user?"+params.Encode(), http.StatusSeeOther)
+}
+
+// restartSourceVM restarts a VM on its source exelet after a failed migration.
+// It uses exponential backoff retry in case the exelet is temporarily unavailable.
+// If live is true, it first stops the (paused) VM before restarting.
+func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, containerID, boxName, sourceAddr, reason string, wasRunning, live bool, writeProgress func(string, ...any)) {
+	if !wasRunning {
+		writeProgress("Source VM was already stopped, nothing to restart.")
+		return
+	}
+
+	// Check if VM is still running (failed before pause/stop)
+	inst, err := source.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+	if err == nil && inst.Instance.State == computeapi.VMState_RUNNING {
+		writeProgress("VM is still running on source (failed before stop).")
+		return
+	}
+
+	// For live migration, the VM may be paused — stop it first
+	if live {
+		writeProgress("Stopping paused VM on source for cold reboot...")
+		s.slog().ErrorContext(ctx, "live migration failed, cold rebooting VM on source",
+			"box", boxName, "container_id", containerID, "source", sourceAddr, "reason", reason)
+		delay := 100 * time.Millisecond
+		deadline := time.Now().Add(10 * time.Second)
+		for attempt := 1; ; attempt++ {
+			if _, err := source.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err == nil {
+				break
+			} else if time.Now().After(deadline) {
+				writeProgress("ERROR: failed to stop paused VM on source after %d attempts: %v", attempt, err)
+				return
+			} else {
+				writeProgress("Stop attempt %d failed (%v), retrying...", attempt, err)
+			}
+			time.Sleep(delay)
+			delay *= 2
+		}
+	}
+
+	writeProgress("Restarting VM on source exelet to restore service...")
+	s.slog().ErrorContext(ctx, "migration failed, restarting VM on source",
+		"box", boxName, "container_id", containerID, "source", sourceAddr, "reason", reason)
+	delay := 100 * time.Millisecond
+	deadline := time.Now().Add(10 * time.Second)
+	for attempt := 1; ; attempt++ {
+		if _, err := source.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err == nil {
+			writeProgress("VM restarted on source.")
+			return
+		} else if time.Now().After(deadline) {
+			writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
+			s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
+				"box", boxName, "container_id", containerID, "source", sourceAddr, "attempts", attempt, "error", err)
+			return
+		} else {
+			writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
+		}
+		time.Sleep(delay)
+		delay *= 2
+	}
 }
 
 // handleDebugBounces displays the email bounces list.
