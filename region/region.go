@@ -48,7 +48,7 @@ var allRegions = []Region{
 	{Code: "fra", Display: "Frankfurt, Germany", Active: false, VMHardLimit: 800, VMSoftLimit: 700, RequiresUserMatch: true},
 	{Code: "tyo", Display: "Tokyo, Japan", Active: false, VMHardLimit: 800, VMSoftLimit: 700, RequiresUserMatch: true},
 	{Code: "syd", Display: "Sydney, Australia", Active: false, VMHardLimit: 800, VMSoftLimit: 700, RequiresUserMatch: true},
-	{Code: "lon", Display: "London, UK", Active: false, VMHardLimit: 800, VMSoftLimit: 0, RequiresUserMatch: true},
+	{Code: "lon", Display: "London, UK", Active: false, VMHardLimit: 800, VMSoftLimit: 700, RequiresUserMatch: true},
 	{Code: "dev", Display: "$HOME", Active: false, VMHardLimit: 400, VMSoftLimit: 350, RequiresUserMatch: false},
 	{Code: "ci", Display: "CI", Active: false, VMHardLimit: 400, VMSoftLimit: 350, RequiresUserMatch: false},
 }
