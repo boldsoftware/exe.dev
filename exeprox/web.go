@@ -474,6 +474,7 @@ func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
 		http.NotFound(w, r)
+		return
 	}
 
 	handler := promhttp.HandlerFor(wp.proxy.metricsRegistry, promhttp.HandlerOpts{})
