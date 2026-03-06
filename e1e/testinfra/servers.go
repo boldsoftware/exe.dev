@@ -8,11 +8,11 @@ import (
 )
 
 func startTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
-	p, err := NewTCPProxy(name)
+	p, err := NewTCPProxy(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s: %w", name, err)
 	}
-	go p.Serve(ctx)
+	go p.Serve()
 	return p, nil
 }
 

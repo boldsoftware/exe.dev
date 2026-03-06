@@ -29,6 +29,7 @@ type TCPProxy struct {
 	listener *net.TCPListener            // where to listen for connections
 	address  *net.TCPAddr                // listening address
 	dst      atomic.Pointer[net.TCPAddr] // destination to connect to
+	ctx      context.Context             // parent context for all connections
 	cancel   context.CancelFunc          // closes connections
 	latency  time.Duration               // latency to add to each read
 }
@@ -36,16 +37,19 @@ type TCPProxy struct {
 // NewTCPProxy returns a new TCPProxy. This creates a new listener.
 // The destination address is not set; all incoming connections
 // will delay until it is set by calling [TCPProxy.SetDestPort].
-func NewTCPProxy(name string) (*TCPProxy, error) {
+func NewTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
 	ln, err := net.ListenTCP("tcp", nil)
 	if err != nil {
 		return nil, err
 	}
 	address := ln.Addr().(*net.TCPAddr)
+	ctx, cancel := context.WithCancel(ctx)
 	ret := &TCPProxy{
 		Name:     name,
 		listener: ln,
 		address:  address,
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 	return ret, nil
 }
@@ -64,25 +68,17 @@ func (p *TCPProxy) Port() int {
 // This should normally be called in a new goroutine.
 // This starts other goroutines.
 // Errors are logged via slog.
-func (p *TCPProxy) Serve(ctx context.Context) {
-	if p.cancel != nil {
-		slog.ErrorContext(ctx, "TCPProxy Serve method called more than once", "name", p.Name)
-		return
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	p.cancel = cancel
-
+func (p *TCPProxy) Serve() {
 	var wg sync.WaitGroup
 
 	for {
 		c, err := p.listener.AcceptTCP()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
-				slog.WarnContext(ctx, "TCPProxy accept error", "name", p.Name, "addr", p.listener.Addr().String(), "error", err)
+				slog.WarnContext(p.ctx, "TCPProxy accept error", "name", p.Name, "addr", p.listener.Addr().String(), "error", err)
 				p.listener.Close()
 			}
-			cancel()
+			p.cancel()
 			wg.Wait()
 			return
 		}
@@ -90,19 +86,19 @@ func (p *TCPProxy) Serve(ctx context.Context) {
 		wg.Add(1)
 		go func(c *net.TCPConn) {
 			defer wg.Done()
-			p.proxy(ctx, c)
+			p.proxy(c)
 		}(c)
 	}
 }
 
 // proxy proxies a new connection to the destination address.
-func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
+func (p *TCPProxy) proxy(c *net.TCPConn) {
 	defer c.Close()
 
 	// Wait for destination address to be set.
 	for p.dst.Load() == nil {
 		select {
-		case <-ctx.Done():
+		case <-p.ctx.Done():
 			return
 		case <-time.After(10 * time.Millisecond):
 		}
@@ -111,7 +107,7 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 	dstAddr := p.dst.Load()
 	dst, err := net.DialTCP("tcp", nil, dstAddr)
 	if err != nil {
-		slog.ErrorContext(ctx, "TCPProxy: failed to connect to dst", "name", p.Name, "address", dstAddr, "error", err)
+		slog.ErrorContext(p.ctx, "TCPProxy: failed to connect to dst", "name", p.Name, "address", dstAddr, "error", err)
 		return
 	}
 
@@ -131,7 +127,7 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 			wg.Done()
 		}()
 		if _, err := cp(to, from); err != nil && !errors.Is(err, net.ErrClosed) {
-			slog.WarnContext(ctx, "TCPProxy copying error", "name", p.Name, "to", to.LocalAddr().String(), "from", from.LocalAddr().String(), "error", err)
+			slog.WarnContext(p.ctx, "TCPProxy copying error", "name", p.Name, "to", to.LocalAddr().String(), "from", from.LocalAddr().String(), "error", err)
 		}
 	}
 
@@ -147,7 +143,7 @@ func (p *TCPProxy) proxy(ctx context.Context, c *net.TCPConn) {
 			c.Close()
 			dst.Close()
 			<-copyDone
-		case <-ctx.Done():
+		case <-p.ctx.Done():
 			// Context cancelled. Close both connections
 			// to unblock both io.Copy goroutines.
 			c.Close()
@@ -204,7 +200,5 @@ func (p *TCPProxy) copyWithLatency(dst io.Writer, src io.Reader) (int64, error) 
 // Close closes the listening socket.
 func (p *TCPProxy) Close() {
 	p.listener.Close()
-	if p.cancel != nil {
-		p.cancel()
-	}
+	p.cancel()
 }

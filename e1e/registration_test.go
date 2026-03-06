@@ -275,14 +275,14 @@ func TestRegistrationWithLatency(t *testing.T) {
 	noGolden(t) // real banner makes for ugly golden files
 
 	// Add extra latency between us and the repl.
-	proxy, err := testinfra.NewTCPProxy("add_latency")
+	proxy, err := testinfra.NewTCPProxy(Env.context(t), "add_latency")
 	if err != nil {
 		t.Fatalf("failed to create latency proxy: %v", err)
 	}
 	proxy.SetLatency(100 * time.Millisecond)
 	proxy.SetDestPort(Env.servers.SSHPiperd.Port)
 
-	go proxy.Serve(Env.context(t))
+	go proxy.Serve()
 	t.Cleanup(proxy.Close)
 
 	keyFile, publicKey := genSSHKey(t)

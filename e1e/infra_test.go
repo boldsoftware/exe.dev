@@ -403,11 +403,11 @@ func setup(ctrHost string) (*testEnv, error) {
 	// we can give to exelet immediately.
 	// TODO: figure out why we're seeing connections
 	// before setDestPort is called, and stop doing that.
-	exedHTTPProxy, err := testinfra.NewTCPProxy("exedHTTPProxy")
+	exedHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exedHTTPProxy")
 	if err != nil {
 		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
 	}
-	go exedHTTPProxy.Serve(context.Background())
+	go exedHTTPProxy.Serve()
 	if *flagVerbosePorts {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
 	}

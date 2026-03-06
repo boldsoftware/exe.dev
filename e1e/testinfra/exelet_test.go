@@ -45,11 +45,11 @@ func TestExelet(t *testing.T) {
 	// Start a TCP proxy that in a real case would connect
 	// to the exed, although in this case it will just
 	// accept connections.
-	fakeExedProxy, err := NewTCPProxy("test-exelet")
+	fakeExedProxy, err := NewTCPProxy(t.Context(), "test-exelet")
 	if err != nil {
 		t.Fatal(err)
 	}
-	go fakeExedProxy.Serve(t.Context())
+	go fakeExedProxy.Serve()
 	defer fakeExedProxy.Close()
 
 	ei, err := StartExelet(t.Context(), exeletBinary, ctrHost, fakeExedProxy.Port(), fakeExedProxy.Port(), testRunID, nil, false, nil, nil)

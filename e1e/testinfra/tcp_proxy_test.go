@@ -9,14 +9,14 @@ import (
 )
 
 func TestTCPProxy(t *testing.T) {
-	p, err := NewTCPProxy("test")
+	p, err := NewTCPProxy(t.Context(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		p.Serve(t.Context())
+		p.Serve()
 	})
 
 	c, err := net.DialTCP("tcp", nil, p.Address())
@@ -79,7 +79,7 @@ func TestTCPProxyRetarget(t *testing.T) {
 	}
 	defer lnB.Close()
 
-	p, err := NewTCPProxy("retarget-test")
+	p, err := NewTCPProxy(t.Context(), "retarget-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestTCPProxyRetarget(t *testing.T) {
 
 	var serveWG sync.WaitGroup
 	serveWG.Go(func() {
-		p.Serve(t.Context())
+		p.Serve()
 	})
 
 	// Verify traffic reaches A.
@@ -170,7 +170,7 @@ func TestTCPProxyHalfClose(t *testing.T) {
 		}
 	}()
 
-	p, err := NewTCPProxy("half-close-test")
+	p, err := NewTCPProxy(t.Context(), "half-close-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestTCPProxyHalfClose(t *testing.T) {
 
 	var serveWG sync.WaitGroup
 	serveWG.Go(func() {
-		p.Serve(t.Context())
+		p.Serve()
 	})
 
 	// Make multiple connections through the proxy and close the client side.

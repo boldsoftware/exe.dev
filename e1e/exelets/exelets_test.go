@@ -113,19 +113,19 @@ func TestMain(m *testing.M) {
 	}
 	exeletHosts = []string{exeletHost}
 
-	exedHTTPProxy, err := testinfra.NewTCPProxy("exedHTTPProxy")
+	exedHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exedHTTPProxy")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create HTTP proxy: %v\n", err)
 		exit(1)
 	}
-	go exedHTTPProxy.Serve(context.Background())
+	go exedHTTPProxy.Serve()
 
-	exeproxHTTPProxy, err := testinfra.NewTCPProxy("exeproxHTTPProxy")
+	exeproxHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exeproxHTTPProxy")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create exeprox HTTP proxy: %v\n", err)
 		exit(1)
 	}
-	go exeproxHTTPProxy.Serve(context.Background())
+	go exeproxHTTPProxy.Serve()
 
 	exeletBinary, err = testinfra.BuildExeletBinary(testRunID)
 	if err != nil {
