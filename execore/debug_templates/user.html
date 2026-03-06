@@ -54,6 +54,69 @@ a:hover { text-decoration: underline; }
 </div>
 
 <div class="section">
+<h2>Migrate VMs to Region</h2>
+<p style="font-size:13px;color:#666;">Live-migrates all boxes not already in the user's region ({{.Region}}) to an exelet there.</p>
+{{if .BoxesOutsideRegion}}
+<p>{{len .BoxesOutsideRegion}} box(es) outside <b>{{.Region}}</b>: {{range $i, $b := .BoxesOutsideRegion}}{{if $i}}, {{end}}{{$b}}{{end}}</p>
+<form id="migrateVMsForm">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<p id="migrateVMsConfirmPrompt">Type "{{len .BoxesOutsideRegion}}" to confirm migrating {{len .BoxesOutsideRegion}} box(es):</p>
+<input type="text" id="migrateVMsConfirm" name="confirm" autocomplete="off" placeholder="{{len .BoxesOutsideRegion}}" style="padding: 8px; font-family: inherit; margin-right: 8px;">
+<button id="migrateVMsBtn" type="submit" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Migrate VMs</button>
+</form>
+<pre id="migrateVMsProgress" style="margin-top:10px;padding:15px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:400px;overflow-y:auto;display:none;"></pre>
+<script>
+(function() {
+    var expected = '{{len .BoxesOutsideRegion}}';
+    var confirmInput = document.getElementById('migrateVMsConfirm');
+    var btn = document.getElementById('migrateVMsBtn');
+    confirmInput.addEventListener('input', function() {
+        btn.disabled = (this.value !== expected);
+    });
+
+    document.getElementById('migrateVMsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var progress = document.getElementById('migrateVMsProgress');
+        btn.disabled = true;
+        confirmInput.disabled = true;
+        btn.textContent = 'Migrating...';
+        progress.style.display = 'block';
+        progress.textContent = 'Starting...\n';
+
+        var hadError = false;
+        fetch('/debug/user/migrate-vms', {
+            method: 'POST',
+            body: new URLSearchParams({user_id: '{{.UserID}}', confirm: confirmInput.value})
+        }).then(function(response) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            function read() {
+                reader.read().then(function(result) {
+                    if (result.done) {
+                        btn.textContent = hadError ? 'Done (with errors)' : 'Done';
+                        return;
+                    }
+                    var text = decoder.decode(result.value, {stream: true});
+                    if (text.indexOf('ERROR:') !== -1) hadError = true;
+                    progress.textContent += text;
+                    progress.scrollTop = progress.scrollHeight;
+                    read();
+                });
+            }
+            read();
+        }).catch(function(err) {
+            progress.textContent += '\nError: ' + err;
+            btn.textContent = 'Failed';
+        });
+    });
+})();
+</script>
+{{else}}
+<p>All boxes are already in <b>{{.Region}}</b>.</p>
+{{end}}
+</div>
+
+<div class="section">
 <h2>Invite stats</h2>
 <table class="info">
 <tr><th>Given</th><td>{{.InvitesTotalAllTimeGiven}}</td></tr>

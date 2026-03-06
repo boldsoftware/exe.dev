@@ -65,6 +65,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
+	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
@@ -4123,6 +4124,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RegionDisplay              string
 		GLBDefault                 string
 		AllRegions                 []region.Region
+		BoxesOutsideRegion         []string
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -4161,6 +4163,13 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.GLBDefault = "on"
 	default:
 		data.GLBDefault = "off"
+	}
+
+	for _, b := range boxes {
+		ec := s.getExeletClient(b.Ctrhost)
+		if ec == nil || ec.region.Code != user.Region {
+			data.BoxesOutsideRegion = append(data.BoxesOutsideRegion, b.Name)
+		}
 	}
 
 	if hasCredit {
@@ -4344,6 +4353,210 @@ func (s *Server) handleDebugUserMigrateRegion(w http.ResponseWriter, r *http.Req
 	params := url.Values{}
 	params.Set("userId", userID)
 	http.Redirect(w, r, "/debug/user?"+params.Encode(), http.StatusSeeOther)
+}
+
+// handleDebugUserMigrateVMs live-migrates all of a user's boxes into their configured region.
+func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	confirm := r.FormValue("confirm")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Set up streaming response.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+	writeError := func(format string, args ...any) {
+		writeProgress("ERROR: "+format, args...)
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		writeError("failed to look up user: %v", err)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	writeProgress("User %s, target region: %s", user.Email, user.Region)
+
+	// Find a target exelet in the user's region.
+	var targetAddr string
+	var targetClient *exeletClient
+	for addr, ec := range s.exeletClients {
+		if ec.region.Code == user.Region && ec.up.Load() {
+			if targetClient == nil || ec.count.Load() < targetClient.count.Load() {
+				targetAddr = addr
+				targetClient = ec
+			}
+		}
+	}
+	if targetClient == nil {
+		writeError("no available exelet in region %s", user.Region)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	writeProgress("Target exelet: %s", targetAddr)
+
+	// Fetch boxes and filter to those outside the region.
+	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		writeError("failed to list boxes: %v", err)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	var toMigrate []exedb.Box
+	for _, b := range boxes {
+		ec := s.getExeletClient(b.Ctrhost)
+		if ec == nil || ec.region.Code != user.Region {
+			toMigrate = append(toMigrate, b)
+		}
+	}
+
+	if len(toMigrate) == 0 {
+		writeProgress("All boxes are already in region %s.", user.Region)
+		return
+	}
+
+	// Verify confirmation matches box count.
+	expectedConfirm := strconv.Itoa(len(toMigrate))
+	if confirm != expectedConfirm {
+		writeError("confirm must be %q (the number of boxes to migrate)", expectedConfirm)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	writeProgress("Migrating %d box(es) to %s", len(toMigrate), targetAddr)
+	writeProgress("")
+
+	// Use a background context so migrations complete even if the browser disconnects.
+	ctx = context.WithoutCancel(ctx)
+
+	var succeeded, failed int
+	for i, box := range toMigrate {
+		boxName := box.Name
+		writeProgress("=== [%d/%d] %s ===", i+1, len(toMigrate), boxName)
+
+		if box.ContainerID == nil {
+			writeError("box %q has no container_id", boxName)
+			failed++
+			writeProgress("")
+			continue
+		}
+		containerID := *box.ContainerID
+
+		sourceClient := s.getExeletClient(box.Ctrhost)
+		if sourceClient == nil {
+			writeError("source exelet %q not available for box %q", box.Ctrhost, boxName)
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance state for %q: %v", boxName, err)
+			failed++
+			writeProgress("")
+			continue
+		}
+		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
+		live := wasRunning
+
+		restartSource := func(reason string) {
+			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, reason, wasRunning, live, writeProgress)
+		}
+
+		var sshPort *int64
+		var coldBooted bool
+		dbStatus := "running"
+
+		if live {
+			writeProgress("Live migrating from %s to %s...", box.Ctrhost, targetAddr)
+			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+			liveSshPort, cb, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+			if err != nil {
+				writeError("live migration failed: %v", err)
+				restartSource(err.Error())
+				failed++
+				writeProgress("")
+				continue
+			}
+			coldBooted = cb
+			sshPort = &liveSshPort
+			writeProgress("Live migration complete.")
+			if coldBooted {
+				writeProgress("WARNING: fell back to cold boot.")
+			}
+		} else {
+			// VM was already stopped (live == wasRunning, so !live implies !wasRunning); leave stopped on target.
+			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
+			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+			if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, true, writeProgress); err != nil {
+				writeError("disk transfer failed: %v", err)
+				restartSource(err.Error())
+				failed++
+				writeProgress("")
+				continue
+			}
+			dbStatus = "stopped"
+		}
+
+		writeProgress("Updating database...")
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
+			Ctrhost: targetAddr,
+			SSHPort: sshPort,
+			Status:  dbStatus,
+			ID:      box.ID,
+		}); err != nil {
+			writeError("failed to update database: %v", err)
+			s.slog().ErrorContext(ctx, "failed to update database after migration", "box", boxName, "error", err)
+			restartSource(err.Error())
+			failed++
+			writeProgress("")
+			continue
+		}
+
+		if !live || coldBooted {
+			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+		}
+
+		writeProgress("Deleting source instance on %s...", box.Ctrhost)
+		if _, err := sourceClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: containerID}); err != nil {
+			writeProgress("WARNING: failed to delete source instance: %v", err)
+			s.slog().WarnContext(ctx, "failed to delete source instance after migration",
+				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
+		} else {
+			writeProgress("Source instance deleted.")
+		}
+
+		writeProgress("Box %s migrated successfully.", boxName)
+		s.slog().InfoContext(ctx, "box migrated", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+		succeeded++
+		writeProgress("")
+	}
+
+	writeProgress("=== Migration complete ===")
+	writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(toMigrate))
+
+	if failed == 0 {
+		writeProgress("MIGRATION_SUCCESS")
+	} else {
+		writeProgress("MIGRATION_ERROR")
+	}
 }
 
 // handleDebugBounces displays the email bounces list.
