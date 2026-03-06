@@ -374,6 +374,20 @@ func (q *Queries) SetUserNewsletterSubscribed(ctx context.Context, arg SetUserNe
 	return err
 }
 
+const setUserRegion = `-- name: SetUserRegion :exec
+UPDATE users SET region = ? WHERE user_id = ?
+`
+
+type SetUserRegionParams struct {
+	Region string `db:"region" json:"region"`
+	UserID string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) SetUserRegion(ctx context.Context, arg SetUserRegionParams) error {
+	_, err := q.exec(ctx, q.setUserRegionStmt, setUserRegion, arg.Region, arg.UserID)
+	return err
+}
+
 const setUserRootSupport = `-- name: SetUserRootSupport :exec
 UPDATE users SET root_support = ? WHERE user_id = ?
 `

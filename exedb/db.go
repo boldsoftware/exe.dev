@@ -897,6 +897,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setUserNewsletterSubscribedStmt, err = db.PrepareContext(ctx, setUserNewsletterSubscribed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserNewsletterSubscribed: %w", err)
 	}
+	if q.setUserRegionStmt, err = db.PrepareContext(ctx, setUserRegion); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserRegion: %w", err)
+	}
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
@@ -2483,6 +2486,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setUserNewsletterSubscribedStmt: %w", cerr)
 		}
 	}
+	if q.setUserRegionStmt != nil {
+		if cerr := q.setUserRegionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserRegionStmt: %w", cerr)
+		}
+	}
 	if q.setUserRootSupportStmt != nil {
 		if cerr := q.setUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
@@ -3023,6 +3031,7 @@ type Queries struct {
 	setUserLimitsStmt                             *sql.Stmt
 	setUserNewVMCreationDisabledStmt              *sql.Stmt
 	setUserNewsletterSubscribedStmt               *sql.Stmt
+	setUserRegionStmt                             *sql.Stmt
 	setUserRootSupportStmt                        *sql.Stmt
 	syncCreditLedgerStmt                          *sql.Stmt
 	updateAppTokenLastUsedStmt                    *sql.Stmt
@@ -3362,6 +3371,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserLimitsStmt:                             q.setUserLimitsStmt,
 		setUserNewVMCreationDisabledStmt:              q.setUserNewVMCreationDisabledStmt,
 		setUserNewsletterSubscribedStmt:               q.setUserNewsletterSubscribedStmt,
+		setUserRegionStmt:                             q.setUserRegionStmt,
 		setUserRootSupportStmt:                        q.setUserRootSupportStmt,
 		syncCreditLedgerStmt:                          q.syncCreditLedgerStmt,
 		updateAppTokenLastUsedStmt:                    q.updateAppTokenLastUsedStmt,

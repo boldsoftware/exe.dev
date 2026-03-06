@@ -35,6 +35,7 @@ import (
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
+	"exe.dev/region"
 
 	"tailscale.com/client/local"
 )
@@ -63,6 +64,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
+	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
@@ -4117,6 +4119,10 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		InvitesAcceptedCount       int64
 		InvitePostSuccessful       bool
 		Boxes                      []boxInfo
+		Region                     string
+		RegionDisplay              string
+		GLBDefault                 string
+		AllRegions                 []region.Region
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -4136,6 +4142,25 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		InvitesAcceptedCount:     inviteStats.AcceptedCount,
 		InvitePostSuccessful:     invitePostSuccessful,
 		Boxes:                    boxList,
+		Region:                   user.Region,
+		AllRegions:               region.All(),
+	}
+
+	if r, err := region.ByCode(user.Region); err == nil {
+		data.RegionDisplay = r.Display
+	}
+
+	userDefaults, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserDefaults, userID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		s.slog().WarnContext(ctx, "failed to fetch user defaults", "error", err, "user_id", userID)
+	}
+	switch {
+	case errors.Is(err, sql.ErrNoRows) || userDefaults.GlobalLoadBalancer == nil:
+		data.GLBDefault = "unset"
+	case *userDefaults.GlobalLoadBalancer == 1:
+		data.GLBDefault = "on"
+	default:
+		data.GLBDefault = "off"
 	}
 
 	if hasCredit {
@@ -4263,6 +4288,62 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 		time.Sleep(delay)
 		delay *= 2
 	}
+}
+
+// handleDebugUserMigrateRegion sets the user's region and enables GLB.
+func (s *Server) handleDebugUserMigrateRegion(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	regionCode := r.FormValue("region")
+
+	if userID == "" || regionCode == "" {
+		http.Error(w, "user_id and region are required", http.StatusBadRequest)
+		return
+	}
+
+	reg, err := region.ByCode(regionCode)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid region: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	_, err = withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Set user region and enable GLB default in a single transaction.
+	glbOn := int64(1)
+	if err := withTx0(s, ctx, func(q *exedb.Queries, ctx context.Context) error {
+		if err := q.SetUserRegion(ctx, exedb.SetUserRegionParams{
+			Region: reg.Code,
+			UserID: userID,
+		}); err != nil {
+			return fmt.Errorf("set region: %w", err)
+		}
+		if err := q.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
+			UserID:             userID,
+			GlobalLoadBalancer: &glbOn,
+		}); err != nil {
+			return fmt.Errorf("enable GLB: %w", err)
+		}
+		return nil
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to migrate region: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "migrated user region", "user_id", userID, "region", reg.Code)
+
+	params := url.Values{}
+	params.Set("userId", userID)
+	http.Redirect(w, r, "/debug/user?"+params.Encode(), http.StatusSeeOther)
 }
 
 // handleDebugBounces displays the email bounces list.

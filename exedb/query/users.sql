@@ -72,3 +72,6 @@ UPDATE users SET auth_provider = ?, auth_provider_id = ? WHERE user_id = ?;
 
 -- name: GetUserAuthProvider :one
 SELECT auth_provider, auth_provider_id FROM users WHERE user_id = ?;
+
+-- name: SetUserRegion :exec
+UPDATE users SET region = ? WHERE user_id = ?;
