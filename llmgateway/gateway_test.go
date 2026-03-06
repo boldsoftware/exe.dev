@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1310,4 +1311,487 @@ func TestGateway_SSE_SlogMiddlewareIntegration(t *testing.T) {
 	costUSD, ok := foundLogLine["cost_usd"].(float64)
 	require.True(t, ok, "cost_usd should be a float64")
 	require.Greater(t, costUSD, 0.0, "cost_usd should be > 0")
+}
+
+// TestGateway_SSE_GzipNegotiation verifies that SSE cost accounting works
+// when the upstream server returns gzip-compressed responses. This is a
+// regression test: if someone re-adds "Accept-Encoding: gzip" to the proxy
+// Rewrite, Go's Transport stops auto-decompressing and the SSE parser reads
+// raw gzip bytes — cost_usd disappears from canonical logs.
+func TestGateway_SSE_GzipNegotiation(t *testing.T) {
+	// Build a realistic Anthropic SSE stream.
+	var ssePlain bytes.Buffer
+	ssePlain.WriteString("event: message_start\n")
+	ssePlain.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_gz","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"output_tokens":1}}}` + "\n\n")
+	ssePlain.WriteString("event: content_block_delta\n")
+	ssePlain.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}` + "\n\n")
+	ssePlain.WriteString("event: message_delta\n")
+	ssePlain.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":50,"output_tokens":10}}` + "\n\n")
+	ssePlain.WriteString("event: message_stop\n")
+	ssePlain.WriteString(`data: {"type":"message_stop"}` + "\n\n")
+
+	// Pre-compress for when the client asks for gzip.
+	var gzBuf bytes.Buffer
+	gzw := gzip.NewWriter(&gzBuf)
+	gzw.Write(ssePlain.Bytes())
+	gzw.Close()
+
+	// Mock backend that honours Accept-Encoding, just like real Anthropic.
+	mockAnthropic := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.WriteHeader(http.StatusOK)
+			w.Write(gzBuf.Bytes())
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write(ssePlain.Bytes())
+		}
+	}))
+	defer mockAnthropic.Close()
+	mockURL, _ := url.Parse(mockAnthropic.URL)
+
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	gatewayHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gw := &llmGateway{
+			now:       time.Now,
+			data:      &DBGatewayData{db},
+			apiKeys:   APIKeys{Anthropic: "test-key"},
+			env:       stage.Test(),
+			log:       logger,
+			creditMgr: NewCreditManager(&DBGatewayData{db}),
+		}
+
+		boxName := r.Header.Get("X-Exedev-Box")
+		r.Header.Del("X-Exedev-Box")
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "gateway"))
+
+		model, bodyBytes, _ := extractModelFromRequest(r)
+		if bodyBytes != nil {
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.ContentLength = int64(len(bodyBytes))
+		}
+		if model != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+		}
+
+		userID := "test-user-test-box"
+		gw.creditMgr.CheckAndRefreshCredit(r.Context(), userID) //nolint:errcheck
+
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/_/gateway/anthropic")
+
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			provider:     llmpricing.ProviderAnthropic,
+			log:          logger,
+			creditMgr:    gw.creditMgr,
+			incomingReq:  r,
+			boxName:      boxName,
+			userID:       userID,
+		}
+		proxy := &httputil.ReverseProxy{
+			FlushInterval: -1,
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.Out.URL.Scheme = "http"
+				pr.Out.URL.Host = mockURL.Host
+				pr.Out.Host = mockURL.Host
+				// Delete any incoming Accept-Encoding so Go's Transport
+				// handles gzip implicitly and auto-decompresses. This
+				// mirrors what createAnthropicProxy does in production.
+				pr.Out.Header.Del("Accept-Encoding")
+			},
+			Transport:      transport,
+			ModifyResponse: transport.modifyResponse,
+		}
+		proxy.ServeHTTP(w, r)
+		transport.WaitAndAddSSEAttributes()
+	})
+
+	slogConfig := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+	}
+	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
+
+	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	// Clients (curl, SDKs, exelet proxy) typically send Accept-Encoding.
+	// The gateway Rewrite MUST delete it so Go's Transport handles gzip
+	// implicitly and auto-decompresses. Without the Del, this header
+	// propagates to Anthropic, Transport sees an explicit Accept-Encoding,
+	// skips auto-decompress, and the SSE parser reads raw gzip bytes.
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// The response should be decompressed plain-text SSE.
+	body := rr.Body.String()
+	require.Contains(t, body, "message_start")
+	require.Contains(t, body, "message_delta")
+
+	// Parse canonical log line and verify cost_usd is present.
+	logLines := bytes.Split(logBuf.Bytes(), []byte("\n"))
+	var foundLogLine map[string]any
+	for _, line := range logLines {
+		if len(line) == 0 {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if msg, ok := entry["msg"].(string); ok && msg == "200: OK" {
+			foundLogLine = entry
+			break
+		}
+	}
+
+	if foundLogLine == nil {
+		t.Logf("All log lines:\n%s", logBuf.String())
+		t.Fatal("no '200: OK' log line found")
+	}
+
+	costUSD, ok := foundLogLine["cost_usd"].(float64)
+	require.True(t, ok, "cost_usd should be a float64, got %T", foundLogLine["cost_usd"])
+	require.Greater(t, costUSD, 0.0, "cost_usd should be > 0")
+	require.Equal(t, float64(50), foundLogLine["input_tokens"])
+	require.Equal(t, float64(10), foundLogLine["output_tokens"])
+}
+
+// TestGateway_SSE_MissingUsageLogsError verifies that when an SSE stream
+// completes without any usage/cost data, an error is logged.
+func TestGateway_SSE_MissingUsageLogsError(t *testing.T) {
+	// SSE stream with content but no message_delta usage event.
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n")
+	sseBuf.WriteString("data: {\"type\":\"message_stop\"}\n\n")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(sseBuf.Bytes())
+	}))
+	defer mockServer.Close()
+	mockURL, _ := url.Parse(mockServer.URL)
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	gatewayHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		boxName := r.Header.Get("X-Exedev-Box")
+		r.Header.Del("X-Exedev-Box")
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "gateway"))
+
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			provider:     llmpricing.ProviderAnthropic,
+			log:          logger,
+			incomingReq:  r,
+			boxName:      boxName,
+			userID:       "test-user-test-box",
+		}
+		proxy := &httputil.ReverseProxy{
+			FlushInterval: -1,
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.Out.URL.Scheme = "http"
+				pr.Out.URL.Host = mockURL.Host
+				pr.Out.Host = mockURL.Host
+			},
+			Transport:      transport,
+			ModifyResponse: transport.modifyResponse,
+		}
+		proxy.ServeHTTP(w, r)
+		transport.WaitAndAddSSEAttributes()
+	})
+
+	req := httptest.NewRequest("POST", "/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	gatewayHandler.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Verify the error was logged
+	require.Contains(t, logBuf.String(), "SSE stream completed without usage data",
+		"should log error when SSE stream has no usage")
+}
+
+// TestGateway_SSE_StartUsageMerge verifies that input_tokens from message_start
+// are merged into message_delta when message_delta lacks them. This makes
+// billing robust regardless of whether Anthropic echoes input_tokens in
+// message_delta.
+func TestGateway_SSE_StartUsageMerge(t *testing.T) {
+	// Simulate Anthropic sending input_tokens only in message_start,
+	// not in message_delta.
+	var sseBuf bytes.Buffer
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_merge","type":"message","role":"assistant","content":[],"usage":{"input_tokens":42,"cache_creation_input_tokens":5,"cache_read_input_tokens":10,"output_tokens":1}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}` + "\n\n")
+	// message_delta with output_tokens only (no input_tokens)
+	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(sseBuf.Bytes())
+	}))
+	defer mockServer.Close()
+	mockURL, _ := url.Parse(mockServer.URL)
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	gatewayHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gw := &llmGateway{
+			now:       time.Now,
+			data:      &DBGatewayData{db},
+			apiKeys:   APIKeys{Anthropic: "test-key"},
+			env:       stage.Test(),
+			log:       logger,
+			creditMgr: NewCreditManager(&DBGatewayData{db}),
+		}
+
+		boxName := r.Header.Get("X-Exedev-Box")
+		r.Header.Del("X-Exedev-Box")
+		sloghttp.AddCustomAttributes(r, slog.String("request_type", "gateway"))
+
+		model, bodyBytes, _ := extractModelFromRequest(r)
+		if bodyBytes != nil {
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.ContentLength = int64(len(bodyBytes))
+		}
+		if model != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("requested_model", model))
+		}
+
+		userID := "test-user-test-box"
+		gw.creditMgr.CheckAndRefreshCredit(r.Context(), userID) //nolint:errcheck
+
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/_/gateway/anthropic")
+
+		transport := &accountingTransport{
+			RoundTripper: http.DefaultTransport,
+			provider:     llmpricing.ProviderAnthropic,
+			log:          logger,
+			creditMgr:    gw.creditMgr,
+			incomingReq:  r,
+			boxName:      boxName,
+			userID:       userID,
+		}
+		proxy := &httputil.ReverseProxy{
+			FlushInterval: -1,
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.Out.URL.Scheme = "http"
+				pr.Out.URL.Host = mockURL.Host
+				pr.Out.Host = mockURL.Host
+			},
+			Transport:      transport,
+			ModifyResponse: transport.modifyResponse,
+		}
+		proxy.ServeHTTP(w, r)
+		transport.WaitAndAddSSEAttributes()
+	})
+
+	slogConfig := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+	}
+	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
+
+	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Parse the canonical log line
+	logLines := bytes.Split(logBuf.Bytes(), []byte("\n"))
+	var foundLogLine map[string]any
+	for _, line := range logLines {
+		if len(line) == 0 {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if msg, ok := entry["msg"].(string); ok && msg == "200: OK" {
+			foundLogLine = entry
+			break
+		}
+	}
+
+	if foundLogLine == nil {
+		t.Logf("All log lines:\n%s", logBuf.String())
+		t.Fatal("no '200: OK' log line found")
+	}
+
+	t.Logf("200: OK log line: %v", foundLogLine)
+
+	// Verify input_tokens were merged from message_start
+	require.Equal(t, float64(42), foundLogLine["input_tokens"],
+		"input_tokens should come from message_start when message_delta lacks them")
+	require.Equal(t, float64(5), foundLogLine["cache_creation_tokens"],
+		"cache_creation_tokens should come from message_start")
+	require.Equal(t, float64(10), foundLogLine["cache_read_tokens"],
+		"cache_read_tokens should come from message_start")
+	require.Equal(t, float64(15), foundLogLine["output_tokens"],
+		"output_tokens should come from message_delta")
+
+	// Cost should be > 0
+	costUSD, ok := foundLogLine["cost_usd"].(float64)
+	require.True(t, ok, "cost_usd should be a float64")
+	require.Greater(t, costUSD, 0.0, "cost_usd should be > 0")
+}
+
+// TestGateway_SSE_RealAnthropic is an e2e test that talks to real Anthropic API
+// through the full gateway + sloghttp middleware stack. It verifies:
+// - SSE stream arrives intact
+// - cost_usd and token counts appear in canonical log line
+// - credits are debited
+//
+// Requires ANTHROPIC_API_KEY env var; skips otherwise.
+func TestGateway_SSE_RealAnthropic(t *testing.T) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set; skipping real Anthropic e2e test")
+	}
+
+	db := newDB(t)
+	setupTestBox(t, db, "test-box")
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+
+	gw := &llmGateway{
+		now:       time.Now,
+		data:      &DBGatewayData{db},
+		apiKeys:   APIKeys{Anthropic: apiKey},
+		env:       stage.Test(),
+		log:       logger,
+		creditMgr: NewCreditManager(&DBGatewayData{db}),
+	}
+
+	slogConfig := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+	}
+	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gw)
+
+	reqBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"Say hello in one word."}]}`
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(reqBody))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code, "response body: %s", rr.Body.String())
+
+	// Verify we got a valid SSE stream (plain text since we no longer set Accept-Encoding: gzip)
+	body := rr.Body.String()
+	t.Logf("SSE response body (%d bytes):\n%s", len(body), body)
+	require.Contains(t, body, "event: message_start", "should have message_start event")
+	require.Contains(t, body, "event: message_delta", "should have message_delta event")
+	require.Contains(t, body, "event: message_stop", "should have message_stop event")
+
+	// Verify SSE framing is intact (each data line followed by blank line)
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	var dataLines, eventLines int
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data:") {
+			dataLines++
+		}
+		if strings.HasPrefix(line, "event:") {
+			eventLines++
+		}
+	}
+	require.Greater(t, dataLines, 0, "should have data lines")
+	require.Greater(t, eventLines, 0, "should have event lines")
+	require.Equal(t, dataLines, eventLines, "each event should have exactly one data line")
+
+	// Parse sloghttp canonical log line
+	logLines := bytes.Split(logBuf.Bytes(), []byte("\n"))
+	var foundLogLine map[string]any
+	for _, line := range logLines {
+		if len(line) == 0 {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if msg, ok := entry["msg"].(string); ok && msg == "200: OK" {
+			foundLogLine = entry
+			break
+		}
+	}
+
+	if foundLogLine == nil {
+		t.Logf("All log output:\n%s", logBuf.String())
+		t.Fatal("no '200: OK' canonical log line found")
+	}
+
+	t.Logf("Canonical log line: %v", foundLogLine)
+
+	require.Equal(t, "claude-haiku-4-5-20251001", foundLogLine["llm_model"])
+	require.Equal(t, "test-box", foundLogLine["vm_name"])
+	require.Equal(t, "test-user-test-box", foundLogLine["user_id"])
+	require.Equal(t, "gateway", foundLogLine["request_type"])
+	require.Equal(t, "claude-haiku-4-5-20251001", foundLogLine["requested_model"])
+
+	inputTokens, ok := foundLogLine["input_tokens"].(float64)
+	require.True(t, ok, "input_tokens should be float64")
+	require.Greater(t, inputTokens, 0.0, "input_tokens should be > 0")
+
+	outputTokens, ok := foundLogLine["output_tokens"].(float64)
+	require.True(t, ok, "output_tokens should be float64")
+	require.Greater(t, outputTokens, 0.0, "output_tokens should be > 0")
+
+	costUSD, ok := foundLogLine["cost_usd"].(float64)
+	require.True(t, ok, "cost_usd should be float64")
+	require.Greater(t, costUSD, 0.0, "cost_usd should be > 0")
+
+	remaining, ok := foundLogLine["remaining_credit_usd"].(float64)
+	require.True(t, ok, "remaining_credit_usd should be float64")
+	require.Greater(t, remaining, 0.0)
+	require.Less(t, remaining, 20.01)
+
+	t.Logf("✓ Real Anthropic SSE e2e: cost_usd=%.6f, input_tokens=%.0f, output_tokens=%.0f, remaining=%.6f",
+		costUSD, inputTokens, outputTokens, remaining)
 }

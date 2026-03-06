@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"exe.dev/billing/tender"
@@ -32,12 +31,6 @@ import (
 )
 
 const sseScannerBufSize = 256 * 1024
-
-var sseScannerBufPool = sync.Pool{
-	New: func() any {
-		return new([sseScannerBufSize]byte)
-	},
-}
 
 // errBodyNotReplayable is returned when HTTP/2 tries to retry a request but the body has already been consumed.
 var errBodyNotReplayable = errors.New("request body not replayable; caller should retry")
@@ -63,8 +56,9 @@ type accountingTransport struct {
 
 	// sseModel and sseMessageID track the model/id from message_start events,
 	// since Anthropic SSE sends model/id in message_start but final usage in message_delta.
-	sseModel     string
-	sseMessageID string
+	sseModel      string
+	sseMessageID  string
+	sseStartUsage *anthropicUsageData // usage from message_start, merged into message_delta
 }
 
 // getBodyCannotReplay is an http.Request.GetBody implementation that returns a sentinel error.
@@ -170,52 +164,50 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			resp.Header.Set("Exedev-Gateway-Cost", fmt.Sprintf("%.6f", costInfo.CostUSD))
 		}
 
-	// Handle SSE streams by scanning messages, parsing, and re-writing as we go.
-	// We run the scan-and-re-write loop in a goroutine so this method can return
-	// before the response body's event stream is closed (because that can be a long time
-	// from now).
+	// Handle SSE streams by reading raw bytes, parsing for accounting, and
+	// forwarding byte-for-byte. We use bufio.Reader instead of bufio.Scanner
+	// to preserve exact bytes (including \r\n framing) and to avoid the
+	// Scanner max-token-size limit truncating large events.
 	case "text/event-stream":
-		// TODO(banksean): Figure out if we need to check for "gzip" Content-Encoding headers
-		// here as well. I have no idea how (or if) gzipping works for SSE response streams, though.
 		body := resp.Body
 		bodyReader, bodyWriter := io.Pipe()
 		resp.Body = bodyReader
-		scanner := bufio.NewScanner(body)
-		bufp := sseScannerBufPool.Get().(*[sseScannerBufSize]byte)
-		scanner.Buffer(bufp[:], sseScannerBufSize)
-		// Set up channel to signal when SSE processing is complete
+		rd := bufio.NewReaderSize(body, sseScannerBufSize)
 		a.sseDone = make(chan struct{})
 		go func() {
-			defer sseScannerBufPool.Put(bufp)
 			defer close(a.sseDone)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if data, ok := strings.CutPrefix(line, "data:"); ok {
-					// Process the event data, which may include details for accounting.
-					// For SSE, we use processResponseDataSSE which stores usage for later
-					if err := a.processResponseDataSSE([]byte(data)); err != nil {
-						a.log.ErrorContext(ctx, "Proxy SSE scanner",
-							"processResponseData error", err,
-							"raw_line", truncateQuote(line, 512),
-						)
+			defer body.Close()
+			for {
+				line, err := rd.ReadBytes('\n')
+				if len(line) > 0 {
+					trimmed := strings.TrimRight(string(line), "\r\n")
+					if data, ok := strings.CutPrefix(trimmed, "data:"); ok {
+						if perr := a.processResponseDataSSE([]byte(data)); perr != nil {
+							a.log.ErrorContext(ctx, "Proxy SSE reader",
+								"processResponseData error", perr,
+								"raw_line", truncateQuote(trimmed, 512),
+							)
+						}
+					}
+					if _, werr := bodyWriter.Write(line); werr != nil {
+						bodyWriter.CloseWithError(werr)
+						return
 					}
 				}
-				if _, err := fmt.Fprintln(bodyWriter, line); err != nil {
-					// Downstream reader closed the pipe (client disconnect).
-					// Stop consuming the upstream response.
+				if err != nil {
+					if err != io.EOF {
+						switch {
+						case errors.Is(err, context.Canceled), errorz.HasType[http2.StreamError](err):
+						default:
+							a.log.ErrorContext(ctx, "Proxy SSE reader", "error", err)
+						}
+						bodyWriter.CloseWithError(err)
+						return
+					}
 					break
 				}
 			}
-			scanErr := scanner.Err()
-			if scanErr != nil {
-				switch {
-				case errors.Is(scanErr, context.Canceled), errorz.HasType[http2.StreamError](scanErr):
-					// common, uninteresting error, ignore
-				default:
-					a.log.ErrorContext(ctx, "Proxy SSE scanner", "error", scanErr)
-				}
-			}
-			bodyWriter.CloseWithError(scanErr)
+			bodyWriter.Close()
 		}()
 	default:
 		// We just log this rather than return an error, so that the request still gets
@@ -224,8 +216,14 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		a.log.ErrorContext(ctx, "accountingTransport.modifyResponse", "unrecognized content type", contentType)
 	}
 
-	if a.testDebitDone != nil {
-		a.testDebitDone <- true
+	// For non-SSE responses, signal testDebitDone immediately.
+	// For SSE responses, the signal is deferred to WaitAndAddSSEAttributes
+	// (after the goroutine completes) to avoid signaling before processing.
+	if a.sseDone == nil && a.testDebitDone != nil {
+		select {
+		case a.testDebitDone <- true:
+		default:
+		}
 	}
 
 	return nil
@@ -427,7 +425,10 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			return nil
 		}
 
-		// message_start: extract and remember model/id from nested message
+		// message_start: extract and remember model/id and usage from nested message.
+		// We store the usage from message_start because Anthropic's message_delta
+		// may not include input_tokens/cache tokens — those are only guaranteed
+		// in message_start.
 		if envelope.Type == "message_start" && envelope.Message != nil {
 			if envelope.Message.Model != "" {
 				m.sseModel = envelope.Message.Model
@@ -435,13 +436,24 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			if envelope.Message.ID != "" {
 				m.sseMessageID = envelope.Message.ID
 			}
-			// message_start has initial usage estimates; skip billing on those
+			if envelope.Message.Usage != nil {
+				m.sseStartUsage = envelope.Message.Usage
+			}
 			return nil
 		}
 
 		// For any other event, check for top-level usage (message_delta has it)
 		if envelope.Usage == nil {
 			return nil
+		}
+
+		// Merge input-side fields from message_start if message_delta lacks them.
+		// Anthropic currently echoes input_tokens in message_delta, but the API
+		// contract only guarantees output_tokens there.
+		if m.sseStartUsage != nil && envelope.Usage.InputTokens == 0 {
+			envelope.Usage.InputTokens = m.sseStartUsage.InputTokens
+			envelope.Usage.CacheCreationInputTokens = m.sseStartUsage.CacheCreationInputTokens
+			envelope.Usage.CacheReadInputTokens = m.sseStartUsage.CacheReadInputTokens
 		}
 
 		usageDebit.Usage = envelope.Usage.toUsage()
@@ -541,7 +553,17 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 	}
 	<-m.sseDone
 
-	if m.sseUsage != nil && m.incomingReq != nil {
+	if m.sseUsage == nil {
+		ctx := context.Background()
+		if m.incomingReq != nil {
+			ctx = m.incomingReq.Context()
+		}
+		m.log.ErrorContext(ctx, "SSE stream completed without usage data",
+			"box", m.boxName, "user_id", m.userID, "provider", string(m.provider))
+		return
+	}
+
+	if m.incomingReq != nil {
 		usage := m.sseUsage.Usage
 		model := m.sseUsage.Model
 
@@ -557,6 +579,14 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("cost_usd", usage.CostUSD))
 		if remainingCredit >= 0 {
 			sloghttp.AddCustomAttributes(m.incomingReq, slog.Float64("remaining_credit_usd", remainingCredit))
+		}
+	}
+
+	// Signal testDebitDone after SSE processing is fully complete.
+	if m.testDebitDone != nil {
+		select {
+		case m.testDebitDone <- true:
+		default:
 		}
 	}
 }
