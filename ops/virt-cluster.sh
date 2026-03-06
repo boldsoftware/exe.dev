@@ -66,7 +66,10 @@ trap cleanup_jobs EXIT
 
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
-die() { echo "ERROR: $*" >&2; exit 1; }
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
 
 collect_ssh_pubkeys() {
     local keys=()
@@ -162,16 +165,16 @@ get_vm_ip() {
     local ip
 
     # Try lease-based lookup first (fastest when dnsmasq is working)
-    ip=$(sudo virsh domifaddr "$name" --source lease 2>/dev/null \
-        | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1)
+    ip=$(sudo virsh domifaddr "$name" --source lease 2>/dev/null |
+        awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1)
     if [[ -n "$ip" ]]; then
         echo "$ip"
         return 0
     fi
 
     # Fallback: QEMU's own ARP table (works even when dnsmasq leases are empty)
-    ip=$(sudo virsh domifaddr "$name" --source arp 2>/dev/null \
-        | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1)
+    ip=$(sudo virsh domifaddr "$name" --source arp 2>/dev/null |
+        awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1)
     if [[ -n "$ip" ]]; then
         echo "$ip"
         return 0
@@ -232,7 +235,7 @@ wait_for_cloud_init() {
 wait_for_vm_ready() {
     local name="$1" status_dir="$2"
     local sf="${status_dir}/${name}"
-    echo "waiting for IP..." > "$sf"
+    echo "waiting for IP..." >"$sf"
 
     # IP
     local ip=""
@@ -242,10 +245,10 @@ wait_for_vm_ready() {
         sleep 1
     done
     if [[ -z "$ip" ]]; then
-        echo "FAILED (no IP after 120s)" > "$sf"
+        echo "FAILED (no IP after 120s)" >"$sf"
         return 1
     fi
-    echo "IP=${ip}, waiting for SSH..." > "$sf"
+    echo "IP=${ip}, waiting for SSH..." >"$sf"
 
     # SSH
     local ssh_ok=false
@@ -257,14 +260,14 @@ wait_for_vm_ready() {
         sleep 2
     done
     if [[ "$ssh_ok" != "true" ]]; then
-        echo "FAILED (SSH timeout)" > "$sf"
+        echo "FAILED (SSH timeout)" >"$sf"
         return 1
     fi
-    echo "cloud-init..." > "$sf"
+    echo "cloud-init..." >"$sf"
 
     ssh ${SSH_OPTS} "${USER_NAME}@${ip}" 'sudo cloud-init status --wait' >/dev/null 2>&1
 
-    echo "READY (${ip})" > "$sf"
+    echo "READY (${ip})" >"$sf"
 
     # Return the IP on stdout
     echo "$ip"
@@ -273,7 +276,8 @@ wait_for_vm_ready() {
 # Display loop: redraws VM status lines in-place until all are done.
 # Args: status_dir vm_name1 vm_name2 ...
 display_vm_status() {
-    local status_dir="$1"; shift
+    local status_dir="$1"
+    shift
     local names=("$@")
     local n=${#names[@]}
 
@@ -300,12 +304,14 @@ display_vm_status() {
 }
 
 scp_to() {
-    local ip="$1"; shift
+    local ip="$1"
+    shift
     scp ${SSH_OPTS} "$@" "${USER_NAME}@${ip}:~/"
 }
 
 ssh_run() {
-    local ip="$1"; shift
+    local ip="$1"
+    shift
     ssh ${SSH_OPTS} "${USER_NAME}@${ip}" "$@"
 }
 
@@ -492,8 +498,8 @@ create_vm() {
         --os-variant ubuntu24.04 \
         --network network=default,model=virtio \
         --graphics none \
-        --noautoconsole \
-    || die "Failed to create VM ${name}"
+        --noautoconsole ||
+        die "Failed to create VM ${name}"
 }
 
 # ── Binary building ──────────────────────────────────────────────────────────
@@ -770,7 +776,7 @@ setup_port_forwarding() {
     # Host :8080 → exed :8080 (HTTP) via SSH tunnel so exed sees localhost origin
     # (requireLocalAccess gates /debug and other endpoints on loopback)
     ssh ${SSH_OPTS} -f -N -o ExitOnForwardFailure=yes -L 8080:localhost:8080 "${USER_NAME}@${exed_ip}"
-    pgrep -n -f "ssh.*-L 8080:localhost:8080.*${exed_ip}" > "${SOCAT_PID_DIR}/http.pid"
+    pgrep -n -f "ssh.*-L 8080:localhost:8080.*${exed_ip}" >"${SOCAT_PID_DIR}/http.pid"
 
     log "Port forwarding active:"
     log "  SSH:   localhost:2222 -> ${exed_ip}:2222"
@@ -1186,25 +1192,25 @@ cmd_destroy() {
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 case "${1:-}" in
-    start)   cmd_start ;;
-    stop)    cmd_stop ;;
-    status)  cmd_status ;;
-    destroy) cmd_destroy ;;
-    deploy)  cmd_deploy ;;
-    *)
-        echo "Usage: $0 {start|stop|status|destroy|deploy}"
-        echo ""
-        echo "Subcommands:"
-        echo "  start    Create and provision the VM cluster (idempotent)"
-        echo "  stop     Gracefully stop all VMs (preserves disks)"
-        echo "  status   Show cluster status, IPs, and services"
-        echo "  destroy  Tear down all VMs and remove disks"
-        echo "  deploy   Rebuild binaries, push to VMs, restart services"
-        echo ""
-        echo "Environment variables:"
-        echo "  NUM_EXELETS=${NUM_EXELETS}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
-        echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
-        echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}"
-        exit 1
-        ;;
+start) cmd_start ;;
+stop) cmd_stop ;;
+status) cmd_status ;;
+destroy) cmd_destroy ;;
+deploy) cmd_deploy ;;
+*)
+    echo "Usage: $0 {start|stop|status|destroy|deploy}"
+    echo ""
+    echo "Subcommands:"
+    echo "  start    Create and provision the VM cluster (idempotent)"
+    echo "  stop     Gracefully stop all VMs (preserves disks)"
+    echo "  status   Show cluster status, IPs, and services"
+    echo "  destroy  Tear down all VMs and remove disks"
+    echo "  deploy   Rebuild binaries, push to VMs, restart services"
+    echo ""
+    echo "Environment variables:"
+    echo "  NUM_EXELETS=${NUM_EXELETS}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
+    echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
+    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}"
+    exit 1
+    ;;
 esac
