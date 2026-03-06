@@ -32,7 +32,8 @@ func newFakeOIDCServer(email, sub string) *fakeOIDCServer {
 	mux.HandleFunc("/authorize", f.handleAuthorize)
 	mux.HandleFunc("/token", f.handleToken)
 	mux.HandleFunc("/userinfo", f.handleUserinfo)
-	f.server = httptest.NewServer(mux)
+	f.server = httptest.NewUnstartedServer(mux)
+	f.server.Start()
 	return f
 }
 
