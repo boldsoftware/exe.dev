@@ -21,6 +21,8 @@ type Region struct {
 	Display string
 
 	// Active indicates whether this region is currently accepting new VMs.
+	// Note: Active is used for display/documentation purposes and does NOT
+	// affect exelet selection. See RequiresUserMatch for selection filtering.
 	Active bool
 
 	// VMHardLimit is the maximum number of VMs per exelet in this region.
@@ -31,17 +33,23 @@ type Region struct {
 	// At or above this count, the exelet is deprioritized in selection
 	// and capacity warnings are sent.
 	VMSoftLimit int32
+
+	// RequiresUserMatch indicates that exelets in this region are only available to users whose configured region matches.
+	// This allows bringing new, distant regions online without all new VMs flooding there due to low load.
+	// This will eventually be set to true for all regions.
+	// For now, during the transition to full region support, our primary regions (pdx, lax) allow any user.
+	RequiresUserMatch bool
 }
 
 var allRegions = []Region{
-	{Code: "pdx", Display: "Oregon, USA", Active: true, VMHardLimit: 400, VMSoftLimit: 350},
-	{Code: "lax", Display: "Los Angeles, USA", Active: false, VMHardLimit: 800, VMSoftLimit: 700},
-	{Code: "nyc", Display: "New York, USA", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
-	{Code: "syd", Display: "Sydney, Australia", Active: false, VMHardLimit: 0, VMSoftLimit: 0},
-	{Code: "dev", Display: "$HOME", Active: false, VMHardLimit: 400, VMSoftLimit: 350},
-	{Code: "ci", Display: "CI", Active: false, VMHardLimit: 400, VMSoftLimit: 350},
+	{Code: "pdx", Display: "Oregon, USA", Active: true, VMHardLimit: 400, VMSoftLimit: 350, RequiresUserMatch: false},
+	{Code: "lax", Display: "Los Angeles, USA", Active: false, VMHardLimit: 800, VMSoftLimit: 700, RequiresUserMatch: false},
+	{Code: "nyc", Display: "New York, USA", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: true},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: true},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: true},
+	{Code: "syd", Display: "Sydney, Australia", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: true},
+	{Code: "dev", Display: "$HOME", Active: false, VMHardLimit: 400, VMSoftLimit: 350, RequiresUserMatch: false},
+	{Code: "ci", Display: "CI", Active: false, VMHardLimit: 400, VMSoftLimit: 350, RequiresUserMatch: false},
 }
 
 // All returns all known regions.
@@ -58,7 +66,7 @@ func ByCode(code string) (Region, error) {
 			return r, nil
 		}
 	}
-	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0}, fmt.Errorf("unknown region code %q", code)
+	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: false}, fmt.Errorf("unknown region code %q", code)
 }
 
 // Default returns the default region for new users and VMs.
@@ -113,7 +121,7 @@ func ParseExeletRegion(host string) (Region, error) {
 		}
 	}
 
-	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0}, fmt.Errorf("cannot parse region from exelet host %q", host)
+	return Region{Code: "", Display: "", Active: false, VMHardLimit: 0, VMSoftLimit: 0, RequiresUserMatch: false}, fmt.Errorf("cannot parse region from exelet host %q", host)
 }
 
 func isAllDigits(s string) bool {

@@ -3646,7 +3646,17 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 // If the user has VMs on an existing exelet that is not too loaded,
 // it uses that. Otherwise, if a preferred exelet is configured and available,
 // it uses that. Otherwise, it picks a less loaded exelet.
+//
+// Exelets in regions with RequiresUserMatch are only considered if the
+// user's configured region matches the exelet's region.
 func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exeletClient, string, error) {
+	// Look up the user's configured region for region-match filtering.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get user details: %w", err)
+	}
+	userRegion := user.Region
+
 	// Check for existing VMs for this user.
 	// If there are any, use the exelet that holds the most VMs.
 	vms, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
@@ -3722,14 +3732,21 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	}
 
 	// Find the least loaded exelets.
+	// Skip exelets in regions that require a user-region match
+	// unless the user's region matches.
 	ecs := make([]*exeletClient, 0, len(s.exeletClients))
 	for _, c := range s.exeletClients {
-		if c.up.Load() {
-			ecs = append(ecs, c)
+		if !c.up.Load() {
+			continue
 		}
+		if c.region.RequiresUserMatch && c.region.Code != userRegion {
+			continue
+		}
+		ecs = append(ecs, c)
 	}
 
 	if len(ecs) == 0 {
+		s.slog().WarnContext(ctx, "no eligible exelets for user region", "user", userID, "userRegion", userRegion, "totalExelets", len(s.exeletClients))
 		return nil, "", errors.New("no exelet clients available")
 	}
 
@@ -3958,13 +3975,20 @@ func exeletUsageCmp(a, b *exeletClient) int {
 }
 
 // autoThrottleVMCreation enables throttling if all exelets have hit the VM limit.
+// Exelets in RequiresUserMatch regions are excluded — they are only available
+// to manually rolled-out users and don't represent general capacity.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	if len(s.exeletClients) == 0 {
 		return
 	}
 
 	someBelowLimit := false
+	checked := 0
 	for _, ec := range s.exeletClients {
+		if ec.region.RequiresUserMatch {
+			continue
+		}
+		checked++
 		count := ec.count.Load()
 		if count < ec.region.VMSoftLimit {
 			// We still have capacity, nothing to do.
@@ -3973,6 +3997,9 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 		if count < ec.region.VMHardLimit {
 			someBelowLimit = true
 		}
+	}
+	if checked == 0 {
+		return
 	}
 
 	// Every exelet is at the warning level.
