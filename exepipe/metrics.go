@@ -6,6 +6,7 @@ import (
 
 // metrics tracks data for execopy.
 type metrics struct {
+	registry         *prometheus.Registry
 	sessionsTotal    *prometheus.CounterVec
 	sessionsInFlight *prometheus.GaugeVec
 	bytesTotal       *prometheus.CounterVec
@@ -15,6 +16,7 @@ type metrics struct {
 func newMetrics(registry *prometheus.Registry) *metrics {
 	labels := []string{"type"}
 	m := &metrics{
+		registry: registry,
 		sessionsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "copy_sessions_total",
