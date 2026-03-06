@@ -19,7 +19,7 @@ func (q *Queries) DeleteBoxIPShard(ctx context.Context, boxID int) error {
 }
 
 const getBoxByUserAndShard = `-- name: GetBoxByUserAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM box_ip_shard s
 JOIN boxes b ON b.id = s.box_id
 WHERE s.user_id = ? AND s.ip_shard = ?
@@ -57,6 +57,7 @@ func (q *Queries) GetBoxByUserAndShard(ctx context.Context, arg GetBoxByUserAndS
 		&i.EmailMaildirPath,
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
+		&i.Tags,
 	)
 	return i, err
 }

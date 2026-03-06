@@ -179,7 +179,7 @@ function filterBoxes(query) {
         return;
     }
     
-    // Check if any box matches exactly
+    // Check if any box matches exactly (by name)
     let hasExactMatch = false;
     boxRows.forEach(row => {
         const boxName = row.querySelector('.box-name')?.textContent.toLowerCase() || '';
@@ -187,16 +187,22 @@ function filterBoxes(query) {
             hasExactMatch = true;
         }
     });
+
+    // Strip leading # for tag search
+    const tagQuery = lowerQuery.startsWith('#') ? lowerQuery.slice(1) : lowerQuery;
     
     // Filter based on exact vs substring match
     boxRows.forEach(row => {
         const boxName = row.querySelector('.box-name')?.textContent.toLowerCase() || '';
+        const boxTags = (row.dataset.tags || '').toLowerCase();
         if (hasExactMatch) {
             // Show only exact match
             row.style.display = boxName === lowerQuery ? '' : 'none';
         } else {
-            // Show all substring matches
-            row.style.display = boxName.includes(lowerQuery) ? '' : 'none';
+            // Show all substring matches (name or tags)
+            const matchesName = boxName.includes(lowerQuery);
+            const matchesTags = boxTags.includes(tagQuery);
+            row.style.display = (matchesName || matchesTags) ? '' : 'none';
         }
     });
 }

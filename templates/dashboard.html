@@ -250,7 +250,28 @@
             min-width: 150px;
             flex-shrink: 0;
         }
-        
+
+        .box-tags-collapsed {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 8px;
+            overflow: hidden;
+            flex-shrink: 1;
+            min-width: 0;
+        }
+
+        .box-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            background: #ecfdf5;
+            color: #065f46;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
         .box-actions {
             display: flex;
             align-items: center;
@@ -1616,7 +1637,7 @@
 
         <div class="boxes-list" style="margin-bottom: 24px;">
             {{range .Boxes}}
-            <div class="box-row"{{if .CreationLog}} data-has-log="true"{{end}}>
+            <div class="box-row"{{if .CreationLog}} data-has-log="true"{{end}} data-tags="{{range .DisplayTags}} {{.}}{{end}}">
                 <div class="box-main" onclick="handleBoxRowClick(event, this)">
                     <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
                     <span class="box-name">{{.Name}}</span>
@@ -1624,6 +1645,9 @@
                     <span style="display: inline-flex; align-items: center; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 3px; font-size: 11px; font-weight: 500; margin-left: 8px;" title="Public - anyone can access">PUBLIC</span>
                     {{else if gt .TotalShareCount 0}}
                     <span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: #dbeafe; color: #1e40af; border-radius: 3px; font-size: 11px; margin-left: 8px;" title="Shared with {{.SharedUserCount}} user(s) and {{.ShareLinkCount}} link(s)">👥 {{.TotalShareCount}}</span>
+                    {{end}}
+                    {{if .DisplayTags}}
+                    <span class="box-tags-collapsed">{{range .DisplayTags}}<span class="box-tag">#{{.}}</span>{{end}}</span>
                     {{end}}
                     <div class="box-actions">
                         {{if ne .Status "pending"}}
@@ -1704,6 +1728,10 @@
                         {{if ne .Status "pending"}}
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
+                        {{end}}
+                        {{if .DisplayTags}}
+                        <span class="box-info-label">Tags:</span>
+                        <span class="box-info-value">{{range .DisplayTags}}<span class="box-tag">#{{.}}</span> {{end}}</span>
                         {{end}}
                     </div>
                     {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
@@ -1853,10 +1881,13 @@
 
         <div class="boxes-list" style="margin-bottom: 24px;">
             {{range .TeamBoxes}}
-            <div class="box-row">
+            <div class="box-row" data-tags="{{range .DisplayTags}} {{.}}{{end}}">
                 <div class="box-main" onclick="handleBoxRowClick(event, this)">
                     <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
                     <span class="box-name">{{.Name}}</span>
+                    {{if .DisplayTags}}
+                    <span class="box-tags-collapsed">{{range .DisplayTags}}<span class="box-tag">#{{.}}</span>{{end}}</span>
+                    {{end}}
                     <span style="font-size: 11px; color: #999; margin-left: 8px;">by {{.CreatorEmail}}</span>
                     <div class="box-actions">
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">

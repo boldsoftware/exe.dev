@@ -1291,6 +1291,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			LastStartedAt:   result.LastStartedAt,
 			Routes:          result.Routes,
 			Region:          result.Region,
+			Tags:            result.Tags,
 		}
 		if result.ContainerID != "" {
 			box.ContainerID = &result.ContainerID
@@ -1324,6 +1325,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			TotalShareCount: sharedUserCount + shareLinkCount,
 			SharedEmails:    sharedEmails,
 			ShareLinks:      shareLinks,
+			DisplayTags:     box.GetTags(),
 		}
 		// Only set ShelleyURL for exeuntu images
 		if strings.Contains(result.Image, "exeuntu") {
@@ -1368,6 +1370,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			Status:       result.Status,
 			ProxyURL:     s.boxProxyAddress(result.Name),
 			SSHCommand:   s.boxSSHConnectionCommand(result.Name),
+			DisplayTags:  parseTags(result.Tags),
 		}
 		teamBoxes = append(teamBoxes, teamBoxInfo)
 	}

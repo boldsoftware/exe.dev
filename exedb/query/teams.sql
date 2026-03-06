@@ -71,7 +71,7 @@ WHERE tm.team_id = (SELECT tm2.team_id FROM team_members tm2 WHERE tm2.user_id =
 
 -- name: ListTeamBoxesForSudoer :many
 SELECT b.id, b.name, b.status, b.image, b.created_at, b.updated_at, b.region,
-       u.email as creator_email
+       b.tags, u.email as creator_email
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN users u ON b.created_by_user_id = u.user_id

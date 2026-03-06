@@ -72,7 +72,7 @@ func (q *Queries) DeleteTeamMember(ctx context.Context, arg DeleteTeamMemberPara
 }
 
 const getBoxAccessibleByTeamSudoer = `-- name: GetBoxAccessibleByTeamSudoer :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN team_members tm_sudoer ON tm_creator.team_id = tm_sudoer.team_id
@@ -113,12 +113,13 @@ func (q *Queries) GetBoxAccessibleByTeamSudoer(ctx context.Context, arg GetBoxAc
 		&i.EmailMaildirPath,
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getBoxByTeamSSHAndName = `-- name: GetBoxByTeamSSHAndName :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
@@ -160,12 +161,13 @@ func (q *Queries) GetBoxByTeamSSHAndName(ctx context.Context, arg GetBoxByTeamSS
 		&i.EmailMaildirPath,
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getBoxByTeamSSHAndShard = `-- name: GetBoxByTeamSSHAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
@@ -208,12 +210,13 @@ func (q *Queries) GetBoxByTeamSSHAndShard(ctx context.Context, arg GetBoxByTeamS
 		&i.EmailMaildirPath,
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getBoxByTeamSudoerAndShard = `-- name: GetBoxByTeamSudoerAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
@@ -255,6 +258,7 @@ func (q *Queries) GetBoxByTeamSudoerAndShard(ctx context.Context, arg GetBoxByTe
 		&i.EmailMaildirPath,
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -911,7 +915,7 @@ func (q *Queries) ListIPShardsForTeam(ctx context.Context, userID string) ([]int
 
 const listTeamBoxesForSudoer = `-- name: ListTeamBoxesForSudoer :many
 SELECT b.id, b.name, b.status, b.image, b.created_at, b.updated_at, b.region,
-       u.email as creator_email
+       b.tags, u.email as creator_email
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN users u ON b.created_by_user_id = u.user_id
@@ -929,6 +933,7 @@ type ListTeamBoxesForSudoerRow struct {
 	CreatedAt    *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt    *time.Time `db:"updated_at" json:"updated_at"`
 	Region       string     `db:"region" json:"region"`
+	Tags         string     `db:"tags" json:"tags"`
 	CreatorEmail string     `db:"creator_email" json:"creator_email"`
 }
 
@@ -949,6 +954,7 @@ func (q *Queries) ListTeamBoxesForSudoer(ctx context.Context, sudoerUserID strin
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Region,
+			&i.Tags,
 			&i.CreatorEmail,
 		); err != nil {
 			return nil, err

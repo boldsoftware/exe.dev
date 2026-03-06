@@ -339,6 +339,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
 	}
+	if q.getBoxTagsStmt, err = db.PrepareContext(ctx, getBoxTags); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxTags: %w", err)
+	}
 	if q.getBoxTeamShareStmt, err = db.PrepareContext(ctx, getBoxTeamShare); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxTeamShare: %w", err)
 	}
@@ -969,6 +972,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
+	if q.updateBoxTagsStmt, err = db.PrepareContext(ctx, updateBoxTags); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxTags: %w", err)
+	}
 	if q.updateEmailVerificationCodeStmt, err = db.PrepareContext(ctx, updateEmailVerificationCode); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateEmailVerificationCode: %w", err)
 	}
@@ -1575,6 +1581,11 @@ func (q *Queries) Close() error {
 	if q.getBoxSharesByBoxIDStmt != nil {
 		if cerr := q.getBoxSharesByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxTagsStmt != nil {
+		if cerr := q.getBoxTagsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxTagsStmt: %w", cerr)
 		}
 	}
 	if q.getBoxTeamShareStmt != nil {
@@ -2627,6 +2638,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxTagsStmt != nil {
+		if cerr := q.updateBoxTagsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxTagsStmt: %w", cerr)
+		}
+	}
 	if q.updateEmailVerificationCodeStmt != nil {
 		if cerr := q.updateEmailVerificationCodeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateEmailVerificationCodeStmt: %w", cerr)
@@ -2901,6 +2917,7 @@ type Queries struct {
 	getBoxShareLinkByTokenAndBoxIDStmt            *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                   *sql.Stmt
 	getBoxSharesByBoxIDStmt                       *sql.Stmt
+	getBoxTagsStmt                                *sql.Stmt
 	getBoxTeamShareStmt                           *sql.Stmt
 	getBoxTeamSharesByBoxIDStmt                   *sql.Stmt
 	getBoxWithOwnerEmailStmt                      *sql.Stmt
@@ -3111,6 +3128,7 @@ type Queries struct {
 	updateBoxRoutesStmt                           *sql.Stmt
 	updateBoxSSHPortStmt                          *sql.Stmt
 	updateBoxStatusStmt                           *sql.Stmt
+	updateBoxTagsStmt                             *sql.Stmt
 	updateEmailVerificationCodeStmt               *sql.Stmt
 	updateIntegrationNameStmt                     *sql.Stmt
 	updatePasskeySignCountStmt                    *sql.Stmt
@@ -3248,6 +3266,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxShareLinkByTokenAndBoxIDStmt:            q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                   q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                       q.getBoxSharesByBoxIDStmt,
+		getBoxTagsStmt:                                q.getBoxTagsStmt,
 		getBoxTeamShareStmt:                           q.getBoxTeamShareStmt,
 		getBoxTeamSharesByBoxIDStmt:                   q.getBoxTeamSharesByBoxIDStmt,
 		getBoxWithOwnerEmailStmt:                      q.getBoxWithOwnerEmailStmt,
@@ -3458,6 +3477,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                           q.updateBoxRoutesStmt,
 		updateBoxSSHPortStmt:                          q.updateBoxSSHPortStmt,
 		updateBoxStatusStmt:                           q.updateBoxStatusStmt,
+		updateBoxTagsStmt:                             q.updateBoxTagsStmt,
 		updateEmailVerificationCodeStmt:               q.updateEmailVerificationCodeStmt,
 		updateIntegrationNameStmt:                     q.updateIntegrationNameStmt,
 		updatePasskeySignCountStmt:                    q.updatePasskeySignCountStmt,

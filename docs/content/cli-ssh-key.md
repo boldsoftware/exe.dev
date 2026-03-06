@@ -3,7 +3,7 @@
 title: "ssh-key"
 description: "Manage SSH keys for your account"
 subheading: "8. CLI Reference"
-suborder: 11
+suborder: 12
 ---
 
 # ssh-key

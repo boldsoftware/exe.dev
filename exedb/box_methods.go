@@ -55,3 +55,28 @@ func DefaultRouteJSON() string {
 	}
 	return string(data)
 }
+
+// GetTags parses the tags JSON column and returns the list of tags.
+func (b *Box) GetTags() []string {
+	if b.Tags == "" || b.Tags == "[]" {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(b.Tags), &tags); err != nil {
+		log.Printf("failed to unmarshal tags: %v", err)
+		return nil
+	}
+	return tags
+}
+
+// TagsJSON encodes a tag slice as JSON for storage.
+func TagsJSON(tags []string) string {
+	if len(tags) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(tags)
+	if err != nil {
+		panic("failed to marshal tags: " + err.Error())
+	}
+	return string(data)
+}

@@ -112,6 +112,7 @@ type BoxDisplayInfo struct {
 	TotalShareCount int64              // Total shares (users + links)
 	SharedEmails    []string           // List of emails box is shared with
 	ShareLinks      []BoxShareLinkInfo // List of share links with URLs
+	DisplayTags     []string           // Parsed tags for display
 }
 
 type BoxShareLinkInfo struct {
@@ -168,6 +169,7 @@ type TeamBoxDisplayInfo struct {
 	Status       string
 	ProxyURL     string
 	SSHCommand   string
+	DisplayTags  []string
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe

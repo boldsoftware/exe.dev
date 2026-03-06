@@ -28,6 +28,7 @@ var allowedCommands = map[string]bool{
 	"share remove-link": true,
 	"share set-public":  true,
 	"share set-private": true,
+	"tag":               true,
 	"ssh-key add":       true,
 	"ssh-key remove":    true,
 	"ssh-key rename":    true,

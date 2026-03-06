@@ -90,6 +90,7 @@ type Box struct {
 	EmailMaildirPath     string     `db:"email_maildir_path" json:"email_maildir_path"`
 	AllocatedCpus        *int64     `db:"allocated_cpus" json:"allocated_cpus"`
 	CgroupOverrides      *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
+	Tags                 string     `db:"tags" json:"tags"`
 }
 
 type BoxEmailCredit struct {

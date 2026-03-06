@@ -110,6 +110,13 @@ func statusColor(s container.ContainerStatus) string {
 }
 
 // jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
+func tagCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("tag", flag.ContinueOnError)
+	fs.Bool("json", false, "output in JSON format")
+	fs.Bool("d", false, "delete tag")
+	return fs
+}
+
 func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	return func() *flag.FlagSet {
 		fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -278,6 +285,19 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeRenameArgs,
 			Handler:           ss.handleRenameCommand,
+		},
+		{
+			Name:              "tag",
+			Description:       "Add or remove a tag on a VM",
+			Usage:             "tag [-d] <vm> <tag-name>",
+			FlagSetFunc:       tagCommandFlags,
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleTagCommand,
+			Examples: []string{
+				"tag my-vm prod        # add tag",
+				"tag -d my-vm prod     # remove tag",
+			},
 		},
 		{
 			Name:              "cp",
@@ -548,15 +568,17 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 					return cc.Errorf("invalid pattern %q: %v", arg, err)
 				}
 				for _, b := range boxes {
-					if re.MatchString(b.Name) {
+					if re.MatchString(b.Name) || slices.ContainsFunc(b.GetTags(), func(t string) bool { return re.MatchString(t) }) {
 						filtered = append(filtered, b)
 					}
 				}
 			} else {
-				// Literal name
+				// Literal name or tag
 				name := ss.normalizeBoxName(arg)
-				if idx := slices.IndexFunc(boxes, func(b exedb.Box) bool { return b.Name == name }); idx >= 0 {
-					filtered = append(filtered, boxes[idx])
+				for _, b := range boxes {
+					if b.Name == name || slices.Contains(b.GetTags(), arg) {
+						filtered = append(filtered, b)
+					}
 				}
 			}
 		}
@@ -587,6 +609,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if strings.Contains(vm.Image, "exeuntu") {
 				box["shelley_url"] = ss.server.shelleyURL(vm.Name)
 			}
+			if tags := vm.GetTags(); len(tags) > 0 {
+				box["tags"] = tags
+			}
 			vmList = append(vmList, box)
 		}
 
@@ -614,6 +639,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			}
 			if strings.Contains(vm.Image, "exeuntu") {
 				box["shelley_url"] = ss.server.shelleyURL(vm.Name)
+			}
+			if tags := parseTags(vm.Tags); len(tags) > 0 {
+				box["tags"] = tags
 			}
 			teamVMList = append(teamVMList, box)
 		}
@@ -643,12 +671,19 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if strings.Contains(b.Image, "exeuntu") {
 				shelleyURL = ss.server.shelleyURL(b.Name)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\r\n",
+			tagStr := ""
+			if tags := b.GetTags(); len(tags) > 0 {
+				for _, t := range tags {
+					tagStr += " #" + t
+				}
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t\033[36m%s\033[0m\r\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
+				tagStr,
 			)
 		}
 		tw.Flush()
@@ -668,6 +703,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		default:
 			cc.Write(" (%s)", imageName)
 		}
+		if tags := b.GetTags(); len(tags) > 0 {
+			for _, t := range tags {
+				cc.Write(" \033[36m#%s\033[0m", t)
+			}
+		}
 		cc.Write("\r\n")
 	}
 
@@ -682,6 +722,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			case "exeuntu", "":
 			default:
 				cc.Write(" (%s)", imageName)
+			}
+			if tags := parseTags(b.Tags); len(tags) > 0 {
+				for _, t := range tags {
+					cc.Write(" \033[36m#%s\033[0m", t)
+				}
 			}
 			cc.Write(" \033[90mby %s\033[0m", b.CreatorEmail)
 			cc.Write("\r\n")

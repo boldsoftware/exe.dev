@@ -35,7 +35,7 @@ WHERE id = ?;
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
-       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region
+       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC;
@@ -138,3 +138,9 @@ JOIN boxes b ON b.created_by_user_id = u.user_id
 WHERE u.region != b.region AND b.status IN ('running', 'starting')
 GROUP BY u.user_id, u.email, u.region
 ORDER BY u.region, u.email;
+
+-- name: UpdateBoxTags :exec
+UPDATE boxes SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: GetBoxTags :one
+SELECT tags FROM boxes WHERE id = ?;

@@ -3,7 +3,7 @@
 title: "cp"
 description: "Copy an existing VM"
 subheading: "8. CLI Reference"
-suborder: 8
+suborder: 9
 ---
 
 # cp
