@@ -649,68 +649,6 @@ type streamDelta struct {
 	StopSequence *string `json:"stop_sequence,omitempty"`
 }
 
-// sanitizeJSONControlChars escapes raw control characters (U+0000–U+001F)
-// that appear inside JSON string values. Per RFC 8259, these must be escaped,
-// but some upstream APIs (e.g. Anthropic) occasionally send them raw in SSE
-// event data. Go's json.Unmarshal correctly rejects them, so we fix them up
-// before parsing.
-//
-// TODO: this is a workaround for Anthropic sending invalid JSON in their
-// streaming API. Remove once they fix their encoder.
-func sanitizeJSONControlChars(data []byte) []byte {
-	// Quick check: if no raw control chars exist, return as-is.
-	// We skip \n and \r because they can't appear inside SSE data lines
-	// (they're line terminators), so they're always structural.
-	hasControl := false
-	for _, b := range data {
-		if b < 0x20 && b != '\n' && b != '\r' {
-			hasControl = true
-			break
-		}
-	}
-	if !hasControl {
-		return data
-	}
-
-	// Walk the bytes, tracking whether we're inside a JSON string.
-	// When we encounter a raw control char inside a string, replace it
-	// with its \uXXXX escape.
-	var buf bytes.Buffer
-	buf.Grow(len(data) + 64)
-	inString := false
-	for i := 0; i < len(data); i++ {
-		b := data[i]
-		if inString {
-			if b == '\\' {
-				// Escaped character — write both bytes and skip next
-				buf.WriteByte(b)
-				if i+1 < len(data) {
-					i++
-					buf.WriteByte(data[i])
-				}
-				continue
-			}
-			if b == '"' {
-				inString = false
-				buf.WriteByte(b)
-				continue
-			}
-			if b < 0x20 {
-				// Raw control char inside a string — escape it
-				fmt.Fprintf(&buf, "\\u%04x", b)
-				continue
-			}
-			buf.WriteByte(b)
-		} else {
-			if b == '"' {
-				inString = true
-			}
-			buf.WriteByte(b)
-		}
-	}
-	return buf.Bytes()
-}
-
 // sseEvent represents a parsed Server-Sent Event per the SSE spec.
 // See https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
 type sseEvent struct {
@@ -822,7 +760,7 @@ func parseSSEStream(r io.Reader) (*response, error) {
 		}
 
 		var event streamEvent
-		if err := json.Unmarshal(sanitizeJSONControlChars([]byte(data)), &event); err != nil {
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			return fmt.Errorf("parsing SSE event (event=%q, data=%s): %w",
 				sse.EventType, truncateForError(data, 512), err)
 		}
