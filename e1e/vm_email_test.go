@@ -3,10 +3,12 @@ package e1e
 import (
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"strings"
 	"testing"
 
 	"exe.dev/e1e/testinfra"
+	"exe.dev/stage"
 )
 
 // TestVMEmail tests the VM email sending feature via the metadata service.
@@ -55,6 +57,12 @@ func TestVMEmail(t *testing.T) {
 		}
 		if email.Body != body {
 			t.Errorf("expected body %q, got %q", body, email.Body)
+		}
+
+		// The From header should use the VM's hostname as the display name.
+		wantFrom := (&mail.Address{Name: fmt.Sprintf("%s.%s", box, stage.Test().BoxHost), Address: fmt.Sprintf("support@%s", stage.Test().WebHost)}).String()
+		if email.From != wantFrom {
+			t.Errorf("expected from %q, got %q", wantFrom, email.From)
 		}
 	})
 

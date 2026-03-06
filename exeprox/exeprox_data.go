@@ -103,7 +103,7 @@ type ExeproxData interface {
 	CheckAndIncrementEmailQuota(ctx context.Context, userID string) error
 
 	// SendEmail sends an email message.
-	SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error
+	SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error
 
 	// CheckAndDebitVMEMailCredit checks if a box has email
 	// credit available, and debits 1 email.
@@ -474,13 +474,14 @@ func (ged *grpcExeproxData) CheckAndIncrementEmailQuota(ctx context.Context, use
 }
 
 // SendEmail sends an email message.
-func (ged *grpcExeproxData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error {
+func (ged *grpcExeproxData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error {
 	_, err := ged.client.SendEmail(ctx, &proxyapi.SendEmailRequest{
 		EmailType: string(emailType),
 		To:        to,
 		Subject:   subject,
 		Body:      body,
 		UserID:    userID,
+		FromName:  fromName,
 	})
 	return err
 }

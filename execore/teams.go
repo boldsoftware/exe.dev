@@ -325,7 +325,7 @@ This invite expires in 30 days.
 ---
 %s`, teamName, s.env.WebHost, link, s.env.WebHost)
 
-	if err := s.sendEmail(ctx, email.TypeTeamInvitation, invitedEmail, subject, body, slog.String("invited_by_user_id", invitedByUserID)); err != nil {
+	if err := s.sendEmail(ctx, email.TypeTeamInvitation, invitedEmail, subject, body, "", slog.String("invited_by_user_id", invitedByUserID)); err != nil {
 		slog.ErrorContext(ctx, "failed to send team invite email", "error", err, "email", invitedEmail, "team_id", teamID)
 		// Don't fail the invite creation if email sending fails
 	}

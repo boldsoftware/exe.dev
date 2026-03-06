@@ -542,7 +542,7 @@ func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailR
 	if req.UserID != "" {
 		attrs = append(attrs, slog.String("user_id", req.UserID))
 	}
-	err := es.s.sendEmail(ctx, email.Type(req.EmailType), req.To, req.Subject, req.Body, attrs...)
+	err := es.s.sendEmail(ctx, email.Type(req.EmailType), req.To, req.Subject, req.Body, req.FromName, attrs...)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

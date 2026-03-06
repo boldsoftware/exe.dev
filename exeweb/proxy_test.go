@@ -765,7 +765,7 @@ func (m *mockProxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID 
 	return nil
 }
 
-func (m *mockProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID string) error {
+func (m *mockProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error {
 	return nil
 }
 

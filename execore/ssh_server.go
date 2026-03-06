@@ -1236,7 +1236,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, publicKey, verifyURL)
 
-		if err := ss.server.sendEmail(s.Context(), emailpkg.TypeDeviceVerification, email, subject, body, slog.String("user_id", userID)); err != nil {
+		if err := ss.server.sendEmail(s.Context(), emailpkg.TypeDeviceVerification, email, subject, body, "", slog.String("user_id", userID)); err != nil {
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %w", err)
 		}
@@ -1264,7 +1264,7 @@ This link will expire in 15 minutes.
 Best regards,
 The EXE.DEV team`, verifyURL)
 
-	if err := ss.server.sendEmail(s.Context(), emailpkg.TypeNewUserVerification, email, subject, body); err != nil {
+	if err := ss.server.sendEmail(s.Context(), emailpkg.TypeNewUserVerification, email, subject, body, ""); err != nil {
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %w", err)
 	}

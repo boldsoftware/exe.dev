@@ -2616,12 +2616,15 @@ func (*CheckAndIncrementEmailQuotaResponse) Descriptor() ([]byte, []int) {
 }
 
 type SendEmailRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	EmailType     string                 `protobuf:"bytes,1,opt,name=email_type,json=emailType,proto3" json:"email_type,omitempty"`
-	To            string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
-	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
-	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	UserID        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	EmailType string                 `protobuf:"bytes,1,opt,name=email_type,json=emailType,proto3" json:"email_type,omitempty"`
+	To        string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	Subject   string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Body      string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	UserID    string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// from_name overrides the display name in the "From" header.
+	// When empty, the default (WebHost) is used.
+	FromName      string `protobuf:"bytes,6,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2687,6 +2690,13 @@ func (x *SendEmailRequest) GetBody() string {
 func (x *SendEmailRequest) GetUserID() string {
 	if x != nil {
 		return x.UserID
+	}
+	return ""
+}
+
+func (x *SendEmailRequest) GetFromName() string {
+	if x != nil {
+		return x.FromName
 	}
 	return ""
 }
@@ -3943,14 +3953,15 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x15HLLNoteEventsResponse\"=\n" +
 	"\"CheckAndIncrementEmailQuotaRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"%\n" +
-	"#CheckAndIncrementEmailQuotaResponse\"\x88\x01\n" +
+	"#CheckAndIncrementEmailQuotaResponse\"\xa5\x01\n" +
 	"\x10SendEmailRequest\x12\x1d\n" +
 	"\n" +
 	"email_type\x18\x01 \x01(\tR\temailType\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12\x12\n" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x17\n" +
-	"\auser_id\x18\x05 \x01(\tR\x06userId\"\x13\n" +
+	"\auser_id\x18\x05 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tfrom_name\x18\x06 \x01(\tR\bfromName\"\x13\n" +
 	"\x11SendEmailResponse\":\n" +
 	"!CheckAndDebitVMEmailCreditRequest\x12\x15\n" +
 	"\x06box_id\x18\x01 \x01(\x03R\x05boxId\"d\n" +

@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/netip"
 	"net/url"
 	"os"
@@ -1577,7 +1578,7 @@ func isBogusEmailDomain(email string) bool {
 // sendEmail sends an email using the configured email service.
 // emailType identifies the type of email being sent for logging and metrics.
 // Extra slog attributes are forwarded to the email provider's "email sent" log line.
-func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body string, attrs ...slog.Attr) error {
+func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body, fromName string, attrs ...slog.Attr) error {
 	// Do not attempt to send to bogus domains (reserved or common typos).
 	if isBogusEmailDomain(to) {
 		s.slog().InfoContext(ctx, "silently dropping email to bogus domain", "to", to, "subject", subject, "type", emailType)
@@ -1593,7 +1594,12 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 	}
 
 	if s.fakeHTTPEmail != "" {
-		err := s.sendFakeEmail(ctx, to, subject, body)
+		displayName := s.env.WebHost
+		if fromName != "" {
+			displayName = fromName
+		}
+		from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
+		err := s.sendFakeEmail(ctx, from, to, subject, body)
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to send fake email", "to", to, "subject", subject, "error", err)
 		}
@@ -1612,7 +1618,11 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 		return errNoEmailService
 	}
 
-	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
+	displayName := s.env.WebHost
+	if fromName != "" {
+		displayName = fromName
+	}
+	from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
 	err := sender.Send(ctx, emailType, from, to, subject, body, attrs...)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "type", emailType, "error", err)
@@ -1635,8 +1645,9 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 }
 
 // sendFakeEmail sends an email to the fake HTTP email server
-func (s *Server) sendFakeEmail(ctx context.Context, to, subject, body string) error {
+func (s *Server) sendFakeEmail(ctx context.Context, from, to, subject, body string) error {
 	emailData := map[string]string{
+		"from":    from,
 		"to":      to,
 		"subject": subject,
 		"body":    body,
@@ -1700,7 +1711,7 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, det
 		return
 	}
 
-	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String(), slog.String("user_id", userID)); err != nil {
+	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String(), "", slog.String("user_id", userID)); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
@@ -1719,7 +1730,7 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
 	subject := fmt.Sprintf("exe.dev: system maintenance on %s", boxName)
 	body := fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
 
-	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body, slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
+	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body, "", slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)
 	}
 }
