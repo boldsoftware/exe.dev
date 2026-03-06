@@ -205,8 +205,9 @@ type TeamDisplayInfo struct {
 
 // TeamMemberDisplayInfo represents a team member for the dashboard
 type TeamMemberDisplayInfo struct {
-	Email string
-	Role  string
+	Email    string
+	Role     string
+	JoinedAt *time.Time
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe

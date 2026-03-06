@@ -676,6 +676,55 @@
         </div>
 
         {{if not .BasicUser}}
+        {{if .TeamInfo}}
+        <div class="section" id="team">
+            <div class="section-title">Team</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <div class="info-label">Team Name</div>
+                    <div class="info-value">{{.TeamInfo.DisplayName}}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Your Role</div>
+                    <div class="info-value">{{if eq .TeamInfo.Role "owner"}}Owner{{else}}Member{{end}}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Members</div>
+                    <div class="info-value">{{len .TeamInfo.Members}}</div>
+                </div>
+            </div>
+
+            {{if .TeamInfo.Members}}
+            <div style="margin-top: 16px;">
+                <div class="ssh-keys-list">
+                    {{range .TeamInfo.Members}}
+                    <div class="ssh-key-item">
+                        <div class="ssh-key-info">
+                            <div class="ssh-key-comment">{{.Email}}</div>
+                            <div class="ssh-key-meta">
+                                {{if eq .Role "owner"}}Team Owner{{else}}Team Member{{end}}
+                                · Joined {{formatTimeAgo .JoinedAt}}
+                            </div>
+                        </div>
+                        {{if eq $.TeamInfo.Role "owner"}}
+                        {{if ne .Email $.User.Email}}
+                        <button class="btn btn-danger btn-small" onclick="openRemoveTeamMemberModal('{{.Email}}')">Remove</button>
+                        {{end}}
+                        {{end}}
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+            
+            {{if eq .TeamInfo.Role "owner"}}
+            <div style="margin-top: 16px;">
+                <button class="btn" onclick="openAddTeamMemberModal()">Add Team Member</button>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
         <div class="section" id="billing">
             <div class="section-title">Billing</div>
             <div class="info-card">
@@ -1312,6 +1361,26 @@
             }
             setTimeout(() => { label.textContent = 'Subscribe to updates'; }, 2000);
         });
+
+        // Team management functions
+        function openAddTeamMemberModal() {
+            const email = prompt('Enter the email address of the person you want to add to your team:');
+            if (email && email.trim()) {
+                cmdModal.open({
+                    title: 'Add Team Member',
+                    command: 'team add ' + email.trim(),
+                    danger: false
+                });
+            }
+        }
+
+        function openRemoveTeamMemberModal(email) {
+            cmdModal.open({
+                title: 'Remove Team Member',
+                command: 'team remove ' + email,
+                danger: true
+            });
+        }
     </script>
 </body>
 </html>

@@ -1682,6 +1682,32 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		Integrations: integrations,
 	}
 
+	// Fetch team data if user is in a team
+	if team, err := s.GetTeamForUser(r.Context(), userID); err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get team for user", "error", err, "user_id", userID)
+	} else if team != nil {
+		ti := &TeamDisplayInfo{
+			DisplayName: team.DisplayName,
+			Role:        team.Role,
+			IsAdmin:     team.Role != "user",
+		}
+		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to get team members", "error", err, "team_id", team.TeamID)
+		} else {
+			for _, m := range members {
+				mdi := TeamMemberDisplayInfo{
+					Email: m.Email,
+					Role:  m.Role,
+				}
+				if t, err := time.Parse("2006-01-02 15:04:05", m.JoinedAt); err == nil {
+					mdi.JoinedAt = &t
+				}
+				ti.Members = append(ti.Members, mdi)
+			}
+		}
+		data.TeamInfo = ti
+	}
+
 	// Render template
 	s.renderTemplate(r.Context(), w, "user-profile.html", data)
 }
