@@ -436,9 +436,9 @@ func (es *exeproxServer) IsBoxShelleySharedWithTeamMember(ctx context.Context, r
 }
 
 // CheckShareLink reports whether a share link is valid.
-// If the share link is valid, it will be used,
-// so this method is also responsible for recording the use,
-// and for creating an email-based share for the user.
+// When UserID is non-empty, it also records the use and creates
+// an email-based share for the user. An empty UserID performs
+// validation only (used for stripping tokens before proxying).
 func (es *exeproxServer) CheckShareLink(ctx context.Context, req *proxyapi.CheckShareLinkRequest) (*proxyapi.CheckShareLinkResponse, error) {
 	ok, err := es.s.checkShareLink(ctx, int(req.BoxID), req.BoxName, req.UserID, req.ShareToken)
 	if err != nil {

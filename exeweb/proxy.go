@@ -281,6 +281,9 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 
 		// Check share link access (only for standard route)
 		if !hasAccess && !ownerOnly && ps.CheckShareLinkAccess(r, box.ID, box.Name, userID) {
+			// Share link validated and consumed
+			// (an email-based share was auto-created).
+			// HLL tracking happens on the subsequent request after redirect.
 			hasAccess = true
 		}
 
@@ -350,6 +353,15 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	// (no cross-container leak).
 	if authResult == nil {
 		authResult = ps.GetProxyAuth(r, box.Name)
+	}
+
+	// Strip valid share tokens to prevent leakage to containers.
+	// This runs for all routes (public and private).
+	shareToken := r.URL.Query().Get("share")
+	if shareToken != "" && ps.isValidShareToken(r.Context(), box.ID, box.Name, shareToken) {
+		if stripShareParam(w, r) {
+			return
+		}
 	}
 
 	// Proxy the request to the container
@@ -792,8 +804,9 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 }
 
 // CheckShareLinkAccess reports whether the request has a share token
-// that permits access to the box. If it does, we record that the
-// share token was used, and we create an email-based share.
+// that permits access to the box. If it does, it records the use
+// and creates an email-based share (via non-empty userID).
+// See also isValidShareToken for validation without side effects.
 func (ps *ProxyServer) CheckShareLinkAccess(r *http.Request, boxID int, boxName, userID string) bool {
 	shareToken := r.URL.Query().Get("share")
 	if shareToken == "" {
@@ -807,6 +820,33 @@ func (ps *ProxyServer) CheckShareLinkAccess(r *http.Request, boxID int, boxName,
 	}
 
 	return valid
+}
+
+// isValidShareToken reports whether the share token is valid for the given box,
+// without consuming the token or creating email shares.
+func (ps *ProxyServer) isValidShareToken(ctx context.Context, boxID int, boxName, shareToken string) bool {
+	valid, err := ps.Data.CheckShareLink(ctx, boxID, boxName, "", shareToken)
+	if err != nil {
+		ps.Lg.ErrorContext(ctx, "validate share token failed", "boxID", boxID, "boxName", boxName, "error", err)
+	}
+	return valid
+}
+
+// stripShareParam removes the "share" query parameter from the request URL.
+// For GET/HEAD requests it redirects to the cleaned URL and reports true.
+// For other methods it mutates r.URL.RawQuery in place and reports false.
+func stripShareParam(w http.ResponseWriter, r *http.Request) (redirected bool) {
+	q := r.URL.Query()
+	q.Del("share")
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		u := *r.URL
+		u.RawQuery = q.Encode()
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		http.Redirect(w, r, u.RequestURI(), http.StatusFound)
+		return true
+	}
+	r.URL.RawQuery = q.Encode()
+	return false
 }
 
 // UserHasExeSudo reports whether a user has root support privileges.

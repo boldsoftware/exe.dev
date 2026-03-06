@@ -205,10 +205,13 @@ func (s *Server) checkShareLink(ctx context.Context, boxID int, boxName, userID,
 		return false, nil
 	}
 
-	// The share link is valid. Record that we used it,
-	// and auto-create an email-based share for the user.
-	// The email-based share allows the user to access the
-	// box even if the share link is later revoked.
+	// An empty userID means the caller only wants to validate the token
+	// (e.g. for stripping before proxying).
+	if userID == "" {
+		return true, nil
+	}
+
+	// Record usage and create an email-based share for the user.
 	if err := s.incrementShareLinkUsage(ctx, shareToken); err != nil {
 		// Report the error but don't return it:
 		// the share link is still valid.

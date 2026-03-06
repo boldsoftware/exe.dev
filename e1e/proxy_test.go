@@ -20,6 +20,8 @@ import (
 	"exe.dev/stage"
 )
 
+var confirmURLRe = regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"`)
+
 func TestHTTPProxy(t *testing.T) {
 	testHTTPProxy(t, Env.servers.Exed.HTTPPort, Env.servers.Exed.ExtraPorts)
 }
@@ -1008,7 +1010,6 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 				resp.Body.Close()
 				if strings.Contains(string(body), "CONFIRM LOGIN") {
 					// Extract Continue URL from confirmation page
-					confirmURLRe := regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"`)
 					matches := confirmURLRe.FindStringSubmatch(string(body))
 					if len(matches) < 2 {
 						t.Fatalf("could not find Continue URL in confirmation page")
@@ -1111,6 +1112,73 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 		}
 		t.Logf("Redirect location matches expected: %s", location)
 	}
+}
+
+// followAuthDance follows the proxy auth redirect chain (307/303 hops and
+// the CONFIRM LOGIN page) until a non-redirect, non-confirm response is
+// reached. It returns that final response. The caller's client (and its
+// cookie jar) accumulate the proxy-auth cookie along the way.
+func followAuthDance(t *testing.T, client *http.Client, initReq *http.Request, resp *http.Response) *http.Response {
+	t.Helper()
+	currentBase := mustParseURL(initReq.URL.String())
+	for i := 0; i < 20; i++ {
+		switch {
+		case resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther:
+			rawLoc := resp.Header.Get("Location")
+			resp.Body.Close()
+			if rawLoc == "" {
+				t.Fatal("followAuthDance: missing Location header")
+			}
+			u, err := currentBase.Parse(rawLoc)
+			if err != nil {
+				t.Fatalf("followAuthDance: bad Location %q: %v", rawLoc, err)
+			}
+			currentBase = u
+			req, err := localhostRequestWithHostHeader("GET", u.String(), nil)
+			if err != nil {
+				t.Fatalf("followAuthDance: %v", err)
+			}
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("followAuthDance: %v", err)
+			}
+
+		case resp.StatusCode == http.StatusOK:
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				t.Fatalf("followAuthDance: reading body: %v", err)
+			}
+			if !strings.Contains(string(body), "CONFIRM LOGIN") {
+				// Not a confirm page — reconstruct the response for the caller.
+				resp.Body = io.NopCloser(strings.NewReader(string(body)))
+				return resp
+			}
+			// Extract Continue URL from confirmation page.
+			m := confirmURLRe.FindStringSubmatch(string(body))
+			if len(m) < 2 {
+				t.Fatal("followAuthDance: no Continue URL in confirmation page")
+			}
+			u, err := currentBase.Parse(html.UnescapeString(m[1]))
+			if err != nil {
+				t.Fatalf("followAuthDance: bad Continue URL: %v", err)
+			}
+			currentBase = u
+			req, err := localhostRequestWithHostHeader("GET", u.String(), nil)
+			if err != nil {
+				t.Fatalf("followAuthDance: %v", err)
+			}
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("followAuthDance: %v", err)
+			}
+
+		default:
+			return resp
+		}
+	}
+	t.Fatal("followAuthDance: too many redirects")
+	return nil
 }
 
 // doProxyRequest makes an HTTP request to boxName, available at httpPort.

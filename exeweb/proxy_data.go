@@ -53,9 +53,9 @@ type ProxyData interface {
 	IsBoxShelleySharedWithTeamMember(ctx context.Context, boxID int, boxName, userID string) (bool, error)
 
 	// CheckShareLink reports whether a share link is valid.
-	// If the share link is valid, it will be used,
-	// so this method is also responsible for recording the use,
-	// and for creating an email-based share for the user.
+	// When userID is non-empty, it also records the use and creates
+	// an email-based share for the user. An empty userID performs
+	// validation only (used for stripping tokens before proxying).
 	CheckShareLink(ctx context.Context, boxID int, boxName, userID, shareToken string) (bool, error)
 
 	// ValidateMagicSecret consumes and validates a magic secret

@@ -178,11 +178,14 @@ func TestBoxSharing(t *testing.T) {
 		_, guestCookies, _, _ := registerForExeDev(t)
 
 		// Guest should be able to access via share link.
+		// The proxy validates the token, auto-creates an email share,
+		// then redirects to strip ?share= from the URL.
 		proxyAssert(t, box, proxyExpectation{
-			name:     "guest can access via share link",
-			httpPort: httpPort,
-			cookies:  guestCookies,
-			httpCode: http.StatusOK,
+			name:             "share link redirects to strip token",
+			httpPort:         httpPort,
+			cookies:          guestCookies,
+			httpCode:         http.StatusFound,
+			redirectLocation: "/",
 		}, fmt.Sprintf("share=%s", linkInfo.Token))
 
 		time.Sleep(100 * time.Millisecond) // TODO: poll instead of unilaterally sleeping
@@ -1325,6 +1328,150 @@ func TestShareOnlyGrantsStandardPortAccess(t *testing.T) {
 		cookies:  guestCookies,
 		httpCode: http.StatusUnauthorized,
 	})
+
+	cleanupBox(t, ownerKeyFile, box)
+}
+
+// TestShareLinkStripsTokenFromURL verifies that when a valid share link token
+// grants access, the proxy redirects to the same URL with ?share= stripped,
+// preserving any other query parameters.
+func TestShareLinkStripsTokenFromURL(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	noGolden(t)
+
+	ownerPTY, ownerCookies, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-strip.example")
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	ownerPTY.Disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+	serveIndex(t, box, ownerKeyFile, "alive")
+
+	httpPort := Env.HTTPPort()
+	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
+
+	// Create a share link.
+	linkOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add-share-link", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to create share link: %v\n%s", err, linkOut)
+	}
+	var linkInfo struct {
+		Token string `json:"token"`
+	}
+	if err = json.Unmarshal(linkOut, &linkInfo); err != nil {
+		t.Fatalf("failed to parse link JSON: %v\n%s", err, linkOut)
+	}
+
+	// Register guest users. Use separate guests so the second assertion
+	// exercises the share-link path (not the email-share path created by the first).
+	// Use distinct hardcoded emails; calling registerForExeDev(t) twice would
+	// produce the same email and the second registration would fail because
+	// hasUsedRepl is already true from the first session.
+	_, guestCookies, _, _ := registerForExeDevWithEmail(t, "guest1@test-share-strip.example")
+	_, guest2Cookies, _, _ := registerForExeDevWithEmail(t, "guest2@test-share-strip.example")
+
+	// Access with share token only: should redirect to "/".
+	proxyAssert(t, box, proxyExpectation{
+		name:             "share-only query is stripped",
+		httpPort:         httpPort,
+		cookies:          guestCookies,
+		httpCode:         http.StatusFound,
+		redirectLocation: "/",
+	}, fmt.Sprintf("share=%s", linkInfo.Token))
+
+	// Access with share token + extra param: redirect must keep extra param.
+	proxyAssert(t, box, proxyExpectation{
+		name:             "extra query params preserved",
+		httpPort:         httpPort,
+		cookies:          guest2Cookies,
+		httpCode:         http.StatusFound,
+		redirectLocation: "/?page=2",
+	}, fmt.Sprintf("share=%s&page=2", linkInfo.Token))
+
+	// Owner visits their own box with a valid share link token:
+	// the token should still be stripped.
+	proxyAssert(t, box, proxyExpectation{
+		name:             "owner with valid share token is stripped",
+		httpPort:         httpPort,
+		cookies:          ownerCookies,
+		httpCode:         http.StatusFound,
+		redirectLocation: "/",
+	}, fmt.Sprintf("share=%s", linkInfo.Token))
+
+	// After the share link was consumed, plain access works via the
+	// auto-created email share.
+	proxyAssert(t, box, proxyExpectation{
+		name:     "access works without share token",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
+
+	// Test POST with share parameter: the proxy should strip ?share=
+	// inline (not redirect) and forward the request to the container.
+	// Install a CGI script that echoes back the query string so we
+	// can verify the container didn't receive the share param.
+	cgiScript := `#!/bin/sh
+echo "Content-Type: text/plain"
+echo ""
+echo "QUERY=$QUERY_STRING"
+`
+	installCGI := boxSSHShell(t, box, ownerKeyFile, "mkdir -p /home/exedev/cgi-bin && cat > /home/exedev/cgi-bin/echo.cgi << 'ENDSCRIPT'\n"+cgiScript+"ENDSCRIPT\nchmod +x /home/exedev/cgi-bin/echo.cgi")
+	if err := installCGI.Run(); err != nil {
+		t.Fatalf("failed to install CGI script: %v", err)
+	}
+
+	// Authenticate guest to get a proxy auth cookie,
+	// then POST with ?share= and verify the container doesn't see it.
+	jar, _ := cookiejar.New(nil)
+	setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", httpPort), guestCookies)
+	client := noRedirectClient(jar)
+
+	host := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
+	// GET first to complete the auth dance and set the proxy cookie.
+	getURL := fmt.Sprintf("http://%s/", host)
+	req, err := localhostRequestWithHostHeader("GET", getURL, nil)
+	if err != nil {
+		t.Fatalf("auth dance GET: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("auth dance GET: %v", err)
+	}
+	// Follow auth dance redirects.
+	resp = followAuthDance(t, client, req, resp)
+	resp.Body.Close()
+
+	// POST with ?share= and an extra param.
+	postURL := fmt.Sprintf("http://%s/cgi-bin/echo.cgi?share=%s&page=2", host, linkInfo.Token)
+	req, err = localhostRequestWithHostHeader("POST", postURL, strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("POST request: %v", err)
+	}
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("POST request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusFound {
+		t.Fatal("POST with ?share= should not redirect")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 for POST to CGI, got %d: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading POST response: %v", err)
+	}
+	if strings.Contains(string(body), "share=") {
+		t.Errorf("container received share param in query string: %s", body)
+	}
+	if !strings.Contains(string(body), "page=2") {
+		t.Errorf("container missing expected page param: %s", body)
+	}
 
 	cleanupBox(t, ownerKeyFile, box)
 }

@@ -141,15 +141,18 @@ func (bd *boxesData) isShareLinkValid(ctx context.Context, exeproxData ExeproxDa
 	}
 
 	// Not found in cache. Ask exed whether the share token is valid.
-	// This will also record that the share token was used,
-	// and create an email-based share for the user.
+	// When userID is non-empty, this also records usage and creates
+	// an email-based share for the user.
 	ok, err := exeproxData.CheckShareLink(ctx, boxID, boxName, userID, shareToken)
 	if err != nil {
 		return false, err
 	}
 
-	if ok {
-		// Access granted; cache the result.
+	if ok && userID != "" {
+		// Access granted with a real user; cache the result.
+		// Don't cache validation-only calls (empty userID)
+		// so that a subsequent access-granting call still
+		// triggers side effects (usage tracking, email share creation).
 		bsl := boxShareLink{
 			boxName: boxName,
 		}
