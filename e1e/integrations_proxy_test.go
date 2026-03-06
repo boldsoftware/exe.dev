@@ -228,5 +228,26 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.WantPrompt()
 	})
 
+	t.Run("bearer_flag_proxy", func(t *testing.T) {
+		pty.SendLine(fmt.Sprintf("integrations add http-proxy --name=bearertest --target=%s --bearer=proxy-test-token-789", httpbinTarget))
+		pty.Want("Added integration bearertest")
+		pty.WantPrompt()
+		pty.SendLine(fmt.Sprintf("integrations attach bearertest %s", bn))
+		pty.Want("Attached bearertest to " + bn)
+		pty.WantPrompt()
+
+		response := curlRetry(t, "http://bearertest.int.exe.cloud/anything", "Authorization")
+		result := parseHTTPBin(t, response)
+		headers, _ := result["headers"].(map[string]any)
+		auth, _ := headers["Authorization"].(string)
+		if auth != "Bearer proxy-test-token-789" {
+			t.Errorf("expected Authorization header 'Bearer proxy-test-token-789', got %q", auth)
+		}
+
+		pty.SendLine("integrations remove bearertest")
+		pty.Want("Removed")
+		pty.WantPrompt()
+	})
+
 	cleanupBox(t, keyFile, bn)
 }

@@ -144,6 +144,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("name", "", "integration name (required)")
 	fs.String("target", "", "target URL (required for http-proxy)")
 	fs.String("header", "", "header to inject (required for http-proxy)")
+	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	return fs
 }
 
@@ -159,6 +160,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	name := cc.FlagSet.Lookup("name").Value.String()
 	target := cc.FlagSet.Lookup("target").Value.String()
 	header := cc.FlagSet.Lookup("header").Value.String()
+	bearer := cc.FlagSet.Lookup("bearer").Value.String()
 
 	if name == "" {
 		return cc.Errorf("--name is required")
@@ -172,8 +174,15 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	if err := validateTargetURL(target); err != nil {
 		return cc.Errorf("%v", err)
 	}
+	if header != "" && bearer != "" {
+		return cc.Errorf("--header and --bearer are mutually exclusive")
+	}
+	bearer = strings.TrimSpace(bearer)
+	if bearer != "" {
+		header = "Authorization:Bearer " + bearer
+	}
 	if header == "" {
-		return cc.Errorf("--header is required")
+		return cc.Errorf("--header (or --bearer) is required")
 	}
 	if err := validateHTTPHeader(header); err != nil {
 		return cc.Errorf("invalid header: %v", err)

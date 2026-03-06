@@ -69,7 +69,7 @@ func TestIntegrationsCommand(t *testing.T) {
 
 	// Test validation: missing --header.
 	pty.SendLine("integrations add http-proxy --name=bad --target=https://x.com")
-	pty.Want("--header is required")
+	pty.Want("--header (or --bearer) is required")
 	pty.WantPrompt()
 
 	// Test validation: unknown type.
@@ -131,6 +131,55 @@ func TestIntegrationsCommand(t *testing.T) {
 
 	// Clean up.
 	pty.SendLine("integrations remove otherproxy")
+	pty.Want("Removed")
+	pty.WantPrompt()
+}
+
+// TestIntegrationsBearerFlag tests the --bearer shorthand flag.
+func TestIntegrationsBearerFlag(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Add with --bearer instead of --header.
+	pty.SendLine("integrations add http-proxy --name=bearerproxy --target=https://example.com --bearer=my-secret-token")
+	pty.Want("Added integration bearerproxy")
+	pty.WantPrompt()
+
+	// List should show the expanded Authorization:Bearer header.
+	pty.SendLine("integrations list")
+	pty.Want("bearerproxy")
+	pty.Want("header=Authorization:Bearer my-secret-token")
+	pty.WantPrompt()
+
+	// Add a second integration with --bearer to verify it works consistently.
+	pty.SendLine("integrations add http-proxy --name=bearerproxy2 --target=https://other.com --bearer=another-token-456")
+	pty.Want("Added integration bearerproxy2")
+	pty.WantPrompt()
+
+	pty.SendLine("integrations list")
+	pty.Want("header=Authorization:Bearer another-token-456")
+	pty.WantPrompt()
+
+	// Error: --bearer and --header together.
+	pty.SendLine("integrations add http-proxy --name=bad --target=https://x.com --header=X-Foo:bar --bearer=tok")
+	pty.Want("mutually exclusive")
+	pty.WantPrompt()
+
+	// Error: neither --header nor --bearer.
+	pty.SendLine("integrations add http-proxy --name=bad --target=https://x.com")
+	pty.Want("--header (or --bearer) is required")
+	pty.WantPrompt()
+
+	// Clean up.
+	pty.SendLine("integrations remove bearerproxy")
+	pty.Want("Removed")
+	pty.WantPrompt()
+
+	pty.SendLine("integrations remove bearerproxy2")
 	pty.Want("Removed")
 	pty.WantPrompt()
 }
