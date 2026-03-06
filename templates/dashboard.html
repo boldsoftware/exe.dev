@@ -262,7 +262,8 @@
         }
 
         .box-tag {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             padding: 1px 6px;
             background: #ecfdf5;
             color: #065f46;
@@ -270,6 +271,59 @@
             font-size: 11px;
             font-weight: 500;
             white-space: nowrap;
+        }
+
+        .box-tag-removable {
+            padding-right: 2px;
+            gap: 2px;
+        }
+
+        .box-tag-remove {
+            background: none;
+            border: none;
+            color: #065f46;
+            cursor: pointer;
+            padding: 0 2px;
+            font-size: 13px;
+            line-height: 1;
+            opacity: 0.5;
+        }
+
+        .box-tag-remove:hover {
+            opacity: 1;
+            color: #dc2626;
+        }
+
+        .box-tag-add-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 6px;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 1px dashed #d1d5db;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .box-tag-add-btn:hover {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .box-tag-add-input {
+            font-size: 11px;
+            padding: 1px 6px;
+            border: 1px solid #d1d5db;
+            border-radius: 3px;
+            width: 100px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .box-tag-add-input:focus {
+            border-color: #065f46;
         }
 
         .box-actions {
@@ -693,6 +747,10 @@
             .expand-btn svg {
                 width: 14px;
                 height: 14px;
+            }
+
+            .box-tags-collapsed {
+                display: none;
             }
 
             .box-actions-expanded {
@@ -1729,10 +1787,10 @@
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
                         {{end}}
-                        {{if .DisplayTags}}
                         <span class="box-info-label">Tags:</span>
-                        <span class="box-info-value">{{range .DisplayTags}}<span class="box-tag">#{{.}}</span> {{end}}</span>
-                        {{end}}
+                        <span class="box-info-value box-tags-editable" data-box-name="{{.Name}}">
+                            {{range .DisplayTags}}<span class="box-tag box-tag-removable">#{{.}}<button class="box-tag-remove" onclick="removeTag('{{$.Name}}', '{{.}}')" title="Remove tag">&times;</button></span> {{end}}<button class="box-tag-add-btn" onclick="showAddTagInput(this, '{{.Name}}')" title="Add tag">+ tag</button>
+                        </span>
                     </div>
                     {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
                     <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
