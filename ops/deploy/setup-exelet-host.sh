@@ -600,8 +600,12 @@ if [ "$NDISKS" -eq 1 ]; then
 elif [ "$NDISKS" -eq 2 ]; then
   echo "Two drives, creating tank as mirror"
   sudo zpool create -o ashift=12 -m none tank mirror "${DATA_PARTS[@]}"
+elif [ "$NDISKS" -le 6 ]; then
+  # 3-6 drives: raidz1 for more usable space
+  echo "Creating tank as raidz1 with $NDISKS drives"
+  sudo zpool create -o ashift=12 -m none tank raidz1 "${DATA_PARTS[@]}"
 else
-  # Build mirrored vdevs (pairs of 2 drives each)
+  # >6 drives: mirrored vdevs (pairs of 2 drives each)
   if [ $((NDISKS % 2)) -ne 0 ]; then
     echo "ERROR: odd number of drives ($NDISKS), cannot create mirrored vdevs"
     exit 1
@@ -900,7 +904,7 @@ echo ""
 echo "${MACHINE_NAME} is now fully configured with:"
 echo "  - Cloud Hypervisor"
 echo "  - Swap on 25% of each instance-store NVMe drive"
-echo "  - ZFS pool 'tank' (raidz1) on 75% of instance-store NVMe drives"
+echo "  - ZFS pool 'tank' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives"
 echo "  - ZFS pool 'backup' (striped) on 2x EBS io2 volumes"
 echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
 echo ""

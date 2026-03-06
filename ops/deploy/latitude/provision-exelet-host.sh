@@ -381,8 +381,12 @@ else
         # Two drives - single mirror
         echo "Creating ZFS pool 'tank' as mirror..."
         zpool create -f -m none tank mirror "${DATA_PARTITIONS[@]}"
+    elif [ "$NDISKS" -le 6 ]; then
+        # 3-6 drives - raidz1 for more usable space
+        echo "Creating ZFS pool 'tank' as raidz1 with ${#DATA_PARTITIONS[@]} drives..."
+        zpool create -f -m none tank raidz1 "${DATA_PARTITIONS[@]}"
     else
-        # 3+ drives - mirrored vdevs (pairs of 2)
+        # >6 drives - mirrored vdevs (pairs of 2)
         if [ $((NDISKS % 2)) -ne 0 ]; then
             echo "ERROR: odd number of drives ($NDISKS), cannot create mirrored vdevs"
             exit 1
