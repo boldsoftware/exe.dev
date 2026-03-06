@@ -118,7 +118,7 @@ function BrowserProfileTool({
                     background: "var(--bg-tertiary)",
                     padding: "0.25rem 0.5rem",
                     borderRadius: "0.25rem",
-                    fontSize: "0.85rem",
+                    fontSize: "0.875rem",
                     wordBreak: "break-all",
                   }}
                 >

@@ -161,7 +161,7 @@ function GitInfoMessage({
       data-testid="message-gitinfo"
       style={{
         padding: "0.4rem 1rem",
-        fontSize: "0.8rem",
+        fontSize: "0.875rem",
         color: "var(--text-secondary)",
         textAlign: "center",
         fontStyle: "italic",
@@ -271,7 +271,7 @@ function DistillStatusMessage({ message }: { message: MessageType }) {
       className="message message-gitinfo"
       style={{
         padding: "0.5rem 1rem",
-        fontSize: "0.8rem",
+        fontSize: "0.875rem",
         color: isError ? "var(--error-text)" : "var(--text-secondary)",
         textAlign: "center",
         fontStyle: "italic",

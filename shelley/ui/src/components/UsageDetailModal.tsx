@@ -67,7 +67,7 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
             marginBottom: "20px",
           }}
         >
-          <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#1f2937", margin: 0 }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: "600", color: "#1f2937", margin: 0 }}>
             Usage Details
           </h2>
           <button
@@ -75,7 +75,7 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
             style={{
               background: "none",
               border: "none",
-              fontSize: "24px",
+              fontSize: "1.5rem",
               color: "#6b7280",
               cursor: "pointer",
               padding: "0",
@@ -102,7 +102,7 @@ function UsageDetailModal({ usage, durationMs, onClose }: UsageDetailModalProps)
             display: "grid",
             gridTemplateColumns: "auto 1fr",
             gap: "12px 20px",
-            fontSize: "14px",
+            fontSize: "0.875rem",
           }}
         >
           {usage.model && (

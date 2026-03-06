@@ -461,7 +461,7 @@ function NotificationsModal({ isOpen, onClose }: NotificationsModalProps) {
                 <span style={{ fontWeight: 500 }}>{ch.display_name}</span>
                 <span
                   style={{
-                    fontSize: "0.625rem",
+                    fontSize: "0.75rem",
                     padding: "0.125rem 0.375rem",
                     borderRadius: "0.25rem",
                     background: "var(--bg-tertiary)",

@@ -166,17 +166,6 @@ body {
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
-.sb-inventory .sb-count {
-  font-family: var(--font-mono);
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
-  text-align: center;
-}
-.sb-inventory .sb-px {
-  font-family: var(--font-mono);
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
-}
 </style>
 </head>
 <body>
@@ -184,66 +173,35 @@ body {
 <button class="sb-dark-toggle" onclick="document.documentElement.classList.toggle('dark');this.textContent=document.documentElement.classList.contains('dark')?'Light mode':'Dark mode'">Dark mode</button>
 
 <h1 class="sb-title">Shelley Stylebook</h1>
-<p class="sb-subtitle">Audit of all typographic sizes, weights, colors, and patterns in the production CSS.</p>
+<p class="sb-subtitle">Reference for all typographic sizes, weights, colors, and patterns in the UI.</p>
 
-<!-- FONT SIZES -->
+<!-- TYPE SCALE -->
 <div class="sb-section">
-<h2>Font Sizes — Current Inventory</h2>
-<p style="font-size:0.8125rem;color:var(--text-secondary);margin:0 0 1rem 0">
-  We currently use <strong>17 distinct font sizes</strong>. This should be reduced to ~5–6.
-</p>
-<table class="sb-inventory">
-<thead><tr><th>Size</th><th>px (at 16px root)</th><th>Sample</th><th>Occurrences</th><th>Verdict</th></tr></thead>
-<tbody>
-<tr><td>0.625rem</td><td class="sb-px">10px</td><td style="font-size:0.625rem">The quick brown fox</td><td class="sb-count">2</td><td style="font-size:0.75rem;color:var(--error-text)">Too small — merge up</td></tr>
-<tr><td>0.65rem</td><td class="sb-px">10.4px</td><td style="font-size:0.65rem">The quick brown fox</td><td class="sb-count">2</td><td style="font-size:0.75rem;color:var(--error-text)">Too small — merge up</td></tr>
-<tr><td>0.6875rem</td><td class="sb-px">11px</td><td style="font-size:0.6875rem">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Too small — merge up</td></tr>
-<tr><td>0.7rem</td><td class="sb-px">11.2px</td><td style="font-size:0.7rem">The quick brown fox</td><td class="sb-count">3</td><td style="font-size:0.75rem;color:var(--error-text)">Near-dup of 0.75rem</td></tr>
-<tr><td><strong>0.75rem</strong></td><td class="sb-px">12px</td><td style="font-size:0.75rem">The quick brown fox</td><td class="sb-count">53</td><td style="font-size:0.75rem;color:var(--success-text)">✓ Keep (XS)</td></tr>
-<tr><td>0.8rem</td><td class="sb-px">12.8px</td><td style="font-size:0.8rem">The quick brown fox</td><td class="sb-count">3</td><td style="font-size:0.75rem;color:var(--error-text)">Near-dup of 0.8125rem</td></tr>
-<tr><td>0.8125rem</td><td class="sb-px">13px</td><td style="font-size:0.8125rem">The quick brown fox</td><td class="sb-count">9</td><td style="font-size:0.75rem;color:var(--warning-text)">Merge into 0.75 or 0.875</td></tr>
-<tr><td>0.85em</td><td class="sb-px">~13.6px</td><td style="font-size:0.85em">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Merge into 0.875rem</td></tr>
-<tr><td><strong>0.875rem</strong></td><td class="sb-px">14px</td><td style="font-size:0.875rem">The quick brown fox</td><td class="sb-count">65</td><td style="font-size:0.75rem;color:var(--success-text)">✓ Keep (SM / base)</td></tr>
-<tr><td>0.875em</td><td class="sb-px">~14px</td><td style="font-size:0.875em">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Use rem instead</td></tr>
-<tr><td>0.95rem</td><td class="sb-px">15.2px</td><td style="font-size:0.95rem">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Merge into 1rem</td></tr>
-<tr><td><strong>1rem</strong></td><td class="sb-px">16px</td><td style="font-size:1rem">The quick brown fox</td><td class="sb-count">11</td><td style="font-size:0.75rem;color:var(--success-text)">✓ Keep (MD)</td></tr>
-<tr><td>1.1em</td><td class="sb-px">~17.6px</td><td style="font-size:1.1em">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Merge into 1.125rem</td></tr>
-<tr><td><strong>1.125rem</strong></td><td class="sb-px">18px</td><td style="font-size:1.125rem">The quick brown fox</td><td class="sb-count">4</td><td style="font-size:0.75rem;color:var(--warning-text)">Consider merging into 1.25rem</td></tr>
-<tr><td>1.2em</td><td class="sb-px">~19.2px</td><td style="font-size:1.2em">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Merge into 1.25rem</td></tr>
-<tr><td><strong>1.25rem</strong></td><td class="sb-px">20px</td><td style="font-size:1.25rem">The quick brown fox</td><td class="sb-count">4</td><td style="font-size:0.75rem;color:var(--success-text)">✓ Keep (LG)</td></tr>
-<tr><td>1.4em</td><td class="sb-px">~22.4px</td><td style="font-size:1.4em">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--error-text)">Merge into 1.25rem or 1.5rem</td></tr>
-<tr><td>1.5rem</td><td class="sb-px">24px</td><td style="font-size:1.5rem">The quick brown fox</td><td class="sb-count">1</td><td style="font-size:0.75rem;color:var(--warning-text)">Rarely used</td></tr>
-</tbody>
-</table>
-</div>
-
-<!-- PROPOSED SCALE -->
-<div class="sb-section">
-<h2>Proposed Type Scale (5 sizes)</h2>
+<h2>Type Scale (5 sizes)</h2>
 <div class="sb-row">
   <span class="sb-label">XS — 0.75rem (12px)</span>
   <span class="sb-sample" style="font-size:0.75rem">Labels, badges, timestamps, metadata, captions</span>
-  <span class="sb-note">53 current uses</span>
+  <span class="sb-note">63 uses</span>
 </div>
 <div class="sb-row">
   <span class="sb-label">SM — 0.875rem (14px)</span>
   <span class="sb-sample" style="font-size:0.875rem">Body text, tool content, sidebar items, buttons</span>
-  <span class="sb-note">65 current uses</span>
+  <span class="sb-note">82 uses</span>
 </div>
 <div class="sb-row">
   <span class="sb-label">MD — 1rem (16px)</span>
   <span class="sb-sample" style="font-size:1rem">Message input, section headers, emphasized text</span>
-  <span class="sb-note">11 current uses</span>
+  <span class="sb-note">13 uses</span>
 </div>
 <div class="sb-row">
   <span class="sb-label">LG — 1.25rem (20px)</span>
-  <span class="sb-sample" style="font-size:1.25rem">Page titles, conversation header</span>
-  <span class="sb-note">4 current uses</span>
+  <span class="sb-sample" style="font-size:1.25rem">Page titles, conversation header, markdown h2/h3</span>
+  <span class="sb-note">11 uses</span>
 </div>
 <div class="sb-row">
   <span class="sb-label">XL — 1.5rem (24px)</span>
   <span class="sb-sample" style="font-size:1.5rem">Hero / empty-state headings</span>
-  <span class="sb-note">rare</span>
+  <span class="sb-note">1 use</span>
 </div>
 </div>
 
@@ -263,16 +221,8 @@ body {
 <div class="sb-row">
   <span class="sb-label">600 (semibold)</span>
   <span class="sb-sample" style="font-weight:600;font-size:0.875rem">Headings, conversation titles, emphasis</span>
-  <span class="sb-note">13 uses</span>
+  <span class="sb-note">14 uses</span>
 </div>
-<div class="sb-row">
-  <span class="sb-label">700 (bold)</span>
-  <span class="sb-sample" style="font-weight:700;font-size:0.875rem">Strong emphasis (rarely used)</span>
-  <span class="sb-note">1 use</span>
-</div>
-<p style="font-size:0.8125rem;color:var(--text-secondary);margin:0.5rem 0 0">
-  <strong>Recommendation:</strong> Keep 400, 500, 600. Drop 700 (use 600 instead).
-</p>
 </div>
 
 <!-- FONT FAMILIES -->
@@ -380,7 +330,7 @@ body {
 <div class="sb-section">
 <h2>Line Heights</h2>
 <p style="font-size:0.8125rem;color:var(--text-secondary);margin:0 0 1rem">
-  Currently 5 distinct line-heights: 1, 1.3, 1.4, 1.5, 1.6. Recommendation: standardize to 1 (icons/badges), 1.4 (compact), 1.6 (body).
+  3 line-heights: 1 (icons/badges), 1.4 (compact), 1.6 (body).
 </p>
 <div class="sb-row">
   <span class="sb-label">line-height: 1</span>
@@ -454,15 +404,15 @@ body {
 
 <!-- SUMMARY -->
 <div class="sb-section">
-<h2>Summary — Proposed Simplification</h2>
+<h2>Summary</h2>
 <table class="sb-inventory">
-<thead><tr><th>Token</th><th>Current</th><th>Proposed</th></tr></thead>
+<thead><tr><th>Token</th><th>Values</th></tr></thead>
 <tbody>
-<tr><td>Font sizes</td><td>17+ distinct values</td><td><strong>5:</strong> 0.75rem, 0.875rem, 1rem, 1.25rem, 1.5rem</td></tr>
-<tr><td>Font weights</td><td>4 (400, 500, 600, 700)</td><td><strong>3:</strong> 400, 500, 600</td></tr>
-<tr><td>Font families</td><td>5 variants</td><td><strong>1:</strong> var(--font-mono) everywhere</td></tr>
-<tr><td>Line heights</td><td>5 (1, 1.3, 1.4, 1.5, 1.6)</td><td><strong>3:</strong> 1, 1.4, 1.6</td></tr>
-<tr><td>Text colors</td><td>9 semantic + 11 hardcoded</td><td><strong>9:</strong> semantic vars only</td></tr>
+<tr><td>Font sizes</td><td><strong>5:</strong> 0.75rem, 0.875rem, 1rem, 1.25rem, 1.5rem</td></tr>
+<tr><td>Font weights</td><td><strong>3:</strong> 400, 500, 600</td></tr>
+<tr><td>Font family</td><td><strong>1:</strong> var(--font-mono)</td></tr>
+<tr><td>Line heights</td><td><strong>3:</strong> 1, 1.4, 1.6</td></tr>
+<tr><td>Text colors</td><td><strong>9:</strong> semantic CSS variables</td></tr>
 </tbody>
 </table>
 </div>

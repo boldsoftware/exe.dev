@@ -567,7 +567,7 @@ function ConversationDrawer({
                   display: "flex",
                   alignItems: "center",
                   gap: "0.3em",
-                  fontSize: "0.75em",
+                  fontSize: "0.75rem",
                   color: isActive ? "rgba(255,255,255,0.7)" : "var(--text-secondary)",
                 }}
               >
@@ -666,7 +666,7 @@ function ConversationDrawer({
                   onClick={() => onSelectConversation(sub)}
                   style={{
                     cursor: "pointer",
-                    fontSize: "0.9em",
+                    fontSize: "0.875rem",
                     paddingLeft: "0.5rem",
                     borderLeft: "2px solid var(--border-color)",
                   }}
@@ -692,7 +692,7 @@ function ConversationDrawer({
                       )}
                     </div>
                     <div className="conversation-meta">
-                      <span className="conversation-date" style={{ fontSize: "0.85em" }}>
+                      <span className="conversation-date" style={{ fontSize: "0.875rem" }}>
                         {formatDate(sub.updated_at)}
                       </span>
                     </div>

@@ -157,7 +157,7 @@ function ContextUsageBar({
             backgroundColor: "var(--bg-secondary)",
             border: "1px solid var(--border-color)",
             borderRadius: "4px",
-            fontSize: "12px",
+            fontSize: "0.75rem",
             color: "var(--text-secondary)",
             boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
             zIndex: 100,
@@ -189,7 +189,7 @@ function ContextUsageBar({
                   border: "none",
                   borderRadius: "4px",
                   cursor: distilling ? "not-allowed" : "pointer",
-                  fontSize: "12px",
+                  fontSize: "0.75rem",
                   opacity: distilling ? 0.7 : 1,
                 }}
               >
