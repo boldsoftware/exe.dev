@@ -487,7 +487,14 @@ func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, su
 	if userID != "" {
 		attrs = append(attrs, slog.String("user_id", userID))
 	}
-	return pd.s.sendEmail(ctx, emailType, to, subject, body, fromName, attrs...)
+	return pd.s.sendEmail(ctx, sendEmailParams{
+		emailType: emailType,
+		to:        to,
+		subject:   subject,
+		body:      body,
+		fromName:  fromName,
+		attrs:     attrs,
+	})
 }
 
 // CheckAndDebitVMEmailCredit implements [exeweb.ProxyData.CheckAndDebitVMEmailCredit].

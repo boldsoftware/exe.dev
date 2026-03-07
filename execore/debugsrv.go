@@ -3596,7 +3596,14 @@ https://%s/
 %s
 `, count, inviteWord, planDesc, s.env.WebHost, s.env.WebHost)
 
-	if err := s.sendEmail(ctx, email.TypeInvitesAllocated, user.Email, subject, body, "", slog.String("user_id", user.UserID)); err != nil {
+	if err := s.sendEmail(ctx, sendEmailParams{
+		emailType: email.TypeInvitesAllocated,
+		to:        user.Email,
+		subject:   subject,
+		body:      body,
+		fromName:  "",
+		attrs:     []slog.Attr{slog.String("user_id", user.UserID)},
+	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)
 	}
 

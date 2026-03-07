@@ -1575,40 +1575,51 @@ func isBogusEmailDomain(email string) bool {
 	return slices.Contains(bogusEmailDomains, syntax.Domain)
 }
 
+// sendEmailParams holds the parameters for sending an email.
+//
+//exe:completeinit
+type sendEmailParams struct {
+	emailType email.Type
+	to        string
+	subject   string
+	body      string
+	fromName  string
+	// attrs are forwarded to the email provider's "email sent" log line.
+	attrs []slog.Attr
+}
+
 // sendEmail sends an email using the configured email service.
-// emailType identifies the type of email being sent for logging and metrics.
-// Extra slog attributes are forwarded to the email provider's "email sent" log line.
-func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subject, body, fromName string, attrs ...slog.Attr) error {
+func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 	// Do not attempt to send to bogus domains (reserved or common typos).
-	if isBogusEmailDomain(to) {
-		s.slog().InfoContext(ctx, "silently dropping email to bogus domain", "to", to, "subject", subject, "type", emailType)
+	if isBogusEmailDomain(p.to) {
+		s.slog().InfoContext(ctx, "silently dropping email to bogus domain", "to", p.to, "subject", p.subject, "type", p.emailType)
 		return nil
 	}
 
 	// Do not attempt to send to an email address that has hard-bounced before. Best effort.
 	// If bounced, silently pretend the email was sent (anti-fraud measure).
-	bounced, _ := withRxRes1(s, ctx, (*exedb.Queries).IsEmailBounced, to)
+	bounced, _ := withRxRes1(s, ctx, (*exedb.Queries).IsEmailBounced, p.to)
 	if bounced == 1 {
-		s.slog().InfoContext(ctx, "silently dropping email to bounced address", "to", to, "subject", subject, "type", emailType)
+		s.slog().InfoContext(ctx, "silently dropping email to bounced address", "to", p.to, "subject", p.subject, "type", p.emailType)
 		return nil
 	}
 
 	if s.fakeHTTPEmail != "" {
 		displayName := s.env.WebHost
-		if fromName != "" {
-			displayName = fromName
+		if p.fromName != "" {
+			displayName = p.fromName
 		}
 		from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-		err := s.sendFakeEmail(ctx, from, to, subject, body)
+		err := s.sendFakeEmail(ctx, from, p.to, p.subject, p.body)
 		if err != nil {
-			s.slog().WarnContext(ctx, "failed to send fake email", "to", to, "subject", subject, "error", err)
+			s.slog().WarnContext(ctx, "failed to send fake email", "to", p.to, "subject", p.subject, "error", err)
 		}
 		return nil
 	}
 
 	// In dev mode, always just log the email
 	if s.env.FakeEmail {
-		s.slog().InfoContext(ctx, "DEV MODE: Would send email", "to", to, "subject", subject, "type", emailType, "body", body)
+		s.slog().InfoContext(ctx, "DEV MODE: Would send email", "to", p.to, "subject", p.subject, "type", p.emailType, "body", p.body)
 		return nil
 	}
 
@@ -1619,13 +1630,13 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 	}
 
 	displayName := s.env.WebHost
-	if fromName != "" {
-		displayName = fromName
+	if p.fromName != "" {
+		displayName = p.fromName
 	}
 	from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-	err := sender.Send(ctx, emailType, from, to, subject, body, attrs...)
+	err := sender.Send(ctx, p.emailType, from, p.to, p.subject, p.body, p.attrs...)
 	if err != nil {
-		s.slog().WarnContext(ctx, "failed to send email", "to", to, "subject", subject, "type", emailType, "error", err)
+		s.slog().WarnContext(ctx, "failed to send email", "to", p.to, "subject", p.subject, "type", p.emailType, "error", err)
 		// Record bounce/inactive recipient errors
 		// This error is from Postmark that reads (in part):
 		//   > 406 You tried to send to recipient(s) that have been marked as inactive.
@@ -1633,11 +1644,11 @@ func (s *Server) sendEmail(ctx context.Context, emailType email.Type, to, subjec
 		if strings.Contains(err.Error(), "marked as inactive") {
 			// Best effort
 			err := withTx1(s, ctx, (*exedb.Queries).InsertEmailBounce, exedb.InsertEmailBounceParams{
-				Email:  to,
+				Email:  p.to,
 				Reason: err.Error(),
 			})
 			if err != nil {
-				s.slog().ErrorContext(ctx, "failed to record email bounce", "email", to, "error", err)
+				s.slog().ErrorContext(ctx, "failed to record email bounce", "email", p.to, "error", err)
 			}
 		}
 	}
@@ -1711,7 +1722,14 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, det
 		return
 	}
 
-	if err := s.sendEmail(ctx, email.TypeBoxCreated, to, subject, body.String(), "", slog.String("user_id", userID)); err != nil {
+	if err := s.sendEmail(ctx, sendEmailParams{
+		emailType: email.TypeBoxCreated,
+		to:        to,
+		subject:   subject,
+		body:      body.String(),
+		fromName:  "",
+		attrs:     []slog.Attr{slog.String("user_id", userID)},
+	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
 }
@@ -1730,7 +1748,14 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
 	subject := fmt.Sprintf("exe.dev: system maintenance on %s", boxName)
 	body := fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
 
-	if err := s.sendEmail(ctx, email.TypeBoxMaintenance, boxInfo.OwnerEmail, subject, body, "", slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
+	if err := s.sendEmail(ctx, sendEmailParams{
+		emailType: email.TypeBoxMaintenance,
+		to:        boxInfo.OwnerEmail,
+		subject:   subject,
+		body:      body,
+		fromName:  "",
+		attrs:     []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
+	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)
 	}
 }

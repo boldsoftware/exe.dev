@@ -761,7 +761,14 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 %s
 `, ss.server.env.WebHost)
 
-	if err := ss.server.sendEmail(ctx, emailpkg.TypeShareInvitation, email, subject, body, "", slog.String("user_id", cc.User.ID)); err != nil {
+	if err := ss.server.sendEmail(ctx, sendEmailParams{
+		emailType: emailpkg.TypeShareInvitation,
+		to:        email,
+		subject:   subject,
+		body:      body,
+		fromName:  "",
+		attrs:     []slog.Attr{slog.String("user_id", cc.User.ID)},
+	}); err != nil {
 		return fmt.Errorf("failed to send share invitation email: %w", err)
 	}
 
