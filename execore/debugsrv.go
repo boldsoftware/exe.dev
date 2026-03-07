@@ -912,9 +912,9 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 		case *computeapi.SendVMResponse_Data:
 			totalBytes += uint64(len(v.Data.Data))
 
-			// Report progress every 10MB
+			// Report progress every 100MB
 			currentMB := totalBytes / (1024 * 1024)
-			if currentMB >= lastReportedMB+10 {
+			if currentMB >= lastReportedMB+100 {
 				progress("Transferred %d MB...", currentMB)
 				lastReportedMB = currentMB
 			}
