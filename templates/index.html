@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exe.dev - Persistent VMs via SSH</title>
-    <meta name="description" content="Start VMs with persistent disks in seconds. The disk persists. You have sudo.">
+    <title>exe.dev - A VM for Every Idea</title>
+    <meta name="description" content="Build apps or SSH into a persistent Linux VM. A VM for every idea.">
     <link rel="canonical" href="https://exe.dev/">
-    <meta property="og:title" content="exe.dev - Persistent VMs via SSH">
-    <meta property="og:description" content="Start VMs with persistent disks in seconds. The disk persists. You have sudo.">
+    <meta property="og:title" content="exe.dev - A VM for Every Idea">
+    <meta property="og:description" content="Build apps or SSH into a persistent Linux VM. A VM for every idea.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://exe.dev/">
     <meta property="og:site_name" content="exe.dev">
@@ -16,35 +16,117 @@
     <meta name="twitter:image" content="https://exe.dev/static/exy.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="alternate" type="application/atom+xml" title="exe.dev blog" href="https://blog.exe.dev/atom.xml">
     <link rel="stylesheet" href="/static/index.css">
   </head>
   <body>
+    <!-- Ideas Drawer -->
+    <div id="ideas-drawer" class="ideas-drawer">
+      <div class="ideas-backdrop"></div>
+      <div class="ideas-panel">
+        <div class="ideas-header">
+          <h2>Ideas</h2>
+          <button type="button" class="ideas-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="ideas-sections"></div>
+      </div>
+    </div>
+    {{if ne .WebHost "exe.dev"}}<div class="dev-banner"><span>D</span><span>E</span><span>V</span></div>{{end}}
+    <div class="above-fold">
     <nav>
-      <a href="/auth" class="nav-login">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-        </svg>
-        <span>Login</span>
+      <a href="/" class="nav-logo">
+        <img src="/static/exy.png" alt="exe.dev logo" />
+        <span>{{.WebHost}}</span>
       </a>
+      <div class="nav-right">
+        <a href="/docs">Docs</a>
+        <a href="/auth" class="nav-login">Login</a>
+      </div>
     </nav>
-    <main>
-      <div class="hero">
-        <div class="ssh-command">
-          <span>{{.SSHCommand}} <span class="cursor">_</span></span>
+
+    <section class="hero">
+      <div class="hero-spacer"></div>
+      <h1 class="hero-title">A VM for every idea</h1>
+      <div class="hero-spacer"></div>
+      <div class="hero-columns">
+        <div class="hero-left">
+          <h2>Build apps</h2>
+          <p class="hero-sub">Private, persistent, then share with a link</p>
+          <form class="prompt-box" action="/auth" method="get">
+            <textarea id="prompt-input" name="prompt" class="prompt-input" rows="3" placeholder="A recipe manager that lets me paste URLs and extracts ingredients..."></textarea>
+            <div class="prompt-actions">
+              <button type="submit" class="prompt-submit">Start building &rarr;</button>
+              <button type="button" class="ideas-btn" id="ideas-btn">Ideas</button>
+            </div>
+          </form>
         </div>
-        <div class="tagline">
-          The disk persists. You have sudo.
+        <div class="hero-divider"></div>
+        <div class="hero-right">
+          <h2>On real infra</h2>
+          <p class="ssh-sub">Linux. Sudo. The disk persists. Any language, any DB.</p>
+          <div class="ssh-command">
+            <span class="ssh-text">ssh exe.dev</span>
+          </div>
         </div>
-        <a href="/auth" class="mobile-login">Login / Register</a>
       </div>
-      {{if .Testimonials}}
-      <div class="testimonials">
-        <div id="testimonial" class="testimonial"></div>
+      <div class="hero-spacer"></div>
+    </section>
+    </div>
+
+    <section class="features">
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>All you need is a computer</h3>
+          <p>The cloud industry has long been selling "platforms" that you have to design your software around. You don't need a platform, you need a computer. A normal Linux computer that can run whatever software you like: <code>apt</code>, <code>systemd</code>, <a href="https://exe.new/openclaw">OpenClaw</a>.</p>
+        </div>
       </div>
-      {{end}}
-    </main>
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>We handle auth</h3>
+          <p>Every VM you launch on exe.dev gets HTTPS and is behind <a href="/docs/proxy">IAM</a> automatically. It starts private to you. Then <a href="/docs/sharing">share a link</a> and your friends can use it. We handle TLS certificates, DNS, and the reverse proxy so you never have to think about deployment.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>Your disk is persistent</h3>
+          <p>Your VM&rsquo;s disk survives reboots and updates. Install Postgres, SQLite, Redis&mdash;whatever you need. Your data stays where you put it. No ephemeral containers, no cold starts, no surprises.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>An Agent Cloud</h3>
+          <p>Your agents need a VM to build on, to deploy apps, to show you their works. With exe.dev, clone your full dev VM in a second to get a new world for a new idea.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>$20/month for your VMs</h3>
+          <p>One <a href="/docs/pricing">price</a>, no surprises. You get 2 CPUs, 8 GB of RAM, and 25 GB of disk&mdash;shared across up to 25 VMs. Run one big project or twenty-five small ones. Your bill is the same every month.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-inner">
+          <h3>Teams for Business</h3>
+	  <p>The Team plan gives everyone on your team their own VMs with shared burst capacity, admin controls, and SSO.<br/><br/>For production workloads, we have usage-based pricing <a href="mailto:support@exe.dev">get in touch</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    {{if .Testimonials}}
+    <section class="endorsements">
+      <h2>What people are saying</h2>
+      <div class="endorsement-grid">
+        {{range .Testimonials}}
+        <div class="endorsement">
+          <blockquote>&ldquo;{{.Quote}}&rdquo;</blockquote>
+          <cite>&mdash; {{.Author}}{{if .Link}} <a href="{{.Link}}" class="source-link" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" /></svg></a>{{end}}</cite>
+        </div>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
+
     <footer>
       <a href="/docs/what-is-exe">About</a>
       <span>&bull;</span>
@@ -56,55 +138,6 @@
       <span>&bull;</span>
       <a href="/security">Security</a>
     </footer>
-    {{if .Testimonials}}
-    <script>
-      const testimonials = [
-        {{range .Testimonials}}{
-          quote: `{{.Quote}}`,
-          author: `{{.Author}}`,
-          link: `{{.Link}}`
-        },
-        {{end}}
-      ];
-
-      const linkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h5a.75.75 0 0 1 0 1.5h-5Z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" /></svg>';
-
-      const container = document.getElementById('testimonial');
-      let shown = [];
-
-      function getRandomIndex() {
-        if (shown.length >= testimonials.length) {
-          shown = [];
-        }
-        let idx;
-        do {
-          idx = Math.floor(Math.random() * testimonials.length);
-        } while (shown.includes(idx));
-        shown.push(idx);
-        return idx;
-      }
-
-      function renderTestimonial(t) {
-        const quoteHtml = t.quote.replace(/\n\n/g, '<br><br>');
-        let html = quoteHtml + '<div class="attribution">&mdash; ' + t.author;
-        if (t.link) {
-          html += ' <a href="' + t.link + '" class="source-link" target="_blank">' + linkIcon + '</a>';
-        }
-        html += '</div>';
-        return html;
-      }
-
-      function showNext() {
-        container.classList.remove('visible');
-        setTimeout(() => {
-          container.innerHTML = renderTestimonial(testimonials[getRandomIndex()]);
-          container.classList.add('visible');
-        }, 1200);
-      }
-
-      showNext();
-      setInterval(showNext, 7400);
-    </script>
-    {{end}}
+    <script src="/static/index.js?v=1"></script>
   </body>
 </html>
