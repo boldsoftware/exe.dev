@@ -698,7 +698,13 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 		var liveSshPort int64
 		var err error
-		liveSshPort, coldBooted, err = s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+		liveSshPort, coldBooted, err = s.migrateVMLive(ctx, migrateVMLiveParams{
+			source:     sourceClient.client,
+			target:     targetClient.client,
+			instanceID: containerID,
+			box:        box,
+			progress:   writeProgress,
+		})
 		if err != nil {
 			writeError("live migration failed: %v", err)
 			restartSource(err.Error())
@@ -991,10 +997,26 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 	return nil
 }
 
+// migrateVMLiveParams holds the parameters for migrateVMLive.
+//
+//exe:completeinit
+type migrateVMLiveParams struct {
+	source     *exeletclient.Client
+	target     *exeletclient.Client
+	instanceID string
+	box        exedb.Box
+	progress   func(string, ...any)
+}
+
 // migrateVMLive performs a live migration using CH snapshot/restore.
 // It coordinates the SendVM(live=true)/ReceiveVM(live=true) streams, SSHes into the VM
 // to reconfigure its IP, and returns the new SSH port on the target.
-func (s *Server) migrateVMLive(ctx context.Context, source, target *exeletclient.Client, instanceID string, box exedb.Box, progress func(string, ...any)) (int64, bool, error) {
+func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int64, bool, error) {
+	source := p.source
+	target := p.target
+	instanceID := p.instanceID
+	box := p.box
+	progress := p.progress
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -1508,7 +1530,13 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		if live {
 			writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			liveSshPort, cb, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
+				source:     sourceClient.client,
+				target:     targetClient.client,
+				instanceID: containerID,
+				box:        box,
+				progress:   writeProgress,
+			})
 			if err != nil {
 				writeError("live migration failed: %v", err)
 				restartSource(err.Error())
@@ -4494,7 +4522,13 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		if live {
 			writeProgress("Live migrating from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			liveSshPort, cb, err := s.migrateVMLive(ctx, sourceClient.client, targetClient.client, containerID, box, writeProgress)
+			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
+				source:     sourceClient.client,
+				target:     targetClient.client,
+				instanceID: containerID,
+				box:        box,
+				progress:   writeProgress,
+			})
 			if err != nil {
 				writeError("live migration failed: %v", err)
 				restartSource(err.Error())

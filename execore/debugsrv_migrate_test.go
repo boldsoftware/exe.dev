@@ -241,7 +241,13 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 				messages = append(messages, fmt.Sprintf(format, args...))
 			}
 
-			gotSSHPort, gotColdBooted, err := server.migrateVMLive(ctx, sourceClient, targetClient, containerID, box, progress)
+			gotSSHPort, gotColdBooted, err := server.migrateVMLive(ctx, migrateVMLiveParams{
+				source:     sourceClient,
+				target:     targetClient,
+				instanceID: containerID,
+				box:        box,
+				progress:   progress,
+			})
 			if err != nil {
 				t.Fatalf("migrateVMLive failed: %v", err)
 			}
