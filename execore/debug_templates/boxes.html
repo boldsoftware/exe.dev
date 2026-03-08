@@ -38,6 +38,7 @@ a:hover { text-decoration: underline; }
 <tr>
 <th>Name</th>
 <th>Exelet</th>
+<th>Region</th>
 <th>Status</th>
 <th>Owner</th>
 <th>Support</th>
@@ -46,6 +47,7 @@ a:hover { text-decoration: underline; }
 <tr class="filters">
 <th>Name</th>
 <th>Exelet</th>
+<th>Region</th>
 <th>Status</th>
 <th>Owner</th>
 <th>Support</th>
@@ -91,6 +93,7 @@ $(document).ready(function() {
                 return '<a href="/debug/boxes/' + d + '">' + d + '</a>';
             }},
             { data: 'host' },
+            { data: 'region' },
             { data: 'status' },
             { data: null, defaultContent: '', render: function(d) {
                 if (!d.owner_email) return '';
