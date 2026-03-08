@@ -607,3 +607,79 @@ func TestAppTokenInProxyCookie(t *testing.T) {
 		}
 	})
 }
+
+func TestAppTokenInCookieInfo(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "cookieinfo@example.com")
+
+	var userID string
+	err := s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "cookieinfo@example.com").Scan(&userID)
+	})
+	if err != nil {
+		t.Fatal("no user:", err)
+	}
+
+	pd := &proxyData{s: s}
+
+	// Valid app token returns cookie data.
+	t.Run("valid_app_token", func(t *testing.T) {
+		cd, exists, err := pd.CookieInfo(context.Background(), appToken, "exe.dev")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Fatal("expected exists=true for valid app token")
+		}
+		if cd.UserID != userID {
+			t.Fatalf("expected userID %q, got %q", userID, cd.UserID)
+		}
+		if cd.Domain != "exe.dev" {
+			t.Fatalf("expected domain exe.dev, got %q", cd.Domain)
+		}
+	})
+
+	// Invalid app token returns exists=false.
+	t.Run("invalid_app_token", func(t *testing.T) {
+		_, exists, err := pd.CookieInfo(context.Background(), exeweb.AppTokenPrefix+"bogus", "exe.dev")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Fatal("expected exists=false for invalid app token")
+		}
+	})
+
+	// Regular cookie value is unaffected.
+	t.Run("regular_cookie_miss", func(t *testing.T) {
+		_, exists, err := pd.CookieInfo(context.Background(), "not-a-token", "exe.dev")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Fatal("expected exists=false for unknown cookie")
+		}
+	})
+}
+
+func TestAppTokenInExeAuthCookie(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "exeauth@example.com")
+
+	// Use the app token as the exe-auth cookie on the main site.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", s.httpURL()+"/user", nil)
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: appToken})
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from /user with app token in exe-auth cookie, got %d", resp.StatusCode)
+	}
+}

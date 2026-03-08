@@ -356,6 +356,11 @@ func dbBoxToExewebBox(box *exedb.Box) exeweb.BoxData {
 
 // CookieInfo implements [exeweb.ProxyData.CookieInfo].
 func (pd *proxyData) CookieInfo(ctx context.Context, cookieValue, domain string) (exeweb.CookieData, bool, error) {
+	// App tokens can appear as cookie values (iOS web views set them
+	// as the cookie value because WKWebView can't set headers).
+	if strings.HasPrefix(cookieValue, AppTokenPrefix) {
+		return pd.s.appTokenAsCookie(ctx, cookieValue, domain)
+	}
 	cookie, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
 		CookieValue: cookieValue,
 		Domain:      domain,

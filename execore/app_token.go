@@ -236,6 +236,22 @@ func (s *Server) completeAuthWithAppToken(w http.ResponseWriter, r *http.Request
 	return true
 }
 
+// appTokenAsCookie validates an app token and returns it as a CookieData.
+// This is used when an app token appears as a cookie value (iOS web views
+// set the app token as the cookie value because WKWebView can't set headers).
+func (s *Server) appTokenAsCookie(ctx context.Context, token, domain string) (exeweb.CookieData, bool, error) {
+	userID, err := s.validateAppToken(ctx, token)
+	if err != nil {
+		return exeweb.CookieData{}, false, nil
+	}
+	return exeweb.CookieData{
+		CookieValue: token,
+		Domain:      domain,
+		UserID:      userID,
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}, true, nil
+}
+
 // validateAppToken validates an app token from a Bearer header and returns the user ID.
 func (s *Server) validateAppToken(ctx context.Context, token string) (string, error) {
 	if !strings.HasPrefix(token, AppTokenPrefix) {

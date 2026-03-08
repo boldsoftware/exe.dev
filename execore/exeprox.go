@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,6 +149,24 @@ func (es *exeproxServer) BoxInfo(ctx context.Context, req *proxyapi.BoxInfoReque
 
 // CookieInfo takes a cookie value and returns information about it.
 func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInfoRequest) (*proxyapi.CookieInfoResponse, error) {
+	// App tokens can appear as cookie values (iOS web views set them
+	// as the cookie value because WKWebView can't set headers).
+	if strings.HasPrefix(req.CookieValue, AppTokenPrefix) {
+		cd, ok, err := es.s.appTokenAsCookie(ctx, req.CookieValue, req.Domain)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if !ok {
+			return &proxyapi.CookieInfoResponse{CookieExists: false}, nil
+		}
+		return &proxyapi.CookieInfoResponse{
+			CookieExists: true,
+			CookieValue:  cd.CookieValue,
+			UserID:       cd.UserID,
+			Domain:       cd.Domain,
+			ExpiresAt:    timestamppb.New(cd.ExpiresAt),
+		}, nil
+	}
 	cookie, err := withRxRes1(es.s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
 		CookieValue: req.CookieValue,
 		Domain:      req.Domain,
