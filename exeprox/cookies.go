@@ -2,6 +2,7 @@ package exeprox
 
 import (
 	"context"
+	"time"
 
 	"exe.dev/exeweb"
 
@@ -18,10 +19,14 @@ type cookiesData struct {
 func (cd *cookiesData) lookup(ctx context.Context, exeproxData ExeproxData, cookieValue, domain string) (exeweb.CookieData, bool, error) {
 	data, ok := cd.cookies.Load(cookieValue)
 	if ok {
-		if data.Domain == domain {
+		if data.Domain == domain && time.Now().Before(data.ExpiresAt) {
 			return data, true, nil
 		}
-		return exeweb.CookieData{}, false, nil
+		if data.Domain != domain {
+			return exeweb.CookieData{}, false, nil
+		}
+		// Expired — evict and re-fetch below.
+		cd.cookies.Delete(cookieValue)
 	}
 
 	data, exists, err := exeproxData.CookieInfo(ctx, cookieValue, domain)
