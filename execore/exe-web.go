@@ -74,6 +74,7 @@ func (s *Server) prepareHandler() http.Handler {
 
 	h := s.httpMetrics.Wrap(servMux)
 	h = metricsbag.Wrap(h)
+	h = exeweb.HSTSMiddleware(h)
 	h = LoggerMiddleware(s.log)(h)
 	h = RecoverHTTPMiddleware(s.log)(h)
 	return h

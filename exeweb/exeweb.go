@@ -22,6 +22,18 @@ import (
 // SSHKnownHostsPath is for https://c2sp.org/well-known-ssh-hosts.
 const SSHKnownHostsPath = "/.well-known/ssh-known-hosts"
 
+// HSTSMiddleware adds Strict-Transport-Security headers to HTTPS responses.
+// The header meets HSTS preload list requirements:
+// max-age of 2 years, includeSubDomains, and preload.
+func HSTSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS != nil {
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // ExeNewAliases maps legacy exe.new paths to idea shortnames.
 var ExeNewAliases = map[string]string{
 	"/moltbot":  "openclaw",

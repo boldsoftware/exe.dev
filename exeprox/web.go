@@ -94,6 +94,7 @@ func (wp *WebProxy) prepareHandler() http.Handler {
 
 	h := wp.httpMetrics.Wrap(servMux)
 	h = metricsbag.Wrap(h)
+	h = exeweb.HSTSMiddleware(h)
 	h = LoggerMiddleware(wp.lg())(h)
 	h = RecoverHTTPMiddleware(wp.lg())(h)
 	return h
