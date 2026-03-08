@@ -698,7 +698,7 @@ func (q *Queries) UpdateBoxCreationLog(ctx context.Context, arg UpdateBoxCreatio
 
 const updateBoxMigration = `-- name: UpdateBoxMigration :exec
 UPDATE boxes
-SET ctrhost = ?, ssh_port = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+SET ctrhost = ?, ssh_port = ?, status = ?, region = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
 `
 
@@ -706,6 +706,7 @@ type UpdateBoxMigrationParams struct {
 	Ctrhost string `db:"ctrhost" json:"ctrhost"`
 	SSHPort *int64 `db:"ssh_port" json:"ssh_port"`
 	Status  string `db:"status" json:"status"`
+	Region  string `db:"region" json:"region"`
 	ID      int    `db:"id" json:"id"`
 }
 
@@ -714,6 +715,7 @@ func (q *Queries) UpdateBoxMigration(ctx context.Context, arg UpdateBoxMigration
 		arg.Ctrhost,
 		arg.SSHPort,
 		arg.Status,
+		arg.Region,
 		arg.ID,
 	)
 	return err

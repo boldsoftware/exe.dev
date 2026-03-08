@@ -57,7 +57,7 @@ WHERE id = ?;
 
 -- name: UpdateBoxMigration :exec
 UPDATE boxes
-SET ctrhost = ?, ssh_port = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+SET ctrhost = ?, ssh_port = ?, status = ?, region = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
 -- name: UpdateBoxSSHPort :exec

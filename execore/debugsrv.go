@@ -754,12 +754,13 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 5: Update database with new ctrhost, ssh_port, and status
+	// Step 5: Update database with new ctrhost, ssh_port, status, and region
 	writeProgress("Updating database...")
 	if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
 		Ctrhost: targetAddr,
 		SSHPort: sshPort,
 		Status:  dbStatus,
+		Region:  targetClient.region.Code,
 		ID:      box.ID,
 	}); err != nil {
 		writeError("failed to update database: %v", err)
@@ -1598,6 +1599,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 			Ctrhost: targetAddr,
 			SSHPort: sshPort,
 			Status:  dbStatus,
+			Region:  targetClient.region.Code,
 			ID:      box.ID,
 		}); err != nil {
 			writeError("failed to update database: %v", err)
@@ -4562,6 +4564,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 			Ctrhost: targetAddr,
 			SSHPort: sshPort,
 			Status:  dbStatus,
+			Region:  targetClient.region.Code,
 			ID:      box.ID,
 		}); err != nil {
 			writeError("failed to update database: %v", err)
@@ -4754,6 +4757,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 		Ctrhost: targetAddr,
 		SSHPort: sshPort,
 		Status:  dbStatus,
+		Region:  targetClient.region.Code,
 		ID:      box.ID,
 	}); err != nil {
 		writeError("failed to update database: %v", err)

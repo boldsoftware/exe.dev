@@ -201,6 +201,9 @@ func TestHandleDebugUserMigrateVMs(t *testing.T) {
 	if box.Ctrhost != targetAddr {
 		t.Errorf("box ctrhost = %q, want %q", box.Ctrhost, targetAddr)
 	}
+	if box.Region != "lon" {
+		t.Errorf("box region = %q, want %q", box.Region, "lon")
+	}
 }
 
 func TestHandleDebugUserMigrateVMsRequiresConfirmation(t *testing.T) {
