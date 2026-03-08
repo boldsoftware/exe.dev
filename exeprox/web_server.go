@@ -85,6 +85,9 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/metrics":
 		wp.handleMetrics(w, r)
 		return
+	case "/debug/gitsha":
+		wp.handleDebugGitsha(w, r)
+		return
 	}
 
 	// This is a web request that we aren't going to handle
