@@ -124,10 +124,10 @@ func cleanupTerminalSession(session *TerminalSession) {
 }
 
 func (ps *ProxyServer) xtermAuthURL(r *http.Request) string {
-	returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
+	redirect := RelativeRedirect(r.URL)
 	// Use webBaseURLNoRequest to get the main domain URL without copying the request's port.
 	// Terminal requests may come in on non-standard ports, but the main domain always uses default ports.
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
 	return authURL
 }
 

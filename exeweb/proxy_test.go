@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -911,4 +912,32 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 			t.Fatalf("expected userID %q, got %q", testUserID, result.UserID)
 		}
 	})
+}
+
+func TestRelativeRedirect(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "path only", url: "http://example.com/foo/bar", want: "/foo/bar"},
+		{name: "path with query", url: "http://example.com/foo?x=1&y=2", want: "/foo?x=1&y=2"},
+		{name: "root path", url: "http://example.com/", want: "/"},
+		{name: "empty path", url: "http://example.com", want: ""},
+		{name: "query only", url: "http://example.com?x=1", want: "?x=1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse(tt.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := RelativeRedirect(u)
+			if got != tt.want {
+				t.Errorf("RelativeRedirect(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
 }

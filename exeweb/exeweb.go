@@ -187,6 +187,17 @@ func getScheme(r *http.Request) string {
 	return "http"
 }
 
+// RelativeRedirect returns the path and query from u as a relative URL string
+// suitable for use as a redirect parameter. It omits the scheme and host,
+// which avoids passing absolute URLs to redirect validators that only
+// accept relative paths.
+func RelativeRedirect(u *url.URL) string {
+	if u.RawQuery != "" {
+		return u.Path + "?" + u.RawQuery
+	}
+	return u.Path
+}
+
 // IsValidRedirectURL validates that a redirect URL is safe
 // (relative path only).
 // This prevents open redirect attacks where an attacker could redirect users

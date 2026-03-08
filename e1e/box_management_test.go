@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"regexp"
@@ -858,6 +859,120 @@ func TestVanillaBox(t *testing.T) {
 			case <-timeout:
 				t.Fatal("timeout waiting for 'xterm-test-ok' in terminal output")
 			}
+		}
+	})
+
+	t.Run("xterm_auth_redirect_preserves_path", func(t *testing.T) {
+		// Test that the terminal auth redirect preserves the original path and
+		// query string through the full auth dance. Previously, xtermAuthURL
+		// constructed an absolute URL (https://host/path?q=1) for the redirect
+		// parameter, but IsValidRedirectURL rejects absolute URLs to prevent
+		// open redirects — so the redirect silently fell back to "/", losing
+		// the original path and query.
+		noGolden(t)
+
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Pre-populate the main domain cookies so the auth dance can succeed.
+		setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", Env.HTTPPort()), cookies)
+		client := noRedirectClient(jar)
+
+		// Hit the terminal subdomain at a non-root path with query params.
+		targetPath := "/some/deep/path"
+		targetQuery := "session=abc&theme=dark"
+		terminalURL := fmt.Sprintf(
+			"http://%s.xterm.exe.cloud:%d%s?%s",
+			boxName, Env.HTTPPort(), targetPath, targetQuery,
+		)
+		req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected 307, got %d", resp.StatusCode)
+		}
+
+		// Parse the redirect location and extract the "redirect" query param.
+		location, err := resp.Location()
+		if err != nil {
+			t.Fatalf("no Location header: %v", err)
+		}
+		redirectParam := location.Query().Get("redirect")
+		if redirectParam == "" {
+			t.Fatal("auth URL has no redirect parameter")
+		}
+
+		// The redirect param must be a relative path (no scheme, no host).
+		// This is the core assertion: before the fix, this was an absolute URL
+		// like "http://box.xterm.exe.cloud:PORT/some/deep/path?session=abc&theme=dark"
+		// which IsValidRedirectURL would reject.
+		if strings.Contains(redirectParam, "://") {
+			t.Errorf("redirect param is absolute URL (will be rejected by IsValidRedirectURL): %s", redirectParam)
+		}
+		if !strings.HasPrefix(redirectParam, "/") {
+			t.Errorf("redirect param should start with /: %s", redirectParam)
+		}
+		if !strings.Contains(redirectParam, targetPath) {
+			t.Errorf("redirect param should contain path %q: %s", targetPath, redirectParam)
+		}
+		if !strings.Contains(redirectParam, "session=abc") || !strings.Contains(redirectParam, "theme=dark") {
+			t.Errorf("redirect param should contain query params: %s", redirectParam)
+		}
+
+		// Now follow the full auth dance and verify the final redirect
+		// actually lands at the original path+query (not "/").
+		t.Logf("initial auth redirect: %s", location)
+		t.Logf("redirect param: %s", redirectParam)
+
+		// Follow redirects through the auth flow.
+		reachedTerminal := false
+		for i := range 10 {
+			req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+			if err != nil {
+				t.Fatalf("step %d: request error: %v", i, err)
+			}
+			req.Host = location.Host
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("step %d: do error: %v", i, err)
+			}
+
+			if resp.StatusCode != http.StatusTemporaryRedirect && resp.StatusCode != http.StatusSeeOther {
+				resp.Body.Close()
+				reachedTerminal = true
+				break
+			}
+
+			nextLoc := resp.Header.Get("Location")
+			resp.Body.Close()
+			// Resolve relative redirects against the current location.
+			location, err = location.Parse(nextLoc)
+			if err != nil {
+				t.Fatalf("step %d: parse location %q: %v", i, nextLoc, err)
+			}
+			t.Logf("step %d: -> %s", i, location)
+		}
+		if !reachedTerminal {
+			t.Fatal("too many redirects")
+		}
+
+		// After the auth dance, we should have been redirected back to the
+		// original path+query on the terminal subdomain.
+		finalPath := location.Path
+		finalQuery := location.RawQuery
+		if finalPath != targetPath {
+			t.Errorf("final path = %q, want %q", finalPath, targetPath)
+		}
+		if !strings.Contains(finalQuery, "session=abc") || !strings.Contains(finalQuery, "theme=dark") {
+			t.Errorf("final query = %q, want it to contain %q", finalQuery, targetQuery)
 		}
 	})
 

@@ -1152,10 +1152,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 		// Not authenticated: redirect to main domain auth page.
 		// This ensures the login form POST is same-origin on the main domain,
 		// passkeys work, and CSRF protection doesn't block it.
-		redirect := r.URL.Path
-		if r.URL.RawQuery != "" {
-			redirect += "?" + r.URL.RawQuery
-		}
+		redirect := RelativeRedirect(r.URL)
 		authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s",
 			ps.webBaseURLNoRequest(),
 			url.QueryEscape(redirect),
@@ -1312,16 +1309,7 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 // RedirectToAuth redirects the user to the /__exe.dev/login URL
 // which will then redirect to the main domain auth flow.
 func (ps *ProxyServer) RedirectToAuth(w http.ResponseWriter, r *http.Request) {
-	// Pass only path+query as the redirect target. The scheme and host
-	// are already conveyed via the Host header and return_host parameter,
-	// and downstream handlers (handleProxyLogin, handleMagicAuth) validate
-	// the redirect with exeweb.IsValidRedirectURL which only allows
-	// relative paths.
-	redirect := r.URL.Path
-	if r.URL.RawQuery != "" {
-		redirect += "?" + r.URL.RawQuery
-	}
-
+	redirect := RelativeRedirect(r.URL)
 	authURL := makeAuthURL("login", r, url.Values{
 		"redirect": {redirect},
 	})
