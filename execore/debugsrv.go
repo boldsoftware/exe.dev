@@ -1115,7 +1115,7 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 		case *computeapi.SendVMResponse_Data:
 			totalBytes += uint64(len(v.Data.Data))
 			currentMB := totalBytes / (1024 * 1024)
-			if currentMB >= lastReportedMB+10 {
+			if currentMB >= lastReportedMB+100 {
 				progress("Transferred %d MB...", currentMB)
 				lastReportedMB = currentMB
 			}
@@ -1178,7 +1178,7 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 			currentMB := snapshotBytes / (1024 * 1024)
 			if snapshotBytes == uint64(len(v.SnapshotData.Data)) {
 				progress("Transferring VM snapshot...")
-			} else if currentMB >= lastSnapshotReportedMB+10 {
+			} else if currentMB >= lastSnapshotReportedMB+100 {
 				progress("VM snapshot: %d MB...", currentMB)
 				lastSnapshotReportedMB = currentMB
 			}
