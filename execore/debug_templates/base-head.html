@@ -1,0 +1,47 @@
+{{define "base-head"}}
+<link rel="icon" href="/static/favicon.ico">
+<style>
+body { font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace; font-size: 13px; margin: 12px; line-height: 1.4; background: {{stageBgColor}}; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+table { border-collapse: collapse; margin: 6px 0; }
+th, td { border: 1px solid #ccc; padding: 3px 6px; text-align: left; }
+th { background: #f5f5f5; }
+.section { margin: 12px 0; }
+h1 { font-size: 16px; margin: 0 0 4px 0; }
+h2 { font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin: 12px 0 4px 0; }
+h3 { font-size: 13px; margin: 10px 0 2px 0; }
+code { background: #f5f5f5; padding: 1px 4px; border-radius: 2px; }
+pre { background: #f5f5f5; padding: 8px; overflow-x: auto; }
+.info { background: #e7f3ff; border: 1px solid #b6d4fe; padding: 8px; border-radius: 3px; margin: 6px 0; }
+.warning { background: #fff3cd; border: 1px solid #ffc107; padding: 8px; border-radius: 3px; margin: 6px 0; }
+.save-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; }
+.save-btn:hover { background: #0056b3; }
+.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+.delete-btn:hover { background: #c82333; }
+.toggle-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { display: none; }
+.toggle-slider { width: 50px; height: 26px; background: #ccc; border-radius: 13px; position: relative; transition: 0.3s; }
+.toggle-slider:before { content: ""; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: #dc3545; }
+.toggle-switch input:checked + .toggle-slider:before { left: 26px; }
+.toggle-label { margin-left: 10px; font-weight: bold; }
+.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
+.toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
+.toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
+dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+dialog::backdrop { background: rgba(0,0,0,0.5); }
+dialog input[type="text"], dialog input[type="number"] { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
+dialog button { margin-right: 10px; padding: 8px 16px; }
+dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
+dialog .confirm-btn-danger { background: #dc3545; color: white; border: none; cursor: pointer; }
+dialog .confirm-btn:disabled, dialog .confirm-btn-danger:disabled { background: #ccc; cursor: not-allowed; }
+dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+</style>
+{{end}}
+
+{{define "base-datatables"}}
+<link rel="stylesheet" href="/static/datatables.min.css">
+<script src="/static/jquery.min.js"></script>
+<script src="/static/datatables.min.js"></script>
+{{end}}

@@ -29,6 +29,9 @@ SELECT root_support FROM users WHERE user_id = ?;
 -- name: CountLoginUsers :one
 SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1;
 
+-- name: CountUsersByRegion :many
+SELECT region, COUNT(*) AS count FROM users GROUP BY region;
+
 -- name: CountDevUsers :one
 SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0;
 
@@ -75,3 +78,6 @@ SELECT auth_provider, auth_provider_id FROM users WHERE user_id = ?;
 
 -- name: SetUserRegion :exec
 UPDATE users SET region = ? WHERE user_id = ?;
+
+-- name: GetUserByDiscordUsername :one
+SELECT * FROM users WHERE discord_username = ?;

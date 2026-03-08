@@ -163,6 +163,39 @@ func (q *Queries) CountBoxes(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countBoxesByRegionAndStatus = `-- name: CountBoxesByRegionAndStatus :many
+SELECT region, status, COUNT(*) AS count FROM boxes GROUP BY region, status
+`
+
+type CountBoxesByRegionAndStatusRow struct {
+	Region string `db:"region" json:"region"`
+	Status string `db:"status" json:"status"`
+	Count  int64  `db:"count" json:"count"`
+}
+
+func (q *Queries) CountBoxesByRegionAndStatus(ctx context.Context) ([]CountBoxesByRegionAndStatusRow, error) {
+	rows, err := q.query(ctx, q.countBoxesByRegionAndStatusStmt, countBoxesByRegionAndStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountBoxesByRegionAndStatusRow{}
+	for rows.Next() {
+		var i CountBoxesByRegionAndStatusRow
+		if err := rows.Scan(&i.Region, &i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countBoxesForUser = `-- name: CountBoxesForUser :one
 SELECT COUNT(*) FROM boxes WHERE created_by_user_id = ?
 `
@@ -192,6 +225,41 @@ DELETE FROM boxes WHERE id = ?
 func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 	_, err := q.exec(ctx, q.deleteBoxStmt, deleteBox, id)
 	return err
+}
+
+const getBoxByContainerID = `-- name: GetBoxByContainerID :one
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides FROM boxes WHERE container_id = ?
+`
+
+func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByContainerIDStmt, getBoxByContainerID, containerID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
+		&i.Region,
+		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
+	)
+	return i, err
 }
 
 const getBoxByID = `-- name: GetBoxByID :one

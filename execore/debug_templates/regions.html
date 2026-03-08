@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><title>Regions</title>
+{{template "base-head"}}
+<style>
+</style>
+</head><body>
+<h1>Regions</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/regions">regions</a> | <a href="/debug/regions?format=json">json</a></p>
+
+{{if not .Regions}}
+<p>No regions.</p>
+{{else}}
+<table>
+<tr>
+<th>Region</th>
+<th>Requires Match</th>
+<th>Exelets (up/total)</th>
+<th>VMs</th>
+<th>Users</th>
+<th>Capacity (used/total)</th>
+<th>Soft Limit</th>
+<th>Hard Limit</th>
+</tr>
+{{range .Regions}}
+<tr>
+<td><strong>{{.Code}}</strong> — {{.Display}}</td>
+<td>{{if .RequiresUserMatch}}yes{{else}}no{{end}}</td>
+<td>{{.ExeletsUp}} / {{.ExeletsTotal}}</td>
+<td>{{.VMsTotal}}{{if .VMsByStatus}} ({{range $status, $count := .VMsByStatus}}{{$status}}:{{$count}} {{end}}){{end}}</td>
+<td>{{.Users}}</td>
+<td>{{.CapacityUsed}} / {{.CapacityTotal}}</td>
+<td>{{.VMSoftLimit}}</td>
+<td>{{.VMHardLimit}}</td>
+</tr>
+{{end}}
+</table>
+{{end}}
+
+</body></html>

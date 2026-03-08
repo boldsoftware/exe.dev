@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><title>Send Test Email</title>
+{{template "base-head"}}
 <style>
-.section { margin: 20px 0; }
 input[type="text"], input[type="email"] { width: 300px; padding: 8px; }
 textarea { width: 400px; height: 100px; }
 .send-btn { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; }
@@ -13,12 +13,10 @@ textarea { width: 400px; height: 100px; }
 .result { margin: 20px 0; padding: 15px; border-radius: 5px; }
 .result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
 .result.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <h1>Send Test Email</h1>
-<p><a href="/debug">/debug</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/email">email</a></p>
 
 <div class="provider-status">
 <strong>Provider Status:</strong><br>

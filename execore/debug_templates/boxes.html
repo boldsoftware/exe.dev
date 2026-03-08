@@ -1,10 +1,8 @@
 <!doctype html>
-<html><head><title>Boxes/VMs</title>
-<link rel="stylesheet" href="/static/datatables.min.css">
-<script src="/static/jquery.min.js"></script>
-<script src="/static/datatables.min.js"></script>
+<html><head><title>VMs</title>
+{{template "base-head"}}
+{{template "base-datatables"}}
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
 h1 { margin-bottom: 10px; }
 #boxesTable { width: 100%; }
 #boxesTable td, #boxesTable th { font-size: 13px; }
@@ -16,21 +14,10 @@ h1 { margin-bottom: 10px; }
 .stop-btn:hover { background: #e8590c; }
 .start-btn { background: #28a745; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; margin-right: 4px; }
 .start-btn:hover { background: #218838; }
-.delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; }
-.delete-btn:hover { background: #c82333; }
-dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"] { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
-dialog button { margin-right: 10px; padding: 8px 16px; }
-dialog .confirm-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
-dialog .confirm-btn:disabled { background: #ccc; cursor: not-allowed; }
-dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 </style>
 </head><body>
-<h1>Boxes/VMs</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/boxes?format=json&source={{.Source}}">json</a></p>
+<h1>VMs</h1>
+<div><a href="/debug">/debug</a> &gt; <a href="/debug/vms">VMs</a> | <a href="/debug/vms?format=json&source={{.Source}}">json</a></div>
 <p>Source: {{.SourceNav}}</p>
 
 <table id="boxesTable" class="display stripe hover">
@@ -57,13 +44,13 @@ a:hover { text-decoration: underline; }
 </table>
 
 <dialog id="deleteDialog">
-<form method="post" action="/debug/boxes/delete">
+<form method="post" action="/debug/vms/delete">
 <p>To delete this box, type its name to confirm:</p>
 <p><strong id="boxNameDisplay"></strong></p>
 <input type="hidden" name="box_name" id="boxNameInput">
 <input type="text" name="confirm_name" id="confirmInput" autocomplete="off" placeholder="Type box name to confirm">
 <p>
-<button type="submit" class="confirm-btn" id="confirmBtn" disabled>Delete</button>
+<button type="submit" class="confirm-btn-danger" id="confirmBtn" disabled>Delete</button>
 <button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
 </p>
 </form>
@@ -81,7 +68,7 @@ $(document).ready(function() {
 
     var table = $('#boxesTable').DataTable({
         ajax: {
-            url: '/debug/boxes?format=json&source={{.Source}}',
+            url: '/debug/vms?format=json&source={{.Source}}',
             dataSrc: ''
         },
         pageLength: 100,
@@ -90,7 +77,7 @@ $(document).ready(function() {
         orderCellsTop: true,
         columns: [
             { data: 'name', render: function(d) {
-                return '<a href="/debug/boxes/' + d + '">' + d + '</a>';
+                return '<a href="/debug/vms/' + d + '">' + d + '</a>';
             }},
             { data: 'host' },
             { data: 'region' },
@@ -106,7 +93,7 @@ $(document).ready(function() {
                 return d ? 'Yes' : 'No';
             }},
             { data: null, orderable: false, render: function(d) {
-                var actions = '<a href="/debug/boxes/migrate?box_name=' + encodeURIComponent(d.name) + '" class="migrate-btn">Migrate</a> ';
+                var actions = '<a href="/debug/vms/migrate?box_name=' + encodeURIComponent(d.name) + '" class="migrate-btn">Migrate</a> ';
                 if (d.status === 'running') {
                     actions += '<button class="stop-btn" data-box="' + d.name + '">Stop</button> ';
                 } else if (d.status === 'stopped') {
@@ -134,7 +121,7 @@ document.addEventListener('click', function(e) {
     if (e.target.classList.contains('stop-btn') || e.target.classList.contains('start-btn')) {
         var form = document.createElement('form');
         form.method = 'POST';
-        form.action = e.target.classList.contains('stop-btn') ? '/debug/boxes/stop' : '/debug/boxes/start';
+        form.action = e.target.classList.contains('stop-btn') ? '/debug/vms/stop' : '/debug/vms/start';
         var input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'box_name';

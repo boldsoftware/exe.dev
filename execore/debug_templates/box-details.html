@@ -1,14 +1,7 @@
 <!doctype html>
 <html><head><title>Box: {{.Name}}</title>
+{{template "base-head"}}
 <style>
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 .logs-btn { background: #007bff; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 3px; font-size: 14px; }
 .logs-btn:hover { background: #0056b3; }
 .logs-btn:disabled { background: #ccc; cursor: not-allowed; }
@@ -18,7 +11,7 @@ a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <h1>Box: {{.Name}}</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/boxes">/debug/boxes</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/vms">VMs</a> &gt; <a href="/debug/vms/{{.Name}}">{{.Name}}</a></p>
 
 <div class="section">
 <h2>Basic Information</h2>
@@ -126,7 +119,7 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
     btn.textContent = 'Loading...';
     errorDiv.textContent = '';
 
-    fetch('/debug/boxes/{{.Name}}/logs')
+    fetch('/debug/vms/{{.Name}}/logs')
         .then(function(response) {
             if (!response.ok) {
                 return response.text().then(function(text) {

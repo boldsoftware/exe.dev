@@ -1,21 +1,11 @@
 <!doctype html>
 <html><head><title>Teams</title>
-<link rel="stylesheet" href="/static/datatables.min.css">
-<script src="/static/jquery.min.js"></script>
-<script src="/static/datatables.min.js"></script>
+{{template "base-head"}}
+{{template "base-datatables"}}
 <style>
-.toggle-btn { padding: 4px 8px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; font-size: 11px; }
-.toggle-btn.enabled { background: #28a745; color: white; border-color: #28a745; }
-.toggle-btn.disabled { background: #6c757d; color: white; border-color: #6c757d; }
 .toggle-btn.danger { background: #dc3545; color: white; border-color: #dc3545; }
 .toggle-btn.primary { background: #007bff; color: white; border-color: #007bff; }
-dialog { padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-dialog::backdrop { background: rgba(0,0,0,0.5); }
-dialog input[type="text"], dialog select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
-dialog input[type="number"] { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
-dialog button { margin-right: 10px; padding: 8px 16px; }
-dialog .confirm-btn { background: #28a745; color: white; border: none; cursor: pointer; }
-dialog .cancel-btn { background: #6c757d; color: white; border: none; cursor: pointer; }
+dialog select { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
 dialog .danger-btn { background: #dc3545; color: white; border: none; cursor: pointer; }
 #teamsTable { width: 100%; }
 #teamsTable td, #teamsTable th { font-size: 13px; }
@@ -28,7 +18,7 @@ tr.shown td.details-control::before { content: '-'; }
 </style>
 </head><body>
 <h1>Teams</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/teams?format=json">json</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/teams">teams</a> | <a href="/debug/teams?format=json">json</a></p>
 <p>Total teams: {{.TeamCount}} <button class="toggle-btn primary" id="createTeamBtn">Create Team</button></p>
 
 <table id="teamsTable" class="display stripe hover">
@@ -106,7 +96,7 @@ tr.shown td.details-control::before { content: '-'; }
 <h3>Team Limits</h3>
 <p>Team: <strong id="limitsTeamDisplay"></strong></p>
 <input type="hidden" name="team_id" id="limitsTeamId">
-<p>Max Boxes: <input type="number" name="max_boxes" id="maxBoxesInput" min="0" step="1" placeholder="e.g., 10"></p>
+<p>Max VMs: <input type="number" name="max_boxes" id="maxBoxesInput" min="0" step="1" placeholder="e.g., 10"></p>
 <p>Memory (GB): <input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8"></p>
 <p>Disk (GB): <input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30"></p>
 <p>CPUs: <input type="number" name="max_cpus" id="maxCpusInput" min="0" step="1" placeholder="e.g., 4"></p>
@@ -123,11 +113,11 @@ tr.shown td.details-control::before { content: '-'; }
 <form id="removeForm">
 <h3>Remove Team Member</h3>
 <p>Remove <strong id="removeMemberEmail"></strong> from <strong id="removeTeamDisplay"></strong>?</p>
-<p style="color: #dc3545; font-weight: bold;">This will delete all of their boxes.</p>
+<p style="color: #dc3545; font-weight: bold;">This will delete all of their VMs.</p>
 <input type="hidden" name="team_id" id="removeTeamId">
 <input type="hidden" name="user_id" id="removeUserId">
 <p>
-<button type="submit" class="danger-btn">Remove &amp; Delete Boxes</button>
+<button type="submit" class="danger-btn">Remove &amp; Delete VMs</button>
 <button type="button" class="cancel-btn" id="removeCancelBtn">Cancel</button>
 </p>
 </form>
@@ -186,7 +176,7 @@ function parseLimits(limitsStr) {
     try {
         var p = JSON.parse(limitsStr);
         var parts = [];
-        if (p.max_boxes) parts.push(p.max_boxes + ' boxes');
+        if (p.max_boxes) parts.push(p.max_boxes + ' VMs');
         if (p.max_memory) parts.push((p.max_memory / 1e9).toFixed(0) + 'GB mem');
         if (p.max_disk) parts.push((p.max_disk / 1e9).toFixed(0) + 'GB disk');
         if (p.max_cpus) parts.push(p.max_cpus + ' cpu');

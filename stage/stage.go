@@ -33,6 +33,9 @@ type Env struct {
 	// That ends up being a fragile headache. We've been there once.
 	// Instead, use specifically-named flags for specific features.
 	// Avoid generic "is this prod or dev?" checks.
+	//
+	// Similarly, do not switch on one attribute to derive another.
+	// If you need an X, just add an X field directly. Fields are cheap!
 
 	WebHost  string // the base hostname of the website; prod is "exe.dev", dev is "localhost"
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
@@ -78,6 +81,10 @@ type Env struct {
 	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
+
+	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
+	DebugColor   string // CSS background color for the /debug UI badge (e.g. "#dc3545")
+	DebugBgColor string // subtle CSS page background tint keyed to stage (e.g. "#fff5f5" for prod)
 }
 
 // Invalid returns an Env with obviously invalid values.
@@ -129,6 +136,10 @@ func Invalid() Env {
 		DefaultCPUs:   0, // invalid: must be > 0
 
 		ListenOnTailscaleOnly: false,
+
+		DebugLabel:   "INVALID",
+		DebugColor:   "#999999",
+		DebugBgColor: "#f5f5f5",
 	}
 }
 
@@ -189,6 +200,10 @@ func Local() Env {
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 		DefaultCPUs:   2,
+
+		DebugLabel:   "dev",
+		DebugColor:   "#2d6a30",
+		DebugBgColor: "#f0fdf4",
 	}
 }
 
@@ -242,6 +257,10 @@ func Test() Env {
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
+
+		DebugLabel:   "test",
+		DebugColor:   "#2d6a30",
+		DebugBgColor: "#f0fdf4",
 	}
 }
 
@@ -293,6 +312,10 @@ func Staging() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
+
+		DebugLabel:   "staging",
+		DebugColor:   "#5b3a9e",
+		DebugBgColor: "#f5f0ff",
 	}
 }
 
@@ -343,6 +366,10 @@ func Prod() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
+
+		DebugLabel:   "prod",
+		DebugColor:   "#8b6914",
+		DebugBgColor: "#fdf8f0",
 	}
 }
 

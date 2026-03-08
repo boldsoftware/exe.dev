@@ -124,3 +124,9 @@ LIMIT ?;
 
 -- name: SetBoxCgroupOverrides :exec
 UPDATE boxes SET cgroup_overrides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: GetBoxByContainerID :one
+SELECT * FROM boxes WHERE container_id = ?;
+
+-- name: CountBoxesByRegionAndStatus :many
+SELECT region, status, COUNT(*) AS count FROM boxes GROUP BY region, status;

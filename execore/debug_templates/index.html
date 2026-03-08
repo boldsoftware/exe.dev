@@ -1,36 +1,78 @@
 <!doctype html>
-<html><head><title>exed debug</title></head><body>
+<html><head><title>exed debug</title>
+{{template "base-head"}}
+<style>
+.stage { display: inline-block; padding: 1px 6px; border-radius: 2px; font-weight: bold; color: white; font-size: 12px; }
+.meta { color: #666; margin-bottom: 8px; }
+h3 { color: #333; border-bottom: 1px solid #ddd; padding-bottom: 2px; display: inline-block; min-width: 200px; }
+ul { margin: 2px 0 0 0; padding-left: 18px; }
+li { margin: 1px 0; }
+.json { color: #888; font-size: 11px; }
+.jump { display: inline-block; margin-left: 12px; }
+.jump input { font: inherit; padding: 1px 4px; width: 150px; }
+.jump button { font: inherit; padding: 1px 6px; cursor: pointer; }
+</style>
+</head><body>
 <h1>exed debug</h1>
+<p class="meta">
+    <span class="stage" style="background:{{.StageColor}}">{{.Stage}}</span>
+    {{.GitCommit}} {{.GitHubLink}}
+</p>
+
+<div style="margin-bottom: 10px;">
+    <form action="/debug/jump" method="get" class="jump"><input type="text" name="q" placeholder="I'm feeling lucky" size="28"><button type="submit">Go</button></form>
+</div>
+
+<h3>Infrastructure</h3>
+<ul>
+    <li><a href="/debug/vms">VMs</a> <span class="json">(<a href="/debug/vms?format=json">json</a>)</span></li>
+    <li><a href="/debug/exelets">exelets</a> <span class="json">(<a href="/debug/exelets?format=json">json</a>)</span></li>
+    <li><a href="/debug/regions">regions</a> <span class="json">(<a href="/debug/regions?format=json">json</a>)</span></li>
+    <li><a href="/debug/ipshards">ipshards</a> <span class="json">(<a href="/debug/ipshards?format=json">json</a>)</span></li>
+    <li><a href="/debug/migrate">migrate</a></li>
+    <li><a href="/debug/glb-rollout">glb-rollout</a></li>
+</ul>
+
+<h3>Users &amp; Teams</h3>
+<ul>
+    <li><a href="/debug/users">users</a> <span class="json">(<a href="/debug/users?format=json">json</a>)</span></li>
+    <li><a href="/debug/teams">teams</a> <span class="json">(<a href="/debug/teams?format=json">json</a>)</span></li>
+</ul>
+
+<h3>Signup &amp; Abuse</h3>
+<ul>
+    <li><a href="/debug/signup-controls">signup-controls</a></li>
+    <li><a href="/debug/new-throttle">new-throttle</a> <span class="json">(<a href="/debug/new-throttle?format=json">json</a>)</span></li>
+    <li><a href="/debug/signup-reject">signup-reject</a></li>
+</ul>
+
+<h3>Invites &amp; Email</h3>
+<ul>
+    <li><a href="/debug/invite">invite</a></li>
+    <li><a href="/debug/all-invite-codes">all-invite-codes</a> <span class="json">(<a href="/debug/all-invite-codes?format=json">json</a>)</span></li>
+    <li><a href="/debug/invite-tree">invite-tree</a></li>
+    <li><a href="/debug/email">email</a></li>
+    <li><a href="/debug/bounces">bounces</a> <span class="json">(<a href="/debug/bounces?format=json">json</a>)</span></li>
+</ul>
+
+<h3>Content</h3>
+<ul>
+    <li><a href="/debug/ideas">ideas</a></li>
+    <li><a href="/debug/testimonials">testimonials</a></li>
+</ul>
+
+<h3>Diagnostics</h3>
 <ul>
     <li><a href="/debug/pprof/">pprof</a></li>
-    <li><a href="/debug/pprof/cmdline">pprof/cmdline</a></li>
+    <li><a href="/debug/pprof/goroutine?debug=1">pprof/goroutine</a></li>
     <li><a href="/debug/pprof/profile">pprof/profile</a></li>
-    <li><a href="/debug/pprof/symbol">pprof/symbol</a></li>
     <li><a href="/debug/pprof/trace">pprof/trace</a></li>
-    <li><a href="/debug/pprof/goroutine?debug=1">pprof/goroutine?debug=1</a></li>
+    <li><a href="/debug/pprof/symbol">pprof/symbol</a></li>
+    <li><a href="/debug/pprof/cmdline">pprof/cmdline</a></li>
+    <li><a href="/debug/vars">vars</a></li>
     <li><a href="/metrics">metrics</a></li>
     <li><a href="/debug/gitsha">gitsha</a></li>
-    <li><a href="/debug/boxes">boxes</a> (<a href="/debug/boxes?format=json">json</a>)</li>
-    <li><a href="/debug/migrate">migrate</a></li>
-    <li><a href="/debug/users">users</a> (<a href="/debug/users?format=json">json</a>)</li>
-    <li><a href="/debug/teams">teams</a> (<a href="/debug/teams?format=json">json</a>)</li>
-    <li><a href="/debug/exelets">exelets</a> (<a href="/debug/exelets?format=json">json</a>)</li>
-    <li><a href="/debug/new-throttle">new-throttle</a> (<a href="/debug/new-throttle?format=json">json</a>)</li>
-    <li><a href="/debug/signup-limiter">signup-limiter</a></li>
-    <li><a href="/debug/signup-pow">signup-pow</a></li>
-    <li><a href="/debug/ip-abuse-filter">ip-abuse-filter</a></li>
-    <li><a href="/debug/signup-reject">signup-reject</a></li>
-    <li><a href="/debug/ipshards">ipshards</a> (<a href="/debug/ipshards?format=json">json</a>)</li>
-    <li><a href="/debug/log">/debug/log</a> (POST text=... to log an error)</li>
-    <li><a href="/debug/testimonials">testimonials</a></li>
-    <li><a href="/debug/email">email</a> (send test emails)</li>
-    <li><a href="/debug/invite">invite</a> (manage invite codes)</li>
-    <li><a href="/debug/all-invite-codes">all-invite-codes</a> (<a href="/debug/all-invite-codes?format=json">json</a>) (view all invite codes)</li>
-    <li><a href="/debug/invite-tree">invite-tree</a> (invite tree visualization)</li>
-    <li><a href="/debug/bounces">bounces</a> (<a href="/debug/bounces?format=json">json</a>) (email bounces)</li>
-    <li><a href="/debug/ideas">ideas</a> (VM template review &amp; management)</li>
-    <li><a href="/debug/glb-rollout">glb-rollout</a> (GLB hash-prefix rollout)</li>
+    <li><a href="/debug/log">log</a></li>
 </ul>
-<p>Stage: <strong>{{.Stage}}</strong></p>
-<p>Git version: {{.GitCommit}} {{.GitHubLink}}</p>
+
 </body></html>

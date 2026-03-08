@@ -352,7 +352,7 @@ func TestMigrateBoxColdBootSendsEmail(t *testing.T) {
 		"target":       {targetAddr},
 		"confirm_name": {boxName},
 	}
-	req := httptest.NewRequest("POST", "/debug/boxes/migrate", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 

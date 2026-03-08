@@ -142,7 +142,7 @@ func TestDebugStartSyncsSSHPort(t *testing.T) {
 
 	// POST to the debug start handler.
 	form := url.Values{"box_name": {"migrated-vm"}}
-	req := httptest.NewRequest("POST", "/debug/boxes/start", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest("POST", "/debug/vms/start", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
@@ -211,7 +211,7 @@ func TestDebugStartPreservesExistingSSHPort(t *testing.T) {
 	}
 
 	form := url.Values{"box_name": {"normal-vm"}}
-	req := httptest.NewRequest("POST", "/debug/boxes/start", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest("POST", "/debug/vms/start", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 

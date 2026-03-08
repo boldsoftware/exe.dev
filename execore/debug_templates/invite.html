@@ -1,23 +1,16 @@
 <!doctype html>
 <html><head><title>Invite Codes</title>
+{{template "base-head"}}
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }
-table { border-collapse: collapse; margin: 10px 0; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-.section { margin: 20px 0; }
-h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.code { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+.code { font-family: monospace; }
 .create-btn { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px; }
 .create-btn:hover { background: #218838; }
 select, input[type="number"] { padding: 8px; margin: 5px; }
 input[type="text"], input[type="email"] { padding: 8px; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <h1>Invite Codes</h1>
-<p><a href="/debug">/debug</a> | <a href="/debug/invite/bulk">bulk generate</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/invite">invite</a> | <a href="/debug/all-invite-codes">all codes</a> | <a href="/debug/invite-tree">tree</a></p>
 
 <div class="section">
 <h2>Create System Invite Code</h2>
@@ -63,6 +56,27 @@ a:hover { text-decoration: underline; }
 </label>
 </p>
 <p><button type="submit" class="create-btn">Give Invites</button></p>
+</form>
+</div>
+
+<div class="section">
+<h2>Bulk Generate</h2>
+<form method="post" action="/debug/invite/bulk">
+<p>
+<label>Plan type:
+<select name="plan_type">
+<option value="trial">Trial (1 month free)</option>
+<option value="free">Free forever</option>
+</select>
+</label>
+<label>Count:
+<input type="number" name="count" value="100" min="1" max="1000" required>
+</label>
+<label>What's it for:
+<input type="text" name="assigned_for" placeholder="e.g. HN launch Feb 2026" required size="40">
+</label>
+<button type="submit" class="create-btn">Generate</button>
+</p>
 </form>
 </div>
 

@@ -49,17 +49,18 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug$", s.handleDebugIndex)
 	mux.HandleFunc("/debug/", s.handleDebugIndex)
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
-	mux.HandleFunc("/debug/boxes", s.handleDebugBoxes)
+	mux.HandleFunc("/debug/vms", s.handleDebugBoxes)
 	mux.HandleFunc("GET /debug/vmlist", s.handleDebugVMList)
-	mux.HandleFunc("/debug/boxes/{name}", s.handleDebugBoxDetails)
-	mux.HandleFunc("GET /debug/boxes/{name}/logs", s.handleDebugBoxLogs)
-	mux.HandleFunc("POST /debug/boxes/delete", s.handleDebugBoxDelete)
-	mux.HandleFunc("POST /debug/boxes/stop", s.handleDebugBoxStop)
-	mux.HandleFunc("POST /debug/boxes/start", s.handleDebugBoxStart)
-	mux.HandleFunc("GET /debug/boxes/migrate", s.handleDebugBoxMigrateForm)
-	mux.HandleFunc("POST /debug/boxes/migrate", s.handleDebugBoxMigrate)
+	mux.HandleFunc("GET /debug/jump", s.handleDebugJump)
+	mux.HandleFunc("/debug/vms/{name}", s.handleDebugBoxDetails)
+	mux.HandleFunc("GET /debug/vms/{name}/logs", s.handleDebugBoxLogs)
+	mux.HandleFunc("POST /debug/vms/delete", s.handleDebugBoxDelete)
+	mux.HandleFunc("POST /debug/vms/stop", s.handleDebugBoxStop)
+	mux.HandleFunc("POST /debug/vms/start", s.handleDebugBoxStart)
+	mux.HandleFunc("GET /debug/vms/migrate", s.handleDebugBoxMigrateForm)
+	mux.HandleFunc("POST /debug/vms/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("GET /debug/migrate", s.handleDebugMassMigrateForm)
-	mux.HandleFunc("GET /debug/migrate/boxes", s.handleDebugMassMigrateBoxes)
+	mux.HandleFunc("GET /debug/migrate/vms", s.handleDebugMassMigrateBoxes)
 	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
@@ -78,11 +79,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
-	mux.HandleFunc("/debug/signup-limiter", s.handleDebugSignupLimiter)
+	mux.HandleFunc("GET /debug/signup-controls", s.handleDebugSignupControls)
 	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
-	mux.HandleFunc("/debug/signup-pow", s.handleDebugSignupPOW)
 	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
-	mux.HandleFunc("/debug/ip-abuse-filter", s.handleDebugIPAbuseFilter)
 	mux.HandleFunc("POST /debug/ip-abuse-filter", s.handleDebugIPAbuseFilterPost)
 	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
 	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
@@ -96,7 +95,6 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/email", s.handleDebugEmailSend)
 	mux.HandleFunc("/debug/invite", s.handleDebugInvite)
 	mux.HandleFunc("POST /debug/invite", s.handleDebugInvitePost)
-	mux.HandleFunc("GET /debug/invite/bulk", s.handleDebugInviteBulk)
 	mux.HandleFunc("POST /debug/invite/bulk", s.handleDebugInviteBulkPost)
 	mux.HandleFunc("/debug/all-invite-codes", s.handleDebugAllInviteCodes)
 	mux.HandleFunc("/debug/invite-tree", s.handleDebugInviteTree)
@@ -117,6 +115,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 	mux.HandleFunc("/debug/glb-rollout", s.handleDebugGLBRollout)
 	mux.HandleFunc("POST /debug/glb-rollout", s.handleDebugGLBRolloutPost)
+	mux.HandleFunc("GET /debug/regions", s.handleDebugRegions)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -142,11 +141,11 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 // handleDebugIndex renders a simple HTML index of debug endpoints.
 func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	commit := logging.GitCommit()
-	if commit == "" {
-		commit = "unknown"
+	if commit == "" || commit == "unknown" {
+		commit = "(dev build)"
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -154,10 +153,12 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Stage      string
+		StageColor string
 		GitCommit  string
 		GitHubLink template.HTML
 	}{
-		Stage:      s.env.String(),
+		Stage:      s.env.DebugLabel,
+		StageColor: s.env.DebugColor,
 		GitCommit:  commit,
 		GitHubLink: template.HTML(gitHubLink(commit)),
 	}
@@ -186,7 +187,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	// For HTML requests, return the page shell immediately.
 	// DataTables will load data via AJAX from the JSON endpoint.
 	if r.URL.Query().Get("format") != "json" {
-		tmpl, err := debug_templates.Parse()
+		tmpl, err := debug_templates.Parse(s.env)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 			return
@@ -195,9 +196,9 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		// Build the navigation links
 		var sourceNav template.HTML
 		if source == "exelets" {
-			sourceNav = `<strong>exelets</strong> | <a href="/debug/boxes?source=db">db</a>`
+			sourceNav = `<strong>exelets</strong> | <a href="/debug/vms?source=db">db</a>`
 		} else {
-			sourceNav = `<a href="/debug/boxes?source=exelets">exelets</a> | <strong>db</strong>`
+			sourceNav = `<a href="/debug/vms?source=exelets">exelets</a> | <strong>db</strong>`
 		}
 
 		data := struct {
@@ -288,7 +289,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		dbBoxes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllBoxesWithOwner)
 		if err != nil {
 			s.slog().ErrorContext(ctx, "failed to list boxes from database", "error", err)
-			http.Error(w, "failed to list boxes", http.StatusInternalServerError)
+			http.Error(w, "failed to list VMs", http.StatusInternalServerError)
 			return
 		}
 		for _, b := range dbBoxes {
@@ -353,7 +354,7 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, fmt.Sprintf("/debug/boxes: failed to look up box by name: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("/debug/vms: failed to look up VM by name: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -366,7 +367,7 @@ func (s *Server) handleDebugBoxDelete(w http.ResponseWriter, r *http.Request) {
 	s.slog().InfoContext(ctx, "box deleted via debug page", "box", boxName)
 
 	// Redirect back to the boxes page
-	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/vms", http.StatusSeeOther)
 }
 
 // handleDebugBoxStop stops a running box via the exelet gRPC API.
@@ -395,7 +396,7 @@ func (s *Server) handleDebugBoxStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.slog().InfoContext(ctx, "box stopped via debug page", "box", boxName)
-	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/vms", http.StatusSeeOther)
 }
 
 // stopUserBoxes stops all running boxes belonging to a user.
@@ -429,7 +430,7 @@ func (s *Server) handleDebugVMList(w http.ResponseWriter, r *http.Request) {
 
 	dbBoxes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllBoxesWithOwner)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list boxes: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to list VMs: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -522,7 +523,7 @@ func (s *Server) handleDebugBoxStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.slog().InfoContext(ctx, "box started via debug page", "box", boxName)
-	http.Redirect(w, r, "/debug/boxes", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/vms", http.StatusSeeOther)
 }
 
 // handleDebugBoxMigrateForm shows the migration form.
@@ -551,7 +552,7 @@ func (s *Server) handleDebugBoxMigrateForm(w http.ResponseWriter, r *http.Reques
 	}
 	sort.Strings(addrs)
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -790,7 +791,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	writeProgress("")
 	writeProgress("=== Migration complete! ===")
 	writeProgress("")
-	writeProgress("View box details: /debug/boxes/%s", boxName)
+	writeProgress("View VM details: /debug/vms/%s", boxName)
 	writeProgress("MIGRATION_SUCCESS:%s", boxName)
 }
 
@@ -1364,7 +1365,7 @@ func (s *Server) handleDebugMassMigrateForm(w http.ResponseWriter, r *http.Reque
 	}
 	sort.Strings(addrs)
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -1456,7 +1457,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 
 	expectedConfirm := strconv.Itoa(len(boxNames))
 	if confirm != expectedConfirm {
-		writeError("confirm must be %q (the number of boxes to migrate)", expectedConfirm)
+		writeError("confirm must be %q (the number of VMs to migrate)", expectedConfirm)
 		writeProgress("MIGRATION_ERROR")
 		return
 	}
@@ -1471,7 +1472,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx := context.Background()
 
-	writeProgress("Starting migration of %d boxes to %s (live for running VMs)", len(boxNames), targetAddr)
+	writeProgress("Starting migration of %d VMs to %s (live for running VMs)", len(boxNames), targetAddr)
 	writeProgress("")
 
 	var succeeded, failed int
@@ -1657,7 +1658,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, fmt.Sprintf("/debug/boxes/detail: failed to look up box by name: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("/debug/vms/detail: failed to look up VM by name: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -1674,7 +1675,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 
 	route := box.GetRoute()
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -1969,7 +1970,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -2102,7 +2103,7 @@ func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request
 		action = "locked out"
 		if err := s.stopUserBoxes(ctx, userID); err != nil {
 			s.slog().ErrorContext(ctx, "failed to stop user boxes during lockout", "user_id", userID, "error", err)
-			http.Error(w, fmt.Sprintf("user locked out but failed to stop boxes: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("user locked out but failed to stop VMs: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -2344,7 +2345,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -2427,7 +2428,7 @@ func (s *Server) handleDebugExeletRecover(w http.ResponseWriter, r *http.Request
 	// Get list of VMs that should be on this host (same logic as handleDebugVMList).
 	dbBoxes, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllBoxesWithOwner)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list boxes: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to list VMs: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -2587,15 +2588,13 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 }
 
 // handleDebugSignupLimiter displays the signup rate limiter state and login creation settings.
-func (s *Server) handleDebugSignupLimiter(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	loginDisabled := s.IsLoginCreationDisabled(ctx)
 
-	tmpl, err := debug_templates.Parse()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
+	loginDisabled := s.IsLoginCreationDisabled(ctx)
+	ipAbuseDisabled := s.IsIPAbuseFilterDisabled(ctx)
+	powEnabled := s.IsSignupPOWEnabled(ctx)
+	powDifficulty := s.signupPOW.GetDifficulty()
 
 	// Capture rate limiter HTML output
 	var rateLimitedBuf, allTrackedBuf strings.Builder
@@ -2608,19 +2607,33 @@ func (s *Server) handleDebugSignupLimiter(w http.ResponseWriter, r *http.Request
 		allTrackedBuf.WriteString("<p>No rate limiter configured.</p>\n")
 	}
 
+	tmpl, err := debug_templates.Parse(s.env)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		LoginDisabled   bool
+		IPAbuseDisabled bool
+		POWEnabled      bool
+		POWDifficulty   int
+		POWAvgHashes    int
 		RateLimitedHTML template.HTML
 		AllTrackedHTML  template.HTML
 	}{
 		LoginDisabled:   loginDisabled,
+		IPAbuseDisabled: ipAbuseDisabled,
+		POWEnabled:      powEnabled,
+		POWDifficulty:   powDifficulty,
+		POWAvgHashes:    1 << powDifficulty,
 		RateLimitedHTML: template.HTML(rateLimitedBuf.String()),
 		AllTrackedHTML:  template.HTML(allTrackedBuf.String()),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "signup-limiter.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute signup-limiter template", "error", err)
+	if err := tmpl.ExecuteTemplate(w, "signup-controls.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute signup-controls template", "error", err)
 	}
 }
 
@@ -2642,8 +2655,7 @@ func (s *Server) handleDebugSignupLimiterPost(w http.ResponseWriter, r *http.Req
 
 	s.slog().InfoContext(ctx, "login creation disabled setting updated via debug page", "disabled", disabled)
 
-	// Redirect back to the signup limiter page
-	http.Redirect(w, r, "/debug/signup-limiter", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }
 
 // handleDebugNewThrottle displays the new-throttle configuration page.
@@ -2668,7 +2680,7 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -2844,7 +2856,7 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3023,7 +3035,7 @@ func (s *Server) handleDebugIPShardsLatitude(w http.ResponseWriter, r *http.Requ
 
 // handleDebugLogForm renders a simple form to log an error message.
 func (s *Server) handleDebugLogForm(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3051,7 +3063,7 @@ func (s *Server) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request) {
 	testimonials := AllTestimonials()
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3102,7 +3114,7 @@ func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 	postmarkAvailable := s.emailSenders.Postmark != nil
 	mailgunAvailable := s.emailSenders.Mailgun != nil
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3186,35 +3198,6 @@ func (s *Server) IsSignupPOWEnabled(ctx context.Context) bool {
 	return val == "true"
 }
 
-// handleDebugSignupPOW displays the signup POW configuration page.
-func (s *Server) handleDebugSignupPOW(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	enabled := s.IsSignupPOWEnabled(ctx)
-
-	tmpl, err := debug_templates.Parse()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	difficulty := s.signupPOW.GetDifficulty()
-
-	data := struct {
-		Enabled    bool
-		Difficulty int
-		AvgHashes  int
-	}{
-		Enabled:    enabled,
-		Difficulty: difficulty,
-		AvgHashes:  1 << difficulty,
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "signup-pow.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute signup-pow template", "error", err)
-	}
-}
-
 // handleDebugSignupPOWPost handles saving the signup POW enabled setting.
 func (s *Server) handleDebugSignupPOWPost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -3232,7 +3215,7 @@ func (s *Server) handleDebugSignupPOWPost(w http.ResponseWriter, r *http.Request
 
 	s.slog().InfoContext(ctx, "signup POW setting updated via debug page", "enabled", enabled)
 
-	http.Redirect(w, r, "/debug/signup-pow", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }
 
 // handleDebugSignupReject displays the signup rejections and bypass list.
@@ -3253,7 +3236,7 @@ func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3424,7 +3407,7 @@ func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3641,25 +3624,6 @@ https://%s/
 	return nil
 }
 
-func (s *Server) handleDebugInviteBulk(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := debug_templates.Parse()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		Codes       []string
-		PlanType    string
-		AssignedFor string
-	}{}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "invite-bulk.html", data); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute invite-bulk template", "error", err)
-	}
-}
-
 func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -3728,7 +3692,7 @@ func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3829,7 +3793,7 @@ func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Reques
 	}
 
 	// HTML format with DataTables
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3942,7 +3906,7 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 		computeCounts(root)
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -3963,29 +3927,6 @@ func (s *Server) IsIPAbuseFilterDisabled(ctx context.Context) bool {
 	return val == "true"
 }
 
-// handleDebugIPAbuseFilter displays the IP abuse filter configuration page.
-func (s *Server) handleDebugIPAbuseFilter(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	disabled := s.IsIPAbuseFilterDisabled(ctx)
-
-	tmpl, err := debug_templates.Parse()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		Disabled bool
-	}{
-		Disabled: disabled,
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "ip-abuse-filter.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute ip-abuse-filter template", "error", err)
-	}
-}
-
 // handleDebugIPAbuseFilterPost handles saving the IP abuse filter disabled setting.
 func (s *Server) handleDebugIPAbuseFilterPost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -4003,7 +3944,7 @@ func (s *Server) handleDebugIPAbuseFilterPost(w http.ResponseWriter, r *http.Req
 
 	s.slog().InfoContext(ctx, "IP abuse filter setting updated via debug page", "disabled", disabled)
 
-	http.Redirect(w, r, "/debug/ip-abuse-filter", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }
 
 // handleDebugUser displays detailed information about a single user and their boxes.
@@ -4222,7 +4163,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -4451,7 +4392,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	// Fetch boxes and filter to those outside the region.
 	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
 	if err != nil {
-		writeError("failed to list boxes: %v", err)
+		writeError("failed to list VMs: %v", err)
 		writeProgress("MIGRATION_ERROR")
 		return
 	}
@@ -4465,14 +4406,14 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	}
 
 	if len(toMigrate) == 0 {
-		writeProgress("All boxes are already in region %s.", user.Region)
+		writeProgress("All VMs are already in region %s.", user.Region)
 		return
 	}
 
 	// Verify confirmation matches box count.
 	expectedConfirm := strconv.Itoa(len(toMigrate))
 	if confirm != expectedConfirm {
-		writeError("confirm must be %q (the number of boxes to migrate)", expectedConfirm)
+		writeError("confirm must be %q (the number of VMs to migrate)", expectedConfirm)
 		writeProgress("MIGRATION_ERROR")
 		return
 	}
@@ -4855,7 +4796,7 @@ func (s *Server) handleDebugBounces(w http.ResponseWriter, r *http.Request) {
 		LastPollTime: lastPollTime,
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -5169,7 +5110,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -5546,7 +5487,7 @@ func (s *Server) handleDebugDeleteUser(w http.ResponseWriter, r *http.Request) {
 		"user_id", userID, "email", user.Email, "boxes_deleted", len(boxIDs),
 		"deleted_by", deletedBy, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "deleted user %s (%s), %d boxes deleted", userID, user.Email, len(boxIDs))
+	fmt.Fprintf(w, "deleted user %s (%s), %d VMs deleted", userID, user.Email, len(boxIDs))
 }
 
 // loadGLBRolloutPrefixes reads the GLB rollout prefixes from the database and
@@ -5589,7 +5530,7 @@ func (s *Server) handleDebugGLBRollout(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
@@ -5649,4 +5590,299 @@ func (s *Server) handleDebugGLBRolloutPost(w http.ResponseWriter, r *http.Reques
 	s.slog().InfoContext(ctx, "GLB rollout prefixes updated via debug page", "prefixes", prefixes)
 
 	http.Redirect(w, r, "/debug/glb-rollout", http.StatusSeeOther)
+}
+
+func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	type regionInfo struct {
+		Code              string         `json:"code"`
+		Display           string         `json:"display"`
+		Active            bool           `json:"active"`
+		VMHardLimit       int32          `json:"vm_hard_limit"`
+		VMSoftLimit       int32          `json:"vm_soft_limit"`
+		RequiresUserMatch bool           `json:"requires_user_match"`
+		ExeletsTotal      int            `json:"exelets_total"`
+		ExeletsUp         int            `json:"exelets_up"`
+		VMsTotal          int            `json:"vms_total"`
+		VMsByStatus       map[string]int `json:"vms_by_status"`
+		Users             int            `json:"users"`
+		CapacityTotal     int            `json:"capacity_total"`
+		CapacityUsed      int            `json:"capacity_used"`
+	}
+
+	// Build a map from region code -> regionInfo, seeded from region.All().
+	regions := region.All()
+	infoByCode := make(map[string]*regionInfo, len(regions))
+	for _, reg := range regions {
+		infoByCode[reg.Code] = &regionInfo{
+			Code:              reg.Code,
+			Display:           reg.Display,
+			Active:            reg.Active,
+			VMHardLimit:       reg.VMHardLimit,
+			VMSoftLimit:       reg.VMSoftLimit,
+			RequiresUserMatch: reg.RequiresUserMatch,
+			VMsByStatus:       make(map[string]int),
+		}
+	}
+
+	// Count exelets per region from live clients.
+	for _, ec := range s.exeletClients {
+		code := ec.region.Code
+		info, ok := infoByCode[code]
+		if !ok {
+			// Exelet in an unknown region — create an entry for it.
+			info = &regionInfo{
+				Code:        code,
+				Display:     "(unknown)",
+				VMsByStatus: make(map[string]int),
+			}
+			infoByCode[code] = info
+		}
+		info.ExeletsTotal++
+		if ec.up.Load() {
+			info.ExeletsUp++
+		}
+	}
+
+	// Query VM counts grouped by region and status.
+	boxCounts, err := withRxRes0(s, ctx, (*exedb.Queries).CountBoxesByRegionAndStatus)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to query box counts: %v", err), http.StatusInternalServerError)
+		return
+	}
+	for _, row := range boxCounts {
+		info, ok := infoByCode[row.Region]
+		if !ok {
+			info = &regionInfo{
+				Code:        row.Region,
+				Display:     "(unknown)",
+				VMsByStatus: make(map[string]int),
+			}
+			infoByCode[row.Region] = info
+		}
+		info.VMsByStatus[row.Status] += int(row.Count)
+		info.VMsTotal += int(row.Count)
+	}
+
+	// Query user counts grouped by region.
+	userCounts, err := withRxRes0(s, ctx, (*exedb.Queries).CountUsersByRegion)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to query user counts: %v", err), http.StatusInternalServerError)
+		return
+	}
+	for _, row := range userCounts {
+		info, ok := infoByCode[row.Region]
+		if !ok {
+			info = &regionInfo{
+				Code:        row.Region,
+				Display:     "(unknown)",
+				VMsByStatus: make(map[string]int),
+			}
+			infoByCode[row.Region] = info
+		}
+		info.Users = int(row.Count)
+	}
+
+	// Compute capacity and build sorted result.
+	for _, info := range infoByCode {
+		info.CapacityTotal = info.ExeletsUp * int(info.VMHardLimit)
+		info.CapacityUsed = info.VMsTotal
+	}
+
+	result := make([]regionInfo, 0, len(infoByCode))
+	for _, reg := range regions {
+		if info, ok := infoByCode[reg.Code]; ok {
+			result = append(result, *info)
+			delete(infoByCode, reg.Code)
+		}
+	}
+	// Append any unknown regions at the end, in sorted order.
+	unknownCodes := make([]string, 0, len(infoByCode))
+	for code := range infoByCode {
+		unknownCodes = append(unknownCodes, code)
+	}
+	sort.Strings(unknownCodes)
+	for _, code := range unknownCodes {
+		result = append(result, *infoByCode[code])
+	}
+
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(result); err != nil {
+			s.slog().InfoContext(ctx, "failed to encode regions JSON", "error", err)
+		}
+		return
+	}
+
+	tmpl, err := debug_templates.Parse(s.env)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Regions []regionInfo
+	}{
+		Regions: result,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "regions.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute regions template", "error", err)
+	}
+}
+
+func (s *Server) handleDebugJump(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		http.Error(w, "q parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Box by name.
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/vms/"+url.PathEscape(box.Name), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. User by email (if input contains @).
+	if strings.Contains(q, "@") {
+		canonical, cerr := email.CanonicalizeEmail(q)
+		if cerr == nil {
+			user, uerr := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, &canonical)
+			if uerr == nil {
+				http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(user.UserID), http.StatusFound)
+				return
+			}
+			if !errors.Is(uerr, sql.ErrNoRows) {
+				http.Error(w, fmt.Sprintf("lookup failed: %v", uerr), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	// 3. User by user_id.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(user.UserID), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Team by ID.
+	team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/teams/members?team_id="+url.QueryEscape(team.TeamID), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 6. Region by name/code.
+	for _, reg := range region.All() {
+		if strings.EqualFold(q, reg.Code) {
+			http.Redirect(w, r, "/debug/regions", http.StatusFound)
+			return
+		}
+	}
+
+	// 7. SSH key by fingerprint.
+	if strings.HasPrefix(q, "SHA256:") || strings.HasPrefix(q, "MD5:") {
+		sshKey, sshErr := withRxRes1(s, ctx, (*exedb.Queries).GetSSHKeyByFingerprint, q)
+		if sshErr == nil {
+			http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(sshKey.UserID), http.StatusFound)
+			return
+		}
+		if !errors.Is(sshErr, sql.ErrNoRows) {
+			http.Error(w, fmt.Sprintf("lookup failed: %v", sshErr), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// 8. Invite code.
+	inviteCode, err := withRxRes1(s, ctx, (*exedb.Queries).GetInviteCodeByCode, q)
+	if err == nil {
+		if inviteCode.UsedByUserID != nil {
+			http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(*inviteCode.UsedByUserID), http.StatusFound)
+			return
+		}
+		if inviteCode.AssignedToUserID != nil {
+			http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(*inviteCode.AssignedToUserID), http.StatusFound)
+			return
+		}
+		fmt.Fprintf(w, "invite code %q (id=%d, plan=%s) — unassigned, unused", inviteCode.Code, inviteCode.ID, inviteCode.PlanType)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 9. User by Discord username.
+	discordUser, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByDiscordUsername, &q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(discordUser.UserID), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 11. Account by ID.
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccount, q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(account.CreatedBy), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 12. Integration by ID.
+	integration, err := withRxRes1(s, ctx, (*exedb.Queries).GetIntegration, q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(integration.OwnerUserID), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 13. Box by container ID.
+	boxByCtr, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxByContainerID, &q)
+	if err == nil {
+		http.Redirect(w, r, "/debug/vms/"+url.PathEscape(boxByCtr.Name), http.StatusFound)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 14. Exelet by hostname.
+	for addr := range s.exeletClients {
+		if strings.EqualFold(q, addr) {
+			http.Redirect(w, r, "/debug/exelets", http.StatusFound)
+			return
+		}
+	}
+
+	http.Error(w, fmt.Sprintf("no match found for %q", q), http.StatusNotFound)
 }

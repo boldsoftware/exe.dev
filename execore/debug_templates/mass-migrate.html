@@ -1,7 +1,8 @@
 <!doctype html>
 <html><head><title>Migrate</title>
+{{template "base-head"}}
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 900px; }
+body { max-width: 900px; }
 h1 { margin-bottom: 10px; }
 fieldset { margin: 15px 0; padding: 15px; }
 legend { font-weight: bold; }
@@ -11,8 +12,6 @@ button { margin-top: 10px; padding: 10px 20px; font-size: 14px; cursor: pointer;
 button.primary { background: #dc3545; color: white; border: none; }
 button.primary:disabled { background: #ccc; cursor: not-allowed; }
 button.secondary { background: #6c757d; color: white; border: none; margin-right: 8px; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 .box-list { max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; margin-top: 5px; }
 .box-item { padding: 4px 0; }
 .box-item .status { margin-left: 8px; font-size: 12px; color: #666; }
@@ -21,13 +20,12 @@ a:hover { text-decoration: underline; }
 #progress.active { display: block; }
 #progress.error { background: #f8d7da; border-color: #f5c6cb; }
 #progress.success { background: #d4edda; border-color: #c3e6cb; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
 .warning strong { color: #856404; }
 .summary { margin-top: 10px; font-size: 14px; }
 </style>
 </head><body>
 <h1>Migrate</h1>
-<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+<p><a href="/debug/vms">&larr; Back to VMs</a></p>
 
 <div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly.</div>
 
@@ -41,8 +39,8 @@ a:hover { text-decoration: underline; }
 </fieldset>
 
 <fieldset>
-<legend>2. Select boxes to migrate</legend>
-<div id="boxList">Select source exelets above to load boxes.</div>
+<legend>2. Select VMs to migrate</legend>
+<div id="boxList">Select source exelets above to load VMs.</div>
 <p>
 <button type="button" class="secondary" id="selectAll" style="display:none">Select All</button>
 <button type="button" class="secondary" id="deselectAll" style="display:none">Deselect All</button>
@@ -59,13 +57,13 @@ a:hover { text-decoration: underline; }
 
 <fieldset>
 <legend>4. Confirm</legend>
-<p id="confirmPrompt">Select boxes and target to continue.</p>
+<p id="confirmPrompt">Select VMs and target to continue.</p>
 <input type="text" id="confirm" autocomplete="off" placeholder="" style="display:none">
 </fieldset>
 
 <p>
 <button class="primary" id="submitBtn" disabled>Start Migration</button>
-<a href="/debug/boxes">Cancel</a>
+<a href="/debug/vms">Cancel</a>
 </p>
 
 </div>
@@ -118,14 +116,14 @@ function updateState() {
     var confirmPrompt = document.getElementById('confirmPrompt');
     var summary = document.getElementById('boxSummary');
 
-    summary.textContent = selected.length + ' box(es) selected';
+    summary.textContent = selected.length + ' VM(s) selected';
 
     if (selected.length > 0 && target) {
-        confirmPrompt.textContent = 'Type "' + selected.length + '" to confirm migrating ' + selected.length + ' box(es):';
+        confirmPrompt.textContent = 'Type "' + selected.length + '" to confirm migrating ' + selected.length + ' VM(s):';
         confirm.style.display = '';
         confirm.placeholder = selected.length.toString();
     } else {
-        confirmPrompt.textContent = 'Select boxes and target to continue.';
+        confirmPrompt.textContent = 'Select VMs and target to continue.';
         confirm.style.display = 'none';
     }
 
@@ -141,7 +139,7 @@ function loadBoxes() {
     var deselectAll = document.getElementById('deselectAll');
 
     if (sources.length === 0) {
-        boxList.textContent = 'Select source exelets above to load boxes.';
+        boxList.textContent = 'Select source exelets above to load VMs.';
         selectAll.style.display = 'none';
         deselectAll.style.display = 'none';
         updateState();
@@ -149,11 +147,11 @@ function loadBoxes() {
     }
 
     boxList.textContent = 'Loading...';
-    var url = '/debug/migrate/boxes?' + sources.map(function(s) { return 'source=' + encodeURIComponent(s); }).join('&');
+    var url = '/debug/migrate/vms?' + sources.map(function(s) { return 'source=' + encodeURIComponent(s); }).join('&');
     fetch(url).then(function(r) { return r.json(); }).then(function(data) {
         var boxes = data || [];
         if (boxes.length === 0) {
-            boxList.textContent = 'No migratable boxes found on selected exelets.';
+            boxList.textContent = 'No migratable VMs found on selected exelets.';
             selectAll.style.display = 'none';
             deselectAll.style.display = 'none';
             updateState();
@@ -200,7 +198,7 @@ function loadBoxes() {
 
         updateState();
     }).catch(function(err) {
-        boxList.textContent = 'Error loading boxes: ' + err;
+        boxList.textContent = 'Error loading VMs: ' + err;
     });
 }
 

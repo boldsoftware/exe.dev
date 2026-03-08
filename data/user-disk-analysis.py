@@ -4,7 +4,7 @@ Snapshot exe.dev data into a SQLite database and print reports.
 
 Pulls from:
   - /debug/users?format=json        (users + credit/LLM usage)
-  - /debug/boxes?format=json&source=db (VMs)
+  - /debug/vms?format=json&source=db (VMs)
   - Prometheus exelet_vm_disk_used_bytes (disk usage per VM)
 """
 
@@ -29,7 +29,7 @@ def fetch_users():
 
 
 def fetch_boxes():
-    return fetch_json(f"{EXED_HOST}/debug/boxes?format=json&source=db")
+    return fetch_json(f"{EXED_HOST}/debug/vms?format=json&source=db")
 
 
 def fetch_disk_usage():

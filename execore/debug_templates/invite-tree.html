@@ -1,6 +1,8 @@
 <!doctype html>
-<html><head><title>Invite Tree</title></head><body>
-<p><a href="/debug">&larr; /debug</a></p>
+<html><head><title>Invite Tree</title>
+{{template "base-head"}}
+</head><body>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/invite-tree">invite-tree</a></p>
 {{define "node"}}
 <li>{{.Email}}{{if .TotalCount}} ({{.DirectCount}} - {{.TotalCount}}){{end}}
 {{- if .Children}}

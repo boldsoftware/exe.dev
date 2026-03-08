@@ -500,7 +500,7 @@ func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool
 // checkBoxesCleanedUp makes sure all the boxes that exed
 // started are shut down.
 func (ei *ExedInstance) checkBoxesCleanedUp(ctx context.Context, testRunID string) error {
-	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", ei.HTTPPort)
+	url := fmt.Sprintf("http://localhost:%d/debug/vms?format=json", ei.HTTPPort)
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to check boxes: %w", err)

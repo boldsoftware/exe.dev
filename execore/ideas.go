@@ -317,7 +317,7 @@ func (s *Server) handleDebugTemplateReview(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
-	tmpl, err := debug_templates.Parse()
+	tmpl, err := debug_templates.Parse(s.env)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return

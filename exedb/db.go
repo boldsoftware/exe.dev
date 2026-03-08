@@ -81,6 +81,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxesStmt, err = db.PrepareContext(ctx, countBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxes: %w", err)
 	}
+	if q.countBoxesByRegionAndStatusStmt, err = db.PrepareContext(ctx, countBoxesByRegionAndStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxesByRegionAndStatus: %w", err)
+	}
 	if q.countBoxesForUserStmt, err = db.PrepareContext(ctx, countBoxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesForUser: %w", err)
 	}
@@ -104,6 +107,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, countUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnusedInviteCodesForUser: %w", err)
+	}
+	if q.countUsersByRegionStmt, err = db.PrepareContext(ctx, countUsersByRegion); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUsersByRegion: %w", err)
 	}
 	if q.countUsersWithBoxesStmt, err = db.PrepareContext(ctx, countUsersWithBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsersWithBoxes: %w", err)
@@ -284,6 +290,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxAccessibleByTeamSudoerStmt, err = db.PrepareContext(ctx, getBoxAccessibleByTeamSudoer); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxAccessibleByTeamSudoer: %w", err)
+	}
+	if q.getBoxByContainerIDStmt, err = db.PrepareContext(ctx, getBoxByContainerID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByContainerID: %w", err)
 	}
 	if q.getBoxByIDStmt, err = db.PrepareContext(ctx, getBoxByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByID: %w", err)
@@ -569,6 +578,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserBillingStatusStmt, err = db.PrepareContext(ctx, getUserBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingStatus: %w", err)
+	}
+	if q.getUserByDiscordUsernameStmt, err = db.PrepareContext(ctx, getUserByDiscordUsername); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserByDiscordUsername: %w", err)
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
@@ -1126,6 +1138,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countBoxesStmt: %w", cerr)
 		}
 	}
+	if q.countBoxesByRegionAndStatusStmt != nil {
+		if cerr := q.countBoxesByRegionAndStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxesByRegionAndStatusStmt: %w", cerr)
+		}
+	}
 	if q.countBoxesForUserStmt != nil {
 		if cerr := q.countBoxesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxesForUserStmt: %w", cerr)
@@ -1164,6 +1181,11 @@ func (q *Queries) Close() error {
 	if q.countUnusedInviteCodesForUserStmt != nil {
 		if cerr := q.countUnusedInviteCodesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countUnusedInviteCodesForUserStmt: %w", cerr)
+		}
+	}
+	if q.countUsersByRegionStmt != nil {
+		if cerr := q.countUsersByRegionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUsersByRegionStmt: %w", cerr)
 		}
 	}
 	if q.countUsersWithBoxesStmt != nil {
@@ -1464,6 +1486,11 @@ func (q *Queries) Close() error {
 	if q.getBoxAccessibleByTeamSudoerStmt != nil {
 		if cerr := q.getBoxAccessibleByTeamSudoerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxAccessibleByTeamSudoerStmt: %w", cerr)
+		}
+	}
+	if q.getBoxByContainerIDStmt != nil {
+		if cerr := q.getBoxByContainerIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByContainerIDStmt: %w", cerr)
 		}
 	}
 	if q.getBoxByIDStmt != nil {
@@ -1939,6 +1966,11 @@ func (q *Queries) Close() error {
 	if q.getUserBillingStatusStmt != nil {
 		if cerr := q.getUserBillingStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingStatusStmt: %w", cerr)
+		}
+	}
+	if q.getUserByDiscordUsernameStmt != nil {
+		if cerr := q.getUserByDiscordUsernameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserByDiscordUsernameStmt: %w", cerr)
 		}
 	}
 	if q.getUserByEmailStmt != nil {
@@ -2759,6 +2791,7 @@ type Queries struct {
 	countBoxShareLinksStmt                        *sql.Stmt
 	countBoxSharesStmt                            *sql.Stmt
 	countBoxesStmt                                *sql.Stmt
+	countBoxesByRegionAndStatusStmt               *sql.Stmt
 	countBoxesForUserStmt                         *sql.Stmt
 	countDevUsersStmt                             *sql.Stmt
 	countEmailBouncesStmt                         *sql.Stmt
@@ -2767,6 +2800,7 @@ type Queries struct {
 	countTeamBoxesStmt                            *sql.Stmt
 	countUnallocatedInviteCodesByUserStmt         *sql.Stmt
 	countUnusedInviteCodesForUserStmt             *sql.Stmt
+	countUsersByRegionStmt                        *sql.Stmt
 	countUsersWithBoxesStmt                       *sql.Stmt
 	createBoxEmailCreditStmt                      *sql.Stmt
 	createBoxShareStmt                            *sql.Stmt
@@ -2827,6 +2861,7 @@ type Queries struct {
 	getAuthCookieInfoStmt                         *sql.Stmt
 	getAuthTokenInfoStmt                          *sql.Stmt
 	getBoxAccessibleByTeamSudoerStmt              *sql.Stmt
+	getBoxByContainerIDStmt                       *sql.Stmt
 	getBoxByIDStmt                                *sql.Stmt
 	getBoxByNameAndAllocStmt                      *sql.Stmt
 	getBoxByNameWithEmailReceiveEnabledStmt       *sql.Stmt
@@ -2922,6 +2957,7 @@ type Queries struct {
 	getUserAuthProviderStmt                       *sql.Stmt
 	getUserBillingExemptionStmt                   *sql.Stmt
 	getUserBillingStatusStmt                      *sql.Stmt
+	getUserByDiscordUsernameStmt                  *sql.Stmt
 	getUserByEmailStmt                            *sql.Stmt
 	getUserDefaultsStmt                           *sql.Stmt
 	getUserEmailCountForDateStmt                  *sql.Stmt
@@ -3099,6 +3135,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxShareLinksStmt:                        q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                            q.countBoxSharesStmt,
 		countBoxesStmt:                                q.countBoxesStmt,
+		countBoxesByRegionAndStatusStmt:               q.countBoxesByRegionAndStatusStmt,
 		countBoxesForUserStmt:                         q.countBoxesForUserStmt,
 		countDevUsersStmt:                             q.countDevUsersStmt,
 		countEmailBouncesStmt:                         q.countEmailBouncesStmt,
@@ -3107,6 +3144,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countTeamBoxesStmt:                            q.countTeamBoxesStmt,
 		countUnallocatedInviteCodesByUserStmt:         q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:             q.countUnusedInviteCodesForUserStmt,
+		countUsersByRegionStmt:                        q.countUsersByRegionStmt,
 		countUsersWithBoxesStmt:                       q.countUsersWithBoxesStmt,
 		createBoxEmailCreditStmt:                      q.createBoxEmailCreditStmt,
 		createBoxShareStmt:                            q.createBoxShareStmt,
@@ -3167,6 +3205,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthCookieInfoStmt:                         q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                          q.getAuthTokenInfoStmt,
 		getBoxAccessibleByTeamSudoerStmt:              q.getBoxAccessibleByTeamSudoerStmt,
+		getBoxByContainerIDStmt:                       q.getBoxByContainerIDStmt,
 		getBoxByIDStmt:                                q.getBoxByIDStmt,
 		getBoxByNameAndAllocStmt:                      q.getBoxByNameAndAllocStmt,
 		getBoxByNameWithEmailReceiveEnabledStmt:       q.getBoxByNameWithEmailReceiveEnabledStmt,
@@ -3262,6 +3301,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserAuthProviderStmt:                       q.getUserAuthProviderStmt,
 		getUserBillingExemptionStmt:                   q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                      q.getUserBillingStatusStmt,
+		getUserByDiscordUsernameStmt:                  q.getUserByDiscordUsernameStmt,
 		getUserByEmailStmt:                            q.getUserByEmailStmt,
 		getUserDefaultsStmt:                           q.getUserDefaultsStmt,
 		getUserEmailCountForDateStmt:                  q.getUserEmailCountForDateStmt,

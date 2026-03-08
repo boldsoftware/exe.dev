@@ -1,5 +1,6 @@
 <!doctype html>
 <html><head><title>Testimonials</title>
+{{template "base-head"}}
 <style>
 .testimonial { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
 .testimonial.approved { border-left: 4px solid #28a745; }
@@ -7,12 +8,10 @@
 .status { font-weight: bold; margin-bottom: 10px; }
 .status.approved { color: #28a745; }
 .status.unapproved { color: #dc3545; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <h1>Testimonials</h1>
-<p><a href="/debug">/debug</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/testimonials">testimonials</a></p>
 <p>Testimonials are stored in code (execore/testimonials.go). Edit that file to add or modify testimonials.</p>
 
 {{if not .Testimonials}}

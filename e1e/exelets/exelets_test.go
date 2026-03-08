@@ -261,7 +261,7 @@ func deleteBox(t *testing.T, boxName, keyFile string) {
 
 // boxHosts returns a mapping from exelet hosts to box names on that host.
 func boxHosts(t *testing.T) map[string][]string {
-	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", serverEnv.Exed.HTTPPort)
+	url := fmt.Sprintf("http://localhost:%d/debug/vms?format=json", serverEnv.Exed.HTTPPort)
 	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatal(err)

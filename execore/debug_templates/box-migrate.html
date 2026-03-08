@@ -1,29 +1,27 @@
 <!doctype html>
 <html><head><title>Migrate Box: {{.BoxName}}</title>
+{{template "base-head"}}
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; max-width: 600px; }
+body { max-width: 600px; }
 h1 { margin-bottom: 10px; }
 label { display: block; margin-top: 15px; font-weight: bold; }
 select, input[type="text"] { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
 button { margin-top: 20px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
 button[type="submit"] { background: #007bff; color: white; border: none; }
 button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
 #progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; }
 #progress.active { display: block; }
 #progress.error { background: #f8d7da; border-color: #f5c6cb; }
 #progress.success { background: #d4edda; border-color: #c3e6cb; }
-.warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 15px 0; }
 .warning strong { color: #856404; }
 </style>
 </head><body>
 <h1>Migrate Box</h1>
-<p><a href="/debug/boxes">&larr; Back to boxes</a></p>
+<p><a href="/debug/vms">&larr; Back to VMs</a></p>
 
 <div class="warning"><strong>Note:</strong> Running VMs use two-phase migration (minimal downtime). Stopped VMs are transferred directly. Live migration preserves process state.</div>
 
-<form id="migrateForm" method="post" action="/debug/boxes/migrate">
+<form id="migrateForm" method="post" action="/debug/vms/migrate">
 <p>Box: <strong>{{.BoxName}}</strong></p>
 <input type="hidden" name="box_name" value="{{.BoxName}}">
 
@@ -43,7 +41,7 @@ a:hover { text-decoration: underline; }
 
 <p>
 <button type="submit" id="submitBtn" disabled>Migrate (live)</button>
-<a href="/debug/boxes">Cancel</a>
+<a href="/debug/vms">Cancel</a>
 </p>
 </form>
 
@@ -98,8 +96,8 @@ document.getElementById('migrateForm').addEventListener('submit', function(e) {
                     if (match) {
                         // Add a clickable link instead of auto-redirecting
                         var link = document.createElement('a');
-                        link.href = '/debug/boxes/' + match[1];
-                        link.textContent = 'Go to box details \u2192';
+                        link.href = '/debug/vms/' + match[1];
+                        link.textContent = 'Go to VM details \u2192';
                         link.style.cssText = 'display:inline-block;margin-top:15px;padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:4px;';
                         progress.parentNode.insertBefore(link, progress.nextSibling);
                     }
