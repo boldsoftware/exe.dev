@@ -66,6 +66,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
+	mux.HandleFunc("POST /debug/user/cold-migrate-vm", s.handleDebugUserColdMigrateVM)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
@@ -4598,6 +4599,187 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	} else {
 		writeProgress("MIGRATION_ERROR")
 	}
+}
+
+// handleDebugUserColdMigrateVM cold-migrates a single box into the user's
+// configured region. This is the follow-up step after a bulk live migration
+// leaves some VMs behind (e.g. because they aren't live-migratable).
+func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	boxName := r.FormValue("box_name")
+	if userID == "" || boxName == "" {
+		http.Error(w, "user_id and box_name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Set up streaming response.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+	writeError := func(format string, args ...any) {
+		writeProgress("ERROR: "+format, args...)
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		writeError("failed to look up user: %v", err)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	writeProgress("User %s, target region: %s", user.Email, user.Region)
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{Name: boxName, CreatedByUserID: userID})
+	if err != nil {
+		writeError("box %q not found or does not belong to user %s: %v", boxName, userID, err)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	if box.ContainerID == nil {
+		writeError("box %q has no container_id", boxName)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+	containerID := *box.ContainerID
+
+	// Find a target exelet in the user's region.
+	var targetAddr string
+	var targetClient *exeletClient
+	for addr, ec := range s.exeletClients {
+		if ec.region.Code == user.Region && ec.up.Load() {
+			if targetClient == nil || ec.count.Load() < targetClient.count.Load() {
+				targetAddr = addr
+				targetClient = ec
+			}
+		}
+	}
+	if targetClient == nil {
+		writeError("no available exelet in region %s", user.Region)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	sourceClient := s.getExeletClient(box.Ctrhost)
+	if sourceClient == nil {
+		writeError("source exelet %q not available", box.Ctrhost)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	if sourceClient.region.Code == user.Region {
+		writeProgress("Box %s is already in region %s.", boxName, user.Region)
+		return
+	}
+
+	// Use a background context so migration completes even if the browser disconnects.
+	ctx = context.WithoutCancel(ctx)
+
+	writeProgress("Cold migrating %s from %s to %s...", boxName, box.Ctrhost, targetAddr)
+
+	// Check source VM state.
+	sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+	if err != nil {
+		writeError("failed to get instance state for %q: %v", boxName, err)
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+	wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
+
+	s.slog().InfoContext(ctx, "starting cold migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "wasRunning", wasRunning)
+
+	// Stop the VM if it's running.
+	if wasRunning {
+		writeProgress("Stopping VM on source exelet...")
+		if _, err := sourceClient.client.StopInstance(ctx, &computeapi.StopInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to stop VM: %v", err)
+			writeProgress("MIGRATION_ERROR")
+			return
+		}
+		writeProgress("VM stopped.")
+	}
+
+	restartSource := func(reason string) {
+		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, reason, wasRunning, false, writeProgress)
+	}
+
+	// Transfer disk (two-phase=false since VM is stopped).
+	writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
+	if err := s.migrateVM(ctx, sourceClient.client, targetClient.client, containerID, false, writeProgress); err != nil {
+		writeError("disk transfer failed: %v", err)
+		restartSource(err.Error())
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+	writeProgress("Disk transfer complete.")
+
+	// Start VM on target if it was running.
+	var sshPort *int64
+	dbStatus := "stopped"
+	if wasRunning {
+		writeProgress("Starting VM on target exelet...")
+		if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+			writeError("failed to start VM on target: %v", err)
+			restartSource(err.Error())
+			writeProgress("MIGRATION_ERROR")
+			return
+		}
+
+		instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance info from target: %v", err)
+			restartSource(err.Error())
+			writeProgress("MIGRATION_ERROR")
+			return
+		}
+		newSSHPort := int64(instance.Instance.SSHPort)
+		sshPort = &newSSHPort
+		dbStatus = "running"
+		writeProgress("VM started on target (SSH port: %d).", newSSHPort)
+	}
+
+	// Update database.
+	writeProgress("Updating database...")
+	if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
+		Ctrhost: targetAddr,
+		SSHPort: sshPort,
+		Status:  dbStatus,
+		ID:      box.ID,
+	}); err != nil {
+		writeError("failed to update database: %v", err)
+		s.slog().ErrorContext(ctx, "failed to update database after cold migration", "box", boxName, "error", err)
+		restartSource(err.Error())
+		writeProgress("MIGRATION_ERROR")
+		return
+	}
+
+	if wasRunning {
+		go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+	}
+
+	// Clean up source.
+	writeProgress("Deleting source instance on %s...", box.Ctrhost)
+	if _, err := sourceClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: containerID}); err != nil {
+		writeProgress("WARNING: failed to delete source instance: %v", err)
+		s.slog().WarnContext(ctx, "failed to delete source instance after cold migration",
+			"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
+	} else {
+		writeProgress("Source instance deleted.")
+	}
+
+	writeProgress("Box %s cold-migrated successfully.", boxName)
+	s.slog().InfoContext(ctx, "box cold-migrated", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+	writeProgress("MIGRATION_SUCCESS")
 }
 
 // handleDebugBounces displays the email bounces list.

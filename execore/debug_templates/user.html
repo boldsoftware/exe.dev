@@ -57,14 +57,29 @@ a:hover { text-decoration: underline; }
 <h2>Migrate VMs to Region</h2>
 <p style="font-size:13px;color:#666;">Live-migrates all boxes not already in the user's region ({{.Region}}) to an exelet there.</p>
 {{if .BoxesOutsideRegion}}
-<p>{{len .BoxesOutsideRegion}} box(es) outside <b>{{.Region}}</b>: {{range $i, $b := .BoxesOutsideRegion}}{{if $i}}, {{end}}{{$b}}{{end}}</p>
+<p>{{len .BoxesOutsideRegion}} box(es) outside <b>{{.Region}}</b>.</p>
 <form id="migrateVMsForm">
 <input type="hidden" name="user_id" value="{{.UserID}}">
-<p id="migrateVMsConfirmPrompt">Type "{{len .BoxesOutsideRegion}}" to confirm migrating {{len .BoxesOutsideRegion}} box(es):</p>
+<p id="migrateVMsConfirmPrompt">Type "{{len .BoxesOutsideRegion}}" to confirm <b>live-migrating</b> {{len .BoxesOutsideRegion}} box(es):</p>
 <input type="text" id="migrateVMsConfirm" name="confirm" autocomplete="off" placeholder="{{len .BoxesOutsideRegion}}" style="padding: 8px; font-family: inherit; margin-right: 8px;">
-<button id="migrateVMsBtn" type="submit" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Migrate VMs</button>
+<button id="migrateVMsBtn" type="submit" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Live Migrate All</button>
 </form>
 <pre id="migrateVMsProgress" style="margin-top:10px;padding:15px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:400px;overflow-y:auto;display:none;"></pre>
+<h3 style="margin-top:20px;">Cold Migrate Individual VMs</h3>
+<p style="font-size:13px;color:#666;">For VMs that failed live migration. Stops the VM, transfers disk, restarts on target.</p>
+<table class="info">
+<thead><tr><th>Box</th><th style="width:auto;">Action</th></tr></thead>
+<tbody>
+{{range .BoxesOutsideRegion}}
+<tr>
+<td><a href="/debug/boxes/{{.}}">{{.}}</a></td>
+<td>
+<button class="coldMigrateBtn" data-box="{{.}}" style="padding:4px 10px;background:#6c757d;color:white;border:none;cursor:pointer;font-size:12px;">Cold Migrate</button>
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
 <script>
 (function() {
     var expected = '{{len .BoxesOutsideRegion}}';
@@ -88,6 +103,11 @@ a:hover { text-decoration: underline; }
             method: 'POST',
             body: new URLSearchParams({user_id: '{{.UserID}}', confirm: confirmInput.value})
         }).then(function(response) {
+            if (!response.ok) {
+                progress.textContent += '\nHTTP error: ' + response.status;
+                btn.textContent = 'Failed';
+                return;
+            }
             var reader = response.body.getReader();
             var decoder = new TextDecoder();
             function read() {
@@ -107,6 +127,60 @@ a:hover { text-decoration: underline; }
         }).catch(function(err) {
             progress.textContent += '\nError: ' + err;
             btn.textContent = 'Failed';
+        });
+    });
+
+    // Per-box cold migrate buttons.
+    document.querySelectorAll('.coldMigrateBtn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var boxName = this.getAttribute('data-box');
+            if (!confirm('Cold migrate ' + boxName + '? This will stop the VM and restart it on the target.')) return;
+            var row = this.closest('tr');
+            this.disabled = true;
+            this.textContent = 'Migrating...';
+
+            var progress = document.getElementById('migrateVMsProgress');
+            progress.style.display = 'block';
+            progress.textContent += '=== Cold migrating ' + boxName + ' ===\n';
+
+            var hadError = false;
+            fetch('/debug/user/cold-migrate-vm', {
+                method: 'POST',
+                body: new URLSearchParams({user_id: '{{.UserID}}', box_name: boxName})
+            }).then(function(response) {
+                if (!response.ok) {
+                    progress.textContent += '\nHTTP error: ' + response.status;
+                    btn.textContent = 'Failed';
+                    btn.disabled = false;
+                    return;
+                }
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                function read() {
+                    reader.read().then(function(result) {
+                        if (result.done) {
+                            if (hadError) {
+                                btn.textContent = 'Failed';
+                                btn.disabled = false;
+                            } else {
+                                btn.textContent = 'Done';
+                                row.style.opacity = '0.5';
+                            }
+                            return;
+                        }
+                        var text = decoder.decode(result.value, {stream: true});
+                        if (text.indexOf('ERROR:') !== -1) hadError = true;
+                        progress.textContent += text;
+                        progress.scrollTop = progress.scrollHeight;
+                        read();
+                    });
+                }
+                read();
+            }).catch(function(err) {
+                progress.textContent += '\nError: ' + err;
+                btn.textContent = 'Failed';
+                btn.disabled = false;
+            });
         });
     });
 })();
