@@ -23,6 +23,7 @@ Example:
   $0 exe-prod-01 203.0.113.42
 
 Required environment variables:
+  ROOT_PASSWORD             Password for the root account
   TS_OAUTH_CLIENT_ID        Tailscale OAuth client ID
   TS_OAUTH_CLIENT_SECRET    Tailscale OAuth client secret
 
@@ -48,6 +49,12 @@ fi
 
 HOSTNAME="$1"
 PUBLIC_IP="$2"
+
+if [ -z "${ROOT_PASSWORD:-}" ]; then
+    echo "ERROR: ROOT_PASSWORD environment variable not set" >&2
+    echo "Please set it:  export ROOT_PASSWORD=<password-for-root-account>" >&2
+    exit 1
+fi
 
 if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
     echo "ERROR: Tailscale OAuth credentials not set" >&2
@@ -527,6 +534,12 @@ done
 echo ""
 echo "=== Setting up Tailscale ==="
 setup_tailscale "ubuntu@$PUBLIC_IP" "$HOSTNAME"
+
+# Set root password
+echo ""
+echo "=== Setting root password ==="
+ssh $DIRECT_SSH_OPTS "ubuntu@$PUBLIC_IP" "echo 'root:$ROOT_PASSWORD' | sudo chpasswd"
+echo "Root password set"
 
 # Wait for Tailscale SSH to be available
 echo ""

@@ -260,6 +260,13 @@ AMI_ID=$(aws ec2 describe-images \
 
 echo "Using AMI: ${AMI_ID}"
 
+# Check for root password
+if [ -z "${ROOT_PASSWORD:-}" ]; then
+    echo "ERROR: ROOT_PASSWORD environment variable not set"
+    echo "Please set it:  export ROOT_PASSWORD=<password-for-root-account>"
+    exit 1
+fi
+
 # Check for Tailscale OAuth credentials in environment variables
 if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
     echo "ERROR: Tailscale OAuth credentials not set"
@@ -284,6 +291,11 @@ users:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEetwKXuTe+byx+VJTOn3ZxjVnpMe/82YroL111tTwK ubuntu@exed-01
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
+
+chpasswd:
+  list:
+    - root:${ROOT_PASSWORD}
+  expire: false
 
 hostname: ${MACHINE_NAME}
 
