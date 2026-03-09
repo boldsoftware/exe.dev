@@ -33,6 +33,7 @@ Production loop:
 import argparse
 import datetime
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -235,10 +236,13 @@ def generate_brief(date, commits, history, verbose=False):
 def post_to_slack(brief):
     from client import SlackClient, ensure_token
 
+    hostname = socket.gethostname()
+    footer = f"\n\n_posted from `{hostname}` · <https://github.com/{GITHUB_REPO}/blob/main/scripts/daily_brief.py|scripts/daily_brief.py>_"
+
     token = ensure_token()
     slack = SlackClient(token)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
-    slack.post_message(channel_id, brief, mrkdwn=True)
+    slack.post_message(channel_id, brief + footer, mrkdwn=True)
     log(f"posted brief to #{SLACK_CHANNEL}")
 
 
