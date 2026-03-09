@@ -295,3 +295,66 @@ func TestRename(t *testing.T) {
 	cleanupBox(t, keyFile, box1)
 	cleanupBox(t, keyFile, box2)
 }
+
+// TestRenameViaWebCmd tests the dashboard rename flow via the /cmd endpoint
+// with structured args, verifying the commandPrefix path works end-to-end.
+func TestRenameViaWebCmd(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, cookies, keyFile, _ := registerForExeDev(t)
+	boxName := newBox(t, pty)
+	pty.Disconnect()
+
+	waitForSSH(t, boxName, keyFile)
+
+	client := newClientWithCookies(t, cookies)
+	cmdURL := fmt.Sprintf("http://localhost:%d/cmd", Env.HTTPPort())
+
+	type cmdResult struct {
+		Success bool   `json:"success"`
+		Output  string `json:"output"`
+		Error   string `json:"error"`
+	}
+	postCmd := func(command string, args []string) cmdResult {
+		t.Helper()
+		payload := struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		}{Command: command, Args: args}
+		b, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("failed to marshal payload: %v", err)
+		}
+		resp, err := client.Post(cmdURL, "application/json", strings.NewReader(string(b)))
+		if err != nil {
+			t.Fatalf("POST /cmd failed: %v", err)
+		}
+		defer resp.Body.Close()
+		var result cmdResult
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode /cmd response: %v", err)
+		}
+		return result
+	}
+
+	// Rename the VM via the /cmd endpoint — this is the dashboard's
+	// commandPrefix path: command="rename", args=[oldName, newName].
+	newName := "web-renamed-box"
+	result := postCmd("rename", []string{boxName, newName})
+	if !result.Success {
+		t.Fatalf("rename via /cmd failed: %s / %s", result.Output, result.Error)
+	}
+
+	// Verify the rename took effect by listing VMs via SSH.
+	repl := sshToExeDev(t, keyFile)
+	repl.SendLine("ls")
+	repl.Reject(boxName)
+	repl.Want(newName)
+	repl.WantPrompt()
+	repl.Disconnect()
+
+	cleanupBox(t, keyFile, newName)
+}

@@ -11,12 +11,12 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"github.com/anmitsu/go-shlex"
 )
 
 // allowedCommands defines which commands can be run via the web UI.
 // The key is the command prefix (first 1-2 words), value is true if allowed.
 var allowedCommands = map[string]bool{
+	"rename":            true,
 	"restart":           true,
 	"rm":                true,
 	"share show":        true,
@@ -67,9 +67,12 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request
+	// Parse request. "command" is the command name (e.g. "ssh-key rename"),
+	// "args" are the arguments passed directly to the handler without shell
+	// parsing.
 	var req struct {
-		Command string `json:"command"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -104,16 +107,18 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse command using shell lexer to handle quotes properly
-	cmdParts, err := shlex.Split(cmd, true)
-	if err != nil {
+	// Build the command parts: split the command name (e.g. "ssh-key rename")
+	// and append the pre-split args directly. This avoids shell-parsing user
+	// input, which was the source of the spaces-in-key-names bug.
+	if req.Args == nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"success": false,
-			"error":   "Invalid command syntax",
+			"error":   "args field is required",
 		})
 		return
 	}
+	cmdParts := append(strings.Fields(cmd), req.Args...)
 
 	// Create SSH server and command context
 	ss := NewSSHServer(s)

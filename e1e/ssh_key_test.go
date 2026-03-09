@@ -4,11 +4,13 @@ package e1e
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"exe.dev/e1e/testinfra"
+	"github.com/playwright-community/playwright-go"
 )
 
 type sshKeyListOutput struct {
@@ -1182,6 +1184,359 @@ func TestSSHKeyRenameValidation(t *testing.T) {
 	pty.Want("Deleted")
 	pty.WantPrompt()
 	pty.Disconnect()
+}
+
+// TestSSHKeyRenameViaWebCmd tests renaming SSH keys via the /cmd HTTP endpoint,
+// which is how the web UI performs renames. This exercises the full path:
+// JS constructs {command, args} → POST /cmd → handler.
+//
+// The existing CLI tests (TestSSHKeyRename, TestSSHKeyRenameValidation) only
+// exercise the SSH path where arguments are already pre-split. The /cmd path
+// accepts structured args to avoid shell-quoting bugs.
+func TestSSHKeyRenameViaWebCmd(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, cookies, keyFile, _ := registerForExeDev(t)
+
+	// Add a key with a known name via SSH.
+	_, testPubKey, err := testinfra.GenSSHKeyWithComment(t.TempDir(), "web-rename-test")
+	if err != nil {
+		t.Fatalf("failed to generate test SSH key: %v", err)
+	}
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
+
+	// Clean up by all possible intermediate names so a mid-subtest failure
+	// doesn't leak a key under an unexpected name.
+	t.Cleanup(func() {
+		for _, name := range []string{"web-rename-test", "simple-name", "my-new-key", "dashed-name"} {
+			Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "remove", name)
+		}
+	})
+
+	client := newClientWithCookies(t, cookies)
+	cmdURL := fmt.Sprintf("http://localhost:%d/cmd", Env.HTTPPort())
+
+	type cmdResult struct {
+		Success bool   `json:"success"`
+		Output  string `json:"output"`
+		Error   string `json:"error"`
+	}
+	postCmd := func(command string, args []string) cmdResult {
+		t.Helper()
+		payload := struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		}{Command: command, Args: args}
+		b, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("failed to marshal payload: %v", err)
+		}
+		resp, err := client.Post(cmdURL, "application/json", strings.NewReader(string(b)))
+		if err != nil {
+			t.Fatalf("POST /cmd failed: %v", err)
+		}
+		defer resp.Body.Close()
+		var result cmdResult
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode /cmd response: %v", err)
+		}
+		return result
+	}
+
+	// Subtests share key state — do not parallelize.
+	t.Run("simple_name", func(t *testing.T) {
+		result := postCmd("ssh-key rename", []string{"web-rename-test", "simple-name"})
+		if !result.Success {
+			t.Fatalf("expected success, got error: %s", result.Output)
+		}
+		// Rename back for next subtest.
+		result = postCmd("ssh-key rename", []string{"simple-name", "web-rename-test"})
+		if !result.Success {
+			t.Fatalf("rename back failed: %s", result.Output)
+		}
+	})
+
+	// Subtest: rename with spaces in the new name — this was the bug Chad hit.
+	// Args are passed directly to the handler, so spaces are preserved.
+	t.Run("spaces_in_new_name", func(t *testing.T) {
+		result := postCmd("ssh-key rename", []string{"web-rename-test", "my new key"})
+		if !result.Success {
+			t.Fatalf("rename with spaces in new name should succeed: %s", result.Output)
+		}
+
+		// SanitizeComment turns "my new key" into "my-new-key".
+		out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
+		var found bool
+		for _, key := range out.SSHKeys {
+			if key.Name == "my-new-key" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected key named 'my-new-key' after rename, got: %+v", out.SSHKeys)
+		}
+
+		// Rename back.
+		result = postCmd("ssh-key rename", []string{"my-new-key", "web-rename-test"})
+		if !result.Success {
+			t.Fatalf("rename back failed: %s", result.Output)
+		}
+	})
+
+	// Subtest: old name with spaces. The arg is passed intact to the handler,
+	// which looks up the key by name. It won't find one (sanitized names don't
+	// have spaces), but the command parses correctly — no "usage" error.
+	t.Run("old_name_with_spaces", func(t *testing.T) {
+		result := postCmd("ssh-key rename", []string{"web-rename-test", "dashed-name"})
+		if !result.Success {
+			t.Fatalf("setup rename failed: %s", result.Output)
+		}
+
+		result = postCmd("ssh-key rename", []string{"dashed name", "new-name"})
+		if result.Success {
+			t.Fatal("should not succeed — no key named 'dashed name' exists")
+		}
+		if strings.Contains(result.Output, "usage") {
+			t.Errorf("should get 'no matching key' error, not a usage error: %s", result.Output)
+		}
+		if !strings.Contains(result.Output, "no matching SSH key") {
+			t.Errorf("expected 'no matching SSH key' error, got: %s", result.Output)
+		}
+
+		// Rename back.
+		result = postCmd("ssh-key rename", []string{"dashed-name", "web-rename-test"})
+		if !result.Success {
+			t.Fatalf("rename back failed: %s", result.Output)
+		}
+	})
+
+	// Subtest: missing args field is rejected.
+	t.Run("missing_args_rejected", func(t *testing.T) {
+		body := `{"command":"ssh-key rename"}`
+		resp, err := client.Post(cmdURL, "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST /cmd failed: %v", err)
+		}
+		defer resp.Body.Close()
+		var result cmdResult
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if result.Success {
+			t.Fatal("request without args field should be rejected")
+		}
+	})
+
+}
+
+// TestSSHKeyWebCmdArgSplitting tests ssh-key add and remove via /cmd with
+// structured args, ensuring the public key (which contains spaces) is passed
+// intact as a single argument.
+func TestSSHKeyWebCmdArgSplitting(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, cookies, keyFile, _ := registerForExeDev(t)
+
+	// Generate a key with a comment that has spaces — simulates:
+	// ssh-keygen -C "my laptop key"
+	_, testPubKey, err := testinfra.GenSSHKeyWithComment(t.TempDir(), "my laptop key")
+	if err != nil {
+		t.Fatalf("failed to generate test SSH key: %v", err)
+	}
+	pty.Disconnect()
+
+	client := newClientWithCookies(t, cookies)
+	cmdURL := fmt.Sprintf("http://localhost:%d/cmd", Env.HTTPPort())
+
+	type cmdResult struct {
+		Success bool   `json:"success"`
+		Output  string `json:"output"`
+		Error   string `json:"error"`
+	}
+	postCmd := func(command string, args []string) cmdResult {
+		t.Helper()
+		payload := struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		}{Command: command, Args: args}
+		b, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("failed to marshal payload: %v", err)
+		}
+		resp, err := client.Post(cmdURL, "application/json", strings.NewReader(string(b)))
+		if err != nil {
+			t.Fatalf("POST /cmd failed: %v", err)
+		}
+		defer resp.Body.Close()
+		var result cmdResult
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode /cmd response: %v", err)
+		}
+		return result
+	}
+
+	// ssh-key add: the public key (e.g. "ssh-ed25519 AAAA... my laptop key")
+	// is passed as a single arg, so spaces in the comment are preserved.
+	t.Run("add", func(t *testing.T) {
+		result := postCmd("ssh-key add", []string{testPubKey})
+		if !result.Success {
+			t.Fatalf("adding key via /cmd failed: %s / %s", result.Output, result.Error)
+		}
+
+		out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
+		var found bool
+		for _, key := range out.SSHKeys {
+			if key.Name == "my-laptop-key" { // SanitizeComment: spaces → dashes
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected key named 'my-laptop-key', got: %+v", out.SSHKeys)
+		}
+	})
+
+	// ssh-key remove: the full public key string is passed as a single arg.
+	t.Run("remove", func(t *testing.T) {
+		result := postCmd("ssh-key remove", []string{testPubKey})
+		if !result.Success {
+			t.Fatalf("removing key via /cmd failed: %s / %s", result.Output, result.Error)
+		}
+
+		out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
+		for _, key := range out.SSHKeys {
+			if key.Name == "my-laptop-key" {
+				t.Error("key should have been removed")
+			}
+		}
+	})
+}
+
+// TestSSHKeyRenameViaPlaywright tests the full browser flow: open profile page,
+// click Rename on a key, type a name with spaces, submit, and verify the result.
+// This catches bugs in the JavaScript command construction, not just the backend.
+func TestSSHKeyRenameViaPlaywright(t *testing.T) {
+	skipIfNoPlaywright(t)
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, cookies, keyFile, _ := registerForExeDev(t)
+
+	// Add a key with a known name.
+	_, testPubKey, err := testinfra.GenSSHKeyWithComment(t.TempDir(), "pw-rename-test")
+	if err != nil {
+		t.Fatalf("failed to generate test SSH key: %v", err)
+	}
+	pty.SendLine("ssh-key add '" + testPubKey + "'")
+	pty.Want("Added SSH key")
+	pty.WantPrompt()
+	pty.Disconnect()
+
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
+	pwCookies := testinfra.HTTPCookiesToPlaywright(baseURL, cookies)
+	page, err := testinfra.NewPageWithCookies(baseURL, pwCookies)
+	if err != nil {
+		t.Fatalf("failed to create playwright page: %v", err)
+	}
+	defer page.Close()
+
+	// Navigate to the user profile page (key management).
+	_, err = page.Goto(baseURL+"/user", playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateNetworkidle,
+	})
+	if err != nil {
+		t.Fatalf("failed to navigate to /user: %v", err)
+	}
+
+	// Find the Rename button for our specific key and click it.
+	renameBtn := page.Locator(fmt.Sprintf("button[data-ssh-key-name=%q]", "pw-rename-test"))
+	if err := renameBtn.Click(); err != nil {
+		t.Fatalf("failed to click Rename button: %v", err)
+	}
+
+	// The modal should now be visible with the old name pre-filled.
+	nameInput := page.Locator("#ssh-key-new-name")
+	err = nameInput.WaitFor(playwright.LocatorWaitForOptions{
+		State: playwright.WaitForSelectorStateVisible,
+	})
+	if err != nil {
+		t.Fatalf("rename modal input not visible: %v", err)
+	}
+
+	// Clear the input and type a name WITH SPACES — this is the user's action that triggers the bug.
+	if err := nameInput.Clear(); err != nil {
+		t.Fatalf("failed to clear input: %v", err)
+	}
+	if err := nameInput.Fill("my laptop key"); err != nil {
+		t.Fatalf("failed to fill input: %v", err)
+	}
+
+	// Click the Rename button in the modal.
+	submitBtn := page.Locator("#rename-ssh-key-btn")
+	if err := submitBtn.Click(); err != nil {
+		t.Fatalf("failed to click submit: %v", err)
+	}
+
+	// Wait for the result — either success or error message.
+	// Give it a moment for the fetch to complete.
+	successDiv := page.Locator("#rename-ssh-key-success")
+	errorDiv := page.Locator("#rename-ssh-key-error")
+
+	// Wait up to 5 seconds for either success or error to appear.
+	err = page.Locator("#rename-ssh-key-success:visible, #rename-ssh-key-error:visible").First().WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(5000),
+	})
+	if err != nil {
+		t.Fatalf("neither success nor error appeared after rename: %v", err)
+	}
+
+	// Check what happened.
+	errorVisible, _ := errorDiv.IsVisible()
+	successVisible, _ := successDiv.IsVisible()
+
+	if errorVisible {
+		errorText, _ := errorDiv.TextContent()
+		t.Errorf("rename via browser showed error: %q (this is the bug — spaces in the name caused a command parsing failure)", errorText)
+	}
+	if !successVisible {
+		t.Error("expected success message after rename")
+	}
+
+	// If it worked (i.e., after the fix), verify the name was stored correctly.
+	// SanitizeComment turns "my laptop key" into "my-laptop-key".
+	if successVisible {
+		out := runParseExeDevJSON[sshKeyListOutput](t, keyFile, "ssh-key", "list", "--json")
+		var found bool
+		for _, key := range out.SSHKeys {
+			if key.Name == "my-laptop-key" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected key named 'my-laptop-key' after browser rename, got: %+v", out.SSHKeys)
+		}
+	}
+
+	// Clean up.
+	out, cleanupErr := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "remove", "--json", "pw-rename-test")
+	if cleanupErr != nil {
+		// Try the sanitized name in case rename succeeded.
+		out, cleanupErr = Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ssh-key", "remove", "--json", "my-laptop-key")
+		if cleanupErr != nil {
+			t.Logf("cleanup remove failed: %v\n%s", cleanupErr, out)
+		}
+	}
 }
 
 // TestWhoamiShowsKeyNames tests that whoami shows key names.
