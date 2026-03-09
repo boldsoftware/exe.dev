@@ -38,6 +38,7 @@ type TransportCache struct {
 	sf         singleflight.Group[transportKey, *http.Transport]
 	ttl        time.Duration
 	done       chan struct{}
+	closeOnce  sync.Once
 }
 
 // NewTransportCache returns a ready-to-use TransportCache.
@@ -98,12 +99,15 @@ func (tc *TransportCache) GetOrCreate(key transportKey, create func() *http.Tran
 }
 
 // Close stops the eviction goroutine and closes all cached transports.
+// It is safe to call Close multiple times; only the first call has any effect.
 func (tc *TransportCache) Close() {
-	close(tc.done)
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	for _, ct := range tc.transports {
-		ct.t.CloseIdleConnections()
-	}
-	clear(tc.transports)
+	tc.closeOnce.Do(func() {
+		close(tc.done)
+		tc.mu.Lock()
+		defer tc.mu.Unlock()
+		for _, ct := range tc.transports {
+			ct.t.CloseIdleConnections()
+		}
+		clear(tc.transports)
+	})
 }
