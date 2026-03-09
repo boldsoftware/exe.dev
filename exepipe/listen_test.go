@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"exe.dev/exepipe/client"
+	"exe.dev/tslog"
 )
 
 func TestListen(t *testing.T) {
@@ -58,7 +59,7 @@ func TestListen(t *testing.T) {
 	}
 	defer vmListener.Close()
 
-	cli, err := client.NewClient(t.Context(), addr.String())
+	cli, err := client.NewClient(t.Context(), addr.String(), tslog.Slogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}

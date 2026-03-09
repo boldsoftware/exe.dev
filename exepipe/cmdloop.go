@@ -88,8 +88,21 @@ func (cl *cmdLoop) commandLoop(ctx context.Context, uc *net.UnixConn) {
 		}
 
 		err = cmds.Dispatch(ctx, cl.pipeInstance.lg, actions, buf[:n], oob[:oobn])
+
+		ack := ""
 		if err != nil {
 			cl.pipeInstance.lg.ErrorContext(ctx, "exepipe action failure", "action", string(buf[:n]), "oob", string(oob[:oobn]), "error", err)
+			ack = err.Error()
+		}
+
+		data, err := cmds.MarshalResponse(ctx, cl.pipeInstance.lg, ack)
+		if err != nil {
+			cl.pipeInstance.lg.ErrorContext(ctx, "exepipe response marshaling failed", "ack", ack, "error", err)
+		}
+
+		n, oobn, err = uc.WriteMsgUnix(data, nil, nil)
+		if err != nil || n != len(data) || oobn != 0 {
+			cl.pipeInstance.lg.ErrorContext(ctx, "exepipe unix socket write failure", "tried", len(data), "wrote", n, "oobn", oobn, "error", err)
 		}
 	}
 }

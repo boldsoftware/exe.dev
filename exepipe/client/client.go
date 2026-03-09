@@ -3,8 +3,11 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
+	"sync"
 
 	"exe.dev/exepipe/internal/cmds"
 )
@@ -13,10 +16,12 @@ import (
 type Client struct {
 	addr *net.UnixAddr
 	uc   *net.UnixConn
+	lg   *slog.Logger
+	mu   sync.Mutex
 }
 
 // NewClient opens a client talking to exepipe at the given address.
-func NewClient(ctx context.Context, addr string) (*Client, error) {
+func NewClient(ctx context.Context, addr string, lg *slog.Logger) (*Client, error) {
 	unixAddr := &net.UnixAddr{
 		Name: addr,
 		Net:  "unixpacket",
@@ -29,6 +34,7 @@ func NewClient(ctx context.Context, addr string) (*Client, error) {
 	c := &Client{
 		addr: unixAddr,
 		uc:   uc,
+		lg:   lg,
 	}
 	return c, nil
 }
@@ -46,16 +52,11 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 		return err
 	}
 
-	n, oobn, err := c.uc.WriteMsgUnix(data, oob, nil)
-	if err != nil {
-		return fmt.Errorf("exepipe Client.Copy error sending to exepipe: %w", err)
+	if err = c.sendCmd(ctx, data, oob); err != nil {
+		return err
 	}
 
-	if n != len(data) || oobn != len(oob) {
-		return fmt.Errorf("exepipe Client.Copy short: wrote %d, %d out of %d, %d", n, oobn, len(data), len(oob))
-	}
-
-	// At this point the file descriptors have been handed to the kernel
+	// At this point the file descriptors have been handed to exepipe
 	// and it is safe to close the network connections.
 	f1.Close()
 	f2.Close()
@@ -79,18 +80,45 @@ func (c *Client) Listen(ctx context.Context, listener net.Listener, dest, typ st
 		return err
 	}
 
-	n, oobn, err := c.uc.WriteMsgUnix(data, oob, nil)
-	if err != nil {
-		return fmt.Errorf("exepipe Client.Listen error sending to exepipe: %w", err)
+	if err = c.sendCmd(ctx, data, oob); err != nil {
+		return err
 	}
 
-	if n != len(data) || oobn != len(oob) {
-		return fmt.Errorf("exepipe Client.Listen short: wrote %d, %d out of %d, %d", n, oobn, len(data), len(oob))
-	}
-
-	// At this point the file descriptor has been handed to the kernel
+	// At this point the file descriptor has been handed to exepipe
 	// and it is safe to close the network connections.
 	listener.Close()
 
+	return nil
+}
+
+// sendCmd sends a comment to exepipe and waits for an ack.
+func (c *Client) sendCmd(ctx context.Context, data, oob []byte) error {
+	// Lock so that concurrent calls don't mix up responses.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	n, oobn, err := c.uc.WriteMsgUnix(data, oob, nil)
+	if err != nil {
+		return fmt.Errorf("error sending to exepipe: %w", err)
+	}
+
+	if n != len(data) || oobn != len(oob) {
+		return fmt.Errorf("exepipe client short write: wrote %d, %d out of %d, %d", n, oobn, len(data), len(oob))
+	}
+
+	var rdata, roob [512]byte
+	n, oobn, _, _, err = c.uc.ReadMsgUnix(rdata[:], roob[:])
+	if err != nil {
+		return fmt.Errorf("error receiving from exepipe: %w", err)
+	}
+
+	ack, err := cmds.UnmarshalResponse(ctx, c.lg, rdata[:n], roob[:oobn])
+	if err != nil {
+		return err
+	}
+
+	if len(ack) > 0 {
+		return errors.New(ack)
+	}
 	return nil
 }

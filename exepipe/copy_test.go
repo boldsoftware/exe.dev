@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"exe.dev/exepipe/client"
+	"exe.dev/tslog"
 )
 
 func TestCopy(t *testing.T) {
@@ -68,7 +69,7 @@ func TestCopy(t *testing.T) {
 
 	// The sockets are set up. Now ask exepipe to copy.
 
-	cli, err := client.NewClient(t.Context(), addr.String())
+	cli, err := client.NewClient(t.Context(), addr.String(), tslog.Slogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}

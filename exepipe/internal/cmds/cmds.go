@@ -20,6 +20,11 @@ type cmd struct {
 	Type   string `json:"type"`           // connection type
 }
 
+// response is a response to a copy or listen command.
+type response struct {
+	Ack string `json:"ack"` // acknowledgement
+}
+
 // CopyCmd returns a marshalled command to copy
 // data from one network connection to another
 // The marshalled command includes both regular data and oob data,
@@ -159,4 +164,37 @@ func Dispatch(ctx context.Context, lg *slog.Logger, actions Actions, data, oob [
 	}
 
 	return action(ctx, fds, c.Arg, c.Type)
+}
+
+// MarshalResponse returns a marshalled response to a command.
+// The empty string indicates succeed.
+func MarshalResponse(ctx context.Context, lg *slog.Logger, ack string) ([]byte, error) {
+	r := response{
+		Ack: ack,
+	}
+
+	data, err := json.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("exepipe MarshalResponse: JSON marshaling failed: %v", err)
+	}
+
+	return data, err
+}
+
+// UnmarshalResponse parses the response from a command.
+// This response is the empty string on succeed,
+// an error message on failure.
+func UnmarshalResponse(ctx context.Context, lg *slog.Logger, data, oob []byte) (string, error) {
+	if len(oob) > 0 {
+		lg.ErrorContext(ctx, "unexpected oob in exepipe response", "data", string(data), "oob", string(oob))
+		return "", errors.New("unexpected oob in exepipe response")
+	}
+
+	var r response
+	if err := json.Unmarshal(data, &r); err != nil {
+		lg.ErrorContext(ctx, "failed to unmarshal exepipe response", "data", string(data), "error", err)
+		return "", err
+	}
+
+	return r.Ack, nil
 }
