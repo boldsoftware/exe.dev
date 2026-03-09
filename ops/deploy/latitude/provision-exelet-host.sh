@@ -433,11 +433,38 @@ provision_server() {
     copy_to_remote "$STANDALONE_DIR/create-exelet-standalone.sh" "/tmp/create-exelet-standalone.sh" "ubuntu@$host"
     ssh $SSH_OPTS "ubuntu@$host" "sudo /tmp/create-exelet-standalone.sh --skip-zfs && rm -f /tmp/create-exelet-standalone.sh"
 
-    # Run setup-iptables-exelet.sh
+    # Install and enable iptables firewall rules
     echo ""
-    echo "=== Running setup-iptables-exelet.sh ==="
+    echo "=== Installing iptables firewall service ==="
     copy_to_remote "$STANDALONE_DIR/setup-iptables-exelet.sh" "/tmp/setup-iptables-exelet.sh" "ubuntu@$host"
-    ssh $SSH_OPTS "ubuntu@$host" "sudo /tmp/setup-iptables-exelet.sh && rm -f /tmp/setup-iptables-exelet.sh"
+    copy_to_remote "$STANDALONE_DIR/exelet-iptables.service" "/tmp/exelet-iptables.service" "ubuntu@$host"
+    ssh $SSH_OPTS "ubuntu@$host" "sudo install -m 0755 /tmp/setup-iptables-exelet.sh /usr/local/bin/setup-iptables-exelet.sh && sudo install -m 0644 /tmp/exelet-iptables.service /etc/systemd/system/exelet-iptables.service && sudo systemctl daemon-reload && sudo systemctl enable --now exelet-iptables.service && rm -f /tmp/setup-iptables-exelet.sh /tmp/exelet-iptables.service"
+
+    # Disable IPv6
+    echo ""
+    echo "=== Disabling IPv6 ==="
+    ssh $SSH_OPTS "ubuntu@$host" 'bash -s' <<'DISABLE_IPV6'
+set -euo pipefail
+
+# Disable IPv6 immediately via sysctl
+cat <<EOF | sudo tee /etc/sysctl.d/99-disable-ipv6.conf > /dev/null
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+sudo sysctl --system > /dev/null
+
+# Persist via GRUB kernel command line so IPv6 is disabled early at boot
+GRUB_FILE="/etc/default/grub"
+if grep -q 'ipv6.disable=1' "$GRUB_FILE"; then
+    echo "GRUB already has ipv6.disable=1"
+else
+    sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 ipv6.disable=1"/' "$GRUB_FILE"
+    sudo update-grub
+fi
+
+echo "IPv6 disabled"
+DISABLE_IPV6
 
     # Install and configure node_exporter for monitoring
     echo ""

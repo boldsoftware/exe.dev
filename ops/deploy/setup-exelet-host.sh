@@ -836,6 +836,36 @@ if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     exit 1
 fi
 
+# Disable IPv6
+echo ""
+echo "=========================================="
+echo "Disabling IPv6"
+echo "=========================================="
+
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "ubuntu@${MACHINE_NAME}" 'bash -s' <<'DISABLE_IPV6'
+set -euo pipefail
+
+# Disable IPv6 immediately via sysctl
+cat <<EOF | sudo tee /etc/sysctl.d/99-disable-ipv6.conf > /dev/null
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+sudo sysctl --system > /dev/null
+
+# Persist via GRUB kernel command line so IPv6 is disabled early at boot
+GRUB_FILE="/etc/default/grub"
+if grep -q 'ipv6.disable=1' "$GRUB_FILE"; then
+    echo "GRUB already has ipv6.disable=1"
+else
+    sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 ipv6.disable=1"/' "$GRUB_FILE"
+    sudo update-grub
+fi
+
+echo "IPv6 disabled"
+DISABLE_IPV6
+
 # Install and configure node_exporter for monitoring
 echo ""
 echo "=========================================="
