@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1472,6 +1473,16 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx := context.Background()
 
+	// Lock prod deployments during mass migration (best-effort).
+	prodLocked, err := prodlockSet(ctx, "prod", "lock", fmt.Sprintf("mass VM migration: %d VMs to %s", len(boxNames), targetAddr))
+	if err != nil {
+		writeProgress("WARNING: failed to lock prod deployments: %v", err)
+	} else if prodLocked {
+		writeProgress("Prod deployments locked.")
+	} else {
+		writeProgress("Prod already locked — will not auto-unlock after migration.")
+	}
+
 	writeProgress("Starting migration of %d VMs to %s (live for running VMs)", len(boxNames), targetAddr)
 	writeProgress("")
 
@@ -1631,6 +1642,16 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		writeProgress("")
 	}
 
+	// Unlock prod if we locked it.
+	if prodLocked {
+		writeProgress("Unlocking prod deployments...")
+		if _, err := prodlockSet(ctx, "prod", "unlock", "mass VM migration complete"); err != nil {
+			writeProgress("WARNING: failed to unlock prod deployments: %v — manual unlock required", err)
+		} else {
+			writeProgress("Prod deployments unlocked.")
+		}
+	}
+
 	writeProgress("=== Migration complete ===")
 	writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(boxNames))
 
@@ -1639,6 +1660,39 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	} else {
 		writeProgress("MIGRATION_ERROR")
 	}
+}
+
+// prodlockSet locks or unlocks a prodlock environment.
+// action must be "lock" or "unlock".
+// It returns true if the action was applied, or false if the environment
+// was already in the requested state (409).
+func prodlockSet(ctx context.Context, env, action, reason string) (bool, error) {
+	body, err := json.Marshal(map[string]string{"reason": reason})
+	if err != nil {
+		return false, err
+	}
+	url := fmt.Sprintf("https://prodlock.exe.xyz:8000/api/%s/%s", env, action)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer exe1.RAIPQOV23P6TEQLLCGZ4LRVZNK")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusConflict {
+		return false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("prodlock %s %s: %d %s", action, env, resp.StatusCode, respBody)
+	}
+	return true, nil
 }
 
 // handleDebugBoxDetails displays detailed information about a specific box.
