@@ -81,6 +81,7 @@ type Env struct {
 	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
+	RedirectHTTPToHTTPS   bool // whether the HTTP server should redirect all requests to HTTPS (port 80 → 443)
 
 	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
 	DebugColor   string // CSS background color for the /debug UI badge (e.g. "#dc3545")
@@ -136,6 +137,7 @@ func Invalid() Env {
 		DefaultCPUs:   0, // invalid: must be > 0
 
 		ListenOnTailscaleOnly: false,
+		RedirectHTTPToHTTPS:   false,
 
 		DebugLabel:   "INVALID",
 		DebugColor:   "#999999",
@@ -196,6 +198,7 @@ func Local() Env {
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
 
 		ListenOnTailscaleOnly: false,
+		RedirectHTTPToHTTPS:   false,
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
@@ -253,6 +256,7 @@ func Test() Env {
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 
 		ListenOnTailscaleOnly: false,
+		RedirectHTTPToHTTPS:   false,
 
 		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
@@ -305,6 +309,7 @@ func Staging() Env {
 		HoneycombEnv:         "staging",
 
 		ListenOnTailscaleOnly: true,
+		RedirectHTTPToHTTPS:   true,
 
 		NumShards:  253,
 		ProxyPorts: portRange(3000, 9999),
@@ -359,6 +364,7 @@ func Prod() Env {
 		HoneycombEnv:         "production",
 
 		ListenOnTailscaleOnly: true,
+		RedirectHTTPToHTTPS:   true,
 
 		NumShards:  253,
 		ProxyPorts: portRange(3000, 9999),

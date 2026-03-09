@@ -80,19 +80,38 @@ func (s *Server) prepareHandler() http.Handler {
 	return h
 }
 
-// setupHTTPServer configures the HTTP server
+// setupHTTPServer configures the HTTP server.
 func (s *Server) setupHTTPServer() {
 	if s.httpLn.ln == nil {
 		return
 	}
-
-	h := s.prepareHandler()
-
+	var h http.Handler
+	if s.env.RedirectHTTPToHTTPS && s.servingHTTPS() {
+		// Redirect all HTTP traffic to HTTPS.
+		h = s.httpToHTTPSHandler()
+	} else {
+		h = s.prepareHandler()
+	}
 	s.httpServer = &http.Server{
 		Addr:     s.httpLn.addr,
 		Handler:  h,
 		ErrorLog: s.netHTTPLog(),
 	}
+}
+
+// httpToHTTPSHandler returns an HTTP handler that redirects all requests to HTTPS.
+func (s *Server) httpToHTTPSHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			host = r.Host
+		}
+		if port := s.httpsLn.tcp.Port; port != 443 {
+			host = net.JoinHostPort(host, strconv.Itoa(port))
+		}
+		target := "https://" + host + r.URL.RequestURI()
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 }
 
 func (s *Server) prepareLlmGateway() http.Handler {

@@ -11,7 +11,7 @@ WorkingDirectory=/home/ubuntu
 EnvironmentFile=/etc/default/exeprox
 
 # Use the latest exeprox
-ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeprox.* | head -n1)" -exed-grpc-addr=tcp://exed-02:2225 -http= -https=:443 -stage prod'
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeprox.* | head -n1)" -exed-grpc-addr=tcp://exed-02:2225 -http=:80 -https=:443 -stage prod'
 
 Restart=always
 RestartSec=5

@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -124,12 +125,33 @@ func (wp *WebProxy) setupHTTPServer() {
 	if wp.httpLn == nil {
 		return
 	}
-	h := wp.prepareHandler()
+	var h http.Handler
+	if wp.env.RedirectHTTPToHTTPS && wp.httpsLn != nil {
+		// Redirect all HTTP traffic to HTTPS.
+		h = wp.httpToHTTPSHandler()
+	} else {
+		h = wp.prepareHandler()
+	}
 	wp.httpServer = &http.Server{
 		Addr:     wp.httpLn.addr(),
 		Handler:  h,
 		ErrorLog: wp.netHTTPLogger,
 	}
+}
+
+// httpToHTTPSHandler returns an HTTP handler that redirects all requests to HTTPS.
+func (wp *WebProxy) httpToHTTPSHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			host = r.Host
+		}
+		if port := wp.httpsLn.port(); port != 443 {
+			host = net.JoinHostPort(host, strconv.Itoa(port))
+		}
+		target := "https://" + host + r.URL.RequestURI()
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 }
 
 // setupHTTPSServer configures the HTTPS server.
