@@ -117,6 +117,45 @@ func TestUserLimitsCp(t *testing.T) {
 	cleanupBox(t, keyFile, sourceBox)
 }
 
+// TestUserLimitsMaxBoxes tests that the max_boxes limit is enforced end-to-end.
+// Set max_boxes=2, create 2 VMs, verify 3rd is rejected, raise to 3, verify 3rd succeeds.
+func TestUserLimitsMaxBoxes(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 3)
+	noGolden(t)
+
+	pty, _, keyFile, email := registerForExeDevWithEmail(t, "maxboxes@test-userlimits.example")
+
+	// Set a low max_boxes limit
+	setUserLimits(t, email, `{"max_boxes": 2}`)
+
+	// Create 2 VMs — should succeed
+	box1 := newBox(t, pty)
+	box2 := newBox(t, pty)
+
+	// 3rd should be rejected
+	t.Run("blocked", func(t *testing.T) {
+		bn := boxName(t)
+		pty.SendLine(fmt.Sprintf("new --name=%s", bn))
+		pty.Want("maximum number of VMs")
+		pty.WantPrompt()
+	})
+
+	// Raise the limit
+	setUserLimits(t, email, `{"max_boxes": 3}`)
+
+	// Now 3rd should succeed
+	box3 := newBox(t, pty)
+
+	// Clean up
+	pty.deleteBox(box3)
+	pty.deleteBox(box2)
+	pty.deleteBox(box1)
+	pty.Disconnect()
+
+	_ = keyFile // used by registerForExeDevWithEmail for billing setup
+}
+
 // setUserLimits sets resource limits for a user via the debug endpoint.
 // Pass empty string to clear limits.
 func setUserLimits(t *testing.T, email, limitsJSON string) {

@@ -431,6 +431,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 					FlagSetFunc:       jsonOnlyFlags("llm-credits"),
 					Handler:           ss.handleLLMCreditsCommand,
 				},
+				{
+					Name:              "set-limits",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "Set resource limit overrides for a user (support only)",
+					Usage:             "sudo-exe set-limits <userid-or-email> [--max-boxes=N] [--max-memory=SIZE] [--max-disk=SIZE] [--max-cpus=N] [--show] [--clear]",
+					HasPositionalArgs: true,
+					FlagSetFunc:       setLimitsFlags,
+					Handler:           ss.handleSetLimitsCommand,
+				},
 			},
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				return cc.Errorf("usage: sudo-exe <subcommand>")
