@@ -37,6 +37,7 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
 	"exe.dev/region"
+	"exe.dev/stage"
 
 	"tailscale.com/client/local"
 )
@@ -1473,14 +1474,14 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx := context.Background()
 
-	// Lock prod deployments during mass migration (best-effort).
-	prodLocked, err := prodlockSet(ctx, "prod", "lock", fmt.Sprintf("mass VM migration: %d VMs to %s", len(boxNames), targetAddr))
+	// Lock deployments during mass migration (best-effort).
+	prodLocked, err := prodlockSet(ctx, s.env, "lock", fmt.Sprintf("mass VM migration: %d VMs to %s", len(boxNames), targetAddr))
 	if err != nil {
-		writeProgress("WARNING: failed to lock prod deployments: %v", err)
+		writeProgress("WARNING: failed to lock deployments: %v", err)
 	} else if prodLocked {
-		writeProgress("Prod deployments locked.")
+		writeProgress("Deployments locked.")
 	} else {
-		writeProgress("Prod already locked — will not auto-unlock after migration.")
+		writeProgress("Already locked — will not auto-unlock after migration.")
 	}
 
 	writeProgress("Starting migration of %d VMs to %s (live for running VMs)", len(boxNames), targetAddr)
@@ -1642,13 +1643,13 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		writeProgress("")
 	}
 
-	// Unlock prod if we locked it.
+	// Unlock if we locked it.
 	if prodLocked {
-		writeProgress("Unlocking prod deployments...")
-		if _, err := prodlockSet(ctx, "prod", "unlock", "mass VM migration complete"); err != nil {
-			writeProgress("WARNING: failed to unlock prod deployments: %v — manual unlock required", err)
+		writeProgress("Unlocking deployments...")
+		if _, err := prodlockSet(ctx, s.env, "unlock", "mass VM migration complete"); err != nil {
+			writeProgress("WARNING: failed to unlock deployments: %v — manual unlock required", err)
 		} else {
-			writeProgress("Prod deployments unlocked.")
+			writeProgress("Deployments unlocked.")
 		}
 	}
 
@@ -1666,12 +1667,15 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 // action must be "lock" or "unlock".
 // It returns true if the action was applied, or false if the environment
 // was already in the requested state (409).
-func prodlockSet(ctx context.Context, env, action, reason string) (bool, error) {
+func prodlockSet(ctx context.Context, env stage.Env, action, reason string) (bool, error) {
+	if env.ProdLockEnv == "" {
+		return false, nil
+	}
 	body, err := json.Marshal(map[string]string{"reason": reason})
 	if err != nil {
 		return false, err
 	}
-	url := fmt.Sprintf("https://prodlock.exe.xyz:8000/api/%s/%s", env, action)
+	url := fmt.Sprintf("https://prodlock.exe.xyz:8000/api/%s/%s", env.ProdLockEnv, action)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return false, err
@@ -1690,7 +1694,7 @@ func prodlockSet(ctx context.Context, env, action, reason string) (bool, error) 
 	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("prodlock %s %s: %d %s", action, env, resp.StatusCode, respBody)
+		return false, fmt.Errorf("prodlock %s %s: %d %s", action, env.ProdLockEnv, resp.StatusCode, respBody)
 	}
 	return true, nil
 }
@@ -4478,14 +4482,14 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx = context.WithoutCancel(ctx)
 
-	// Lock prod deployments during migration (best-effort).
-	prodLocked, err := prodlockSet(ctx, "prod", "lock", fmt.Sprintf("region migration: %d VMs for %s to %s", len(toMigrate), user.Email, targetAddr))
+	// Lock deployments during migration (best-effort).
+	prodLocked, err := prodlockSet(ctx, s.env, "lock", fmt.Sprintf("region migration: %d VMs for %s to %s", len(toMigrate), user.Email, targetAddr))
 	if err != nil {
-		writeProgress("WARNING: failed to lock prod deployments: %v", err)
+		writeProgress("WARNING: failed to lock deployments: %v", err)
 	} else if prodLocked {
-		writeProgress("Prod deployments locked.")
+		writeProgress("Deployments locked.")
 	} else {
-		writeProgress("Prod already locked — will not auto-unlock after migration.")
+		writeProgress("Already locked — will not auto-unlock after migration.")
 	}
 
 	var succeeded, failed int
@@ -4599,13 +4603,13 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		writeProgress("")
 	}
 
-	// Unlock prod if we locked it.
+	// Unlock if we locked it.
 	if prodLocked {
-		writeProgress("Unlocking prod deployments...")
-		if _, err := prodlockSet(ctx, "prod", "unlock", "region migration complete"); err != nil {
-			writeProgress("WARNING: failed to unlock prod deployments: %v — manual unlock required", err)
+		writeProgress("Unlocking deployments...")
+		if _, err := prodlockSet(ctx, s.env, "unlock", "region migration complete"); err != nil {
+			writeProgress("WARNING: failed to unlock deployments: %v — manual unlock required", err)
 		} else {
-			writeProgress("Prod deployments unlocked.")
+			writeProgress("Deployments unlocked.")
 		}
 	}
 

@@ -36,6 +36,10 @@ type Env struct {
 	//
 	// Similarly, do not switch on one attribute to derive another.
 	// If you need an X, just add an X field directly. Fields are cheap!
+	//
+	// Pass Env as a whole struct to functions, not individual fields.
+	// This keeps callsites self-documenting and lets the callee
+	// decide which fields matter.
 
 	WebHost  string // the base hostname of the website; prod is "exe.dev", dev is "localhost"
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
@@ -82,6 +86,8 @@ type Env struct {
 
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 	RedirectHTTPToHTTPS   bool // whether the HTTP server should redirect all requests to HTTPS (port 80 → 443)
+
+	ProdLockEnv string // prodlock environment to lock during mass VM migrations; empty means no locking
 
 	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
 	DebugColor   string // CSS background color for the /debug UI badge (e.g. "#dc3545")
@@ -138,6 +144,8 @@ func Invalid() Env {
 
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
+
+		ProdLockEnv: "",
 
 		DebugLabel:   "INVALID",
 		DebugColor:   "#999999",
@@ -204,6 +212,8 @@ func Local() Env {
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 		DefaultCPUs:   2,
 
+		ProdLockEnv: "",
+
 		DebugLabel:   "dev",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
@@ -262,6 +272,8 @@ func Test() Env {
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
 
+		ProdLockEnv: "",
+
 		DebugLabel:   "test",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
@@ -318,6 +330,8 @@ func Staging() Env {
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
 
+		ProdLockEnv: "staging",
+
 		DebugLabel:   "staging",
 		DebugColor:   "#5b3a9e",
 		DebugBgColor: "#f5f0ff",
@@ -372,6 +386,8 @@ func Prod() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
+
+		ProdLockEnv: "prod",
 
 		DebugLabel:   "prod",
 		DebugColor:   "#8b6914",
