@@ -81,6 +81,31 @@ ssh "$HOST" 'set -euo pipefail
     done
 '
 
+# --- Ensure cache symlinks ---
+# Each runner's go-build and exedev caches live on /data (larger disk).
+# Symlink ~/.cache/{go-build,exedev} -> /data/runnerN/{go-build,exedev}.
+echo "--- Ensuring cache symlinks ---"
+ssh "$HOST" 'set -euo pipefail
+    for i in $(seq 0 7); do
+        USER="runner${i}"
+        USER_HOME="/home/${USER}"
+        for DIR in go-build exedev; do
+            TARGET="/data/${USER}/${DIR}"
+            LINK="${USER_HOME}/.cache/${DIR}"
+            mkdir -p "$TARGET"
+            chown "${USER}:${USER}" "$TARGET"
+            CURRENT=$(readlink "$LINK" 2>/dev/null || echo "")
+            if [[ "$CURRENT" != "$TARGET" ]]; then
+                echo "  Fixing ${LINK} -> ${TARGET} (was: ${CURRENT:-not a symlink})"
+                rm -rf "$LINK"
+                ln -s "$TARGET" "$LINK"
+                chown -h "${USER}:${USER}" "$LINK"
+            fi
+        done
+    done
+    echo "Cache symlinks OK"
+'
+
 # --- Verify deploy key ---
 echo "--- Checking deploy key ---"
 ssh "$HOST" '
