@@ -16,6 +16,7 @@ import (
 )
 
 func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
+	t.Parallel()
 	// Test that /new always shows the form, even for users who need billing.
 	// Billing is only checked when the user tries to create a VM via /create-vm.
 	server := newBillingTestServer(t)
@@ -62,6 +63,7 @@ func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 }
 
 func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	// Enable billing checks for this test (disabled by default in test env)
 	server.env.SkipBilling = false
@@ -117,6 +119,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 }
 
 func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	// Create a user with billing info
@@ -169,6 +172,7 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 }
 
 func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	// Request /new without authentication - should show the new VM form
@@ -192,6 +196,7 @@ func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
 }
 
 func TestUserIsPayingQuery(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	// Create a user without billing info
@@ -247,6 +252,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 }
 
 func TestUserNeedsBillingQuery(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	// Create a user
@@ -311,6 +317,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 }
 
 func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	// Create a user
@@ -341,6 +348,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 }
 
 func TestBillingBypassBug(t *testing.T) {
+	t.Parallel()
 	// This test reproduces a critical billing bypass bug:
 	// 1. New user signs up (requires billing)
 	// 2. User fills out /new form and clicks "Create VM"
@@ -436,6 +444,7 @@ func TestBillingBypassBug(t *testing.T) {
 }
 
 func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
+	t.Parallel()
 	// This test reproduces a critical billing bypass vulnerability:
 	// A user can bypass Stripe checkout by directly visiting /billing/success
 	// with any fake session_id parameter. The endpoint should verify with Stripe
@@ -506,6 +515,7 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 }
 
 func TestBillingEventRaceCondition(t *testing.T) {
+	t.Parallel()
 	// This test verifies that event-sourced billing status correctly handles
 	// the race condition where a cancellation event (at T1) is processed
 	// after a newer activation event (at T2, where T2 > T1).
@@ -583,6 +593,7 @@ func TestBillingEventRaceCondition(t *testing.T) {
 }
 
 func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
+	t.Parallel()
 	// Test that /new always shows the form, even for users who need billing.
 	// Billing is only requested when they click "Create VM".
 	server := newBillingTestServer(t)
@@ -628,6 +639,7 @@ func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
 }
 
 func TestNewPagePrefillsFromQueryParams(t *testing.T) {
+	t.Parallel()
 	// Test that /new prefills name and prompt from query params.
 	// This is used when user cancels Stripe checkout and is redirected back.
 	server := newBillingTestServer(t)
@@ -652,6 +664,7 @@ func TestNewPagePrefillsFromQueryParams(t *testing.T) {
 }
 
 func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
+	t.Parallel()
 	// Test that /create-vm redirects to /billing/update with name and prompt params.
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
@@ -707,6 +720,7 @@ func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 }
 
 func TestBillingSubscribePreservesVMParams(t *testing.T) {
+	t.Parallel()
 	// Test that /billing/update includes name and prompt in Stripe callback URLs.
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
@@ -751,6 +765,7 @@ func TestBillingSubscribePreservesVMParams(t *testing.T) {
 }
 
 func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
+	t.Parallel()
 	// Test that visiting /billing/update multiple times reuses the same
 	// pending account instead of creating duplicates. This prevents the bug
 	// where users who abandon checkout and return later get multiple Stripe customers.
@@ -871,6 +886,7 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 }
 
 func TestBillingCancelCreatesNoVMState(t *testing.T) {
+	t.Parallel()
 	// Prove that canceling billing creates no VM state:
 	// 1. User fills form on /new and clicks "Create VM"
 	// 2. /create-vm redirects to /billing/update (no startBoxCreation called)
@@ -1007,6 +1023,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 }
 
 func TestNewUserBillingFirstFlow(t *testing.T) {
+	t.Parallel()
 	// Test the new billing-first flow for new users:
 	// /auth with new email -> redirect to /billing/update with token -> Stripe
 	server := newBillingTestServer(t)
@@ -1084,6 +1101,7 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 }
 
 func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
+	t.Parallel()
 	// Test that canceling Stripe checkout redirects back to /auth with email preserved
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
@@ -1124,6 +1142,7 @@ func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
 }
 
 func TestExistingUserAuthUnchanged(t *testing.T) {
+	t.Parallel()
 	// Test that existing users still go through the normal email verification flow
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
@@ -1166,6 +1185,7 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 }
 
 func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
+	t.Parallel()
 	// Test that new users with a valid invite code skip the Stripe billing flow.
 	// The invite code grants a billing exemption, so no payment is required.
 	server := newBillingTestServer(t)
@@ -1228,6 +1248,7 @@ func TestNewUserWithInviteCodeSkipsBilling(t *testing.T) {
 }
 
 func TestLoginWithExeSkipsBilling(t *testing.T) {
+	t.Parallel()
 	// Test that new users signing up via "Login with Exe" (the proxy auth flow)
 	// are NOT redirected to the Stripe billing flow.
 	// These users are just authenticating to access someone else's app, not
@@ -1267,6 +1288,7 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 }
 
 func TestBillingPortal_Unauthenticated_RedirectsToAuth(t *testing.T) {
+	t.Parallel()
 	// Test that unauthenticated users are redirected to /auth
 	server := newBillingTestServer(t)
 
@@ -1290,6 +1312,7 @@ func TestBillingPortal_Unauthenticated_RedirectsToAuth(t *testing.T) {
 }
 
 func TestBillingPortal_NoBillingAccount_Returns404(t *testing.T) {
+	t.Parallel()
 	// Test that users without a billing account get redirected (to /new in test mode due to SkipBilling)
 	server := newBillingTestServer(t)
 
@@ -1324,6 +1347,7 @@ func TestBillingPortal_NoBillingAccount_Returns404(t *testing.T) {
 }
 
 func TestBillingPortal_PendingAccount_RedirectsToSubscribe(t *testing.T) {
+	t.Parallel()
 	// Test that users with a pending (incomplete checkout) account get redirected (to /new in test mode)
 	server := newBillingTestServer(t)
 
@@ -1369,6 +1393,7 @@ func TestBillingPortal_PendingAccount_RedirectsToSubscribe(t *testing.T) {
 }
 
 func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
+	t.Parallel()
 	// Test that users with an active billing account are redirected to Stripe portal
 	// Note: This test requires a Stripe API key with billing portal permissions.
 	// With the test API key, this may return 500 due to missing permissions.
@@ -1427,6 +1452,7 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 }
 
 func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
+	t.Parallel()
 	// Test that the user profile page shows billing info for users with active billing
 	server := newBillingTestServer(t)
 
@@ -1481,6 +1507,7 @@ func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
 }
 
 func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
+	t.Parallel()
 	// This test reproduces the bug where a user with multiple accounts
 	// (created from multiple checkout attempts) has active billing on one
 	// account but the query non-deterministically returns a different account.
@@ -1580,6 +1607,7 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 }
 
 func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
+	t.Parallel()
 	// Test that if ANY account is active, the user is considered active,
 	// even if another account is canceled.
 	server := newBillingTestServer(t)
@@ -1671,6 +1699,7 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 }
 
 func TestCanceledUserCannotCreateVM(t *testing.T) {
+	t.Parallel()
 	// Test that users with canceled subscriptions cannot create VMs,
 	// even if they have exemptions (legacy, free tier, trial).
 	server := newBillingTestServer(t)
@@ -1997,6 +2026,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 }
 
 func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
+	t.Parallel()
 	// Reproduce the billing-session-failed / checkout-url-too-long error:
 	// Stripe rejects success_url over 5000 characters. Long VM prompts
 	// were encoded directly into the success_url, causing the limit to be exceeded.
@@ -2043,6 +2073,7 @@ func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
 }
 
 func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
+	t.Parallel()
 	// End-to-end test: a long prompt stored via checkout_params is retrieved
 	// on billing success and used to create a VM.
 	server := newBillingTestServer(t)
@@ -2122,6 +2153,7 @@ func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
 }
 
 func TestBillingCancelRestoresLongPrompt(t *testing.T) {
+	t.Parallel()
 	// When a user cancels Stripe checkout, they are redirected to /new?cp=<token>.
 	// The cancel handler should restore VM params from checkout_params so the form
 	// is pre-filled, and the token should survive (not be deleted) so the user can retry.
@@ -2245,6 +2277,7 @@ func createUserWithAccount(t *testing.T, server *Server, email, billingID string
 }
 
 func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-profile@example.com", "exe_profile_credits")
 
@@ -2324,6 +2357,7 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-buy@example.com", "exe_buy_credits")
 
@@ -2346,6 +2380,7 @@ func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "exe_renew_credits")
 
@@ -2381,6 +2416,7 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyNoAccount(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	user, err := server.createUser(t.Context(), testSSHPubKey, "credits-noaccount@example.com", AllQualityChecks)
 	if err != nil {
@@ -2410,6 +2446,7 @@ func TestCreditPurchase_BuyNoAccount(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-invalid@example.com", "exe_invalid_credits")
 
@@ -2441,6 +2478,7 @@ func TestCreditPurchase_BuyInvalidAmount(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresAuth(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	form := url.Values{}
@@ -2461,6 +2499,7 @@ func TestCreditPurchase_BuyRequiresAuth(t *testing.T) {
 }
 
 func TestCreditPurchase_BuyRequiresPost(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-get@example.com", "exe_get_credits")
 
@@ -2476,6 +2515,7 @@ func TestCreditPurchase_BuyRequiresPost(t *testing.T) {
 }
 
 func TestCreditPurchase_SuccessSyncsAndRedirects(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	_, cookieValue := createUserWithAccount(t, server, "credits-success@example.com", "exe_success_credits")
 
@@ -2495,6 +2535,7 @@ func TestCreditPurchase_SuccessSyncsAndRedirects(t *testing.T) {
 }
 
 func TestCreditPurchase_SuccessRequiresAuth(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 
 	req := httptest.NewRequest("GET", "/credits/success", nil)
@@ -2508,6 +2549,7 @@ func TestCreditPurchase_SuccessRequiresAuth(t *testing.T) {
 }
 
 func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
+	t.Parallel()
 	server := newBillingTestServer(t)
 	user, cookieValue := createUserWithAccount(t, server, "credits-balance@example.com", "exe_balance_credits")
 
