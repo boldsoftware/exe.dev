@@ -130,3 +130,11 @@ SELECT * FROM boxes WHERE container_id = ?;
 
 -- name: CountBoxesByRegionAndStatus :many
 SELECT region, status, COUNT(*) AS count FROM boxes GROUP BY region, status;
+
+-- name: GetUsersWithOutOfRegionBoxes :many
+SELECT u.user_id, u.email, u.region AS user_region, COUNT(*) AS box_count
+FROM users u
+JOIN boxes b ON b.created_by_user_id = u.user_id
+WHERE u.region != b.region AND b.status IN ('running', 'starting')
+GROUP BY u.user_id, u.email, u.region
+ORDER BY u.region, u.email;

@@ -5707,11 +5707,44 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		result = append(result, *infoByCode[code])
 	}
 
+	// Query users with RequiresUserMatch regions who have VMs outside their region.
+	type outOfRegionUser struct {
+		UserID     string `json:"user_id"`
+		Email      string `json:"email"`
+		UserRegion string `json:"user_region"`
+		BoxCount   int64  `json:"box_count"`
+	}
+	var outOfRegionUsers []outOfRegionUser
+	allOutOfRegion, err := withRxRes0(s, ctx, (*exedb.Queries).GetUsersWithOutOfRegionBoxes)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to query out-of-region users", "error", err)
+	} else {
+		for _, row := range allOutOfRegion {
+			reg, err := region.ByCode(row.UserRegion)
+			if err != nil || !reg.RequiresUserMatch {
+				continue
+			}
+			outOfRegionUsers = append(outOfRegionUsers, outOfRegionUser{
+				UserID:     row.UserID,
+				Email:      row.Email,
+				UserRegion: row.UserRegion,
+				BoxCount:   row.BoxCount,
+			})
+		}
+	}
+
 	if r.URL.Query().Get("format") == "json" {
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(result); err != nil {
+		jsonData := struct {
+			Regions          []regionInfo      `json:"regions"`
+			OutOfRegionUsers []outOfRegionUser `json:"out_of_region_users,omitempty"`
+		}{
+			Regions:          result,
+			OutOfRegionUsers: outOfRegionUsers,
+		}
+		if err := enc.Encode(jsonData); err != nil {
 			s.slog().InfoContext(ctx, "failed to encode regions JSON", "error", err)
 		}
 		return
@@ -5724,9 +5757,11 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Regions []regionInfo
+		Regions          []regionInfo
+		OutOfRegionUsers []outOfRegionUser
 	}{
-		Regions: result,
+		Regions:          result,
+		OutOfRegionUsers: outOfRegionUsers,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

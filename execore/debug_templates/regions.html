@@ -36,4 +36,23 @@
 </table>
 {{end}}
 
+{{if .OutOfRegionUsers}}
+<h2>Users with Out-of-Region VMs</h2>
+<p>Users in regions with matching enabled who have running VMs outside their region.</p>
+<table>
+<tr>
+<th>User</th>
+<th>Region</th>
+<th>Out-of-Region VMs</th>
+</tr>
+{{range .OutOfRegionUsers}}
+<tr>
+<td><a href="/debug/user?userId={{.UserID}}">{{.Email}}</a></td>
+<td>{{.UserRegion}}</td>
+<td>{{.BoxCount}}</td>
+</tr>
+{{end}}
+</table>
+{{end}}
+
 </body></html>

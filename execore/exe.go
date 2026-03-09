@@ -432,6 +432,20 @@ type exeletClient struct {
 	count atomic.Int32 // instance count
 }
 
+// regionAllowsUser reports whether the exelet may host a VM for a user
+// in userRegion (looked up as userRegionInfo). It enforces both constraints:
+//  1. Exelets in RequiresUserMatch regions only accept users in that region.
+//  2. Users whose region has RequiresUserMatch must stay in their region.
+func (ec *exeletClient) regionAllowsUser(userRegion string, userRegionInfo region.Region) bool {
+	if ec.region.RequiresUserMatch && ec.region.Code != userRegion {
+		return false
+	}
+	if userRegionInfo.RequiresUserMatch && ec.region.Code != userRegion {
+		return false
+	}
+	return true
+}
+
 // countInstances returns the number of instances on this exelet.
 func (ec *exeletClient) countInstances(ctx context.Context) (int, error) {
 	stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
@@ -3683,8 +3697,9 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 // it uses that. Otherwise, if a preferred exelet is configured and available,
 // it uses that. Otherwise, it picks a less loaded exelet.
 //
-// Exelets in regions with RequiresUserMatch are only considered if the
-// user's configured region matches the exelet's region.
+// Two region constraints apply:
+//  1. Exelets in RequiresUserMatch regions are only available to users in that region.
+//  2. Users whose own region has RequiresUserMatch must stay in their region.
 func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exeletClient, string, error) {
 	// Look up the user's configured region for region-match filtering.
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
@@ -3692,6 +3707,10 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		return nil, "", fmt.Errorf("failed to get user details: %w", err)
 	}
 	userRegion := user.Region
+	userRegionInfo, err := region.ByCode(userRegion)
+	if err != nil {
+		return nil, "", fmt.Errorf("unknown user region %q: %w", userRegion, err)
+	}
 
 	// Check for existing VMs for this user.
 	// If there are any, use the exelet that holds the most VMs.
@@ -3727,6 +3746,11 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
+		if client != nil && !client.regionAllowsUser(userRegion, userRegionInfo) {
+			s.slog().DebugContext(ctx, "not selecting exelet because region requires match", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
+			client = nil
+		}
+
 		if client != nil && !client.up.Load() {
 			s.slog().DebugContext(ctx, "not selecting exelet because it is down", "user", userID, "exelet", maxHost, "userVMCount", maxCnt)
 			client = nil
@@ -3757,7 +3781,8 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
-		if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() {
+		if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() &&
+			client.regionAllowsUser(userRegion, userRegionInfo) {
 			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
 			return client, preferredAddr, nil
 		}
@@ -3768,14 +3793,12 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	}
 
 	// Find the least loaded exelets.
-	// Skip exelets in regions that require a user-region match
-	// unless the user's region matches.
 	ecs := make([]*exeletClient, 0, len(s.exeletClients))
 	for _, c := range s.exeletClients {
 		if !c.up.Load() {
 			continue
 		}
-		if c.region.RequiresUserMatch && c.region.Code != userRegion {
+		if !c.regionAllowsUser(userRegion, userRegionInfo) {
 			continue
 		}
 		ecs = append(ecs, c)

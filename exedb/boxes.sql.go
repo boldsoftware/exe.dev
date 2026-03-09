@@ -587,6 +587,50 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 	return items, nil
 }
 
+const getUsersWithOutOfRegionBoxes = `-- name: GetUsersWithOutOfRegionBoxes :many
+SELECT u.user_id, u.email, u.region AS user_region, COUNT(*) AS box_count
+FROM users u
+JOIN boxes b ON b.created_by_user_id = u.user_id
+WHERE u.region != b.region AND b.status IN ('running', 'starting')
+GROUP BY u.user_id, u.email, u.region
+ORDER BY u.region, u.email
+`
+
+type GetUsersWithOutOfRegionBoxesRow struct {
+	UserID     string `db:"user_id" json:"user_id"`
+	Email      string `db:"email" json:"email"`
+	UserRegion string `db:"user_region" json:"user_region"`
+	BoxCount   int64  `db:"box_count" json:"box_count"`
+}
+
+func (q *Queries) GetUsersWithOutOfRegionBoxes(ctx context.Context) ([]GetUsersWithOutOfRegionBoxesRow, error) {
+	rows, err := q.query(ctx, q.getUsersWithOutOfRegionBoxesStmt, getUsersWithOutOfRegionBoxes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUsersWithOutOfRegionBoxesRow{}
+	for rows.Next() {
+		var i GetUsersWithOutOfRegionBoxesRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Email,
+			&i.UserRegion,
+			&i.BoxCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertBox = `-- name: InsertBox :execlastid
 INSERT INTO boxes (
     ctrhost, name, status, image, container_id, created_by_user_id, routes, region, allocated_cpus

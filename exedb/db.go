@@ -624,6 +624,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserWithSSHKeyStmt, err = db.PrepareContext(ctx, getUserWithSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithSSHKey: %w", err)
 	}
+	if q.getUsersWithOutOfRegionBoxesStmt, err = db.PrepareContext(ctx, getUsersWithOutOfRegionBoxes); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUsersWithOutOfRegionBoxes: %w", err)
+	}
 	if q.grantBillingUpgradeBonusOnceStmt, err = db.PrepareContext(ctx, grantBillingUpgradeBonusOnce); err != nil {
 		return nil, fmt.Errorf("error preparing query GrantBillingUpgradeBonusOnce: %w", err)
 	}
@@ -2043,6 +2046,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserWithSSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.getUsersWithOutOfRegionBoxesStmt != nil {
+		if cerr := q.getUsersWithOutOfRegionBoxesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUsersWithOutOfRegionBoxesStmt: %w", cerr)
+		}
+	}
 	if q.grantBillingUpgradeBonusOnceStmt != nil {
 		if cerr := q.grantBillingUpgradeBonusOnceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing grantBillingUpgradeBonusOnceStmt: %w", cerr)
@@ -2972,6 +2980,7 @@ type Queries struct {
 	getUserTemplateRatingStmt                     *sql.Stmt
 	getUserWithDetailsStmt                        *sql.Stmt
 	getUserWithSSHKeyStmt                         *sql.Stmt
+	getUsersWithOutOfRegionBoxesStmt              *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt              *sql.Stmt
 	hasUserAccessToBoxStmt                        *sql.Stmt
 	incrementEmailVerificationCodeAttemptsStmt    *sql.Stmt
@@ -3316,6 +3325,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserTemplateRatingStmt:                     q.getUserTemplateRatingStmt,
 		getUserWithDetailsStmt:                        q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                         q.getUserWithSSHKeyStmt,
+		getUsersWithOutOfRegionBoxesStmt:              q.getUsersWithOutOfRegionBoxesStmt,
 		grantBillingUpgradeBonusOnceStmt:              q.grantBillingUpgradeBonusOnceStmt,
 		hasUserAccessToBoxStmt:                        q.hasUserAccessToBoxStmt,
 		incrementEmailVerificationCodeAttemptsStmt:    q.incrementEmailVerificationCodeAttemptsStmt,
