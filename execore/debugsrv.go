@@ -4478,6 +4478,16 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx = context.WithoutCancel(ctx)
 
+	// Lock prod deployments during migration (best-effort).
+	prodLocked, err := prodlockSet(ctx, "prod", "lock", fmt.Sprintf("region migration: %d VMs for %s to %s", len(toMigrate), user.Email, targetAddr))
+	if err != nil {
+		writeProgress("WARNING: failed to lock prod deployments: %v", err)
+	} else if prodLocked {
+		writeProgress("Prod deployments locked.")
+	} else {
+		writeProgress("Prod already locked — will not auto-unlock after migration.")
+	}
+
 	var succeeded, failed int
 	for i, box := range toMigrate {
 		boxName := box.Name
@@ -4587,6 +4597,16 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		s.slog().InfoContext(ctx, "box migrated", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 		succeeded++
 		writeProgress("")
+	}
+
+	// Unlock prod if we locked it.
+	if prodLocked {
+		writeProgress("Unlocking prod deployments...")
+		if _, err := prodlockSet(ctx, "prod", "unlock", "region migration complete"); err != nil {
+			writeProgress("WARNING: failed to unlock prod deployments: %v — manual unlock required", err)
+		} else {
+			writeProgress("Prod deployments unlocked.")
+		}
 	}
 
 	writeProgress("=== Migration complete ===")
