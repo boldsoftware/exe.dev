@@ -6,6 +6,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -185,5 +188,31 @@ func checkMetrics(t *testing.T, pi *PipeInstance) {
 	}
 	if showMetrics {
 		t.Logf("Metrics:\n%s", data)
+	}
+}
+
+// Test that copy uses splice system call on Linux.
+func TestSplice(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("test only runs on Linux")
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("/usr/bin/strace", "-f", exe, "-test.run=TestCopy")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("strace failed: %v\n%s", err, out)
+	}
+
+	count := bytes.Count(out, []byte("] splice"))
+	if count == 0 {
+		t.Error("no calls to splice")
+		t.Logf("strace output:\n%s", out)
+	} else {
+		t.Logf("%d calls to splice", count)
 	}
 }
