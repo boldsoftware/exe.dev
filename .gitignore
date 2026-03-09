@@ -57,3 +57,8 @@ mlruns.db
 
 # https://github.com/wedow/ticket tickets
 .tickets
+*.m4a
+
+# env files with secrets
+.env*
+!.env.example

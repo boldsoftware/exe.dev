@@ -1,0 +1,99 @@
+Issue gardener agent spec. This agent runs on the Panopticon platform (see spec.txt for the platform architecture, proxy_api_design.md for the data source API, security.md for the threat model).
+
+The issue gardener absorbs all available data sources and maintains a curated, prioritized list of issues (feature requests, bug reports, questions, complaints, ideas). Humans review and act on these issues. The gardener continuously gardens: adding new issues from incoming signals, merging duplicates, improving descriptions, adjusting priorities, closing resolved issues.
+
+== Web server ==
+
+The Panopticon web server is where humans see the issue list and interact with it. Human users have privileged rights: modify, delete, adjust priority, lock an issue. Anything a human does is associated with the issue in an unalterable manner, so agents must respect human actions.
+
+The user-facing page defaults to aggregate priority sort, highest at the top. Users have the same filtering and sorting affordances as agents: filter by label(s), sort by aggregate priority / specific priority / recency.
+
+Content is rendered as plain text -- no external image loading, no sketchy rendering. Humans can read plain text fine. That's the point of Markdown.
+
+== Issue data model ==
+
+Each issue is identified by a slug. An issue has:
+
+- One or more labels (e.g. "bug", "feature-request", "question")
+- Priority scores: ease of implementation, risk, urgency, frequency, user pain
+- A list of user/agent actions (audit trail)
+- Freeform Markdown-ish content (the issue description)
+- Status: open or closed (closing is reversible via COW)
+
+== Agent API ==
+
+The agent-side API communicates over the same UDS mux socket as other proxy objects. It exposes:
+
+- Get all labels
+- Get issues filtered by label(s)
+- Get all issues
+- Sort by aggregate priority / specific priority / recency
+
+Agents can alter labels, text, priorities, and status. Every mutation is recorded with its source (agent or human) and the previous state is preserved as a copy-on-write snapshot. Last writer wins.
+
+== Write path design ==
+
+The write surface is limited to the issue set and agent notes. Mux handlers for writes are strongly typed: "update issue X field Y to value Z", not generic "POST arbitrary JSON". No handler accepts free-text URLs, search queries on external sources, or anything that could exfiltrate data.
+
+Write operations:
+- Create issue (slug, labels, content, priorities)
+- Update issue field (slug, field_name, new_value)
+- Close/reopen issue (slug, new_status)
+- Create/update agent note (slug, content)
+
+All writes are commits to the git repo. The agent cannot write to external sources (Discord, GitHub, etc.).
+
+== Gardening loop ==
+
+The gardener agent runs in a loop. Every time it wakes up, it:
+
+1. Reads all data sources (Discord, GitHub, Missive, etc.) via proxy objects
+2. Reads the current Panopticon issue set (also a proxy object -- the gardener sees its own output)
+3. Looks for new signals: user complaints, bug reports, feature requests, questions
+4. Creates new issues for signals that don't match existing issues
+5. Merges or links related signals into existing issues
+6. Improves issue descriptions with new context
+7. Re-prioritizes based on signal frequency, recency, and user pain
+8. Closes issues that appear resolved
+9. Watches for sketchy content (potential prompt injection) and flags it
+
+The gardener is prompted to be conservative: it should not delete human-created content, should not override human priority adjustments, and should prefer augmenting existing issues over creating duplicates.
+
+== Storage ==
+
+Storage is a git repository. Each issue is a file (YAML frontmatter + markdown body), each mutation is a commit. Git provides copy-on-write by definition -- every commit is an immutable snapshot. Rollback is `git checkout <sha>`. History viewing is `git log` and `git diff`. At hundreds of issues with mutations every few minutes, git performance is more than sufficient. Delta compression keeps disk usage small. The data is human-inspectable with any text editor.
+
+Agent notes live in a `notes/` directory in the same git repo. Agents can record things useful to future agents -- slug-keyed text files, same COW semantics. The API: list notes, read a note by slug, create/update a note.
+
+== Example issue file ==
+
+```
+---
+slug: discord-upload-timeout
+labels: [bug, discord]
+status: open
+priority:
+  ease: 3
+  risk: 2
+  urgency: 4
+  frequency: 5
+  pain: 4
+created_by: agent
+created_at: 2025-03-06T14:00:00Z
+---
+# Users report file upload timeouts on Discord
+
+Multiple users in #support report that file uploads over 10MB timeout
+consistently. First reported by alice on 2025-03-05, confirmed by bob
+and charlie.
+
+## Signals
+- Discord #support: alice (2025-03-05), bob (2025-03-06), charlie (2025-03-06)
+- GitHub issue #1234: related but focuses on API uploads, not Discord
+```
+
+== Relationship to the platform ==
+
+The issue gardener is one agent on the Panopticon platform. It consumes the same data sources as the newsletter agent and any future agents. The difference is its output surface: a git-backed, human-reviewable issue set with a web UI, rather than a text newsletter or a CRM update.
+
+The gardener's writable proxy objects (issues, notes) go through the same mux server as read-only data sources. The mux enforces strongly-typed write operations. The worst a rogue gardener can do is trash the issue set, which is recoverable via git rollback.
