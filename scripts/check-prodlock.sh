@@ -38,9 +38,13 @@ fi
 if [ "$(echo "$RESPONSE" | jq -r '.locked')" = "true" ]; then
     LOCKED_BY=$(echo "$RESPONSE" | jq -r '.locked_by // "unknown"')
     SINCE=$(echo "$RESPONSE" | jq -r '.since // "unknown"')
+    REASON=$(echo "$RESPONSE" | jq -r '.reason // empty')
     echo -e "${RED}ERROR: ${ENV} is locked.${NC}" >&2
     echo "Locked by: $LOCKED_BY" >&2
     echo "Since:     $SINCE" >&2
+    if [ -n "$REASON" ]; then
+        echo "Reason:    $REASON" >&2
+    fi
     echo "Set DEPLOY_SKIP_PRODLOCK=1 to bypass this check." >&2
     exit 1
 fi
