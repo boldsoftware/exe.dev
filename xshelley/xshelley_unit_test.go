@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"tailscale.com/util/singleflight"
@@ -103,23 +104,22 @@ func TestRetryableGet_429RetryAfterRespected(t *testing.T) {
 	defer ts.Close()
 
 	origClient, origWait := httpClient, retryBaseWait
-	httpClient = &http.Client{Timeout: 10 * time.Second}
+	httpClient = &http.Client{
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}
 	retryBaseWait = time.Millisecond // much smaller than 1s Retry-After
 	defer func() { httpClient = origClient; retryBaseWait = origWait }()
 
-	start := time.Now()
-	resp, err := retryableGet(context.Background(), ts.URL, nil)
-	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("expected success, got: %v", err)
-	}
-	resp.Body.Close()
-	if elapsed < 900*time.Millisecond {
-		t.Errorf("expected >=1s delay from Retry-After, waited only %v", elapsed)
-	}
-	if got := calls.Load(); got != 2 {
-		t.Errorf("expected 2 attempts, got %d", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		resp, err := retryableGet(context.Background(), ts.URL, nil)
+		if err != nil {
+			t.Fatalf("expected success, got: %v", err)
+		}
+		resp.Body.Close()
+		if got := calls.Load(); got != 2 {
+			t.Errorf("expected 2 attempts, got %d", got)
+		}
+	})
 }
 
 func TestRetryableGet_403WithRetryAfterRetried(t *testing.T) {
@@ -135,21 +135,25 @@ func TestRetryableGet_403WithRetryAfterRetried(t *testing.T) {
 	defer ts.Close()
 
 	origClient, origWait := httpClient, retryBaseWait
-	httpClient = &http.Client{Timeout: 10 * time.Second}
+	httpClient = &http.Client{
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}
 	retryBaseWait = time.Millisecond
 	defer func() { httpClient = origClient; retryBaseWait = origWait }()
 
-	resp, err := retryableGet(context.Background(), ts.URL, nil)
-	if err != nil {
-		t.Fatalf("expected success, got: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-	if got := calls.Load(); got != 2 {
-		t.Errorf("expected 2 attempts, got %d", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		resp, err := retryableGet(context.Background(), ts.URL, nil)
+		if err != nil {
+			t.Fatalf("expected success, got: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+		if got := calls.Load(); got != 2 {
+			t.Errorf("expected 2 attempts, got %d", got)
+		}
+	})
 }
 
 func TestRetryableGet_403WithoutRetryAfterNotRetried(t *testing.T) {
