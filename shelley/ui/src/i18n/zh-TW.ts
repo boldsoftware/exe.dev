@@ -186,7 +186,7 @@ export const zhTW: TranslationKeys = {
   // Welcome / Empty State
   welcomeTitle: "Shelley Agent",
   welcomeSubtitle: "",
-  welcomeMessage: "Shelley 是一個運行在 {hostname} 上的代理。您可以讓 Shelley 幫您完成各種任務。若您使用 Shelley 建立了網站，可以透過 exe.dev 的代理功能（參見 {docsLink}）在 {proxyLink} 上存取。",
+  welcomeMessage: "Shelley 是一個運行在 {hostname} 上的代理。你可以讓 Shelley 幫你完成各種任務。若你使用 Shelley 建立了網站，可以透過 exe.dev 的代理功能（參見 {docsLink}）在 {proxyLink} 上存取。",
   sendMessageToStart: "傳送訊息以開始對話。",
   noModelsConfiguredHint: "未設定 AI 模型。按 Ctrl+K 或 ⌘+K 新增模型。",
 
