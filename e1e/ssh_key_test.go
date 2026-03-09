@@ -1332,7 +1332,6 @@ func TestSSHKeyRenameViaWebCmd(t *testing.T) {
 			t.Fatal("request without args field should be rejected")
 		}
 	})
-
 }
 
 // TestSSHKeyWebCmdArgSplitting tests ssh-key add and remove via /cmd with
