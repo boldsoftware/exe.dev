@@ -10,21 +10,45 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-// Manager manages SSH proxies for instances
-type Manager struct {
+// Manager manages SSH proxies for instances.
+// An SSH proxy is a process that listens on a port.
+// Whenever a connection is made to that port,
+// the proxy makes a connections to the ssh port on the VM,
+// and splices the two connections together.
+type Manager interface {
+	// Create and start a new SSH proxy for an instance.
+	// If a proxy already exists, it is stopped and replaced.
+	CreateProxy(instanceID, targetIP string, port int, instanceDir string) error
+
+	// StopProxy stops running a proxy.
+	// It returns the port on which the proxy was running.
+	StopProxy(instanceID string) (int, error)
+
+	// GetPort returns the port for an instance.
+	// The bool reports whether there is a port.
+	GetPort(instanceID string) (int, bool)
+
+	// RecoverProxies finds any existing proxies.
+	// This is used when exelet restarts.
+	RecoverProxies(instances []*api.Instance) error
+}
+
+// scoatManager manages SSH proxies for instances,
+// using socat for each proxy.
+type socatManager struct {
 	mu      sync.Mutex
-	proxies map[string]*SSHProxy // instanceID -> proxy
-	ports   map[string]int       // instanceID -> port
-	dataDir string               // Root directory for instance data
-	bindIP  string               // IP address to bind proxies to (empty means all interfaces)
+	proxies map[string]*socatSSHProxy // instanceID -> proxy
+	ports   map[string]int            // instanceID -> port
+	dataDir string                    // Root directory for instance data
+	bindIP  string                    // IP address to bind proxies to (empty means all interfaces)
 	log     *slog.Logger
 }
 
 // NewManager creates a new SSH proxy manager.
 // bindIP specifies the IP address to bind proxies to; empty string means all interfaces.
-func NewManager(dataDir, bindIP string, log *slog.Logger) *Manager {
-	return &Manager{
-		proxies: make(map[string]*SSHProxy),
+func NewManager(dataDir, bindIP string, log *slog.Logger) Manager {
+	return &socatManager{
+		proxies: make(map[string]*socatSSHProxy),
 		ports:   make(map[string]int),
 		dataDir: dataDir,
 		bindIP:  bindIP,
@@ -34,14 +58,14 @@ func NewManager(dataDir, bindIP string, log *slog.Logger) *Manager {
 
 // CreateProxy creates and starts a new SSH proxy for an instance.
 // If a proxy already exists for the instance, it is stopped and replaced.
-func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir string) error {
+func (m *socatManager) CreateProxy(instanceID, targetIP string, port int, instanceDir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Stop existing proxy if present (handles restart case and stale proxies)
 	if existingProxy, exists := m.proxies[instanceID]; exists {
 		m.log.Info("stopping existing proxy before creating new one", "instance", instanceID)
-		if err := existingProxy.Stop(); err != nil {
+		if err := existingProxy.stop(); err != nil {
 			m.log.Warn("failed to stop existing proxy", "instance", instanceID, "error", err)
 		}
 		delete(m.proxies, instanceID)
@@ -49,8 +73,8 @@ func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir
 	}
 
 	// Create and start proxy
-	proxy := NewSSHProxy(instanceID, port, targetIP, instanceDir, m.bindIP, m.log)
-	if err := proxy.Start(); err != nil {
+	proxy := newSocatSSHProxy(instanceID, port, targetIP, instanceDir, m.bindIP, m.log)
+	if err := proxy.start(); err != nil {
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
 
@@ -62,7 +86,7 @@ func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir
 }
 
 // StopProxy stops and removes a proxy for an instance
-func (m *Manager) StopProxy(instanceID string) (int, error) {
+func (m *socatManager) StopProxy(instanceID string) (int, error) {
 	m.mu.Lock()
 	proxy, exists := m.proxies[instanceID]
 	port := m.ports[instanceID]
@@ -74,7 +98,7 @@ func (m *Manager) StopProxy(instanceID string) (int, error) {
 		return 0, fmt.Errorf("no proxy found for instance %s", instanceID)
 	}
 
-	if err := proxy.Stop(); err != nil {
+	if err := proxy.stop(); err != nil {
 		return port, fmt.Errorf("failed to stop proxy: %w", err)
 	}
 
@@ -82,7 +106,7 @@ func (m *Manager) StopProxy(instanceID string) (int, error) {
 }
 
 // GetPort returns the port for an instance
-func (m *Manager) GetPort(instanceID string) (int, bool) {
+func (m *socatManager) GetPort(instanceID string) (int, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	port, exists := m.ports[instanceID]
@@ -90,26 +114,26 @@ func (m *Manager) GetPort(instanceID string) (int, bool) {
 }
 
 // StopAll stops all proxies
-func (m *Manager) StopAll() {
+func (m *socatManager) StopAll() {
 	m.mu.Lock()
-	proxies := make([]*SSHProxy, 0, len(m.proxies))
+	proxies := make([]*socatSSHProxy, 0, len(m.proxies))
 	for _, proxy := range m.proxies {
 		proxies = append(proxies, proxy)
 	}
-	m.proxies = make(map[string]*SSHProxy)
+	m.proxies = make(map[string]*socatSSHProxy)
 	m.ports = make(map[string]int)
 	m.mu.Unlock()
 
 	for _, proxy := range proxies {
-		if err := proxy.Stop(); err != nil {
-			m.log.Error("failed to stop proxy", "instance", proxy.InstanceID, "error", err)
+		if err := proxy.stop(); err != nil {
+			m.log.Error("failed to stop proxy", "instance", proxy.instanceID, "error", err)
 		}
 	}
 }
 
 // RecoverProxies scans instance directories and recovers existing socat processes
 // This is called on exelet startup to restore proxy state
-func (m *Manager) RecoverProxies(instances []*api.Instance) error {
+func (m *socatManager) RecoverProxies(instances []*api.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -143,28 +167,28 @@ func (m *Manager) RecoverProxies(instances []*api.Instance) error {
 		}
 
 		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
-		proxy := NewSSHProxy(instance.ID, port, targetIP, instanceDir, m.bindIP, m.log)
+		proxy := newSocatSSHProxy(instance.ID, port, targetIP, instanceDir, m.bindIP, m.log)
 
 		// Try to load existing metadata (may not exist for older instances)
-		if err := proxy.LoadFromDisk(); err != nil {
+		if err := proxy.loadFromDisk(); err != nil {
 			m.log.Debug("no proxy metadata on disk", "instance", instance.ID)
 		}
 
 		// Check if proxy is alive (by PID if we have metadata, or by port)
-		if proxy.IsRunning() {
+		if proxy.isRunning() {
 			// Proxy is running, adopt it
-			m.log.Info("recovered running proxy", "instance", instance.ID, "port", proxy.Port, "pid", proxy.PID)
+			m.log.Info("recovered running proxy", "instance", instance.ID, "port", proxy.port, "pid", proxy.pid)
 			m.proxies[instance.ID] = proxy
-			m.ports[instance.ID] = proxy.Port
+			m.ports[instance.ID] = proxy.port
 		} else {
 			// Proxy is dead or no metadata, try to start/adopt
-			m.log.Info("starting proxy for running instance", "instance", instance.ID, "port", proxy.Port)
-			if err := proxy.Start(); err != nil {
+			m.log.Info("starting proxy for running instance", "instance", instance.ID, "port", proxy.port)
+			if err := proxy.start(); err != nil {
 				m.log.Error("failed to start proxy", "instance", instance.ID, "error", err)
 				continue
 			}
 			m.proxies[instance.ID] = proxy
-			m.ports[instance.ID] = proxy.Port
+			m.ports[instance.ID] = proxy.port
 		}
 	}
 
@@ -172,14 +196,14 @@ func (m *Manager) RecoverProxies(instances []*api.Instance) error {
 }
 
 // MarkPortAllocated marks a port as allocated (for port allocator integration)
-func (m *Manager) MarkPortAllocated(instanceID string, port int) {
+func (m *socatManager) MarkPortAllocated(instanceID string, port int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ports[instanceID] = port
 }
 
 // GetAllocatedPorts returns all currently allocated ports
-func (m *Manager) GetAllocatedPorts() []int {
+func (m *socatManager) GetAllocatedPorts() []int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

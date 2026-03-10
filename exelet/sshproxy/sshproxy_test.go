@@ -52,14 +52,14 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	}
 
 	// Now create SSHProxy and call Start() - it should adopt, not create duplicate
-	proxy := NewSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
-	if err := proxy.Start(); err != nil {
+	proxy := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
+	if err := proxy.start(); err != nil {
 		t.Fatalf("Start() failed: %v", err)
 	}
 
 	// Verify that proxy adopted the existing PID
-	if proxy.PID != manualPID {
-		t.Errorf("expected proxy to adopt PID %d, but got PID %d", manualPID, proxy.PID)
+	if proxy.pid != manualPID {
+		t.Errorf("expected proxy to adopt PID %d, but got PID %d", manualPID, proxy.pid)
 	}
 
 	// Count socat processes on this port to verify no duplicate

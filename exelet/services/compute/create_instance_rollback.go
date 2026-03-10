@@ -31,7 +31,7 @@ type createInstanceRollback struct {
 	imageFSMounted     bool
 	instanceCloned     bool
 	instanceMounted    bool
-	proxyManager       *sshproxy.Manager
+	proxyManager       sshproxy.Manager
 	portAllocator      *PortAllocator
 	proxyCreated       bool
 	allocatedPort      int

@@ -28,7 +28,7 @@ type Service struct {
 	mu                  *sync.Mutex
 	log                 *slog.Logger
 	portAllocator       *PortAllocator
-	proxyManager        *sshproxy.Manager
+	proxyManager        sshproxy.Manager
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 	stopLogRotation     func()
