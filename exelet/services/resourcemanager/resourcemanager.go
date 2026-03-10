@@ -272,19 +272,37 @@ func (m *ResourceManager) poll(ctx context.Context) {
 
 	for _, inst := range instances {
 		seen[inst.GetID()] = struct{}{}
-		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), now)
+		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), inst.GetState(), now)
 	}
 
 	// Cleanup state for removed instances
 	m.cleanupMissing(ctx, seen)
 }
 
-func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, now time.Time) {
+func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, vmState computeapi.VMState, now time.Time) {
 	// Collect usage metrics
-	usage, err := m.collectUsage(ctx, id, name, groupID)
-	if err != nil {
-		m.log.DebugContext(ctx, "resource manager: failed to collect usage", "id", id, "error", err)
-		return
+	var usage *usageData
+	var err error
+
+	if vmState == computeapi.VMState_STOPPED {
+		// Stopped: only collect disk (ZFS volume still exists), zero runtime metrics.
+		// The VM process, cgroups, and tap device don't exist so skip collectUsage.
+		usage = &usageData{}
+		zfsInfo, zfsErr := m.readZFSVolumeInfo(ctx, id)
+		if zfsErr != nil {
+			m.log.DebugContext(ctx, "resource manager: failed to read ZFS info for stopped instance", "id", id, "error", zfsErr)
+		} else if zfsInfo != nil {
+			usage.diskVolsizeBytes = zfsInfo.Volsize
+			usage.diskBytes = zfsInfo.Used
+			usage.diskLogicalBytes = zfsInfo.LogicalUsed
+		}
+	} else {
+		// Running, starting, paused, stopping: VM process still exists, collect full usage.
+		usage, err = m.collectUsage(ctx, id, name, groupID)
+		if err != nil {
+			m.log.DebugContext(ctx, "resource manager: failed to collect usage", "id", id, "error", err)
+			return
+		}
 	}
 
 	m.usageMu.Lock()
@@ -328,7 +346,9 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		elapsed := now.Sub(state.prevPollTime).Seconds()
 		if elapsed > 0 {
 			cpuDelta := usage.cpuSeconds - state.prevCPUSeconds
-			cpuPercent = (cpuDelta / elapsed) * 100.0
+			if cpuDelta > 0 {
+				cpuPercent = (cpuDelta / elapsed) * 100.0
+			}
 		}
 	}
 

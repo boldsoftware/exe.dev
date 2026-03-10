@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/exelet/config"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
 
@@ -618,4 +619,119 @@ func TestInitControllersCpuset(t *testing.T) {
 			t.Error("cpuset.cpus should not exist when ReservedCPUs=0")
 		}
 	})
+}
+
+func TestPollInstanceStoppedZerosRuntimeMetrics(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &ResourceManager{
+		config:           &config.ExeletConfig{}, // no StorageManagerAddress → readZFSVolumeInfo returns nil
+		usageState:       make(map[string]*vmUsageState),
+		priorityOverride: make(map[string]api.VMPriority),
+		cgroupRoot:       tmpDir,
+		log:              slog.Default(),
+	}
+
+	now := time.Now()
+	m.pollInstance(t.Context(), "vm-stopped", "stopped-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+
+	m.usageMu.Lock()
+	state, exists := m.usageState["vm-stopped"]
+	m.usageMu.Unlock()
+
+	if !exists {
+		t.Fatal("expected usageState entry for stopped VM")
+	}
+
+	// Runtime metrics should all be zero
+	if state.cpuSeconds != 0 {
+		t.Errorf("cpuSeconds = %v, want 0", state.cpuSeconds)
+	}
+	if state.cpuPercent != 0 {
+		t.Errorf("cpuPercent = %v, want 0", state.cpuPercent)
+	}
+	if state.memoryBytes != 0 {
+		t.Errorf("memoryBytes = %d, want 0", state.memoryBytes)
+	}
+	if state.swapBytes != 0 {
+		t.Errorf("swapBytes = %d, want 0", state.swapBytes)
+	}
+	if state.netRxBytes != 0 {
+		t.Errorf("netRxBytes = %d, want 0", state.netRxBytes)
+	}
+	if state.netTxBytes != 0 {
+		t.Errorf("netTxBytes = %d, want 0", state.netTxBytes)
+	}
+	if state.ioReadBytes != 0 {
+		t.Errorf("ioReadBytes = %d, want 0", state.ioReadBytes)
+	}
+	if state.ioWriteBytes != 0 {
+		t.Errorf("ioWriteBytes = %d, want 0", state.ioWriteBytes)
+	}
+}
+
+func TestPollInstancePausedAttemptsFullCollection(t *testing.T) {
+	// PAUSED VMs should take the collectUsage path, not the stopped path.
+	// collectUsage will fail (no cloud-hypervisor socket), causing pollInstance
+	// to return early without creating a usageState entry.
+	tmpDir := t.TempDir()
+	m := &ResourceManager{
+		config:           &config.ExeletConfig{},
+		usageState:       make(map[string]*vmUsageState),
+		priorityOverride: make(map[string]api.VMPriority),
+		cgroupRoot:       tmpDir,
+		log:              slog.Default(),
+	}
+
+	now := time.Now()
+	m.pollInstance(t.Context(), "vm-paused", "paused-vm", "grp1", nil, computeapi.VMState_PAUSED, now)
+
+	// collectUsage fails → returns early → no state entry created
+	m.usageMu.Lock()
+	_, exists := m.usageState["vm-paused"]
+	m.usageMu.Unlock()
+
+	if exists {
+		t.Error("PAUSED VM should attempt collectUsage (which fails here), not take the stopped path")
+	}
+}
+
+func TestPollInstanceStoppedCPUPercentNotNegative(t *testing.T) {
+	// Simulate a running→stopped transition: pre-populate state with prevCPUSeconds > 0,
+	// then poll as STOPPED. cpuPercent must be 0, not negative.
+	tmpDir := t.TempDir()
+	m := &ResourceManager{
+		config:           &config.ExeletConfig{},
+		usageState:       make(map[string]*vmUsageState),
+		priorityOverride: make(map[string]api.VMPriority),
+		cgroupRoot:       tmpDir,
+		log:              slog.Default(),
+	}
+
+	prevTime := time.Now().Add(-30 * time.Second)
+	m.usageState["vm-transition"] = &vmUsageState{
+		name:           "transition-vm",
+		groupID:        "grp1",
+		priority:       api.VMPriority_PRIORITY_NORMAL,
+		prevCPUSeconds: 10.0,
+		cpuSeconds:     10.0,
+		prevPollTime:   prevTime,
+	}
+
+	now := time.Now()
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+
+	m.usageMu.Lock()
+	state := m.usageState["vm-transition"]
+	m.usageMu.Unlock()
+
+	if state.cpuPercent < 0 {
+		t.Errorf("cpuPercent = %v, must not be negative after running→stopped transition", state.cpuPercent)
+	}
+	if state.cpuPercent != 0 {
+		t.Errorf("cpuPercent = %v, want 0 for stopped VM", state.cpuPercent)
+	}
+	// prevCPUSeconds should be updated to 0 (the new usage.cpuSeconds)
+	if state.prevCPUSeconds != 0 {
+		t.Errorf("prevCPUSeconds = %v, want 0", state.prevCPUSeconds)
+	}
 }
