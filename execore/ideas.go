@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
 	"exe.dev/idea"
 	"exe.dev/stage"
@@ -317,14 +316,7 @@ func (s *Server) handleDebugTemplateReview(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if err := tmpl.ExecuteTemplate(w, "template-review.html", data); err != nil {
-		http.Error(w, fmt.Sprintf("failed to render: %v", err), http.StatusInternalServerError)
-	}
+	s.renderDebugTemplate(r.Context(), w, "template-review.html", data)
 }
 
 // handleDebugTemplateReviewPost handles POST actions on template review.

@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/netip"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"exe.dev/billing"
@@ -147,12 +149,6 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 		commit = "(dev build)"
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Stage      string
 		StageColor string
@@ -165,10 +161,7 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 		GitHubLink: template.HTML(gitHubLink(commit)),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "index.html", data); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute index template", "error", err)
-	}
+	s.renderDebugTemplate(r.Context(), w, "index.html", data)
 }
 
 func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
@@ -189,12 +182,6 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	// For HTML requests, return the page shell immediately.
 	// DataTables will load data via AJAX from the JSON endpoint.
 	if r.URL.Query().Get("format") != "json" {
-		tmpl, err := debug_templates.Parse(s.env)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-			return
-		}
-
 		// Build the navigation links
 		var sourceNav template.HTML
 		if source == "exelets" {
@@ -211,10 +198,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 			SourceNav: sourceNav,
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := tmpl.ExecuteTemplate(w, "boxes.html", data); err != nil {
-			s.slog().ErrorContext(ctx, "failed to execute boxes template", "error", err)
-		}
+		s.renderDebugTemplate(ctx, w, "boxes.html", data)
 		return
 	}
 
@@ -554,12 +538,6 @@ func (s *Server) handleDebugBoxMigrateForm(w http.ResponseWriter, r *http.Reques
 	}
 	sort.Strings(addrs)
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	// JSON-encode the box name for use in JavaScript
 	boxNameJSON, _ := json.Marshal(boxName)
 
@@ -573,10 +551,7 @@ func (s *Server) handleDebugBoxMigrateForm(w http.ResponseWriter, r *http.Reques
 		ExeletOptions: addrs,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "box-migrate.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute box-migrate template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "box-migrate.html", data)
 }
 
 // handleDebugBoxMigrate handles migration of a box to a different exelet.
@@ -1367,22 +1342,13 @@ func (s *Server) handleDebugMassMigrateForm(w http.ResponseWriter, r *http.Reque
 	}
 	sort.Strings(addrs)
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Exelets []string
 	}{
 		Exelets: addrs,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "mass-migrate.html", data); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute mass-migrate template", "error", err)
-	}
+	s.renderDebugTemplate(r.Context(), w, "mass-migrate.html", data)
 }
 
 // handleDebugMassMigrateBoxes returns JSON list of boxes on selected exelets.
@@ -1733,12 +1699,6 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 
 	route := box.GetRoute()
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	type shareInfo struct {
 		Email     string
 		SharedBy  string
@@ -1840,10 +1800,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		CreationLog:          creationLog,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "box-details.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute box-details template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "box-details.html", data)
 }
 
 // handleDebugBoxLogs fetches the instance logs from the exelet and returns them.
@@ -2028,12 +1985,6 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		RegularCount      int
 		LoginWithExeCount int
@@ -2044,10 +1995,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		TotalCount:        len(users),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "users.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute users template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "users.html", data)
 }
 
 // handleDebugToggleRootSupport toggles the root support flag for a user.
@@ -2403,22 +2351,13 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Exelets []exeletInfo
 	}{
 		Exelets: exelets,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "exelets.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute exelets template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "exelets.html", data)
 }
 
 // handleDebugSetPreferredExelet sets or clears the preferred exelet.
@@ -2665,12 +2604,6 @@ func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Reques
 		allTrackedBuf.WriteString("<p>No rate limiter configured.</p>\n")
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		LoginDisabled   bool
 		IPAbuseDisabled bool
@@ -2689,10 +2622,7 @@ func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Reques
 		AllTrackedHTML:  template.HTML(allTrackedBuf.String()),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "signup-controls.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute signup-controls template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "signup-controls.html", data)
 }
 
 // handleDebugSignupLimiterPost handles saving the login creation disabled setting.
@@ -2738,12 +2668,6 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Enabled       bool
 		EmailPatterns string
@@ -2754,10 +2678,7 @@ func (s *Server) handleDebugNewThrottle(w http.ResponseWriter, r *http.Request) 
 		Message:       config.Message,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "new-throttle.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute new-throttle template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "new-throttle.html", data)
 }
 
 // handleDebugNewThrottlePost handles saving the new-throttle configuration.
@@ -2914,12 +2835,6 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Entries []ipShardEntry
 		LobbyIP string
@@ -2928,10 +2843,7 @@ func (s *Server) handleDebugIPShards(w http.ResponseWriter, r *http.Request) {
 		LobbyIP: s.LobbyIP.String(),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "ipshards.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute ipshards template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "ipshards.html", data)
 }
 
 // handleDebugIPShardsToggle switches a shard's serving IP between AWS and Latitude.
@@ -3093,16 +3005,7 @@ func (s *Server) handleDebugIPShardsLatitude(w http.ResponseWriter, r *http.Requ
 
 // handleDebugLogForm renders a simple form to log an error message.
 func (s *Server) handleDebugLogForm(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "log-form.html", nil); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute log-form template", "error", err)
-	}
+	s.renderDebugTemplate(r.Context(), w, "log-form.html", nil)
 }
 
 // handleDebugLog logs an error message provided via POST request.
@@ -3120,12 +3023,6 @@ func (s *Server) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 // handleDebugTestimonials displays all testimonials with their approval status.
 func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request) {
 	testimonials := AllTestimonials()
-
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
 
 	type testimonialData struct {
 		Number    int
@@ -3152,10 +3049,7 @@ func (s *Server) handleDebugTestimonials(w http.ResponseWriter, r *http.Request)
 		Testimonials: testimonialList,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "testimonials.html", data); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute testimonials template", "error", err)
-	}
+	s.renderDebugTemplate(r.Context(), w, "testimonials.html", data)
 }
 
 // IsLoginCreationDisabled reports whether new account creation is disabled.
@@ -3171,12 +3065,6 @@ func (s *Server) IsLoginCreationDisabled(ctx context.Context) bool {
 func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 	postmarkAvailable := s.emailSenders.Postmark != nil
 	mailgunAvailable := s.emailSenders.Mailgun != nil
-
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
 
 	var result string
 	var isError bool
@@ -3197,10 +3085,7 @@ func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 		IsError:           isError,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "email-form.html", data); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to execute email-form template", "error", err)
-	}
+	s.renderDebugTemplate(r.Context(), w, "email-form.html", data)
 }
 
 // handleDebugEmailSend sends a test email via the selected provider.
@@ -3291,12 +3176,6 @@ func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request)
 	bypassListDB, err := withRxRes0(s, ctx, (*exedb.Queries).ListEmailQualityBypass)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get bypass list: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -3398,10 +3277,7 @@ func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request)
 		Rejections: rejectionList,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "signup-reject.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute signup-reject template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "signup-reject.html", data)
 }
 
 // handleDebugSignupRejectPost handles adding/removing emails from the bypass list.
@@ -3465,12 +3341,6 @@ func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	type systemCode struct {
 		Code        string
 		PlanType    string
@@ -3504,10 +3374,7 @@ func (s *Server) handleDebugInvite(w http.ResponseWriter, r *http.Request) {
 		SystemCodes: systemCodes,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "invite.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute invite template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "invite.html", data)
 }
 
 // handleDebugInvitePost handles creating a new invite code.
@@ -3750,12 +3617,6 @@ func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Codes       []string
 		PlanType    string
@@ -3766,10 +3627,7 @@ func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Reques
 		AssignedFor: assignedFor,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "invite-bulk.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute invite-bulk template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "invite-bulk.html", data)
 }
 
 // handleDebugAllInviteCodes displays all invite codes with giver and recipient emails.
@@ -3851,16 +3709,7 @@ func (s *Server) handleDebugAllInviteCodes(w http.ResponseWriter, r *http.Reques
 	}
 
 	// HTML format with DataTables
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "all-invite-codes.html", nil); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute all-invite-codes template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "all-invite-codes.html", nil)
 }
 
 // InviteTreeNode represents a user node in the invite tree for template rendering.
@@ -3964,16 +3813,7 @@ func (s *Server) handleDebugInviteTree(w http.ResponseWriter, r *http.Request) {
 		computeCounts(root)
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "invite-tree.html", roots); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute invite-tree template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "invite-tree.html", roots)
 }
 
 // IsIPAbuseFilterDisabled reports whether the IP abuse filter is disabled.
@@ -4221,16 +4061,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "user.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute user template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "user.html", data)
 }
 
 func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {
@@ -4874,16 +4705,7 @@ func (s *Server) handleDebugBounces(w http.ResponseWriter, r *http.Request) {
 		LastPollTime: lastPollTime,
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "bounces.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute bounces template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "bounces.html", data)
 }
 
 // handleDebugBouncesPost handles POST actions on the bounces page.
@@ -5188,22 +5010,13 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HTML output
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		TeamCount int
 	}{
 		TeamCount: len(teams),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "teams.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute teams template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "teams.html", data)
 }
 
 // handleDebugTeamRemoveMember removes a member from a team.
@@ -5608,12 +5421,6 @@ func (s *Server) handleDebugGLBRollout(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Prefixes    []prefixInfo
 		PrefixesRaw string
@@ -5622,10 +5429,7 @@ func (s *Server) handleDebugGLBRollout(w http.ResponseWriter, r *http.Request) {
 		PrefixesRaw: strings.Join(prefixes, "\n"),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "glb-rollout.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute glb-rollout template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "glb-rollout.html", data)
 }
 
 // handleDebugGLBRolloutPost handles saving the GLB rollout prefixes.
@@ -5828,12 +5632,6 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := debug_templates.Parse(s.env)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
 		Regions          []regionInfo
 		OutOfRegionUsers []outOfRegionUser
@@ -5842,10 +5640,7 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		OutOfRegionUsers: outOfRegionUsers,
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "regions.html", data); err != nil {
-		s.slog().ErrorContext(ctx, "failed to execute regions template", "error", err)
-	}
+	s.renderDebugTemplate(ctx, w, "regions.html", data)
 }
 
 func (s *Server) handleDebugJump(w http.ResponseWriter, r *http.Request) {
@@ -5998,4 +5793,24 @@ func (s *Server) handleDebugJump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, fmt.Sprintf("no match found for %q", q), http.StatusNotFound)
+}
+
+// renderDebugTemplate renders a debug template to a browser.
+// Some of these print a lot of data, so we stream the result,
+// and only report relevant errors.
+func (s *Server) renderDebugTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) {
+	tmpl, err := debug_templates.Parse(s.env)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
+		if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) {
+			// The user closed the web page. Ignore the error.
+		} else {
+			s.slog().ErrorContext(ctx, "failed to execute debug template", "templateName", templateName, "error", err)
+		}
+	}
 }
