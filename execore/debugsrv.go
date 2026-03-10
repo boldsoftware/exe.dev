@@ -5807,9 +5807,13 @@ func (s *Server) renderDebugTemplate(ctx context.Context, w http.ResponseWriter,
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
-		if errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) {
-			// The user closed the web page. Ignore the error.
-		} else {
+		// Don't report errors that indicate that
+		// the user closed the web page.
+		switch {
+		case errors.Is(err, net.ErrClosed):
+		case errors.Is(err, syscall.EPIPE):
+		case errors.Is(err, syscall.ECONNRESET):
+		default:
 			s.slog().ErrorContext(ctx, "failed to execute debug template", "templateName", templateName, "error", err)
 		}
 	}
