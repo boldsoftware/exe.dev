@@ -1787,14 +1787,14 @@
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
                         {{end}}
+                        {{$boxName := .Name}}
                         <span class="box-info-label">Tags:</span>
-                        <span class="box-info-value box-tags-editable" data-box-name="{{.Name}}">
-                            {{range .DisplayTags}}<span class="box-tag box-tag-removable">#{{.}}<button class="box-tag-remove" onclick="removeTag('{{$.Name}}', '{{.}}')" title="Remove tag">&times;</button></span> {{end}}<button class="box-tag-add-btn" onclick="showAddTagInput(this, '{{.Name}}')" title="Add tag">+ tag</button>
+                        <span class="box-info-value box-tags-editable" data-box-name="{{$boxName}}">
+                            {{range .DisplayTags}}<span class="box-tag box-tag-removable">#{{.}}<button class="box-tag-remove" onclick="removeTag('{{$boxName}}', '{{.}}')" title="Remove tag">&times;</button></span> {{end}}<button class="box-tag-add-btn" onclick="showAddTagInput(this, '{{$boxName}}')" title="Add tag">+ tag</button>
                         </span>
                     </div>
                     {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
                     <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
-                        {{$boxName := .Name}}
                         {{if gt (len .SharedEmails) 0}}
                         <div style="font-size: 13px; font-weight: 500; color: #6b7280; margin-bottom: 8px;">Shared with users:</div>
                         <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
