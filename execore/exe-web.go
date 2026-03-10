@@ -1684,8 +1684,10 @@ func (s *Server) handleCreditsSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.billing.SyncCredits(r.Context(), account.CreatedAt); err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to sync credits", "error", err, "user_id", userID)
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+	defer cancel()
+	if err := s.billing.SyncCredits(ctx, account.CreatedAt); err != nil {
+		s.slog().ErrorContext(ctx, "failed to sync credits", "error", err, "user_id", userID)
 	}
 
 	http.Redirect(w, r, "/user", http.StatusSeeOther)
