@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"maps"
 	"net"
 	"net/netip"
 	"os"
 	"strconv"
 	"sync"
 	"syscall"
+
+	"exe.dev/exepipe/internal/cmds"
 )
 
 // piping manages piping data between file descriptors.
@@ -19,6 +23,9 @@ type piping struct {
 
 	connsMu sync.Mutex
 	conns   map[net.Conn]struct{}
+
+	listenersMu sync.Mutex
+	listeners   map[string]cmds.Listener
 }
 
 // setupPiping sets up a new [piping] instance.
@@ -26,6 +33,7 @@ func setupPiping(cfg *PipeConfig, pi *PipeInstance) (*piping, error) {
 	ret := &piping{
 		pipeInstance: pi,
 		conns:        make(map[net.Conn]struct{}),
+		listeners:    make(map[string]cmds.Listener),
 	}
 	return ret, nil
 }
@@ -171,12 +179,12 @@ func (p *piping) sockname(ctx context.Context, fd int) string {
 // Listen takes a socket file descriptor and starts goroutines
 // to listen on that socket and start copying between the
 // accepted socket and the TCP address.
-func (p *piping) Listen(ctx context.Context, fd int, host string, port int, typ string) {
-	go p.doListen(ctx, fd, host, port, typ)
+func (p *piping) Listen(ctx context.Context, key string, fd int, host string, port int, typ string) {
+	go p.doListen(ctx, key, fd, host, port, typ)
 }
 
 // doListen implements Listen, running in a separate goroutine.
-func (p *piping) doListen(ctx context.Context, fd int, host string, port int, typ string) {
+func (p *piping) doListen(ctx context.Context, key string, fd int, host string, port int, typ string) {
 	f := os.NewFile(uintptr(fd), p.sockname(ctx, fd))
 	ln, err := net.FileListener(f)
 	f.Close()
@@ -187,12 +195,15 @@ func (p *piping) doListen(ctx context.Context, fd int, host string, port int, ty
 
 	defer ln.Close()
 
+	p.addListener(ctx, key, host, port, typ)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
 				p.pipeInstance.lg.WarnContext(ctx, "exepipe listen error", "type", typ, "error", err)
 			}
+			p.rmListener(ctx, key)
 			return
 		}
 
@@ -211,4 +222,45 @@ func (p *piping) connect(ctx context.Context, conn1 net.Conn, host string, port 
 	}
 
 	p.copyConns(ctx, conn1, conn2, typ)
+}
+
+// addListener records a new listener.
+func (p *piping) addListener(ctx context.Context, key, host string, port int, typ string) {
+	p.listenersMu.Lock()
+	defer p.listenersMu.Unlock()
+
+	if old, ok := p.listeners[key]; ok {
+		if host != old.Host || port != old.Port || typ != old.Type {
+			p.pipeInstance.lg.WarnContext(ctx, "exepipe: listener key changed", "key", key, "oldHost", old.Host, "oldPort", old.Port, "oldType", old.Type, "newHost", host, "newPort", port, "newType", typ)
+		}
+	}
+
+	ln := cmds.Listener{
+		Key:  key,
+		Host: host,
+		Port: port,
+		Type: typ,
+	}
+	p.listeners[key] = ln
+}
+
+// rmListener removes a listener.
+func (p *piping) rmListener(ctx context.Context, key string) {
+	p.listenersMu.Lock()
+	defer p.listenersMu.Unlock()
+
+	delete(p.listeners, key)
+}
+
+// listeners returns an iterator over all the listeners.
+// This will keep the map locked during the iteration.
+// This is OK because this command is only expected to be used
+// once at startup time.
+func (p *piping) allListeners() iter.Seq[cmds.Listener] {
+	return func(yield func(cmds.Listener) bool) {
+		p.listenersMu.Lock()
+		defer p.listenersMu.Unlock()
+
+		maps.Values(p.listeners)(yield)
+	}
 }

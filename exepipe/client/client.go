@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net"
 	"sync"
@@ -68,14 +69,15 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 // When any connection arrives, exepipe will open a TCP connection
 // to the specified network destination, and copy data between
 // the two connections.
-// The network destination is "host:port".
+// The key may be used to stop the listener, and is returned by Listeners.
+// The network destination is host:port
 // The typ argument is purely descriptive, something like "http" or "ssh".
 // On success, this command will take ownership of the listener.
 // This will return an error if there is some problem contacting exepipe.
 // Errors while listening or copying will be logged by exepipe
 // and will not be returned to the caller.
-func (c *Client) Listen(ctx context.Context, listener net.Listener, dest, typ string) error {
-	data, oob, err := cmds.ListenCmd(listener, dest, typ)
+func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, host string, port int, typ string) error {
+	data, oob, err := cmds.ListenCmd(key, listener, host, port, typ)
 	if err != nil {
 		return err
 	}
@@ -106,8 +108,13 @@ func (c *Client) sendCmd(ctx context.Context, data, oob []byte) error {
 		return fmt.Errorf("exepipe client short write: wrote %d, %d out of %d, %d", n, oobn, len(data), len(oob))
 	}
 
+	return c.readResponse(ctx)
+}
+
+// readResponse reads the response to a command.
+func (c *Client) readResponse(ctx context.Context) error {
 	var rdata, roob [512]byte
-	n, oobn, _, _, err = c.uc.ReadMsgUnix(rdata[:], roob[:])
+	n, oobn, _, _, err := c.uc.ReadMsgUnix(rdata[:], roob[:])
 	if err != nil {
 		return fmt.Errorf("error receiving from exepipe: %w", err)
 	}
@@ -120,5 +127,85 @@ func (c *Client) sendCmd(ctx context.Context, data, oob []byte) error {
 	if len(ack) > 0 {
 		return errors.New(ack)
 	}
+
 	return nil
+}
+
+// Listener describes an exepipe listener.
+// These are taken from the values passed to [Client.Listen].
+type Listener struct {
+	Key  string // key
+	Host string // connection host
+	Port int    // connection port
+	Type string // type
+}
+
+// Listeners asks exepipe for all current listeners.
+func (c *Client) Listeners(ctx context.Context) iter.Seq2[Listener, error] {
+	return func(yield func(Listener, error) bool) {
+		for ln, err := range c.listeners(ctx) {
+			cln := Listener{
+				Key:  ln.Key,
+				Host: ln.Host,
+				Port: ln.Port,
+				Type: ln.Type,
+			}
+			if !yield(cln, err) {
+				break
+			}
+		}
+	}
+}
+
+// listeners returns the current listeners as cmds.Listener values.
+func (c *Client) listeners(ctx context.Context) iter.Seq2[cmds.Listener, error] {
+	return func(yield func(cmds.Listener, error) bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		data, err := cmds.ListenersCmd()
+		if err != nil {
+			yield(cmds.Listener{}, err)
+			return
+		}
+
+		n, oobn, err := c.uc.WriteMsgUnix(data, nil, nil)
+		if err != nil {
+			yield(cmds.Listener{}, fmt.Errorf("error sending to exepipe: %v", err))
+			return
+		}
+
+		if n != len(data) || oobn != 0 {
+			yield(cmds.Listener{}, fmt.Errorf("exepipe client short write: wrote %d, %d out of %d, %d", n, oobn, len(data), 0))
+			return
+		}
+
+		// maxPacketSize is a typical Linux default.
+		const maxPacketSize = 208 * 1024
+
+		rdata := make([]byte, maxPacketSize)
+		roob := make([]byte, 512)
+		more := true
+		for more {
+			n, oobn, _, _, err := c.uc.ReadMsgUnix(rdata, roob)
+			if err != nil {
+				yield(cmds.Listener{}, err)
+				return
+			}
+			if oobn > 0 {
+				yield(cmds.Listener{}, errors.New("unexpected oob in listeners"))
+				return
+			}
+
+			more, yield = cmds.UnmarshalListenersResponse(ctx, c.lg, yield, rdata[:n])
+		}
+
+		// After the listeners comes a final ack.
+		err = c.readResponse(ctx)
+		if err != nil {
+			if yield != nil {
+				yield(cmds.Listener{}, err)
+			}
+		}
+	}
 }

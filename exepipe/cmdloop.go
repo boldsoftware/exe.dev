@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 
 	"exe.dev/exepipe/internal/cmds"
@@ -72,9 +71,9 @@ func (cl *cmdLoop) acceptLoop(ctx context.Context) {
 
 // commandLoop processes commands sent over a connection.
 func (cl *cmdLoop) commandLoop(ctx context.Context, uc *net.UnixConn) {
-	actions := cl.actions()
+	actions := cl.actions(uc)
 	for {
-		var buf, oob [256]byte
+		var buf, oob [1024]byte
 		n, oobn, _, _, err := uc.ReadMsgUnix(buf[:], oob[:])
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
@@ -109,24 +108,38 @@ func (cl *cmdLoop) commandLoop(ctx context.Context, uc *net.UnixConn) {
 
 // actions returns a map from commands to the functions that implement
 // those commands.
-func (cl *cmdLoop) actions() cmds.Actions {
-	return cmds.Actions{
-		"copy":   cl.copyAction,
-		"listen": cl.listenAction,
+func (cl *cmdLoop) actions(uc *net.UnixConn) cmds.Actions {
+	ca := &cmdActor{
+		pipeInstance: cl.pipeInstance,
+		uc:           uc,
 	}
+	return cmds.Actions{
+		"copy":      ca.copyAction,
+		"listen":    ca.listenAction,
+		"listeners": ca.listenersAction,
+	}
+}
+
+// cmdActor handles commands.
+type cmdActor struct {
+	pipeInstance *PipeInstance
+	uc           *net.UnixConn
 }
 
 // copyAction implements the copy command.
 // This copies data between two file descriptors.
-func (cl *cmdLoop) copyAction(ctx context.Context, fds []int, arg, typ string) error {
-	if arg != "" {
-		return errors.New("unexpected argument to copy command")
+func (ca *cmdActor) copyAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key != "" {
+		return fmt.Errorf("unexpected key to copy command: %q", key)
+	}
+	if host != "" || port != 0 {
+		return fmt.Errorf("unexpected destination to copy command: %q %d", host, port)
 	}
 	if len(fds) != 2 {
 		return fmt.Errorf("copy command received %d file descriptors, expected 2", len(fds))
 	}
 
-	cl.pipeInstance.piping.Copy(ctx, fds[0], fds[1], typ)
+	ca.pipeInstance.piping.Copy(ctx, fds[0], fds[1], typ)
 
 	return nil
 }
@@ -135,23 +148,38 @@ func (cl *cmdLoop) copyAction(ctx context.Context, fds []int, arg, typ string) e
 // This listens on a socket. When a connection arrives,
 // this opens a connection to the destination and then
 // copies all between the two file descriptors.
-func (cl *cmdLoop) listenAction(ctx context.Context, fds []int, arg, typ string) error {
-	if arg == "" {
-		return errors.New("missing argument to listen command")
+func (ca *cmdActor) listenAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key == "" {
+		return errors.New("missing key to listen command")
 	}
-	host, portStr, err := net.SplitHostPort(arg)
-	if err != nil {
-		return fmt.Errorf("listen command failed to parse %q: %v", arg, err)
+	if host == "" || port == 0 {
+		return errors.New("missing destination to listen command")
 	}
 	if len(fds) != 1 {
 		return fmt.Errorf("listen command received %d file descriptors, expected 1", len(fds))
 	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return fmt.Errorf("listen command port %q is not a number: %v", portStr, err)
-	}
 
-	cl.pipeInstance.piping.Listen(ctx, fds[0], host, port, typ)
+	ca.pipeInstance.piping.Listen(ctx, key, fds[0], host, port, typ)
 
 	return nil
+}
+
+// listenersAction implements the listeners command.
+// This sends all the current listeners on the socket.
+func (ca *cmdActor) listenersAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+		return errors.New("unexpected arguments to listeners command")
+	}
+
+	listeners := ca.pipeInstance.piping.allListeners()
+	var err error
+	for data := range cmds.MarshalListenersResponse(ctx, ca.pipeInstance.lg, listeners, &err) {
+		n, oobn, err := ca.uc.WriteMsgUnix(data, nil, nil)
+		if err != nil || n != len(data) || oobn != 0 {
+			ca.pipeInstance.lg.ErrorContext(ctx, "exepipe unix socket write failure", "tried", len(data), "wrote", n, "oobn", oobn, "error", err)
+			return errors.New("exepipe unix socket write failure")
+		}
+	}
+
+	return err
 }

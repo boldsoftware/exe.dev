@@ -3,8 +3,11 @@ package exepipe
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -64,7 +67,8 @@ func TestListen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := cli.Listen(t.Context(), externalListener, vmListener.Addr().String(), "test"); err != nil {
+	tcpAddr := vmListener.Addr().(*net.TCPAddr)
+	if err := cli.Listen(t.Context(), "key", externalListener, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,4 +139,68 @@ func TestListen(t *testing.T) {
 	}
 
 	pi.Stop()
+}
+
+func TestListeners(t *testing.T) {
+	pi, addr := testPipeInstance(t)
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		if err := pi.Start(); err != nil {
+			t.Error(err)
+		}
+	})
+	defer wg.Wait()
+	defer pi.Stop()
+
+	cli, err := client.NewClient(t.Context(), addr.String(), tslog.Slogger(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test fetching listeners around the packet limit.
+	sofar := 0
+	for _, count := range []int{199, 200, 201, 399, 400, 401} {
+		i := sofar
+		for range count - sofar {
+			listener, err := net.Listen("tcp", "localhost:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := cli.Listen(t.Context(), fmt.Sprintf("key%d", i), listener, fmt.Sprintf("host%d", i), i+1, "test"); err != nil {
+				t.Fatal(err)
+			}
+			i++
+		}
+		sofar = count
+
+		found := 0
+		for ln, err := range cli.Listeners(t.Context()) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyIdx, keyOK := strings.CutPrefix(ln.Key, "key")
+			hostIdx, hostOK := strings.CutPrefix(ln.Host, "host")
+			if !keyOK || !hostOK || keyIdx != hostIdx || ln.Type != "test" {
+				t.Errorf("bad listener %#v", ln)
+				continue
+			}
+			idx, err := strconv.Atoi(keyIdx)
+			if err != nil {
+				t.Errorf("bad listener index %#v", ln)
+				continue
+			}
+			if idx != ln.Port-1 {
+				t.Errorf("bad listener port got %d want %d", ln.Port-1, idx)
+				continue
+			}
+
+			found++
+		}
+
+		if found != count {
+			t.Errorf("got %d listeners, want %d", found, count)
+		}
+	}
 }
