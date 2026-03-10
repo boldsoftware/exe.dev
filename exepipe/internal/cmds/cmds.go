@@ -270,7 +270,7 @@ func MarshalListenersResponse(ctx context.Context, lg *slog.Logger, listeners it
 				lg.ErrorContext(ctx, "exepipe MarshalListenersResponse marshalling error", "error", err)
 				// In order to not break the communication,
 				// we need to send an empty packet.
-				s = []Listener{Listener{}}
+				s = []Listener{{}}
 				send(s)
 				return false
 			}
