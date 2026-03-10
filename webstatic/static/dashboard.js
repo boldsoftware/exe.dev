@@ -397,7 +397,6 @@ class CommandModal {
     #output = null;
     #runBtn = null;
     #currentCommand = '';
-    #currentArgs = null;
     #inputEl = null;
     #isDanger = false;
     #commandSucceeded = false;
@@ -423,6 +422,15 @@ class CommandModal {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    #getFullCommand() {
+        if (this.#inputEl) {
+            const input = this.#inputEl.value.trim();
+            if (!input) return null;
+            return `${this.#currentCommand} ${shellQuote(input)}`;
+        }
+        return this.#currentCommand;
     }
 
     #resetInputState() {
@@ -455,8 +463,7 @@ class CommandModal {
      * @param {Object} options
      * @param {string} options.title - Modal title
      * @param {string} [options.command] - Full command to run (no input needed)
-     * @param {string[]} [options.args] - Pre-split arguments (avoids shell quoting)
-     * @param {string} [options.commandPrefix] - Command prefix (input appended as arg)
+     * @param {string} [options.commandPrefix] - Command prefix (input appended)
      * @param {string} [options.inputPlaceholder] - Placeholder for input field
      * @param {string} [options.defaultValue] - Default value for input field
      * @param {boolean} [options.danger] - Use red "Run" button
@@ -466,6 +473,12 @@ class CommandModal {
 
         this.#title.textContent = options.title || 'Run Command';
         this.#isDanger = options.danger || false;
+
+        // Remove stale input from a previous commandPrefix open.
+        if (this.#inputEl) {
+            this.#inputEl.remove();
+            this.#inputEl = null;
+        }
 
         // Reset state
         this.#output.classList.remove('visible', 'success', 'error');
@@ -489,33 +502,43 @@ class CommandModal {
 
         if (options.command) {
             this.#currentCommand = options.command;
-            this.#currentArgs = options.args || null;
             this.#inputEl = null;
-            const displayText = options.args
-                ? options.command + ' ' + options.args.map(a => a.includes(' ') ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ')
-                : options.command;
-            this.#display.innerHTML = `<span class="cmd-text-static">${this.#escapeHtml(displayText)}</span>`;
+            this.#display.innerHTML = `<span class="cmd-text-static">${this.#escapeHtml(options.command)}</span>`;
         } else if (options.commandPrefix) {
             this.#currentCommand = options.commandPrefix;
-            this.#currentArgs = options.args || null;
-            const displayPrefix = options.args
-                ? options.commandPrefix + ' ' + options.args.map(a => a.includes(' ') ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ')
-                : options.commandPrefix;
-            this.#display.innerHTML = `
-                <span class="cmd-text-static">${this.#escapeHtml(displayPrefix)} </span>
-                <input type="text" class="cmd-input" id="cmd-input-field"
-                       placeholder="${options.inputPlaceholder || ''}" autocomplete="off">
-            `.trim();
+            this.#display.textContent = options.commandPrefix;
 
-            this.#inputEl = document.getElementById('cmd-input-field');
-            this.#inputEl.addEventListener('keydown', (e) => {
+            // Create a separate input element after the command display.
+            const inputEl = document.createElement('input');
+            inputEl.type = 'text';
+            inputEl.className = 'cmd-input';
+            inputEl.id = 'cmd-input-field';
+            inputEl.placeholder = options.inputPlaceholder || '';
+            inputEl.autocomplete = 'off';
+            inputEl.style.cssText = 'display:block; width:100%; margin-top:8px; padding:8px; box-sizing:border-box;';
+            // Place after the cmd-input-row, not inside it.
+            const row = this.#display.closest('.cmd-input-row') || this.#display.parentNode;
+            row.after(inputEl);
+
+            this.#inputEl = inputEl;
+            const updatePreview = () => {
+                const val = inputEl.value.trim();
+                this.#display.textContent = val
+                    ? `${options.commandPrefix} ${shellQuote(val)}`
+                    : options.commandPrefix;
+            };
+            inputEl.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') this.run();
             });
-            this.#inputEl.addEventListener('input', () => this.#resetInputState());
+            inputEl.addEventListener('input', () => {
+                this.#resetInputState();
+                updatePreview();
+            });
             if (options.defaultValue) {
-                this.#inputEl.value = options.defaultValue;
+                inputEl.value = options.defaultValue;
+                updatePreview();
             }
-            setTimeout(() => this.#inputEl.focus(), 50);
+            setTimeout(() => inputEl.focus(), 50);
         }
 
         this.#overlay.classList.add('visible');
@@ -535,18 +558,10 @@ class CommandModal {
     async run() {
         if (this.#commandSucceeded) return;
 
-        // Build the command and args for the request.
-        let command = this.#currentCommand;
-        let args = this.#currentArgs;
-        if (this.#inputEl) {
-            const input = this.#inputEl.value.trim();
-            if (!input) {
-                this.#inputEl.focus();
-                return;
-            }
-            // Append input as a structured arg rather than concatenating into
-            // the command string, so values with spaces don't get split.
-            args = args ? [...args, input] : [input];
+        const command = this.#getFullCommand();
+        if (!command) {
+            this.#inputEl?.focus();
+            return;
         }
 
         this.#runBtn.disabled = true;
@@ -554,11 +569,10 @@ class CommandModal {
         this.#output.classList.remove('success', 'error');
 
         try {
-            const payload = { command, args: args || [] };
             const response = await fetch('/cmd', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({ command }),
             });
 
             const result = await response.json();
@@ -577,8 +591,7 @@ class CommandModal {
     static shareByEmail(boxName) {
         cmdModal.open({
             title: 'Share VM',
-            commandPrefix: 'share add',
-            args: [boxName],
+            commandPrefix: `share add ${shellQuote(boxName)}`,
             inputPlaceholder: 'user@example.com',
             description: 'Sharing allows the given user to access this VM\'s web server. <a href="/docs/sharing">Docs</a>'
         });
@@ -587,8 +600,7 @@ class CommandModal {
     static createShareLink(boxName) {
         cmdModal.open({
             title: 'Create Share Link',
-            command: 'share add-link',
-            args: [boxName],
+            command: `share add-link ${shellQuote(boxName)}`,
             description: 'A share link allows anyone with the link to create an account and then access this VM\'s web server. <a href="/docs/sharing">Docs</a>'
         });
     }
@@ -596,8 +608,7 @@ class CommandModal {
     static removeShare(boxName, email) {
         cmdModal.open({
             title: 'Remove Access',
-            command: 'share remove',
-            args: [boxName, email],
+            command: `share remove ${shellQuote(boxName)} ${shellQuote(email)}`,
             danger: true
         });
     }
@@ -605,8 +616,7 @@ class CommandModal {
     static removeShareLink(boxName, token) {
         cmdModal.open({
             title: 'Remove Share Link',
-            command: 'share remove-link',
-            args: [boxName, token],
+            command: `share remove-link ${shellQuote(boxName)} ${shellQuote(token)}`,
             danger: true
         });
     }
@@ -614,8 +624,7 @@ class CommandModal {
     static renameBox(boxName) {
         cmdModal.open({
             title: 'Rename VM',
-            commandPrefix: 'rename',
-            args: [boxName],
+            commandPrefix: `rename ${shellQuote(boxName)}`,
             inputPlaceholder: 'new-name'
         });
     }
@@ -623,8 +632,7 @@ class CommandModal {
     static deleteBox(boxName) {
         cmdModal.open({
             title: 'Delete VM',
-            command: 'rm',
-            args: [boxName],
+            command: `rm ${shellQuote(boxName)}`,
             danger: true
         });
     }
@@ -632,32 +640,28 @@ class CommandModal {
     static restartBox(boxName) {
         cmdModal.open({
             title: 'Restart VM',
-            command: 'restart',
-            args: [boxName]
+            command: `restart ${shellQuote(boxName)}`
         });
     }
 
     static setPublic(boxName) {
         cmdModal.open({
             title: 'Make Public',
-            command: 'share set-public',
-            args: [boxName]
+            command: `share set-public ${shellQuote(boxName)}`
         });
     }
 
     static setPrivate(boxName) {
         cmdModal.open({
             title: 'Make Private',
-            command: 'share set-private',
-            args: [boxName]
+            command: `share set-private ${shellQuote(boxName)}`
         });
     }
 
     static setPort(boxName) {
         cmdModal.open({
             title: 'Set Proxy Port',
-            commandPrefix: 'share port',
-            args: [boxName],
+            commandPrefix: `share port ${shellQuote(boxName)}`,
             inputPlaceholder: 'port (e.g. 8080)'
         });
     }
@@ -815,6 +819,13 @@ const promptModal = {
     },
 };
 
+function shellQuote(s) {
+    if (s.length > 0 && !/[^a-zA-Z0-9_./:@=-]/.test(s)) {
+        return s;
+    }
+    return "'" + s.replace(/'/g, "'\\''" ) + "'";
+}
+
 // Shelley prompt submission
 async function submitPrompt(event) {
     event.preventDefault();
@@ -845,7 +856,7 @@ async function submitPrompt(event) {
         const response = await fetch('/cmd', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: 'shelley prompt', args: [vmName, prompt] }),
+            body: JSON.stringify({ command: `shelley prompt ${shellQuote(vmName)} ${shellQuote(prompt)}` }),
         });
 
         const result = await response.json();

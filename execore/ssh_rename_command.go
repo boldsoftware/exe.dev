@@ -162,7 +162,6 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		// Update /etc/hostname and /etc/hosts
 		// Use busybox shell and sed to replace old hostname with new hostname
 		// We use /exe.dev/bin/sh (busybox) to ensure sed/hostname are available even on minimal images
-		// Safety: boxname.Valid rejects shell metacharacters, so Sprintf is safe here.
 		hostnameCmd := fmt.Sprintf(
 			"sudo /exe.dev/bin/sh -c 'sed -i \"s/\\b%s\\b/%s/g\" /etc/hostname /etc/hosts 2>/dev/null; hostname %s 2>/dev/null'",
 			oldName, newName, newName,

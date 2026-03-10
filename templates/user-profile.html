@@ -890,6 +890,13 @@
 
     <script src="/static/passkey.js"></script>
     <script>
+        function shellQuote(s) {
+            if (s.length > 0 && !/[^a-zA-Z0-9_./:@=-]/.test(s)) {
+                return s;
+            }
+            return "'" + s.replace(/'/g, "'\\''" ) + "'";
+        }
+
         // Check passkey support on page load
         document.addEventListener('DOMContentLoaded', function() {
             if (!passkey.isSupported()) {
@@ -957,7 +964,6 @@
                 this.title.textContent = options.title || 'Run Command';
                 this.isDanger = options.danger || false;
                 this.currentCommand = options.command;
-                this.currentArgs = options.args || null;
 
                 // Reset state
                 this.output.classList.remove('visible', 'success', 'error');
@@ -972,13 +978,10 @@
                 // Set button style
                 this.runBtn.classList.toggle('danger', this.isDanger);
 
-                // Show truncated command display (include args for context)
-                const fullCmd = options.args
-                    ? options.command + ' ' + options.args.map(a => a.includes(' ') ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ')
+                // Show truncated command display
+                const displayCmd = options.command.length > 100
+                    ? options.command.substring(0, 97) + '...'
                     : options.command;
-                const displayCmd = fullCmd.length > 100
-                    ? fullCmd.substring(0, 97) + '...'
-                    : fullCmd;
                 this.display.innerHTML = this.escapeHtml(displayCmd);
 
                 this.overlay.classList.add('visible');
@@ -1007,11 +1010,10 @@
                 this.output.classList.remove('success', 'error');
 
                 try {
-                    const payload = { command: this.currentCommand, args: this.currentArgs || [] };
                     const response = await fetch('/cmd', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify({ command: this.currentCommand }),
                     });
 
                     const result = await response.json();
@@ -1041,8 +1043,7 @@
         function openRemoveSSHKeyModal(publicKey) {
             cmdModal.open({
                 title: 'Remove SSH Key',
-                command: 'ssh-key remove',
-                args: [publicKey],
+                command: 'ssh-key remove ' + shellQuote(publicKey),
                 danger: true
             });
         }
@@ -1102,7 +1103,7 @@
                 const response = await fetch('/cmd', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'ssh-key add', args: [publicKey] }),
+                    body: JSON.stringify({ command: 'ssh-key add ' + shellQuote(publicKey) }),
                 });
 
                 const result = await response.json();
@@ -1199,7 +1200,7 @@
                 const response = await fetch('/cmd', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'ssh-key rename', args: [oldName, newName] }),
+                    body: JSON.stringify({ command: 'ssh-key rename ' + shellQuote(oldName) + ' ' + shellQuote(newName) }),
                 });
 
                 const result = await response.json();
