@@ -90,6 +90,8 @@ class SlackClient:
         blocks: t.Optional[t.List[t.Dict[str, t.Any]]] = None,
         mrkdwn: t.Optional[bool] = None,
         thread_ts: t.Optional[str] = None,
+        unfurl_links: t.Optional[bool] = None,
+        unfurl_media: t.Optional[bool] = None,
     ) -> str:
         """Post a message and return its timestamp (ts)."""
         payload: t.Dict[str, t.Any] = {
@@ -102,6 +104,10 @@ class SlackClient:
             payload["mrkdwn"] = mrkdwn
         if thread_ts is not None:
             payload["thread_ts"] = thread_ts
+        if unfurl_links is not None:
+            payload["unfurl_links"] = unfurl_links
+        if unfurl_media is not None:
+            payload["unfurl_media"] = unfurl_media
         resp = self.api("chat.postMessage", payload)
         return resp.get("ts", "")
 

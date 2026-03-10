@@ -40,10 +40,9 @@ fine. Private sources (Missive) — no names, emails, or identifying
 details; describe users by situation ("a customer on the enterprise
 plan", "several users on Windows") so readers know where to look.
 
-Light markdown is fine (bullets, *bold*, `code`) — it will be rendered
-as plain text, so keep formatting readable either way. Include links to
-source issues, threads, or discussions so readers can dig in. Do NOT
-start with a title or date header. No preamble, no sign-off.
+Format in Slack mrkdwn. Include links to source issues, threads, or
+discussions so readers can dig in. Do NOT start with a title or date
+header. No preamble, no sign-off.
 
 The datetime module is available in the sandbox for timestamp arithmetic.\
 """

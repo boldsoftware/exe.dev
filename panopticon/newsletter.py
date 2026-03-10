@@ -105,14 +105,19 @@ def post_to_slack(text: str) -> None:
     from client import SlackClient, ensure_token
 
     hostname = socket.gethostname()
-    footer = f"\n\n— {hostname} · panopticon/newsletter.py"
+    footer = f"\n\n_posted from `{hostname}` · panopticon/newsletter.py_"
+    warning = "_untrusted user content, take caution with links_\n\n"
 
     token = ensure_token()
     slack = SlackClient(token)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
-    # Post as plain text (mrkdwn=False) — the newsletter may contain
-    # user-sourced content and we don't want markup injection.
-    slack.post_message(channel_id, text + footer, mrkdwn=False)
+    slack.post_message(
+        channel_id,
+        warning + text + footer,
+        mrkdwn=True,
+        unfurl_links=False,
+        unfurl_media=False,
+    )
     log.info("Posted to #%s", SLACK_CHANNEL)
 
 
@@ -326,6 +331,10 @@ def main():
         help="Comma-separated sources to include (default: github,discord,missive)",
     )
     args = parser.parse_args()
+
+    if args.post and not os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip():
+        print("Error: EXE_SLACK_BOT_TOKEN must be set for --post. See panopticon/.env.example.", file=sys.stderr)
+        sys.exit(1)
 
     if args.post and not args.once and not args.dry_run:
         # Daemon mode: --post without --once
