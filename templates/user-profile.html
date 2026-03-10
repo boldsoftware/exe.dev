@@ -909,6 +909,7 @@
             display: null,
             output: null,
             runBtn: null,
+            inputEl: null,
             currentCommand: '',
             isDanger: false,
             commandSucceeded: false,
@@ -929,12 +930,37 @@
                 return div.innerHTML;
             },
 
+            getFullCommand() {
+                if (this.inputEl) {
+                    const input = this.inputEl.value.trim();
+                    if (!input) return null;
+                    return this.currentCommand + ' ' + shellQuote(input);
+                }
+                return this.currentCommand;
+            },
+
+            resetInputState() {
+                if (this.commandSucceeded) {
+                    this.commandSucceeded = false;
+                    this.runBtn.disabled = false;
+                    this.runBtn.textContent = 'Run';
+                    this.runBtn.style.display = '';
+                    this.cancelBtn.textContent = 'Cancel';
+                    this.output.classList.remove('visible', 'success', 'error');
+                }
+            },
+
             open(options) {
                 if (!this.overlay) this.init();
 
                 this.title.textContent = options.title || 'Run Command';
                 this.isDanger = options.danger || false;
-                this.currentCommand = options.command;
+
+                // Remove stale input from a previous commandPrefix open.
+                if (this.inputEl) {
+                    this.inputEl.remove();
+                    this.inputEl = null;
+                }
 
                 // Reset state
                 this.output.classList.remove('visible', 'success', 'error');
@@ -949,11 +975,42 @@
                 // Set button style
                 this.runBtn.classList.toggle('danger', this.isDanger);
 
-                // Show truncated command display
-                const displayCmd = options.command.length > 100
-                    ? options.command.substring(0, 97) + '...'
-                    : options.command;
-                this.display.innerHTML = this.escapeHtml(displayCmd);
+                if (options.command) {
+                    this.currentCommand = options.command;
+                    this.display.innerHTML = this.escapeHtml(options.command);
+                } else if (options.commandPrefix) {
+                    this.currentCommand = options.commandPrefix;
+                    this.display.textContent = options.commandPrefix;
+
+                    // Create input element after the command display.
+                    const inputEl = document.createElement('input');
+                    inputEl.type = 'text';
+                    inputEl.placeholder = options.inputPlaceholder || '';
+                    inputEl.autocomplete = 'off';
+                    inputEl.style.cssText = 'display:block; width:100%; margin-top:8px; padding:8px 12px; box-sizing:border-box; border:1px solid #e0e0e0; border-radius:4px; font-family:inherit; font-size:13px;';
+                    this.display.parentNode.insertBefore(inputEl, this.display.nextSibling);
+
+                    this.inputEl = inputEl;
+                    const prefix = options.commandPrefix;
+                    const updatePreview = () => {
+                        const val = inputEl.value.trim();
+                        this.display.textContent = val
+                            ? prefix + ' ' + shellQuote(val)
+                            : prefix;
+                    };
+                    inputEl.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') cmdModal.run();
+                    });
+                    inputEl.addEventListener('input', () => {
+                        this.resetInputState();
+                        updatePreview();
+                    });
+                    if (options.defaultValue) {
+                        inputEl.value = options.defaultValue;
+                        updatePreview();
+                    }
+                    setTimeout(() => inputEl.focus(), 50);
+                }
 
                 this.overlay.classList.add('visible');
                 document.addEventListener('keydown', this.handleEscape);
@@ -976,6 +1033,12 @@
             async run() {
                 if (this.commandSucceeded) return;
 
+                const command = this.getFullCommand();
+                if (!command) {
+                    this.inputEl?.focus();
+                    return;
+                }
+
                 this.runBtn.disabled = true;
                 this.runBtn.textContent = 'Running...';
                 this.output.classList.remove('success', 'error');
@@ -984,7 +1047,7 @@
                     const response = await fetch('/cmd', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ command: this.currentCommand }),
+                        body: JSON.stringify({ command: command }),
                     });
 
                     const result = await response.json();
@@ -1106,6 +1169,16 @@
                 addSSHKey();
             }
         });
+
+        function openRenameSSHKeyModal(oldName, fingerprint) {
+            const identifier = oldName || ('SHA256:' + fingerprint);
+            cmdModal.open({
+                title: 'Rename SSH Key',
+                commandPrefix: 'ssh-key rename ' + shellQuote(identifier),
+                inputPlaceholder: 'new-name',
+                defaultValue: oldName || '',
+            });
+        }
 
         // Newsletter checkbox auto-save
         document.getElementById('newsletter-checkbox')?.addEventListener('change', async function() {
