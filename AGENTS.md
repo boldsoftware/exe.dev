@@ -34,6 +34,16 @@
   help too
 - there are end-to-end agent-driven tests in e2e/. See there for details.
 
+## Agents
+
+| Agent | Description | Mode |
+|-------|-------------|------|
+| `@archbot` | Architecture expert. Answers questions about how systems connect. Read-only — does not write code. | subagent |
+| `@creditbot` | Owns billing credit systems (subscriptions gating, prepaid balance, LLM gateway credits). | subagent |
+| `@subbot` | Owns Stripe subscriptions, products, and prices. Coordinates with creditbot on Stripe changes. | plan |
+
+Agent definitions live in `.claude/agents/`. Skills they reference live in `.claude/skills/`.
+
 For web pages:
 - Separate HTML templates, CSS, and JS into their own files.
 - Try to re-use JS and CSS as much as reasonable.
