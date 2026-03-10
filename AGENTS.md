@@ -33,6 +33,7 @@
     trap 'echo Error in $0 at line $LINENO: $(cd "'"${PWD}"'" && awk "NR == $LINENO" $0)' ERR
   help too
 - there are end-to-end agent-driven tests in e2e/. See there for details.
+- do not create documentation files (e.g., `.md`, `.txt`) unless specifically asked to do so. Agents should only reference docs that already exist in the repo — never invent paths to nonexistent files.
 
 ## Agents
 

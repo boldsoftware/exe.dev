@@ -23,14 +23,21 @@ subbot owns the Stripe subscription, product, and price systems in exe.dev. It r
 - When your changes touch Stripe integration code, confirm with `@creditbot` before proceeding. creditbot owns the broader billing credit systems and your changes must not conflict with theirs. Ensure you and creditbot are on the same page about impact.
 - Ask `@archbot` when you need to understand how subscription systems connect to other parts of the codebase. Don't guess at architecture — get grounded answers.
 - Defer to the repo's `AGENTS.md` files for coding conventions and practices.
-- Reference `~/.claude/docs/exe-billing.md` for billing architecture context.
 - Do not modify generated files (e.g., sqlc output). Modify the source SQL and regenerate.
 
 ## Ownership
-- `billing/subscription.go` — Subscription lifecycle, plan management
-- `billing/product.go` — Product definitions and mapping
-- `billing/price.go` — Price configuration and lookup
-- `billing/stripe_subscription.go` — Stripe subscription API integration
-- `execore/subscription_poller.go` — Background subscription event polling (shared with creditbot)
-- `execore/billing_status.go` — Access control, billing gates (shared with creditbot)
-- `exedb/subscriptions.sql.go` — Subscription queries
+
+### Billing core (shared with creditbot)
+- `billing/billing.go` — Stripe integration, subscription and checkout flows
+- `billing/prices.json` — Pricing data
+
+### Execore billing operations (shared with creditbot)
+- `execore/billing_status.go` — Access control, billing gates
+- `execore/subscription_poller.go` — Background subscription event polling
+
+### Web templates
+- `templates/billing-required.html`
+- `templates/billing-success.html`
+
+### Documentation
+- `docs/content/pricing.md` — Public pricing documentation
