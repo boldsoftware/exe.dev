@@ -55,7 +55,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if box.ContainerID == nil {
-		return cc.Errorf("vm %v not found", box.ContainerID)
+		return cc.Errorf("can't rename %q while it is still being created", oldName)
 	}
 
 	exeletClient := ss.server.getExeletClient(box.Ctrhost)
