@@ -933,6 +933,8 @@ func (s *Server) notifySubscribersNewMessage(ctx context.Context, conversationID
 	// Update agent working state based on message type
 	if isAgentEndOfTurn(newMsg) {
 		manager.SetAgentWorking(false)
+		// Process any queued messages now that the agent is done
+		go manager.drainPendingMessages(s)
 	}
 
 	// Publish only the new message

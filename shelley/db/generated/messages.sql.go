@@ -382,6 +382,20 @@ func (q *Queries) ListMessagesSince(ctx context.Context, arg ListMessagesSincePa
 	return items, nil
 }
 
+const updateMessageExcludedFromContext = `-- name: UpdateMessageExcludedFromContext :exec
+UPDATE messages SET excluded_from_context = ? WHERE message_id = ?
+`
+
+type UpdateMessageExcludedFromContextParams struct {
+	ExcludedFromContext bool   `json:"excluded_from_context"`
+	MessageID           string `json:"message_id"`
+}
+
+func (q *Queries) UpdateMessageExcludedFromContext(ctx context.Context, arg UpdateMessageExcludedFromContextParams) error {
+	_, err := q.db.ExecContext(ctx, updateMessageExcludedFromContext, arg.ExcludedFromContext, arg.MessageID)
+	return err
+}
+
 const updateMessageUserData = `-- name: UpdateMessageUserData :exec
 UPDATE messages SET user_data = ? WHERE message_id = ?
 `

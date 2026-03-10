@@ -6,6 +6,7 @@ import {
   LLMContent,
   ConversationListUpdate,
   isDistillStatusMessage,
+  isQueuedMessage,
 } from "../types";
 import { api } from "../services/api";
 import { conversationCache } from "../services/conversationCache";
@@ -750,6 +751,20 @@ function ChatInterface({
   const [diffCommentText, setDiffCommentText] = useState("");
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // Detect if the conversation is currently distilling
+  const isDistilling = useMemo(() => {
+    return messages.some((m) => {
+      if (m.type !== "system" || !m.user_data) return false;
+      try {
+        const userData = typeof m.user_data === "string" ? JSON.parse(m.user_data) : m.user_data;
+        return userData.distill_status === "in_progress";
+      } catch {
+        return false;
+      }
+    });
+  }, [messages]);
+
   const [contextWindowSize, setContextWindowSize] = useState(0);
   const [orchestratorMode, setOrchestratorMode] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -1464,6 +1479,32 @@ function ChatInterface({
     };
   }, [checkConnectionHealth, reconnect, forceReconnect]);
 
+  const queueMessage = useCallback(
+    async (message: string) => {
+      if (!message.trim() || !conversationId) return;
+      try {
+        await api.sendMessage(conversationId, {
+          message: message.trim(),
+          model: selectedModel,
+          queue: true,
+        });
+      } catch (err) {
+        console.error("Failed to queue message:", err);
+        throw err;
+      }
+    },
+    [conversationId, selectedModel],
+  );
+
+  const cancelQueuedMessages = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      await api.cancelQueuedMessages(conversationId);
+    } catch (err) {
+      console.error("Failed to cancel queued messages:", err);
+    }
+  }, [conversationId]);
+
   const sendMessage = async (message: string) => {
     if (!message.trim() || sending) return;
 
@@ -1809,6 +1850,7 @@ function ChatInterface({
             message={item.message}
             onOpenDiffViewer={handleOpenDiffViewer}
             onCommentTextChange={setDiffCommentText}
+            onCancelQueued={isQueuedMessage(item.message) ? cancelQueuedMessages : undefined}
           />
         );
       } else if (item.type === "tool") {
@@ -2496,6 +2538,10 @@ function ChatInterface({
         <MessageInput
           key={conversationId || "new"}
           onSend={sendMessage}
+          onQueue={queueMessage}
+          showQueueOption={!!conversationId}
+          canQueue={agentWorking && !!conversationId}
+          autoQueue={isDistilling && !!conversationId}
           disabled={sending || loading}
           autoFocus={true}
           injectedText={terminalInjectedText || diffCommentText}

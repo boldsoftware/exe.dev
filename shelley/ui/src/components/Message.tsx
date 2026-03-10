@@ -8,6 +8,7 @@ import {
   LLMContent,
   Usage,
   isDistillStatusMessage,
+  isQueuedMessage,
 } from "../types";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
@@ -57,6 +58,7 @@ interface MessageProps {
   message: MessageType;
   onOpenDiffViewer?: (commit: string, cwd?: string) => void;
   onCommentTextChange?: (text: string) => void;
+  onCancelQueued?: () => void;
 }
 
 // Copy icon for the commit hash copy button
@@ -251,6 +253,7 @@ const Message = React.memo(function Message({
   message,
   onOpenDiffViewer,
   onCommentTextChange,
+  onCancelQueued,
 }: MessageProps) {
   const { markdownMode } = useMarkdown();
 
@@ -448,6 +451,9 @@ const Message = React.memo(function Message({
         return false;
       }
     })();
+
+  // Check if this is a queued message (waiting for agent to finish)
+  const isQueued = isUser && isQueuedMessage(message);
 
   // Determine which actions to show in action bar
   const messageText = getMessageText();
@@ -1023,7 +1029,7 @@ const Message = React.memo(function Message({
 
   const getMessageClasses = () => {
     if (isUser) {
-      return "message message-user";
+      return `message message-user${isQueued ? " message-queued" : ""}`;
     }
     if (isError) {
       return "message message-error";
@@ -1172,6 +1178,35 @@ const Message = React.memo(function Message({
           {contentToRender.map((content, index) => (
             <div key={index}>{renderContent(content)}</div>
           ))}
+          {isQueued && (
+            <div className="queued-message-badge" data-testid="queued-badge">
+              <span className="queued-message-badge-label">
+                <svg
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  style={{ marginRight: 4, verticalAlign: "middle" }}
+                >
+                  <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" />
+                </svg>
+                Queued
+              </span>
+              {onCancelQueued && (
+                <button
+                  className="queued-message-badge-cancel"
+                  data-testid="cancel-queued"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancelQueued();
+                  }}
+                  title="Cancel queued message"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {showUsageModal && usage && (

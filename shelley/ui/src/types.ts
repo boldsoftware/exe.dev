@@ -61,6 +61,7 @@ export interface ChatRequest {
   model?: string;
   cwd?: string;
   conversation_options?: { type?: "normal" | "orchestrator" };
+  queue?: boolean;
 }
 // Notification event types
 export type NotificationEventType = "agent_done" | "agent_error";
@@ -184,6 +185,18 @@ export function isDistillStatusMessage(message: Message): boolean {
     const userData =
       typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
     return !!userData.distill_status;
+  } catch {
+    return false;
+  }
+}
+
+// Helper to check if a user message is queued (waiting for agent to finish)
+export function isQueuedMessage(message: Message): boolean {
+  if (message.type !== "user" || !message.user_data) return false;
+  try {
+    const userData =
+      typeof message.user_data === "string" ? JSON.parse(message.user_data) : message.user_data;
+    return !!userData.queued;
   } catch {
     return false;
   }

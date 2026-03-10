@@ -62,3 +62,6 @@ ORDER BY sequence_id ASC;
 
 -- name: UpdateMessageUserData :exec
 UPDATE messages SET user_data = ? WHERE message_id = ?;
+
+-- name: UpdateMessageExcludedFromContext :exec
+UPDATE messages SET excluded_from_context = ? WHERE message_id = ?;

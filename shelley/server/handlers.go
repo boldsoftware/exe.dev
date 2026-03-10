@@ -573,6 +573,9 @@ func (s *Server) conversationMux() *http.ServeMux {
 	mux.HandleFunc("GET /{id}/subagents", func(w http.ResponseWriter, r *http.Request) {
 		s.handleGetSubagents(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("POST /{id}/cancel-queued", func(w http.ResponseWriter, r *http.Request) {
+		s.handleCancelQueued(w, r, r.PathValue("id"))
+	})
 	return mux
 }
 
@@ -623,6 +626,7 @@ type ChatRequest struct {
 	Model               string                  `json:"model,omitempty"`
 	Cwd                 string                  `json:"cwd,omitempty"`
 	ConversationOptions *db.ConversationOptions `json:"conversation_options,omitempty"`
+	Queue               bool                    `json:"queue,omitempty"`
 }
 
 // handleChatConversation handles POST /conversation/<id>/chat
@@ -679,6 +683,19 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 		Content: []llm.Content{
 			{Type: llm.ContentTypeText, Text: req.Message},
 		},
+	}
+
+	// Queue mode: record the message to DB but don't interrupt the agent.
+	// The message will be sent when the agent finishes its current turn.
+	if req.Queue {
+		if err := manager.QueueMessage(ctx, s, modelID, userMessage); err != nil {
+			s.logger.Error("Failed to queue user message", "conversationID", conversationID, "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]string{"status": "queued"})
+		return
 	}
 
 	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
@@ -1417,6 +1434,24 @@ func (s *Server) handleSetSetting(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to set setting: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleCancelQueued handles POST /conversation/<id>/cancel-queued
+// Cancels all pending queued messages for a conversation.
+func (s *Server) handleCancelQueued(w http.ResponseWriter, r *http.Request, conversationID string) {
+	s.mu.Lock()
+	manager, ok := s.activeConversations[conversationID]
+	s.mu.Unlock()
+
+	if !ok {
+		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return
+	}
+
+	manager.CancelQueuedMessages(r.Context(), s)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

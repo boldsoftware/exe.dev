@@ -1907,6 +1907,220 @@ button {
   background: var(--gray-600);
 }
 
+/* Send button wrapper for queue menu positioning */
+.message-send-wrapper {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Slack-style split send button: [Send | ▾] */
+.send-split-btn {
+  display: flex;
+  align-items: stretch;
+  border-radius: 18px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+  background: var(--primary);
+  transition: background-color 0.2s;
+}
+
+.send-split-btn-queue {
+  background: var(--orange-500, #f97316);
+}
+
+.send-split-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.send-split-main:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.send-split-main:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.send-split-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.send-split-main svg {
+  transform: rotate(-90deg);
+}
+
+.send-split-divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 6px 0;
+}
+
+.send-split-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.send-split-chevron:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.send-split-chevron:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.send-split-chevron:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.send-split-chevron-inactive {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Send split disabled state */
+.send-split-btn:has(.send-split-main:disabled) {
+  background: var(--gray-300);
+  opacity: 0.6;
+}
+
+.dark .send-split-btn:has(.send-split-main:disabled) {
+  background: var(--gray-600);
+}
+
+/* Queue dropdown menu */
+.queue-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 100;
+  min-width: 220px;
+  animation: queue-menu-in 0.15s ease-out;
+}
+
+@keyframes queue-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.queue-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.queue-menu-item:hover {
+  background: var(--gray-100);
+}
+
+.dark .queue-menu-item:hover {
+  background: var(--gray-700);
+}
+
+.queue-menu-item svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Queued message badge (shown on queued user messages) */
+.message-queued {
+  opacity: 0.85;
+}
+
+.queued-message-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  color: var(--orange-600, #ea580c);
+  background: rgba(249, 115, 22, 0.08);
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.dark .queued-message-badge {
+  color: var(--orange-400, #fb923c);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.queued-message-badge-label {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.queued-message-badge-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  opacity: 0.7;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+  /* Ensure tappable on mobile */
+  min-height: 28px;
+  min-width: 44px;
+}
+
+.queued-message-badge-cancel:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.dark .queued-message-badge-cancel:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* Action row under textarea */
 .message-controls-row {
   display: flex;
@@ -3727,6 +3941,10 @@ svg {
   .message-attach-btn,
   .message-voice-btn,
   .message-send-btn {
+    margin-bottom: 0;
+  }
+
+  .send-split-btn {
     margin-bottom: 0;
   }
 }

@@ -249,6 +249,14 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	} else {
 		go s.notifySubscribers(ctx, conversationID)
 	}
+
+	// Drain any messages that were queued while distillation was in progress
+	s.mu.Lock()
+	manager, ok := s.activeConversations[conversationID]
+	s.mu.Unlock()
+	if ok {
+		manager.drainPendingMessages(s)
+	}
 }
 
 // insertDistillError updates status to error and inserts an error message.

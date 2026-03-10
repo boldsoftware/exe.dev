@@ -46,6 +46,13 @@ declare global {
 
 interface MessageInputProps {
   onSend: (message: string) => Promise<void>;
+  onQueue?: (message: string) => Promise<void>;
+  /** Show the split send button with queue chevron (e.g. when in a conversation) */
+  showQueueOption?: boolean;
+  /** Whether queuing is available right now (agent is working) */
+  canQueue?: boolean;
+  /** Auto-queue instead of sending (e.g. when distilling) */
+  autoQueue?: boolean;
   disabled?: boolean;
   autoFocus?: boolean;
   onFocus?: () => void;
@@ -62,6 +69,10 @@ const PERSIST_KEY_PREFIX = "shelley_draft_";
 
 function MessageInput({
   onSend,
+  onQueue,
+  showQueueOption = false,
+  canQueue = false,
+  autoQueue = false,
   disabled = false,
   autoFocus = false,
   onFocus,
@@ -87,6 +98,8 @@ function MessageInput({
     if (typeof window === "undefined") return false;
     return window.innerWidth < 480;
   });
+  const [showQueueMenu, setShowQueueMenu] = useState(false);
+  const queueMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -196,6 +209,23 @@ function MessageInput({
       }
     };
   }, []);
+
+  // Close queue menu on click outside
+  useEffect(() => {
+    if (!showQueueMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (queueMenuRef.current && !queueMenuRef.current.contains(e.target as Node)) {
+        setShowQueueMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showQueueMenu]);
+
+  // Close queue menu when queueing becomes unavailable
+  useEffect(() => {
+    if (!canQueue && !autoQueue) setShowQueueMenu(false);
+  }, [canQueue, autoQueue]);
 
   const uploadFile = async (file: File) => {
     // Add a loading indicator at the end of the current message
@@ -319,6 +349,21 @@ function MessageInput({
         stopListening();
       }
 
+      // Auto-queue when distilling or when explicitly requested
+      if (autoQueue && onQueue) {
+        const messageToQueue = message.trim();
+        setMessage("");
+        if (persistKey) {
+          localStorage.removeItem(PERSIST_KEY_PREFIX + persistKey);
+        }
+        try {
+          await onQueue(messageToQueue);
+        } catch {
+          setMessage(messageToQueue);
+        }
+        return;
+      }
+
       const messageToSend = message;
       setSubmitting(true);
       try {
@@ -331,6 +376,49 @@ function MessageInput({
         }
       } catch {
         // Keep the message on error so user can retry
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  };
+
+  const handleQueueMessage = async () => {
+    if (message.trim() && onQueue) {
+      if (isListening) {
+        stopListening();
+      }
+      const messageToQueue = message.trim();
+      setMessage("");
+      if (persistKey) {
+        localStorage.removeItem(PERSIST_KEY_PREFIX + persistKey);
+      }
+      setShowQueueMenu(false);
+      try {
+        await onQueue(messageToQueue);
+      } catch {
+        // Restore message on failure
+        setMessage(messageToQueue);
+      }
+    }
+  };
+
+  /** Send now (bypass auto-queue) — used from the dropdown during distill mode */
+  const handleSendNow = async () => {
+    if (message.trim() && !disabled && !submitting && uploadsInProgress === 0) {
+      if (isListening) {
+        stopListening();
+      }
+      const messageToSend = message.trim();
+      setMessage("");
+      if (persistKey) {
+        localStorage.removeItem(PERSIST_KEY_PREFIX + persistKey);
+      }
+      setShowQueueMenu(false);
+      setSubmitting(true);
+      try {
+        await onSend(messageToSend);
+      } catch {
+        setMessage(messageToSend);
       } finally {
         setSubmitting(false);
       }
@@ -538,23 +626,98 @@ function MessageInput({
               )}
             </button>
           )}
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="message-send-btn"
-            aria-label={t("sendMessage")}
-            data-testid="send-button"
-          >
-            {isDisabled || submitting ? (
-              <div className="flex items-center justify-center">
-                <div className="spinner spinner-small message-send-spinner-white"></div>
+          <div className="message-send-wrapper" ref={queueMenuRef}>
+            {showQueueOption && onQueue ? (
+              /* Slack-style split button: [Send | ▾] — always same width */
+              <div className={`send-split-btn${autoQueue ? " send-split-btn-queue" : ""}`}>
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="send-split-main"
+                  aria-label={autoQueue ? "Queue message" : t("sendMessage")}
+                  data-testid="send-button"
+                >
+                  {isDisabled || submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="spinner spinner-small message-send-spinner-white"></div>
+                    </div>
+                  ) : (
+                    <svg fill="currentColor" viewBox="0 0 24 24" width="18" height="18">
+                      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                    </svg>
+                  )}
+                </button>
+                <div className="send-split-divider" />
+                <button
+                  type="button"
+                  disabled={!canSubmit || (!canQueue && !autoQueue)}
+                  className={`send-split-chevron${canQueue || autoQueue ? "" : " send-split-chevron-inactive"}`}
+                  aria-label="Send options"
+                  data-testid="send-options-button"
+                  onClick={() => setShowQueueMenu((v) => !v)}
+                >
+                  <svg fill="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                </button>
+                {showQueueMenu && (canQueue || autoQueue) && (
+                  <div className="queue-menu">
+                    <button
+                      type="button"
+                      className="queue-menu-item"
+                      data-testid="queue-option"
+                      onClick={autoQueue ? handleSendNow : handleQueueMessage}
+                    >
+                      {autoQueue ? (
+                        /* During distill (autoQueue=true), main button queues, dropdown offers "send now" */
+                        <>
+                          <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                          </svg>
+                          Send now
+                        </>
+                      ) : (
+                        /* Clock icon — "queue for later" */
+                        <>
+                          <svg
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                          >
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                          </svg>
+                          Queue after agent finishes
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
-                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
-              </svg>
+              /* Regular round send button (new conversation, no queue possible) */
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="message-send-btn"
+                aria-label={t("sendMessage")}
+                data-testid="send-button"
+              >
+                {isDisabled || submitting ? (
+                  <div className="flex items-center justify-center">
+                    <div className="spinner spinner-small message-send-spinner-white"></div>
+                  </div>
+                ) : (
+                  <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                    <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                  </svg>
+                )}
+              </button>
             )}
-          </button>
+          </div>
         </div>
       </form>
     </div>

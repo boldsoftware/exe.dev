@@ -170,6 +170,15 @@ class ApiService {
     }
   }
 
+  async cancelQueuedMessages(conversationId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/cancel-queued`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to cancel queued messages: ${response.statusText}`);
+    }
+  }
+
   async validateCwd(path: string): Promise<{ valid: boolean; error?: string }> {
     const response = await fetch(`${this.baseUrl}/validate-cwd?path=${encodeURIComponent(path)}`);
     if (!response.ok) {

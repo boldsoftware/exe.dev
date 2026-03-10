@@ -22,6 +22,14 @@ import (
 
 var errConversationModelMismatch = errors.New("conversation model mismatch")
 
+// pendingMessage holds a user message that is queued to be sent after the
+// current agent turn (or distillation) completes.
+type pendingMessage struct {
+	Message   llm.Message
+	ModelID   string
+	MessageID string // DB message ID, for cancellation/UI updates
+}
+
 // ConversationManager manages a single active conversation
 type ConversationManager struct {
 	conversationID      string
@@ -48,6 +56,9 @@ type ConversationManager struct {
 	// agentWorking tracks whether the agent is currently working.
 	// This is explicitly managed and broadcast to subscribers when it changes.
 	agentWorking bool
+
+	// pendingMessages holds messages queued to be sent after the current turn ends.
+	pendingMessages []pendingMessage
 
 	// onStateChange is called when the conversation state changes.
 	// This allows the server to broadcast state changes to all subscribers.
@@ -251,6 +262,169 @@ func (cm *ConversationManager) AcceptUserMessage(ctx context.Context, service ll
 	cm.SetAgentWorking(true)
 
 	return isFirst, nil
+}
+
+// QueueMessage records a user message to the database as "queued" and holds it
+// for delivery after the current agent turn (or distillation) completes.
+// The message is visible in the UI immediately (with queued status).
+func (cm *ConversationManager) QueueMessage(ctx context.Context, s *Server, modelID string, message llm.Message) error {
+	// Record to DB with queued user_data so it appears in the UI.
+	// Mark as excluded_from_context so ensureLoop won't load it into
+	// the loop's history — we'll feed it via QueueUserMessage when draining.
+	userData := map[string]interface{}{"queued": true}
+	createdMsg, err := s.db.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID:      cm.conversationID,
+		Type:                db.MessageTypeUser,
+		LLMData:             message,
+		UserData:            userData,
+		UsageData:           llm.Usage{},
+		ExcludedFromContext: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to record queued message: %w", err)
+	}
+
+	// Update conversation timestamp
+	if err := s.db.QueriesTx(ctx, func(q *generated.Queries) error {
+		return q.UpdateConversationTimestamp(ctx, cm.conversationID)
+	}); err != nil {
+		cm.logger.Warn("Failed to update conversation timestamp", "error", err)
+	}
+
+	// Notify subscribers so the queued message appears in the UI
+	go s.notifySubscribersNewMessage(context.WithoutCancel(ctx), cm.conversationID, createdMsg)
+
+	cm.mu.Lock()
+	cm.pendingMessages = append(cm.pendingMessages, pendingMessage{
+		Message:   message,
+		ModelID:   modelID,
+		MessageID: createdMsg.MessageID,
+	})
+	cm.lastActivity = time.Now()
+	// If the agent is no longer working, we need to drain immediately.
+	// This handles the race where drainPendingMessages ran (finding nothing)
+	// before this QueueMessage call appended the message.
+	needsDrain := !cm.agentWorking
+	cm.mu.Unlock()
+
+	cm.logger.Info("Queued user message", "message_id", createdMsg.MessageID)
+
+	if needsDrain {
+		cm.logger.Info("Agent not working, draining immediately")
+		go cm.drainPendingMessages(s)
+	}
+
+	return nil
+}
+
+// CancelQueuedMessages removes all pending queued messages and deletes them from the DB.
+func (cm *ConversationManager) CancelQueuedMessages(ctx context.Context, s *Server) {
+	cm.mu.Lock()
+	pending := cm.pendingMessages
+	cm.pendingMessages = nil
+	cm.mu.Unlock()
+
+	for _, pm := range pending {
+		if err := s.db.QueriesTx(ctx, func(q *generated.Queries) error {
+			return q.DeleteMessage(ctx, pm.MessageID)
+		}); err != nil {
+			cm.logger.Error("Failed to delete queued message", "message_id", pm.MessageID, "error", err)
+		}
+	}
+
+	if len(pending) > 0 {
+		cm.logger.Info("Cancelled queued messages", "count", len(pending))
+		// Notify subscribers so the UI removes the cancelled messages
+		go s.notifySubscribers(context.WithoutCancel(ctx), cm.conversationID)
+	}
+}
+
+// drainPendingMessages processes any queued messages after an agent turn ends.
+// Must be called when agentWorking transitions to false.
+func (cm *ConversationManager) drainPendingMessages(s *Server) {
+	cm.mu.Lock()
+	if len(cm.pendingMessages) == 0 {
+		cm.mu.Unlock()
+		return
+	}
+	// Take all pending messages atomically
+	pending := cm.pendingMessages
+	cm.pendingMessages = nil
+	loopInstance := cm.loop
+	cm.mu.Unlock()
+
+	cm.logger.Info("Draining pending queued messages", "count", len(pending))
+
+	ctx := context.Background()
+
+	modelID := pending[0].ModelID
+	if modelID == "" {
+		cm.mu.Lock()
+		modelID = cm.modelID
+		cm.mu.Unlock()
+	}
+
+	svc, err := s.llmManager.GetService(modelID)
+	if err != nil {
+		cm.logger.Error("Failed to get LLM service for queued message", "model", modelID, "error", err)
+		return
+	}
+
+	// Feed messages to the loop FIRST, while they're still excluded_from_context.
+	// This avoids duplicates: ensureLoop (for the no-loop case) won't see them
+	// in DB because they're excluded, and QueueUserMessage adds them to the
+	// loop's messageQueue which gets moved to history.
+	if loopInstance != nil {
+		for _, pm := range pending {
+			loopInstance.QueueUserMessage(pm.Message)
+		}
+	} else {
+		// No loop yet (e.g., post-distillation). Create one.
+		if err := cm.Hydrate(ctx); err != nil {
+			cm.logger.Error("Failed to hydrate for queued messages", "error", err)
+			return
+		}
+		if err := cm.ensureLoop(svc, modelID); err != nil {
+			cm.logger.Error("Failed to start loop for queued messages", "error", err)
+			return
+		}
+		cm.mu.Lock()
+		newLoop := cm.loop
+		cm.hasConversationEvents = true
+		cm.mu.Unlock()
+		if newLoop != nil {
+			for _, pm := range pending {
+				newLoop.QueueUserMessage(pm.Message)
+			}
+		}
+	}
+
+	cm.SetAgentWorking(true)
+
+	// NOW clear the queued/excluded flags and broadcast updates to the UI.
+	// The messages are already queued in the loop, so clearing excluded_from_context
+	// is safe — it just makes them visible in future DB reads.
+	for _, pm := range pending {
+		if err := s.db.QueriesTx(ctx, func(q *generated.Queries) error {
+			if err := q.UpdateMessageExcludedFromContext(ctx, generated.UpdateMessageExcludedFromContextParams{
+				ExcludedFromContext: false,
+				MessageID:           pm.MessageID,
+			}); err != nil {
+				return err
+			}
+			newData := `{}`
+			return q.UpdateMessageUserData(ctx, generated.UpdateMessageUserDataParams{
+				UserData:  &newData,
+				MessageID: pm.MessageID,
+			})
+		}); err != nil {
+			cm.logger.Error("Failed to update queued message", "message_id", pm.MessageID, "error", err)
+		}
+		updatedMsg, err := s.db.GetMessageByID(ctx, pm.MessageID)
+		if err == nil {
+			go s.broadcastMessageUpdate(ctx, cm.conversationID, updatedMsg)
+		}
+	}
 }
 
 // Touch updates last activity timestamp.
@@ -779,6 +953,26 @@ func (cm *ConversationManager) CancelConversation(ctx context.Context) error {
 		if err := cm.recordMessage(ctx, cancelledMessage, llm.Usage{}); err != nil {
 			cm.logger.Error("Failed to record cancelled tool result", "error", err)
 			return fmt.Errorf("failed to record cancelled tool result: %w", err)
+		}
+	}
+
+	// Clear pending queued messages BEFORE recording the end-of-turn message.
+	// The end-of-turn message triggers drainPendingMessages via notifySubscribers;
+	// clearing first ensures the drain finds nothing to process.
+	cm.mu.Lock()
+	pendingToDelete := cm.pendingMessages
+	cm.pendingMessages = nil
+	cm.mu.Unlock()
+
+	// Delete orphaned queued messages from DB.
+	// The subsequent recordMessage (end-of-turn) triggers
+	// notifySubscribersNewMessage → drainPendingMessages, which will find
+	// nothing to drain since we already cleared the list.
+	for _, pm := range pendingToDelete {
+		if err := cm.db.QueriesTx(ctx, func(q *generated.Queries) error {
+			return q.DeleteMessage(ctx, pm.MessageID)
+		}); err != nil {
+			cm.logger.Error("Failed to delete queued message on cancel", "message_id", pm.MessageID, "error", err)
 		}
 	}
 
