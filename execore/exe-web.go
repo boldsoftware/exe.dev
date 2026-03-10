@@ -1558,11 +1558,15 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Monthly segment = (monthly available / total) * 100
 	// Extra segment = (extra / total) * 100
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
-	var monthlyBarPct, extraBarPct float64
+	var monthlyBarPct, extraBarPct, totalRemainingPct float64
 	totalCapacity := shelleyCreditsMax + extraCreditsUSD
 	if totalCapacity > 0 {
 		monthlyBarPct = (shelleyCreditsAvailable / totalCapacity) * 100
 		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
+		totalRemainingPct = ((shelleyCreditsAvailable + extraCreditsUSD) / totalCapacity) * 100
+	}
+	if totalRemainingPct > 100 {
+		totalRemainingPct = 100
 	}
 
 	// Prepare template data
@@ -1585,6 +1589,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		ExtraCreditsUSD:               extraCreditsUSD,
 		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
+		TotalRemainingPct:             totalRemainingPct,
 		MonthlyBarPct:                 monthlyBarPct,
 		ExtraBarPct:                   extraBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,

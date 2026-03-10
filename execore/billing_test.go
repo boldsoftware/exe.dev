@@ -2308,7 +2308,7 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Shelley Credits") {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
-	if !strings.Contains(body, ">Monthly<") {
+	if !strings.Contains(body, ">Monthly</") {
 		t.Error("Expected monthly credits row on profile page")
 	}
 	expectedReset := nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006")
@@ -2481,30 +2481,31 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 		}
 	}
 
-	// Test dollar amount display and progress bar presence
+	// Test percentage display and progress bar presence
 	upsertCredit(t, 9.0)
 	body := renderUserPage(t)
 
-	if !strings.Contains(body, "$9.00 / $10.00 (90%)") {
-		t.Errorf("Expected '$9.00 / $10.00 (90%%)' in body")
+	if !strings.Contains(body, "90% remaining") {
+		t.Errorf("Expected '90%% remaining' in body")
 	}
 	if !strings.Contains(body, `background: #e0e0e0`) {
 		t.Error("Expected progress bar background element")
 	}
-	if !strings.Contains(body, "$9.00") {
-		t.Error("Expected total credits amount")
-	}
 	// 90% remaining = green
 	if !strings.Contains(body, "#22a55b") {
 		t.Error("Expected green progress bar color for 90% remaining")
+	}
+	// Color swatch should appear before Monthly label
+	if !strings.Contains(body, "Monthly</span>") {
+		t.Error("Expected Monthly row with color swatch")
 	}
 
 	// Test full credits (100%) = green
 	upsertCredit(t, 10.0)
 	body = renderUserPage(t)
 
-	if !strings.Contains(body, "$10.00 / $10.00 (100%)") {
-		t.Errorf("Expected '$10.00 / $10.00 (100%%)' in body")
+	if !strings.Contains(body, "100% remaining") {
+		t.Errorf("Expected '100%% remaining' in body")
 	}
 	if !strings.Contains(body, "#22a55b") {
 		t.Error("Expected green progress bar color for 100% remaining")
@@ -2514,8 +2515,8 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 	upsertCredit(t, 4.0)
 	body = renderUserPage(t)
 
-	if !strings.Contains(body, "$4.00 / $10.00 (40%)") {
-		t.Errorf("Expected '$4.00 / $10.00 (40%%)' in body")
+	if !strings.Contains(body, "40% remaining") {
+		t.Errorf("Expected '40%% remaining' in body")
 	}
 	if !strings.Contains(body, "#eab308") {
 		t.Error("Expected yellow progress bar color for 40% remaining")
@@ -2525,8 +2526,8 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 	upsertCredit(t, 2.0)
 	body = renderUserPage(t)
 
-	if !strings.Contains(body, "$2.00 / $10.00 (20%)") {
-		t.Errorf("Expected '$2.00 / $10.00 (20%%)' in body")
+	if !strings.Contains(body, "20% remaining") {
+		t.Errorf("Expected '20%% remaining' in body")
 	}
 	if !strings.Contains(body, "#dd6b20") {
 		t.Error("Expected orange progress bar color for 20% remaining")
@@ -2536,8 +2537,8 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 	upsertCredit(t, 0.5)
 	body = renderUserPage(t)
 
-	if !strings.Contains(body, "$0.50 / $10.00 (5%)") {
-		t.Errorf("Expected '$0.50 / $10.00 (5%%)' in body")
+	if !strings.Contains(body, "5% remaining") {
+		t.Errorf("Expected '5%% remaining' in body")
 	}
 	if !strings.Contains(body, "#e53e3e") {
 		t.Error("Expected red progress bar color for 5% remaining")
@@ -2547,8 +2548,8 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 	upsertCredit(t, 0.0)
 	body = renderUserPage(t)
 
-	if !strings.Contains(body, "$0.00 / $10.00 (0%)") {
-		t.Errorf("Expected '$0.00 / $10.00 (0%%)' in body")
+	if !strings.Contains(body, "0% remaining") {
+		t.Errorf("Expected '0%% remaining' in body")
 	}
 	if !strings.Contains(body, "#e53e3e") {
 		t.Error("Expected red progress bar color for 0% remaining")

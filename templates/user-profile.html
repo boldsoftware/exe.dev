@@ -50,6 +50,10 @@
             padding: 12px 0;
             border-bottom: 1px solid #f0f0f0;
         }
+
+        .credit-usage-row {
+            align-items: center;
+        }
         
         .info-row:last-child {
             border-bottom: none;
@@ -376,11 +380,16 @@
 
             .info-row {
                 flex-direction: column;
+                align-items: flex-start;
                 gap: 4px;
             }
 
             .info-label {
                 width: auto;
+            }
+
+            .info-value {
+                width: 100%;
             }
         }
 
@@ -659,19 +668,24 @@
             <div class="section-title">Shelley Credits</div>
             <div class="info-card">
                 {{if .HasShelleyFreeCreditPct}}
-                <div class="info-row" style="align-items: center; gap: 12px;">
-                    <span style="font-size: 20px; font-weight: 600; white-space: nowrap;">${{printf "%.2f" .TotalCreditsUSD}}</span>
-                    <div style="flex: 1; background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex;">
-                        <div style="background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; width: {{printf "%.1f" .MonthlyBarPct}}%; min-width: {{if gt .MonthlyBarPct 0.0}}2px{{else}}0{{end}};"></div>
-                        {{if gt .ExtraBarPct 0.0}}<div style="background: #3b82f6; width: {{printf "%.1f" .ExtraBarPct}}%; min-width: 2px;"></div>{{end}}
+                <div class="info-row credit-usage-row">
+                    <div class="info-label">Usage</div>
+                    <div class="info-value" style="flex: 1;">
+                        <div style="margin-bottom: 6px;">
+                            <span>{{printf "%.0f" .TotalRemainingPct}}% remaining</span>
+                        </div>
+                        <div style="background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex;">
+                            <div style="background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; width: {{printf "%.1f" .MonthlyBarPct}}%; min-width: {{if gt .MonthlyBarPct 0.0}}2px{{else}}0{{end}};"></div>
+                            {{if gt .ExtraBarPct 0.0}}<div style="background: #3b82f6; width: {{printf "%.1f" .ExtraBarPct}}%; min-width: 2px;"></div>{{end}}
+                        </div>
                     </div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; margin-right: 4px; vertical-align: middle;"></span>Monthly</div>
-                    <div class="info-value">${{printf "%.2f" .ShelleyCreditsAvailable}} / ${{printf "%.2f" .ShelleyCreditsMax}} ({{printf "%.0f" .ShelleyFreeCreditRemainingPct}}%) · resets {{.MonthlyCreditsResetAt}}</div>
+                    <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}};"></span><span style="white-space: nowrap;">Monthly</span></div>
+                    <div class="info-value">resets {{.MonthlyCreditsResetAt}}</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #3b82f6; margin-right: 4px; vertical-align: middle;"></span>Extra</div>
+                    <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: #3b82f6;"></span><span style="white-space: nowrap;">Extra</span></div>
                     <div class="info-value">${{printf "%.2f" .ExtraCreditsUSD}}</div>
                 </div>
                 {{else}}

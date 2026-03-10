@@ -150,6 +150,7 @@ type UserPageData struct {
 	ShelleyCreditsMax             float64 // USD ceiling
 	ExtraCreditsUSD               float64 // purchased billing credits in dollars
 	TotalCreditsUSD               float64 // monthly available + extra credits
+	TotalRemainingPct             float64 // (monthly available + extra) / (monthly max + extra) * 100
 	MonthlyBarPct                 float64 // stacked bar: monthly segment width %
 	ExtraBarPct                   float64 // stacked bar: extra segment width %
 	HasShelleyFreeCreditPct       bool
