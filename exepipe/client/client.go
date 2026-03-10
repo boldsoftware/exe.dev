@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log/slog"
 	"net"
+	"os"
 	"sync"
 
 	"exe.dev/exepipe/internal/cmds"
@@ -40,6 +41,16 @@ func NewClient(ctx context.Context, addr string, lg *slog.Logger) (*Client, erro
 	return c, nil
 }
 
+// Close closes the client.
+func (c *Client) Close() error {
+	if c.uc == nil {
+		return os.ErrClosed
+	}
+	err := c.uc.Close()
+	c.uc = nil
+	return err
+}
+
 // Copy tells exepipe to copy data between two network connections.
 // The typ argument is purely description, something like "http" or "ssh".
 // On success, this command will take ownership of the connections
@@ -48,6 +59,10 @@ func NewClient(ctx context.Context, addr string, lg *slog.Logger) (*Client, erro
 // Errors during copying will be logged by exepipe and will not be
 // returned to the caller.
 func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
+	if c.uc == nil {
+		return os.ErrClosed
+	}
+
 	data, oob, err := cmds.CopyCmd(f1, f2, typ)
 	if err != nil {
 		return err
@@ -77,6 +92,10 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 // Errors while listening or copying will be logged by exepipe
 // and will not be returned to the caller.
 func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, host string, port int, typ string) error {
+	if c.uc == nil {
+		return os.ErrClosed
+	}
+
 	data, oob, err := cmds.ListenCmd(key, listener, host, port, typ)
 	if err != nil {
 		return err
@@ -97,6 +116,10 @@ func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, 
 // This does not affect any existing network connections that
 // started from that listener.
 func (c *Client) Unlisten(ctx context.Context, key string) error {
+	if c.uc == nil {
+		return os.ErrClosed
+	}
+
 	data, err := cmds.UnlistenCmd(key)
 	if err != nil {
 		return err
@@ -155,6 +178,11 @@ type Listener struct {
 // Listeners asks exepipe for all current listeners.
 func (c *Client) Listeners(ctx context.Context) iter.Seq2[Listener, error] {
 	return func(yield func(Listener, error) bool) {
+		if c.uc == nil {
+			yield(Listener{}, os.ErrClosed)
+			return
+		}
+
 		for ln, err := range c.listeners(ctx) {
 			cln := Listener{
 				Key:  ln.Key,
