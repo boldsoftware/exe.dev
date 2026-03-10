@@ -15,3 +15,8 @@ SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS balance FROM billing_credits
 -- SyncCreditLedger adds credits to the ledger for a Stripe event, idempotent via UNIQUE stripe_event_id.
 INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
 VALUES (?1, ?2, ?3);
+
+-- name: ListBillingCreditsForAccount :many
+SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type
+FROM billing_credits WHERE account_id = ?
+ORDER BY id DESC;

@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><title>Billing: {{.Email}}</title>
+{{template "base-head"}}
+<style>
+h1 { margin-bottom: 10px; }
+table.info th { width: 200px; }
+.negative { color: red; }
+.positive { color: green; }
+.muted { color: #888; font-size: 12px; }
+.account-section { margin: 16px 0; padding: 12px; border: 1px solid #ddd; border-radius: 4px; }
+.account-section h3 { margin-top: 0; }
+</style>
+</head><body>
+<h1>Billing: {{.Email}}</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a> &gt; billing</p>
+
+<div class="section">
+<h2>Shelley Credits (same as profile page)</h2>
+<table class="info">
+<tr><th>Monthly Credits</th><td>{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</td></tr>
+<tr><th>Extra Credits (purchased)</th><td>{{.CreditBalance}}</td></tr>
+</table>
+</div>
+
+{{if .HasCredit}}
+<div class="section">
+<h2>LLM Gateway Credit</h2>
+<table class="info">
+<tr><th>Plan</th><td>{{.CreditPlanName}}</td></tr>
+<tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
+<tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
+<tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
+<tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
+<tr><th>Total Used</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
+<tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
+</table>
+</div>
+{{end}}
+
+{{range .Accounts}}
+<div class="account-section">
+<h3>Account: {{.AccountID}}</h3>
+<table class="info">
+<tr><th>Latest Status</th><td>{{.LatestStatus}}</td></tr>
+<tr><th>Stripe Dashboard</th><td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td></tr>
+<tr><th>Credit Balance</th><td>{{.CreditBalance}}</td></tr>
+</table>
+
+<h4>Billing Events ({{len .Events}})</h4>
+{{if .Events}}
+<table>
+<thead><tr><th>ID</th><th>Event Type</th><th>Event At</th><th>Created At</th></tr></thead>
+<tbody>
+{{range .Events}}
+<tr>
+<td>{{.ID}}</td>
+<td>{{.EventType}}</td>
+<td>{{.EventAt}}</td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No billing events.</p>
+{{end}}
+
+<h4>Credit Ledger ({{len .Credits}})</h4>
+{{if .Credits}}
+<table>
+<thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Created At</th></tr></thead>
+<tbody>
+{{range .Credits}}
+<tr>
+<td>{{.ID}}</td>
+<td{{if .IsNegative}} class="negative"{{end}}{{if .IsPositive}} class="positive"{{end}}>{{.AmountStr}}</td>
+<td>{{.CreditType}}</td>
+<td>{{.HourBucket}}</td>
+<td>{{.StripeEventID}}</td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No credit ledger entries.</p>
+{{end}}
+</div>
+{{end}}
+
+{{if not .Accounts}}
+<p>No billing accounts.</p>
+{{end}}
+
+</body></html>

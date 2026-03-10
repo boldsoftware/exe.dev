@@ -801,6 +801,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listApprovedTemplatesStmt, err = db.PrepareContext(ctx, listApprovedTemplates); err != nil {
 		return nil, fmt.Errorf("error preparing query ListApprovedTemplates: %w", err)
 	}
+	if q.listBillingCreditsForAccountStmt, err = db.PrepareContext(ctx, listBillingCreditsForAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query ListBillingCreditsForAccount: %w", err)
+	}
+	if q.listBillingEventsForAccountStmt, err = db.PrepareContext(ctx, listBillingEventsForAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query ListBillingEventsForAccount: %w", err)
+	}
 	if q.listBoxIDsForUserStmt, err = db.PrepareContext(ctx, listBoxIDsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListBoxIDsForUser: %w", err)
 	}
@@ -2341,6 +2347,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listApprovedTemplatesStmt: %w", cerr)
 		}
 	}
+	if q.listBillingCreditsForAccountStmt != nil {
+		if cerr := q.listBillingCreditsForAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listBillingCreditsForAccountStmt: %w", cerr)
+		}
+	}
+	if q.listBillingEventsForAccountStmt != nil {
+		if cerr := q.listBillingEventsForAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listBillingEventsForAccountStmt: %w", cerr)
+		}
+	}
 	if q.listBoxIDsForUserStmt != nil {
 		if cerr := q.listBoxIDsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listBoxIDsForUserStmt: %w", cerr)
@@ -3039,6 +3055,8 @@ type Queries struct {
 	listAllUserLLMCreditsStmt                     *sql.Stmt
 	listAllUsersStmt                              *sql.Stmt
 	listApprovedTemplatesStmt                     *sql.Stmt
+	listBillingCreditsForAccountStmt              *sql.Stmt
+	listBillingEventsForAccountStmt               *sql.Stmt
 	listBoxIDsForUserStmt                         *sql.Stmt
 	listEmailBouncesStmt                          *sql.Stmt
 	listEmailQualityBypassStmt                    *sql.Stmt
@@ -3384,6 +3402,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllUserLLMCreditsStmt:                     q.listAllUserLLMCreditsStmt,
 		listAllUsersStmt:                              q.listAllUsersStmt,
 		listApprovedTemplatesStmt:                     q.listApprovedTemplatesStmt,
+		listBillingCreditsForAccountStmt:              q.listBillingCreditsForAccountStmt,
+		listBillingEventsForAccountStmt:               q.listBillingEventsForAccountStmt,
 		listBoxIDsForUserStmt:                         q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                          q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                    q.listEmailQualityBypassStmt,

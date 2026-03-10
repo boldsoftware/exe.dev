@@ -37,3 +37,38 @@ type InsertBillingEventParams struct {
 func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (sql.Result, error) {
 	return q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent, arg.AccountID, arg.EventType, arg.EventAt)
 }
+
+const listBillingEventsForAccount = `-- name: ListBillingEventsForAccount :many
+SELECT id, account_id, event_type, event_at, created_at
+FROM billing_events WHERE account_id = ?
+ORDER BY id DESC
+`
+
+func (q *Queries) ListBillingEventsForAccount(ctx context.Context, accountID string) ([]BillingEvent, error) {
+	rows, err := q.query(ctx, q.listBillingEventsForAccountStmt, listBillingEventsForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BillingEvent{}
+	for rows.Next() {
+		var i BillingEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.EventType,
+			&i.EventAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

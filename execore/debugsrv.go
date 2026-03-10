@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/tender"
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
@@ -68,6 +69,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
+	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
@@ -4062,6 +4064,239 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderDebugTemplate(ctx, w, "user.html", data)
+}
+
+func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		http.Error(w, "userId parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Find all accounts created by this user.
+	allAccounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list accounts", "error", err)
+	}
+	var userAccounts []exedb.Account
+	for _, a := range allAccounts {
+		if a.CreatedBy == userID {
+			userAccounts = append(userAccounts, a)
+		}
+	}
+
+	type eventRow struct {
+		ID        int64
+		EventType string
+		EventAt   string
+		CreatedAt string
+	}
+	type creditRow struct {
+		ID            int64
+		AmountStr     string
+		IsNegative    bool
+		IsPositive    bool
+		CreditType    string
+		HourBucket    string
+		StripeEventID string
+		CreatedAt     string
+	}
+	type accountInfo struct {
+		AccountID     string
+		LatestStatus  string
+		BillingURL    string
+		CreditBalance string
+		Events        []eventRow
+		Credits       []creditRow
+	}
+
+	var accounts []accountInfo
+	for _, a := range userAccounts {
+		info := accountInfo{
+			AccountID:  a.ID,
+			BillingURL: billing.MakeCustomerDashboardURL(a.ID),
+		}
+
+		// Latest billing status.
+		status, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestBillingStatus, a.ID)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			info.LatestStatus = "pending"
+		case err != nil:
+			info.LatestStatus = "error"
+		default:
+			info.LatestStatus = status
+		}
+
+		// Credit balance via billing manager (same as profile page).
+		balance, err := s.billing.SpendCredits(ctx, a.ID, 0, tender.Zero())
+		if err != nil {
+			info.CreditBalance = fmt.Sprintf("error: %v", err)
+		} else {
+			info.CreditBalance = balance.String()
+		}
+
+		// Billing events.
+		events, err := withRxRes1(s, ctx, (*exedb.Queries).ListBillingEventsForAccount, a.ID)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to list billing events", "error", err, "account_id", a.ID)
+		}
+		for _, e := range events {
+			info.Events = append(info.Events, eventRow{
+				ID:        e.ID,
+				EventType: e.EventType,
+				EventAt:   e.EventAt.Format(time.RFC3339),
+				CreatedAt: e.CreatedAt.Format(time.RFC3339),
+			})
+		}
+
+		// Credit ledger entries.
+		credits, err := withRxRes1(s, ctx, (*exedb.Queries).ListBillingCreditsForAccount, a.ID)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to list billing credits", "error", err, "account_id", a.ID)
+		}
+		for _, c := range credits {
+			v := tender.Mint(0, c.Amount)
+			cr := creditRow{
+				ID:         c.ID,
+				AmountStr:  v.String(),
+				IsNegative: v.IsNegative(),
+				IsPositive: c.Amount > 0,
+				CreatedAt:  c.CreatedAt.Format(time.RFC3339),
+			}
+			if c.CreditType != nil {
+				cr.CreditType = *c.CreditType
+			}
+			if c.HourBucket != nil {
+				cr.HourBucket = c.HourBucket.Format(time.RFC3339)
+			}
+			if c.StripeEventID != nil {
+				cr.StripeEventID = *c.StripeEventID
+			}
+			info.Credits = append(info.Credits, cr)
+		}
+
+		accounts = append(accounts, info)
+	}
+
+	// Shelley free credits (monthly credits) — same logic as profile page.
+	var shelleyFreeCreditRemainingPct float64
+	var hasShelleyFreeCreditPct bool
+	creditState, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMCredit, userID)
+	var creditPtr *exedb.UserLlmCredit
+	if err == nil {
+		creditPtr = &creditState
+	}
+	if err == nil || errors.Is(err, sql.ErrNoRows) {
+		plan, planErr := llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
+		if planErr != nil {
+			s.slog().WarnContext(ctx, "failed to resolve shelley credit plan", "error", planErr, "user_id", userID)
+		} else if plan.MaxCredit > 0 {
+			effectiveAvailable := creditState.AvailableCredit
+			if creditPtr == nil {
+				effectiveAvailable = plan.MaxCredit
+			} else if plan.Refresh != nil {
+				effectiveAvailable, _ = plan.Refresh(creditState.AvailableCredit, creditState.LastRefreshAt, time.Now())
+			}
+			shelleyFreeCreditRemainingPct = (effectiveAvailable / plan.MaxCredit) * 100
+			if shelleyFreeCreditRemainingPct < 0 {
+				shelleyFreeCreditRemainingPct = 0
+			}
+			if shelleyFreeCreditRemainingPct > 100 {
+				shelleyFreeCreditRemainingPct = 100
+			}
+			hasShelleyFreeCreditPct = true
+		}
+	}
+
+	// Purchased credit balance (same as profile page "Extra Credits").
+	creditBalance := tender.Zero()
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err == nil {
+		bal, err := s.billing.SpendCredits(ctx, account.ID, 0, tender.Zero())
+		if err == nil {
+			creditBalance = bal
+		}
+	}
+
+	// LLM gateway credit info (same as debug user page).
+	hasCredit := creditPtr != nil
+	var plan llmgateway.Plan
+	var creditEffective float64
+	if hasCredit {
+		plan, _ = llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
+		creditEffective, _ = llmgateway.CalculateRefreshedCredit(
+			creditState.AvailableCredit,
+			plan.MaxCredit,
+			plan.RefreshPerHour,
+			creditState.LastRefreshAt,
+			time.Now(),
+		)
+	}
+
+	data := struct {
+		Email                         string
+		UserID                        string
+		Accounts                      []accountInfo
+		CreditBalance                 string
+		HasShelleyFreeCreditPct       bool
+		ShelleyFreeCreditRemainingPct float64
+		MonthlyCreditsResetAt         string
+		HasCredit                     bool
+		CreditPlanName                string
+		CreditAvailableUSD            float64
+		CreditEffectiveUSD            float64
+		CreditMaxUSD                  float64
+		CreditMaxUSDOverride          *float64
+		CreditRefreshPerHrUSD         float64
+		CreditRefreshPerHrOverride    *float64
+		CreditTotalUsedUSD            float64
+		CreditLastRefreshAt           string
+	}{
+		Email:                         user.Email,
+		UserID:                        user.UserID,
+		Accounts:                      accounts,
+		CreditBalance:                 creditBalance.String(),
+		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
+		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
+		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
+		HasCredit:                     hasCredit,
+	}
+
+	if hasCredit {
+		data.CreditPlanName = plan.Name
+		data.CreditAvailableUSD = creditState.AvailableCredit
+		data.CreditEffectiveUSD = creditEffective
+		data.CreditMaxUSD = plan.MaxCredit
+		data.CreditMaxUSDOverride = creditState.MaxCredit
+		data.CreditRefreshPerHrUSD = plan.RefreshPerHour
+		data.CreditRefreshPerHrOverride = creditState.RefreshPerHour
+		data.CreditTotalUsedUSD = creditState.TotalUsed
+		data.CreditLastRefreshAt = creditState.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	tmpl, err := debug_templates.Parse(s.env)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse templates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, "billing.html", data); err != nil {
+		s.slog().ErrorContext(ctx, "failed to execute billing template", "error", err)
+	}
 }
 
 func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {

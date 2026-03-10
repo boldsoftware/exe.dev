@@ -21,6 +21,43 @@ func (q *Queries) GetCreditBalance(ctx context.Context, accountID string) (int64
 	return balance, err
 }
 
+const listBillingCreditsForAccount = `-- name: ListBillingCreditsForAccount :many
+SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type
+FROM billing_credits WHERE account_id = ?
+ORDER BY id DESC
+`
+
+func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID string) ([]BillingCredit, error) {
+	rows, err := q.query(ctx, q.listBillingCreditsForAccountStmt, listBillingCreditsForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BillingCredit{}
+	for rows.Next() {
+		var i BillingCredit
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Amount,
+			&i.StripeEventID,
+			&i.CreatedAt,
+			&i.HourBucket,
+			&i.CreditType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const syncCreditLedger = `-- name: SyncCreditLedger :exec
 INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
 VALUES (?1, ?2, ?3)
