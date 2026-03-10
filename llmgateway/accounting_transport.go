@@ -293,15 +293,15 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			return nil, nil
 		}
 
-		var oi openaiResponseUsageInfo
-		if err := json.Unmarshal(data, &oi); err != nil {
+		var raw openaiResponseUsageInfo
+		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, fmt.Errorf("openai json decode error: %v", err)
 		}
+		oi := raw.flatten()
 
 		// Check for usage data using both formats:
 		// Chat Completions uses total_tokens, Responses API uses input_tokens+output_tokens
-		hasUsage := oi.Usage.TotalTokens > 0 || oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0
-		if !hasUsage {
+		if !oi.hasUsage() {
 			// Check if this is a free endpoint that doesn't return usage data
 			path := m.incomingReq.URL.Path
 			if isFreeEndpoint(path) {
@@ -478,12 +478,12 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			return nil
 		}
 
-		var oi openaiResponseUsageInfo
-		if err := json.Unmarshal(data, &oi); err != nil {
+		var raw openaiResponseUsageInfo
+		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil
 		}
-		hasUsage := oi.Usage.TotalTokens > 0 || oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0
-		if !hasUsage {
+		oi := raw.flatten()
+		if !oi.hasUsage() {
 			return nil
 		}
 
@@ -703,26 +703,46 @@ func (a *anthropicUsageData) toUsage() Usage {
 // Handles both Chat Completions API (prompt_tokens/completion_tokens) and
 // Responses API (input_tokens/output_tokens) formats.
 type openaiResponseUsageInfo struct {
-	ID    string `json:"id"`
-	Model string `json:"model"`
-	Usage struct {
-		// Chat Completions API fields
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
+	ID    string          `json:"id"`
+	Model string          `json:"model"`
+	Usage openaiUsageData `json:"usage"`
 
-		// Responses API fields
-		InputTokens        int `json:"input_tokens"`
-		OutputTokens       int `json:"output_tokens"`
-		InputTokensDetails *struct {
-			CachedTokens int `json:"cached_tokens"`
-		} `json:"input_tokens_details,omitempty"`
+	// Responses API streaming: response.completed events wrap the full
+	// response object under a "response" key, so usage is nested at
+	// .response.usage rather than .usage.
+	Response *openaiResponseUsageInfo `json:"response,omitempty"`
+}
 
-		// Chat Completions API cache details
-		PromptTokensDetails *struct {
-			CachedTokens int `json:"cached_tokens"`
-		} `json:"prompt_tokens_details,omitempty"`
-	} `json:"usage"`
+type openaiUsageData struct {
+	// Chat Completions API fields
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+
+	// Responses API fields
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	InputTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"input_tokens_details,omitempty"`
+
+	// Chat Completions API cache details
+	PromptTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+// flatten returns the openaiResponseUsageInfo with actual usage data,
+// unwrapping the nested "response" field from Responses API SSE events.
+func (oi *openaiResponseUsageInfo) flatten() *openaiResponseUsageInfo {
+	if oi.Response != nil && oi.Response.hasUsage() {
+		return oi.Response
+	}
+	return oi
+}
+
+func (oi *openaiResponseUsageInfo) hasUsage() bool {
+	return oi.Usage.TotalTokens > 0 || oi.Usage.InputTokens > 0 || oi.Usage.OutputTokens > 0
 }
 
 // effectiveTokens returns the input/output/cached token counts, handling both

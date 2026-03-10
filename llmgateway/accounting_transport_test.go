@@ -446,7 +446,7 @@ func TestAccountingTransport_SSE_ResponsesAPI(t *testing.T) {
 	// Build an SSE stream that ends with a usage event
 	var sseBuf bytes.Buffer
 	sseBuf.WriteString("data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n")
-	sseBuf.WriteString("data: {\"type\":\"response.completed\",\"id\":\"resp_sse123\",\"model\":\"gpt-5.3-codex\",\"usage\":{\"input_tokens\":2000,\"output_tokens\":300,\"total_tokens\":2300,\"input_tokens_details\":{\"cached_tokens\":1800}}}\n\n")
+	sseBuf.WriteString("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_sse123\",\"model\":\"gpt-5.3-codex\",\"usage\":{\"input_tokens\":2000,\"output_tokens\":300,\"total_tokens\":2300,\"input_tokens_details\":{\"cached_tokens\":1800}}}}\n\n")
 	sseData := sseBuf.String()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1232,4 +1232,83 @@ func TestAccountingTransport_Anthropic_SSE_Live(t *testing.T) {
 	if modelAttr, ok := attrs["model"]; !ok || fmt.Sprint(modelAttr) == "" {
 		t.Errorf("debitResponse log missing or empty model attr: %v", attrs["model"])
 	}
+}
+
+func TestAccountingTransport_OpenAI_ResponsesAPI_SSE_Live(t *testing.T) {
+	apiKey := getOpenAIKey(t)
+
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	reqBody := `{"model":"gpt-4.1-nano","stream":true,"input":"Say hello in one word."}`
+
+	oaiURL, _ := url.Parse("https://api.openai.com")
+
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/openai/v1/responses",
+		strings.NewReader(reqBody))
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderOpenAI,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = "https"
+			r.Out.URL.Host = oaiURL.Host
+			r.Out.URL.Path = "/v1/responses"
+			r.Out.Host = oaiURL.Host
+			r.Out.Header.Set("Authorization", "Bearer "+apiKey)
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200; body: %s", rr.Code, rr.Body.String())
+	}
+
+	t.Logf("Raw SSE body (first 2000 chars):\n%s", rr.Body.String()[:min(2000, rr.Body.Len())])
+
+	if transport.sseUsage == nil {
+		t.Fatal("sseUsage was not stored — usage not extracted from response.completed SSE event")
+	}
+
+	t.Logf("Live OpenAI SSE usage: model=%s message_id=%s input=%d output=%d cost=%.10f",
+		transport.sseUsage.Model,
+		transport.sseUsage.MessageID,
+		transport.sseUsage.Usage.InputTokens,
+		transport.sseUsage.Usage.OutputTokens,
+		transport.sseUsage.Usage.CostUSD)
+
+	if transport.sseUsage.Model == "" {
+		t.Error("sseUsage.Model is empty")
+	}
+	if transport.sseUsage.Usage.InputTokens == 0 {
+		t.Error("sseUsage.InputTokens should not be 0")
+	}
+	if transport.sseUsage.Usage.OutputTokens == 0 {
+		t.Error("sseUsage.OutputTokens should not be 0")
+	}
+	if transport.sseUsage.Usage.CostUSD <= 0 {
+		t.Errorf("sseUsage.CostUSD should be > 0, got %f", transport.sseUsage.Usage.CostUSD)
+	}
+
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	t.Logf("Live OpenAI SSE debitResponse attrs: %v", attrs)
 }
