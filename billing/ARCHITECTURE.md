@@ -1,5 +1,8 @@
 # Billing Architecture
 
+For the current billing architecture, see [devdocs/BILLING.md](../devdocs/BILLING.md).
+What follows is a proposed evolution of the billing system.
+
 ## Plans and Entitlements (WIP)
 
 > The entitlement identifiers (e.g. `access:exempt`, `llm:friend`) are proposed names
