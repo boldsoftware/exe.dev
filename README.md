@@ -124,6 +124,10 @@ ssh lima-exe-ctr sudo nerdctl --namespace=exe ps -a
 ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
 
+## Contributing / Deploying Changes
+
+See the [Contributing Guide](CONTRIBUTING.md) for how to submit changes.
+
 ## CTR_HOST Background
 
 In CI, CTR_HOST is set to a brand-new VM. Locally, it defaults to
