@@ -124,10 +124,6 @@ ssh lima-exe-ctr sudo nerdctl --namespace=exe ps -a
 ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
 
-## Contributing / Deploying Changes
-
-See the [Contributing Guide](CONTRIBUTING.md) for how to submit changes.
-
 ## CTR_HOST Background
 
 In CI, CTR_HOST is set to a brand-new VM. Locally, it defaults to
@@ -188,6 +184,21 @@ This is expected in local development.
 
 
 ## Production Deployment
+
+### Prerequisites
+
+Export `EXE_SLACK_BOT_TOKEN` before deploying. This token is used to post deployment notifications to [#ship](https://exedev.slack.com/archives/C0A2PK0EQPK). The token is available in 1Password.
+
+### Preparing Changes
+
+Do not open or merge pull requests. All changes go through the commit queue.
+
+No code reviews. You own your changes — keep them small and focused, but you have the freedom to change whatever you see fit.
+
+1. Create a branch
+2. Make changes
+3. Test locally
+4. Push to `queue-main-$USER` (e.g. `git push origin HEAD:queue-main-$(whoami)`) and wait for CI
 
 ### Deploying exed
 
