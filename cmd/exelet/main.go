@@ -234,6 +234,12 @@ func main() {
 			Value:   config.DefaultReplicationPrune,
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_PRUNE"},
 		},
+		&cli.IntFlag{
+			Name:    "storage-replication-workers",
+			Usage:   "number of concurrent replication workers (0 = auto: NumCPU/4, min 1)",
+			Value:   0,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_WORKERS"},
+		},
 		&cli.StringFlag{
 			Name:    "metrics-daemon-url",
 			Usage:   "URL of the metrics daemon (e.g., http://localhost:8090)",
@@ -347,6 +353,7 @@ func serveAction(clix *cli.Context) error {
 	replicationRetention := clix.Int("storage-replication-retention")
 	replicationBandwidthLimit := clix.String("storage-replication-bandwidth-limit")
 	replicationPrune := clix.Bool("storage-replication-prune")
+	replicationWorkers := clix.Int("storage-replication-workers")
 	metricsDaemonURL := clix.String("metrics-daemon-url")
 	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
 	pktflowEnabled := clix.Bool("pktflow-enabled")
@@ -361,6 +368,9 @@ func serveAction(clix *cli.Context) error {
 	// Validate replication config
 	if replicationEnabled && replicationTarget == "" {
 		return fmt.Errorf("--storage-replication-target is required when replication is enabled")
+	}
+	if replicationEnabled && replicationWorkers < 0 {
+		return fmt.Errorf("--storage-replication-workers must be >= 0 (0 = auto)")
 	}
 	if pktflowEnabled {
 		if pktflowSampleRate == 0 || (pktflowSampleRate&(pktflowSampleRate-1)) != 0 {
@@ -398,6 +408,7 @@ func serveAction(clix *cli.Context) error {
 		ReplicationRetention:        replicationRetention,
 		ReplicationBandwidthLimit:   replicationBandwidthLimit,
 		ReplicationPrune:            replicationPrune,
+		ReplicationWorkers:          replicationWorkers,
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,
 		ReservedCPUs:                reservedCPUs,

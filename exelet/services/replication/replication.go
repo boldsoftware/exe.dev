@@ -128,6 +128,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 		state,
 		s.metrics,
 		s.config.ReplicationRetention,
+		s.config.ReplicationWorkers,
 		s.log,
 		s.IsRestoring,
 	)

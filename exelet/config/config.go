@@ -158,6 +158,8 @@ type ExeletConfig struct {
 	ReplicationBandwidthLimit string
 	// ReplicationPrune enables pruning orphaned backups from the target
 	ReplicationPrune bool
+	// ReplicationWorkers is the number of concurrent replication workers (0 = auto: NumCPU/4, min 1)
+	ReplicationWorkers int
 
 	// MetricsDaemonURL is the URL of the metrics daemon (e.g., http://localhost:8090)
 	MetricsDaemonURL string

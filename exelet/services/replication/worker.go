@@ -83,10 +83,13 @@ func (j *Job) snapshot() Job {
 	}
 }
 
-// NewWorkerPool creates a new worker pool
-func NewWorkerPool(target Target, state *State, metrics *Metrics, retention int, log *slog.Logger, isRestoring func(string) bool) *WorkerPool {
-	// Calculate worker count: max(1, numCPU / 4)
-	workerCount := max(runtime.NumCPU()/4, 1)
+// NewWorkerPool creates a new worker pool. If workers is 0, the count defaults
+// to max(1, NumCPU/4).
+func NewWorkerPool(target Target, state *State, metrics *Metrics, retention, workers int, log *slog.Logger, isRestoring func(string) bool) *WorkerPool {
+	workerCount := workers
+	if workerCount <= 0 {
+		workerCount = max(runtime.NumCPU()/4, 1)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
