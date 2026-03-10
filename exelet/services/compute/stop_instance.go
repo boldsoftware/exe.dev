@@ -78,7 +78,7 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 	}
 
 	// stop SSH proxy (but keep port allocated for next start)
-	if _, err := s.proxyManager.StopProxy(id); err != nil {
+	if _, err := s.proxyManager.StopProxy(ctx, id); err != nil {
 		s.log.WarnContext(ctx, "failed to remove SSH proxy", "instance", id, "error", err)
 	} else {
 		s.log.DebugContext(ctx, "stopped SSH proxy", "instance", id)

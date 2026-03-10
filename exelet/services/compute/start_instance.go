@@ -137,7 +137,7 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	// create and start SSH proxy using socat
 	instanceDir := s.getInstanceDir(id)
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", id, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-	if err := s.proxyManager.CreateProxy(id, vmIP, sshPort, instanceDir); err != nil {
+	if err := s.proxyManager.CreateProxy(ctx, id, vmIP, sshPort, instanceDir); err != nil {
 		return fmt.Errorf("failed to start SSH proxy: %w", err)
 	}
 

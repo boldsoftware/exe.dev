@@ -111,7 +111,7 @@ func (r *createInstanceRollback) EnhanceErrorWithBootLog(err error) error {
 func (r *createInstanceRollback) Rollback() {
 	// Stop and remove proxy if created
 	if r.proxyCreated && r.proxyManager != nil {
-		if _, err := r.proxyManager.StopProxy(r.instanceID); err != nil {
+		if _, err := r.proxyManager.StopProxy(r.ctx, r.instanceID); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to remove proxy", "id", r.instanceID, "error", err)
 		}
 	}

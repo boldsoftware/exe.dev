@@ -410,7 +410,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 
 	// Create SSH proxy
 	s.log.DebugContext(ctx, "starting SSH proxy for clone", "instance", newInstanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-	if err := s.proxyManager.CreateProxy(newInstanceID, vmIP, sshPort, instanceDir); err != nil {
+	if err := s.proxyManager.CreateProxy(ctx, newInstanceID, vmIP, sshPort, instanceDir); err != nil {
 		s.portAllocator.Release(sshPort)
 		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %v", err)
 	}

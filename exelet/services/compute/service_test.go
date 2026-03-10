@@ -76,12 +76,12 @@ func TestCreateSSHProxy(t *testing.T) {
 	}
 
 	// Create SSH proxy using CreateProxy
-	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+	if err := computeSvc.proxyManager.CreateProxy(t.Context(), instanceID, vmIP, sshPort, instanceDir); err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
 
 	// Verify that a SSH proxy was created
-	proxyPort, exists := computeSvc.proxyManager.GetPort(instanceID)
+	proxyPort, exists := computeSvc.proxyManager.GetPort(t.Context(), instanceID)
 	if !exists {
 		t.Fatalf("SSH proxy should exist after CreateProxy")
 	}
@@ -108,17 +108,17 @@ func TestCreateSSHProxy(t *testing.T) {
 	}
 
 	// Test that calling CreateProxy again is idempotent (stops old, creates new)
-	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+	if err := computeSvc.proxyManager.CreateProxy(t.Context(), instanceID, vmIP, sshPort, instanceDir); err != nil {
 		t.Errorf("CreateProxy should be idempotent: %v", err)
 	}
 
 	// Verify proxy still exists after idempotent call
-	if _, exists := computeSvc.proxyManager.GetPort(instanceID); !exists {
+	if _, exists := computeSvc.proxyManager.GetPort(t.Context(), instanceID); !exists {
 		t.Errorf("proxy should still exist after idempotent CreateProxy call")
 	}
 
 	// Cleanup
-	if _, err := computeSvc.proxyManager.StopProxy(instanceID); err != nil {
+	if _, err := computeSvc.proxyManager.StopProxy(t.Context(), instanceID); err != nil {
 		t.Errorf("failed to stop proxy: %v", err)
 	}
 }
@@ -164,19 +164,19 @@ func TestRecoverProxiesStopsProxyForStoppedInstance(t *testing.T) {
 	}
 
 	// Verify that NO SSH proxy exists initially
-	_, exists := computeSvc.proxyManager.GetPort(instanceID)
+	_, exists := computeSvc.proxyManager.GetPort(t.Context(), instanceID)
 	if exists {
 		t.Errorf("SSH proxy should NOT exist for STOPPED instance initially")
 	}
 
 	// Call RecoverProxies with a STOPPED instance - it should not create a proxy
 	instances := []*api.Instance{instance}
-	if err := computeSvc.proxyManager.RecoverProxies(instances); err != nil {
+	if err := computeSvc.proxyManager.RecoverProxies(t.Context(), instances); err != nil {
 		t.Errorf("RecoverProxies failed: %v", err)
 	}
 
 	// Verify that still NO SSH proxy exists
-	_, exists = computeSvc.proxyManager.GetPort(instanceID)
+	_, exists = computeSvc.proxyManager.GetPort(t.Context(), instanceID)
 	if exists {
 		t.Errorf("SSH proxy should NOT be created for STOPPED instance")
 	}

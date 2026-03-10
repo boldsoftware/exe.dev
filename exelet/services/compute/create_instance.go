@@ -674,7 +674,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 
 	// create and start SSH proxy using socat
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+	if err := s.proxyManager.CreateProxy(ctx, instanceID, vmIP, sshPort, instanceDir); err != nil {
 		s.portAllocator.Release(sshPort)
 		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
 	}

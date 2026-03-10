@@ -624,7 +624,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 		return nil, false, status.Errorf(codes.Internal, "no IP address in target network")
 	}
 
-	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+	if err := s.proxyManager.CreateProxy(ctx, instanceID, vmIP, sshPort, instanceDir); err != nil {
 		return nil, false, status.Errorf(codes.Internal, "failed to start SSH proxy: %v", err)
 	}
 

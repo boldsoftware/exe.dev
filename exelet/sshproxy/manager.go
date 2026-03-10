@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,27 +14,27 @@ import (
 // Manager manages SSH proxies for instances.
 // An SSH proxy is a process that listens on a port.
 // Whenever a connection is made to that port,
-// the proxy makes a connections to the ssh port on the VM,
+// the proxy makes a connection to the ssh port on the VM,
 // and splices the two connections together.
 type Manager interface {
 	// Create and start a new SSH proxy for an instance.
 	// If a proxy already exists, it is stopped and replaced.
-	CreateProxy(instanceID, targetIP string, port int, instanceDir string) error
+	CreateProxy(ctx context.Context, instanceID, targetIP string, port int, instanceDir string) error
 
 	// StopProxy stops running a proxy.
 	// It returns the port on which the proxy was running.
-	StopProxy(instanceID string) (int, error)
+	StopProxy(ctx context.Context, instanceID string) (int, error)
 
 	// GetPort returns the port for an instance.
 	// The bool reports whether there is a port.
-	GetPort(instanceID string) (int, bool)
+	GetPort(ctx context.Context, instanceID string) (int, bool)
 
 	// RecoverProxies finds any existing proxies.
 	// This is used when exelet restarts.
-	RecoverProxies(instances []*api.Instance) error
+	RecoverProxies(ctx context.Context, instances []*api.Instance) error
 }
 
-// scoatManager manages SSH proxies for instances,
+// socatManager manages SSH proxies for instances,
 // using socat for each proxy.
 type socatManager struct {
 	mu      sync.Mutex
@@ -58,15 +59,15 @@ func NewManager(dataDir, bindIP string, log *slog.Logger) Manager {
 
 // CreateProxy creates and starts a new SSH proxy for an instance.
 // If a proxy already exists for the instance, it is stopped and replaced.
-func (m *socatManager) CreateProxy(instanceID, targetIP string, port int, instanceDir string) error {
+func (m *socatManager) CreateProxy(ctx context.Context, instanceID, targetIP string, port int, instanceDir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Stop existing proxy if present (handles restart case and stale proxies)
 	if existingProxy, exists := m.proxies[instanceID]; exists {
-		m.log.Info("stopping existing proxy before creating new one", "instance", instanceID)
+		m.log.InfoContext(ctx, "stopping existing proxy before creating new one", "instance", instanceID)
 		if err := existingProxy.stop(); err != nil {
-			m.log.Warn("failed to stop existing proxy", "instance", instanceID, "error", err)
+			m.log.WarnContext(ctx, "failed to stop existing proxy", "instance", instanceID, "error", err)
 		}
 		delete(m.proxies, instanceID)
 		delete(m.ports, instanceID)
@@ -86,7 +87,7 @@ func (m *socatManager) CreateProxy(instanceID, targetIP string, port int, instan
 }
 
 // StopProxy stops and removes a proxy for an instance
-func (m *socatManager) StopProxy(instanceID string) (int, error) {
+func (m *socatManager) StopProxy(ctx context.Context, instanceID string) (int, error) {
 	m.mu.Lock()
 	proxy, exists := m.proxies[instanceID]
 	port := m.ports[instanceID]
@@ -106,7 +107,7 @@ func (m *socatManager) StopProxy(instanceID string) (int, error) {
 }
 
 // GetPort returns the port for an instance
-func (m *socatManager) GetPort(instanceID string) (int, bool) {
+func (m *socatManager) GetPort(ctx context.Context, instanceID string) (int, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	port, exists := m.ports[instanceID]
@@ -114,7 +115,7 @@ func (m *socatManager) GetPort(instanceID string) (int, bool) {
 }
 
 // StopAll stops all proxies
-func (m *socatManager) StopAll() {
+func (m *socatManager) StopAll(ctx context.Context) {
 	m.mu.Lock()
 	proxies := make([]*socatSSHProxy, 0, len(m.proxies))
 	for _, proxy := range m.proxies {
@@ -126,14 +127,14 @@ func (m *socatManager) StopAll() {
 
 	for _, proxy := range proxies {
 		if err := proxy.stop(); err != nil {
-			m.log.Error("failed to stop proxy", "instance", proxy.instanceID, "error", err)
+			m.log.ErrorContext(ctx, "failed to stop proxy", "instance", proxy.instanceID, "error", err)
 		}
 	}
 }
 
 // RecoverProxies scans instance directories and recovers existing socat processes
 // This is called on exelet startup to restore proxy state
-func (m *socatManager) RecoverProxies(instances []*api.Instance) error {
+func (m *socatManager) RecoverProxies(ctx context.Context, instances []*api.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -146,7 +147,7 @@ func (m *socatManager) RecoverProxies(instances []*api.Instance) error {
 		// Get port and target IP from instance config
 		port := int(instance.SSHPort)
 		if port == 0 {
-			m.log.Warn("instance has no SSH port configured", "instance", instance.ID)
+			m.log.WarnContext(ctx, "instance has no SSH port configured", "instance", instance.ID)
 			continue
 		}
 
@@ -155,14 +156,14 @@ func (m *socatManager) RecoverProxies(instances []*api.Instance) error {
 			if ipStr := instance.VMConfig.NetworkInterface.IP.IPV4; ipStr != "" {
 				ipAddr, _, err := net.ParseCIDR(ipStr)
 				if err != nil {
-					m.log.Warn("failed to parse VM IP", "instance", instance.ID, "ip", ipStr, "error", err)
+					m.log.WarnContext(ctx, "failed to parse VM IP", "instance", instance.ID, "ip", ipStr, "error", err)
 					continue
 				}
 				targetIP = ipAddr.String()
 			}
 		}
 		if targetIP == "" {
-			m.log.Warn("instance has no target IP configured", "instance", instance.ID)
+			m.log.WarnContext(ctx, "instance has no target IP configured", "instance", instance.ID)
 			continue
 		}
 
@@ -171,20 +172,20 @@ func (m *socatManager) RecoverProxies(instances []*api.Instance) error {
 
 		// Try to load existing metadata (may not exist for older instances)
 		if err := proxy.loadFromDisk(); err != nil {
-			m.log.Debug("no proxy metadata on disk", "instance", instance.ID)
+			m.log.DebugContext(ctx, "no proxy metadata on disk", "instance", instance.ID)
 		}
 
 		// Check if proxy is alive (by PID if we have metadata, or by port)
 		if proxy.isRunning() {
 			// Proxy is running, adopt it
-			m.log.Info("recovered running proxy", "instance", instance.ID, "port", proxy.port, "pid", proxy.pid)
+			m.log.InfoContext(ctx, "recovered running proxy", "instance", instance.ID, "port", proxy.port, "pid", proxy.pid)
 			m.proxies[instance.ID] = proxy
 			m.ports[instance.ID] = proxy.port
 		} else {
 			// Proxy is dead or no metadata, try to start/adopt
-			m.log.Info("starting proxy for running instance", "instance", instance.ID, "port", proxy.port)
+			m.log.InfoContext(ctx, "starting proxy for running instance", "instance", instance.ID, "port", proxy.port)
 			if err := proxy.start(); err != nil {
-				m.log.Error("failed to start proxy", "instance", instance.ID, "error", err)
+				m.log.ErrorContext(ctx, "failed to start proxy", "instance", instance.ID, "error", err)
 				continue
 			}
 			m.proxies[instance.ID] = proxy
