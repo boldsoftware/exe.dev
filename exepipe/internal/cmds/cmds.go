@@ -132,6 +132,21 @@ func ListenCmd(key string, listener net.Listener, host string, port int, typ str
 	return data, oob, nil
 }
 
+// UnlistenCmd returns a marshalled command to stop a named listener.
+//
+// This is called by an exepipe client to send an unlisten command.
+func UnlistenCmd(key string) ([]byte, error) {
+	c := cmd{
+		Action: "unlisten",
+		Key:    key,
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return nil, fmt.Errorf("exepipe UnlistenCmd: JSON marshaling failed: %v", err)
+	}
+	return data, nil
+}
+
 // ListenersCmd returns a marshalled command to fetch all listeners.
 //
 // This is called by an exepipe client.

@@ -117,6 +117,7 @@ func (cl *cmdLoop) actions(uc *net.UnixConn) cmds.Actions {
 	return cmds.Actions{
 		"copy":      ca.copyAction,
 		"listen":    ca.listenAction,
+		"unlisten":  ca.unlistenAction,
 		"listeners": ca.listenersAction,
 	}
 }
@@ -163,6 +164,18 @@ func (ca *cmdActor) listenAction(ctx context.Context, key string, fds []int, hos
 	ca.pipeInstance.piping.Listen(ctx, key, fds[0], host, port, typ)
 
 	return nil
+}
+
+// unlistenAction implements the unlisten command.
+// This disables an existing listener.
+func (ca *cmdActor) unlistenAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key == "" {
+		return errors.New("missing key to unlisten command")
+	}
+	if len(fds) > 0 || host != "" || port != 0 || typ != "" {
+		return errors.New("unexpected arguments to unlisten command")
+	}
+	return ca.pipeInstance.piping.Unlisten(ctx, key)
 }
 
 // listenersAction implements the listeners command.

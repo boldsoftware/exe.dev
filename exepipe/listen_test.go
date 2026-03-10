@@ -138,6 +138,14 @@ func TestListen(t *testing.T) {
 		t.Fatalf("bad copy: got %q want %q", toBuf1, fromBuf2)
 	}
 
+	// Shut down the listener.
+	if err := cli.Unlisten(t.Context(), "key"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := net.Dial(externalListener.Addr().Network(), externalListener.Addr().String()); err == nil {
+		t.Errorf("connection to closed listener at %s succeeded", externalListener.Addr())
+	}
+
 	pi.Stop()
 }
 

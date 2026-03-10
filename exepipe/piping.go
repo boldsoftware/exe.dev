@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"maps"
 	"net"
 	"net/netip"
 	"os"
@@ -25,7 +24,13 @@ type piping struct {
 	conns   map[net.Conn]struct{}
 
 	listenersMu sync.Mutex
-	listeners   map[string]cmds.Listener
+	listeners   map[string]listener
+}
+
+// listener is the information we keep for a listener.
+type listener struct {
+	info cmds.Listener
+	ln   net.Listener
 }
 
 // setupPiping sets up a new [piping] instance.
@@ -33,7 +38,7 @@ func setupPiping(cfg *PipeConfig, pi *PipeInstance) (*piping, error) {
 	ret := &piping{
 		pipeInstance: pi,
 		conns:        make(map[net.Conn]struct{}),
-		listeners:    make(map[string]cmds.Listener),
+		listeners:    make(map[string]listener),
 	}
 	return ret, nil
 }
@@ -188,16 +193,6 @@ func (p *piping) sockname(ctx context.Context, fd int) string {
 // to listen on that socket and start copying between the
 // accepted socket and the TCP address.
 func (p *piping) Listen(ctx context.Context, key string, fd int, host string, port int, typ string) {
-	p.addListener(ctx, key, host, port, typ)
-
-	go p.doListen(ctx, key, fd, host, port, typ)
-}
-
-// doListen implements Listen, running in a separate goroutine.
-func (p *piping) doListen(ctx context.Context, key string, fd int, host string, port int, typ string) {
-	// Undo the addListener done in the caller.
-	defer p.rmListener(ctx, key)
-
 	f := os.NewFile(uintptr(fd), p.sockname(ctx, fd))
 	ln, err := net.FileListener(f)
 	f.Close()
@@ -206,6 +201,14 @@ func (p *piping) doListen(ctx context.Context, key string, fd int, host string, 
 		return
 	}
 
+	p.addListener(ctx, key, ln, host, port, typ)
+
+	go p.doListen(ctx, key, ln, host, port, typ)
+}
+
+// doListen implements Listen, running in a separate goroutine.
+func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, host string, port int, typ string) {
+	defer p.rmListener(ctx, key)
 	defer ln.Close()
 
 	for {
@@ -219,6 +222,22 @@ func (p *piping) doListen(ctx context.Context, key string, fd int, host string, 
 
 		go p.connect(ctx, conn, host, port, typ)
 	}
+}
+
+// Unlisten closes an existing listener.
+func (p *piping) Unlisten(ctx context.Context, key string) error {
+	p.listenersMu.Lock()
+	defer p.listenersMu.Unlock()
+
+	info, ok := p.listeners[key]
+	if !ok {
+		return fmt.Errorf("exepipe: request to remove non-existent listener %q", key)
+	}
+
+	info.ln.Close()
+	delete(p.listeners, key)
+
+	return nil
 }
 
 // connect opens a connection to host/port, and starts copying from conn.
@@ -235,23 +254,26 @@ func (p *piping) connect(ctx context.Context, conn1 net.Conn, host string, port 
 }
 
 // addListener records a new listener.
-func (p *piping) addListener(ctx context.Context, key, host string, port int, typ string) {
+func (p *piping) addListener(ctx context.Context, key string, ln net.Listener, host string, port int, typ string) {
 	p.listenersMu.Lock()
 	defer p.listenersMu.Unlock()
 
 	if old, ok := p.listeners[key]; ok {
-		if host != old.Host || port != old.Port || typ != old.Type {
-			p.pipeInstance.lg.WarnContext(ctx, "exepipe: listener key changed", "key", key, "oldHost", old.Host, "oldPort", old.Port, "oldType", old.Type, "newHost", host, "newPort", port, "newType", typ)
+		if host != old.info.Host || port != old.info.Port || typ != old.info.Type {
+			p.pipeInstance.lg.WarnContext(ctx, "exepipe: listener key changed", "key", key, "oldHost", old.info.Host, "oldPort", old.info.Port, "oldType", old.info.Type, "newHost", host, "newPort", port, "newType", typ)
 		}
 	}
 
-	ln := cmds.Listener{
-		Key:  key,
-		Host: host,
-		Port: port,
-		Type: typ,
+	lnInfo := listener{
+		info: cmds.Listener{
+			Key:  key,
+			Host: host,
+			Port: port,
+			Type: typ,
+		},
+		ln: ln,
 	}
-	p.listeners[key] = ln
+	p.listeners[key] = lnInfo
 }
 
 // rmListener removes a listener.
@@ -271,6 +293,10 @@ func (p *piping) allListeners() iter.Seq[cmds.Listener] {
 		p.listenersMu.Lock()
 		defer p.listenersMu.Unlock()
 
-		maps.Values(p.listeners)(yield)
+		for _, ln := range p.listeners {
+			if !yield(ln.info) {
+				return
+			}
+		}
 	}
 }

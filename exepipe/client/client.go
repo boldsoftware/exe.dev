@@ -93,6 +93,18 @@ func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, 
 	return nil
 }
 
+// Unlisten tells exepipe to close an existing listener.
+// This does not affect any existing network connections that
+// started from that listener.
+func (c *Client) Unlisten(ctx context.Context, key string) error {
+	data, err := cmds.UnlistenCmd(key)
+	if err != nil {
+		return err
+	}
+
+	return c.sendCmd(ctx, data, nil)
+}
+
 // sendCmd sends a comment to exepipe and waits for an ack.
 func (c *Client) sendCmd(ctx context.Context, data, oob []byte) error {
 	// Lock so that concurrent calls don't mix up responses.
