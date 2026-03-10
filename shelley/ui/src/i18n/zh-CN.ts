@@ -129,7 +129,8 @@ export const zhCN: TranslationKeys = {
   maxContextTokens: "最大上下文令牌数",
   tags: "标签",
   tagsPlaceholder: "逗号分隔，例如：slug, cheap",
-  tagsTooltip: '此模型的逗号分隔标签。使用 "slug" 标记此模型用于生成对话标题。如果没有模型带有 "slug" 标签，将使用对话当前的模型。',
+  tagsTooltip:
+    '此模型的逗号分隔标签。使用 "slug" 标记此模型用于生成对话标题。如果没有模型带有 "slug" 标签，将使用对话当前的模型。',
   testButton: "测试",
   testingButton: "测试中...",
   save: "保存",
@@ -139,7 +140,8 @@ export const zhCN: TranslationKeys = {
   modelNameRequired: "模型名称为必填项",
   apiKeyRequired: "API 密钥为必填项",
   noModelsConfigured: "未配置模型",
-  noModelsHint: "设置环境变量（如 ANTHROPIC_API_KEY），或使用 -gateway 参数，或在下方添加自定义模型。",
+  noModelsHint:
+    "设置环境变量（如 ANTHROPIC_API_KEY），或使用 -gateway 参数，或在下方添加自定义模型。",
 
   // Notifications Modal
   notifications: "通知",
@@ -186,7 +188,8 @@ export const zhCN: TranslationKeys = {
   // Welcome / Empty State
   welcomeTitle: "Shelley Agent",
   welcomeSubtitle: "",
-  welcomeMessage: "Shelley 是一个运行在 {hostname} 上的代理。你可以让 Shelley 帮你完成各种任务。如果你使用 Shelley 构建了网站，可以通过 exe.dev 的代理功能（参见 {docsLink}）在 {proxyLink} 上访问。",
+  welcomeMessage:
+    "Shelley 是一个运行在 {hostname} 上的代理。你可以让 Shelley 帮你完成各种任务。如果你使用 Shelley 构建了网站，可以通过 exe.dev 的代理功能（参见 {docsLink}）在 {proxyLink} 上访问。",
   sendMessageToStart: "发送消息以开始对话。",
   noModelsConfiguredHint: "未配置 AI 模型。按 Ctrl+K 或 ⌘+K 添加模型。",
 

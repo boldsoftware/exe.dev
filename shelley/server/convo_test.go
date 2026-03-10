@@ -19,7 +19,7 @@ func TestHydrateGeneratesSystemPromptWithSubagentTool(t *testing.T) {
 
 	// The system prompt should have been created during NewConversation (via handleNewConversation -> getOrCreateConversationManager -> Hydrate)
 	// Let's verify it has the subagent tool in its display data.
-	
+
 	var messages []generated.Message
 	err := h.db.Queries(ctx, func(q *generated.Queries) error {
 		var qerr error

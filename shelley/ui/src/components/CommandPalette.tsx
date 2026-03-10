@@ -466,7 +466,15 @@ function CommandPalette({
     const languageOptions: {
       loc: Locale;
       flag: string;
-      name: "english" | "japanese" | "french" | "russian" | "spanish" | "simplifiedChinese" | "traditionalChinese" | "upgoerFive";
+      name:
+        | "english"
+        | "japanese"
+        | "french"
+        | "russian"
+        | "spanish"
+        | "simplifiedChinese"
+        | "traditionalChinese"
+        | "upgoerFive";
       nativeName: string;
       keywords: string[];
     }[] = [
