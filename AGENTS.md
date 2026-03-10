@@ -40,8 +40,8 @@
 | Agent | Description | Mode |
 |-------|-------------|------|
 | `@archbot` | Architecture expert. Answers questions about how systems connect. Read-only — does not write code. | subagent |
-| `@creditbot` | Owns billing credit systems (subscriptions gating, prepaid balance, LLM gateway credits). | subagent |
-| `@subbot` | Owns Stripe subscriptions, products, and prices. Coordinates with creditbot on Stripe changes. | plan |
+| `@billing-credit` | Owns billing credit systems (subscriptions gating, prepaid balance, LLM gateway credits). | subagent |
+| `@billing-sub` | Owns Stripe subscriptions, products, and prices. Coordinates with billing-credit on Stripe changes. | plan |
 
 Agent definitions live in `.claude/agents/`. Skills they reference live in `.claude/skills/`.
 
