@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"exe.dev/exepipe/client"
 	"exe.dev/tslog"
@@ -162,6 +163,13 @@ func testConn(t *testing.T, ln net.Listener) (clientConn, serverConn net.Conn) {
 
 // checkMetrics verifies that the metrics are recorded for TestCopy.
 func checkMetrics(t *testing.T, pi *PipeInstance) {
+	// Wait for connections to stabilize.
+	// TODO: This is a hack.
+	for pi.piping.connsCount() > 0 {
+		t.Logf("checkmetrics: connsCount == %d", pi.piping.connsCount())
+		time.Sleep(time.Millisecond)
+	}
+
 	resp, err := http.Get("http://" + pi.httpServer.ln.Addr().String() + "/metrics")
 	if err != nil {
 		t.Errorf("failed to fetch metrics: %v", err)

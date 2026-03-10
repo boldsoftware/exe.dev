@@ -83,6 +83,14 @@ func (p *piping) rmConnLocked(conn net.Conn) {
 	delete(p.conns, conn)
 }
 
+// connsCount returns the number of network connections being handled,
+// for testing purposes.
+func (p *piping) connsCount() int {
+	p.connsMu.Lock()
+	defer p.connsMu.Unlock()
+	return len(p.conns)
+}
+
 // Copy takes two socket file descriptors and starts goroutines to
 // copy data between them.
 func (p *piping) Copy(ctx context.Context, fd1, fd2 int, typ string) {
@@ -180,11 +188,16 @@ func (p *piping) sockname(ctx context.Context, fd int) string {
 // to listen on that socket and start copying between the
 // accepted socket and the TCP address.
 func (p *piping) Listen(ctx context.Context, key string, fd int, host string, port int, typ string) {
+	p.addListener(ctx, key, host, port, typ)
+
 	go p.doListen(ctx, key, fd, host, port, typ)
 }
 
 // doListen implements Listen, running in a separate goroutine.
 func (p *piping) doListen(ctx context.Context, key string, fd int, host string, port int, typ string) {
+	// Undo the addListener done in the caller.
+	defer p.rmListener(ctx, key)
+
 	f := os.NewFile(uintptr(fd), p.sockname(ctx, fd))
 	ln, err := net.FileListener(f)
 	f.Close()
@@ -195,15 +208,12 @@ func (p *piping) doListen(ctx context.Context, key string, fd int, host string, 
 
 	defer ln.Close()
 
-	p.addListener(ctx, key, host, port, typ)
-
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
 				p.pipeInstance.lg.WarnContext(ctx, "exepipe listen error", "type", typ, "error", err)
 			}
-			p.rmListener(ctx, key)
 			return
 		}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 
@@ -76,7 +77,7 @@ func (cl *cmdLoop) commandLoop(ctx context.Context, uc *net.UnixConn) {
 		var buf, oob [1024]byte
 		n, oobn, _, _, err := uc.ReadMsgUnix(buf[:], oob[:])
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
+			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
 				cl.pipeInstance.lg.ErrorContext(ctx, "exepipe unix socket read failure", "error", err)
 				uc.Close()
 			}
