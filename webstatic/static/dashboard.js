@@ -671,6 +671,22 @@ class CommandModal {
             inputPlaceholder: 'port (e.g. 8080)'
         });
     }
+
+    static addTag(boxName) {
+        cmdModal.open({
+            title: 'Add Tag',
+            commandPrefix: `tag ${shellQuote(boxName)}`,
+            inputPlaceholder: 'tag name (e.g. prod)'
+        });
+    }
+
+    static removeTag(boxName, tagName) {
+        cmdModal.open({
+            title: 'Remove Tag',
+            command: `tag -d ${shellQuote(boxName)} ${shellQuote(tagName)}`,
+            danger: true
+        });
+    }
 }
 
 // Global instance
@@ -718,83 +734,8 @@ const openRestartBoxModal = (boxName) => CommandModal.restartBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
 const openSetPortModal = (boxName) => CommandModal.setPort(boxName);
-
-// Tag management
-async function removeTag(boxName, tagName) {
-    try {
-        const response = await fetch('/cmd', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: `tag -d ${boxName} ${tagName}` }),
-        });
-        const result = await response.json();
-        if (result.success) {
-            saveExpandedState();
-            window.location.reload();
-        } else {
-            alert(result.output || result.error || 'Failed to remove tag');
-        }
-    } catch (err) {
-        alert(`Failed to remove tag: ${err.message}`);
-    }
-}
-
-function showAddTagInput(btn, boxName) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'box-tag-add-input';
-    input.placeholder = 'tag name';
-    input.setAttribute('pattern', '[a-z][a-z0-9_]*');
-    btn.replaceWith(input);
-    input.focus();
-
-    const submit = async () => {
-        const tagName = input.value.trim();
-        if (!tagName) {
-            // Restore button
-            const newBtn = document.createElement('button');
-            newBtn.className = 'box-tag-add-btn';
-            newBtn.textContent = '+ tag';
-            newBtn.title = 'Add tag';
-            newBtn.onclick = () => showAddTagInput(newBtn, boxName);
-            input.replaceWith(newBtn);
-            return;
-        }
-        if (!/^[a-z][a-z0-9_]*$/.test(tagName)) {
-            input.style.borderColor = '#dc2626';
-            return;
-        }
-        input.disabled = true;
-        try {
-            const response = await fetch('/cmd', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: `tag ${boxName} ${tagName}` }),
-            });
-            const result = await response.json();
-            if (result.success) {
-                saveExpandedState();
-                window.location.reload();
-            } else {
-                input.disabled = false;
-                input.style.borderColor = '#dc2626';
-                input.title = result.output || result.error || 'Failed';
-            }
-        } catch (err) {
-            input.disabled = false;
-            input.style.borderColor = '#dc2626';
-        }
-    };
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') submit();
-        if (e.key === 'Escape') {
-            input.value = '';
-            submit();
-        }
-    });
-    input.addEventListener('blur', submit);
-}
+const openAddTagModal = (boxName) => CommandModal.addTag(boxName);
+const openRemoveTagModal = (boxName, tagName) => CommandModal.removeTag(boxName, tagName);
 
 // Editor modal functionality
 let editorConnStr = '';

@@ -312,20 +312,6 @@
             color: #374151;
         }
 
-        .box-tag-add-input {
-            font-size: 11px;
-            padding: 1px 6px;
-            border: 1px solid #d1d5db;
-            border-radius: 3px;
-            width: 100px;
-            font-family: inherit;
-            outline: none;
-        }
-
-        .box-tag-add-input:focus {
-            border-color: #065f46;
-        }
-
         .box-actions {
             display: flex;
             align-items: center;
@@ -1789,8 +1775,8 @@
                         {{end}}
                         {{$boxName := .Name}}
                         <span class="box-info-label">Tags:</span>
-                        <span class="box-info-value box-tags-editable" data-box-name="{{$boxName}}">
-                            {{range .DisplayTags}}<span class="box-tag box-tag-removable">#{{.}}<button class="box-tag-remove" onclick="removeTag('{{$boxName}}', '{{.}}')" title="Remove tag">&times;</button></span> {{end}}<button class="box-tag-add-btn" onclick="showAddTagInput(this, '{{$boxName}}')" title="Add tag">+ tag</button>
+                        <span class="box-info-value">
+                            {{range .DisplayTags}}<span class="box-tag box-tag-removable">#{{.}}<button class="box-tag-remove" onclick="openRemoveTagModal('{{$boxName}}', '{{.}}')" title="Remove tag">&times;</button></span> {{end}}<button class="box-tag-add-btn" onclick="openAddTagModal('{{$boxName}}')" title="Add tag">+ tag</button>
                         </span>
                     </div>
                     {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
