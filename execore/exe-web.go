@@ -1517,6 +1517,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	var shelleyFreeCreditRemainingPct float64
+	var shelleyCreditsAvailable float64
+	var shelleyCreditsMax float64
 	var hasShelleyFreeCreditPct bool
 	creditState, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserLLMCredit, userID)
 	var creditPtr *exedb.UserLlmCredit
@@ -1545,8 +1547,22 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			if shelleyFreeCreditRemainingPct > 100 {
 				shelleyFreeCreditRemainingPct = 100
 			}
+			shelleyCreditsAvailable = effectiveAvailable
+			shelleyCreditsMax = plan.MaxCredit
 			hasShelleyFreeCreditPct = true
 		}
+	}
+
+	// Compute stacked bar percentages.
+	// Total capacity = monthly max + extra credits.
+	// Monthly segment = (monthly available / total) * 100
+	// Extra segment = (extra / total) * 100
+	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
+	var monthlyBarPct, extraBarPct float64
+	totalCapacity := shelleyCreditsMax + extraCreditsUSD
+	if totalCapacity > 0 {
+		monthlyBarPct = (shelleyCreditsAvailable / totalCapacity) * 100
+		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
 	}
 
 	// Prepare template data
@@ -1565,8 +1581,14 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 		CreditBalance:                 creditBalance,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
+		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
+		ShelleyCreditsMax:             shelleyCreditsMax,
+		ExtraCreditsUSD:               extraCreditsUSD,
+		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
+		MonthlyBarPct:                 monthlyBarPct,
+		ExtraBarPct:                   extraBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
-		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
+		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006"),
 	}
 
 	// Render template

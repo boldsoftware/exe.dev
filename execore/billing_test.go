@@ -2308,18 +2308,18 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Shelley Credits") {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
-	if !strings.Contains(body, "Monthly Credits") {
+	if !strings.Contains(body, ">Monthly<") {
 		t.Error("Expected monthly credits row on profile page")
 	}
-	expectedReset := nextUTCMonthStart().Format("15:04 on 02 Jan")
+	expectedReset := nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006")
 	if !strings.Contains(body, "resets "+expectedReset) {
 		t.Errorf("Expected monthly credits reset time format %q on profile page", expectedReset)
 	}
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
 	}
-	if !strings.Contains(body, "$0.00 USD") {
-		t.Error("Expected credit balance rendered in dollars and cents")
+	if !strings.Contains(body, ">Extra<") {
+		t.Error("Expected extra credits row on profile page")
 	}
 	if !strings.Contains(body, "90%") {
 		t.Fatalf("Expected free credits remaining percentage 90%%, got body: %s", body[:min(1200, len(body))])
@@ -2350,7 +2350,7 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "100%") {
 		t.Fatalf("Expected free credits remaining percentage 100%% after month rollover, got body: %s", body[:min(1200, len(body))])
 	}
-	expectedReset = nextUTCMonthStart().Format("15:04 on 02 Jan")
+	expectedReset = nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006")
 	if !strings.Contains(body, "resets "+expectedReset) {
 		t.Errorf("Expected monthly credits reset time format %q after month rollover scenario", expectedReset)
 	}
@@ -2442,6 +2442,116 @@ func TestCreditPurchase_BuyNoAccount(t *testing.T) {
 	location := w.Header().Get("Location")
 	if location != "/billing/update?source=credits" {
 		t.Errorf("Expected redirect to /billing/update?source=credits, got %q", location)
+	}
+}
+
+func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	user, cookieValue := createUserWithAccount(t, server, "credits-display@example.com", "exe_display_credits")
+
+	maxCredit := 10.0
+	now := time.Now().UTC()
+	lastRefresh := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC)
+
+	renderUserPage := func(t *testing.T) string {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/user", nil)
+		req.Host = server.env.WebHost
+		req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d", w.Code)
+		}
+		return w.Body.String()
+	}
+
+	upsertCredit := func(t *testing.T, available float64) {
+		t.Helper()
+		err := withTx1(server, t.Context(), (*exedb.Queries).UpsertUserLLMCredit, exedb.UpsertUserLLMCreditParams{
+			UserID:          user.UserID,
+			AvailableCredit: available,
+			MaxCredit:       &maxCredit,
+			RefreshPerHour:  nil,
+			LastRefreshAt:   lastRefresh,
+		})
+		if err != nil {
+			t.Fatalf("UpsertUserLLMCredit: %v", err)
+		}
+	}
+
+	// Test dollar amount display and progress bar presence
+	upsertCredit(t, 9.0)
+	body := renderUserPage(t)
+
+	if !strings.Contains(body, "$9.00 / $10.00 (90%)") {
+		t.Errorf("Expected '$9.00 / $10.00 (90%%)' in body")
+	}
+	if !strings.Contains(body, `background: #e0e0e0`) {
+		t.Error("Expected progress bar background element")
+	}
+	if !strings.Contains(body, "$9.00") {
+		t.Error("Expected total credits amount")
+	}
+	// 90% remaining = green
+	if !strings.Contains(body, "#22a55b") {
+		t.Error("Expected green progress bar color for 90% remaining")
+	}
+
+	// Test full credits (100%) = green
+	upsertCredit(t, 10.0)
+	body = renderUserPage(t)
+
+	if !strings.Contains(body, "$10.00 / $10.00 (100%)") {
+		t.Errorf("Expected '$10.00 / $10.00 (100%%)' in body")
+	}
+	if !strings.Contains(body, "#22a55b") {
+		t.Error("Expected green progress bar color for 100% remaining")
+	}
+
+	// Test yellow (25-50%): 4.0/10.0 = 40%
+	upsertCredit(t, 4.0)
+	body = renderUserPage(t)
+
+	if !strings.Contains(body, "$4.00 / $10.00 (40%)") {
+		t.Errorf("Expected '$4.00 / $10.00 (40%%)' in body")
+	}
+	if !strings.Contains(body, "#eab308") {
+		t.Error("Expected yellow progress bar color for 40% remaining")
+	}
+
+	// Test orange (10-25%): 2.0/10.0 = 20%
+	upsertCredit(t, 2.0)
+	body = renderUserPage(t)
+
+	if !strings.Contains(body, "$2.00 / $10.00 (20%)") {
+		t.Errorf("Expected '$2.00 / $10.00 (20%%)' in body")
+	}
+	if !strings.Contains(body, "#dd6b20") {
+		t.Error("Expected orange progress bar color for 20% remaining")
+	}
+
+	// Test red (<10%): 0.5/10.0 = 5%
+	upsertCredit(t, 0.5)
+	body = renderUserPage(t)
+
+	if !strings.Contains(body, "$0.50 / $10.00 (5%)") {
+		t.Errorf("Expected '$0.50 / $10.00 (5%%)' in body")
+	}
+	if !strings.Contains(body, "#e53e3e") {
+		t.Error("Expected red progress bar color for 5% remaining")
+	}
+
+	// Test zero credits = red
+	upsertCredit(t, 0.0)
+	body = renderUserPage(t)
+
+	if !strings.Contains(body, "$0.00 / $10.00 (0%)") {
+		t.Errorf("Expected '$0.00 / $10.00 (0%%)' in body")
+	}
+	if !strings.Contains(body, "#e53e3e") {
+		t.Error("Expected red progress bar color for 0% remaining")
 	}
 }
 

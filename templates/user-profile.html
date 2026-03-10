@@ -669,14 +669,28 @@
         <div class="section">
             <div class="section-title">Shelley Credits</div>
             <div class="info-card">
-                <div class="info-row">
-                    <div class="info-label">Monthly Credits</div>
-                    <div class="info-value">{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</div>
+                {{if .HasShelleyFreeCreditPct}}
+                <div class="info-row" style="align-items: center; gap: 12px;">
+                    <span style="font-size: 20px; font-weight: 600; white-space: nowrap;">${{printf "%.2f" .TotalCreditsUSD}}</span>
+                    <div style="flex: 1; background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex;">
+                        <div style="background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; width: {{printf "%.1f" .MonthlyBarPct}}%; min-width: {{if gt .MonthlyBarPct 0.0}}2px{{else}}0{{end}};"></div>
+                        {{if gt .ExtraBarPct 0.0}}<div style="background: #3b82f6; width: {{printf "%.1f" .ExtraBarPct}}%; min-width: 2px;"></div>{{end}}
+                    </div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Extra Credits</div>
-                    <div class="info-value" id="credit-balance-usd" data-credit-balance-microcents="{{.CreditBalance.Microcents}}">{{.CreditBalance.String}}</div>
+                    <div class="info-label"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; margin-right: 4px; vertical-align: middle;"></span>Monthly</div>
+                    <div class="info-value">${{printf "%.2f" .ShelleyCreditsAvailable}} / ${{printf "%.2f" .ShelleyCreditsMax}} ({{printf "%.0f" .ShelleyFreeCreditRemainingPct}}%) · resets {{.MonthlyCreditsResetAt}}</div>
                 </div>
+                <div class="info-row">
+                    <div class="info-label"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #3b82f6; margin-right: 4px; vertical-align: middle;"></span>Extra</div>
+                    <div class="info-value">${{printf "%.2f" .ExtraCreditsUSD}}</div>
+                </div>
+                {{else}}
+                <div class="info-row">
+                    <div class="info-label">Credits</div>
+                    <div class="info-value">-</div>
+                </div>
+                {{end}}
                 <div class="info-row">
                     <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a></div>
                     <div class="info-value">

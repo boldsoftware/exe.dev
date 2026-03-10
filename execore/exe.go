@@ -146,6 +146,12 @@ type UserPageData struct {
 
 	// Shelley free credits (from llmgateway credit state)
 	ShelleyFreeCreditRemainingPct float64
+	ShelleyCreditsAvailable       float64 // USD remaining
+	ShelleyCreditsMax             float64 // USD ceiling
+	ExtraCreditsUSD               float64 // purchased billing credits in dollars
+	TotalCreditsUSD               float64 // monthly available + extra credits
+	MonthlyBarPct                 float64 // stacked bar: monthly segment width %
+	ExtraBarPct                   float64 // stacked bar: extra segment width %
 	HasShelleyFreeCreditPct       bool
 	MonthlyCreditsResetAt         string // e.g. "00:00 on 01 Mar"
 
