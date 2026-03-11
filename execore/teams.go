@@ -39,9 +39,9 @@ func parseTeamID(raw string) (string, error) {
 type TeamBoxAccessType int
 
 const (
-	TeamBoxAccessNone       TeamBoxAccessType = iota
-	TeamBoxAccessOwner                    // User created the box
-	TeamBoxAccessTeamAdmin                // User is team admin, box belongs to team member
+	TeamBoxAccessNone      TeamBoxAccessType = iota
+	TeamBoxAccessOwner                       // User created the box
+	TeamBoxAccessTeamAdmin                   // User is team admin, box belongs to team member
 )
 
 // FindAccessibleBox finds a box that the user can access for management operations.
