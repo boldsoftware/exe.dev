@@ -11,7 +11,7 @@ import (
 // extractState extracts the state parameter from a URL string in PTY output.
 func extractState(t *testing.T, output string) string {
 	t.Helper()
-	re := regexp.MustCompile(`state=([0-9a-f]+)`)
+	re := regexp.MustCompile(`state=([0-9a-f]{32})`)
 	matches := re.FindStringSubmatch(output)
 	if len(matches) < 2 {
 		t.Fatalf("could not extract state from output: %s", output)
@@ -39,6 +39,7 @@ func simulateGitHubCallback(t *testing.T, state string, installationID int) {
 // setup → duplicate install detected → delete → verify delete-again error → re-setup → delete.
 func TestIntegrationsSetupGitHub(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -46,7 +47,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 
 	// First setup: should print install URL and wait.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`state=[0-9a-f]+`)
+	out := pty.WantREMatch(`state=[0-9a-f]{32}`)
 	state := extractState(t, out)
 
 	// Simulate the GitHub callback.
@@ -59,7 +60,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	// Setup again with same installation: should detect duplicate.
 	pty.SendLine("integrations setup github")
 	pty.Want("Already connected")
-	out = pty.WantREMatch(`state=[0-9a-f]+`)
+	out = pty.WantREMatch(`state=[0-9a-f]{32}`)
 	state = extractState(t, out)
 	simulateGitHubCallback(t, state, 12345)
 	pty.Want("Already connected: testghuser")
@@ -77,7 +78,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 
 	// Re-setup: should succeed again.
 	pty.SendLine("integrations setup github")
-	out = pty.WantREMatch(`state=[0-9a-f]+`)
+	out = pty.WantREMatch(`state=[0-9a-f]{32}`)
 	state = extractState(t, out)
 
 	simulateGitHubCallback(t, state, 67890)
@@ -95,6 +96,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 // and validates error cases.
 func TestIntegrationsAddGitHub(t *testing.T) {
 	t.Parallel()
+	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
@@ -107,7 +109,7 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 
 	// Connect a GitHub account first.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`state=[0-9a-f]+`)
+	out := pty.WantREMatch(`state=[0-9a-f]{32}`)
 	state := extractState(t, out)
 	simulateGitHubCallback(t, state, 12345)
 	pty.Want("Connected GitHub account: testghuser")
