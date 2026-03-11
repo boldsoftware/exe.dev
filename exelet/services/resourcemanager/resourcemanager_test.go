@@ -669,6 +669,72 @@ func TestPollInstanceStoppedZerosRuntimeMetrics(t *testing.T) {
 	}
 }
 
+func TestPollInstanceStoppedToRunningRetriesCgroup(t *testing.T) {
+	// Regression test: when a VM is first observed as STOPPED, applyPriority
+	// cannot succeed (no process/socket). When the VM later becomes RUNNING,
+	// applyPriority must be retried and cgroupApplied must flip to true.
+	tmpDir := t.TempDir()
+
+	var applyPriorityCalls int
+	m := &ResourceManager{
+		config:           &config.ExeletConfig{},
+		usageState:       make(map[string]*vmUsageState),
+		priorityOverride: make(map[string]api.VMPriority),
+		cgroupRoot:       tmpDir,
+		log:              slog.Default(),
+		collectUsageFn: func(_ context.Context, _, _, _ string) (*usageData, error) {
+			return &usageData{cpuSeconds: 1.0, memoryBytes: 1024}, nil
+		},
+		applyPriorityFn: func(_ context.Context, _, _ string, _ api.VMPriority, _ uint64) error {
+			applyPriorityCalls++
+			return nil
+		},
+	}
+
+	now := time.Now()
+
+	// Step 1: Poll as STOPPED — state is created, applyPriority is skipped.
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+
+	m.usageMu.Lock()
+	state, exists := m.usageState["vm-transition"]
+	m.usageMu.Unlock()
+
+	if !exists {
+		t.Fatal("expected usageState entry after stopped poll")
+	}
+	if state.cgroupApplied {
+		t.Fatal("cgroupApplied should be false after polling a stopped VM")
+	}
+	if applyPriorityCalls != 0 {
+		t.Fatalf("applyPriority should not be called for stopped VM, got %d calls", applyPriorityCalls)
+	}
+
+	// Step 2: Poll as RUNNING — applyPriority must be retried and succeed.
+	now2 := now.Add(30 * time.Second)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now2)
+
+	m.usageMu.Lock()
+	state = m.usageState["vm-transition"]
+	m.usageMu.Unlock()
+
+	if applyPriorityCalls != 1 {
+		t.Errorf("applyPriority should be called once after STOPPED->RUNNING, got %d calls", applyPriorityCalls)
+	}
+	if !state.cgroupApplied {
+		t.Error("cgroupApplied should be true after successful applyPriority on running VM")
+	}
+
+	// Step 3: Poll as RUNNING again — applyPriority should NOT be called
+	// again since cgroupApplied is now true and priority/group are unchanged.
+	now3 := now.Add(60 * time.Second)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now3)
+
+	if applyPriorityCalls != 1 {
+		t.Errorf("applyPriority should not be called again when cgroup is already applied, got %d calls", applyPriorityCalls)
+	}
+}
+
 func TestPollInstancePausedAttemptsFullCollection(t *testing.T) {
 	// PAUSED VMs should take the collectUsage path, not the stopped path.
 	// collectUsage will fail (no cloud-hypervisor socket), causing pollInstance

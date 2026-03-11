@@ -53,6 +53,10 @@ type ResourceManager struct {
 	priorityOverride map[string]api.VMPriority // manual overrides (cleared when set to auto)
 	cgroupRoot       string
 
+	// Test hooks (nil in production; overridden in tests)
+	collectUsageFn func(ctx context.Context, id, name, groupID string) (*usageData, error)
+	applyPriorityFn func(ctx context.Context, id, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error
+
 	// Memory reclaim
 	reclaimInflight    sync.Map      // tracks in-flight memory.reclaim writes by path
 	readMemAvailableFn func() uint64 // overridden in tests; nil uses /proc/meminfo
@@ -85,6 +89,7 @@ type vmUsageState struct {
 	ioReadBytes          uint64
 	ioWriteBytes         uint64
 	priority             api.VMPriority
+	cgroupApplied        bool // true after applyPriority succeeds at least once
 
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
@@ -298,7 +303,11 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		}
 	} else {
 		// Running, starting, paused, stopping: VM process still exists, collect full usage.
-		usage, err = m.collectUsage(ctx, id, name, groupID)
+		collectFn := m.collectUsage
+		if m.collectUsageFn != nil {
+			collectFn = m.collectUsageFn
+		}
+		usage, err = collectFn(ctx, id, name, groupID)
 		if err != nil {
 			m.log.DebugContext(ctx, "resource manager: failed to collect usage", "id", id, "error", err)
 			return
@@ -382,6 +391,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 
 	oldPriority := state.priority
 	state.priority = newPriority
+	cgroupApplied := state.cgroupApplied
 	allocatedMemoryBytes := state.allocatedMemoryBytes
 	stateGroupID := state.groupID
 	m.usageMu.Unlock()
@@ -391,8 +401,11 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		m.metrics.update(id, name, state)
 	}
 
-	// Apply priority on first observation (to create cgroup), when priority changes, or when group changes
-	if !exists || oldPriority != newPriority || groupChanged {
+	// Apply priority on first observation (to create cgroup), when cgroup setup
+	// hasn't succeeded yet, when priority changes, or when group changes.
+	// Skip for stopped VMs since there is no process/socket to configure.
+	needsApply := !exists || !cgroupApplied || oldPriority != newPriority || groupChanged
+	if needsApply && vmState != computeapi.VMState_STOPPED {
 		if groupChanged {
 			m.log.InfoContext(ctx, "resource manager: moving VM to new group cgroup",
 				"id", id,
@@ -410,12 +423,21 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 				"name", name,
 				"priority", newPriority)
 		}
-		if err := m.applyPriority(ctx, id, stateGroupID, newPriority, allocatedMemoryBytes); err != nil {
+		applyFn := m.applyPriority
+		if m.applyPriorityFn != nil {
+			applyFn = m.applyPriorityFn
+		}
+		if err := applyFn(ctx, id, stateGroupID, newPriority, allocatedMemoryBytes); err != nil {
 			m.log.WarnContext(ctx, "resource manager: failed to apply priority", "id", id, "error", err)
-		} else if groupChanged {
-			// Clean up old cgroup after successfully moving to new group
-			if err := m.removeCgroup(ctx, id, oldGroupID); err != nil {
-				m.log.DebugContext(ctx, "resource manager: failed to remove old cgroup", "id", id, "old_group", oldGroupID, "error", err)
+		} else {
+			m.usageMu.Lock()
+			state.cgroupApplied = true
+			m.usageMu.Unlock()
+			if groupChanged {
+				// Clean up old cgroup after successfully moving to new group
+				if err := m.removeCgroup(ctx, id, oldGroupID); err != nil {
+					m.log.DebugContext(ctx, "resource manager: failed to remove old cgroup", "id", id, "old_group", oldGroupID, "error", err)
+				}
 			}
 		}
 	}
