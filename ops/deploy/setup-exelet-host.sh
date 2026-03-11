@@ -192,61 +192,61 @@ if [ "$REPROVISION" = "true" ]; then
     echo "Instance is accessible via Tailscale SSH"
 else
 
-# Run the Tailscale OAuth preflight check
-"${SCRIPT_DIR}/test-tailscale-oauth.sh"
+    # Run the Tailscale OAuth preflight check
+    "${SCRIPT_DIR}/test-tailscale-oauth.sh"
 
-# Check if security group exists
-echo "Checking security group..."
-SG_ID=$(aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
-    --query 'SecurityGroups[0].GroupId' \
-    --output text \
-    --region ${REGION} 2>/dev/null || true)
-
-if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
-    echo "Creating security group ${SECURITY_GROUP_NAME}..."
-    SG_ID=$(aws ec2 create-security-group \
-        --group-name ${SECURITY_GROUP_NAME} \
-        --description "Security group for exe hosts" \
-        --vpc-id $(aws ec2 describe-subnets --subnet-ids ${SUBNET_ID} --query 'Subnets[0].VpcId' --output text --region ${REGION}) \
-        --query 'GroupId' \
+    # Check if security group exists
+    echo "Checking security group..."
+    SG_ID=$(aws ec2 describe-security-groups \
+        --filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
+        --query 'SecurityGroups[0].GroupId' \
         --output text \
-        --region ${REGION})
+        --region ${REGION} 2>/dev/null || true)
 
-    # Add rules
-    # Allow SSH from anywhere (for Tailscale and initial setup)
-    aws ec2 authorize-security-group-ingress \
-        --group-id ${SG_ID} \
-        --protocol tcp \
-        --port 22 \
-        --cidr 0.0.0.0/0 \
-        --region ${REGION}
+    if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+        echo "Creating security group ${SECURITY_GROUP_NAME}..."
+        SG_ID=$(aws ec2 create-security-group \
+            --group-name ${SECURITY_GROUP_NAME} \
+            --description "Security group for exe hosts" \
+            --vpc-id $(aws ec2 describe-subnets --subnet-ids ${SUBNET_ID} --query 'Subnets[0].VpcId' --output text --region ${REGION}) \
+            --query 'GroupId' \
+            --output text \
+            --region ${REGION})
 
-    # Allow HTTPS from anywhere
-    aws ec2 authorize-security-group-ingress \
-        --group-id ${SG_ID} \
-        --protocol tcp \
-        --port 443 \
-        --cidr 0.0.0.0/0 \
-        --region ${REGION}
+        # Add rules
+        # Allow SSH from anywhere (for Tailscale and initial setup)
+        aws ec2 authorize-security-group-ingress \
+            --group-id ${SG_ID} \
+            --protocol tcp \
+            --port 22 \
+            --cidr 0.0.0.0/0 \
+            --region ${REGION}
 
-    # Allow all traffic from within VPC (for internal communication including ping)
-    aws ec2 authorize-security-group-ingress \
-        --group-id ${SG_ID} \
-        --protocol -1 \
-        --cidr 172.31.0.0/16 \
-        --region ${REGION}
-fi
+        # Allow HTTPS from anywhere
+        aws ec2 authorize-security-group-ingress \
+            --group-id ${SG_ID} \
+            --protocol tcp \
+            --port 443 \
+            --cidr 0.0.0.0/0 \
+            --region ${REGION}
 
-echo "Security group ID: ${SG_ID}"
+        # Allow all traffic from within VPC (for internal communication including ping)
+        aws ec2 authorize-security-group-ingress \
+            --group-id ${SG_ID} \
+            --protocol -1 \
+            --cidr 172.31.0.0/16 \
+            --region ${REGION}
+    fi
 
-# Check if IAM role exists
-echo "Checking IAM role..."
-if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
-    echo "Creating IAM role ${INSTANCE_ROLE_NAME}..."
-    aws iam create-role \
-        --role-name ${INSTANCE_ROLE_NAME} \
-        --assume-role-policy-document '{
+    echo "Security group ID: ${SG_ID}"
+
+    # Check if IAM role exists
+    echo "Checking IAM role..."
+    if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
+        echo "Creating IAM role ${INSTANCE_ROLE_NAME}..."
+        aws iam create-role \
+            --role-name ${INSTANCE_ROLE_NAME} \
+            --assume-role-policy-document '{
 			"Version": "2012-10-17",
 			"Statement": [
 				{
@@ -257,55 +257,55 @@ if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
 			]
 		}'
 
-    # Create instance profile
-    aws iam create-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME}
-    aws iam add-role-to-instance-profile \
-        --instance-profile-name ${INSTANCE_PROFILE_NAME} \
-        --role-name ${INSTANCE_ROLE_NAME}
+        # Create instance profile
+        aws iam create-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME}
+        aws iam add-role-to-instance-profile \
+            --instance-profile-name ${INSTANCE_PROFILE_NAME} \
+            --role-name ${INSTANCE_ROLE_NAME}
 
-    # Wait for profile to be ready
-    sleep 10
-fi
+        # Wait for profile to be ready
+        sleep 10
+    fi
 
-# Get latest Ubuntu 24.04 AMI
-echo "Finding latest Ubuntu 24.04 AMI..."
-AMI_ID=$(aws ec2 describe-images \
-    --owners 099720109477 \
-    --filters \
-    "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
-    "Name=architecture,Values=x86_64" \
-    "Name=virtualization-type,Values=hvm" \
-    "Name=state,Values=available" \
-    --query 'Images[0].[ImageId]' \
-    --output text \
-    --region ${REGION})
+    # Get latest Ubuntu 24.04 AMI
+    echo "Finding latest Ubuntu 24.04 AMI..."
+    AMI_ID=$(aws ec2 describe-images \
+        --owners 099720109477 \
+        --filters \
+        "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
+        "Name=architecture,Values=x86_64" \
+        "Name=virtualization-type,Values=hvm" \
+        "Name=state,Values=available" \
+        --query 'Images[0].[ImageId]' \
+        --output text \
+        --region ${REGION})
 
-echo "Using AMI: ${AMI_ID}"
+    echo "Using AMI: ${AMI_ID}"
 
-# Check for root password
-if [ -z "${ROOT_PASSWORD:-}" ]; then
-    echo "ERROR: ROOT_PASSWORD environment variable not set"
-    echo "Please set it:  export ROOT_PASSWORD=<password-for-root-account>"
-    exit 1
-fi
+    # Check for root password
+    if [ -z "${ROOT_PASSWORD:-}" ]; then
+        echo "ERROR: ROOT_PASSWORD environment variable not set"
+        echo "Please set it:  export ROOT_PASSWORD=<password-for-root-account>"
+        exit 1
+    fi
 
-# Check for Tailscale OAuth credentials in environment variables
-if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
-    echo "ERROR: Tailscale OAuth credentials not set"
-    echo "Please set the following environment variables:"
-    echo "  export TS_OAUTH_CLIENT_ID=<your-client-id>"
-    echo "  export TS_OAUTH_CLIENT_SECRET=<your-client-secret>"
-    echo ""
-    echo "You can get these credentials from the Tailscale admin console:"
-    echo "  https://login.tailscale.com/admin/settings/oauth"
-    exit 1
-fi
+    # Check for Tailscale OAuth credentials in environment variables
+    if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
+        echo "ERROR: Tailscale OAuth credentials not set"
+        echo "Please set the following environment variables:"
+        echo "  export TS_OAUTH_CLIENT_ID=<your-client-id>"
+        echo "  export TS_OAUTH_CLIENT_SECRET=<your-client-secret>"
+        echo ""
+        echo "You can get these credentials from the Tailscale admin console:"
+        echo "  https://login.tailscale.com/admin/settings/oauth"
+        exit 1
+    fi
 
-# Create user data script with Tailscale setup
-#   package isal installs igzip which is supposed to speed up image
-#   decompression
-USER_DATA=$(
-    cat <<EOF
+    # Create user data script with Tailscale setup
+    #   package isal installs igzip which is supposed to speed up image
+    #   decompression
+    USER_DATA=$(
+        cat <<EOF
 #cloud-config
 users:
   - name: ubuntu
@@ -410,106 +410,106 @@ runcmd:
     # add ubuntu user to docker group
     usermod -aG docker ubuntu
 EOF
-)
+    )
 
-# Create the instance
-echo "Creating instance ${MACHINE_NAME}..."
-INSTANCE_ID=$(aws ec2 run-instances \
-    --image-id ${AMI_ID} \
-    --instance-type ${INSTANCE_TYPE} \
-    --subnet-id ${SUBNET_ID} \
-    --security-group-ids ${SG_ID} \
-    --iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
-    --user-data "${USER_DATA}" \
-    --block-device-mappings \
-    "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
-    "DeviceName=/dev/xvdg,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
-    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
-    --query 'Instances[0].InstanceId' \
-    --output text \
-    --region ${REGION})
+    # Create the instance
+    echo "Creating instance ${MACHINE_NAME}..."
+    INSTANCE_ID=$(aws ec2 run-instances \
+        --image-id ${AMI_ID} \
+        --instance-type ${INSTANCE_TYPE} \
+        --subnet-id ${SUBNET_ID} \
+        --security-group-ids ${SG_ID} \
+        --iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
+        --user-data "${USER_DATA}" \
+        --block-device-mappings \
+        "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+        "DeviceName=/dev/xvdf,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
+        "DeviceName=/dev/xvdg,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
+        --query 'Instances[0].InstanceId' \
+        --output text \
+        --region ${REGION})
 
-echo "Instance ${INSTANCE_ID} created"
+    echo "Instance ${INSTANCE_ID} created"
 
-# Tag EBS volumes attached to the instance
-echo "Tagging EBS volumes..."
-ROOT_VOLUME_ID=$(aws ec2 describe-instances \
-    --instance-ids ${INSTANCE_ID} \
-    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/sda1`].Ebs.VolumeId' \
-    --output text \
-    --region ${REGION})
-BACKUP_VOLUME_1_ID=$(aws ec2 describe-instances \
-    --instance-ids ${INSTANCE_ID} \
-    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
-    --output text \
-    --region ${REGION})
-BACKUP_VOLUME_2_ID=$(aws ec2 describe-instances \
-    --instance-ids ${INSTANCE_ID} \
-    --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdg`].Ebs.VolumeId' \
-    --output text \
-    --region ${REGION})
+    # Tag EBS volumes attached to the instance
+    echo "Tagging EBS volumes..."
+    ROOT_VOLUME_ID=$(aws ec2 describe-instances \
+        --instance-ids ${INSTANCE_ID} \
+        --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/sda1`].Ebs.VolumeId' \
+        --output text \
+        --region ${REGION})
+    BACKUP_VOLUME_1_ID=$(aws ec2 describe-instances \
+        --instance-ids ${INSTANCE_ID} \
+        --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
+        --output text \
+        --region ${REGION})
+    BACKUP_VOLUME_2_ID=$(aws ec2 describe-instances \
+        --instance-ids ${INSTANCE_ID} \
+        --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdg`].Ebs.VolumeId' \
+        --output text \
+        --region ${REGION})
 
-if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
-    aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
-    echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
-fi
-for BVOL_ID in "$BACKUP_VOLUME_1_ID" "$BACKUP_VOLUME_2_ID"; do
-    if [ -n "$BVOL_ID" ] && [ "$BVOL_ID" != "None" ]; then
-        aws ec2 create-tags --resources ${BVOL_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
-        echo "Tagged backup volume ${BVOL_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
+    if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
+        aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
+        echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
     fi
-done
+    for BVOL_ID in "$BACKUP_VOLUME_1_ID" "$BACKUP_VOLUME_2_ID"; do
+        if [ -n "$BVOL_ID" ] && [ "$BVOL_ID" != "None" ]; then
+            aws ec2 create-tags --resources ${BVOL_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
+            echo "Tagged backup volume ${BVOL_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
+        fi
+    done
 
-# Wait for instance to be running
-echo "Waiting for instance to start..."
-aws ec2 wait instance-running --instance-ids ${INSTANCE_ID} --region ${REGION}
+    # Wait for instance to be running
+    echo "Waiting for instance to start..."
+    aws ec2 wait instance-running --instance-ids ${INSTANCE_ID} --region ${REGION}
 
-# Get instance IP (private IP since we're using a private subnet)
-INSTANCE_IP=$(aws ec2 describe-instances \
-    --instance-ids ${INSTANCE_ID} \
-    --query 'Reservations[0].Instances[0].PrivateIpAddress' \
-    --output text \
-    --region ${REGION})
+    # Get instance IP (private IP since we're using a private subnet)
+    INSTANCE_IP=$(aws ec2 describe-instances \
+        --instance-ids ${INSTANCE_ID} \
+        --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+        --output text \
+        --region ${REGION})
 
-echo "Instance is running at ${INSTANCE_IP} (private IP)"
+    echo "Instance is running at ${INSTANCE_IP} (private IP)"
 
-# Wait for Tailscale to be connected
-echo ""
-echo "Waiting for Tailscale to connect..."
+    # Wait for Tailscale to be connected
+    echo ""
+    echo "Waiting for Tailscale to connect..."
 
-MAX_WAIT=300 # 5 minutes
-WAIT_INTERVAL=10
-ELAPSED=0
+    MAX_WAIT=300 # 5 minutes
+    WAIT_INTERVAL=10
+    ELAPSED=0
 
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    # Try to SSH to the machine via Tailscale
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
-        echo "✓ Machine is accessible via Tailscale SSH"
-        break
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        # Try to SSH to the machine via Tailscale
+        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
+            echo "✓ Machine is accessible via Tailscale SSH"
+            break
+        fi
+
+        echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
+        sleep $WAIT_INTERVAL
+        ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+    done
+
+    if [ $ELAPSED -ge $MAX_WAIT ]; then
+        echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
+        echo "You may need to check the Tailscale setup manually"
+        echo "To debug, you can SSH via exed-01:"
+        echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
+        exit 1
     fi
 
-    echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
-    sleep $WAIT_INTERVAL
-    ELAPSED=$((ELAPSED + WAIT_INTERVAL))
-done
+    # Setup volumes on metal instances
+    echo ""
+    echo "=========================================="
+    echo "Setting up volumes (swap, zpool)"
+    echo "=========================================="
 
-if [ $ELAPSED -ge $MAX_WAIT ]; then
-    echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
-    echo "You may need to check the Tailscale setup manually"
-    echo "To debug, you can SSH via exed-01:"
-    echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
-    exit 1
-fi
-
-# Setup volumes on metal instances
-echo ""
-echo "=========================================="
-echo "Setting up volumes (swap, zpool)"
-echo "=========================================="
-
-# Create a script to setup the volumes on the remote machine
-cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
+    # Create a script to setup the volumes on the remote machine
+    cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
 #!/bin/bash
 set -euo pipefail
 
@@ -710,25 +710,25 @@ echo "=== Volume setup complete ==="
 swapon --show
 VOLUME_SETUP_SCRIPT
 
-# Copy and execute the volume setup script
-echo "Setting up volumes (swap, zpool) on ${MACHINE_NAME}..."
-if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    /tmp/setup-volumes.sh \
-    "ubuntu@${MACHINE_NAME}:~/"; then
-    echo "ERROR: Failed to copy volume setup script"
-    rm -f /tmp/setup-volumes.sh
-    exit 1
-fi
+    # Copy and execute the volume setup script
+    echo "Setting up volumes (swap, zpool) on ${MACHINE_NAME}..."
+    if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        /tmp/setup-volumes.sh \
+        "ubuntu@${MACHINE_NAME}:~/"; then
+        echo "ERROR: Failed to copy volume setup script"
+        rm -f /tmp/setup-volumes.sh
+        exit 1
+    fi
 
-if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${MACHINE_NAME}" \
-    'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
-    echo "ERROR: Volume setup failed"
-    rm -f /tmp/setup-volumes.sh
-    exit 1
-fi
+    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "ubuntu@${MACHINE_NAME}" \
+        'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
+        echo "ERROR: Volume setup failed"
+        rm -f /tmp/setup-volumes.sh
+        exit 1
+    fi
 
-rm -f /tmp/setup-volumes.sh
+    rm -f /tmp/setup-volumes.sh
 
 fi # end of new-instance provisioning (skipped during re-provision)
 
