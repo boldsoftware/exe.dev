@@ -682,7 +682,7 @@
                 </div>
                 <div class="info-row">
                     <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}};"></span><span style="white-space: nowrap;">Monthly</span></div>
-                    <div class="info-value">resets {{.MonthlyCreditsResetAt}}</div>
+                    <div class="info-value">{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}})</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: #3b82f6;"></span><span style="white-space: nowrap;">Extra</span></div>

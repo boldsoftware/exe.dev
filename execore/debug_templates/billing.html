@@ -9,6 +9,17 @@ table.info th { width: 200px; }
 .muted { color: #888; font-size: 12px; }
 .account-section { margin: 16px 0; padding: 12px; border: 1px solid #ddd; border-radius: 4px; }
 .account-section h3 { margin-top: 0; }
+.credit-bar-track { background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex; }
+.credit-bar-monthly { min-width: 2px; }
+.credit-bar-monthly.green { background: #22a55b; }
+.credit-bar-monthly.yellow { background: #eab308; }
+.credit-bar-monthly.orange { background: #dd6b20; }
+.credit-bar-monthly.red { background: #e53e3e; }
+.credit-bar-extra { background: #3b82f6; min-width: 2px; }
+.credit-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.credit-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.credit-legend-dot.green { background: #22a55b; }
+.credit-legend-dot.blue { background: #3b82f6; }
 </style>
 </head><body>
 <h1>Billing: {{.Email}}</h1>
@@ -17,8 +28,17 @@ table.info th { width: 200px; }
 <div class="section">
 <h2>Shelley Credits (same as profile page)</h2>
 <table class="info">
-<tr><th>Monthly Credits</th><td>{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</td></tr>
-<tr><th>Extra Credits (purchased)</th><td>{{.CreditBalance}}</td></tr>
+{{if .HasShelleyFreeCreditPct}}
+<tr><th>Usage</th><td>
+    <div>{{printf "%.0f" .TotalRemainingPct}}% remaining</div>
+    <div class="credit-bar-track">
+        <div class="credit-bar-monthly {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .MonthlyBarPct}}%;"></div>
+        {{if gt .ExtraBarPct 0.0}}<div class="credit-bar-extra" style="width: {{printf "%.1f" .ExtraBarPct}}%;"></div>{{end}}
+    </div>
+</td></tr>
+{{end}}
+<tr><th><span class="credit-legend-item"><span class="credit-legend-dot {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}"></span> Monthly Credits</span></th><td>{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</td></tr>
+<tr><th><span class="credit-legend-item"><span class="credit-legend-dot blue"></span> Extra Credits</span></th><td>{{.CreditBalance}}{{if and .HasShelleyFreeCreditPct (gt .ExtraCreditsUSD 0.0)}} (${{printf "%.2f" .ExtraCreditsUSD}}){{end}}</td></tr>
 </table>
 </div>
 

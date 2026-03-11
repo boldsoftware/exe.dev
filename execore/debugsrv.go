@@ -4204,6 +4204,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// Shelley free credits (monthly credits) — same logic as profile page.
 	var shelleyFreeCreditRemainingPct float64
+	var shelleyCreditsAvailable float64
+	var shelleyCreditsMax float64
 	var hasShelleyFreeCreditPct bool
 	creditState, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMCredit, userID)
 	var creditPtr *exedb.UserLlmCredit
@@ -4228,6 +4230,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			if shelleyFreeCreditRemainingPct > 100 {
 				shelleyFreeCreditRemainingPct = 100
 			}
+			shelleyCreditsAvailable = effectiveAvailable
+			shelleyCreditsMax = plan.MaxCredit
 			hasShelleyFreeCreditPct = true
 		}
 	}
@@ -4240,6 +4244,19 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			creditBalance = bal
 		}
+	}
+
+	// Compute stacked bar percentages (same as profile page).
+	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
+	var monthlyBarPct, extraBarPct, totalRemainingPct float64
+	totalCapacity := shelleyCreditsMax + extraCreditsUSD
+	if totalCapacity > 0 {
+		monthlyBarPct = (shelleyCreditsAvailable / totalCapacity) * 100
+		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
+		totalRemainingPct = ((shelleyCreditsAvailable + extraCreditsUSD) / totalCapacity) * 100
+	}
+	if totalRemainingPct > 100 {
+		totalRemainingPct = 100
 	}
 
 	// LLM gateway credit info (same as debug user page).
@@ -4265,6 +4282,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		HasShelleyFreeCreditPct       bool
 		ShelleyFreeCreditRemainingPct float64
 		MonthlyCreditsResetAt         string
+		TotalRemainingPct             float64
+		MonthlyBarPct                 float64
+		ExtraBarPct                   float64
+		ExtraCreditsUSD               float64
 		HasCredit                     bool
 		CreditPlanName                string
 		CreditAvailableUSD            float64
@@ -4283,6 +4304,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
+		TotalRemainingPct:             totalRemainingPct,
+		MonthlyBarPct:                 monthlyBarPct,
+		ExtraBarPct:                   extraBarPct,
+		ExtraCreditsUSD:               extraCreditsUSD,
 		HasCredit:                     hasCredit,
 	}
 
