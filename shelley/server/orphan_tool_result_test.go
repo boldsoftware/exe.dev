@@ -38,7 +38,7 @@ func TestOrphanToolResultAfterCancellation(t *testing.T) {
 	server, database, predictableService := newTestServer(t)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestOrphanToolResultAfterCancellation(t *testing.T) {
 func TestOrphanToolResultFiltering(t *testing.T) {
 	server, database, predictableService := newTestServer(t)
 
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

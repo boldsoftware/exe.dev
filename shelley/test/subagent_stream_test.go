@@ -193,7 +193,7 @@ func TestSubagentNotificationViaStream(t *testing.T) {
 
 	// Create parent conversation
 	parentSlug := "parent-convo"
-	parentConv, err := database.CreateConversation(ctx, &parentSlug, true, nil, nil)
+	parentConv, err := database.CreateConversation(ctx, &parentSlug, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create parent conversation: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestSubagentNoExternalNotification(t *testing.T) {
 
 	// Create parent conversation and run it to completion
 	parentSlug := "parent-convo"
-	parentConv, err := database.CreateConversation(ctx, &parentSlug, true, nil, nil)
+	parentConv, err := database.CreateConversation(ctx, &parentSlug, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create parent conversation: %v", err)
 	}

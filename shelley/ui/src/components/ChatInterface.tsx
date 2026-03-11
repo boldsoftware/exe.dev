@@ -459,7 +459,12 @@ interface ChatInterfaceProps {
   onConversationUpdate?: (conversation: Conversation) => void;
   onConversationListUpdate?: (update: ConversationListUpdate) => void;
   onConversationStateUpdate?: (state: ConversationStateUpdate) => void;
-  onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
+  onFirstMessage?: (
+    message: string,
+    model: string,
+    cwd?: string,
+    conversationType?: "normal" | "orchestrator",
+  ) => Promise<void>;
   onDistillConversation?: (
     sourceConversationId: string,
     model: string,
@@ -664,10 +669,12 @@ function ChatInterface({
     }
   }, [currentConversation?.conversation_id]);
 
-  // Reset cwdInitialized when switching to a new conversation so we re-read from localStorage
+  // Reset cwdInitialized and orchestrator mode when switching to a new conversation
   useEffect(() => {
     if (conversationId === null) {
       setCwdInitialized(false);
+      setOrchestratorMode(false);
+      setShowAdvancedSettings(false);
     }
   }, [conversationId]);
 
@@ -744,6 +751,22 @@ function ChatInterface({
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [contextWindowSize, setContextWindowSize] = useState(0);
+  const [orchestratorMode, setOrchestratorMode] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const advancedSettingsRef = useRef<HTMLDivElement>(null);
+
+  // Close advanced settings popover on click outside
+  useEffect(() => {
+    if (!showAdvancedSettings) return;
+    const handleClick = (e: MouseEvent) => {
+      if (advancedSettingsRef.current && !advancedSettingsRef.current.contains(e.target as Node)) {
+        setShowAdvancedSettings(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showAdvancedSettings]);
+
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
@@ -1485,7 +1508,12 @@ function ChatInterface({
             throw new Error(`Invalid working directory: ${validation.error}`);
           }
         }
-        await onFirstMessage(message.trim(), selectedModel, selectedCwd || undefined);
+        await onFirstMessage(
+          message.trim(),
+          selectedModel,
+          selectedCwd || undefined,
+          orchestratorMode ? "orchestrator" : undefined,
+        );
       } else if (conversationId) {
         await api.sendMessage(conversationId, {
           message: message.trim(),
@@ -1896,6 +1924,61 @@ function ChatInterface({
             onManageModels={() => onOpenModelsModal?.()}
             disabled={sending}
           />
+          <div className="advanced-settings-wrapper" ref={advancedSettingsRef}>
+            <button
+              className={`advanced-settings-trigger${orchestratorMode ? " active" : ""}`}
+              onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+              title="Advanced settings"
+              disabled={sending}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+            {showAdvancedSettings && (
+              <div className="advanced-settings-popover">
+                <div className="advanced-settings-header">Advanced Settings</div>
+                <label className="orchestrator-toggle">
+                  <input
+                    type="checkbox"
+                    checked={orchestratorMode}
+                    onChange={(e) => setOrchestratorMode(e.target.checked)}
+                    disabled={sending}
+                  />
+                  <span className="orchestrator-toggle-label">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="5" r="3" />
+                      <circle cx="5" cy="19" r="3" />
+                      <circle cx="19" cy="19" r="3" />
+                      <line x1="12" y1="8" x2="5" y2="16" />
+                      <line x1="12" y1="8" x2="19" y2="16" />
+                    </svg>
+                    Orchestrator
+                    <span className="experimental-badge">experimental</span>
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
         </div>
         <div
           className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}

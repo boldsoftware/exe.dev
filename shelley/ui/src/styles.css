@@ -2894,6 +2894,114 @@ svg {
   position: relative;
 }
 
+/* Advanced settings gear button + popover */
+.advanced-settings-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.advanced-settings-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.advanced-settings-trigger:hover:not(:disabled) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--blue-text);
+}
+
+.advanced-settings-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.advanced-settings-trigger.active {
+  color: var(--blue-text, #3b82f6);
+  border-color: var(--blue-text, #3b82f6);
+}
+
+.advanced-settings-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  padding: 0.5rem 0.75rem;
+  min-width: 200px;
+}
+
+.advanced-settings-header {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.orchestrator-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+.orchestrator-toggle input[type="checkbox"] {
+  width: 0.875rem;
+  height: 0.875rem;
+  accent-color: var(--blue-text, #3b82f6);
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.orchestrator-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.orchestrator-toggle input:checked + .orchestrator-toggle-label {
+  color: var(--blue-text, #3b82f6);
+}
+
+.experimental-badge {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--yellow-text, #ca8a04);
+  background: rgba(202, 138, 4, 0.15);
+  border: 1px solid rgba(202, 138, 4, 0.3);
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.3rem;
+  line-height: 1.4;
+}
+
 .status-input-error {
   border-color: var(--red-text, #dc2626);
 }

@@ -60,6 +60,7 @@ export interface ChatRequest {
   message: string;
   model?: string;
   cwd?: string;
+  conversation_options?: { type?: "normal" | "orchestrator" };
 }
 // Notification event types
 export type NotificationEventType = "agent_done" | "agent_error";

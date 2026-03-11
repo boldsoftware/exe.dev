@@ -22,7 +22,7 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a conversation with some messages
-	conv, err := database.CreateConversation(ctx, nil, true, nil, nil)
+	conv, err := database.CreateConversation(ctx, nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}

@@ -49,7 +49,7 @@ func TestChangeDirAffectsBash(t *testing.T) {
 	server := NewServer(database, llmManager, toolSetConfig, logger, true, "", "predictable", "", nil)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestChangeDirBroadcastsCwdUpdate(t *testing.T) {
 	defer ts.Close()
 
 	// Create conversation with initial cwd
-	conversation, err := database.CreateConversation(context.Background(), nil, true, &tmpDir, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, &tmpDir, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

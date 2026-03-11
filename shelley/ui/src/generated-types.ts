@@ -13,6 +13,7 @@ export interface Conversation {
   archived: boolean;
   parent_conversation_id: string | null;
   model: string | null;
+  conversation_options: string;
 }
 
 export interface Usage {
@@ -49,7 +50,6 @@ export interface NotificationEventForTS {
   type: EventType;
   conversation_id: string;
   timestamp: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload?: any;
 }
 
@@ -71,6 +71,7 @@ export interface ConversationWithStateForTS {
   archived: boolean;
   parent_conversation_id: string | null;
   model: string | null;
+  conversation_options: string;
   working: boolean;
   git_repo_root?: string;
   git_worktree_root?: string;

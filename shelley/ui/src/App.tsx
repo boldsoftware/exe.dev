@@ -562,9 +562,20 @@ function App() {
   const mostRecentCwd =
     currentConversation?.cwd || (conversations.length > 0 ? conversations[0].cwd : null);
 
-  const handleFirstMessage = async (message: string, model: string, cwd?: string) => {
+  const handleFirstMessage = async (
+    message: string,
+    model: string,
+    cwd?: string,
+    conversationType?: "normal" | "orchestrator",
+  ) => {
     try {
-      const response = await api.sendMessageWithNewConversation({ message, model, cwd });
+      const response = await api.sendMessageWithNewConversation({
+        message,
+        model,
+        cwd,
+        conversation_options:
+          conversationType === "orchestrator" ? { type: "orchestrator" } : undefined,
+      });
       const newConversationId = response.conversation_id;
 
       // Fetch the new conversation details

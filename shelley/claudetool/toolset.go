@@ -2,6 +2,7 @@ package claudetool
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -97,6 +98,122 @@ func (ts *ToolSet) Cleanup() {
 // WorkingDir returns the shared working directory.
 func (ts *ToolSet) WorkingDir() *MutableWorkingDir {
 	return ts.wd
+}
+
+// OrchestratorToolSetConfig contains configuration for creating an orchestrator ToolSet.
+type OrchestratorToolSetConfig struct {
+	// ContextDir is the shared context directory for subagent coordination.
+	ContextDir string
+	// SubagentRunner is the runner for subagent conversations.
+	SubagentRunner SubagentRunner
+	// SubagentDB is the database for subagent conversations.
+	SubagentDB SubagentDB
+	// ParentConversationID is the ID of the conversation.
+	ParentConversationID string
+	// ModelID is the model being used for this conversation.
+	ModelID string
+	// LLMProvider provides access to LLM services.
+	LLMProvider LLMServiceProvider
+	// AvailableModels is the list of models the subagent can choose from.
+	AvailableModels []AvailableModel
+	// WorkingDir is the initial working directory.
+	WorkingDir string
+	// OnWorkingDirChange is called when change_dir changes the working directory.
+	OnWorkingDirChange func(newDir string)
+	// EnableBrowser enables browser tools (for read_image / screenshot viewing).
+	EnableBrowser bool
+}
+
+// NewOrchestratorToolSet creates a reduced tool set for orchestrator mode.
+// It includes: subagent, read_context_file, output_iframe, and read_image (from browser tools).
+func NewOrchestratorToolSet(ctx context.Context, cfg OrchestratorToolSetConfig) *ToolSet {
+	workingDir := cfg.WorkingDir
+	if workingDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			workingDir = home
+		} else {
+			workingDir = "/"
+		}
+	}
+	wd := NewMutableWorkingDir(workingDir)
+
+	// Ensure context directory exists
+	if cfg.ContextDir != "" {
+		if err := os.MkdirAll(cfg.ContextDir, 0o755); err != nil {
+			slog.Error("failed to create orchestrator context directory", "path", cfg.ContextDir, "error", err)
+		}
+	}
+
+	var tools []*llm.Tool
+
+	// Change dir tool (read-only navigation)
+	changeDirTool := &ChangeDirTool{
+		WorkingDir: wd,
+		OnChange:   cfg.OnWorkingDirChange,
+	}
+	tools = append(tools, changeDirTool.Tool())
+
+	// Keyword search tool (read-only codebase exploration)
+	if cfg.LLMProvider != nil {
+		keywordTool := NewKeywordToolWithWorkingDir(cfg.LLMProvider, wd)
+		tools = append(tools, keywordTool.Tool())
+	}
+
+	// Read context file tool
+	if cfg.ContextDir != "" {
+		readCtxTool := &ReadContextFileTool{ContextDir: cfg.ContextDir}
+		tools = append(tools, readCtxTool.Tool())
+	}
+
+	// Output iframe tool (for showing visualizations to user)
+	outputIframeTool := &OutputIframeTool{WorkingDir: wd}
+	tools = append(tools, outputIframeTool.Tool())
+
+	// Build available models list
+	availableModels := cfg.AvailableModels
+	if availableModels == nil && cfg.LLMProvider != nil {
+		for _, id := range cfg.LLMProvider.GetAvailableModels() {
+			availableModels = append(availableModels, AvailableModel{ID: id})
+		}
+	}
+
+	// Subagent tool
+	if cfg.SubagentRunner != nil && cfg.SubagentDB != nil && cfg.ParentConversationID != "" {
+		subagentTool := &SubagentTool{
+			DB:                   cfg.SubagentDB,
+			ParentConversationID: cfg.ParentConversationID,
+			WorkingDir:           wd,
+			Runner:               cfg.SubagentRunner,
+			ModelID:              cfg.ModelID,
+			AvailableModels:      availableModels,
+		}
+		tools = append(tools, subagentTool.Tool())
+	}
+
+	// Browser tools for read_image (screenshot viewing)
+	var cleanup func()
+	if cfg.EnableBrowser {
+		maxImageDimension := 0
+		if cfg.LLMProvider != nil && cfg.ModelID != "" {
+			if svc, err := cfg.LLMProvider.GetService(cfg.ModelID); err == nil {
+				maxImageDimension = svc.MaxImageDimension()
+			}
+		}
+		browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, maxImageDimension)
+		// Only include read_image from browser tools, not the full browser
+		for _, bt := range browserTools {
+			if bt.Name == "read_image" {
+				tools = append(tools, bt)
+			}
+		}
+		cleanup = browserCleanup
+	}
+
+	return &ToolSet{
+		tools:   tools,
+		cleanup: cleanup,
+		wd:      wd,
+	}
 }
 
 // NewToolSet creates a new set of tools for a conversation.

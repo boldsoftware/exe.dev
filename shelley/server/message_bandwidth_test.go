@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"shelley.exe.dev/db"
 )
 
 // TestMessageSentOnlyOnce verifies that each message is sent to SSE subscribers
@@ -17,7 +19,7 @@ func TestMessageSentOnlyOnce(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -144,7 +146,7 @@ func TestContextWindowSizeInSSE(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

@@ -21,6 +21,12 @@ var systemPromptTemplate string
 //go:embed subagent_system_prompt.txt
 var subagentSystemPromptTemplate string
 
+//go:embed orchestrator_system_prompt.txt
+var orchestratorSystemPromptTemplate string
+
+//go:embed orchestrator_subagent_system_prompt.txt
+var orchestratorSubagentSystemPromptTemplate string
+
 // SystemPromptData contains all the data needed to render the system prompt template
 type SystemPromptData struct {
 	WorkingDirectory string
@@ -389,6 +395,14 @@ type SubagentSystemPromptData struct {
 	GitInfo          *GitInfo
 }
 
+// OrchestratorSystemPromptData contains data for orchestrator system prompts.
+type OrchestratorSystemPromptData struct {
+	WorkingDirectory string
+	GitInfo          *GitInfo
+	ContextDir       string
+	Codebase         *CodebaseInfo
+}
+
 // GenerateSubagentSystemPrompt generates a minimal system prompt for subagent conversations.
 func GenerateSubagentSystemPrompt(workingDir string) (string, error) {
 	wd := workingDir
@@ -419,6 +433,81 @@ func GenerateSubagentSystemPrompt(workingDir string) (string, error) {
 	err = tmpl.Execute(&buf, data)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute subagent template: %w", err)
+	}
+
+	return collapseBlankLines(buf.String()), nil
+}
+
+// GenerateOrchestratorSystemPrompt generates the system prompt for orchestrator conversations.
+func GenerateOrchestratorSystemPrompt(workingDir, contextDir string) (string, error) {
+	wd := workingDir
+	if wd == "" {
+		var err error
+		wd, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+
+	data := &OrchestratorSystemPromptData{
+		WorkingDirectory: wd,
+		ContextDir:       contextDir,
+	}
+
+	gitInfo, err := collectGitInfo(wd)
+	if err == nil {
+		data.GitInfo = gitInfo
+	}
+
+	codebaseInfo, err := collectCodebaseInfo(wd, data.GitInfo)
+	if err == nil {
+		data.Codebase = codebaseInfo
+	}
+
+	tmpl, err := template.New("orchestrator_system_prompt").Parse(orchestratorSystemPromptTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse orchestrator template: %w", err)
+	}
+
+	var buf strings.Builder
+	err = tmpl.Execute(&buf, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute orchestrator template: %w", err)
+	}
+
+	return collapseBlankLines(buf.String()), nil
+}
+
+// GenerateOrchestratorSubagentSystemPrompt generates the system prompt for
+// subagents spawned by an orchestrator conversation.
+func GenerateOrchestratorSubagentSystemPrompt(workingDir string) (string, error) {
+	wd := workingDir
+	if wd == "" {
+		var err error
+		wd, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+
+	data := &SubagentSystemPromptData{
+		WorkingDirectory: wd,
+	}
+
+	gitInfo, err := collectGitInfo(wd)
+	if err == nil {
+		data.GitInfo = gitInfo
+	}
+
+	tmpl, err := template.New("orchestrator_subagent_system_prompt").Parse(orchestratorSubagentSystemPromptTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse orchestrator subagent template: %w", err)
+	}
+
+	var buf strings.Builder
+	err = tmpl.Execute(&buf, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute orchestrator subagent template: %w", err)
 	}
 
 	return collapseBlankLines(buf.String()), nil

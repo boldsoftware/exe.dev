@@ -117,7 +117,7 @@ func (s *Server) handleDistillConversation(w http.ResponseWriter, r *http.Reques
 	} else if sourceConv.Cwd != nil {
 		cwdPtr = sourceConv.Cwd
 	}
-	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID)
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID, db.ConversationOptions{})
 	if err != nil {
 		s.logger.Error("Failed to create conversation", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"shelley.exe.dev/db"
 )
 
 // TestConversationStreamReceivesListUpdateForNewConversation tests that when subscribed
@@ -16,7 +18,7 @@ func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create a conversation to subscribe to
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -108,11 +110,11 @@ func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}
@@ -193,11 +195,11 @@ func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}
@@ -277,11 +279,11 @@ func TestConversationStreamReceivesListUpdateForArchive(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations
-	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv1, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 1: %v", err)
 	}
-	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conv2, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation 2: %v", err)
 	}

@@ -71,7 +71,7 @@ func TestSSEUserMessageAppearsImmediately(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
 	srv, database, _ := newTestServer(t)
 
 	// Create conversation
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestSSEUserMessageWithExistingConnection(t *testing.T) {
 	server, database, _ := newTestServer(t)
 
 	// Create conversation and get a manager (simulating an established SSE connection)
-	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil)
+	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("failed to create conversation: %v", err)
 	}

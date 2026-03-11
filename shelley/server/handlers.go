@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool/browse"
+	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/gitstate"
 	"shelley.exe.dev/llm"
@@ -618,9 +619,10 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 
 // ChatRequest represents a chat message from the user
 type ChatRequest struct {
-	Message string `json:"message"`
-	Model   string `json:"model,omitempty"`
-	Cwd     string `json:"cwd,omitempty"`
+	Message             string                  `json:"message"`
+	Model               string                  `json:"model,omitempty"`
+	Cwd                 string                  `json:"cwd,omitempty"`
+	ConversationOptions *db.ConversationOptions `json:"conversation_options,omitempty"`
 }
 
 // handleChatConversation handles POST /conversation/<id>/chat
@@ -747,7 +749,16 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	if req.Cwd != "" {
 		cwdPtr = &req.Cwd
 	}
-	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID)
+	var convOpts db.ConversationOptions
+	if req.ConversationOptions != nil {
+		convOpts = *req.ConversationOptions
+		if convOpts.Type != "" && convOpts.Type != "normal" && convOpts.Type != "orchestrator" {
+			http.Error(w, fmt.Sprintf("Invalid conversation options type: %s", convOpts.Type), http.StatusBadRequest)
+			return
+		}
+	}
+
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID, convOpts)
 	if err != nil {
 		s.logger.Error("Failed to create conversation", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

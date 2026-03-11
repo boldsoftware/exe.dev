@@ -234,21 +234,46 @@ func WithTxRes[T any](db *DB, ctx context.Context, fn func(*generated.Queries) (
 
 // Conversation methods (moved from ConversationService)
 
+// ConversationOptions holds extensible conversation settings stored as JSON.
+type ConversationOptions struct {
+	Type string `json:"type,omitempty"` // "normal" (default) or "orchestrator"
+}
+
+// IsOrchestrator returns true if the conversation is in orchestrator mode.
+func (o ConversationOptions) IsOrchestrator() bool {
+	return o.Type == "orchestrator"
+}
+
+// ParseConversationOptions parses a JSON string into ConversationOptions.
+// Returns zero-value options (type=normal) for empty or invalid input.
+func ParseConversationOptions(s string) ConversationOptions {
+	var opts ConversationOptions
+	if s != "" {
+		_ = json.Unmarshal([]byte(s), &opts)
+	}
+	return opts
+}
+
 // CreateConversation creates a new conversation with an optional slug
-func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiated bool, cwd, model *string) (*generated.Conversation, error) {
+func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiated bool, cwd, model *string, opts ConversationOptions) (*generated.Conversation, error) {
 	conversationID, err := generateConversationID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate conversation ID: %w", err)
+	}
+	optsJSON, err := json.Marshal(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal conversation options: %w", err)
 	}
 	var conversation generated.Conversation
 	err = db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
 		q := generated.New(tx.Conn())
 		conversation, err = q.CreateConversation(ctx, generated.CreateConversationParams{
-			ConversationID: conversationID,
-			Slug:           slug,
-			UserInitiated:  userInitiated,
-			Cwd:            cwd,
-			Model:          model,
+			ConversationID:      conversationID,
+			Slug:                slug,
+			UserInitiated:       userInitiated,
+			Cwd:                 cwd,
+			Model:               model,
+			ConversationOptions: string(optsJSON),
 		})
 		return err
 	})

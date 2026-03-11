@@ -1,6 +1,6 @@
 -- name: CreateConversation :one
-INSERT INTO conversations (conversation_id, slug, user_initiated, cwd, model)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO conversations (conversation_id, slug, user_initiated, cwd, model, conversation_options)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetConversation :one
@@ -113,3 +113,7 @@ GROUP BY parent_conversation_id;
 UPDATE conversations
 SET model = ?
 WHERE conversation_id = ? AND model IS NULL;
+
+-- name: GetConversationOptions :one
+SELECT conversation_options FROM conversations
+WHERE conversation_id = ?;

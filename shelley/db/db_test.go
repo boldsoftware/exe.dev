@@ -228,7 +228,7 @@ func TestLLMRequestPrefixDeduplication(t *testing.T) {
 
 	// Create a conversation first
 	slug := "test-prefix-conv"
-	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil)
+	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil, ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestLLMRequestNoPrefixForShortOverlap(t *testing.T) {
 	defer cancel()
 
 	slug := "test-short-conv"
-	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil)
+	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil, ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestLLMRequestRealisticConversation(t *testing.T) {
 	defer cancel()
 
 	slug := "test-realistic-conv"
-	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil)
+	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil, ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestLLMRequestOpenAIStyle(t *testing.T) {
 	defer cancel()
 
 	slug := "test-openai-conv"
-	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil)
+	conv, err := db.CreateConversation(ctx, &slug, true, nil, nil, ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
