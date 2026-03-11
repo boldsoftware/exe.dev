@@ -62,26 +62,37 @@ function ScreenshotTool({
 
   const filename = getPath(toolInput) || getId(toolInput) || getSelector(toolInput) || "screenshot";
 
-  // Use display data passed as prop (from tool_result Content.Display)
-  const displayData = display;
-
   // Construct image URL
+  // First try: use base64 data from tool result (stored in DB, survives /tmp clearing)
   let imageUrl: string | undefined = undefined;
-  if (displayData && typeof displayData === "object" && displayData !== null) {
-    const url =
-      "url" in displayData && typeof displayData.url === "string" ? displayData.url : undefined;
-    const path =
-      "path" in displayData && typeof displayData.path === "string" ? displayData.path : undefined;
-    const id =
-      "id" in displayData && typeof displayData.id === "string" ? displayData.id : undefined;
+  if (toolResult && toolResult.length >= 2) {
+    const imageContent = toolResult[1];
+    if (imageContent?.Data && imageContent?.MediaType) {
+      imageUrl = `data:${imageContent.MediaType};base64,${imageContent.Data}`;
+    }
+  }
 
-    imageUrl =
-      url ||
-      (path
-        ? `/api/read?path=${encodeURIComponent(path)}`
-        : id
-          ? `/api/read?path=${encodeURIComponent(id)}`
-          : undefined);
+  // Fallback: use display URL (for edge cases / backwards compat)
+  if (!imageUrl) {
+    const displayData = display;
+    if (displayData && typeof displayData === "object" && displayData !== null) {
+      const url =
+        "url" in displayData && typeof displayData.url === "string" ? displayData.url : undefined;
+      const path =
+        "path" in displayData && typeof displayData.path === "string"
+          ? displayData.path
+          : undefined;
+      const id =
+        "id" in displayData && typeof displayData.id === "string" ? displayData.id : undefined;
+
+      imageUrl =
+        url ||
+        (path
+          ? `/api/read?path=${encodeURIComponent(path)}`
+          : id
+            ? `/api/read?path=${encodeURIComponent(id)}`
+            : undefined);
+    }
   }
 
   const isComplete = !isRunning && toolResult !== undefined;
