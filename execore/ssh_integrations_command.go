@@ -25,6 +25,7 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 				Description: "List your integrations",
 				Usage:       "integrations list",
 				Handler:     ss.handleIntegrationsList,
+				FlagSetFunc: jsonOnlyFlags("integrations-list"),
 			},
 			{
 				Name:              "add",
@@ -91,6 +92,20 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 	integrations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListIntegrationsByUser, cc.User.ID)
 	if err != nil {
 		return err
+	}
+	if cc.WantJSON() {
+		var items []map[string]any
+		for _, ig := range integrations {
+			item := map[string]any{
+				"name":        ig.Name,
+				"type":        ig.Type,
+				"config":      json.RawMessage(ig.Config),
+				"attachments": ig.GetAttachments(),
+			}
+			items = append(items, item)
+		}
+		cc.WriteJSON(items)
+		return nil
 	}
 	if len(integrations) == 0 {
 		cc.Writeln("No integrations configured.")
