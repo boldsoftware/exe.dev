@@ -27,16 +27,12 @@ jobs:
 
       - name: Mask secrets
         env:
-          CODEX: ${{ secrets.E3E_OPENAI_API_KEY }}
-          CLAUDE: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
           SSH_KEY: ${{ secrets.E3E_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          for value in "$CODEX" "$CLAUDE" "$SSH_KEY"; do
-            if [ -n "$value" ]; then
-              echo "::add-mask::$value"
-            fi
-          done
+          if [ -n "$SSH_KEY" ]; then
+            echo "::add-mask::$SSH_KEY"
+          fi
 
       - name: Prepare SSH key
         env:
@@ -61,8 +57,6 @@ jobs:
         continue-on-error: true
         env:
           EXE_E3E_SSH_USER: ${{ secrets.E3E_SSH_USER }}
-          EXE_E3E_OPENAI_API_KEY: ${{ secrets.E3E_OPENAI_API_KEY }}
-          EXE_E3E_ANTHROPIC_API_KEY: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
           E3E_OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
         run: |
           set -euo pipefail

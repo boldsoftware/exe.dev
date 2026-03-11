@@ -11,27 +11,21 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"mvdan.cc/sh/v3/syntax"
 )
 
 //go:embed security_probe_prompt.txt
 var prompt string
 
 const (
-	envSSHHost         = "EXE_E3E_SSH_HOST"
-	envSSHPort         = "EXE_E3E_SSH_PORT"
-	envSSHUser         = "EXE_E3E_SSH_USER"
-	envSSHKeyPath      = "EXE_E3E_SSH_KEY_PATH"
-	envSSHKnownHosts   = "EXE_E3E_SSH_KNOWN_HOSTS"
-	envCodexAPIKey     = "EXE_E3E_OPENAI_API_KEY"
-	envAnthropicAPIKey = "EXE_E3E_ANTHROPIC_API_KEY"
+	envSSHHost       = "EXE_E3E_SSH_HOST"
+	envSSHPort       = "EXE_E3E_SSH_PORT"
+	envSSHUser       = "EXE_E3E_SSH_USER"
+	envSSHKeyPath    = "EXE_E3E_SSH_KEY_PATH"
+	envSSHKnownHosts = "EXE_E3E_SSH_KNOWN_HOSTS"
 )
 
 type config struct {
-	replSSH         sshConfig
-	codexAPIKey     string
-	anthropicAPIKey string
+	replSSH sshConfig
 }
 
 type sshConfig struct {
@@ -77,11 +71,6 @@ func main() {
 			privateKeyPath: os.Getenv(envSSHKeyPath),
 			knownHostsPath: os.Getenv(envSSHKnownHosts),
 		},
-		codexAPIKey:     os.Getenv(envCodexAPIKey),
-		anthropicAPIKey: os.Getenv(envAnthropicAPIKey),
-	}
-	if cfg.codexAPIKey == "" || cfg.anthropicAPIKey == "" {
-		log.Fatalf("both %s and %s must be set", envCodexAPIKey, envAnthropicAPIKey)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
@@ -190,11 +179,7 @@ func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentRes
 	boxSSHArgs := cfg.replSSH.buildBaseArgs()
 	boxSSHArgs = append(boxSSHArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHDest)
 
-	script, err := agentScript(ag, cfg)
-	if err != nil {
-		result.Err = err
-		return result
-	}
+	script := agentScript(ag)
 
 	boxSSHArgs = append(boxSSHArgs, "bash", "-s")
 	cmd := exec.CommandContext(ctx, "ssh", boxSSHArgs...)
@@ -218,20 +203,15 @@ func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentRes
 	return result
 }
 
-func agentScript(ag agent, cfg *config) (string, error) {
+const llmGateway = "http://169.254.169.254/gateway/llm"
+
+func agentScript(ag agent) string {
 	switch ag {
 	case agentCodex:
-		openAIKey, err := syntax.Quote(cfg.codexAPIKey, syntax.LangBash)
-		if err != nil {
-			return "", fmt.Errorf("quote codex OPENAI_API_KEY: %w", err)
-		}
-		codexKey, err := syntax.Quote(cfg.codexAPIKey, syntax.LangBash)
-		if err != nil {
-			return "", fmt.Errorf("quote codex CODEX_API_KEY: %w", err)
-		}
 		return fmt.Sprintf(`set -euo pipefail
-export OPENAI_API_KEY=%s
-export CODEX_API_KEY=%s
+export OPENAI_API_KEY=implicit
+export CODEX_API_KEY=implicit
+export OPENAI_BASE_URL=%s/openai/v1
 export PATH="/home/exedev/.local/bin:$PATH"
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
@@ -239,21 +219,18 @@ codex exec --model gpt-5.1-codex-max --config model_reasoning_effort=xhigh --ski
 %s
 EOF
 cat "$TMP"
-`, openAIKey, codexKey, prompt), nil
+`, llmGateway, prompt)
 	case agentClaude:
-		anthropicKey, err := syntax.Quote(cfg.anthropicAPIKey, syntax.LangBash)
-		if err != nil {
-			return "", fmt.Errorf("quote claude ANTHROPIC_API_KEY: %w", err)
-		}
 		return fmt.Sprintf(`set -euo pipefail
-export ANTHROPIC_API_KEY=%s
+export ANTHROPIC_API_KEY=implicit
+export ANTHROPIC_BASE_URL=%s/anthropic
 export PATH="/home/exedev/.local/bin:$PATH"
 claude --model opus --print --dangerously-skip-permissions <<'EOF'
 %s
 EOF
-`, anthropicKey, prompt), nil
+`, llmGateway, prompt)
 	default:
-		return "", fmt.Errorf("unsupported agent %q", ag)
+		panic(fmt.Sprintf("unsupported agent %q", ag))
 	}
 }
 

@@ -9,6 +9,11 @@ boxes with Codex and Claude. The probe flow is:
 4. Verify that both agents finish with `ALL CLEAR`.
 5. Delete the box, even on failure.
 
+The agents use the in-VM LLM gateway (`http://169.254.169.254/gateway/llm/...`)
+for API access, so no external API keys are needed. The gateway charges against
+the exe.dev account that owns the SSH key used to create the box (by default,
+the `e3e` user).
+
 If either agent reports anything other than `ALL CLEAR`, the probe fails (and CI
 triggers a Discord alert). When a failure occurs, the full Codex/Claude report
 is printed in the test output so responders can see the details without
@@ -19,8 +24,6 @@ downloading artifacts.
 Set the required environment and run the command:
 
 ```bash
-export EXE_E3E_OPENAI_API_KEY=...   # OpenAI / Codex key
-export EXE_E3E_ANTHROPIC_API_KEY=...# Claude key
 export EXE_E3E_SSH_KEY_PATH=...     # SSH key that can create exe.dev boxes
 # optional:
 # export EXE_E3E_SSH_USER=...
@@ -39,8 +42,6 @@ The GitHub Actions workflow expects the following secrets:
 
 - `E3E_SSH_PRIVATE_KEY` – private key with access to `ssh exe.dev`
 - `E3E_SSH_USER` – username that owns the key
-- `E3E_OPENAI_API_KEY` – Codex/OpenAI API key
-- `E3E_ANTHROPIC_API_KEY` – Claude API key
 
 The workflow writes the SSH key to `~/.ssh/exe-e3e`, sets the matching env vars,
 runs `go run ./cmd/e3e`, and reports the outcome to Slack—posting the failure

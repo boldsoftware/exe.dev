@@ -1,21 +1,27 @@
-hey. you're running in a vm. it's supposed to be fairly isolated. it has general internet access, but it shouldn't have access to (or information about) other sister vms, the control plane that drives all the vms, or the tailscale network that the control plane is a part of.
+Hey. You're running in a VM on exe.dev, a cloud development environment. Each VM is a single-user ephemeral sandbox — one developer gets the whole box, uses it for a while, and it gets destroyed. Think of it like a Codespace or a dev container.
 
-the source code for this service is available at /tmp/exe-source. you may refer to it to inform your security probe.
+The important security boundary is *isolation between VMs*. A user should not be able to reach sister VMs, the control plane that orchestrates them, or the Tailscale network the control plane lives on. That's what I want you to probe.
 
-there is a metadata endpoint http://169.254.169.254/ that is always accessible. this is known and anticipated; do not report on it unless inappropriate information is provided there or it is somehow otherwise an escape vector.
+Some context about how the environment is set up, so you can focus your energy well:
 
-there are OPENAI_API_KEY and CODEX_API_KEY env vars present. those have been added specifically for the purposes of this test; do not report on them.
+- The VM has a single non-root user (exedev) with passwordless sudo. This is intentional — the user owns the entire VM, and there's no privilege separation to enforce within it.
+- sshd is the entry point. Its config lives at /exe.dev/etc/ssh/sshd_config (not the distro default at /etc/ssh/sshd_config). It's set up for key-only auth. SSH forwarding (agent, TCP, X11) is intentionally enabled as part of the development experience.
+- Network firewalling happens at the host/hypervisor layer, not inside the VM. You won't find iptables rules or ufw in here, and that's fine — the VM doesn't need to firewall itself.
+- There's a metadata endpoint at http://169.254.169.254/ that's expected and necessary. It should only expose the VM's own name and IP. It would be a problem if it leaked info about other VMs, the control plane, credentials, or cloud provider metadata.
+- There's a service called Shelley listening on 127.0.0.1:9999 (loopback only, systemd socket-activated). It's the in-VM coding agent. That's expected.
+- The source code for the whole platform is at /tmp/exe-source. You can reference it to inform your probe. You'll find test certificates in there (cobble/certs/, testdata/pebble/certs/) — those are test-only CA certs for an ACME test server, intentionally committed.
+- The LLM gateway at http://169.254.169.254/gateway/llm/ proxies requests to Anthropic, OpenAI, and Fireworks. It's a normal part of the platform and requires no API keys. Don't report on it unless it exposes something it shouldn't (other users' data, control plane info, etc.).
 
-there is an sshd listening. that's expected, and ok as long as you can't find anything untoward to do with it.
+What I care about: can you escape this VM? Can you reach, discover, or learn about things outside it that you shouldn't? Can you pivot to other VMs, the control plane, or internal networks? Can you access another user's data?
 
-i want you to do a black box security probe of these properties. you have sudo; you may use it freely.
+What I don't care about: hardening recommendations for a single-user ephemeral box. The VM is disposable and the user is root-equivalent by design. Configuration choices that are normal for this kind of environment aren't findings.
 
-oh, btw: if you do manage to reach / read info about anything you shouldn't have access to, don't do anything with/to them! just report back.
+You have sudo. Use it freely. If you do find a way to reach something you shouldn't, don't act on it — just report what you found.
 
-your final report should be concise and efficient.
+Your final report should be concise and efficient.
 
-use Slack's mrkdwn syntax.
+Use Slack's mrkdwn syntax.
 
-begin your report with the heading "# SECURITY REPORT", on its own line.
+Begin your report with the heading "# SECURITY REPORT", on its own line.
 
-if there are no findings, the report should consist only of the word "OK", on its own line..
+If there are no findings, the report should consist only of the word "OK", on its own line.
