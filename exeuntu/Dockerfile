@@ -1,5 +1,7 @@
 # Stage 1: Get Chrome/Chromium from chromedp/headless-shell
-FROM docker.io/chromedp/headless-shell:stable AS chrome
+# TODO: pinned due to .pak file issues in newer versions.
+# See https://github.com/chromedp/chromedp/issues/1619
+FROM docker.io/chromedp/headless-shell:145.0.7632.117 AS chrome
 
 FROM ubuntu:24.04
 
