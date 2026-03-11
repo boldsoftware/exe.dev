@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -139,7 +140,11 @@ func summarizeConfig(typ, configJSON string) string {
 	case "http-proxy":
 		var cfg httpProxyConfig
 		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
-			return fmt.Sprintf("target=%s header=%s", cfg.Target, cfg.Header)
+			parts := []string{"target=" + redactURLPassword(cfg.Target)}
+			if cfg.Header != "" {
+				parts = append(parts, "header="+cfg.Header)
+			}
+			return strings.Join(parts, " ")
 		}
 	case "github":
 		var cfg githubIntegrationConfig
@@ -148,6 +153,18 @@ func summarizeConfig(typ, configJSON string) string {
 		}
 	}
 	return configJSON
+}
+
+// redactURLPassword replaces the password in a URL's userinfo with "***".
+func redactURLPassword(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	if _, hasPass := u.User.Password(); hasPass {
+		u.User = url.UserPassword(u.User.Username(), "***")
+	}
+	return u.String()
 }
 
 type githubIntegrationConfig struct {
@@ -244,7 +261,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("integrations add", flag.ContinueOnError)
 	fs.String("name", "", "integration name (required)")
 	fs.String("target", "", "target URL (required for http-proxy)")
-	fs.String("header", "", "header to inject (required for http-proxy)")
+	fs.String("header", "", "header to inject (e.g. X-Auth:secret)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
 	fs.String("attach", "", "attach to a spec (vm:<name>, tag:<name>, or auto:all)")
@@ -285,11 +302,16 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	if bearer != "" {
 		header = "Authorization:Bearer " + bearer
 	}
-	if header == "" {
+	// A header is optional when the target URL contains basic auth credentials.
+	targetURL, _ := url.Parse(target)
+	hasBasicAuth := targetURL != nil && targetURL.User != nil
+	if header == "" && !hasBasicAuth {
 		return cc.Errorf("--header (or --bearer) is required")
 	}
-	if err := validateHTTPHeader(header); err != nil {
-		return cc.Errorf("invalid header: %v", err)
+	if header != "" {
+		if err := validateHTTPHeader(header); err != nil {
+			return cc.Errorf("invalid header: %v", err)
+		}
 	}
 
 	cfg := httpProxyConfig{Target: target, Header: header}

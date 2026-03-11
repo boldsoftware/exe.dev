@@ -1663,10 +1663,10 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 				Type:        ig.Type,
 				Attachments: ig.GetAttachments(),
 			}
-			if ig.Type == "http-proxy" { // TODO: best-effort to avoid leaking secrets in the web UI
+			if ig.Type == "http-proxy" {
 				var cfg httpProxyConfig
 				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
-					info.Target = cfg.Target
+					info.Target = redactURLPassword(cfg.Target)
 					if name, _, ok := strings.Cut(cfg.Header, ":"); ok {
 						info.HeaderName = name
 					}
