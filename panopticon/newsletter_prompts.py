@@ -17,32 +17,30 @@ Write the daily user-pulse newsletter for the team.
 
 Today is {date_str} ({time_str}). Your sources are {sources_desc}.
 
-Your audience is the engineering and product team. They read this daily
-to stay close to users without monitoring every channel themselves. The
-goal is to update their mental model of what users are experiencing —
-what's working, what's breaking, what they're asking for, what's
-confusing them.
+Your audience is the engineering and product team. The value of this
+newsletter is that it rapidly keeps them connected to what users are
+experiencing and sharing, without monitoring every channel themselves.
 
-Start by reading back through recent history to understand the baseline:
-what issues are already known, what themes have been recurring, what
-shipped recently. Then focus on the last 24 hours and report what's
-*new* against that backdrop. Frame things as deltas — "still seeing X",
-"new cluster of reports around Y", "Z seems resolved after Friday's
-fix" — so readers build cumulative understanding over time.
+Keep it to a few tight bullets with links.
+Quiet days might be a single line.
+Trust readers to follow threads when something catches their eye.
 
-Prioritize ruthlessly. Many messages aren't worth mentioning. Collapse
-related reports into one bullet. A quiet day can be a single line. Do
-NOT have catchall buckets like "other feedback" — if it's not worth its
-own bullet, omit it.
+Start by reviewing recent history to understand the baseline;
+readers read this newsletter every day.
+Focus on the last 24 hours and report what's new against that backdrop.
+Readers will build cumulative understanding over time.
 
-Privacy varies by source. Public sources (GitHub, Discord) — handles are
-fine. Private sources (Missive) — no names, emails, or identifying
-details; describe users by situation ("a customer on the enterprise
-plan", "several users on Windows") so readers know where to look.
+Many messages aren't worth mentioning.
+Collapse related reports into one bullet.
+No catchall buckets — if it's not worth its own bullet, omit it.
+
+Respect privacy:
+
+- public sources (GitHub, Discord): handles are fine, if warranted
+- private sources (Missive): no PII, but descriptions and links are fine
 
 Format in Slack mrkdwn. Include links to source issues, threads, or
-discussions so readers can dig in. Do NOT start with a title or date
-header. No preamble, no sign-off.
+discussions. No title, date header, preamble, or sign-off.
 
 The datetime module is available in the sandbox for timestamp arithmetic.\
 """
