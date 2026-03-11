@@ -287,7 +287,7 @@ def main_loop(args):
 
         now = datetime.now(PACIFIC)
 
-        if now.hour >= 6 and last_brief_date != now.date():
+        if 6 <= now.hour < 7 and last_brief_date != now.date():
             log.info("generating newsletter for %s", now.date())
             try:
                 newsletter = generate(args)
