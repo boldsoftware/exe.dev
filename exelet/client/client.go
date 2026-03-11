@@ -130,6 +130,17 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 		grpc.WaitForReady(true),
 	))
 
+	// Use larger HTTP/2 flow control windows to allow bulk streaming RPCs
+	// (like SendVM/ReceiveVM) to fill high-bandwidth, high-latency links.
+	// With the default 64 KB window, throughput on a 30ms RTT link caps at
+	// ~2 MB/s regardless of available bandwidth (BDP = window / RTT).
+	// These values are ceilings, not allocations — small unary RPCs are
+	// unaffected since their responses fit in a single frame.
+	opts = append(opts,
+		grpc.WithInitialWindowSize(16*1024*1024),     // 16 MB per stream
+		grpc.WithInitialConnWindowSize(32*1024*1024), // 32 MB per connection
+	)
+
 	// Add trace_id propagation interceptors
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		tracing.UnaryClientInterceptor(),

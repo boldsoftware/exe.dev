@@ -205,7 +205,13 @@ func (s *Exelet) updateState(v api.Server_ServerState) {
 }
 
 func getGRPCOptions(cfg *config.ExeletConfig) ([]grpc.ServerOption, error) {
-	grpcOpts := []grpc.ServerOption{}
+	grpcOpts := []grpc.ServerOption{
+		// Match the client-side flow control windows so bulk streaming RPCs
+		// (SendVM/ReceiveVM) aren't bottlenecked by HTTP/2 flow control on
+		// high-latency links. See the comment in client/client.go for details.
+		grpc.InitialWindowSize(16 * 1024 * 1024),     // 16 MB per stream
+		grpc.InitialConnWindowSize(32 * 1024 * 1024), // 32 MB per connection
+	}
 	if cfg.TLSServerCertificate != "" && cfg.TLSServerKey != "" {
 		logrus.WithFields(logrus.Fields{
 			"cert": cfg.TLSServerCertificate,
