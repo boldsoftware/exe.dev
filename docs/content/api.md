@@ -10,7 +10,7 @@ directly from scripts and automation.
 For example:
 
 ```
-$ssh exe.dev ls --json | jq '.vms[0]'
+$ ssh exe.dev ls --json | jq '.vms[0]'
 {
   "image": "boldsoftware/exeuntu",
   "ssh_dest": "bloggy.exe.xyz",
