@@ -808,6 +808,31 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 	return nil
 }
 
+// ReceiptURLs returns a map of payment intent ID to Stripe receipt URL
+// for all succeeded credit-purchase charges belonging to the given customer.
+func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[string]string, error) {
+	c := m.client()
+
+	params := &stripe.ChargeListParams{
+		Customer: stripe.String(customerID),
+	}
+
+	result := make(map[string]string)
+	for charge, err := range c.V1Charges.List(ctx, params) {
+		if err != nil {
+			return nil, fmt.Errorf("list charges: %w", err)
+		}
+		if charge.PaymentIntent == nil || charge.ReceiptURL == "" {
+			continue
+		}
+		if charge.Metadata["type"] != "credit_purchase" {
+			continue
+		}
+		result[charge.PaymentIntent.ID] = charge.ReceiptURL
+	}
+	return result, nil
+}
+
 func (m *Manager) exec(ctx context.Context, q string, args ...any) error {
 	for _, err := range m.query(ctx, q, args...) {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -4111,6 +4111,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		CreditType    string
 		HourBucket    string
 		StripeEventID string
+		ReceiptURL    string
 		CreatedAt     string
 	}
 	type accountInfo struct {
@@ -4167,6 +4168,13 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to list billing credits", "error", err, "account_id", a.ID)
 		}
+
+		// Fetch receipt URLs from Stripe for credit purchases.
+		receiptURLs, err := s.billing.ReceiptURLs(ctx, a.ID)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch receipt URLs", "error", err, "account_id", a.ID)
+		}
+
 		for _, c := range credits {
 			v := tender.Mint(0, c.Amount)
 			cr := creditRow{
@@ -4184,6 +4192,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			}
 			if c.StripeEventID != nil {
 				cr.StripeEventID = *c.StripeEventID
+				if receiptURLs != nil {
+					cr.ReceiptURL = receiptURLs[*c.StripeEventID]
+				}
 			}
 			info.Credits = append(info.Credits, cr)
 		}

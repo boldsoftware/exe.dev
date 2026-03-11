@@ -68,7 +68,7 @@ table.info th { width: 200px; }
 <h4>Credit Ledger ({{len .Credits}})</h4>
 {{if .Credits}}
 <table>
-<thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Created At</th></tr></thead>
+<thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Receipt</th><th>Created At</th></tr></thead>
 <tbody>
 {{range .Credits}}
 <tr>
@@ -77,6 +77,7 @@ table.info th { width: 200px; }
 <td>{{.CreditType}}</td>
 <td>{{.HourBucket}}</td>
 <td>{{.StripeEventID}}</td>
+<td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td>
 <td>{{.CreatedAt}}</td>
 </tr>
 {{end}}
