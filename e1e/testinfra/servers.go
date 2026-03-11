@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 )
 
 func startTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
@@ -29,6 +30,7 @@ type ServerEnv struct {
 	SSHPiperd            *SSHPiperdInstance
 	Email                *EmailServer
 	Metricsd             *MetricsdInstance
+	GitHubMock           *MockGitHubServer
 }
 
 // StartServers takes a list of exelets that have already been started,
@@ -115,6 +117,15 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 	if logPorts {
 		slog.InfoContext(ctx, "email server listening", "port", es.Port)
 	}
+
+	// Start mock GitHub server for GitHub App installation tests.
+	ghMock := NewMockGitHubServer()
+	env.GitHubMock = ghMock
+	os.Setenv("EXE_GITHUB_APP_CLIENT_ID", "mock-github-client-id")
+	os.Setenv("EXE_GITHUB_APP_CLIENT_SECRET", "mock-github-client-secret")
+	os.Setenv("EXE_GITHUB_APP_SLUG", "mock-app")
+	os.Setenv("TEST_GITHUB_TOKEN_URL", ghMock.URL()+"/login/oauth/access_token")
+	os.Setenv("TEST_GITHUB_API_URL", ghMock.URL())
 
 	// TODO: build piperd concurrently with
 	// starting exed for faster startup.
@@ -217,6 +228,10 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 		if coverDir != "" {
 			coverDirs = append(coverDirs, coverDir)
 		}
+	}
+
+	if env.GitHubMock != nil {
+		env.GitHubMock.Close()
 	}
 
 	if env.Metricsd != nil {

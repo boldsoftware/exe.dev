@@ -454,6 +454,19 @@ func addExedEnvKeys(env []string) []string {
 		env = append(env, "FIREWORKS_API_KEY=fake-key-for-e1e-test")
 	}
 
+	// Pass through GitHub mock server URLs for GitHub App installation tests.
+	for _, key := range []string{
+		"EXE_GITHUB_APP_CLIENT_ID",
+		"EXE_GITHUB_APP_CLIENT_SECRET",
+		"EXE_GITHUB_APP_SLUG",
+		"TEST_GITHUB_TOKEN_URL",
+		"TEST_GITHUB_API_URL",
+	} {
+		if v := os.Getenv(key); v != "" {
+			env = append(env, key+"="+v)
+		}
+	}
+
 	return env
 }
 

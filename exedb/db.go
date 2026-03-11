@@ -186,6 +186,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteExpiredPendingTeamInvitesStmt, err = db.PrepareContext(ctx, deleteExpiredPendingTeamInvites); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingTeamInvites: %w", err)
 	}
+	if q.deleteGitHubAccountStmt, err = db.PrepareContext(ctx, deleteGitHubAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGitHubAccount: %w", err)
+	}
 	if q.deleteIntegrationStmt, err = db.PrepareContext(ctx, deleteIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteIntegration: %w", err)
 	}
@@ -389,6 +392,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getGLBRolloutPrefixesStmt, err = db.PrepareContext(ctx, getGLBRolloutPrefixes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGLBRolloutPrefixes: %w", err)
+	}
+	if q.getGitHubAccountStmt, err = db.PrepareContext(ctx, getGitHubAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGitHubAccount: %w", err)
 	}
 	if q.getHLLSketchStmt, err = db.PrepareContext(ctx, getHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query GetHLLSketch: %w", err)
@@ -686,6 +692,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertExe1TokenStmt, err = db.PrepareContext(ctx, insertExe1Token); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertExe1Token: %w", err)
+	}
+	if q.insertGitHubAccountStmt, err = db.PrepareContext(ctx, insertGitHubAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertGitHubAccount: %w", err)
 	}
 	if q.insertIntegrationStmt, err = db.PrepareContext(ctx, insertIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertIntegration: %w", err)
@@ -1322,6 +1331,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteExpiredPendingTeamInvitesStmt: %w", cerr)
 		}
 	}
+	if q.deleteGitHubAccountStmt != nil {
+		if cerr := q.deleteGitHubAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGitHubAccountStmt: %w", cerr)
+		}
+	}
 	if q.deleteIntegrationStmt != nil {
 		if cerr := q.deleteIntegrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteIntegrationStmt: %w", cerr)
@@ -1660,6 +1674,11 @@ func (q *Queries) Close() error {
 	if q.getGLBRolloutPrefixesStmt != nil {
 		if cerr := q.getGLBRolloutPrefixesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getGLBRolloutPrefixesStmt: %w", cerr)
+		}
+	}
+	if q.getGitHubAccountStmt != nil {
+		if cerr := q.getGitHubAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGitHubAccountStmt: %w", cerr)
 		}
 	}
 	if q.getHLLSketchStmt != nil {
@@ -2155,6 +2174,11 @@ func (q *Queries) Close() error {
 	if q.insertExe1TokenStmt != nil {
 		if cerr := q.insertExe1TokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertExe1TokenStmt: %w", cerr)
+		}
+	}
+	if q.insertGitHubAccountStmt != nil {
+		if cerr := q.insertGitHubAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertGitHubAccountStmt: %w", cerr)
 		}
 	}
 	if q.insertIntegrationStmt != nil {
@@ -2850,6 +2874,7 @@ type Queries struct {
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
 	deleteExpiredExe1TokensStmt                *sql.Stmt
 	deleteExpiredPendingTeamInvitesStmt        *sql.Stmt
+	deleteGitHubAccountStmt                    *sql.Stmt
 	deleteIntegrationStmt                      *sql.Stmt
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
@@ -2918,6 +2943,7 @@ type Queries struct {
 	getExe1TokenStmt                           *sql.Stmt
 	getExe1TokenByExe0Stmt                     *sql.Stmt
 	getGLBRolloutPrefixesStmt                  *sql.Stmt
+	getGitHubAccountStmt                       *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
 	getIPAbuseFilterDisabledStmt               *sql.Stmt
 	getIPShardAndUserGLBByBoxNameStmt          *sql.Stmt
@@ -3017,6 +3043,7 @@ type Queries struct {
 	insertEmailQualityBypassStmt               *sql.Stmt
 	insertEmailVerificationStmt                *sql.Stmt
 	insertExe1TokenStmt                        *sql.Stmt
+	insertGitHubAccountStmt                    *sql.Stmt
 	insertIntegrationStmt                      *sql.Stmt
 	insertOAuthStateStmt                       *sql.Stmt
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
@@ -3197,6 +3224,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
 		deleteExpiredExe1TokensStmt:                q.deleteExpiredExe1TokensStmt,
 		deleteExpiredPendingTeamInvitesStmt:        q.deleteExpiredPendingTeamInvitesStmt,
+		deleteGitHubAccountStmt:                    q.deleteGitHubAccountStmt,
 		deleteIntegrationStmt:                      q.deleteIntegrationStmt,
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
@@ -3265,6 +3293,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getExe1TokenStmt:                           q.getExe1TokenStmt,
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
 		getGLBRolloutPrefixesStmt:                  q.getGLBRolloutPrefixesStmt,
+		getGitHubAccountStmt:                       q.getGitHubAccountStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
 		getIPShardAndUserGLBByBoxNameStmt:          q.getIPShardAndUserGLBByBoxNameStmt,
@@ -3364,6 +3393,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertEmailQualityBypassStmt:               q.insertEmailQualityBypassStmt,
 		insertEmailVerificationStmt:                q.insertEmailVerificationStmt,
 		insertExe1TokenStmt:                        q.insertExe1TokenStmt,
+		insertGitHubAccountStmt:                    q.insertGitHubAccountStmt,
 		insertIntegrationStmt:                      q.insertIntegrationStmt,
 		insertOAuthStateStmt:                       q.insertOAuthStateStmt,
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,

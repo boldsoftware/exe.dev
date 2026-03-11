@@ -28,6 +28,14 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 				FlagSetFunc: jsonOnlyFlags("integrations-list"),
 			},
 			{
+				Name:              "setup",
+				Description:       "Set up a service integration",
+				Usage:             "integrations setup <type> [-d]",
+				Handler:           ss.handleIntegrationsSetup,
+				HasPositionalArgs: true,
+				FlagSetFunc:       setupGitHubFlags,
+			},
+			{
 				Name:              "add",
 				Description:       "Add a new integration",
 				Usage:             "integrations add <type> --name=<name> [args...]",

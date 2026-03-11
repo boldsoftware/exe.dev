@@ -68,3 +68,5 @@ sql:
           exe1_tokens: "Exe1Token"
           exe1: "Exe1"
           exe0: "Exe0"
+          github_accounts: "GitHubAccount"
+          github_login: "GitHubLogin"

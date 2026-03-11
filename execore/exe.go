@@ -52,6 +52,7 @@ import (
 	"exe.dev/exens"
 	"exe.dev/exeweb"
 	"exe.dev/ghuser"
+	"exe.dev/githubapp"
 	"exe.dev/googleoauth"
 	"exe.dev/hll"
 	"exe.dev/llmgateway"
@@ -453,6 +454,11 @@ type Server struct {
 
 	// Google OAuth credentials
 	googleOAuth *googleoauth.Client
+
+	// GitHub App for installation flow
+	githubApp      *githubapp.Client
+	githubSetupsMu sync.RWMutex
+	githubSetups   map[string]*GitHubSetup // state -> setup
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -842,6 +848,22 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("EXE_GOOGLE_CLIENT_ID or EXE_GOOGLE_CLIENT_SECRET not set, Google OAuth disabled")
 	}
 
+	// Initialize GitHub App (installation flow) client
+	ghApp := &githubapp.Client{
+		ClientID:     os.Getenv("EXE_GITHUB_APP_CLIENT_ID"),
+		ClientSecret: os.Getenv("EXE_GITHUB_APP_CLIENT_SECRET"),
+		AppSlug:      os.Getenv("EXE_GITHUB_APP_SLUG"),
+	}
+	if !ghApp.Enabled() {
+		slog.Info("GitHub App not fully configured, GitHub integration disabled")
+	}
+	if u := os.Getenv("TEST_GITHUB_TOKEN_URL"); u != "" {
+		ghApp.TokenURL = u
+	}
+	if u := os.Getenv("TEST_GITHUB_API_URL"); u != "" {
+		ghApp.APIURL = u
+	}
+
 	// Initialize GitHub User lookup client
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
@@ -1051,6 +1073,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,
 		},
+		githubApp:    ghApp,
+		githubSetups: make(map[string]*GitHubSetup),
 		PublicIPs: map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry:       cfg.MetricsRegistry,

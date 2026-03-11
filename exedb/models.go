@@ -193,6 +193,15 @@ type Exe1Token struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type GithubAccount struct {
+	UserID         string     `db:"user_id" json:"user_id"`
+	GitHubLogin    string     `db:"github_login" json:"github_login"`
+	InstallationID int64      `db:"installation_id" json:"installation_id"`
+	AccessToken    string     `db:"access_token" json:"access_token"`
+	RefreshToken   string     `db:"refresh_token" json:"refresh_token"`
+	CreatedAt      *time.Time `db:"created_at" json:"created_at"`
+}
+
 type HllSketch struct {
 	Key       string     `db:"key" json:"key"`
 	Data      []byte     `db:"data" json:"data"`

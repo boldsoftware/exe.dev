@@ -661,6 +661,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleNewsletterSubscribe(w, r)
 	case "/link-discord":
 		s.handleLinkDiscord(w, r)
+	case "/github/callback":
+		s.handleGitHubCallback(w, r)
 
 	case "/logout":
 		s.handleLogout(w, r)
