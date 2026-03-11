@@ -156,6 +156,7 @@ type UserPageData struct {
 	ExtraBarPct                   float64 // stacked bar: extra segment width %
 	HasShelleyFreeCreditPct       bool
 	MonthlyCreditsResetAt         string // e.g. "00:00 on 01 Mar"
+	Purchases                     []PurchaseRow
 
 	// Auto-open share modal (from access request email link)
 	ShareVM    string
@@ -164,6 +165,13 @@ type UserPageData struct {
 	// Integrations (sudoer only)
 	IsSudoer     bool
 	Integrations []IntegrationDisplayInfo
+}
+
+// PurchaseRow represents a credit purchase for the profile page.
+type PurchaseRow struct {
+	Amount     string
+	Date       string
+	ReceiptURL string
 }
 
 // IntegrationDisplayInfo represents an integration for the profile page.

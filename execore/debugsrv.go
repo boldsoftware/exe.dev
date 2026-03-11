@@ -4124,6 +4124,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var accounts []accountInfo
+	var purchases []PurchaseRow
+	cutoff := time.Now().AddDate(0, 0, -30)
 	for _, a := range userAccounts {
 		info := accountInfo{
 			AccountID:  a.ID,
@@ -4197,6 +4199,17 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			info.Credits = append(info.Credits, cr)
+
+			if c.Amount > 0 && c.StripeEventID != nil && c.CreatedAt.After(cutoff) {
+				p := PurchaseRow{
+					Amount: tender.Mint(0, c.Amount).String(),
+					Date:   c.CreatedAt.Format("02 Jan 2006"),
+				}
+				if receiptURLs != nil {
+					p.ReceiptURL = receiptURLs[*c.StripeEventID]
+				}
+				purchases = append(purchases, p)
+			}
 		}
 
 		accounts = append(accounts, info)
@@ -4255,8 +4268,13 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
 		totalRemainingPct = ((shelleyCreditsAvailable + extraCreditsUSD) / totalCapacity) * 100
 	}
-	if totalRemainingPct > 100 {
+	if totalRemainingPct < 0 {
+		totalRemainingPct = 0
+	} else if totalRemainingPct > 100 {
 		totalRemainingPct = 100
+	}
+	if monthlyBarPct < 0 {
+		monthlyBarPct = 0
 	}
 
 	// LLM gateway credit info (same as debug user page).
@@ -4286,6 +4304,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyBarPct                 float64
 		ExtraBarPct                   float64
 		ExtraCreditsUSD               float64
+		Purchases                     []PurchaseRow
 		HasCredit                     bool
 		CreditPlanName                string
 		CreditAvailableUSD            float64
@@ -4308,6 +4327,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyBarPct:                 monthlyBarPct,
 		ExtraBarPct:                   extraBarPct,
 		ExtraCreditsUSD:               extraCreditsUSD,
+		Purchases:                     purchases,
 		HasCredit:                     hasCredit,
 	}
 

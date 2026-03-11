@@ -1509,6 +1509,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 	// Fetch credit balance if credit purchases are enabled and user has a billing account.
 	creditBalance := tender.Zero()
+	var purchases []PurchaseRow
 	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 	if err == nil {
 		balance, err := s.billing.SpendCredits(r.Context(), account.ID, 0, tender.Zero())
@@ -1516,6 +1517,29 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			s.slog().ErrorContext(r.Context(), "failed to fetch credit balance", "error", err, "user_id", userID)
 		} else {
 			creditBalance = balance
+		}
+
+		// Collect credit purchases from the last 30 days.
+		cutoff := time.Now().AddDate(0, 0, -30)
+		credits, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListBillingCreditsForAccount, account.ID)
+		if err != nil {
+			s.slog().WarnContext(r.Context(), "failed to list billing credits", "error", err, "user_id", userID)
+		}
+		receiptURLs, err := s.billing.ReceiptURLs(r.Context(), account.ID)
+		if err != nil {
+			s.slog().WarnContext(r.Context(), "failed to fetch receipt URLs", "error", err, "user_id", userID)
+		}
+		for _, c := range credits {
+			if c.Amount > 0 && c.StripeEventID != nil && c.CreatedAt.After(cutoff) {
+				p := PurchaseRow{
+					Amount: tender.Mint(0, c.Amount).String(),
+					Date:   c.CreatedAt.Format("02 Jan 2006"),
+				}
+				if c.StripeEventID != nil && receiptURLs != nil {
+					p.ReceiptURL = receiptURLs[*c.StripeEventID]
+				}
+				purchases = append(purchases, p)
+			}
 		}
 	}
 
@@ -1568,8 +1592,13 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
 		totalRemainingPct = ((shelleyCreditsAvailable + extraCreditsUSD) / totalCapacity) * 100
 	}
-	if totalRemainingPct > 100 {
+	if totalRemainingPct < 0 {
+		totalRemainingPct = 0
+	} else if totalRemainingPct > 100 {
 		totalRemainingPct = 100
+	}
+	if monthlyBarPct < 0 {
+		monthlyBarPct = 0
 	}
 
 	// Fetch integrations for sudoers
@@ -1625,6 +1654,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ExtraBarPct:                   extraBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006"),
+		Purchases:                     purchases,
 
 		IsSudoer:     isSudoer,
 		Integrations: integrations,

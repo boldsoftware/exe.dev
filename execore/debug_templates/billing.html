@@ -39,6 +39,18 @@ table.info th { width: 200px; }
 {{end}}
 <tr><th><span class="credit-legend-item"><span class="credit-legend-dot {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}"></span> Monthly Credits</span></th><td>{{if .HasShelleyFreeCreditPct}}{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}}){{else}}-{{end}}</td></tr>
 <tr><th><span class="credit-legend-item"><span class="credit-legend-dot blue"></span> Extra Credits</span></th><td>{{.CreditBalance}}{{if and .HasShelleyFreeCreditPct (gt .ExtraCreditsUSD 0.0)}} (${{printf "%.2f" .ExtraCreditsUSD}}){{end}}</td></tr>
+{{if .Purchases}}
+<tr><th>Purchases<br>(Last 30D)</th><td>
+    <table>
+    <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
+    <tbody>
+    {{range .Purchases}}
+    <tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
+    {{end}}
+    </tbody>
+    </table>
+</td></tr>
+{{end}}
 </table>
 </div>
 

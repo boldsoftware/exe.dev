@@ -54,7 +54,53 @@
         .credit-usage-row {
             align-items: center;
         }
-        
+
+        .credit-remaining {
+            margin-bottom: 6px;
+        }
+
+        .credit-bar-track {
+            background: #e0e0e0;
+            border-radius: 3px;
+            height: 10px;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .credit-bar-monthly {
+            min-width: 2px;
+        }
+
+        .credit-bar-monthly.green { background: #22a55b; }
+        .credit-bar-monthly.yellow { background: #eab308; }
+        .credit-bar-monthly.orange { background: #dd6b20; }
+        .credit-bar-monthly.red { background: #e53e3e; }
+
+        .credit-bar-extra {
+            background: #3b82f6;
+            min-width: 2px;
+        }
+
+        .credit-legend-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 120px;
+        }
+
+        .credit-legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .credit-legend-dot.green { background: #22a55b; }
+        .credit-legend-dot.yellow { background: #eab308; }
+        .credit-legend-dot.orange { background: #dd6b20; }
+        .credit-legend-dot.red { background: #e53e3e; }
+        .credit-legend-dot.blue { background: #3b82f6; }
+
         .info-row:last-child {
             border-bottom: none;
         }
@@ -72,7 +118,11 @@
             color: #000;
             word-break: break-all;
         }
-        
+
+        .info-value-full {
+            flex: 1;
+        }
+
         .ssh-keys-list {
             display: flex;
             flex-direction: column;
@@ -670,22 +720,22 @@
                 {{if .HasShelleyFreeCreditPct}}
                 <div class="info-row credit-usage-row">
                     <div class="info-label">Usage</div>
-                    <div class="info-value" style="flex: 1;">
-                        <div style="margin-bottom: 6px;">
+                    <div class="info-value info-value-full">
+                        <div class="credit-remaining">
                             <span>{{printf "%.0f" .TotalRemainingPct}}% remaining</span>
                         </div>
-                        <div style="background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex;">
-                            <div style="background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}}; width: {{printf "%.1f" .MonthlyBarPct}}%; min-width: {{if gt .MonthlyBarPct 0.0}}2px{{else}}0{{end}};"></div>
-                            {{if gt .ExtraBarPct 0.0}}<div style="background: #3b82f6; width: {{printf "%.1f" .ExtraBarPct}}%; min-width: 2px;"></div>{{end}}
+                        <div class="credit-bar-track">
+                            <div class="credit-bar-monthly {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .MonthlyBarPct}}%;"></div>
+                            {{if gt .ExtraBarPct 0.0}}<div class="credit-bar-extra" style="width: {{printf "%.1f" .ExtraBarPct}}%;"></div>{{end}}
                         </div>
                     </div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: {{if le .ShelleyFreeCreditRemainingPct 10.0}}#e53e3e{{else if le .ShelleyFreeCreditRemainingPct 25.0}}#dd6b20{{else if le .ShelleyFreeCreditRemainingPct 50.0}}#eab308{{else}}#22a55b{{end}};"></span><span style="white-space: nowrap;">Monthly</span></div>
+                    <div class="info-label credit-legend-label"><span class="credit-legend-dot {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}"></span><span>Monthly</span></div>
                     <div class="info-value">{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}})</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label" style="display: flex; align-items: center; gap: 6px; width: 120px;"><span style="width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: #3b82f6;"></span><span style="white-space: nowrap;">Extra</span></div>
+                    <div class="info-label credit-legend-label"><span class="credit-legend-dot blue"></span><span>Extra</span></div>
                     <div class="info-value">${{printf "%.2f" .ExtraCreditsUSD}}</div>
                 </div>
                 {{else}}
@@ -703,6 +753,21 @@
                         </form>
                     </div>
                 </div>
+                {{if .Purchases}}
+                <div class="info-row">
+                    <div class="info-label">Purchases<br>(Last 30D)</div>
+                    <div class="info-value info-value-full">
+                        <table class="sites-table">
+                        <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
+                        <tbody>
+                        {{range .Purchases}}
+                        <tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
+                        {{end}}
+                        </tbody>
+                        </table>
+                    </div>
+                </div>
+                {{end}}
             </div>
         </div>
         {{end}}
