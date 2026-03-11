@@ -233,7 +233,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.Want("Added integration bearertest")
 		pty.WantPrompt()
 		pty.SendLine(fmt.Sprintf("integrations attach bearertest %s", bn))
-		pty.Want("Attached bearertest to " + bn)
+		pty.Want("Attached bearertest to vm:" + bn)
 		pty.WantPrompt()
 
 		response := curlRetry(t, "http://bearertest.int.exe.cloud/anything", "Authorization")
