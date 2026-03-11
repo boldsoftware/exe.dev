@@ -72,12 +72,12 @@ Goodbye!
 ● ssh localhost
 ●
 
-share ssh allow BOX_NAME
+share access allow BOX_NAME
 
 - help to see a list of commands
 
-PROMPT ▶ share ssh allow BOX_NAME
-exe.dev repl: command not available: "share ssh allow BOX_NAME"
+PROMPT ▶ share access allow BOX_NAME
+exe.dev repl: command not available: "share access allow BOX_NAME"
 PROMPT ▶ rm BOX_NAME
 Deleting BOX_NAME...
 1 VM(s) deleted successfully

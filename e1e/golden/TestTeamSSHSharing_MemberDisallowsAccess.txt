@@ -4,11 +4,11 @@
 ● ssh localhost
 ●
 
-share ssh disallow BOX_NAME
+share access disallow BOX_NAME
 
 - help to see a list of commands
 
-PROMPT ▶ share ssh disallow BOX_NAME
+PROMPT ▶ share access disallow BOX_NAME
 ✓ Route updated successfully
   Port: 8000
   Share: private

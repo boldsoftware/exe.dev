@@ -1916,6 +1916,41 @@
         </div>
         {{end}}
         
+        {{if .TeamInfo}}
+        <div class="section-header">
+            <div class="section-left">
+                <div class="section-title">{{.TeamInfo.DisplayName}}</div>
+                <span style="font-size: 12px; color: #999;">{{len .TeamInfo.Members}} member{{if ne (len .TeamInfo.Members) 1}}s{{end}}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                {{if or (eq .TeamInfo.Role "admin") (eq .TeamInfo.Role "billing_owner")}}
+                <button class="new-box-btn" onclick="CommandModal.teamTransfer()">Transfer VM</button>
+                <button class="new-box-btn" onclick="CommandModal.teamInvite()">+ Invite</button>
+                {{end}}
+            </div>
+        </div>
+        <div class="boxes-list" style="margin-bottom: 24px;">
+            {{range .TeamInfo.Members}}
+            <div class="box-row" style="cursor: default;">
+                <div class="box-main">
+                    <span style="font-size: 13px; font-weight: 500;">{{.Email}}</span>
+                    <span style="font-size: 11px; color: #999; background: #f0f0f0; padding: 2px 8px; border-radius: 4px;">{{.Role}}</span>
+                    <div class="box-actions">
+                        {{if $.TeamInfo.IsAdmin}}
+                        <button class="copy-btn" onclick="CommandModal.teamRemove('{{.Email}}')" title="Remove from team" style="color: #dc2626;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
         {{if .TeamBoxes}}
         <div class="section-header">
             <div class="section-left">

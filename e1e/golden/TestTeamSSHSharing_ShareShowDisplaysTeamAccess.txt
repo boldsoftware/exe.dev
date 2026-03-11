@@ -1,0 +1,26 @@
+
+
+●
+● ssh localhost
+●
+
+share show BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share show BOX_NAME
+
+Sharing for VM 'BOX_NAME'
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+Port: 8000
+Mode: Private
+Team Access: ALLOWED - Team members can SSH and access Shelley on this VM
+
+No shares configured.
+
+To share with someone, use:
+  share add BOX_NAME user@example.com
+  share add-link BOX_NAME
+
+PROMPT ▶ exit
+Goodbye!

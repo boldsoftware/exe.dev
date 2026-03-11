@@ -73,7 +73,7 @@ func TestResolveTeamShardCollisions(t *testing.T) {
 		t.Fatalf("expected both on shard 1, got alice=%d bob=%d", aliceShard, bobShard)
 	}
 
-	// Create team, add Alice as sudoer.
+	// Create team, add Alice as admin.
 	teamID := "tm_shardtest"
 	err = withTx1(server, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
 		TeamID:      teamID,
@@ -85,7 +85,7 @@ func TestResolveTeamShardCollisions(t *testing.T) {
 	err = withTx1(server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
 		TeamID: teamID,
 		UserID: aliceID,
-		Role:   "sudoer",
+		Role:   "admin",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestResolveTeamShardCollisions_NoCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = withTx1(server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID, UserID: aliceID, Role: "sudoer",
+		TeamID: teamID, UserID: aliceID, Role: "admin",
 	})
 	if err != nil {
 		t.Fatal(err)

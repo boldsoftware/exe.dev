@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team transfer BOX_NAME member1@test-team-transfer.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team transfer BOX_NAME member1@test-team-transfer.example
+VM "BOX_NAME" is already owned by member1@test-team-transfer.example
+PROMPT ▶ exit
+Goodbye!

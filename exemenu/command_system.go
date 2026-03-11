@@ -523,11 +523,9 @@ func (ct *CommandTree) FindCommand(path []string) *Command {
 		return nil
 	}
 
+	target := strings.ToLower(path[0])
 	for _, cmd := range ct.Commands {
-		if cmd.Name == path[0] {
-			return findCommandRecursive(cmd, path, 1)
-		}
-		if slices.Contains(cmd.Aliases, path[0]) {
+		if cmd.Name == target || slices.Contains(cmd.Aliases, target) {
 			return findCommandRecursive(cmd, path, 1)
 		}
 	}
@@ -539,14 +537,11 @@ func findCommandRecursive(cmd *Command, path []string, depth int) *Command {
 		return cmd
 	}
 
-	target := path[depth]
+	target := strings.ToLower(path[depth])
 
 	// Look for exact name match or alias match
 	for _, sub := range cmd.Subcommands {
-		if sub.Name == target {
-			return findCommandRecursive(sub, path, depth+1)
-		}
-		if slices.Contains(sub.Aliases, target) {
+		if sub.Name == target || slices.Contains(sub.Aliases, target) {
 			return findCommandRecursive(sub, path, depth+1)
 		}
 	}
@@ -582,7 +577,7 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 	var remainingArgs []string
 
 	// Treat the "help" command as a special case when it is the first thing in the command path.
-	if commandPath[0] == "help" {
+	if strings.EqualFold(commandPath[0], "help") {
 		cmd = ct.FindCommand([]string{"help"})
 		remainingArgs = commandPath[1:]
 	} else {

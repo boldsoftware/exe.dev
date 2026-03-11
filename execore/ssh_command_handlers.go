@@ -150,6 +150,7 @@ func addStringFlag(name, defaultVal, usage string) func(func() *flag.FlagSet) fu
 var (
 	addQRFlag           = addBoolFlag("qr", "show QR code for the URL")
 	addLongFlag         = addBoolFlag("l", "show detailed information")
+	addAllFlag          = addBoolFlag("a", "include team VMs")
 	addShareMessageFlag = addStringFlag("message", "", "message to include in share invitation")
 )
 
@@ -237,8 +238,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Name:              "ls",
 			Description:       "List your VMs",
 			Handler:           ss.handleListCommand,
-			FlagSetFunc:       addLongFlag(jsonOnlyFlags("ls")),
-			Usage:             "ls [-l] [name|pattern]",
+			FlagSetFunc:       addAllFlag(addLongFlag(jsonOnlyFlags("ls"))),
+			Usage:             "ls [-la] [name|pattern]",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -547,6 +548,7 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	wantLong := cc.FlagSet.Lookup("l").Value.String() == "true"
+	wantAll := cc.FlagSet.Lookup("a").Value.String() == "true"
 
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
@@ -615,47 +617,48 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			vmList = append(vmList, box)
 		}
 
-		// Include team VMs for team owners
-		teamBoxes, _ := ss.server.ListTeamBoxesForSudoer(ctx, cc.User.ID)
-		var teamVMList []map[string]any
-		for _, vm := range teamBoxes {
-			status := container.ContainerStatus(vm.Status).String()
-			box := map[string]any{
-				"vm_name":       vm.Name,
-				"ssh_dest":      ss.server.env.BoxDest(vm.Name),
-				"status":        status,
-				"region":        vm.Region,
-				"https_url":     ss.server.boxProxyAddress(vm.Name),
-				"creator_email": vm.CreatorEmail,
-			}
-			if r, err := region.ByCode(vm.Region); err == nil {
-				box["region_display"] = r.Display
-			}
-			imageName := container.GetDisplayImageName(vm.Image)
-			switch imageName {
-			case "exeuntu", "":
-			default:
-				box["image"] = imageName
-			}
-			if strings.Contains(vm.Image, "exeuntu") {
-				box["shelley_url"] = ss.server.shelleyURL(vm.Name)
-			}
-			if tags := parseTags(vm.Tags); len(tags) > 0 {
-				box["tags"] = tags
-			}
-			teamVMList = append(teamVMList, box)
-		}
-
 		result := map[string]any{"vms": vmList}
-		if len(teamVMList) > 0 {
-			result["team_vms"] = teamVMList
+		if wantAll {
+			// Include team VMs for team owners
+			teamBoxes, _ := ss.server.ListTeamBoxesForAdmin(ctx, cc.User.ID)
+			var teamVMList []map[string]any
+			for _, vm := range teamBoxes {
+				status := container.ContainerStatus(vm.Status).String()
+				box := map[string]any{
+					"vm_name":       vm.Name,
+					"ssh_dest":      ss.server.env.BoxDest(vm.Name),
+					"status":        status,
+					"region":        vm.Region,
+					"https_url":     ss.server.boxProxyAddress(vm.Name),
+					"creator_email": vm.CreatorEmail,
+				}
+				if r, err := region.ByCode(vm.Region); err == nil {
+					box["region_display"] = r.Display
+				}
+				imageName := container.GetDisplayImageName(vm.Image)
+				switch imageName {
+				case "exeuntu", "":
+				default:
+					box["image"] = imageName
+				}
+				if strings.Contains(vm.Image, "exeuntu") {
+					box["shelley_url"] = ss.server.shelleyURL(vm.Name)
+				}
+				teamVMList = append(teamVMList, box)
+			}
+			if len(teamVMList) > 0 {
+				result["team_vms"] = teamVMList
+			}
 		}
 		cc.WriteJSON(result)
 		return nil
 	}
 
-	// Check if user is a team owner and get team boxes (need this early to decide output)
-	teamBoxes, _ := ss.server.ListTeamBoxesForSudoer(ctx, cc.User.ID)
+	// Fetch team boxes only when -a is passed
+	var teamBoxes []exedb.ListTeamBoxesForAdminRow
+	if wantAll {
+		teamBoxes, _ = ss.server.ListTeamBoxesForAdmin(ctx, cc.User.ID)
+	}
 
 	if len(boxes) == 0 && len(teamBoxes) == 0 {
 		cc.Write("No VMs found. Create one with 'new'.\r\n")
@@ -686,6 +689,21 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				tagStr,
 			)
 		}
+		for _, b := range teamBoxes {
+			status := container.ContainerStatus(b.Status)
+			shelleyURL := "-"
+			if strings.Contains(b.Image, "exeuntu") {
+				shelleyURL = ss.server.shelleyURL(b.Name)
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t\033[90m%s\033[0m\r\n",
+				ss.server.env.BoxSub(b.Name),
+				statusColor(status), status,
+				b.Region,
+				shelleyURL,
+				ss.server.boxProxyAddress(b.Name),
+				b.CreatorEmail,
+			)
+		}
 		tw.Flush()
 		return nil
 	}
@@ -711,7 +729,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		cc.Write("\r\n")
 	}
 
-	// Show team VMs for team owners
+	// Show team VMs when -a is passed
 	if len(teamBoxes) > 0 {
 		cc.Write("\r\n\033[1;33mTeam VMs:\033[0m\r\n")
 		for _, b := range teamBoxes {
@@ -909,7 +927,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 			continue
 		}
 
-		if accessType == TeamBoxAccessTeamSudoer {
+		if accessType == TeamBoxAccessTeamAdmin {
 			cc.Writeln("Deleting team VM \033[1m%s\033[0m...", boxName)
 		} else {
 			cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)

@@ -137,59 +137,29 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				},
 			},
 			{
-				Name:        "ssh",
-				Description: "Control team SSH access to a VM",
-				Usage:       "share ssh <allow|disallow> <vm>",
-				Handler:     ss.handleShareSSHHelp,
-				FlagSetFunc: jsonOnlyFlags("share-ssh"),
+				Name:        "access",
+				Description: "Control team SSH and Shelley access to a VM",
+				Usage:       "share access <allow|disallow> <vm>",
+				Handler:     ss.handleShareAccessHelp,
+				FlagSetFunc: jsonOnlyFlags("share-access"),
 				Available:   ss.isInTeam,
 				Subcommands: []*exemenu.Command{
 					{
 						Name:              "allow",
-						Description:       "Allow team members to SSH into a VM",
-						Usage:             "share ssh allow <vm>",
-						Handler:           ss.handleShareSSHAllowCmd,
-						FlagSetFunc:       jsonOnlyFlags("share-ssh-allow"),
+						Description:       "Allow team members to SSH and access Shelley on a VM",
+						Usage:             "share access allow <vm>",
+						Handler:           ss.handleShareAccessAllowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-access-allow"),
 						Available:         ss.isInTeam,
 						HasPositionalArgs: true,
 						CompleterFunc:     ss.completeBoxNames,
 					},
 					{
 						Name:              "disallow",
-						Description:       "Disallow team members from SSHing into a VM",
-						Usage:             "share ssh disallow <vm>",
-						Handler:           ss.handleShareSSHDisallowCmd,
-						FlagSetFunc:       jsonOnlyFlags("share-ssh-disallow"),
-						Available:         ss.isInTeam,
-						HasPositionalArgs: true,
-						CompleterFunc:     ss.completeBoxNames,
-					},
-				},
-			},
-			{
-				Name:        "shelley",
-				Description: "Control team Shelley access to a VM",
-				Usage:       "share shelley <allow|disallow> <vm>",
-				Handler:     ss.handleShareShelleyHelp,
-				FlagSetFunc: jsonOnlyFlags("share-shelley"),
-				Available:   ss.isInTeam,
-				Subcommands: []*exemenu.Command{
-					{
-						Name:              "allow",
-						Description:       "Allow team members to access Shelley on a VM",
-						Usage:             "share shelley allow <vm>",
-						Handler:           ss.handleShareShelleyAllowCmd,
-						FlagSetFunc:       jsonOnlyFlags("share-shelley-allow"),
-						Available:         ss.isInTeam,
-						HasPositionalArgs: true,
-						CompleterFunc:     ss.completeBoxNames,
-					},
-					{
-						Name:              "disallow",
-						Description:       "Disallow team members from accessing Shelley on a VM",
-						Usage:             "share shelley disallow <vm>",
-						Handler:           ss.handleShareShelleyDisallowCmd,
-						FlagSetFunc:       jsonOnlyFlags("share-shelley-disallow"),
+						Description:       "Disallow team members from SSH and Shelley access to a VM",
+						Usage:             "share access disallow <vm>",
+						Handler:           ss.handleShareAccessDisallowCmd,
+						FlagSetFunc:       jsonOnlyFlags("share-access-disallow"),
 						Available:         ss.isInTeam,
 						HasPositionalArgs: true,
 						CompleterFunc:     ss.completeBoxNames,
@@ -216,11 +186,17 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
-	// Get the box and verify ownership
+	// Get the box and verify ownership (fall back to team admin access)
 	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
 		Name:            boxName,
 		CreatedByUserID: cc.User.ID,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		box, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxAccessibleByTeamAdmin, exedb.GetBoxAccessibleByTeamAdminParams{
+			BoxName:     boxName,
+			AdminUserID: cc.User.ID,
+		})
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found or access denied", boxName)
 	}
@@ -325,6 +301,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			"users":        users,
 			"links":        links,
 			"teams":        teams,
+			"team_access":  route.TeamSSH && route.TeamShelley,
 			"team_ssh":     route.TeamSSH,
 			"team_shelley": route.TeamShelley,
 		}
@@ -354,10 +331,11 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	} else {
 		cc.Writeln("Mode: Private")
 	}
-	if route.TeamSSH {
+	if route.TeamSSH && route.TeamShelley {
+		cc.Writeln("\033[1;32mTeam Access: ALLOWED\033[0m - Team members can SSH and access Shelley on this VM")
+	} else if route.TeamSSH {
 		cc.Writeln("\033[1;32mTeam SSH: ALLOWED\033[0m - Team members can SSH into this VM")
-	}
-	if route.TeamShelley {
+	} else if route.TeamShelley {
 		cc.Writeln("\033[1;32mTeam Shelley: ALLOWED\033[0m - Team members can access Shelley on this VM")
 	}
 	if box.SupportAccessAllowed == 1 {
@@ -535,6 +513,7 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 			"vm_name":      boxName,
 			"port":         route.Port,
 			"share":        route.Share,
+			"team_access":  route.TeamSSH && route.TeamShelley,
 			"team_ssh":     route.TeamSSH,
 			"team_shelley": route.TeamShelley,
 			"status":       "updated",
@@ -546,10 +525,11 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
 	cc.Writeln("  Port: %d", route.Port)
 	cc.Writeln("  Share: %s", route.Share)
-	if route.TeamSSH {
+	if route.TeamSSH && route.TeamShelley {
+		cc.Writeln("  Team Access: \033[1;32mallowed\033[0m")
+	} else if route.TeamSSH {
 		cc.Writeln("  Team SSH: \033[1;32mallowed\033[0m")
-	}
-	if route.TeamShelley {
+	} else if route.TeamShelley {
 		cc.Writeln("  Team Shelley: \033[1;32mallowed\033[0m")
 	}
 	cc.Writeln("")
@@ -570,53 +550,29 @@ func (ss *SSHServer) updateBoxRouteInDB(ctx context.Context, boxName, userID str
 	return nil
 }
 
-func (ss *SSHServer) handleShareSSHHelp(ctx context.Context, cc *exemenu.CommandContext) error {
-	return cc.Errorf("usage: share ssh <allow|disallow> <vm>")
+func (ss *SSHServer) handleShareAccessHelp(ctx context.Context, cc *exemenu.CommandContext) error {
+	return cc.Errorf("usage: share access <allow|disallow> <vm>")
 }
 
-func (ss *SSHServer) handleShareSSHAllowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) handleShareAccessAllowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share ssh allow <vm>")
+		return cc.Errorf("usage: share access allow <vm>")
 	}
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.TeamSSH = true
-		return nil
-	})
-}
-
-func (ss *SSHServer) handleShareSSHDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share ssh disallow <vm>")
-	}
-	boxName := ss.normalizeBoxName(cc.Args[0])
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
-		route.TeamSSH = false
-		return nil
-	})
-}
-
-func (ss *SSHServer) handleShareShelleyHelp(ctx context.Context, cc *exemenu.CommandContext) error {
-	return cc.Errorf("usage: share shelley <allow|disallow> <vm>")
-}
-
-func (ss *SSHServer) handleShareShelleyAllowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share shelley allow <vm>")
-	}
-	boxName := ss.normalizeBoxName(cc.Args[0])
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.TeamShelley = true
 		return nil
 	})
 }
 
-func (ss *SSHServer) handleShareShelleyDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) handleShareAccessDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: share shelley disallow <vm>")
+		return cc.Errorf("usage: share access disallow <vm>")
 	}
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.TeamSSH = false
 		route.TeamShelley = false
 		return nil
 	})

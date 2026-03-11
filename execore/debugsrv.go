@@ -5032,7 +5032,7 @@ func (s *Server) handleDebugBouncesPost(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
+	rawTeamID := r.FormValue("team_id")
 	displayName := r.FormValue("display_name")
 	ownerUserID := r.FormValue("owner_user_id")
 
@@ -5049,13 +5049,19 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if teamID == "" || displayName == "" || ownerUserID == "" {
+	if rawTeamID == "" || displayName == "" || ownerUserID == "" {
 		http.Error(w, "team_id, display_name, and owner_user_id (or owner_email) are required", http.StatusBadRequest)
 		return
 	}
 
+	teamID, err := parseTeamID(rawTeamID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Create the team
-	err := withTx1(s, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
+	err = withTx1(s, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
 		TeamID:      teamID,
 		DisplayName: displayName,
 	})
@@ -5101,12 +5107,16 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDebugTeamAddMember adds a user to an existing team.
-// POST /debug/teams/add-member with team_id, user_id (or email), role (billing_owner, sudoer, or user)
+// POST /debug/teams/add-member with team_id, user_id (or email), role (billing_owner, admin, or user)
 // If email is provided and user doesn't exist, creates a pending invite and sends email.
 func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	userID := r.FormValue("user_id")
 	addr := r.FormValue("email")
 	role := r.FormValue("role")
@@ -5131,7 +5141,7 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 			}
 			var inviterID string
 			for _, m := range members {
-				if m.Role == "billing_owner" || m.Role == "sudoer" {
+				if m.Role == "billing_owner" || m.Role == "admin" {
 					inviterID = m.UserID
 					break
 				}
@@ -5165,12 +5175,12 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 	if role == "" {
 		role = "user"
 	}
-	if role != "billing_owner" && role != "sudoer" && role != "user" {
-		http.Error(w, "role must be 'billing_owner', 'sudoer', or 'user'", http.StatusBadRequest)
+	if role != "billing_owner" && role != "admin" && role != "user" {
+		http.Error(w, "role must be 'billing_owner', 'admin', or 'user'", http.StatusBadRequest)
 		return
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
 		TeamID: teamID,
 		UserID: userID,
 		Role:   role,
@@ -5198,9 +5208,9 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDebugTeamMembers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.URL.Query().Get("team_id")
-	if teamID == "" {
-		http.Error(w, "team_id is required", http.StatusBadRequest)
+	teamID, err := parseTeamID(r.URL.Query().Get("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -5317,11 +5327,15 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugTeamRemoveMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	userID := r.FormValue("user_id")
 
-	if teamID == "" || userID == "" {
-		http.Error(w, "team_id and user_id are required", http.StatusBadRequest)
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
 	}
 
@@ -5376,20 +5390,24 @@ func (s *Server) handleDebugTeamMemberVMCount(w http.ResponseWriter, r *http.Req
 func (s *Server) handleDebugTeamUpdateRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	userID := r.FormValue("user_id")
 	role := r.FormValue("role")
 
-	if teamID == "" || userID == "" || role == "" {
-		http.Error(w, "team_id, user_id, and role are required", http.StatusBadRequest)
+	if userID == "" || role == "" {
+		http.Error(w, "user_id and role are required", http.StatusBadRequest)
 		return
 	}
-	if role != "billing_owner" && role != "sudoer" && role != "user" {
-		http.Error(w, "role must be 'billing_owner', 'sudoer', or 'user'", http.StatusBadRequest)
+	if role != "billing_owner" && role != "admin" && role != "user" {
+		http.Error(w, "role must be 'billing_owner', 'admin', or 'user'", http.StatusBadRequest)
 		return
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+	err = withTx1(s, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
 		TeamID: teamID,
 		UserID: userID,
 		Role:   role,
@@ -5409,20 +5427,19 @@ func (s *Server) handleDebugTeamUpdateRole(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
-	limits := r.FormValue("limits")
-
-	if teamID == "" {
-		http.Error(w, "team_id is required", http.StatusBadRequest)
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	limits := r.FormValue("limits")
 
 	var limitsPtr *string
 	if limits != "" {
 		limitsPtr = &limits
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).UpdateTeamLimits, exedb.UpdateTeamLimitsParams{
+	err = withTx1(s, ctx, (*exedb.Queries).UpdateTeamLimits, exedb.UpdateTeamLimitsParams{
 		TeamID: teamID,
 		Limits: limitsPtr,
 	})
@@ -5441,13 +5458,12 @@ func (s *Server) handleDebugTeamSetLimits(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDebugTeamSetAuthProvider(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
-	authProvider := r.FormValue("auth_provider")
-
-	if teamID == "" {
-		http.Error(w, "team_id is required", http.StatusBadRequest)
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	authProvider := r.FormValue("auth_provider")
 
 	switch authProvider {
 	case "", "google", "oidc":
@@ -5462,7 +5478,7 @@ func (s *Server) handleDebugTeamSetAuthProvider(w http.ResponseWriter, r *http.R
 		apPtr = &authProvider
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).SetTeamAuthProvider, exedb.SetTeamAuthProviderParams{
+	err = withTx1(s, ctx, (*exedb.Queries).SetTeamAuthProvider, exedb.SetTeamAuthProviderParams{
 		AuthProvider: apPtr,
 		TeamID:       teamID,
 	})
@@ -5482,14 +5498,18 @@ func (s *Server) handleDebugTeamSetAuthProvider(w http.ResponseWriter, r *http.R
 func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	issuerURL := strings.TrimRight(r.FormValue("issuer_url"), "/")
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
 	displayName := r.FormValue("display_name")
 
-	if teamID == "" || issuerURL == "" || clientID == "" || clientSecret == "" {
-		http.Error(w, "team_id, issuer_url, client_id, and client_secret are required", http.StatusBadRequest)
+	if issuerURL == "" || clientID == "" || clientSecret == "" {
+		http.Error(w, "issuer_url, client_id, and client_secret are required", http.StatusBadRequest)
 		return
 	}
 
@@ -5571,13 +5591,13 @@ func (s *Server) handleDebugTeamSetSSO(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugTeamDeleteSSO(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	teamID := r.FormValue("team_id")
-	if teamID == "" {
-		http.Error(w, "team_id is required", http.StatusBadRequest)
+	teamID, err := parseTeamID(r.FormValue("team_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamSSOProvider, teamID)
+	err = withTx1(s, ctx, (*exedb.Queries).DeleteTeamSSOProvider, teamID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to delete SSO config: %v", err), http.StatusInternalServerError)
 		return
@@ -6007,8 +6027,12 @@ func (s *Server) handleDebugJump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Team by ID.
-	team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, q)
+	// 4. Team by ID (try raw, then with tm_ prefix).
+	teamQ := q
+	if tid, err := parseTeamID(q); err == nil {
+		teamQ = tid
+	}
+	team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, teamQ)
 	if err == nil {
 		http.Redirect(w, r, "/debug/teams/members?team_id="+url.QueryEscape(team.TeamID), http.StatusFound)
 		return

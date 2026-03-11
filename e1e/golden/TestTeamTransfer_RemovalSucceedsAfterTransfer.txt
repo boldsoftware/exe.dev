@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team remove member1@test-team-transfer.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team remove member1@test-team-transfer.example
+Removed member1@test-team-transfer.example from the team
+PROMPT ▶ exit
+Goodbye!

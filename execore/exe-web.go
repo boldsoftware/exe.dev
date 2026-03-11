@@ -1360,9 +1360,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().ErrorContext(r.Context(), "Failed to get invite count for dashboard", "error", err, "user_id", userID)
 	}
 
-	// Get team VMs for team sudoers
+	// Get team VMs for team admins
 	var teamBoxes []TeamBoxDisplayInfo
-	teamBoxResults, _ := s.ListTeamBoxesForSudoer(r.Context(), user.UserID)
+	teamBoxResults, _ := s.ListTeamBoxesForAdmin(r.Context(), user.UserID)
 	for _, result := range teamBoxResults {
 		teamBoxInfo := TeamBoxDisplayInfo{
 			Name:         result.Name,
@@ -1375,6 +1375,24 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		teamBoxes = append(teamBoxes, teamBoxInfo)
 	}
 
+	// Get team info for team section
+	var teamInfo *TeamDisplayInfo
+	if team, err := s.GetTeamForUser(r.Context(), user.UserID); err == nil && team != nil {
+		teamInfo = &TeamDisplayInfo{
+			DisplayName: team.DisplayName,
+			Role:        team.Role,
+			IsAdmin:     team.Role != "user",
+		}
+		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err == nil {
+			for _, m := range members {
+				teamInfo.Members = append(teamInfo.Members, TeamMemberDisplayInfo{
+					Email: m.Email,
+					Role:  m.Role,
+				})
+			}
+		}
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:         s.env,
@@ -1384,6 +1402,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		Boxes:       boxes,
 		SharedBoxes: sharedBoxes,
 		TeamBoxes:   teamBoxes,
+		TeamInfo:    teamInfo,
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,

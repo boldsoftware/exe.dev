@@ -13,7 +13,7 @@ func TestTeamTransfer(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	// Setup: owner, member1 (sudoer), member2 (regular user)
+	// Setup: owner, member1 (admin), member2 (regular user)
 	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-team-transfer.example")
 	member1PTY, _, member1KeyFile, member1Email := registerForExeDevWithEmail(t, "member1@test-team-transfer.example")
 	member2PTY, _, member2KeyFile, member2Email := registerForExeDevWithEmail(t, "member2@test-team-transfer.example")
@@ -26,8 +26,8 @@ func TestTeamTransfer(t *testing.T) {
 	addTeamMember(t, "team_xfer_e2e", member1Email)
 	addTeamMember(t, "team_xfer_e2e", member2Email)
 
-	// Promote member1 to sudoer so they can also use transfer
-	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "team", "promote", "team_xfer_e2e", member1Email, "sudoer")
+	// Promote member1 to admin so they can also use transfer
+	out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "team", "promote", "team_xfer_e2e", member1Email, "admin")
 	if err != nil {
 		t.Fatalf("promote member1 failed: %v\n%s", err, out)
 	}

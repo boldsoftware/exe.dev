@@ -115,10 +115,10 @@ func TestTeams(t *testing.T) {
 
 	waitForSSH(t, memberBox, memberKeyFile)
 
-	// Test: Owner can see member's VM in "Team VMs" section
+	// Test: Owner can see member's VM in "Team VMs" section with -a flag
 	t.Run("OwnerSeesTeamVMs", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
-		repl.SendLine("ls")
+		repl.SendLine("ls -a")
 		repl.Want("Team VMs:")
 		repl.Want(memberBox)
 		repl.Want(memberEmail) // Should show creator email
@@ -129,7 +129,7 @@ func TestTeams(t *testing.T) {
 	// Test: Member only sees their own VMs (no Team VMs section)
 	t.Run("MemberSeesOnlyOwnVMs", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
-		repl.SendLine("ls")
+		repl.SendLine("ls -a")
 		repl.Want("Your VMs:")
 		repl.Want(memberBox)
 		repl.Reject("Team VMs") // Member should NOT see Team VMs section
@@ -384,7 +384,7 @@ func TestTeamSharing(t *testing.T) {
 	})
 }
 
-// TestTeamSSHSharing tests the "share ssh allow" and "share ssh disallow" commands.
+// TestTeamSSHSharing tests the "share access allow" and "share access disallow" commands.
 func TestTeamSSHSharing(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 2)
@@ -426,7 +426,7 @@ func TestTeamSSHSharing(t *testing.T) {
 	// Test: Member enables SSH sharing for their box
 	t.Run("MemberAllowsSSH", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
-		repl.SendLine("share ssh allow " + memberBox)
+		repl.SendLine("share access allow " + memberBox)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()
@@ -448,30 +448,30 @@ func TestTeamSSHSharing(t *testing.T) {
 		pty.Disconnect()
 	})
 
-	// Test: share show displays team SSH status
-	t.Run("ShareShowDisplaysTeamSSH", func(t *testing.T) {
+	// Test: share show displays team access status
+	t.Run("ShareShowDisplaysTeamAccess", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.SendLine("share show " + memberBox)
-		repl.Want("Team SSH: ALLOWED")
+		repl.Want("Team Access: ALLOWED")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
 
-	// Test: share show JSON includes team_ssh
-	t.Run("ShareShowJSONTeamSSH", func(t *testing.T) {
+	// Test: share show JSON includes team_access
+	t.Run("ShareShowJSONTeamAccess", func(t *testing.T) {
 		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), memberKeyFile, "share", "show", memberBox, "--json")
 		if err != nil {
 			t.Fatalf("share show --json failed: %v\n%s", err, out)
 		}
-		if !strings.Contains(string(out), `"team_ssh":true`) {
-			t.Fatalf("expected team_ssh:true in JSON output, got: %s", out)
+		if !strings.Contains(string(out), `"team_access":true`) {
+			t.Fatalf("expected team_access:true in JSON output, got: %s", out)
 		}
 	})
 
-	// Test: Member disables SSH sharing
-	t.Run("MemberDisallowsSSH", func(t *testing.T) {
+	// Test: Member disables team access
+	t.Run("MemberDisallowsAccess", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
-		repl.SendLine("share ssh disallow " + memberBox)
+		repl.SendLine("share access disallow " + memberBox)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()
@@ -486,17 +486,17 @@ func TestTeamSSHSharing(t *testing.T) {
 		}
 	})
 
-	// Test: share show no longer displays team SSH
-	t.Run("ShareShowNoTeamSSH", func(t *testing.T) {
+	// Test: share show no longer displays team access
+	t.Run("ShareShowNoTeamAccess", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.SendLine("share show " + memberBox)
-		repl.Reject("Team SSH")
+		repl.Reject("Team Access")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
 
-	// Test: Non-team user cannot see the share ssh command
-	t.Run("NonTeamNoSSH", func(t *testing.T) {
+	// Test: Non-team user cannot see the share access command
+	t.Run("NonTeamNoAccess", func(t *testing.T) {
 		lonelyPTY, _, lonelyKeyFile, _ := registerForExeDevWithEmail(t, "lonely@test-team-ssh.example")
 		lonelyPTY.Disconnect()
 
@@ -507,7 +507,7 @@ func TestTeamSSHSharing(t *testing.T) {
 		waitForSSH(t, lonelyBox, lonelyKeyFile)
 
 		repl := sshToExeDev(t, lonelyKeyFile)
-		repl.SendLine("share ssh allow " + lonelyBox)
+		repl.SendLine("share access allow " + lonelyBox)
 		repl.Want("command not available")
 		repl.WantPrompt()
 
@@ -532,8 +532,7 @@ func TestTeamSSHSharing(t *testing.T) {
 // a team CANNOT access team-shared resources. It creates two teams and an
 // unaffiliated user, then tests that:
 //   - Team web sharing (share add team) doesn't leak to outsiders
-//   - Team SSH sharing (share ssh allow) doesn't leak to outsiders
-//   - Team Shelley sharing (share shelley allow) doesn't leak to outsiders
+//   - Team access sharing (share access allow) doesn't leak SSH/Shelley to outsiders
 //
 // Each sharing mechanism is tested against three adversaries:
 //  1. A member of a different team
@@ -651,12 +650,12 @@ func TestTeamSharingIsolation(t *testing.T) {
 	})
 
 	// ============================================================
-	// Part 2: Team SSH sharing (share ssh allow)
+	// Part 2: Team access sharing (share access allow)
 	// ============================================================
 	t.Run("ssh_sharing_isolation", func(t *testing.T) {
-		// Enable SSH sharing
+		// Enable team access (SSH + Shelley)
 		repl := sshToExeDev(t, alphaMemberKey)
-		repl.SendLine("share ssh allow " + box)
+		repl.SendLine("share access allow " + box)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()
@@ -691,9 +690,9 @@ func TestTeamSharingIsolation(t *testing.T) {
 			t.Errorf("ex-member SHOULD NOT reach box shell via SSH after removal, but got: %s", out)
 		}
 
-		// Disable SSH sharing and re-add member
+		// Disable team access and re-add member
 		repl = sshToExeDev(t, alphaMemberKey)
-		repl.SendLine("share ssh disallow " + box)
+		repl.SendLine("share access disallow " + box)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()
@@ -702,7 +701,7 @@ func TestTeamSharingIsolation(t *testing.T) {
 	})
 
 	// ============================================================
-	// Part 3: Team Shelley sharing (share shelley allow)
+	// Part 3: Team Shelley access isolation (via share access allow)
 	// ============================================================
 	t.Run("shelley_sharing_isolation", func(t *testing.T) {
 		shelleyHost := fmt.Sprintf("%s.shelley.exe.cloud:%d", box, httpPort)
@@ -718,9 +717,9 @@ func TestTeamSharingIsolation(t *testing.T) {
 			httpCode: http.StatusUnauthorized,
 		})
 
-		// Enable Shelley sharing
+		// Enable team access (SSH + Shelley)
 		repl := sshToExeDev(t, alphaMemberKey)
-		repl.SendLine("share shelley allow " + box)
+		repl.SendLine("share access allow " + box)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()
@@ -767,9 +766,9 @@ func TestTeamSharingIsolation(t *testing.T) {
 			httpCode: http.StatusUnauthorized,
 		})
 
-		// Disable Shelley sharing and re-add ex-member for later tests
+		// Disable team access and re-add ex-member for later tests
 		repl = sshToExeDev(t, alphaMemberKey)
-		repl.SendLine("share shelley disallow " + box)
+		repl.SendLine("share access disallow " + box)
 		repl.Want("updated")
 		repl.WantPrompt()
 		repl.Disconnect()

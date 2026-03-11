@@ -4,12 +4,12 @@
 ● ssh localhost
 ●
 
-ls
+ls -a
 
 - new to create your first VM
 - help to see a list of commands
 
-PROMPT ▶ ls
+PROMPT ▶ ls -a
 
 Team VMs:
   • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu) by member@test-teams.example

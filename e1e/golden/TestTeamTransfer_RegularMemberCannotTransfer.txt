@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team transfer BOX_NAME owner@test-team-transfer.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team transfer BOX_NAME owner@test-team-transfer.example
+exe.dev repl: command not available: "team transfer BOX_NAME owner@test-team-transfer.example"
+PROMPT ▶ exit
+Goodbye!

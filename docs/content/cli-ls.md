@@ -13,11 +13,12 @@ List your VMs
 ## Usage
 
 ```
-ls [-l] [name|pattern]
+ls [-la] [name|pattern]
 ```
 
 ## Options
 
+- `--a`: include team VMs
 - `--json`: output in JSON format
 - `--l`: show detailed information
 

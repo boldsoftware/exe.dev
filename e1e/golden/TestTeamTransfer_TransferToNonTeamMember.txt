@@ -1,0 +1,54 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: outsider@test-team-transfer.example
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: outsider@test-team-transfer.example
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: outsider@test-team-transfer.example
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+team transfer BOX_NAME outsider@test-team-transfer.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team transfer BOX_NAME outsider@test-team-transfer.example
+User "outsider@test-team-transfer.example" is not in this team
+PROMPT ▶ exit
+Goodbye!

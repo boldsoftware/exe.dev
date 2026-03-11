@@ -63,7 +63,7 @@ tr.shown td.details-control::before { content: '-'; }
 <p>Email: <input type="text" name="email" id="addMemberEmail" placeholder="user@example.com"></p>
 <p>Role: <select name="role" id="addMemberRole">
 <option value="user">user</option>
-<option value="sudoer">sudoer</option>
+<option value="admin">admin</option>
 <option value="billing_owner">billing_owner</option>
 </select></p>
 <p>
@@ -81,7 +81,7 @@ tr.shown td.details-control::before { content: '-'; }
 <input type="hidden" name="user_id" id="changeRoleUserId">
 <p>Role: <select name="role" id="changeRoleSelect">
 <option value="user">user</option>
-<option value="sudoer">sudoer</option>
+<option value="admin">admin</option>
 <option value="billing_owner">billing_owner</option>
 </select></p>
 <p>
@@ -113,23 +113,15 @@ tr.shown td.details-control::before { content: '-'; }
 <form id="removeForm">
 <h3>Remove Team Member</h3>
 <p>Remove <strong id="removeMemberEmail"></strong> from <strong id="removeTeamDisplay"></strong>?</p>
-<<<<<<< HEAD
-<p style="color: #dc3545; font-weight: bold;">This will delete all of their VMs.</p>
-=======
 <div id="removeVmWarning" style="display:none; background:#fff3cd; border:1px solid #ffc107; padding:10px; border-radius:4px; margin:10px 0;">
 <strong style="color:#856404;">Warning:</strong> This user has <strong id="removeVmCount"></strong> VM(s). They must delete or transfer their VMs before removal.
 </div>
->>>>>>> fe4590fe (execore: intra-team VM ownership transfers)
 <input type="hidden" name="team_id" id="removeTeamId">
 <input type="hidden" name="user_id" id="removeUserId">
 <p style="margin-top:10px;">Type the user ID (<code id="removeUserIdDisplay"></code>) to confirm:</p>
 <p><input type="text" id="removeConfirmInput" placeholder="paste user_id here" autocomplete="off"></p>
 <p>
-<<<<<<< HEAD
-<button type="submit" class="danger-btn">Remove &amp; Delete VMs</button>
-=======
 <button type="submit" class="danger-btn" id="removeSubmitBtn" disabled>Remove</button>
->>>>>>> fe4590fe (execore: intra-team VM ownership transfers)
 <button type="button" class="cancel-btn" id="removeCancelBtn">Cancel</button>
 </p>
 </form>

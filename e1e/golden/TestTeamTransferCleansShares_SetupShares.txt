@@ -1,0 +1,24 @@
+
+
+●
+● ssh localhost
+●
+
+share add BOX_NAME team
+
+- help to see a list of commands
+
+PROMPT ▶ share add BOX_NAME team
+
+✓ Shared BOX_NAME with team XferShareTeam
+
+PROMPT ▶ share add BOX_NAME owner@test-xfer-shares.example
+
+✓ Invitation sent to owner@test-xfer-shares.example
+
+owner@test-xfer-shares.example will receive an email with access instructions.
+You can also share this URL directly: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+(They'll need to log in with owner@test-xfer-shares.example to access it)
+
+PROMPT ▶ exit
+Goodbye!

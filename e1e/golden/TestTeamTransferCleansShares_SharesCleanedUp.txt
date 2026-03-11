@@ -6,6 +6,7 @@
 
 share show BOX_NAME
 
+- new to create your first VM
 - help to see a list of commands
 
 PROMPT ▶ share show BOX_NAME
@@ -14,7 +15,6 @@ Sharing for VM 'BOX_NAME'
 URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
-Team SSH: ALLOWED - Team members can SSH into this VM
 
 No shares configured.
 

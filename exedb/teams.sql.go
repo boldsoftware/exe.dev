@@ -71,23 +71,71 @@ func (q *Queries) DeleteTeamMember(ctx context.Context, arg DeleteTeamMemberPara
 	return err
 }
 
-const getBoxAccessibleByTeamSudoer = `-- name: GetBoxAccessibleByTeamSudoer :one
+const getBoxAccessibleByTeamAdmin = `-- name: GetBoxAccessibleByTeamAdmin :one
 SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
-JOIN team_members tm_sudoer ON tm_creator.team_id = tm_sudoer.team_id
+JOIN team_members tm_admin ON tm_creator.team_id = tm_admin.team_id
 WHERE b.name = ?1
-AND tm_sudoer.user_id = ?2
-AND tm_sudoer.role != 'user'
+AND tm_admin.user_id = ?2
+AND tm_admin.role != 'user'
 `
 
-type GetBoxAccessibleByTeamSudoerParams struct {
-	BoxName      string `db:"box_name" json:"box_name"`
-	SudoerUserID string `db:"sudoer_user_id" json:"sudoer_user_id"`
+type GetBoxAccessibleByTeamAdminParams struct {
+	BoxName     string `db:"box_name" json:"box_name"`
+	AdminUserID string `db:"admin_user_id" json:"admin_user_id"`
 }
 
-func (q *Queries) GetBoxAccessibleByTeamSudoer(ctx context.Context, arg GetBoxAccessibleByTeamSudoerParams) (Box, error) {
-	row := q.queryRow(ctx, q.getBoxAccessibleByTeamSudoerStmt, getBoxAccessibleByTeamSudoer, arg.BoxName, arg.SudoerUserID)
+func (q *Queries) GetBoxAccessibleByTeamAdmin(ctx context.Context, arg GetBoxAccessibleByTeamAdminParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxAccessibleByTeamAdminStmt, getBoxAccessibleByTeamAdmin, arg.BoxName, arg.AdminUserID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+		&i.SupportAccessAllowed,
+		&i.Region,
+		&i.EmailReceiveEnabled,
+		&i.EmailMaildirPath,
+		&i.AllocatedCpus,
+		&i.CgroupOverrides,
+		&i.Tags,
+	)
+	return i, err
+}
+
+const getBoxByTeamAdminAndShard = `-- name: GetBoxByTeamAdminAndShard :one
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
+FROM boxes b
+JOIN box_ip_shard bis ON b.id = bis.box_id
+JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
+JOIN team_members tm_admin ON tm_creator.team_id = tm_admin.team_id
+WHERE bis.ip_shard = ?1
+AND tm_admin.user_id = ?2
+AND tm_admin.role != 'user'
+`
+
+type GetBoxByTeamAdminAndShardParams struct {
+	Shard       int64  `db:"shard" json:"shard"`
+	AdminUserID string `db:"admin_user_id" json:"admin_user_id"`
+}
+
+func (q *Queries) GetBoxByTeamAdminAndShard(ctx context.Context, arg GetBoxByTeamAdminAndShardParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByTeamAdminAndShardStmt, getBoxByTeamAdminAndShard, arg.Shard, arg.AdminUserID)
 	var i Box
 	err := row.Scan(
 		&i.ID,
@@ -185,54 +233,6 @@ type GetBoxByTeamSSHAndShardParams struct {
 
 func (q *Queries) GetBoxByTeamSSHAndShard(ctx context.Context, arg GetBoxByTeamSSHAndShardParams) (Box, error) {
 	row := q.queryRow(ctx, q.getBoxByTeamSSHAndShardStmt, getBoxByTeamSSHAndShard, arg.Shard, arg.UserID)
-	var i Box
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Status,
-		&i.Image,
-		&i.Ctrhost,
-		&i.ContainerID,
-		&i.CreatedByUserID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.LastStartedAt,
-		&i.Routes,
-		&i.SSHServerIdentityKey,
-		&i.SSHAuthorizedKeys,
-		&i.SSHClientPrivateKey,
-		&i.SSHPort,
-		&i.SSHUser,
-		&i.CreationLog,
-		&i.SupportAccessAllowed,
-		&i.Region,
-		&i.EmailReceiveEnabled,
-		&i.EmailMaildirPath,
-		&i.AllocatedCpus,
-		&i.CgroupOverrides,
-		&i.Tags,
-	)
-	return i, err
-}
-
-const getBoxByTeamSudoerAndShard = `-- name: GetBoxByTeamSudoerAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
-FROM boxes b
-JOIN box_ip_shard bis ON b.id = bis.box_id
-JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
-JOIN team_members tm_sudoer ON tm_creator.team_id = tm_sudoer.team_id
-WHERE bis.ip_shard = ?1
-AND tm_sudoer.user_id = ?2
-AND tm_sudoer.role != 'user'
-`
-
-type GetBoxByTeamSudoerAndShardParams struct {
-	Shard        int64  `db:"shard" json:"shard"`
-	SudoerUserID string `db:"sudoer_user_id" json:"sudoer_user_id"`
-}
-
-func (q *Queries) GetBoxByTeamSudoerAndShard(ctx context.Context, arg GetBoxByTeamSudoerAndShardParams) (Box, error) {
-	row := q.queryRow(ctx, q.getBoxByTeamSudoerAndShardStmt, getBoxByTeamSudoerAndShard, arg.Shard, arg.SudoerUserID)
 	var i Box
 	err := row.Scan(
 		&i.ID,
@@ -568,7 +568,7 @@ SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email, u.auth_provider
 FROM team_members tm
 JOIN users u ON tm.user_id = u.user_id
 WHERE tm.team_id = ?
-ORDER BY CASE tm.role WHEN 'billing_owner' THEN 0 WHEN 'sudoer' THEN 1 ELSE 2 END, tm.created_at ASC
+ORDER BY CASE tm.role WHEN 'billing_owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, tm.created_at ASC
 `
 
 type GetTeamMembersRow struct {
@@ -798,19 +798,6 @@ func (q *Queries) IsUserTeamBillingOwner(ctx context.Context, userID string) (bo
 	return is_billing_owner, err
 }
 
-const isUserTeamSudoer = `-- name: IsUserTeamSudoer :one
-SELECT role != 'user' as is_sudoer
-FROM team_members
-WHERE user_id = ?
-`
-
-func (q *Queries) IsUserTeamSudoer(ctx context.Context, userID string) (bool, error) {
-	row := q.queryRow(ctx, q.isUserTeamSudoerStmt, isUserTeamSudoer, userID)
-	var is_sudoer bool
-	err := row.Scan(&is_sudoer)
-	return is_sudoer, err
-}
-
 const listAllTeams = `-- name: ListAllTeams :many
 SELECT t.team_id, t.display_name, t.created_at,
        (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.team_id) as member_count
@@ -913,7 +900,7 @@ func (q *Queries) ListIPShardsForTeam(ctx context.Context, userID string) ([]int
 	return items, nil
 }
 
-const listTeamBoxesForSudoer = `-- name: ListTeamBoxesForSudoer :many
+const listTeamBoxesForAdmin = `-- name: ListTeamBoxesForAdmin :many
 SELECT b.id, b.name, b.status, b.image, b.created_at, b.updated_at, b.region,
        b.tags, u.email as creator_email
 FROM boxes b
@@ -925,7 +912,7 @@ AND b.status != 'failed'
 ORDER BY b.updated_at DESC
 `
 
-type ListTeamBoxesForSudoerRow struct {
+type ListTeamBoxesForAdminRow struct {
 	ID           int        `db:"id" json:"id"`
 	Name         string     `db:"name" json:"name"`
 	Status       string     `db:"status" json:"status"`
@@ -937,15 +924,15 @@ type ListTeamBoxesForSudoerRow struct {
 	CreatorEmail string     `db:"creator_email" json:"creator_email"`
 }
 
-func (q *Queries) ListTeamBoxesForSudoer(ctx context.Context, sudoerUserID string) ([]ListTeamBoxesForSudoerRow, error) {
-	rows, err := q.query(ctx, q.listTeamBoxesForSudoerStmt, listTeamBoxesForSudoer, sudoerUserID)
+func (q *Queries) ListTeamBoxesForAdmin(ctx context.Context, adminUserID string) ([]ListTeamBoxesForAdminRow, error) {
+	rows, err := q.query(ctx, q.listTeamBoxesForAdminStmt, listTeamBoxesForAdmin, adminUserID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTeamBoxesForSudoerRow{}
+	items := []ListTeamBoxesForAdminRow{}
 	for rows.Next() {
-		var i ListTeamBoxesForSudoerRow
+		var i ListTeamBoxesForAdminRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,

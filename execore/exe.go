@@ -129,7 +129,8 @@ type UserPageData struct {
 	Passkeys     []PasskeyInfo
 	Boxes        []BoxDisplayInfo
 	SharedBoxes  []SharedBoxDisplayInfo
-	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team sudoers)
+	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team admins)
+	TeamInfo     *TeamDisplayInfo     // Team info (for team members)
 	SiteSessions []SiteSession
 	ActivePage   string
 	IsLoggedIn   bool
@@ -191,6 +192,20 @@ type TeamBoxDisplayInfo struct {
 	ProxyURL     string
 	SSHCommand   string
 	DisplayTags  []string
+}
+
+// TeamDisplayInfo represents team info for the dashboard team section
+type TeamDisplayInfo struct {
+	DisplayName string
+	Role        string // current user's role in the team
+	IsAdmin     bool   // true if role is admin or billing_owner
+	Members     []TeamMemberDisplayInfo
+}
+
+// TeamMemberDisplayInfo represents a team member for the dashboard
+type TeamMemberDisplayInfo struct {
+	Email string
+	Role  string
 }
 
 // SiteSession represents an active session cookie for a site hosted by exe

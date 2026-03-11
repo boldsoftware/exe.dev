@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	addSudoerFlag       = addBoolFlag("sudoer", "add as team sudoer (SSH access to member VMs)")
+	addAdminFlag        = addBoolFlag("admin", "add as team admin (SSH access to member VMs)")
 	addBillingOwnerFlag = addBoolFlag("billing-owner", "add as team billing owner")
 	addForceFlag        = addBoolFlag("force", "force operation even if user has VMs")
 )
@@ -28,6 +28,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 		Subcommands: []*exemenu.Command{
 			{
 				Name:        "members",
+				Aliases:     []string{"ls"},
 				Description: "List team members",
 				Usage:       "team members",
 				Handler:     ss.handleTeamMembersCommand,
@@ -83,9 +84,9 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			{
 				Name:              "enroll",
 				Description:       "Add a user to any team",
-				Usage:             "team enroll <team_id> <email> [--sudoer|--billing-owner]",
+				Usage:             "team enroll <team_id> <email> [--admin|--billing-owner]",
 				Handler:           ss.handleTeamEnrollCommand,
-				FlagSetFunc:       addSudoerFlag(addBillingOwnerFlag(jsonOnlyFlags("team-enroll"))),
+				FlagSetFunc:       addAdminFlag(addBillingOwnerFlag(jsonOnlyFlags("team-enroll"))),
 				HasPositionalArgs: true,
 				Hidden:            true,
 				RequiresSudo:      true,
@@ -104,8 +105,8 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			},
 			{
 				Name:              "promote",
-				Description:       "Promote a team member to sudoer or billing_owner",
-				Usage:             "team promote <team_id> <email> <sudoer|billing_owner>",
+				Description:       "Promote a team member to admin or billing_owner",
+				Usage:             "team promote <team_id> <email> <admin|billing_owner>",
 				Handler:           ss.handleTeamPromoteCommand,
 				HasPositionalArgs: true,
 				Hidden:            true,
@@ -114,7 +115,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			},
 			{
 				Name:              "demote",
-				Description:       "Demote a team sudoer or billing_owner to member",
+				Description:       "Demote a team admin or billing_owner to member",
 				Usage:             "team demote <team_id> <email>",
 				Handler:           ss.handleTeamDemoteCommand,
 				HasPositionalArgs: true,
@@ -159,7 +160,7 @@ func (ss *SSHServer) isInTeamOrSudo(cc *exemenu.CommandContext) bool {
 	return ss.isInTeam(cc) || ss.isSudoUser(cc)
 }
 
-// isTeamAdmin checks if the user is a team admin — billing_owner or sudoer (for command availability)
+// isTeamAdmin checks if the user is a team admin — billing_owner or admin (for command availability)
 func (ss *SSHServer) isTeamAdmin(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
 		return false
@@ -200,7 +201,6 @@ func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandC
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"team_id":      team.TeamID,
 			"display_name": team.DisplayName,
 			"role":         team.Role,
 			"member_count": len(members),
@@ -248,8 +248,8 @@ func (ss *SSHServer) handleTeamMembersCommand(ctx context.Context, cc *exemenu.C
 		switch m.Role {
 		case "billing_owner":
 			roleIndicator = " \033[35m(billing owner)\033[0m"
-		case "sudoer":
-			roleIndicator = " \033[33m(sudoer)\033[0m"
+		case "admin":
+			roleIndicator = " \033[33m(admin)\033[0m"
 		}
 		cc.Writeln("  %s%s", m.Email, roleIndicator)
 	}
@@ -274,7 +274,7 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("You are not part of a team")
 	}
 
-	// Check if user is an admin (billing_owner or sudoer)
+	// Check if user is an admin (billing_owner or admin)
 	if team.Role == "user" {
 		return cc.Errorf("Only team admins can add members")
 	}
@@ -329,7 +329,7 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("You are not part of a team")
 	}
 
-	// Check if user is an admin (billing_owner or sudoer)
+	// Check if user is an admin (billing_owner or admin)
 	if team.Role == "user" {
 		return cc.Errorf("Only team admins can remove members")
 	}
@@ -406,7 +406,10 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("usage: team create <team_id> <display_name> <billing_owner_email>")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 	displayName := cc.Args[1]
 	billingOwnerEmail := cc.Args[2]
 
@@ -443,19 +446,22 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 
 func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 2 {
-		return cc.Errorf("usage: team enroll <team_id> <email> [--sudoer|--billing-owner]")
+		return cc.Errorf("usage: team enroll <team_id> <email> [--admin|--billing-owner]")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 	email := cc.Args[1]
-	isSudoer := cc.FlagSet.Lookup("sudoer") != nil && cc.FlagSet.Lookup("sudoer").Value.String() == "true"
+	isAdmin := cc.FlagSet.Lookup("admin") != nil && cc.FlagSet.Lookup("admin").Value.String() == "true"
 	isBillingOwner := cc.FlagSet.Lookup("billing-owner") != nil && cc.FlagSet.Lookup("billing-owner").Value.String() == "true"
 
-	if isSudoer && isBillingOwner {
-		return cc.Errorf("Cannot use both --sudoer and --billing-owner")
+	if isAdmin && isBillingOwner {
+		return cc.Errorf("Cannot use both --admin and --billing-owner")
 	}
 
-	_, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeam, teamID)
+	_, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeam, teamID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("Team %q not found", teamID)
 	}
@@ -481,8 +487,8 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	role := "user"
-	if isSudoer {
-		role = "sudoer"
+	if isAdmin {
+		role = "admin"
 	} else if isBillingOwner {
 		role = "billing_owner"
 	}
@@ -508,7 +514,10 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 		return cc.Errorf("usage: team unenroll <team_id> <email>")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 	email := cc.Args[1]
 
 	ce := canonicalizeEmail(email)
@@ -557,15 +566,18 @@ func (ss *SSHServer) handleTeamUnenrollCommand(ctx context.Context, cc *exemenu.
 
 func (ss *SSHServer) handleTeamPromoteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 3 {
-		return cc.Errorf("usage: team promote <team_id> <email> <sudoer|billing_owner>")
+		return cc.Errorf("usage: team promote <team_id> <email> <admin|billing_owner>")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 	email := cc.Args[1]
 	targetRole := cc.Args[2]
 
-	if targetRole != "sudoer" && targetRole != "billing_owner" {
-		return cc.Errorf("role must be 'sudoer' or 'billing_owner'")
+	if targetRole != "admin" && targetRole != "billing_owner" {
+		return cc.Errorf("role must be 'admin' or 'billing_owner'")
 	}
 
 	ce := canonicalizeEmail(email)
@@ -602,7 +614,10 @@ func (ss *SSHServer) handleTeamDemoteCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("usage: team demote <team_id> <email>")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 	email := cc.Args[1]
 
 	ce := canonicalizeEmail(email)
@@ -670,7 +685,10 @@ func (ss *SSHServer) handleTeamShowCommand(ctx context.Context, cc *exemenu.Comm
 		return cc.Errorf("usage: team show <team_id>")
 	}
 
-	teamID := cc.Args[0]
+	teamID, err := parseTeamID(cc.Args[0])
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	team, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeam, teamID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -691,8 +709,8 @@ func (ss *SSHServer) handleTeamShowCommand(ctx context.Context, cc *exemenu.Comm
 		switch m.Role {
 		case "billing_owner":
 			roleIndicator = " (billing_owner)"
-		case "sudoer":
-			roleIndicator = " (sudoer)"
+		case "admin":
+			roleIndicator = " (admin)"
 		}
 		cc.Writeln("  %s  %s%s", m.UserID, m.Email, roleIndicator)
 	}
@@ -719,7 +737,7 @@ func (ss *SSHServer) handleTeamTransferCommand(ctx context.Context, cc *exemenu.
 		return cc.Errorf("Only team admins can transfer VMs")
 	}
 
-	// Find the box (checks direct ownership + sudoer access)
+	// Find the box (checks direct ownership + admin access)
 	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, boxName)
 	if err != nil {
 		return cc.Errorf("VM %q not found", boxName)

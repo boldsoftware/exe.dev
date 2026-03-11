@@ -157,25 +157,13 @@ share receive-email mybox off
 share receive-email mybox
 ```
 
-### share ssh
+### share access
 
-Control team SSH access to a VM
-
-**Usage:**
-```
-share ssh <allow|disallow> <vm>
-```
-
-**Options:**
-- `--json`: output in JSON format
-
-### share shelley
-
-Control team Shelley access to a VM
+Control team SSH and Shelley access to a VM
 
 **Usage:**
 ```
-share shelley <allow|disallow> <vm>
+share access <allow|disallow> <vm>
 ```
 
 **Options:**

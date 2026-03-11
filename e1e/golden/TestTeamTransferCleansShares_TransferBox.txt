@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team transfer BOX_NAME recipient@test-xfer-shares.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team transfer BOX_NAME recipient@test-xfer-shares.example
+Transferred BOX_NAME to recipient@test-xfer-shares.example
+PROMPT ▶ exit
+Goodbye!

@@ -687,6 +687,30 @@ class CommandModal {
             danger: true
         });
     }
+
+    static teamInvite() {
+        cmdModal.open({
+            title: 'Invite to Team',
+            commandPrefix: 'team add',
+            inputPlaceholder: 'user@example.com',
+        });
+    }
+
+    static teamRemove(email) {
+        cmdModal.open({
+            title: 'Remove from Team',
+            command: `team remove ${shellQuote(email)}`,
+            danger: true,
+        });
+    }
+
+    static teamTransfer() {
+        cmdModal.open({
+            title: 'Transfer VM',
+            commandPrefix: 'team transfer',
+            inputPlaceholder: 'vm-name target@example.com',
+        });
+    }
 }
 
 // Global instance

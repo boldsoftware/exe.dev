@@ -4,15 +4,15 @@
 ● ssh localhost
 ●
 
-share ssh allow BOX_NAME
+share access allow BOX_NAME
 
 - help to see a list of commands
 
-PROMPT ▶ share ssh allow BOX_NAME
+PROMPT ▶ share access allow BOX_NAME
 ✓ Route updated successfully
   Port: 8000
   Share: private
-  Team SSH: allowed
+  Team Access: allowed
 
 PROMPT ▶ exit
 Goodbye!

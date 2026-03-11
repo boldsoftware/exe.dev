@@ -4,11 +4,12 @@
 ● ssh localhost
 ●
 
-ls -a
+ls
 
+- new to create your first VM
 - help to see a list of commands
 
-PROMPT ▶ ls -a
+PROMPT ▶ ls
 Your VMs:
   • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
 PROMPT ▶ exit

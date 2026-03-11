@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+ls
+
+- help to see a list of commands
+
+PROMPT ▶ ls
+No VMs found. Create one with 'new'.
+PROMPT ▶ exit
+Goodbye!
