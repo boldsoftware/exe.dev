@@ -707,6 +707,36 @@
         </div>
         {{end}}
 
+        {{if .IsSudoer}}
+        <div class="section" id="integrations">
+            <div class="section-title">Integrations (superuser)</div>
+            {{if .Integrations}}
+            <div class="ssh-keys-list">
+                {{range .Integrations}}
+                <div class="ssh-key-item">
+                    <div class="ssh-key-info">
+                        <div class="ssh-key-comment">{{.Name}}</div>
+                        <div class="ssh-key-fingerprint">
+                            {{if eq .Type "http-proxy"}}http-proxy → {{.Target}}{{if .HeaderName}} ({{.HeaderName}}){{end}}{{else}}{{.Type}}{{end}}
+                        </div>
+                        {{if .Attachments}}
+                        <div class="ssh-key-meta">attached to {{range $i, $a := .Attachments}}{{if $i}}, {{end}}{{$a}}{{end}}</div>
+                        {{else}}
+                        <div class="ssh-key-meta">not attached</div>
+                        {{end}}
+                    </div>
+                    <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{.Name}}), danger: true})">Remove</button>
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="info-card">
+                <div class="no-keys">No integrations configured.</div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
         {{if .SiteSessions}}
         <div class="section" id="sessions">
             <div class="section-title">Sessions</div>

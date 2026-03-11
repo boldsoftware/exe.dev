@@ -160,6 +160,19 @@ type UserPageData struct {
 	// Auto-open share modal (from access request email link)
 	ShareVM    string
 	ShareEmail string
+
+	// Integrations (sudoer only)
+	IsSudoer     bool
+	Integrations []IntegrationDisplayInfo
+}
+
+// IntegrationDisplayInfo represents an integration for the profile page.
+type IntegrationDisplayInfo struct {
+	Name        string
+	Type        string
+	Target      string   // for http-proxy: the target URL
+	HeaderName  string   // for http-proxy: header name (without value)
+	Attachments []string // e.g. ["vm:foo", "tag:bar"]
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard

@@ -1572,6 +1572,34 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		totalRemainingPct = 100
 	}
 
+	// Fetch integrations for sudoers
+	// TODO: integrations are sudoer-only while the feature is still hidden; will be public soon.
+	isSudoer := s.UserHasExeSudo(r.Context(), userID)
+	var integrations []IntegrationDisplayInfo
+	if isSudoer {
+		dbIntegrations, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListIntegrationsByUser, userID)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "Failed to get integrations for profile", "error", err, "user_id", userID)
+		}
+		for _, ig := range dbIntegrations {
+			info := IntegrationDisplayInfo{
+				Name:        ig.Name,
+				Type:        ig.Type,
+				Attachments: ig.GetAttachments(),
+			}
+			if ig.Type == "http-proxy" { // TODO: best-effort to avoid leaking secrets in the web UI
+				var cfg httpProxyConfig
+				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+					info.Target = cfg.Target
+					if name, _, ok := strings.Cut(cfg.Header, ":"); ok {
+						info.HeaderName = name
+					}
+				}
+			}
+			integrations = append(integrations, info)
+		}
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:           s.env,
@@ -1597,6 +1625,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ExtraBarPct:                   extraBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006"),
+
+		IsSudoer:     isSudoer,
+		Integrations: integrations,
 	}
 
 	// Render template
