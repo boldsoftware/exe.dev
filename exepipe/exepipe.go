@@ -111,7 +111,7 @@ func (pi *PipeInstance) Start() error {
 		return err
 	}
 
-	pi.lg.InfoContext(ctx, "exepipe server started")
+	pi.lg.InfoContext(ctx, "server started")
 
 	select {
 	case sig := <-sigChan:
