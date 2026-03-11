@@ -54,7 +54,7 @@ type ResourceManager struct {
 	cgroupRoot       string
 
 	// Test hooks (nil in production; overridden in tests)
-	collectUsageFn func(ctx context.Context, id, name, groupID string) (*usageData, error)
+	collectUsageFn  func(ctx context.Context, id, name, groupID string) (*usageData, error)
 	applyPriorityFn func(ctx context.Context, id, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error
 
 	// Memory reclaim
