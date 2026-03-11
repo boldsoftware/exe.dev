@@ -138,6 +138,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAccountsByUserIDStmt, err = db.PrepareContext(ctx, deleteAccountsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAccountsByUserID: %w", err)
 	}
+	if q.deleteAllGitHubAccountsStmt, err = db.PrepareContext(ctx, deleteAllGitHubAccounts); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAllGitHubAccounts: %w", err)
+	}
 	if q.deleteAppTokenStmt, err = db.PrepareContext(ctx, deleteAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAppToken: %w", err)
 	}
@@ -395,6 +398,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getGitHubAccountStmt, err = db.PrepareContext(ctx, getGitHubAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGitHubAccount: %w", err)
+	}
+	if q.getGitHubAccountByTargetStmt, err = db.PrepareContext(ctx, getGitHubAccountByTarget); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGitHubAccountByTarget: %w", err)
 	}
 	if q.getHLLSketchStmt, err = db.PrepareContext(ctx, getHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query GetHLLSketch: %w", err)
@@ -815,6 +821,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
+	}
+	if q.listGitHubAccountsStmt, err = db.PrepareContext(ctx, listGitHubAccounts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGitHubAccounts: %w", err)
 	}
 	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
@@ -1251,6 +1260,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAccountsByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.deleteAllGitHubAccountsStmt != nil {
+		if cerr := q.deleteAllGitHubAccountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAllGitHubAccountsStmt: %w", cerr)
+		}
+	}
 	if q.deleteAppTokenStmt != nil {
 		if cerr := q.deleteAppTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAppTokenStmt: %w", cerr)
@@ -1679,6 +1693,11 @@ func (q *Queries) Close() error {
 	if q.getGitHubAccountStmt != nil {
 		if cerr := q.getGitHubAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getGitHubAccountStmt: %w", cerr)
+		}
+	}
+	if q.getGitHubAccountByTargetStmt != nil {
+		if cerr := q.getGitHubAccountByTargetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGitHubAccountByTargetStmt: %w", cerr)
 		}
 	}
 	if q.getHLLSketchStmt != nil {
@@ -2381,6 +2400,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
 		}
 	}
+	if q.listGitHubAccountsStmt != nil {
+		if cerr := q.listGitHubAccountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGitHubAccountsStmt: %w", cerr)
+		}
+	}
 	if q.listIPShardsStmt != nil {
 		if cerr := q.listIPShardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsStmt: %w", cerr)
@@ -2858,6 +2882,7 @@ type Queries struct {
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAccountsByUserIDStmt                 *sql.Stmt
+	deleteAllGitHubAccountsStmt                *sql.Stmt
 	deleteAppTokenStmt                         *sql.Stmt
 	deleteAppTokensByUserIDStmt                *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
@@ -2944,6 +2969,7 @@ type Queries struct {
 	getExe1TokenByExe0Stmt                     *sql.Stmt
 	getGLBRolloutPrefixesStmt                  *sql.Stmt
 	getGitHubAccountStmt                       *sql.Stmt
+	getGitHubAccountByTargetStmt               *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
 	getIPAbuseFilterDisabledStmt               *sql.Stmt
 	getIPShardAndUserGLBByBoxNameStmt          *sql.Stmt
@@ -3084,6 +3110,7 @@ type Queries struct {
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
+	listGitHubAccountsStmt                     *sql.Stmt
 	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForTeamStmt                    *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
@@ -3208,6 +3235,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAccountsByUserIDStmt:                 q.deleteAccountsByUserIDStmt,
+		deleteAllGitHubAccountsStmt:                q.deleteAllGitHubAccountsStmt,
 		deleteAppTokenStmt:                         q.deleteAppTokenStmt,
 		deleteAppTokensByUserIDStmt:                q.deleteAppTokensByUserIDStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
@@ -3294,6 +3322,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
 		getGLBRolloutPrefixesStmt:                  q.getGLBRolloutPrefixesStmt,
 		getGitHubAccountStmt:                       q.getGitHubAccountStmt,
+		getGitHubAccountByTargetStmt:               q.getGitHubAccountByTargetStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
 		getIPShardAndUserGLBByBoxNameStmt:          q.getIPShardAndUserGLBByBoxNameStmt,
@@ -3434,6 +3463,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
+		listGitHubAccountsStmt:                     q.listGitHubAccountsStmt,
 		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForTeamStmt:                    q.listIPShardsForTeamStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,

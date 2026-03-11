@@ -454,13 +454,15 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 
 	sloghttp.AddCustomAttributes(r, slog.String("integration_type", cfg.typ))
 
-	if cfg.typ != "http-proxy" {
+	switch cfg.typ {
+	case "http-proxy":
+		s.proxyHTTPIntegration(w, r, vmName, integrationName, cfg.config)
+	case "github":
+		s.proxyGitHubIntegration(w, r, vmName, integrationName, cfg.config)
+	default:
 		s.log.WarnContext(r.Context(), "integration proxy: unsupported type", "type", cfg.typ)
 		http.Error(w, "unsupported integration type", http.StatusBadRequest)
-		return
 	}
-
-	s.proxyHTTPIntegration(w, r, vmName, integrationName, cfg.config)
 }
 
 // httpProxyConfig matches the JSON config stored in the integrations table
@@ -521,6 +523,78 @@ func (s *Service) proxyHTTPIntegration(w http.ResponseWriter, r *http.Request, v
 			// Log the full error server-side; return a generic message to the VM
 			// so we don't leak target hostnames, IPs, or DNS errors.
 			s.log.WarnContext(r.Context(), "integration proxy upstream error",
+				"error", err, "vm_name", vmName, "integration", integrationName)
+			http.Error(w, "integration proxy: upstream request failed", http.StatusBadGateway)
+		},
+	}
+
+	proxy.ServeHTTP(w, r)
+}
+
+// githubProxyConfig is the enriched config for github integrations (includes token from exed).
+type githubProxyConfig struct {
+	Repositories   []string `json:"repositories"`
+	InstallationID int64    `json:"installation_id"`
+	Token          string   `json:"token"`
+}
+
+// proxyGitHubIntegration reverse-proxies requests to GitHub.
+// It routes API requests (used by the gh CLI) to api.github.com and
+// everything else (git operations) to github.com.
+func (s *Service) proxyGitHubIntegration(w http.ResponseWriter, r *http.Request, vmName, integrationName, configJSON string) {
+	var cfg githubProxyConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		s.log.ErrorContext(r.Context(), "github integration proxy: bad config JSON", "error", err)
+		http.Error(w, "invalid integration config", http.StatusInternalServerError)
+		return
+	}
+	if cfg.Token == "" {
+		s.log.ErrorContext(r.Context(), "github integration proxy: missing token in config")
+		http.Error(w, "integration config missing token", http.StatusInternalServerError)
+		return
+	}
+
+	// Determine target based on path:
+	//   /api/v3/* → api.github.com/* (gh CLI REST API)
+	//   /api/graphql → api.github.com/graphql (gh CLI GraphQL)
+	//   everything else → github.com (git operations)
+	var targetHost string
+	var outPath string
+	var useBasicAuth bool
+
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/v3/"):
+		targetHost = "api.github.com"
+		outPath = strings.TrimPrefix(r.URL.Path, "/api/v3")
+	case r.URL.Path == "/api/graphql":
+		targetHost = "api.github.com"
+		outPath = "/graphql"
+	default:
+		targetHost = "github.com"
+		outPath = r.URL.Path
+		useBasicAuth = true
+	}
+	targetURL, _ := url.Parse("https://" + targetHost)
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(targetURL)
+			pr.Out.URL.Path = outPath
+			pr.Out.URL.RawQuery = r.URL.RawQuery
+			pr.Out.Host = targetHost
+			if useBasicAuth {
+				// Git HTTP transport requires Basic auth with x-access-token as username.
+				pr.Out.SetBasicAuth("x-access-token", cfg.Token)
+			} else {
+				// GitHub API accepts token auth.
+				pr.Out.Header.Set("Authorization", "token "+cfg.Token)
+			}
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return
+			}
+			s.log.WarnContext(r.Context(), "github integration proxy upstream error",
 				"error", err, "vm_name", vmName, "integration", integrationName)
 			http.Error(w, "integration proxy: upstream request failed", http.StatusBadGateway)
 		},

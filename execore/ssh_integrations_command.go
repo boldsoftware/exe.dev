@@ -2,7 +2,9 @@ package execore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -137,8 +139,18 @@ func summarizeConfig(typ, configJSON string) string {
 		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
 			return fmt.Sprintf("target=%s header=%s", cfg.Target, cfg.Header)
 		}
+	case "github":
+		var cfg githubIntegrationConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
+			return fmt.Sprintf("repos=%s", strings.Join(cfg.Repositories, ","))
+		}
 	}
 	return configJSON
+}
+
+type githubIntegrationConfig struct {
+	Repositories   []string `json:"repositories"`
+	InstallationID int64    `json:"installation_id"`
 }
 
 type httpProxyConfig struct {
@@ -148,6 +160,7 @@ type httpProxyConfig struct {
 
 var knownIntegrationTypes = map[string]bool{
 	"http-proxy": true,
+	"github":     true,
 }
 
 func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -162,6 +175,8 @@ func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.Comm
 	switch typeName {
 	case "http-proxy":
 		return ss.handleAddHTTPProxy(ctx, cc)
+	case "github":
+		return ss.handleAddGitHub(ctx, cc)
 	default:
 		return cc.Errorf("unknown integration type %q", typeName)
 	}
@@ -173,6 +188,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("target", "", "target URL (required for http-proxy)")
 	fs.String("header", "", "header to inject (required for http-proxy)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
+	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
 	return fs
 }
 
@@ -234,6 +250,106 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 			Config:        string(cfgJSON),
 			Name:          name,
 			Attachments:   "[]",
+		})
+	})
+	if err != nil {
+		return cc.Errorf("failed to add integration (name %q may already be in use)", name)
+	}
+
+	cc.Writeln("Added integration %s", name)
+	return nil
+}
+
+func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
+	name := cc.FlagSet.Lookup("name").Value.String()
+	repositoryFlag := cc.FlagSet.Lookup("repository").Value.String()
+
+	if name == "" {
+		return cc.Errorf("--name is required")
+	}
+	if err := validateIntegrationName(name); err != nil {
+		return cc.Errorf("invalid name: %v", err)
+	}
+	if repositoryFlag == "" {
+		return cc.Errorf("--repository is required (e.g. owner/repo or owner/repo1,owner/repo2)")
+	}
+
+	// Parse comma-separated repositories.
+	var repositories []string
+	for _, r := range strings.Split(repositoryFlag, ",") {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		owner, repo, ok := strings.Cut(r, "/")
+		if !ok || owner == "" || repo == "" {
+			return cc.Errorf("--repository %q must be in owner/repo format", r)
+		}
+		repositories = append(repositories, r)
+	}
+	if len(repositories) == 0 {
+		return cc.Errorf("--repository is required (e.g. owner/repo)")
+	}
+
+	if !ss.server.githubApp.InstallationTokensEnabled() {
+		return cc.Errorf("GitHub installation tokens are not configured on this server")
+	}
+
+	// All repos must share the same owner (one installation = one account).
+	owners := map[string]bool{}
+	for _, r := range repositories {
+		owner, _, _ := strings.Cut(r, "/")
+		owners[owner] = true
+	}
+	if len(owners) > 1 {
+		return cc.Errorf("all repositories must belong to the same owner")
+	}
+	var repoOwner string
+	for o := range owners {
+		repoOwner = o
+	}
+
+	// Look up the installation for this repo owner.
+	ghAccount, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubAccountByTarget, exedb.GetGitHubAccountByTargetParams{
+		UserID:      cc.User.ID,
+		TargetLogin: repoOwner,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		// List what's connected to give a helpful error.
+		accounts, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+		if len(accounts) == 0 {
+			return cc.Errorf("no GitHub account connected; run: integrations setup github")
+		}
+		var connected []string
+		for _, a := range accounts {
+			connected = append(connected, a.TargetLogin)
+		}
+		return cc.Errorf("no GitHub App installed on %q; connected: %s. Run: integrations setup github", repoOwner, strings.Join(connected, ", "))
+	}
+	if err != nil {
+		return err
+	}
+
+	cfg := githubIntegrationConfig{
+		Repositories:   repositories,
+		InstallationID: ghAccount.InstallationID,
+	}
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	id, err := generateID("int")
+	if err != nil {
+		return err
+	}
+	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertIntegration(ctx, exedb.InsertIntegrationParams{
+			IntegrationID: id,
+			OwnerUserID:   cc.User.ID,
+			Type:          "github",
+			Config:        string(cfgJSON),
+			Name:          name,
 		})
 	})
 	if err != nil {

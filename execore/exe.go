@@ -459,6 +459,10 @@ type Server struct {
 	githubApp      *githubapp.Client
 	githubSetupsMu sync.RWMutex
 	githubSetups   map[string]*GitHubSetup // state -> setup
+
+	// Cache for GitHub installation access tokens (minted by exed).
+	ghTokenCacheMu sync.Mutex
+	ghTokenCache   map[ghTokenCacheKey]*ghTokenCacheEntry
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -864,6 +868,31 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		ghApp.APIURL = u
 	}
 
+	// Initialize GitHub App ID and private key for minting installation tokens.
+	if s := os.Getenv("EXE_GITHUB_APP_ID"); s != "" {
+		appID, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing EXE_GITHUB_APP_ID: %w", err)
+		}
+		ghApp.AppID = appID
+	}
+	if s := os.Getenv("EXE_GITHUB_APP_PRIVATE_KEY"); s != "" {
+		block, _ := pem.Decode([]byte(s))
+		if block == nil {
+			return nil, fmt.Errorf("EXE_GITHUB_APP_PRIVATE_KEY: no PEM block found")
+		}
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("parsing EXE_GITHUB_APP_PRIVATE_KEY: %w", err)
+		}
+		ghApp.PrivateKey = key
+	}
+	if ghApp.InstallationTokensEnabled() {
+		slog.Info("GitHub installation token minting enabled")
+	} else {
+		slog.Info("GitHub installation token minting disabled (missing EXE_GITHUB_APP_ID or EXE_GITHUB_APP_PRIVATE_KEY)")
+	}
+
 	// Initialize GitHub User lookup client
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
@@ -1075,7 +1104,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		},
 		githubApp:    ghApp,
 		githubSetups: make(map[string]*GitHubSetup),
-		PublicIPs: map[netip.Addr]publicips.PublicIP{},
+		ghTokenCache: make(map[ghTokenCacheKey]*ghTokenCacheEntry),
+		PublicIPs:    map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry:       cfg.MetricsRegistry,
 		sshMetrics:            sshMetrics,

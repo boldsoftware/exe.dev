@@ -4,13 +4,18 @@
 package githubapp
 
 import (
+	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -25,6 +30,10 @@ type Client struct {
 	AppSlug      string
 	TokenURL     string // override for testing; defaults to GitHub
 	APIURL       string // override for testing; defaults to GitHub
+
+	// For minting installation access tokens (repo-scoped).
+	AppID      int64
+	PrivateKey *rsa.PrivateKey
 }
 
 // Enabled returns true if the GitHub App is fully configured.
@@ -49,6 +58,56 @@ func (c *Client) apiURL() string {
 // InstallURL returns the GitHub App installation URL with the given state parameter.
 func (c *Client) InstallURL(state string) string {
 	return fmt.Sprintf("https://github.com/apps/%s/installations/new?state=%s", c.AppSlug, url.QueryEscape(state))
+}
+
+// AuthorizeURL returns an OAuth authorization URL. Unlike InstallURL, this works
+// even if the app is already installed — it just re-authorizes. The callback
+// will receive code and state but NOT installation_id.
+func (c *Client) AuthorizeURL(state string) string {
+	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&state=%s",
+		url.QueryEscape(c.ClientID), url.QueryEscape(state))
+}
+
+// Installation is a GitHub App installation.
+type Installation struct {
+	ID      int64 `json:"id"`
+	Account struct {
+		Login string `json:"login"`
+	} `json:"account"`
+}
+
+// GetUserInstallations returns the installations accessible to the user with
+// the given access token. This discovers which accounts have the app installed.
+func (c *Client) GetUserInstallations(ctx context.Context, accessToken string) ([]Installation, error) {
+	u := c.apiURL() + "/user/installations"
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("user installations request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return nil, fmt.Errorf("reading user installations response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("user installations returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Installations []Installation `json:"installations"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing user installations: %w", err)
+	}
+	return result.Installations, nil
 }
 
 // TokenResponse is the result of exchanging an authorization code.
@@ -138,4 +197,133 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (string, error
 		return "", fmt.Errorf("empty login in user response")
 	}
 	return u.Login, nil
+}
+
+// GetInstallationAccount returns the login of the account (user or org) where
+// the given installation is installed. Requires App JWT authentication.
+func (c *Client) GetInstallationAccount(ctx context.Context, installationID int64) (string, error) {
+	now := time.Now()
+	claims := jwt.RegisteredClaims{
+		Issuer:    fmt.Sprintf("%d", c.AppID),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-60 * time.Second)),
+		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	signed, err := token.SignedString(c.PrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("signing JWT: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/app/installations/%d", c.apiURL(), installationID)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+signed)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("installation lookup failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return "", fmt.Errorf("reading installation response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("installation lookup returned %d: %s", resp.StatusCode, body)
+	}
+
+	var inst struct {
+		Account struct {
+			Login string `json:"login"`
+		} `json:"account"`
+	}
+	if err := json.Unmarshal(body, &inst); err != nil {
+		return "", fmt.Errorf("parsing installation response: %w", err)
+	}
+	if inst.Account.Login == "" {
+		return "", fmt.Errorf("empty account login in installation response")
+	}
+	return inst.Account.Login, nil
+}
+
+// InstallationTokensEnabled reports whether the client can mint installation access tokens.
+func (c *Client) InstallationTokensEnabled() bool {
+	return c.AppID != 0 && c.PrivateKey != nil
+}
+
+// InstallationAccessToken is a short-lived token scoped to specific repositories.
+type InstallationAccessToken struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// MintInstallationToken creates a new installation access token scoped to the given repositories.
+// Each entry in repoFullNames should be "owner/repo"; only the repo name (after the slash) is sent to GitHub.
+func (c *Client) MintInstallationToken(ctx context.Context, installationID int64, repoFullNames []string) (*InstallationAccessToken, error) {
+	var repoNames []string
+	for _, fullName := range repoFullNames {
+		_, repoName, ok := strings.Cut(fullName, "/")
+		if !ok || repoName == "" {
+			return nil, fmt.Errorf("invalid repository name %q: expected owner/repo", fullName)
+		}
+		repoNames = append(repoNames, repoName)
+	}
+	if len(repoNames) == 0 {
+		return nil, fmt.Errorf("at least one repository is required")
+	}
+
+	now := time.Now()
+	claims := jwt.RegisteredClaims{
+		Issuer:    fmt.Sprintf("%d", c.AppID),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-60 * time.Second)),
+		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	signed, err := token.SignedString(c.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("signing JWT: %w", err)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"repositories": repoNames,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	u := fmt.Sprintf("%s/app/installations/%d/access_tokens", c.apiURL(), installationID)
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+signed)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("installation token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return nil, fmt.Errorf("reading installation token response: %w", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("installation token request returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var iat InstallationAccessToken
+	if err := json.Unmarshal(respBody, &iat); err != nil {
+		return nil, fmt.Errorf("parsing installation token response: %w", err)
+	}
+	if iat.Token == "" {
+		return nil, fmt.Errorf("empty token in installation token response")
+	}
+	return &iat, nil
 }

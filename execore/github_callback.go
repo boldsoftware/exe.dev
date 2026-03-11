@@ -18,15 +18,19 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	installationIDStr := q.Get("installation_id")
 	state := q.Get("state")
 
-	if code == "" || installationIDStr == "" || state == "" {
+	if code == "" || state == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
 
-	installationID, err := strconv.ParseInt(installationIDStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid installation_id", http.StatusBadRequest)
-		return
+	var installationID int64
+	if installationIDStr != "" {
+		var err error
+		installationID, err = strconv.ParseInt(installationIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid installation_id", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Look up the pending setup by state.

@@ -71,7 +71,7 @@ manifest = json.dumps({
     "redirect_url": f"http://localhost:{LISTEN_PORT}/callback",
     "callback_urls": [env["callback_url"]],
     "request_oauth_on_install": True,
-    "public": False,
+    "public": True,
     "default_permissions": {
         "contents": "write",
         "actions": "write",

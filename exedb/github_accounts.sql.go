@@ -9,26 +9,70 @@ import (
 	"context"
 )
 
-const deleteGitHubAccount = `-- name: DeleteGitHubAccount :exec
+const deleteAllGitHubAccounts = `-- name: DeleteAllGitHubAccounts :exec
 DELETE FROM github_accounts WHERE user_id = ?
 `
 
-func (q *Queries) DeleteGitHubAccount(ctx context.Context, userID string) error {
-	_, err := q.exec(ctx, q.deleteGitHubAccountStmt, deleteGitHubAccount, userID)
+func (q *Queries) DeleteAllGitHubAccounts(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteAllGitHubAccountsStmt, deleteAllGitHubAccounts, userID)
+	return err
+}
+
+const deleteGitHubAccount = `-- name: DeleteGitHubAccount :exec
+DELETE FROM github_accounts WHERE user_id = ? AND installation_id = ?
+`
+
+type DeleteGitHubAccountParams struct {
+	UserID         string `db:"user_id" json:"user_id"`
+	InstallationID int64  `db:"installation_id" json:"installation_id"`
+}
+
+func (q *Queries) DeleteGitHubAccount(ctx context.Context, arg DeleteGitHubAccountParams) error {
+	_, err := q.exec(ctx, q.deleteGitHubAccountStmt, deleteGitHubAccount, arg.UserID, arg.InstallationID)
 	return err
 }
 
 const getGitHubAccount = `-- name: GetGitHubAccount :one
-SELECT user_id, github_login, installation_id, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ?
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? AND installation_id = ?
 `
 
-func (q *Queries) GetGitHubAccount(ctx context.Context, userID string) (GithubAccount, error) {
-	row := q.queryRow(ctx, q.getGitHubAccountStmt, getGitHubAccount, userID)
+type GetGitHubAccountParams struct {
+	UserID         string `db:"user_id" json:"user_id"`
+	InstallationID int64  `db:"installation_id" json:"installation_id"`
+}
+
+func (q *Queries) GetGitHubAccount(ctx context.Context, arg GetGitHubAccountParams) (GithubAccount, error) {
+	row := q.queryRow(ctx, q.getGitHubAccountStmt, getGitHubAccount, arg.UserID, arg.InstallationID)
 	var i GithubAccount
 	err := row.Scan(
 		&i.UserID,
 		&i.GitHubLogin,
 		&i.InstallationID,
+		&i.TargetLogin,
+		&i.AccessToken,
+		&i.RefreshToken,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getGitHubAccountByTarget = `-- name: GetGitHubAccountByTarget :one
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? AND target_login = ?
+`
+
+type GetGitHubAccountByTargetParams struct {
+	UserID      string `db:"user_id" json:"user_id"`
+	TargetLogin string `db:"target_login" json:"target_login"`
+}
+
+func (q *Queries) GetGitHubAccountByTarget(ctx context.Context, arg GetGitHubAccountByTargetParams) (GithubAccount, error) {
+	row := q.queryRow(ctx, q.getGitHubAccountByTargetStmt, getGitHubAccountByTarget, arg.UserID, arg.TargetLogin)
+	var i GithubAccount
+	err := row.Scan(
+		&i.UserID,
+		&i.GitHubLogin,
+		&i.InstallationID,
+		&i.TargetLogin,
 		&i.AccessToken,
 		&i.RefreshToken,
 		&i.CreatedAt,
@@ -37,13 +81,14 @@ func (q *Queries) GetGitHubAccount(ctx context.Context, userID string) (GithubAc
 }
 
 const insertGitHubAccount = `-- name: InsertGitHubAccount :exec
-INSERT INTO github_accounts (user_id, github_login, installation_id, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)
+INSERT INTO github_accounts (user_id, github_login, installation_id, target_login, access_token, refresh_token) VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertGitHubAccountParams struct {
 	UserID         string `db:"user_id" json:"user_id"`
 	GitHubLogin    string `db:"github_login" json:"github_login"`
 	InstallationID int64  `db:"installation_id" json:"installation_id"`
+	TargetLogin    string `db:"target_login" json:"target_login"`
 	AccessToken    string `db:"access_token" json:"access_token"`
 	RefreshToken   string `db:"refresh_token" json:"refresh_token"`
 }
@@ -53,8 +98,44 @@ func (q *Queries) InsertGitHubAccount(ctx context.Context, arg InsertGitHubAccou
 		arg.UserID,
 		arg.GitHubLogin,
 		arg.InstallationID,
+		arg.TargetLogin,
 		arg.AccessToken,
 		arg.RefreshToken,
 	)
 	return err
+}
+
+const listGitHubAccounts = `-- name: ListGitHubAccounts :many
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? ORDER BY created_at
+`
+
+func (q *Queries) ListGitHubAccounts(ctx context.Context, userID string) ([]GithubAccount, error) {
+	rows, err := q.query(ctx, q.listGitHubAccountsStmt, listGitHubAccounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GithubAccount{}
+	for rows.Next() {
+		var i GithubAccount
+		if err := rows.Scan(
+			&i.UserID,
+			&i.GitHubLogin,
+			&i.InstallationID,
+			&i.TargetLogin,
+			&i.AccessToken,
+			&i.RefreshToken,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

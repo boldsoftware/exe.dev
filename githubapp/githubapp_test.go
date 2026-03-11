@@ -2,10 +2,15 @@ package githubapp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestEnabled(t *testing.T) {
@@ -129,6 +134,110 @@ func TestGetUserError(t *testing.T) {
 
 	c := &Client{ClientID: "test", ClientSecret: "secret", APIURL: srv.URL}
 	_, err := c.GetUser(context.Background(), "bad-token")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestInstallationTokensEnabled(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		appID   int64
+		key     *rsa.PrivateKey
+		enabled bool
+	}{
+		{"both zero", 0, nil, false},
+		{"only AppID", 42, nil, false},
+		{"only PrivateKey", 0, key, false},
+		{"both set", 42, key, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{AppID: tt.appID, PrivateKey: tt.key}
+			if got := c.InstallationTokensEnabled(); got != tt.enabled {
+				t.Errorf("got %v, want %v", got, tt.enabled)
+			}
+		})
+	}
+}
+
+func TestMintInstallationToken(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/app/installations/12345/access_tokens" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+
+		// Verify JWT.
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			t.Fatal("missing Authorization header")
+		}
+		tokenStr := auth[len("Bearer "):]
+		parsed, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
+			return &key.PublicKey, nil
+		})
+		if err != nil {
+			t.Fatalf("failed to parse JWT: %v", err)
+		}
+		iss, _ := parsed.Claims.GetIssuer()
+		if iss != "42" {
+			t.Errorf("expected iss=42, got %s", iss)
+		}
+
+		// Verify body.
+		body, _ := io.ReadAll(r.Body)
+		var reqBody map[string]any
+		json.Unmarshal(body, &reqBody)
+		repos, ok := reqBody["repositories"].([]any)
+		if !ok || len(repos) != 1 || repos[0] != "empty" {
+			t.Errorf("unexpected repositories: %v", reqBody["repositories"])
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]any{
+			"token":      "ghs_mock_installation_token",
+			"expires_at": "2099-01-01T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{AppID: 42, PrivateKey: key, APIURL: srv.URL}
+	iat, err := c.MintInstallationToken(context.Background(), 12345, []string{"philz/empty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iat.Token != "ghs_mock_installation_token" {
+		t.Errorf("expected ghs_mock_installation_token, got %s", iat.Token)
+	}
+}
+
+func TestMintInstallationTokenError(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"message":"Bad credentials"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{AppID: 42, PrivateKey: key, APIURL: srv.URL}
+	_, err = c.MintInstallationToken(context.Background(), 12345, []string{"philz/empty"})
 	if err == nil {
 		t.Fatal("expected error")
 	}

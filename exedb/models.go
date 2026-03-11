@@ -197,6 +197,7 @@ type GithubAccount struct {
 	UserID         string     `db:"user_id" json:"user_id"`
 	GitHubLogin    string     `db:"github_login" json:"github_login"`
 	InstallationID int64      `db:"installation_id" json:"installation_id"`
+	TargetLogin    string     `db:"target_login" json:"target_login"`
 	AccessToken    string     `db:"access_token" json:"access_token"`
 	RefreshToken   string     `db:"refresh_token" json:"refresh_token"`
 	CreatedAt      *time.Time `db:"created_at" json:"created_at"`

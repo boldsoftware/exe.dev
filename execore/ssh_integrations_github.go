@@ -3,10 +3,10 @@ package execore
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
-	"errors"
 	"flag"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +42,7 @@ func setupGitHubFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("integrations setup github", flag.ContinueOnError)
 	fs.Bool("d", false, "disconnect GitHub account")
 	fs.Bool("delete", false, "disconnect GitHub account")
+	fs.Bool("reconnect", false, "reconnect to existing GitHub App installation")
 	return fs
 }
 
@@ -70,13 +71,18 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		return ss.handleDeleteGitHub(ctx, cc)
 	}
 
-	// Check if already connected.
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubAccount, cc.User.ID)
-	if err == nil {
-		return cc.Errorf("GitHub account already connected as %s", existing.GitHubLogin)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	// Show existing connections.
+	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+	if err != nil {
 		return err
+	}
+	if len(existing) > 0 {
+		var accounts []string
+		for _, a := range existing {
+			accounts = append(accounts, a.TargetLogin)
+		}
+		cc.Writeln("Already connected: %s", strings.Join(accounts, ", "))
+		cc.Writeln("Installing on another account...")
 	}
 
 	// Generate random state token.
@@ -104,11 +110,19 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		ss.server.githubSetupsMu.Unlock()
 	}()
 
-	installURL := ss.server.githubApp.InstallURL(state)
-	cc.Writeln("Install the GitHub App:")
-	cc.Writeln("  %s", installURL)
+	reconnect := cc.FlagSet.Lookup("reconnect").Value.String() == "true"
+
+	if reconnect {
+		authorizeURL := ss.server.githubApp.AuthorizeURL(state)
+		cc.Writeln("Authorize (reconnect existing installation):")
+		cc.Writeln("  %s", authorizeURL)
+	} else {
+		installURL := ss.server.githubApp.InstallURL(state)
+		cc.Writeln("Install the GitHub App:")
+		cc.Writeln("  %s", installURL)
+	}
 	cc.Writeln("")
-	cc.Writeln("Waiting for installation...")
+	cc.Writeln("Waiting...")
 
 	// Wait for web callback or timeout.
 	select {
@@ -124,39 +138,95 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		return cc.Errorf("GitHub authorization failed: %v", setup.Err)
 	}
 
-	// Store the connection.
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.InsertGitHubAccount(ctx, exedb.InsertGitHubAccountParams{
-			UserID:         cc.User.ID,
-			GitHubLogin:    setup.GitHubLogin,
-			InstallationID: setup.InstallationID,
-			AccessToken:    setup.AccessToken,
-			RefreshToken:   setup.RefreshToken,
-		})
-	})
-	if err != nil {
-		return cc.Errorf("failed to save GitHub connection: %v", err)
+	// Build list of installations to store.
+	type installInfo struct {
+		InstallationID int64
+		TargetLogin    string
+	}
+	var installs []installInfo
+
+	if setup.InstallationID != 0 {
+		// Fresh install flow: we got the installation_id from the callback.
+		var targetLogin string
+		if ss.server.githubApp.InstallationTokensEnabled() {
+			tl, err := ss.server.githubApp.GetInstallationAccount(ctx, setup.InstallationID)
+			if err != nil {
+				ss.server.slog().WarnContext(ctx, "failed to look up installation account", "error", err)
+			} else {
+				targetLogin = tl
+			}
+		}
+		installs = append(installs, installInfo{setup.InstallationID, targetLogin})
+	} else {
+		// OAuth-only flow (app already installed): discover installations via API.
+		userInstalls, err := ss.server.githubApp.GetUserInstallations(ctx, setup.AccessToken)
+		if err != nil {
+			return cc.Errorf("failed to discover installations: %v", err)
+		}
+		if len(userInstalls) == 0 {
+			return cc.Errorf("no GitHub App installations found; install at: %s", ss.server.githubApp.InstallURL(state))
+		}
+		for _, inst := range userInstalls {
+			installs = append(installs, installInfo{inst.ID, inst.Account.Login})
+		}
 	}
 
-	cc.Writeln("Connected GitHub account: %s", setup.GitHubLogin)
+	// Store new installations (skip duplicates).
+	existingIDs := map[int64]bool{}
+	for _, a := range existing {
+		existingIDs[a.InstallationID] = true
+	}
+
+	var added []string
+	for _, inst := range installs {
+		if existingIDs[inst.InstallationID] {
+			cc.Writeln("Already connected: %s", inst.TargetLogin)
+			continue
+		}
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.InsertGitHubAccount(ctx, exedb.InsertGitHubAccountParams{
+				UserID:         cc.User.ID,
+				GitHubLogin:    setup.GitHubLogin,
+				InstallationID: inst.InstallationID,
+				TargetLogin:    inst.TargetLogin,
+				AccessToken:    setup.AccessToken,
+				RefreshToken:   setup.RefreshToken,
+			})
+		})
+		if err != nil {
+			return cc.Errorf("failed to save GitHub connection: %v", err)
+		}
+		added = append(added, inst.TargetLogin)
+	}
+
+	if len(added) > 0 {
+		cc.Writeln("Connected GitHub account: %s (%s)", setup.GitHubLogin, strings.Join(added, ", "))
+	}
 	return nil
 }
 
 func (ss *SSHServer) handleDeleteGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
-	// Check if connected.
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubAccount, cc.User.ID)
-	if errors.Is(err, sql.ErrNoRows) {
+	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if len(existing) == 0 {
 		return cc.Errorf("no GitHub account connected")
 	}
+
+	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteAllGitHubAccounts, cc.User.ID)
 	if err != nil {
 		return err
 	}
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteGitHubAccount, cc.User.ID)
-	if err != nil {
-		return err
+	var accounts []string
+	for _, a := range existing {
+		label := a.GitHubLogin
+		if a.TargetLogin != "" {
+			label = fmt.Sprintf("%s (%s)", a.GitHubLogin, a.TargetLogin)
+		}
+		accounts = append(accounts, label)
 	}
-
-	cc.Writeln("Disconnected GitHub account: %s", existing.GitHubLogin)
+	cc.Writeln("Disconnected GitHub: %s", strings.Join(accounts, ", "))
 	return nil
 }

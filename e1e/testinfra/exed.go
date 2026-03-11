@@ -461,6 +461,8 @@ func addExedEnvKeys(env []string) []string {
 		"EXE_GITHUB_APP_SLUG",
 		"TEST_GITHUB_TOKEN_URL",
 		"TEST_GITHUB_API_URL",
+		"EXE_GITHUB_APP_ID",
+		"EXE_GITHUB_APP_PRIVATE_KEY",
 	} {
 		if v := os.Getenv(key); v != "" {
 			env = append(env, key+"="+v)

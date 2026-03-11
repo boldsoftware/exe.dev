@@ -126,6 +126,8 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*
 	os.Setenv("EXE_GITHUB_APP_SLUG", "mock-app")
 	os.Setenv("TEST_GITHUB_TOKEN_URL", ghMock.URL()+"/login/oauth/access_token")
 	os.Setenv("TEST_GITHUB_API_URL", ghMock.URL())
+	os.Setenv("EXE_GITHUB_APP_ID", TestGitHubAppID)
+	os.Setenv("EXE_GITHUB_APP_PRIVATE_KEY", TestGitHubAppPrivateKeyPEM)
 
 	// TODO: build piperd concurrently with
 	// starting exed for faster startup.
