@@ -78,12 +78,13 @@ jobs:
         env:
           OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_URL: https://github.com/${{ github.repository }}/blob/main/cmd/e3e
           MESSAGE_PATH: /tmp/e3e-oops.txt
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
         run: |
           set -euo pipefail
           cp "$OUTPUT_PATH" "$MESSAGE_PATH"
-          printf "\n<%s|CI logs>\n" "$RUN_URL" >> "$MESSAGE_PATH"
+          printf "\n\n_posted from <%s|GitHub Actions> · <%s|cmd/e3e>_\n" "$RUN_URL" "$SOURCE_URL" >> "$MESSAGE_PATH"
           uv run scripts/slack/post_message.py \
             --channel oops \
             --markdown \
