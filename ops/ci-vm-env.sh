@@ -9,6 +9,14 @@ DATA_DISK_GB="${DATA_DISK_GB:-50}" # ZFS data disk
 BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
 BASE_IMG_URL="${BASE_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
 
+# Content hash of the base cloud image (written by ci-vm-start.sh).
+# Lives on the same tmpfs, so both vanish together on reboot.
+if [[ -f "${BASE_IMG}.sha256" ]]; then
+    BASE_IMG_HASH="$(cat "${BASE_IMG}.sha256")"
+else
+    BASE_IMG_HASH="nobaseimg"
+fi
+
 WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}" # or inject via env
 USER_NAME="${USER_NAME:-ubuntu}"
@@ -36,11 +44,11 @@ EXEUNTU_DIGEST=$("${SCRIPT_DIR}/get-image-digest.sh" "$EXEUNTU_IMAGE" "$HOST_ARC
 # Combine ops tree hash with image digest for cache key
 # We re-build the VM snapshot once a day. If you want to disable
 # using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
-SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH:0:20}-${EXEUNTU_DIGEST}-$(date +%Y%m%d)"
+SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH:0:20}-${EXEUNTU_DIGEST}-${BASE_IMG_HASH:0:12}-$(date +%Y%m%d)"
 SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
 SNAPSHOT_DATA="${SNAPSHOT_DIR}/data.qcow2"
-LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}.qcow2"
-LOCAL_DATA_COPY="${WORKDIR}/ci-data-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}.qcow2"
+LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}-${BASE_IMG_HASH:0:12}.qcow2"
+LOCAL_DATA_COPY="${WORKDIR}/ci-data-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}-${BASE_IMG_HASH:0:12}.qcow2"
 SNAPSHOT_AVAILABLE=0
 if [[ -f "${SNAPSHOT_BASE}" && -f "${SNAPSHOT_DATA}" ]]; then
     SNAPSHOT_AVAILABLE=1

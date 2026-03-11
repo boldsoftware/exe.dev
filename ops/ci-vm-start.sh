@@ -169,6 +169,27 @@ cp_clone_file() {
 if [[ ! -f "${BASE_IMG}" ]]; then
     sudo curl "${BASE_IMG_URL}" -o "${BASE_IMG}"
 fi
+
+# Ensure the base image content hash sidecar exists.
+# ci-vm-env.sh reads this; if it was sourced before the download it may have
+# used the "nobaseimg" sentinel, so we re-derive all snapshot paths here.
+if [[ ! -f "${BASE_IMG}.sha256" ]]; then
+    echo "Computing base image SHA256..."
+    sudo sha256sum "${BASE_IMG}" | awk '{print $1}' | sudo tee "${BASE_IMG}.sha256" >/dev/null
+fi
+BASE_IMG_HASH="$(cat "${BASE_IMG}.sha256")"
+
+# Re-derive snapshot/cache paths now that we have the real base image hash.
+SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH:0:20}-${EXEUNTU_DIGEST}-${BASE_IMG_HASH:0:12}-$(date +%Y%m%d)"
+SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
+SNAPSHOT_DATA="${SNAPSHOT_DIR}/data.qcow2"
+LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}-${BASE_IMG_HASH:0:12}.qcow2"
+LOCAL_DATA_COPY="${WORKDIR}/ci-data-${SETUP_HASH:0:12}-${EXEUNTU_DIGEST:0:12}-${BASE_IMG_HASH:0:12}.qcow2"
+SNAPSHOT_AVAILABLE=0
+if [[ -f "${SNAPSHOT_BASE}" && -f "${SNAPSHOT_DATA}" ]]; then
+    SNAPSHOT_AVAILABLE=1
+fi
+
 if [[ ! -f "${SSH_PUBKEY}" ]]; then
     echo "SSH pubkey not found: ${SSH_PUBKEY}" >&2
     exit 1
@@ -196,6 +217,16 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 1 ]]; then
     fi
     BACKING_IMG="${LOCAL_BASE_COPY}"
     DATA_BACKING_IMG="${LOCAL_DATA_COPY}"
+fi
+
+# Validate that the backing chain is intact (catches base image replacement).
+if [[ "${BACKING_IMG}" != "${BASE_IMG}" ]]; then
+    if ! sudo qemu-img info --backing-chain "${BACKING_IMG}" >/dev/null 2>&1; then
+        echo "WARNING: Backing chain broken for ${BACKING_IMG}; falling back to fresh build."
+        BACKING_IMG="${BASE_IMG}"
+        DATA_BACKING_IMG=""
+        SNAPSHOT_AVAILABLE=0
+    fi
 fi
 
 # Create root disk
