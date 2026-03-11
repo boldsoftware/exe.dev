@@ -33,8 +33,8 @@ echo "Machine role: ${ROLE}, stage: ${STAGE}"
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Run the Tailscale OAuth preflight check
-"${SCRIPT_DIR}/test-tailscale-oauth.sh"
+# Tailscale OAuth preflight check is done after existing-instance check
+# so we can skip it during re-provisioning.
 
 # Configuration
 CLOUD_HYPERVISOR_VERSION="48.0"
@@ -166,12 +166,34 @@ EXISTING_INSTANCE=$(aws ec2 describe-instances \
     --output text \
     --region ${REGION})
 
+REPROVISION=false
 if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ]; then
-    echo "Error: Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
-    exit 1
+    echo "Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
+    read -r -p "Re-provision existing instance? (skips Tailscale and disk setup) [y/N] " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+    REPROVISION=true
+    INSTANCE_ID="$EXISTING_INSTANCE"
+    echo "Re-provisioning existing instance ${INSTANCE_ID}..."
+else
+    echo "Machine name ${MACHINE_NAME} is available"
 fi
 
-echo "Machine name ${MACHINE_NAME} is available"
+if [ "$REPROVISION" = "true" ]; then
+    # Verify the instance is accessible via Tailscale SSH
+    echo "Verifying ${MACHINE_NAME} is accessible via Tailscale SSH..."
+    if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
+        echo "ERROR: Cannot reach ${MACHINE_NAME} via Tailscale SSH"
+        echo "The instance exists but is not accessible. Check Tailscale status."
+        exit 1
+    fi
+    echo "Instance is accessible via Tailscale SSH"
+else
+
+# Run the Tailscale OAuth preflight check
+"${SCRIPT_DIR}/test-tailscale-oauth.sh"
 
 # Check if security group exists
 echo "Checking security group..."
@@ -708,6 +730,8 @@ fi
 
 rm -f /tmp/setup-volumes.sh
 
+fi # end of new-instance provisioning (skipped during re-provision)
+
 ###############################################
 # Build cloud-hypervisor artifacts on remote
 ###############################################
@@ -938,23 +962,36 @@ NODE_EXPORTER_SCRIPT
 
 echo ""
 echo "=========================================="
-echo "Setup complete!"
+if [ "$REPROVISION" = "true" ]; then
+    echo "Re-provisioning complete!"
+else
+    echo "Setup complete!"
+fi
 echo "=========================================="
 echo ""
 echo "The machine is ready to deploy the exelet."
 echo ""
-echo "${MACHINE_NAME} is now fully configured with:"
-echo "  - Cloud Hypervisor"
-echo "  - Swap on 25% of each instance-store NVMe drive"
-echo "  - ZFS pool 'tank' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives"
-echo "  - ZFS pool 'backup' (striped) on 2x EBS io2 volumes"
-echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
+if [ "$REPROVISION" = "true" ]; then
+    echo "${MACHINE_NAME} has been re-provisioned with:"
+    echo "  - Cloud Hypervisor (rebuilt)"
+    echo "  - sysctl, needrestart, IPv6, node_exporter (re-applied)"
+    echo "  - Tailscale and disk configuration were preserved"
+else
+    echo "${MACHINE_NAME} is now fully configured with:"
+    echo "  - Cloud Hypervisor"
+    echo "  - Swap on 25% of each instance-store NVMe drive"
+    echo "  - ZFS pool 'tank' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives"
+    echo "  - ZFS pool 'backup' (striped) on 2x EBS io2 volumes"
+    echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
+fi
 echo ""
 echo "Instance details:"
 echo "  Name: ${MACHINE_NAME}"
 echo "  ID: ${INSTANCE_ID}"
-echo "  Private IP: ${INSTANCE_IP}"
-echo "  Type: ${INSTANCE_TYPE}"
+if [ "$REPROVISION" != "true" ]; then
+    echo "  Private IP: ${INSTANCE_IP}"
+    echo "  Type: ${INSTANCE_TYPE}"
+fi
 echo ""
 echo "You can now connect via:"
 echo "  ssh ubuntu@${MACHINE_NAME}"
