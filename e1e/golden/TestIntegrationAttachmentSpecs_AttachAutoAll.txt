@@ -1,0 +1,20 @@
+
+
+●
+● ssh localhost
+●
+
+integrations attach testint auto:all
+
+- help to see a list of commands
+
+PROMPT ▶ integrations attach testint auto:all
+Attached testint to auto:all
+PROMPT ▶ integrations list
+testint  http-proxy  target=https://example.com header=X-Auth:secret  auto:all
+PROMPT ▶ integrations attach testint auto:all
+testint is already attached via auto:all
+PROMPT ▶ integrations detach testint auto:all
+Detached testint from auto:all
+PROMPT ▶ exit
+Goodbye!

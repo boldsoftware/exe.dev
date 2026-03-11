@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag -d BOX_NAME nonexistent
+
+- help to see a list of commands
+
+PROMPT ▶ tag -d BOX_NAME nonexistent
+tag "nonexistent" not found on BOX_NAME
+PROMPT ▶ exit
+Goodbye!

@@ -1,0 +1,28 @@
+
+
+●
+● ssh localhost
+●
+
+integrations attach testint vm:BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ integrations attach testint vm:BOX_NAME
+Attached testint to vm:BOX_NAME
+PROMPT ▶ integrations attach testint tag:prod
+Attached testint to tag:prod
+PROMPT ▶ integrations attach testint auto:all
+Attached testint to auto:all
+PROMPT ▶ integrations list
+testint  http-proxy  target=https://example.com header=X-Auth:secret  vm:BOX_NAME tag:prod auto:all
+PROMPT ▶ integrations detach testint tag:prod
+Detached testint from tag:prod
+PROMPT ▶ integrations detach testint auto:all
+Detached testint from auto:all
+PROMPT ▶ integrations detach testint vm:BOX_NAME
+Detached testint from vm:BOX_NAME
+PROMPT ▶ integrations list
+testint  http-proxy  target=https://example.com header=X-Auth:secret  (none)
+PROMPT ▶ exit
+Goodbye!

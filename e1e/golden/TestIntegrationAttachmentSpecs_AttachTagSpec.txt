@@ -1,0 +1,20 @@
+
+
+●
+● ssh localhost
+●
+
+integrations attach testint tag:prod
+
+- help to see a list of commands
+
+PROMPT ▶ integrations attach testint tag:prod
+Attached testint to tag:prod
+PROMPT ▶ integrations list
+testint  http-proxy  target=https://example.com header=X-Auth:secret  tag:prod
+PROMPT ▶ integrations attach testint tag:prod
+testint is already attached via tag:prod
+PROMPT ▶ integrations detach testint tag:prod
+Detached testint from tag:prod
+PROMPT ▶ exit
+Goodbye!

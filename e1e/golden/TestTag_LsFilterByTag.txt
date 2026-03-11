@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+ls prod
+
+- help to see a list of commands
+
+PROMPT ▶ ls prod
+Your VMs:
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu) #prod #staging #web
+PROMPT ▶ exit
+Goodbye!

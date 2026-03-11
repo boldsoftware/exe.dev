@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag -d BOX_NAME prod
+
+- help to see a list of commands
+
+PROMPT ▶ tag -d BOX_NAME prod
+Removed tag "prod" from BOX_NAME
+PROMPT ▶ exit
+Goodbye!

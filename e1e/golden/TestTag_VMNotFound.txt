@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag nonexistent-vm-xyz prod
+
+- help to see a list of commands
+
+PROMPT ▶ tag nonexistent-vm-xyz prod
+vm "nonexistent-vm-xyz" not found
+PROMPT ▶ exit
+Goodbye!

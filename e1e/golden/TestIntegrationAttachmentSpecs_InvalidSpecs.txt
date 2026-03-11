@@ -1,0 +1,26 @@
+
+
+●
+● ssh localhost
+●
+
+integrations attach testint tag:INVALID
+
+- help to see a list of commands
+
+PROMPT ▶ integrations attach testint tag:INVALID
+invalid tag name "INVALID": must match ^[a-z][a-z0-9_]*$
+PROMPT ▶ integrations attach testint foo:bar
+invalid attachment spec "foo:bar": must be vm:<name>, tag:<name>, or auto:all
+PROMPT ▶ integrations attach testint vm:nonexistent-vm-xyz
+vm "nonexistent-vm-xyz" not found
+PROMPT ▶ integrations detach testint tag:notattached
+testint is not attached via tag:notattached
+PROMPT ▶ integrations attach testint
+usage: integrations attach <name> <spec>
+  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name
+PROMPT ▶ integrations detach testint
+usage: integrations detach <name> <spec>
+  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name
+PROMPT ▶ exit
+Goodbye!

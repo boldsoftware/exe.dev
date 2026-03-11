@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+tag BOX_NAME UPPER
+
+- help to see a list of commands
+
+PROMPT ▶ tag BOX_NAME UPPER
+invalid tag name "UPPER": must match [a-z][a-z0-9_]*
+PROMPT ▶ tag BOX_NAME 123
+invalid tag name "123": must match [a-z][a-z0-9_]*
+PROMPT ▶ exit
+Goodbye!

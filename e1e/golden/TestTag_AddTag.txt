@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag BOX_NAME prod
+
+- help to see a list of commands
+
+PROMPT ▶ tag BOX_NAME prod
+Added tag "prod" to BOX_NAME
+PROMPT ▶ exit
+Goodbye!

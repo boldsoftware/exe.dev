@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag BOX_NAME staging
+
+- help to see a list of commands
+
+PROMPT ▶ tag BOX_NAME staging
+Added tag "staging" to BOX_NAME
+PROMPT ▶ exit
+Goodbye!

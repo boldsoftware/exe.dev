@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag
+
+- help to see a list of commands
+
+PROMPT ▶ tag
+usage: tag [-d] <vm> <tag-name>
+PROMPT ▶ exit
+Goodbye!
