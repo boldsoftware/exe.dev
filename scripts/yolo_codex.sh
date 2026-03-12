@@ -6,5 +6,5 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-codex --dangerously-bypass-approvals-and-sandbox exec -m gpt-5.3-codex --json "$1" 2>/dev/null |
+codex --dangerously-bypass-approvals-and-sandbox exec -m gpt-5.4 --json "$1" 2>/dev/null |
     jq -rs '[.[] | select(.type == "item.completed" and .item.type == "agent_message") | .item.text] | last'
