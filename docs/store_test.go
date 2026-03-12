@@ -35,7 +35,7 @@ func TestHandlerDocsRedirect(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, false)
+	handler := NewHandler(store, false, false)
 	if handler == nil {
 		t.Fatal("NewHandler returned nil")
 	}
@@ -100,7 +100,7 @@ func TestHandlerDocsAllMd(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, true)
+	handler := NewHandler(store, true, true)
 	if handler == nil {
 		t.Fatal("NewHandler returned nil")
 	}
@@ -229,36 +229,35 @@ Draft body.
 `)},
 }
 
-func TestPreviewDocLoadedWhenEnabled(t *testing.T) {
-	env := stage.Prod()
-	env.ShowDocsPreview = true
-	store, err := loadFromFS(previewTestFS, env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := store.EntryBySlug("preview"); !ok {
-		t.Fatal("preview doc should be loaded when ShowDocsPreview is true")
+func TestPreviewDocLoadedRegardlessOfShowDocsPreview(t *testing.T) {
+	for _, showPreview := range []bool{true, false} {
+		env := stage.Prod()
+		env.ShowDocsPreview = showPreview
+		store, err := loadFromFS(previewTestFS, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := store.EntryBySlug("preview"); !ok {
+			t.Fatalf("preview doc should always be loaded (ShowDocsPreview=%v)", showPreview)
+		}
 	}
 }
 
-func TestPreviewDocNotLoadedInProd(t *testing.T) {
+func TestPreviewDocAlwaysLoaded(t *testing.T) {
 	store, err := loadFromFS(previewTestFS, stage.Prod())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := store.EntryBySlug("preview"); ok {
-		t.Fatal("preview doc should not be loaded in Prod")
+	if _, ok := store.EntryBySlug("preview"); !ok {
+		t.Fatal("preview doc should always be loaded into the store")
 	}
-	// Published doc should still be there.
 	if _, ok := store.EntryBySlug("published"); !ok {
 		t.Fatal("published doc should be loaded in Prod")
 	}
 }
 
 func TestPreviewDocNotInSitemapEntries(t *testing.T) {
-	env := stage.Prod()
-	env.ShowDocsPreview = true
-	store, err := loadFromFS(previewTestFS, env)
+	store, err := loadFromFS(previewTestFS, stage.Prod())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,14 +268,12 @@ func TestPreviewDocNotInSitemapEntries(t *testing.T) {
 	}
 }
 
-func TestPreviewDocVisibleInRenderedOutput(t *testing.T) {
-	env := stage.Prod()
-	env.ShowDocsPreview = true
-	store, err := loadFromFS(previewTestFS, env)
+func TestPreviewDocVisibleWhenShowPreview(t *testing.T) {
+	store, err := loadFromFS(previewTestFS, stage.Prod())
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewHandler(store, false)
+	handler := NewHandler(store, false, true) // showPreview=true (staging)
 
 	req := httptest.NewRequest("GET", "/docs/all.md", nil)
 	w := httptest.NewRecorder()
@@ -285,17 +282,54 @@ func TestPreviewDocVisibleInRenderedOutput(t *testing.T) {
 	}
 	body := w.Body.String()
 	if !strings.Contains(body, "Preview body") {
-		t.Error("preview doc content should appear in rendered output")
+		t.Error("preview doc content should appear when showPreview is true")
 	}
 	if strings.Contains(body, "Draft body") {
 		t.Error("draft doc content should not appear when showHidden is false")
 	}
 }
 
+func TestPreviewDocVisibleToSudoer(t *testing.T) {
+	store, err := loadFromFS(previewTestFS, stage.Prod())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(store, false, false) // prod: showPreview=false
+	handler.SetTopbarFunc(func(r *http.Request) TopbarData {
+		return TopbarData{IsSudoer: true}
+	})
+
+	req := httptest.NewRequest("GET", "/docs/all.md", nil)
+	w := httptest.NewRecorder()
+	if !handler.Handle(w, req) {
+		t.Fatal("handler did not handle /docs/all.md")
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Preview body") {
+		t.Error("preview doc should be visible to sudoer in prod")
+	}
+}
+
+func TestPreviewDocHiddenFromNonSudoerInProd(t *testing.T) {
+	store, err := loadFromFS(previewTestFS, stage.Prod())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(store, false, false) // prod: showPreview=false
+
+	req := httptest.NewRequest("GET", "/docs/all.md", nil)
+	w := httptest.NewRecorder()
+	if !handler.Handle(w, req) {
+		t.Fatal("handler did not handle /docs/all.md")
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Preview body") {
+		t.Error("preview doc should not be visible to non-sudoer in prod")
+	}
+}
+
 func TestDraftDocNotLoadedWithoutShowHidden(t *testing.T) {
-	env := stage.Prod()
-	env.ShowDocsPreview = true
-	store, err := loadFromFS(previewTestFS, env)
+	store, err := loadFromFS(previewTestFS, stage.Prod())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,8 +339,8 @@ func TestDraftDocNotLoadedWithoutShowHidden(t *testing.T) {
 }
 
 func TestStatusTag(t *testing.T) {
-	showHidden := NewHandler(&Store{}, true)
-	noShowHidden := NewHandler(&Store{}, false)
+	showHidden := NewHandler(&Store{}, true, true)
+	noShowHidden := NewHandler(&Store{}, false, false)
 
 	tests := []struct {
 		name    string
@@ -363,7 +397,7 @@ func TestHandlerDocsMdIndex(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, true)
+	handler := NewHandler(store, true, true)
 	if handler == nil {
 		t.Fatal("NewHandler returned nil")
 	}
@@ -468,7 +502,7 @@ func TestHandlerDocSection(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, false)
+	handler := NewHandler(store, false, false)
 	if handler == nil {
 		t.Fatal("NewHandler returned nil")
 	}
@@ -490,9 +524,11 @@ func TestHandlerDocSection(t *testing.T) {
 
 			body := w.Body.String()
 
-			// The section page should contain links to all docs in this group.
+			// The section page should contain links to all visible docs in this group.
+			// The handler is created with showPreview=false so only published
+			// entries appear; preview-only entries are hidden.
 			for _, entry := range group.Docs {
-				if !entry.Visible() {
+				if !entry.Published {
 					continue
 				}
 				if !strings.Contains(body, entry.Path) {
@@ -512,7 +548,7 @@ func TestHandlerDocSectionNotFound(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, false)
+	handler := NewHandler(store, false, false)
 
 	req := httptest.NewRequest("GET", "/docs/section/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -529,7 +565,7 @@ func TestHandlerLLMsTxt(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	handler := NewHandler(store, true)
+	handler := NewHandler(store, true, true)
 	if handler == nil {
 		t.Fatal("NewHandler returned nil")
 	}

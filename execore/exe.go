@@ -1059,7 +1059,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		db.Close()
 		return nil, fmt.Errorf("loading docs: %w", err)
 	}
-	docsHandler := docspkg.NewHandler(docsStore, cfg.Env.ShowHiddenDocs)
+	docsHandler := docspkg.NewHandler(docsStore, cfg.Env.ShowHiddenDocs, cfg.Env.ShowDocsPreview)
 
 	securityStore, err := securitypkg.Load(true)
 	if err != nil {
@@ -1138,8 +1138,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	docsHandler.SetTopbarFunc(func(r *http.Request) docspkg.TopbarData {
 		td := docspkg.TopbarData{WebHost: cfg.Env.WebHost}
-		if _, err := s.validateAuthCookie(r); err == nil {
+		if userID, err := s.validateAuthCookie(r); err == nil {
 			td.IsLoggedIn = true
+			td.IsSudoer = s.UserHasExeSudo(r.Context(), userID)
 		}
 		return td
 	})

@@ -62,7 +62,7 @@ type Env struct {
 	BehindTLSProxy bool // whether running behind an external TLS-terminating proxy (e.g., exe.dev proxy)
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
-	ShowDocsPreview   bool // whether to load and display preview docs; true for all stages except prod
+	ShowDocsPreview   bool // whether to display preview docs to all users; true for all stages except prod (sudoers always see them)
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
 	AllowDeleteUser   bool // whether the debug delete-user endpoint is enabled; disabled in prod

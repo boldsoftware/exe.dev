@@ -622,7 +622,7 @@
           </div>
           {{range .Groups}}
           <a href="/docs/section/{{.Slug}}" class="sidebar-heading">{{.Heading}}</a>
-          {{range .Docs}}
+          {{range .Docs}}{{if call $.CanShow .}}
           {{if $isAllDocs}}
           <a href="#{{.Slug}}" class="sidebar-link">
             {{.Title}}{{call $.StatusTag .}}
@@ -632,7 +632,7 @@
             {{.Title}}{{call $.StatusTag .}}
           </a>
           {{end}}
-          {{end}} {{end}}
+          {{end}}{{end}} {{end}}
         </div>
       </div>
 

@@ -51,7 +51,7 @@ func main() {
 			http.Error(w, "template parse error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		handler := docspkg.NewHandlerWithTemplates(store, true, tmpl)
+		handler := docspkg.NewHandlerWithTemplates(store, true, true, tmpl)
 		if !handler.Handle(w, r) {
 			http.NotFound(w, r)
 		}

@@ -159,7 +159,7 @@ func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
 			if err != nil {
 				return fmt.Errorf("parsing %s: %w", path, err)
 			}
-			if entry.Published || (entry.Preview && env.ShowDocsPreview) || env.ShowHiddenDocs {
+			if entry.Published || entry.Preview || env.ShowHiddenDocs {
 				copyEntry := entry
 				store.entries = append(store.entries, &copyEntry)
 			}
@@ -281,6 +281,7 @@ type TopbarData struct {
 	WebHost    string
 	IsLoggedIn bool
 	BasicUser  bool
+	IsSudoer   bool
 	ActivePage string
 }
 
@@ -289,17 +290,18 @@ type TopbarData struct {
 type TopbarFunc func(r *http.Request) TopbarData
 
 type Handler struct {
-	store      *Store
-	showHidden bool
-	tmpl       *template.Template
-	topbarFunc TopbarFunc
+	store       *Store
+	showHidden  bool
+	showPreview bool
+	tmpl        *template.Template
+	topbarFunc  TopbarFunc
 }
 
-func NewHandler(store *Store, showHidden bool) *Handler {
+func NewHandler(store *Store, showHidden, showPreview bool) *Handler {
 	if store == nil {
 		return nil
 	}
-	return &Handler{store: store, showHidden: showHidden, tmpl: docTemplates}
+	return &Handler{store: store, showHidden: showHidden, showPreview: showPreview, tmpl: docTemplates}
 }
 
 // SetTopbarFunc sets the function used to populate topbar template data.
@@ -311,11 +313,23 @@ func (h *Handler) SetTopbarFunc(fn TopbarFunc) {
 
 // NewHandlerWithTemplates creates a Handler that uses the given templates
 // instead of the package-level embedded templates.
-func NewHandlerWithTemplates(store *Store, showHidden bool, tmpl *template.Template) *Handler {
+func NewHandlerWithTemplates(store *Store, showHidden, showPreview bool, tmpl *template.Template) *Handler {
 	if store == nil {
 		return nil
 	}
-	return &Handler{store: store, showHidden: showHidden, tmpl: tmpl}
+	return &Handler{store: store, showHidden: showHidden, showPreview: showPreview, tmpl: tmpl}
+}
+
+// canShow reports whether entry should be shown given the handler's display
+// settings and the per-request sudoer status.
+func (h *Handler) canShow(e *Entry, isSudoer bool) bool {
+	if e.Published {
+		return true
+	}
+	if h.showHidden {
+		return true
+	}
+	return e.Preview && (h.showPreview || isSudoer)
 }
 
 // statusTag returns a label for the entry's visibility state, for use in templates.
@@ -392,6 +406,9 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	// Handle /docs/{slug}.md -> serve raw markdown
 	if basePath, ok := strings.CutSuffix(path, ".md"); ok {
 		if entry, ok := h.store.Entry(basePath); ok {
+			if !h.canShow(entry, h.topbarData(r).IsSudoer) {
+				return false
+			}
 			h.renderDocMarkdown(w, r, entry)
 			return true
 		}
@@ -404,6 +421,9 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if entry, ok := h.store.Entry(path); ok {
+		if !h.canShow(entry, h.topbarData(r).IsSudoer) {
+			return false
+		}
 		h.renderDocEntry(w, r, entry)
 		return true
 	}
@@ -427,12 +447,17 @@ func (h *Handler) topbarData(r *http.Request) TopbarData {
 // templateData builds the common template data map with topbar fields.
 func (h *Handler) templateData(r *http.Request) map[string]any {
 	tb := h.topbarData(r)
+	canShow := func(e *Entry) bool {
+		return h.canShow(e, tb.IsSudoer)
+	}
 	return map[string]any{
 		"Groups":     h.store.Groups(),
 		"StatusTag":  h.statusTag,
+		"CanShow":    canShow,
 		"WebHost":    tb.WebHost,
 		"IsLoggedIn": tb.IsLoggedIn,
 		"BasicUser":  tb.BasicUser,
+		"IsSudoer":   tb.IsSudoer,
 		"ActivePage": tb.ActivePage,
 	}
 }
@@ -452,12 +477,13 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 }
 
 func (h *Handler) renderDocSection(w http.ResponseWriter, r *http.Request, group *Group) {
+	isSudoer := h.topbarData(r).IsSudoer
 	type visibleEntry struct {
 		Path, Title, Description string
 	}
 	var docs []visibleEntry
 	for _, entry := range group.Docs {
-		if !entry.Visible() && !h.showHidden {
+		if !h.canShow(entry, isSudoer) {
 			continue
 		}
 		docs = append(docs, visibleEntry{
@@ -511,7 +537,8 @@ func (h *Handler) renderDocMarkdown(w http.ResponseWriter, _ *http.Request, entr
 	_, _ = w.Write([]byte(entry.Markdown))
 }
 
-func (h *Handler) renderDocsIndex(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) renderDocsIndex(w http.ResponseWriter, r *http.Request) {
+	isSudoer := h.topbarData(r).IsSudoer
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	fmt.Fprintf(w, "# exe.dev docs\n\n")
 
@@ -520,7 +547,7 @@ func (h *Handler) renderDocsIndex(w http.ResponseWriter, _ *http.Request) {
 			fmt.Fprintf(w, "## %s\n\n", group.Heading)
 		}
 		for _, entry := range group.Docs {
-			if !entry.Visible() && !h.showHidden {
+			if !h.canShow(entry, isSudoer) {
 				continue
 			}
 			fmt.Fprintf(w, "- [%s](/docs/%s.md)", entry.Title, entry.Slug)
@@ -799,13 +826,14 @@ func parseTags(content string) (tags []string) {
 	return tags
 }
 
-func (h *Handler) renderAllDocsMD(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) renderAllDocsMD(w http.ResponseWriter, r *http.Request) {
+	isSudoer := h.topbarData(r).IsSudoer
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 
 	firstDoc := true
 	for _, group := range h.store.Groups() {
 		for _, entry := range group.Docs {
-			if !entry.Visible() && !h.showHidden {
+			if !h.canShow(entry, isSudoer) {
 				continue
 			}
 
@@ -829,6 +857,7 @@ func (h *Handler) renderAllDocsMD(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
+	isSudoer := h.topbarData(r).IsSudoer
 	// Create combined content with anchors (TOC is in the sidebar)
 	var contentBuf bytes.Buffer
 	firstGroup := true
@@ -843,7 +872,7 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 		contentBuf.WriteString("</h2>\n")
 
 		for _, entry := range group.Docs {
-			if !entry.Visible() && !h.showHidden {
+			if !h.canShow(entry, isSudoer) {
 				continue
 			}
 			contentBuf.WriteString("<h3 id=\"")
