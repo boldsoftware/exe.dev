@@ -1,4 +1,8 @@
 #!/bin/bash
+# Create an exeprox host on Latitude.sh and provision it.
+# This script creates the server via the Latitude API, waits for it to come
+# online, then delegates to provision-exeprox-host.sh for configuration.
+
 set -euo pipefail
 
 LATITUDE_API="https://api.latitude.sh"
@@ -116,7 +120,7 @@ if [ -z "${TS_OAUTH_CLIENT_ID:-}" ] || [ -z "${TS_OAUTH_CLIENT_SECRET:-}" ]; the
     exit 1
 fi
 
-if [ -z "${HOST_PRIVATE_KEY:-}" ] || [ -z "${HOST_CERT_SIG:-}" ]; then
+if [[ -z "${HOST_PRIVATE_KEY:-}" ]] || [[ -z "${HOST_CERT_SIG:-}" ]]; then
     echo "ERROR: HOST_PRIVATE_KEY and/or HOST_CERT_SIG not set"
     echo ""
     echo 'export HOST_PRIVATE_KEY="$(ssh exed-02 '\''sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1"'\'')"'
@@ -127,8 +131,11 @@ fi
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Run the Tailscale OAuth preflight check
-"${SCRIPT_DIR}/test-tailscale-oauth.sh"
+PROVISION_SCRIPT="$SCRIPT_DIR/provision-exeprox-host.sh"
+if [ ! -f "$PROVISION_SCRIPT" ]; then
+    echo "ERROR: Missing $PROVISION_SCRIPT" >&2
+    exit 1
+fi
 
 echo "=========================================="
 echo "Setting up exeprox host on Latitude"
@@ -479,266 +486,8 @@ if [ -z "$SERVER_IP" ]; then
     exit 1
 fi
 
-echo ""
-echo "=========================================="
-echo "Configuring server via SSH"
-echo "=========================================="
-echo ""
-
-# Wait for SSH to become available
-echo "Waiting for SSH to become available..."
-MAX_SSH_WAIT=300
-SSH_ELAPSED=0
-
-while [ $SSH_ELAPSED -lt $MAX_SSH_WAIT ]; do
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "ubuntu@${SERVER_IP}" true 2>/dev/null; then
-        echo "SSH is available"
-        break
-    fi
-    echo "  Waiting for SSH... ($SSH_ELAPSED/$MAX_SSH_WAIT seconds)"
-    sleep 10
-    SSH_ELAPSED=$((SSH_ELAPSED + 10))
-done
-
-if [ $SSH_ELAPSED -ge $MAX_SSH_WAIT ]; then
-    echo "ERROR: SSH not available after ${MAX_SSH_WAIT} seconds"
-    exit 1
-fi
-
-echo ""
-echo "Running apt-get update and upgrade..."
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${SERVER_IP}" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y'
-
-echo ""
-echo "Installing dependencies..."
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${SERVER_IP}" 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq'
-
-echo ""
-echo "Installing ghostty terminfo..."
-infocmp -x xterm-ghostty 2>/dev/null | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${SERVER_IP}" 'tic -x -' || echo "  (ghostty terminfo not available locally, skipping)"
-
-echo ""
-echo "Installing and configuring Tailscale..."
-
-# Create the tailscale setup script
-cat <<'TAILSCALE_SETUP' | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@${SERVER_IP}" "cat > /tmp/setup-tailscale.sh"
-#!/bin/bash
-set -euo pipefail
-
-HOSTNAME="$1"
-TS_OAUTH_CLIENT_ID="$2"
-TS_OAUTH_CLIENT_SECRET="$3"
-
-echo "Installing Tailscale..."
-curl -fsSL https://tailscale.com/install.sh | sudo sh
-
-echo "Generating Tailscale auth key via OAuth..."
-OAUTH_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-    "https://api.tailscale.com/api/v2/oauth/token" \
-    -d "client_id=${TS_OAUTH_CLIENT_ID}" \
-    -d "client_secret=${TS_OAUTH_CLIENT_SECRET}" \
-    -d "grant_type=client_credentials")
-
-OAUTH_HTTP=$(echo "$OAUTH_RESPONSE" | tail -n 1)
-OAUTH_BODY=$(echo "$OAUTH_RESPONSE" | head -n -1)
-
-if [ "$OAUTH_HTTP" != "200" ]; then
-    echo "ERROR: Failed to get OAuth token. HTTP code: $OAUTH_HTTP"
-    echo "Response body: $OAUTH_BODY"
-    exit 1
-fi
-
-ACCESS_TOKEN=$(echo "$OAUTH_BODY" | jq -r '.access_token')
-if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
-    echo "ERROR: Failed to extract access token"
-    echo "Response body: $OAUTH_BODY"
-    exit 1
-fi
-
-echo "Creating Tailscale auth key..."
-KEY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-    "https://api.tailscale.com/api/v2/tailnet/-/keys" \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "capabilities": {
-            "devices": {
-                "create": {
-                    "reusable": false,
-                    "ephemeral": false,
-                    "tags": ["tag:server"]
-                }
-            }
-        },
-        "expirySeconds": 3600
-    }')
-
-KEY_HTTP=$(echo "$KEY_RESPONSE" | tail -n 1)
-KEY_BODY=$(echo "$KEY_RESPONSE" | head -n -1)
-
-if [ "$KEY_HTTP" != "200" ]; then
-    echo "ERROR: Failed to create auth key. HTTP code: $KEY_HTTP"
-    echo "Response body: $KEY_BODY"
-    exit 1
-fi
-
-AUTH_KEY=$(echo "$KEY_BODY" | jq -r '.key')
-if [ -z "$AUTH_KEY" ] || [ "$AUTH_KEY" = "null" ]; then
-    echo "ERROR: Failed to extract auth key from response"
-    echo "Response body: $KEY_BODY"
-    exit 1
-fi
-
-echo "Starting Tailscale with hostname: ${HOSTNAME}"
-sudo tailscale up --authkey="$AUTH_KEY" --advertise-tags=tag:server --ssh --hostname="${HOSTNAME}"
-echo "Tailscale up completed"
-sleep 5
-sudo tailscale status
-TAILSCALE_SETUP
-
-# Execute the tailscale setup script
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${SERVER_IP}" "chmod +x /tmp/setup-tailscale.sh && /tmp/setup-tailscale.sh '${MACHINE_NAME}' '${TS_OAUTH_CLIENT_ID}' '${TS_OAUTH_CLIENT_SECRET}'"
-
-# Wait for Tailscale to be accessible
-echo ""
-echo "Waiting for Tailscale SSH to be accessible..."
-MAX_TS_WAIT=120
-TS_ELAPSED=0
-
-while [ $TS_ELAPSED -lt $MAX_TS_WAIT ]; do
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "ubuntu@${MACHINE_NAME}" true 2>/dev/null; then
-        echo "Machine is accessible via Tailscale SSH"
-        break
-    fi
-    echo "  Waiting for Tailscale... ($TS_ELAPSED/$MAX_TS_WAIT seconds)"
-    sleep 10
-    TS_ELAPSED=$((TS_ELAPSED + 10))
-done
-
-if [ $TS_ELAPSED -ge $MAX_TS_WAIT ]; then
-    echo "WARNING: Machine is not accessible via Tailscale after ${MAX_TS_WAIT} seconds"
-    echo "You may need to check the Tailscale setup manually"
-    echo "Direct SSH: ssh ubuntu@${SERVER_IP}"
-    exit 1
-fi
-
-# Now use Tailscale SSH for the rest of setup
-SSH_TARGET="ubuntu@${MACHINE_NAME}"
-
-# Disable OpenSSH server now that Tailscale SSH is working
-echo ""
-echo "Disabling OpenSSH server (sshpiper will use port 22)..."
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" \
-    'sudo systemctl disable ssh ssh.socket && sudo systemctl stop ssh ssh.socket'
-echo "OpenSSH server disabled"
-
-echo ""
-echo "=========================================="
-echo "Building sshpiper binaries"
-echo "=========================================="
-
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BINARY_NAME="sshpiperd.$TIMESTAMP"
-METRICS_NAME="metrics.$TIMESTAMP"
-
-echo "Building sshpiper binary..."
-(
-    cd "${SCRIPT_DIR}/../../deps/sshpiper"
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/sshpiperd
-)
-
-if [ ! -f "/tmp/$BINARY_NAME" ]; then
-    echo "ERROR: Failed to build sshpiper binary"
-    exit 1
-fi
-echo "Built /tmp/$BINARY_NAME"
-
-echo "Building metrics binary..."
-(
-    cd "${SCRIPT_DIR}/../../deps/sshpiper"
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRICS_NAME" ./plugin/metrics
-)
-
-if [ ! -f "/tmp/$METRICS_NAME" ]; then
-    echo "ERROR: Failed to build metrics binary"
-    exit 1
-fi
-echo "Built /tmp/$METRICS_NAME"
-
-echo ""
-echo "=========================================="
-echo "Deploying sshpiper to ${MACHINE_NAME}"
-echo "=========================================="
-
-# Copy binaries
-echo "Copying binaries..."
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "/tmp/$BINARY_NAME" "/tmp/$METRICS_NAME" \
-    "${SSH_TARGET}:~/"
-
-# Copy start script and service file
-echo "Copying start script and service file..."
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "${SCRIPT_DIR}/exeprox-sshpiper.sh" \
-    "${SCRIPT_DIR}/exeprox-sshpiper.service" \
-    "${SSH_TARGET}:~/"
-
-# Write host key files and configure service
-echo "Configuring sshpiper..."
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" bash -s "$BINARY_NAME" "$METRICS_NAME" <<'CONFIGURE_SSHPIPER'
-set -euo pipefail
-BINARY_NAME="$1"
-METRICS_NAME="$2"
-
-# Rename scripts to standard names
-mv ~/exeprox-sshpiper.sh ~/start-sshpiper.sh
-mv ~/exeprox-sshpiper.service ~/sshpiper.service
-
-# Make binaries executable
-chmod +x ~/$BINARY_NAME ~/$METRICS_NAME ~/start-sshpiper.sh
-
-# Create symlinks to latest versions
-ln -sf ~/$BINARY_NAME ~/sshpiperd.latest
-ln -sf ~/$METRICS_NAME ~/metrics.latest
-
-# Install systemd service file
-sudo mv ~/sshpiper.service /etc/systemd/system/sshpiper.service
-sudo systemctl daemon-reload
-CONFIGURE_SSHPIPER
-
-# Write the host key files (done separately to handle special characters)
-echo "Writing host key files..."
-printf '%s' "$HOST_PRIVATE_KEY" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "${SSH_TARGET}" "cat > ~/host_private_key && chmod 600 ~/host_private_key"
-
-printf '%s' "$HOST_CERT_SIG" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "${SSH_TARGET}" "cat > ~/host_cert_sig && chmod 600 ~/host_cert_sig"
-
-# Enable and start the service
-echo "Starting sshpiper service..."
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_TARGET}" bash <<'START_SERVICE'
-set -euo pipefail
-sudo systemctl enable sshpiper
-sudo systemctl restart sshpiper
-
-# Wait and check status
-sleep 2
-if sudo systemctl is-active --quiet sshpiper; then
-    echo "sshpiper service started successfully"
-else
-    echo "WARNING: sshpiper service may have issues"
-    sudo journalctl -u sshpiper -n 20 --no-pager
-fi
-START_SERVICE
-
-# Cleanup
-rm -f "/tmp/$BINARY_NAME" "/tmp/$METRICS_NAME"
+# Provision the server (installs Tailscale, builds and deploys sshpiper, etc.)
+"$PROVISION_SCRIPT" "$MACHINE_NAME" "$SERVER_IP"
 
 echo ""
 echo "=========================================="
