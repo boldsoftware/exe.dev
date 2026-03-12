@@ -1,0 +1,313 @@
+<!doctype html>
+<html><head>
+<title>Shelley Credits — Style Guide</title>
+<style>
+/* ---- debug base styles ---- */
+body { font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace; font-size: 13px; margin: 12px; line-height: 1.4; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 16px; margin: 0 0 4px 0; }
+h2 { font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin: 12px 0 4px 0; }
+
+.scenario { margin-bottom: 40px; }
+.scenario-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+
+/* ---- Component preview card ---- */
+.info-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 24px; max-width: 600px; }
+
+/* ---- Hero area ---- */
+.credit-hero { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+.credit-hero-left { display: flex; align-items: baseline; gap: 8px; }
+.credit-hero-number { font-size: 32px; font-weight: 700; color: #111; line-height: 1; }
+.credit-hero-label { font-size: 14px; color: #666; }
+.credit-hero-reset { font-size: 13px; color: #888; text-align: right; }
+
+/* ---- Bar ---- */
+.credit-bar-wrap { margin-bottom: 6px; }
+.credit-bar-track { background: #e0e0e0; border-radius: 4px; height: 8px; overflow: hidden; }
+.credit-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+.credit-bar-fill.green { background: #22a55b; }
+.credit-bar-fill.yellow { background: #eab308; }
+.credit-bar-fill.orange { background: #dd6b20; }
+.credit-bar-fill.red { background: #e53e3e; }
+.credit-bar-annotation { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+
+/* ---- Detail rows ---- */
+.credit-details { margin-top: 20px; border-top: 1px solid #f0f0f0; padding-top: 16px; }
+.credit-detail-row { display: flex; padding: 8px 0; }
+.credit-detail-label { font-size: 13px; color: #666; width: 120px; flex-shrink: 0; }
+.credit-detail-value { font-size: 13px; color: #111; }
+
+/* ---- Buy form ---- */
+.buy-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; gap: 12px; }
+.buy-input { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 120px; }
+.btn { display: inline-block; padding: 8px 16px; border: 1px solid #e0e0e0; background: #fff; color: #666; font-size: 13px; border-radius: 4px; font-family: inherit; cursor: pointer; }
+.btn:hover { background: #f5f5f5; border-color: #d0d0d0; color: #333; }
+a { color: #007bff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- Purchases ---- */
+.purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+.purchases-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+.purchases-table { width: 100%; border-collapse: collapse; }
+.purchases-table th, .purchases-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+.purchases-table th { color: #666; font-weight: 500; }
+.purchases-table td { color: #111; }
+.purchases-table tr:last-child td { border-bottom: none; }
+.purchases-table a { color: #0066cc; }
+</style>
+</head><body>
+<h1>Shelley Credits</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/styleguide/">styleguide</a> &gt; credits</p>
+
+<!-- ============================================================ -->
+<!-- Scenario 1: Fresh — never used
+     Monthly: 20/20 remaining. Extra: 0. No purchases.
+     used = 20-20 = 0, total = 20+0 = 20, pct = 0%
+     Hero: 20+0 = 20 remaining
+-->
+<!-- ============================================================ -->
+<div class="scenario">
+<div class="scenario-label">Scenario: Fresh account (0% used, no extra)</div>
+<div class="info-card">
+    <div class="credit-hero">
+        <div class="credit-hero-left">
+            <span class="credit-hero-number">20</span>
+            <span class="credit-hero-label">credits remaining</span>
+        </div>
+        <div class="credit-hero-reset">Resets Apr 1</div>
+    </div>
+    <div class="credit-bar-wrap">
+        <div class="credit-bar-track">
+            <div class="credit-bar-fill green" style="width: 0%;"></div>
+        </div>
+        <div class="credit-bar-annotation">
+            <span>0 used</span>
+            <span>20 total</span>
+        </div>
+    </div>
+    <div class="credit-details">
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Monthly</div>
+            <div class="credit-detail-value">20 of 20 remaining</div>
+        </div>
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Extra</div>
+            <div class="credit-detail-value">0 of 0 remaining</div>
+        </div>
+    </div>
+    <div class="buy-row">
+        <a href="#">Buy Extra Credits</a>
+        <input type="number" min="5" step="1" placeholder="5 credits" class="buy-input">
+        <button class="btn">Buy</button>
+    </div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Scenario 2: Healthy — used some monthly, bought extra, no overflow
+     Monthly: 12/20 remaining (used 8). Purchased 5 on Mar 8.
+     No overflow (monthly still has credits), so extra = 5 (full purchase intact).
+     used = 8 monthly + 0 overflow = 8, total = 20+5 = 25, pct = 8/25 = 32%
+     Hero: 12+5 = 17 remaining
+-->
+<!-- ============================================================ -->
+<div class="scenario">
+<div class="scenario-label">Scenario: Healthy (32% used, bought 5 extra, no overflow)</div>
+<div class="info-card">
+    <div class="credit-hero">
+        <div class="credit-hero-left">
+            <span class="credit-hero-number">17</span>
+            <span class="credit-hero-label">credits remaining</span>
+        </div>
+        <div class="credit-hero-reset">Resets Apr 1</div>
+    </div>
+    <div class="credit-bar-wrap">
+        <div class="credit-bar-track">
+            <div class="credit-bar-fill green" style="width: 32%;"></div>
+        </div>
+        <div class="credit-bar-annotation">
+            <span>8 used</span>
+            <span>25 total</span>
+        </div>
+    </div>
+    <div class="credit-details">
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Monthly</div>
+            <div class="credit-detail-value">12 of 20 remaining</div>
+        </div>
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Extra</div>
+            <div class="credit-detail-value">5 of 5 remaining</div>
+        </div>
+    </div>
+    <div class="buy-row">
+        <a href="#">Buy Extra Credits</a>
+        <input type="number" min="5" step="1" placeholder="5 credits" class="buy-input">
+        <button class="btn">Buy</button>
+    </div>
+    <div class="purchases">
+        <div class="purchases-label">Purchases (Last 30D)</div>
+        <table class="purchases-table">
+        <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
+        <tbody>
+        <tr><td>5 credits</td><td>08 Mar 2026</td><td><a href="#">View</a></td></tr>
+        </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Scenario 3: Monthly depleted, dipping into extra
+     Monthly: 0/20 remaining (used all 20). Purchased 10 on Mar 1.
+     Overflow consumed 3 extra credits, so extra remaining = 10-3 = 7.
+     used = 20 monthly + 3 overflow = 23, total = 20+10 = 30, pct = 23/30 = 77%
+     Hero: 0+7 = 7 remaining
+-->
+<!-- ============================================================ -->
+<div class="scenario">
+<div class="scenario-label">Scenario: Monthly gone, dipping into extra (77% used)</div>
+<div class="info-card">
+    <div class="credit-hero">
+        <div class="credit-hero-left">
+            <span class="credit-hero-number">7</span>
+            <span class="credit-hero-label">credits remaining</span>
+        </div>
+        <div class="credit-hero-reset">Resets Apr 1</div>
+    </div>
+    <div class="credit-bar-wrap">
+        <div class="credit-bar-track">
+            <div class="credit-bar-fill orange" style="width: 77%;"></div>
+        </div>
+        <div class="credit-bar-annotation">
+            <span>23 used</span>
+            <span>30 total</span>
+        </div>
+    </div>
+    <div class="credit-details">
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Monthly</div>
+            <div class="credit-detail-value">0 of 20 remaining</div>
+        </div>
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Extra</div>
+            <div class="credit-detail-value">7 of 10 remaining</div>
+        </div>
+    </div>
+    <div class="buy-row">
+        <a href="#">Buy Extra Credits</a>
+        <input type="number" min="5" step="1" placeholder="5 credits" class="buy-input">
+        <button class="btn">Buy</button>
+    </div>
+    <div class="purchases">
+        <div class="purchases-label">Purchases (Last 30D)</div>
+        <table class="purchases-table">
+        <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
+        <tbody>
+        <tr><td>10 credits</td><td>01 Mar 2026</td><td><a href="#">View</a></td></tr>
+        </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Scenario 4: Critical — monthly gone, extra almost gone
+     Monthly: 0/20 remaining (used all 20). Purchased 5 on Feb 28.
+     Overflow consumed 4, so extra remaining = 5-4 = 1.
+     used = 20 monthly + 4 overflow = 24, total = 20+5 = 25, pct = 24/25 = 96%
+     Hero: 0+1 = 1 remaining
+-->
+<!-- ============================================================ -->
+<div class="scenario">
+<div class="scenario-label">Scenario: Critical (96% used, 1 credit left)</div>
+<div class="info-card">
+    <div class="credit-hero">
+        <div class="credit-hero-left">
+            <span class="credit-hero-number" style="color: #e53e3e;">1</span>
+            <span class="credit-hero-label">credits remaining</span>
+        </div>
+        <div class="credit-hero-reset">Resets Apr 1</div>
+    </div>
+    <div class="credit-bar-wrap">
+        <div class="credit-bar-track">
+            <div class="credit-bar-fill red" style="width: 96%;"></div>
+        </div>
+        <div class="credit-bar-annotation">
+            <span>24 used</span>
+            <span>25 total</span>
+        </div>
+    </div>
+    <div class="credit-details">
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Monthly</div>
+            <div class="credit-detail-value">0 of 20 remaining</div>
+        </div>
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Extra</div>
+            <div class="credit-detail-value">1 of 5 remaining</div>
+        </div>
+    </div>
+    <div class="buy-row">
+        <a href="#">Buy Extra Credits</a>
+        <input type="number" min="5" step="1" placeholder="5 credits" class="buy-input">
+        <button class="btn">Buy</button>
+    </div>
+    <div class="purchases">
+        <div class="purchases-label">Purchases (Last 30D)</div>
+        <table class="purchases-table">
+        <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
+        <tbody>
+        <tr><td>5 credits</td><td>28 Feb 2026</td><td><a href="#">View</a></td></tr>
+        </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Scenario 5: Depleted — everything gone
+     Monthly: 0/20 remaining (used all 20). No extra.
+     used = 20-0 = 20, total = 20+0 = 20, pct = 20/20 = 100%
+     Hero: 0+0 = 0 remaining
+-->
+<!-- ============================================================ -->
+<div class="scenario">
+<div class="scenario-label">Scenario: Depleted (100% used, nothing left)</div>
+<div class="info-card">
+    <div class="credit-hero">
+        <div class="credit-hero-left">
+            <span class="credit-hero-number" style="color: #e53e3e;">0</span>
+            <span class="credit-hero-label">credits remaining</span>
+        </div>
+        <div class="credit-hero-reset">Resets Apr 1</div>
+    </div>
+    <div class="credit-bar-wrap">
+        <div class="credit-bar-track">
+            <div class="credit-bar-fill red" style="width: 100%;"></div>
+        </div>
+        <div class="credit-bar-annotation">
+            <span>20 used</span>
+            <span>20 total</span>
+        </div>
+    </div>
+    <div class="credit-details">
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Monthly</div>
+            <div class="credit-detail-value">0 of 20 remaining</div>
+        </div>
+        <div class="credit-detail-row">
+            <div class="credit-detail-label">Extra</div>
+            <div class="credit-detail-value">0 of 0 remaining</div>
+        </div>
+    </div>
+    <div class="buy-row">
+        <a href="#">Buy Extra Credits</a>
+        <input type="number" min="5" step="1" placeholder="5 credits" class="buy-input">
+        <button class="btn">Buy</button>
+    </div>
+</div>
+</div>
+
+</body></html>
