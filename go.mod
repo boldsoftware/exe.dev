@@ -12,6 +12,8 @@ replace github.com/boldsoftware/exe.dev/completeinit => ./oss/completeinit
 
 replace github.com/creack/pty => ./deps/pty
 
+replace golang.org/x/term => ./deps/term
+
 require (
 	codeberg.org/miekg/dns v0.5.26
 	github.com/AfterShip/email-verifier v1.4.1
@@ -43,6 +45,7 @@ require (
 	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874
 	github.com/go-webauthn/webauthn v0.15.0
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
@@ -82,7 +85,7 @@ require (
 	golang.org/x/net v0.49.0
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sync v0.19.0
-	golang.org/x/sys v0.40.0
+	golang.org/x/sys v0.42.0
 	golang.org/x/term v0.39.0
 	golang.org/x/tools v0.41.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda
@@ -164,7 +167,6 @@ require (
 	github.com/go-webauthn/x v0.1.26 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
