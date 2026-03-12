@@ -325,12 +325,13 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	p.log().Info("established new SSH connection in pool", "key", key.String())
 
 	pc = &pooledConn{client: client, key: key, pool: p, log: p.log()}
-	// Immediately mark as connected and then add a disconnect for balance.
+	// Mark as connected, insert into the pool, then disconnect for balance.
+	// setConn must precede disconnected so release() can find pc in the map.
 	// This starts the TTL clock running.
 	// Under normal operation, the connection will be used immediately after this.
 	pc.connected()
-	pc.disconnected()
 	p.setConn(pc)
+	pc.disconnected()
 
 	return pc, nil
 }
