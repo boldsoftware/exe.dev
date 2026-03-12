@@ -124,18 +124,18 @@ type BoxShareLinkInfo struct {
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
 	stage.Env
-	SSHCommand   string
-	User         exedb.User
-	SSHKeys      []SSHKey
-	Passkeys     []PasskeyInfo
-	Boxes        []BoxDisplayInfo
-	SharedBoxes  []SharedBoxDisplayInfo
-	TeamBoxes          []TeamBoxDisplayInfo  // Team VMs (for team admins)
-	TeamInfo           *TeamDisplayInfo      // Team info (for team members)
+	SSHCommand         string
+	User               exedb.User
+	SSHKeys            []SSHKey
+	Passkeys           []PasskeyInfo
+	Boxes              []BoxDisplayInfo
+	SharedBoxes        []SharedBoxDisplayInfo
+	TeamBoxes          []TeamBoxDisplayInfo    // Team VMs (for team admins)
+	TeamInfo           *TeamDisplayInfo        // Team info (for team members)
 	PendingTeamInvites []PendingTeamInviteInfo // Pending team invites (for users not in a team)
-	SiteSessions []SiteSession
-	ActivePage   string
-	IsLoggedIn   bool
+	SiteSessions       []SiteSession
+	ActivePage         string
+	IsLoggedIn         bool
 	// BasicUser is true if the user has no SSH keys, no boxes, and was created for login-with-exe.
 	// These users should only see the profile tab and a "what is exe?" section.
 	BasicUser   bool
