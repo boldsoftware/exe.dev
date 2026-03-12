@@ -613,7 +613,7 @@ func (n *NAT) applyCarrierNATBlock(ctx context.Context, device string) error {
 //
 // Established/related connections (like SSH proxy responses) are allowed through.
 func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string) error {
-	// Check if rule already exists by looking for our DROP rule
+	// Check which rules already exist.
 	args := []string{"-n", "-L", "INPUT", "-v"}
 	fc := exec.CommandContext(ctx, "iptables", args...)
 
@@ -624,17 +624,25 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 
 	buf := bytes.NewBuffer(fOut)
 	sc := bufio.NewScanner(buf)
-	ruleExists := false
+	has80, has443, hasDrop := false, false, false
 	for sc.Scan() {
 		l := sc.Text()
-		// Look for our DROP rule for this bridge/IP combination
-		if strings.Contains(l, bridgeName) && strings.Contains(l, bridgeIP) && strings.Contains(l, "DROP") {
-			ruleExists = true
-			break
+		if strings.Contains(l, bridgeName) && strings.Contains(l, bridgeIP) {
+			if strings.Contains(l, "ACCEPT") {
+				if strings.Contains(l, "dpt:80") {
+					has80 = true
+				}
+				if strings.Contains(l, "dpt:443") {
+					has443 = true
+				}
+			}
+			if strings.Contains(l, "DROP") {
+				hasDrop = true
+			}
 		}
 	}
 
-	if ruleExists {
+	if has80 && has443 && hasDrop {
 		return nil
 	}
 
@@ -643,37 +651,48 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 	// Allow port 80 and 443 traffic that was originally destined for the metadata IP (169.254.169.254).
 	// This traffic was DNATed to the bridge IP and should be allowed through to the metadata service.
 	// We use conntrack's --ctorigdst to check the original destination before DNAT.
-	for _, port := range []string{"80", "443"} {
+	for _, rule := range []struct {
+		port   string
+		exists bool
+	}{
+		{"80", has80},
+		{"443", has443},
+	} {
+		if rule.exists {
+			continue
+		}
 		allowArgs := []string{
 			"-I", "INPUT",
 			"-i", bridgeName,
 			"-d", bridgeIP,
 			"-p", "tcp",
-			"--dport", port,
+			"--dport", rule.port,
 			"-m", "conntrack",
 			"--ctorigdst", MetadataIP,
 			"-j", "ACCEPT",
 		}
 		if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
-			return fmt.Errorf("failed to add metadata allow rule for port %s: %w", port, err)
+			return fmt.Errorf("failed to add metadata allow rule for port %s: %w", rule.port, err)
 		}
 	}
 
-	// Block all other new TCP connections from VMs to gateway.
-	// We use INPUT chain because this traffic is destined for the host itself.
-	// The --syn flag matches only TCP SYN packets (new connection attempts),
-	// allowing established connection responses (like SSH proxy traffic) through.
-	// This rule comes after the ACCEPT rule above, so DNATed metadata traffic is allowed.
-	blockArgs := []string{
-		"-A", "INPUT",
-		"-i", bridgeName,
-		"-d", bridgeIP,
-		"-p", "tcp",
-		"--syn",
-		"-j", "DROP",
-	}
-	if err := exec.CommandContext(ctx, "iptables", blockArgs...).Run(); err != nil {
-		return fmt.Errorf("failed to add gateway block rule: %w", err)
+	if !hasDrop {
+		// Block all other new TCP connections from VMs to gateway.
+		// We use INPUT chain because this traffic is destined for the host itself.
+		// The --syn flag matches only TCP SYN packets (new connection attempts),
+		// allowing established connection responses (like SSH proxy traffic) through.
+		// This rule comes after the ACCEPT rules above, so DNATed metadata traffic is allowed.
+		blockArgs := []string{
+			"-A", "INPUT",
+			"-i", bridgeName,
+			"-d", bridgeIP,
+			"-p", "tcp",
+			"--syn",
+			"-j", "DROP",
+		}
+		if err := exec.CommandContext(ctx, "iptables", blockArgs...).Run(); err != nil {
+			return fmt.Errorf("failed to add gateway block rule: %w", err)
+		}
 	}
 
 	return nil
