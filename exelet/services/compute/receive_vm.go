@@ -563,6 +563,14 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 			}
 		}
 
+		// Clear the stale network interface from vmConfig before persisting.
+		// The IP lease was released (or failed) above, so persisting the old
+		// targetNetwork IP would leave a config referencing an IP no longer
+		// held in leases.json. A concurrent migration could then allocate that
+		// same IP, resulting in two instances with duplicate IPs on disk.
+		// startInstance will allocate a fresh interface.
+		vmConfig.NetworkInterface = nil
+
 		newInstance := &api.Instance{
 			ID:        instanceID,
 			Name:      sourceInstance.Name,
