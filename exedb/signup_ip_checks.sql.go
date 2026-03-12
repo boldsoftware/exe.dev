@@ -10,7 +10,7 @@ import (
 )
 
 const getSignupIPChecksByEmail = `-- name: GetSignupIPChecksByEmail :many
-SELECT id, email, ip, source, ipqs_response_json, flagged, checked_at FROM signup_ip_checks WHERE email = ? ORDER BY checked_at DESC
+SELECT id, email, ip, source, ipqs_response_json, flagged, checked_at, error FROM signup_ip_checks WHERE email = ? ORDER BY checked_at DESC
 `
 
 func (q *Queries) GetSignupIPChecksByEmail(ctx context.Context, email string) ([]SignupIPCheck, error) {
@@ -30,6 +30,7 @@ func (q *Queries) GetSignupIPChecksByEmail(ctx context.Context, email string) ([
 			&i.IpqsResponseJson,
 			&i.Flagged,
 			&i.CheckedAt,
+			&i.Error,
 		); err != nil {
 			return nil, err
 		}
@@ -45,7 +46,7 @@ func (q *Queries) GetSignupIPChecksByEmail(ctx context.Context, email string) ([
 }
 
 const getSignupIPChecksByIP = `-- name: GetSignupIPChecksByIP :many
-SELECT id, email, ip, source, ipqs_response_json, flagged, checked_at FROM signup_ip_checks WHERE ip = ? ORDER BY checked_at DESC
+SELECT id, email, ip, source, ipqs_response_json, flagged, checked_at, error FROM signup_ip_checks WHERE ip = ? ORDER BY checked_at DESC
 `
 
 func (q *Queries) GetSignupIPChecksByIP(ctx context.Context, ip string) ([]SignupIPCheck, error) {
@@ -65,6 +66,7 @@ func (q *Queries) GetSignupIPChecksByIP(ctx context.Context, ip string) ([]Signu
 			&i.IpqsResponseJson,
 			&i.Flagged,
 			&i.CheckedAt,
+			&i.Error,
 		); err != nil {
 			return nil, err
 		}
@@ -80,7 +82,7 @@ func (q *Queries) GetSignupIPChecksByIP(ctx context.Context, ip string) ([]Signu
 }
 
 const insertSignupIPCheck = `-- name: InsertSignupIPCheck :exec
-INSERT INTO signup_ip_checks (email, ip, source, ipqs_response_json, flagged) VALUES (?, ?, ?, ?, ?)
+INSERT INTO signup_ip_checks (email, ip, source, ipqs_response_json, error, flagged) VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertSignupIPCheckParams struct {
@@ -88,6 +90,7 @@ type InsertSignupIPCheckParams struct {
 	Ip               string  `db:"ip" json:"ip"`
 	Source           string  `db:"source" json:"source"`
 	IpqsResponseJson *string `db:"ipqs_response_json" json:"ipqs_response_json"`
+	Error            *string `db:"error" json:"error"`
 	Flagged          int64   `db:"flagged" json:"flagged"`
 }
 
@@ -97,6 +100,7 @@ func (q *Queries) InsertSignupIPCheck(ctx context.Context, arg InsertSignupIPChe
 		arg.Ip,
 		arg.Source,
 		arg.IpqsResponseJson,
+		arg.Error,
 		arg.Flagged,
 	)
 	return err

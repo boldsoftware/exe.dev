@@ -1,5 +1,5 @@
 -- name: InsertSignupIPCheck :exec
-INSERT INTO signup_ip_checks (email, ip, source, ipqs_response_json, flagged) VALUES (?, ?, ?, ?, ?);
+INSERT INTO signup_ip_checks (email, ip, source, ipqs_response_json, error, flagged) VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: GetSignupIPChecksByEmail :many
 SELECT * FROM signup_ip_checks WHERE email = ? ORDER BY checked_at DESC;

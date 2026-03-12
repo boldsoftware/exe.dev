@@ -387,6 +387,7 @@ type SignupIPCheck struct {
 	IpqsResponseJson *string    `db:"ipqs_response_json" json:"ipqs_response_json"`
 	Flagged          int64      `db:"flagged" json:"flagged"`
 	CheckedAt        *time.Time `db:"checked_at" json:"checked_at"`
+	Error            *string    `db:"error" json:"error"`
 }
 
 type SignupRejection struct {
