@@ -187,14 +187,19 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 		vmName = "<vm>"
 	}
 
+	scheme := "http"
+	if ss.server.servingHTTPS() {
+		scheme = "https"
+	}
+
 	switch typ {
 	case "http-proxy":
 		cc.Writeln("Usage from a VM:")
-		cc.Writeln("  ssh %s curl http://%s/", vmName, intHost)
+		cc.Writeln("  ssh %s curl %s://%s/", vmName, scheme, intHost)
 	case "github":
 		repo := repositories[0]
 		cc.Writeln("Usage from a VM:")
-		cc.Writeln("  ssh %s bash -c 'cd $(mktemp -d) && git init && git fetch http://%s/%s.git'", vmName, intHost, repo)
+		cc.Writeln("  ssh %s 'cd $(mktemp -d) && git clone %s://%s/%s.git'", vmName, scheme, intHost, repo)
 	}
 }
 
@@ -351,10 +356,6 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 		return cc.Errorf("--repository is required (e.g. owner/repo)")
 	}
 
-	if !ss.server.githubApp.InstallationTokensEnabled() {
-		return cc.Errorf("GitHub installation tokens are not configured on this server")
-	}
-
 	// All repos must share the same owner (one installation = one account).
 	owners := map[string]bool{}
 	for _, r := range repositories {
@@ -370,6 +371,8 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	}
 
 	// Look up the installation for this repo owner.
+	// Check this before the server-level config so that users who haven't
+	// connected GitHub get a more actionable error message.
 	ghAccount, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubAccountByTarget, exedb.GetGitHubAccountByTargetParams{
 		UserID:      cc.User.ID,
 		TargetLogin: repoOwner,
@@ -388,6 +391,10 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	}
 	if err != nil {
 		return err
+	}
+
+	if !ss.server.githubApp.InstallationTokensEnabled() {
+		return cc.Errorf("GitHub installation tokens are not configured on this server")
 	}
 
 	cfg := githubIntegrationConfig{
