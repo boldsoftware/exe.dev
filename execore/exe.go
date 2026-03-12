@@ -3210,7 +3210,12 @@ func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams
 		return nil
 	}
 
-	if flagged, ipqsJSON := s.ipFlaggedForAbuse(ctx, p.ip); flagged {
+	flagged, ipqsJSON := s.ipFlaggedForAbuse(ctx, p.ip)
+
+	// Record every IPQS IP check so we can investigate signups retroactively.
+	s.recordSignupIPCheck(ctx, p, ipqsJSON, flagged)
+
+	if flagged {
 		s.slog().InfoContext(ctx, "blocking signup due to recent_abuse", "ip", p.ip)
 		s.signupMetrics.IncBlocked("ip_abuse", p.source)
 		s.recordSignupRejection(ctx, p, "ip_abuse", ipqsJSON)
@@ -3236,6 +3241,29 @@ func (s *Server) recordSignupRejection(ctx context.Context, p signupValidationPa
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to record signup rejection", "error", err, "email", p.email, "ip", p.ip, "reason", reason)
+	}
+}
+
+// recordSignupIPCheck records the IPQS IP check result for every signup attempt.
+// Errors are logged but not returned since this is best-effort.
+func (s *Server) recordSignupIPCheck(ctx context.Context, p signupValidationParams, ipqsResponseJSON string, flagged bool) {
+	var ipqsJSON *string
+	if ipqsResponseJSON != "" {
+		ipqsJSON = &ipqsResponseJSON
+	}
+	var flaggedInt int64
+	if flagged {
+		flaggedInt = 1
+	}
+	err := withTx1(s, ctx, (*exedb.Queries).InsertSignupIPCheck, exedb.InsertSignupIPCheckParams{
+		Email:            p.email,
+		Ip:               p.ip,
+		Source:           p.source,
+		IpqsResponseJson: ipqsJSON,
+		Flagged:          flaggedInt,
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to record signup IP check", "error", err, "email", p.email, "ip", p.ip)
 	}
 }
 

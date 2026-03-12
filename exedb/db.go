@@ -522,6 +522,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getShellHistoryStmt, err = db.PrepareContext(ctx, getShellHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query GetShellHistory: %w", err)
 	}
+	if q.getSignupIPChecksByEmailStmt, err = db.PrepareContext(ctx, getSignupIPChecksByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSignupIPChecksByEmail: %w", err)
+	}
+	if q.getSignupIPChecksByIPStmt, err = db.PrepareContext(ctx, getSignupIPChecksByIP); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSignupIPChecksByIP: %w", err)
+	}
 	if q.getSignupPOWEnabledStmt, err = db.PrepareContext(ctx, getSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSignupPOWEnabled: %w", err)
 	}
@@ -740,6 +746,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertSSHKeyIfNotExistsStmt, err = db.PrepareContext(ctx, insertSSHKeyIfNotExists); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyIfNotExists: %w", err)
+	}
+	if q.insertSignupIPCheckStmt, err = db.PrepareContext(ctx, insertSignupIPCheck); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSignupIPCheck: %w", err)
 	}
 	if q.insertSignupRejectionStmt, err = db.PrepareContext(ctx, insertSignupRejection); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSignupRejection: %w", err)
@@ -1900,6 +1909,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getShellHistoryStmt: %w", cerr)
 		}
 	}
+	if q.getSignupIPChecksByEmailStmt != nil {
+		if cerr := q.getSignupIPChecksByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSignupIPChecksByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getSignupIPChecksByIPStmt != nil {
+		if cerr := q.getSignupIPChecksByIPStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSignupIPChecksByIPStmt: %w", cerr)
+		}
+	}
 	if q.getSignupPOWEnabledStmt != nil {
 		if cerr := q.getSignupPOWEnabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSignupPOWEnabledStmt: %w", cerr)
@@ -2263,6 +2282,11 @@ func (q *Queries) Close() error {
 	if q.insertSSHKeyIfNotExistsStmt != nil {
 		if cerr := q.insertSSHKeyIfNotExistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSSHKeyIfNotExistsStmt: %w", cerr)
+		}
+	}
+	if q.insertSignupIPCheckStmt != nil {
+		if cerr := q.insertSignupIPCheckStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSignupIPCheckStmt: %w", cerr)
 		}
 	}
 	if q.insertSignupRejectionStmt != nil {
@@ -3010,6 +3034,8 @@ type Queries struct {
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
 	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
+	getSignupIPChecksByEmailStmt               *sql.Stmt
+	getSignupIPChecksByIPStmt                  *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
 	getSiteCookiesForUserStmt                  *sql.Stmt
 	getTagResolutionStmt                       *sql.Stmt
@@ -3083,6 +3109,7 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
 	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
 	insertSSHKeyIfNotExistsStmt                *sql.Stmt
+	insertSignupIPCheckStmt                    *sql.Stmt
 	insertSignupRejectionStmt                  *sql.Stmt
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertTeamStmt                             *sql.Stmt
@@ -3363,6 +3390,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
+		getSignupIPChecksByEmailStmt:               q.getSignupIPChecksByEmailStmt,
+		getSignupIPChecksByIPStmt:                  q.getSignupIPChecksByIPStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
@@ -3436,6 +3465,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
 		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,
 		insertSSHKeyIfNotExistsStmt:                q.insertSSHKeyIfNotExistsStmt,
+		insertSignupIPCheckStmt:                    q.insertSignupIPCheckStmt,
 		insertSignupRejectionStmt:                  q.insertSignupRejectionStmt,
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertTeamStmt:                             q.insertTeamStmt,

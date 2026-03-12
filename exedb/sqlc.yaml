@@ -70,3 +70,5 @@ sql:
           exe0: "Exe0"
           github_accounts: "GitHubAccount"
           github_login: "GitHubLogin"
+          signup_ip_checks: "SignupIPCheck"
+          signup_ip_check: "SignupIPCheck"

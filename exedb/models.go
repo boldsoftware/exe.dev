@@ -379,6 +379,16 @@ type ShellHistory struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type SignupIPCheck struct {
+	ID               int64      `db:"id" json:"id"`
+	Email            string     `db:"email" json:"email"`
+	Ip               string     `db:"ip" json:"ip"`
+	Source           string     `db:"source" json:"source"`
+	IpqsResponseJson *string    `db:"ipqs_response_json" json:"ipqs_response_json"`
+	Flagged          int64      `db:"flagged" json:"flagged"`
+	CheckedAt        *time.Time `db:"checked_at" json:"checked_at"`
+}
+
 type SignupRejection struct {
 	ID               int64      `db:"id" json:"id"`
 	Email            string     `db:"email" json:"email"`
