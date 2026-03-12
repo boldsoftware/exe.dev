@@ -121,7 +121,16 @@
             word-break: break-all;
         }
 
-        .info-value-full {
+        .info-value code {
+            background: #f3f4f6;
+            color: #1f2937;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+            font-size: 12px;
+        }
+
+.info-value-full {
             flex: 1;
         }
 
@@ -468,6 +477,12 @@
                 color: #f3f4f6;
             }
 
+            .info-value code {
+                background: #2a2a2a;
+                color: #f3f4f6;
+            }
+
+
             .info-card {
                 background: #1f1f1f;
                 border-color: #333;
@@ -752,7 +767,21 @@
         <div class="section" id="billing">
             <div class="section-title">Billing</div>
             <div class="info-card">
-                {{if eq .BillingStatus "active"}}
+                {{if .SkipBilling}}
+                <div class="info-row">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">Not configured (no <code>STRIPE_SECRET_KEY</code> env var exported)</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Setup</div>
+                    <div class="info-value info-value-full">
+                        <ol style="margin: 0; padding-left: 20px; font-size: 13px;">
+                            <li>Export the <a href="https://dashboard.stripe.com/acct_1TABYgGn6g5GM2gh/test/apikeys" target="_blank">Local Account</a> test key:<br><code style="display: inline-block; margin-top: 6px; margin-bottom: 6px;">export STRIPE_SECRET_KEY=sk_test_51TABYgGn6g5GM2gh6smpVhmLUoEAr7J8YzusyjtNcsmMCf7YNDk7kOdK6RZo8SV3Sf4yfYwFXoTXDekJcp8H3VR700xkZbIx9L</code></li>
+                            <li>Restart the server</li>
+                        </ol>
+                    </div>
+                </div>
+                {{else if eq .BillingStatus "active"}}
                 <div class="info-row">
                     <div class="info-label">Status</div>
                     <div class="info-value">Active</div>
@@ -780,10 +809,12 @@
                     <div class="info-value"><a href="/billing/update?source=profile">Upgrade to a paid plan</a></div>
                 </div>
                 {{end}}
+                {{if not .SkipBilling}}
                 <div class="info-row">
                     <div class="info-label">Support</div>
                     <div class="info-value"><a href="mailto:support@exe.dev">support@exe.dev</a></div>
                 </div>
+                {{end}}
             </div>
         </div>
 
@@ -817,6 +848,7 @@
                     <div class="info-value">-</div>
                 </div>
                 {{end}}
+                {{if not .SkipBilling}}
                 <div class="info-row">
                     <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a></div>
                     <div class="info-value">
@@ -840,6 +872,7 @@
                         </table>
                     </div>
                 </div>
+                {{end}}
                 {{end}}
             </div>
         </div>

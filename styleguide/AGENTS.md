@@ -12,6 +12,6 @@ When working on multiple components, spin up agents in parallel to prototype the
 
 ## Adding a new component
 
-1. Create `pages/<name>.html` with hardcoded scenarios showing the component in various states. Use existing styles from the app — see `execore/debug_templates/base-head.html` and `templates/user-profile.html` for reference.
+1. Create `pages/<name>.html` with hardcoded scenarios showing the component in various states. Use existing styles from the app — see `execore/debug_templates/base-head.html` and `templates/user-profile.html` for reference. Constrain component widths (e.g., `max-width: 600px`) so they don't span the full page — the styleguide should preview widgets at realistic sizes.
 2. Add a link to `execore/debug_templates/styleguide.html` under the relevant section.
 3. Iterate on the HTML until the design is right, then migrate the markup and styles into the real templates.
