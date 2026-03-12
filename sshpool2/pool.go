@@ -79,6 +79,19 @@ func (k connKey) String() string {
 }
 
 // pooledConn wraps an SSH client with expiration tracking.
+//
+// Lock ordering: p.mu must not be held when acquiring pc.mu.
+// release() acquires pc.mu then p.mu (via removeConn).
+// DropConnectionsTo and Close snapshot under p.mu, release it,
+// then operate on each pc.mu individually.
+//
+// Refcount protocol: each connect() or connected() call increments active.
+// Each increment is paired with exactly one decrement — either in
+// disconnected() (when timer.Reset stops the old timer) or in release()
+// (when the timer fires). When active reaches 0, release() removes the
+// pooledConn from the map and closes the client. All three methods
+// (removeConn, ssh.Client.Close) are idempotent, so zombie timer firings
+// after eviction are harmless.
 type pooledConn struct {
 	client *ssh.Client // immutable after creation
 	key    connKey     // immutable after creation
@@ -117,6 +130,8 @@ func (pc *pooledConn) connected() {
 
 // connect requests that pc be used for a new connection.
 // It reports whether the connection was successfully acquired.
+// Callers that receive true must call disconnected exactly once when done
+// (directly or via trackedConn.Close).
 func (pc *pooledConn) connect() bool {
 	if pc == nil {
 		return false
@@ -144,6 +159,13 @@ func (pc *pooledConn) disconnected() {
 		// It is our responsibility to decrement active.
 		pc.active--
 	}
+	// When !stopped, either the old timer's release() already fired (and
+	// will handle a prior caller's active increment), or the timer was
+	// externally stopped by DropConnectionsTo/Close and the pooledConn is
+	// orphaned (removed from map, client closed). In both cases, Reset
+	// schedules a new release() that will handle *this* caller's increment.
+	// Each connected()/disconnected() increment is thus paired with exactly
+	// one decrement — either here (when we stop the timer) or in release().
 }
 
 func (pc *pooledConn) release() {
@@ -159,10 +181,17 @@ func (pc *pooledConn) release() {
 		panic(fmt.Sprintf("pooledConn.release: negative active=%d", pc.active))
 	}
 
-	if err := pc.client.Close(); err != nil {
-		pc.log.Warn("error closing SSH connection", "key", pc.key.String(), "error", err)
-	}
+	// Remove from pool under lock so no new callers can discover this conn.
 	pc.pool.removeConn(pc)
+	// Background: Close can block on a stale TCP connection (retransmit
+	// timeout). All other eviction paths use go pc.client.Close() for this
+	// reason; release() does the same for consistency.
+	// No lock needed: pc.client is immutable and Close is goroutine-safe.
+	go func() {
+		if err := pc.client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			pc.log.Warn("error closing SSH connection", "key", pc.key.String(), "error", err)
+		}
+	}()
 }
 
 // Pool manages pooled SSH connections.
@@ -479,24 +508,56 @@ func (p *Pool) removeConn(pc *pooledConn) {
 
 // dropConnectionsTo removes all pooled connections to the specified host and port.
 // See DropConnectionsTo for the exported wrapper.
+//
+// Best-effort: a concurrent connect() can insert a new pooledConn between
+// the snapshot under p.mu and the per-pc teardown loop. This is harmless —
+// the new connection is healthy and will be used normally.
 func (p *Pool) dropConnectionsTo(host string, port int) {
 	if p == nil {
 		return
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
+	// Collect matching connections under p.mu, then release p.mu before
+	// touching pc.mu. This avoids a lock-order inversion with release(),
+	// which acquires pc.mu → p.mu (via removeConn).
+	type dropped struct {
+		key connKey
+		pc  *pooledConn
+	}
+	var matches []dropped
+	p.mu.Lock()
 	for key, pc := range p.conns {
 		if key.host == host && key.port == port {
 			delete(p.conns, key)
-			if pc.timer != nil {
-				pc.timer.Stop()
-			}
-			if err := pc.client.Close(); err != nil {
-				p.log().Warn("error closing SSH connection during drop", "key", key.String(), "error", err)
-			}
-			p.log().Info("proactively dropped SSH connection", "key", key.String())
+			matches = append(matches, dropped{key, pc})
 		}
+	}
+	p.mu.Unlock()
+
+	for _, m := range matches {
+		m.pc.mu.Lock()
+		if m.pc.timer != nil {
+			m.pc.timer.Stop()
+			// Stopping the timer prevents release() from firing, so active
+			// is never decremented for the stopped timer's refcount. This is
+			// harmless: the pooledConn is already removed from the map and
+			// client.Close() runs below, so the orphaned pooledConn is GC'd
+			// normally. Any active trackedConn holders will call disconnected(),
+			// which restarts the timer and eventually drains active to 0
+			// (up to active * TTL timer fires to fully drain).
+		}
+		m.pc.mu.Unlock()
+		// Background: Close can block on a stale TCP retransmit timeout,
+		// and DropConnectionsTo is called precisely when a host is going
+		// down — the scenario most likely to have stale TCP. Async close
+		// matches all other eviction paths (release, dialThroughClient,
+		// runCommandOnClient). Errors are fire-and-forget (logged only).
+		go func() {
+			if err := m.pc.client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				p.log().Warn("error closing SSH connection during drop", "key", m.key.String(), "error", err)
+			}
+		}()
+		p.log().Info("proactively dropped SSH connection", "key", m.key.String())
 	}
 }
 
@@ -506,25 +567,34 @@ func (p *Pool) closePool() error {
 	if p == nil {
 		return nil
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
-	if p.conns == nil {
+	// Snapshot and nil-out under p.mu, then release p.mu before
+	// touching pc.mu. Same lock-order concern as DropConnectionsTo.
+	p.mu.Lock()
+	conns := p.conns
+	p.conns = nil
+	p.mu.Unlock()
+
+	if conns == nil {
 		return nil // already closed
 	}
 
+	// Close connections sequentially to collect errors.
+	// Unlike hot-path eviction (which backgrounds Close to avoid blocking
+	// callers on stale TCP retransmit timeouts), Close() blocks intentionally:
+	// shutdown callers expect blocking semantics and need error aggregation.
+	// With N stale connections this can take N × TCP retransmit timeout.
 	var errs []error
-	for _, pc := range p.conns {
+	for _, pc := range conns {
 		pc.mu.Lock()
 		if pc.timer != nil {
-			pc.timer.Stop()
+			pc.timer.Stop() // see DropConnectionsTo comment re: stranded active
 		}
 		pc.mu.Unlock()
-		if err := pc.client.Close(); err != nil {
+		if err := pc.client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			errs = append(errs, err)
 		}
 	}
-	p.conns = nil
 
 	return errors.Join(errs...)
 }
