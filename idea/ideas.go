@@ -3,6 +3,7 @@
 package idea
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"regexp"
 
@@ -35,9 +36,9 @@ var suffixWords = []string{
 	"lima", "nova", "oak", "pine", "rain", "sky", "star", "tide", "wolf", "zen",
 }
 
-// RandomName returns shortname + "-" + random suffix, e.g. "openclaw-wolf".
+// RandomName returns shortname + "-" + 3-digit number + "-" + random suffix, e.g. "openclaw-472-wolf".
 func RandomName(shortname string) string {
-	return shortname + "-" + suffixWords[rand.IntN(len(suffixWords))]
+	return shortname + "-" + fmt.Sprintf("%03d", rand.IntN(1000)) + "-" + suffixWords[rand.IntN(len(suffixWords))]
 }
 
 // JSON is the API representation of a template.

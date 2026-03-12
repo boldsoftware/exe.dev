@@ -174,7 +174,8 @@
   ];
 
   function randomSuffix() {
-    return suffixWords[Math.floor(Math.random() * suffixWords.length)];
+    const num = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+    return num + '-' + suffixWords[Math.floor(Math.random() * suffixWords.length)];
   }
 
   function applyTemplate(t, mode) {
