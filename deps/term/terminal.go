@@ -508,13 +508,13 @@ func (t *Terminal) historyAdd(entry string) {
 func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 	if t.pasteActive && key != keyEnter && key != keyLF {
 		t.addKeyToLine(key)
-		return
+		return line, ok
 	}
 
 	switch key {
 	case keyBackspace:
 		if t.pos == 0 {
-			return
+			return line, ok
 		}
 		t.eraseNPreviousChars(1)
 	case keyAltLeft:
@@ -527,25 +527,25 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		t.moveCursorToPos(t.pos)
 	case keyLeft:
 		if t.pos == 0 {
-			return
+			return line, ok
 		}
 		t.pos--
 		t.moveCursorToPos(t.pos)
 	case keyRight:
 		if t.pos == len(t.line) {
-			return
+			return line, ok
 		}
 		t.pos++
 		t.moveCursorToPos(t.pos)
 	case keyHome:
 		if t.pos == 0 {
-			return
+			return line, ok
 		}
 		t.pos = 0
 		t.moveCursorToPos(t.pos)
 	case keyEnd:
 		if t.pos == len(t.line) {
-			return
+			return line, ok
 		}
 		t.pos = len(t.line)
 		t.moveCursorToPos(t.pos)
@@ -563,7 +563,7 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 	case keyDown:
 		switch t.historyIndex {
 		case -1:
-			return
+			return line, ok
 		case 0:
 			runes := []rune(t.historyPending)
 			t.setLine(runes, len(runes))
@@ -611,7 +611,7 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 	case keyTranspose:
 		// This transposes the two characters around the cursor and advances the cursor. Best-effort.
 		if len(t.line) < 2 || t.pos < 1 {
-			return
+			return line, ok
 		}
 		swap := t.pos
 		if swap == len(t.line) {
@@ -644,18 +644,18 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 
 			if completeOk {
 				t.setLine([]rune(newLine), utf8.RuneCount([]byte(newLine)[:newPos]))
-				return
+				return line, ok
 			}
 		}
 		if !isPrintable(key) {
-			return
+			return line, ok
 		}
 		if len(t.line) == maxLineLength {
-			return
+			return line, ok
 		}
 		t.addKeyToLine(key)
 	}
-	return
+	return line, ok
 }
 
 // addKeyToLine inserts the given key at the current position in the current
@@ -741,12 +741,12 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 	}
 
 	if _, err = t.c.Write(t.outBuf); err != nil {
-		return
+		return n, err
 	}
 	t.outBuf = t.outBuf[:0]
 
 	if n, err = writeWithCRLF(t.c, buf); err != nil {
-		return
+		return n, err
 	}
 
 	t.writeLine(t.prompt)
@@ -757,10 +757,10 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 	t.moveCursorToPos(t.pos)
 
 	if _, err = t.c.Write(t.outBuf); err != nil {
-		return
+		return n, err
 	}
 	t.outBuf = t.outBuf[:0]
-	return
+	return n, err
 }
 
 // ReadPassword temporarily changes the prompt and reads a password, without
@@ -785,7 +785,7 @@ func (t *Terminal) ReadPassword(prompt string) (line string, err error) {
 	t.prompt = oldPrompt
 	t.echo = true
 
-	return
+	return line, err
 }
 
 // ReadLine returns a line of input from the terminal.
@@ -861,7 +861,7 @@ func (t *Terminal) readLine() (line string, err error) {
 			if lineIsPasted {
 				err = ErrPasteIndicator
 			}
-			return
+			return line, err
 		}
 
 		// t.remainder is a slice at the beginning of t.inBuf
@@ -874,7 +874,7 @@ func (t *Terminal) readLine() (line string, err error) {
 		t.lock.Lock()
 
 		if err != nil {
-			return
+			return line, err
 		}
 
 		t.remainder = t.inBuf[:n+len(t.remainder)]

@@ -23,7 +23,7 @@ type MockTerminal struct {
 func (c *MockTerminal) Read(data []byte) (n int, err error) {
 	n = len(data)
 	if n == 0 {
-		return
+		return n, err
 	}
 	if n > len(c.toSend) {
 		n = len(c.toSend)
@@ -36,7 +36,7 @@ func (c *MockTerminal) Read(data []byte) (n int, err error) {
 	}
 	copy(data, c.toSend[:n])
 	c.toSend = c.toSend[n:]
-	return
+	return n, err
 }
 
 func (c *MockTerminal) Write(data []byte) (n int, err error) {

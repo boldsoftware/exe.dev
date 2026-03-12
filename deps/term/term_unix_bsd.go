@@ -8,5 +8,7 @@ package term
 
 import "golang.org/x/sys/unix"
 
-const ioctlReadTermios = unix.TIOCGETA
-const ioctlWriteTermios = unix.TIOCSETA
+const (
+	ioctlReadTermios  = unix.TIOCGETA
+	ioctlWriteTermios = unix.TIOCSETA
+)
