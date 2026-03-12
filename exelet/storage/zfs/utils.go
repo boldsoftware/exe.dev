@@ -378,11 +378,12 @@ func (s *ZFS) destroyDataset(dsName string) error {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		cmd := exec.Command("zfs", "destroy", "-r", dsName)
-		if err := cmd.Run(); err != nil {
-			lastErr = err
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			lastErr = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 
 			// Check if dataset doesn't exist - that's success
-			if strings.Contains(err.Error(), "does not exist") {
+			if strings.Contains(string(out), "does not exist") {
 				return nil
 			}
 
