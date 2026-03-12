@@ -63,10 +63,12 @@ const (
 	// MetadataPort is the port where the metadata service listens
 	MetadataPort = 80
 	// MetadataHTTPSPort is the local listen port for integration proxy TLS
-	// termination. We use 4443 instead of 443 to avoid conflicting with
-	// exeprox, which binds 0.0.0.0:443. The iptables DNAT rule translates
-	// 169.254.169.254:443 → bridge_ip:4443 so VMs still connect on 443.
-	MetadataHTTPSPort = 4443
+	// termination. We use 2443 instead of 443 to avoid conflicting with
+	// exeprox, which binds 0.0.0.0:443, and to stay outside the proxy
+	// port range (3000-9999) and socat SSH port range (10000-20000).
+	// The iptables DNAT rule translates 169.254.169.254:443 → bridge_ip:2443
+	// so VMs still connect on 443.
+	MetadataHTTPSPort = 2443
 )
 
 // CertRefreshInterval is how often the exelet re-fetches the integration
