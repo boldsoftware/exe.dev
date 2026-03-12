@@ -1,0 +1,15 @@
+[Unit]
+Description=watch-ci-flake CI triage agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=exedev
+WorkingDirectory=/home/exedev/exe
+ExecStart=/home/exedev/exe/scripts/agents/watch-ci-flake/watch-ci-flake.sh
+Environment=HOME=/home/exedev
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

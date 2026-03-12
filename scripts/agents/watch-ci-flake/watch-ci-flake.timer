@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll for CI failures every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
