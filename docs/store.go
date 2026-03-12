@@ -374,12 +374,12 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
-	if path == "/docs.md" {
+	if path == "/docs.md" || path == "/llms.txt" {
 		h.renderDocsIndex(w, r)
 		return true
 	}
 
-	if path == "/llms.txt" || path == "/llms-full.txt" {
+	if path == "/llms-full.txt" {
 		h.renderAllDocsMD(w, r)
 		return true
 	}

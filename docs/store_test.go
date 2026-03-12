@@ -402,43 +402,47 @@ func TestHandlerDocsMdIndex(t *testing.T) {
 		t.Fatal("NewHandler returned nil")
 	}
 
-	req := httptest.NewRequest("GET", "/docs.md", nil)
-	w := httptest.NewRecorder()
+	for _, path := range []string{"/docs.md", "/llms.txt"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
 
-	handled := handler.Handle(w, req)
-	if !handled {
-		t.Fatal("Handler did not handle /docs.md")
-	}
+			handled := handler.Handle(w, req)
+			if !handled {
+				t.Fatalf("Handler did not handle %s", path)
+			}
 
-	resp := w.Result()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
-	}
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+			}
 
-	contentType := resp.Header.Get("Content-Type")
-	if contentType != "text/markdown; charset=utf-8" {
-		t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
-	}
+			contentType := resp.Header.Get("Content-Type")
+			if contentType != "text/markdown; charset=utf-8" {
+				t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
+			}
 
-	body := w.Body.String()
-	if body == "" {
-		t.Fatal("response body is empty")
-	}
+			body := w.Body.String()
+			if body == "" {
+				t.Fatal("response body is empty")
+			}
 
-	// Check that it starts with the expected header
-	if !contains(body, "# exe.dev docs") {
-		t.Error("expected body to contain '# exe.dev docs' header")
-	}
+			// Check that it starts with the expected header
+			if !contains(body, "# exe.dev docs") {
+				t.Error("expected body to contain '# exe.dev docs' header")
+			}
 
-	// Verify that all published, linked doc titles are listed
-	for _, entry := range store.entries {
-		if !entry.Published || entry.Unlinked {
-			continue
-		}
-		// Check that the entry title appears as a markdown link
-		if !contains(body, entry.Title) {
-			t.Errorf("expected to find title %q in docs.md output", entry.Title)
-		}
+			// Verify that all published, linked doc titles are listed
+			for _, entry := range store.entries {
+				if !entry.Published || entry.Unlinked {
+					continue
+				}
+				// Check that the entry title appears as a markdown link
+				if !contains(body, entry.Title) {
+					t.Errorf("expected to find title %q in docs.md output", entry.Title)
+				}
+			}
+		})
 	}
 }
 
@@ -576,31 +580,27 @@ func TestHandlerLLMsTxt(t *testing.T) {
 	handler.Handle(allMdW, allMdReq)
 	expectedBody := allMdW.Body.String()
 
-	// Test both /llms.txt and /llms-full.txt serve the same content
-	for _, path := range []string{"/llms.txt", "/llms-full.txt"} {
-		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest("GET", path, nil)
-			w := httptest.NewRecorder()
+	// Test /llms-full.txt serves the same content as /docs/all.md
+	req := httptest.NewRequest("GET", "/llms-full.txt", nil)
+	w := httptest.NewRecorder()
 
-			handled := handler.Handle(w, req)
-			if !handled {
-				t.Fatalf("Handler did not handle %s", path)
-			}
+	handled := handler.Handle(w, req)
+	if !handled {
+		t.Fatal("Handler did not handle /llms-full.txt")
+	}
 
-			resp := w.Result()
-			if resp.StatusCode != http.StatusOK {
-				t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
-			}
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+	}
 
-			contentType := resp.Header.Get("Content-Type")
-			if contentType != "text/markdown; charset=utf-8" {
-				t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
-			}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "text/markdown; charset=utf-8" {
+		t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
+	}
 
-			body := w.Body.String()
-			if body != expectedBody {
-				t.Errorf("%s content differs from /docs/all.md", path)
-			}
-		})
+	body := w.Body.String()
+	if body != expectedBody {
+		t.Error("/llms-full.txt content differs from /docs/all.md")
 	}
 }
