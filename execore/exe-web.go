@@ -154,7 +154,7 @@ func (s *Server) setupHTTPSServer() {
 	// Set up wildcard certificate manager for BoxHost (exe.xyz) using DNS-01 challenges
 	// This requires the embedded DNS server (exens) to be running
 	if s.dnsServer != nil {
-		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley")}
+		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley"), s.env.BoxSub("int")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = wildcardcert.NewManager(

@@ -75,6 +75,11 @@ type Service struct {
 	listenAddr     string // actual address to bind to (may differ from MetadataIP for isolation)
 	gatewayDev     bool   // true in local/test stages; relaxes outbound local-address checks
 
+	// integrationHostSuffixes is the list of domain suffixes for integration proxy
+	// requests (e.g., [".int.exe.xyz", ".int.exe.cloud"]). The first entry is the
+	// primary suffix; additional entries provide backward compatibility.
+	integrationHostSuffixes []string
+
 	gatewayRequests *prometheus.CounterVec
 
 	integrationCacheMu sync.Mutex
@@ -100,9 +105,11 @@ var IntegrationCacheTTL = 1 * time.Minute
 
 // NewService creates a new metadata service.
 // listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80").
+// integrationHostSuffixes is the list of domain suffixes for integration proxy
+// requests (e.g., [".int.exe.xyz", ".int.exe.cloud"]).
 // gatewayDev relaxes outbound local-address checks for dev environments
 // where connections legitimately route through private interfaces.
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, integrationHostSuffixes []string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}
@@ -129,14 +136,15 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 	}
 
 	s := &Service{
-		log:              log,
-		instanceLookup:   computeSvc,
-		exedURL:          exedURL,
-		exedTargetURL:    targetURL,
-		listenAddr:       listenAddr,
-		gatewayDev:       gatewayDev,
-		gatewayRequests:  gatewayRequests,
-		integrationCache: make(map[integrationCacheKey]*integrationCacheEntry),
+		log:                     log,
+		instanceLookup:          computeSvc,
+		exedURL:                 exedURL,
+		exedTargetURL:           targetURL,
+		listenAddr:              listenAddr,
+		integrationHostSuffixes: integrationHostSuffixes,
+		gatewayDev:              gatewayDev,
+		gatewayRequests:         gatewayRequests,
+		integrationCache:        make(map[integrationCacheKey]*integrationCacheEntry),
 	}
 
 	return s, nil
@@ -154,10 +162,11 @@ func (s *Service) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /gateway/email/send", s.handleEmailProxy)
 
 	// Wrap the mux with integration proxy routing.
-	// Requests to *.int.exe.cloud are routed to the integration proxy handler;
-	// everything else goes to the normal mux.
+	// Requests matching an integration host suffix (e.g. *.int.exe.xyz)
+	// are routed to the integration proxy handler; everything else goes
+	// to the normal mux.
 	var mainHandler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if name, ok := integrationHostName(r.Host); ok {
+		if name, ok := s.integrationHostName(r.Host); ok {
 			s.handleIntegrationProxy(w, r, name)
 			return
 		}
@@ -368,13 +377,11 @@ func (s *Service) handleEmailProxy(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
-// IntegrationHostSuffix is the domain suffix for integration proxy requests.
-const IntegrationHostSuffix = ".int.exe.cloud"
-
 // integrationHostName extracts the integration name from a Host header like
-// "myproxy.int.exe.cloud" or "myproxy.int.exe.cloud:80".
-// Returns the name and true if the host matches, or ("", false) otherwise.
-func integrationHostName(host string) (string, bool) {
+// "myproxy.int.exe.xyz" or "myproxy.int.exe.cloud:80".
+// Returns the name and true if the host matches any configured suffix,
+// or ("", false) otherwise.
+func (s *Service) integrationHostName(host string) (string, bool) {
 	// Strip port if present.
 	h := host
 	if i := strings.LastIndex(h, ":"); i != -1 {
@@ -391,14 +398,15 @@ func integrationHostName(host string) (string, bool) {
 			h = h[:i]
 		}
 	}
-	if !strings.HasSuffix(h, IntegrationHostSuffix) {
-		return "", false
+	for _, suffix := range s.integrationHostSuffixes {
+		if strings.HasSuffix(h, suffix) {
+			name := strings.TrimSuffix(h, suffix)
+			if name != "" {
+				return name, true
+			}
+		}
 	}
-	name := strings.TrimSuffix(h, IntegrationHostSuffix)
-	if name == "" {
-		return "", false
-	}
-	return name, true
+	return "", false
 }
 
 // isValidIntegrationName checks whether name matches the creation-time rules

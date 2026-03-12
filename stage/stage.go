@@ -429,6 +429,10 @@ func (e Env) BoxSub(sub string) string        { return sub + "." + e.BoxHost }
 func (e Env) BoxXtermSub(sub string) string   { return sub + ".xterm." + e.BoxHost }
 func (e Env) BoxShelleySub(sub string) string { return sub + ".shelley." + e.BoxHost }
 
+// IntegrationHostSuffix returns the domain suffix for integration proxy requests
+// (e.g., ".int.exe.xyz" in prod, ".int.exe.cloud" in local/test).
+func (e Env) IntegrationHostSuffix() string { return ".int." + e.BoxHost }
+
 // ShardIsValid reports whether shard is within the valid range for this stage.
 func (e Env) ShardIsValid(shard int) bool {
 	return shard >= 1 && shard <= e.NumShards

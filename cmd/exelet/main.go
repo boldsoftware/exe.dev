@@ -514,7 +514,14 @@ func serveAction(clix *cli.Context) error {
 	metadataListenAddr := natConfig.Router + ":80"
 	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
 
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, env.GatewayDev, serviceContext.MetricsRegistry)
+	// Build the list of integration host suffixes. The primary suffix is derived
+	// from BoxHost (e.g., ".int.exe.xyz"). For backward compatibility, we also
+	// accept the legacy ".int.exe.cloud" suffix.
+	integrationSuffixes := []string{env.IntegrationHostSuffix()}
+	if env.IntegrationHostSuffix() != ".int.exe.cloud" {
+		integrationSuffixes = append(integrationSuffixes, ".int.exe.cloud")
+	}
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, integrationSuffixes, env.GatewayDev, serviceContext.MetricsRegistry)
 	if err != nil {
 		return err
 	}

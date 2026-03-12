@@ -312,7 +312,8 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // lookupA handles A record queries.
 // Format: sNNN.{domain} where NNN is a shard number (001-025)
 // For box names, returns the CNAME and chases it to get the A record.
-// For *.xterm.{boxHost}, returns the lobby IP.
+// For *.xterm.{boxHost} and *.shelley.{boxHost}, returns the lobby IP.
+// For *.int.{boxHost}, returns the metadata IP (169.254.169.254).
 // For the base domain ({boxHost}), returns the lobby IP.
 // For mail.{boxHost}, returns the lobby IP (mail server).
 func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
@@ -333,6 +334,13 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 	if strings.HasSuffix(qname, xtermSuffix) || strings.HasSuffix(qname, shelleySuffix) {
 		// Return lobby IP for all xterm/shelley subdomains
 		return s.lookupLobbyA(fqdn, class)
+	}
+
+	// Check for integration wildcard (*.int.{boxHost})
+	// e.g., "myproxy.int.exe.xyz" → 169.254.169.254 (metadata service)
+	intSuffix := ".int." + s.boxHost
+	if strings.HasSuffix(qname, intSuffix) {
+		return s.lookupMetadataA(fqdn, class)
 	}
 
 	// Parse shard from name (e.g., "s001.exe.xyz" -> shard 1)
@@ -415,6 +423,17 @@ func (s *Server) lookupLobbyA(fqdn string, class uint16) ([]dns.RR, error) {
 		&dns.A{
 			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
 			A:   s.lobbyIP.AsSlice(),
+		},
+	}, nil
+}
+
+// lookupMetadataA returns an A record for the metadata IP (169.254.169.254).
+// Used for integration proxy domains (*.int.{boxHost}).
+func (s *Server) lookupMetadataA(fqdn string, class uint16) ([]dns.RR, error) {
+	return []dns.RR{
+		&dns.A{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
+			A:   net.ParseIP("169.254.169.254").To4(),
 		},
 	}, nil
 }
