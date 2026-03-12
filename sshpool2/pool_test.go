@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"testing/synctest"
@@ -1688,4 +1689,328 @@ func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// gatedListener delays Accept until the gate channel is closed.
+// TCP connections complete at the kernel level (client Dial succeeds),
+// but ssh.NewClientConn blocks until the server-side Accept returns.
+type gatedListener struct {
+	net.Listener
+	gate    chan struct{}
+	accepts atomic.Int32
+}
+
+func (l *gatedListener) Accept() (net.Conn, error) {
+	<-l.gate
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.accepts.Add(1)
+	}
+	return conn, err
+}
+
+func newGatedTestSSHServer(t *testing.T) (*testSSHServer, *gatedListener) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate server key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+	config := &ssh.ServerConfig{NoClientAuth: true}
+	config.AddHostKey(signer)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	gl := &gatedListener{Listener: listener, gate: make(chan struct{})}
+	s := &testSSHServer{listener: gl, config: config, addr: listener.Addr().String()}
+	go s.serve()
+	return s, gl
+}
+
+// TestDoChanOneCancelOneSuccess verifies that when two callers share a
+// singleflight key, one can cancel without affecting the other.
+// Only one TCP connection is established (singleflight deduplication).
+func TestDoChanOneCancelOneSuccess(t *testing.T) {
+	server, gl := newGatedTestSSHServer(t)
+	defer server.close()
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	ctxShort, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+	chA := make(chan dialResult, 1)
+	chB := make(chan dialResult, 1)
+	go func() {
+		conn, err := pool.DialContext(ctxShort, "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		chA <- dialResult{conn, err}
+	}()
+	go func() {
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		chB <- dialResult{conn, err}
+	}()
+
+	// A should fail with deadline exceeded.
+	resA := <-chA
+	if resA.conn != nil {
+		resA.conn.Close()
+	}
+	if !errors.Is(resA.err, context.DeadlineExceeded) {
+		t.Fatalf("short-lived caller: expected DeadlineExceeded, got %v", resA.err)
+	}
+
+	// Let the SSH handshake proceed.
+	close(gl.gate)
+
+	// B should succeed.
+	resB := <-chB
+	if resB.err != nil {
+		t.Fatalf("long-lived caller: %v", resB.err)
+	}
+	resB.conn.Close()
+
+	if n := gl.accepts.Load(); n != 1 {
+		t.Fatalf("expected 1 TCP accept (singleflight dedup), got %d", n)
+	}
+}
+
+// TestDoChanAllCancelConnectionSurvives verifies that when every caller cancels,
+// the in-flight connect still completes and places the connection in the pool.
+// A subsequent caller reuses it without establishing a new TCP connection.
+func TestDoChanAllCancelConnectionSurvives(t *testing.T) {
+	server, gl := newGatedTestSSHServer(t)
+	defer server.close()
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			conn, err := pool.DialContext(ctx, "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+			if conn != nil {
+				conn.Close()
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("expected DeadlineExceeded, got %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Let the background connect complete.
+	close(gl.gate)
+
+	// New caller reuses the pooled connection. DialContext naturally
+	// synchronizes with the in-flight singleflight (or hits pool cache),
+	// so no polling loop is needed.
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("reuse caller: %v", err)
+	}
+	conn.Close()
+
+	if n := gl.accepts.Load(); n != 1 {
+		t.Fatalf("expected 1 TCP accept total, got %d", n)
+	}
+}
+
+// TestDoChanLateJoinerAfterCancel verifies that a caller arriving after
+// a previous caller cancelled still joins the in-flight singleflight call
+// rather than starting a new one.
+func TestDoChanLateJoinerAfterCancel(t *testing.T) {
+	server, gl := newGatedTestSSHServer(t)
+	defer server.close()
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	// A calls and blocks until its context expires.
+	ctxA, cancelA := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelA()
+	connA, errA := pool.DialContext(ctxA, "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if connA != nil {
+		connA.Close()
+	}
+	if !errors.Is(errA, context.DeadlineExceeded) {
+		t.Fatalf("caller A: expected DeadlineExceeded, got %v", errA)
+	}
+
+	// B arrives after A returned. connect() is still in flight (gate closed).
+	var connB net.Conn
+	var errB error
+	done := make(chan struct{})
+	go func() {
+		connB, errB = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		close(done)
+	}()
+
+	close(gl.gate)
+	<-done
+
+	if errB != nil {
+		t.Fatalf("caller B: %v", errB)
+	}
+	connB.Close()
+
+	if n := gl.accepts.Load(); n != 1 {
+		t.Fatalf("expected 1 TCP accept, got %d", n)
+	}
+}
+
+// TestDoChanStaggeredCancellations verifies that progressively cancelling
+// callers does not cancel the shared connect work. This is the failure mode
+// of DoChanContext (https://github.com/tailscale/tailscale/issues/18919):
+// with DoChanContext, cascading cancellations can kill the merged context
+// and abort the work for everyone. DoChan avoids this by not passing any
+// context to the work function.
+func TestDoChanStaggeredCancellations(t *testing.T) {
+	server, gl := newGatedTestSSHServer(t)
+	defer server.close()
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	const numCallers = 5
+	cancels := make([]context.CancelFunc, numCallers)
+	errChs := make([]chan error, numCallers)
+	for i := range numCallers {
+		var ctx context.Context
+		ctx, cancels[i] = context.WithCancel(context.Background())
+		errChs[i] = make(chan error, 1)
+		go func(ctx context.Context, ch chan error) {
+			conn, err := pool.DialContext(ctx, "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+			if conn != nil {
+				conn.Close()
+			}
+			ch <- err
+		}(ctx, errChs[i])
+	}
+
+	// Let all callers enter DoChan. synctest is not usable here because
+	// connect() blocks on real TCP I/O (conn.SetDeadline + SSH handshake),
+	// which synctest doesn't consider "idle" — synctest.Wait() would block
+	// until the 3s handshake deadline fires. The 50ms sleep is generous for
+	// local goroutine scheduling. Even if some callers cancel before entering
+	// DoChan, the test still proves the important properties: connect
+	// completes despite cancellations and the pool is reusable.
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel callers one at a time, verifying each returns Canceled.
+	for i := range numCallers {
+		cancels[i]()
+		if err := <-errChs[i]; !errors.Is(err, context.Canceled) {
+			t.Fatalf("caller %d: expected Canceled, got %v", i, err)
+		}
+	}
+
+	// Open gate. connect() should still complete despite all cancellations.
+	close(gl.gate)
+
+	// New caller reuses the connection. DialContext naturally synchronizes
+	// with the in-flight singleflight, so no polling loop is needed.
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("reuse caller: %v", err)
+	}
+	conn.Close()
+
+	if n := gl.accepts.Load(); n != 1 {
+		t.Fatalf("expected 1 TCP accept, got %d", n)
+	}
+}
+
+// TestDoChanConnectFailurePropagates verifies that when connect() fails
+// (e.g. server is not running SSH), all callers waiting via DoChan receive
+// the error, and the pool is not left in a broken state (new keys are dialable).
+func TestDoChanConnectFailurePropagates(t *testing.T) {
+	// TCP listener that accepts connections but is not an SSH server.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	var acceptCount atomic.Int32
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			acceptCount.Add(1)
+			conn.Write([]byte("not-ssh\n"))
+			conn.Close()
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	const numCallers = 5
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+	results := make([]chan dialResult, numCallers)
+	ctx := t.Context()
+	for i := range numCallers {
+		results[i] = make(chan dialResult, 1)
+		go func(ch chan dialResult) {
+			conn, err := pool.DialContext(ctx, "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+			ch <- dialResult{conn, err}
+		}(results[i])
+	}
+
+	// All callers should receive an error.
+	for i, ch := range results {
+		res := <-ch
+		if res.conn != nil {
+			res.conn.Close()
+			t.Fatalf("caller %d: expected error, got connection", i)
+		}
+		if res.err == nil {
+			t.Fatalf("caller %d: expected error, got nil", i)
+		}
+	}
+
+	// Pool should have no connections.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("expected empty pool after connect failure, got %d connections", n)
+	}
+
+	// Singleflight should have coalesced all callers into one connect attempt.
+	if ac := acceptCount.Load(); ac != 1 {
+		t.Fatalf("expected 1 TCP accept (singleflight deduplication), got %d", ac)
+	}
+
+	// A subsequent caller to a different (host, port) proves the pool is not
+	// in a broken state after a connect failure.
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("fresh singleflight call to real server failed: %v", err)
+	}
+	conn.Close()
 }

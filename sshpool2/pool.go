@@ -239,25 +239,49 @@ func (p *Pool) incCacheResult(result string) {
 }
 
 // connectTo returns a pooled connection for the given host, user, port, and signer.
+// DoChan lets each caller return on its own ctx.Done() while ensuring
+// connection establishment always completes (warming the pool for future callers).
 func (p *Pool) connectTo(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (*pooledConn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	key := connKey{
 		host:      host,
 		user:      user,
 		port:      port,
 		publicKey: string(signer.PublicKey().Marshal()),
 	}
-	// Do not pass the context into the singleflight function:
-	// Even if the context is canceled, other callers may still want to use the connection.
-	pc, err, _ := p.sfGroup.Do(key, func() (*pooledConn, error) {
+	// Do not pass the caller's context into the singleflight function:
+	// even if all current callers cancel, the connection should still be
+	// established so future callers can reuse it. DoChan (not DoChanContext)
+	// gives us non-blocking waits without injecting a cancellable context
+	// into the work function.
+	ch := p.sfGroup.DoChan(key, func() (*pooledConn, error) {
 		return p.connect(key, config)
 	})
-	if err != nil {
-		return nil, err
-	}
-	if ctx.Err() != nil {
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			// select may also pick this case when ctx is done.
+			// Prefer the caller's context error when available,
+			// so direct DialContext callers see a predictable error.
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return nil, res.Err
+		}
+		// select may pick this case even if ctx is also done;
+		// bail early rather than handing a good conn to a cancelled caller.
+		if ctx.Err() != nil {
+			// Safe to discard res.Val: connect() already stored the conn
+			// in the pool via setConn() and balanced its own refcount
+			// (connected/disconnected), so no cleanup is needed here.
+			return nil, ctx.Err()
+		}
+		return res.Val, nil
+	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return pc, nil
 }
 
 // retryLoop retries work until success or retries exhausted.
@@ -390,6 +414,11 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 
 // dialThroughClient dials through the SSH client and wraps the connection
 func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, addr string) (net.Conn, error) {
+	// If the caller's context is already done, return immediately.
+	// Avoids a wasted dial through a shortCtx that would inherit cancellation.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	alive := pc.connect()
 	if !alive {
 		// Should only happen if there was a very short TTL.
@@ -434,6 +463,9 @@ func (p *Pool) runCommand(ctx context.Context, host, user string, port int, sign
 
 // runCommandOnClient runs a command through the SSH client.
 func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command string, stdin io.Reader) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	alive := pc.connect()
 	if !alive {
 		return nil, fmt.Errorf("runCommandOnClient: SSH connection pool entry is unexpectedly dead")
