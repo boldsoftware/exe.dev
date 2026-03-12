@@ -1676,7 +1676,7 @@
             <form method="POST" action="/invite" style="display: inline;">
                 <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
             </form>
-            {{else}}
+            {{else if .HasBilling}}
             <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
             {{end}}
         </div>
@@ -1907,7 +1907,7 @@
                 <form method="POST" action="/invite" style="display: inline;">
                     <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
                 </form>
-                {{else}}
+                {{else if .HasBilling}}
                 <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
                 {{end}}
             </div>

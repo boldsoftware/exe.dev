@@ -325,7 +325,7 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 		t.Fatalf("failed to read response body: %v", err)
 	}
 
-	// Should show "0 invites" and "Request More" link
+	// Should show "0 invites" and "Request More" link (SkipBilling=true in test)
 	if !strings.Contains(string(body), "0 invite") {
 		t.Error("expected to see '0 invites' on dashboard")
 	}

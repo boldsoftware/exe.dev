@@ -1404,6 +1404,17 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		teamBoxes = append(teamBoxes, teamBoxInfo)
 	}
 
+	// Check billing status for invite request button
+	var hasBilling bool
+	if s.env.SkipBilling {
+		hasBilling = true
+	} else {
+		userBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
+		if err == nil && userBilling.BillingStatus == "active" {
+			hasBilling = true
+		}
+	}
+
 	// Prepare template data
 	data := UserPageData{
 		Env:         s.env,
@@ -1416,6 +1427,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,
+		HasBilling:  hasBilling,
 		ShareVM:     r.URL.Query().Get("share_vm"),
 		ShareEmail:  r.URL.Query().Get("share_email"),
 	}
@@ -2060,13 +2072,20 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	// Check if user has billing set up
-	hasBilling := false
-	billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "Failed to check billing status for invite request", "error", err, "user_id", userID)
-	} else {
-		hasBilling = !userNeedsBilling(&billingStatus)
+	// Check if user has billing set up — only users with active billing can request more invites
+	hasBilling := s.env.SkipBilling
+	if !hasBilling {
+		billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "Failed to check billing status for invite request", "error", err, "user_id", userID)
+		} else {
+			hasBilling = !userNeedsBilling(&billingStatus)
+		}
+	}
+
+	if !hasBilling {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 
 	// Send Slack notification
