@@ -10,7 +10,6 @@ func TestIntegrationsCommand(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
 
 	pty, _, _, _ := registerForExeDev(t)
 
@@ -22,6 +21,9 @@ func TestIntegrationsCommand(t *testing.T) {
 	// Add an http-proxy integration.
 	pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123")
 	pty.Want("Added integration myproxy")
+	pty.Want("attach it to a VM first")
+	pty.Want("integrations attach myproxy vm:<vm-name>")
+	pty.Want("ssh <vm> curl http://myproxy.int.exe.cloud/")
 	pty.WantPrompt()
 
 	// List should now show the integration by name.
@@ -140,7 +142,6 @@ func TestIntegrationsBearerFlag(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
 
 	pty, _, _, _ := registerForExeDev(t)
 

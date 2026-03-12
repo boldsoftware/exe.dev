@@ -1,0 +1,67 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestIntegrationsBearerFlag@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestIntegrationsBearerFlag@example.com
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: TestIntegrationsBearerFlag@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶ integrations add http-proxy --name=bearerproxy --target=https://example.com --bearer=my-secret-token
+Added integration bearerproxy
+
+To use this integration, attach it to a VM first:
+  integrations attach bearerproxy vm:<vm-name>
+
+Usage from a VM:
+  ssh <vm> curl http://bearerproxy.int.exe.cloud/
+PROMPT ▶ integrations list
+bearerproxy  http-proxy  target=https://example.com header=Authorization:Bearer my-secret-token  (none)
+PROMPT ▶ integrations add http-proxy --name=bearerproxy2 --target=https://other.com --bearer=another-token-456
+Added integration bearerproxy2
+
+To use this integration, attach it to a VM first:
+  integrations attach bearerproxy2 vm:<vm-name>
+
+Usage from a VM:
+  ssh <vm> curl http://bearerproxy2.int.exe.cloud/
+PROMPT ▶ integrations list
+bearerproxy2  http-proxy  target=https://other.com header=Authorization:Bearer another-token-456  (none)
+bearerproxy  http-proxy  target=https://example.com header=Authorization:Bearer my-secret-token  (none)
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=X-Foo:bar --bearer=tok
+--header and --bearer are mutually exclusive
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com
+--header (or --bearer) is required
+PROMPT ▶ integrations remove bearerproxy
+Removed integration bearerproxy
+PROMPT ▶ integrations remove bearerproxy2
+Removed integration bearerproxy2
+PROMPT ▶

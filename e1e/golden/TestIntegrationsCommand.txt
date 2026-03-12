@@ -1,0 +1,112 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestIntegrationsCommand@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestIntegrationsCommand@example.com
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: TestIntegrationsCommand@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶ integrations list
+No integrations configured.
+PROMPT ▶ integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123
+Added integration myproxy
+
+To use this integration, attach it to a VM first:
+  integrations attach myproxy vm:<vm-name>
+
+Usage from a VM:
+  ssh <vm> curl http://myproxy.int.exe.cloud/
+PROMPT ▶ integrations list
+myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
+PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://other.com --header=Authorization:Bearer-tok
+Added integration otherproxy
+
+To use this integration, attach it to a VM first:
+  integrations attach otherproxy vm:<vm-name>
+
+Usage from a VM:
+  ssh <vm> curl http://otherproxy.int.exe.cloud/
+PROMPT ▶ integrations list
+otherproxy  http-proxy  target=https://other.com header=Authorization:Bearer-tok  (none)
+myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
+PROMPT ▶ integrations remove myproxy
+Removed integration myproxy
+PROMPT ▶ integrations list
+otherproxy  http-proxy  target=https://other.com header=Authorization:Bearer-tok  (none)
+PROMPT ▶ integrations remove doesnotexist
+integration "doesnotexist" not found
+PROMPT ▶ integrations add http-proxy --target=https://x.com --header=X-Foo:bar
+--name is required
+PROMPT ▶ integrations add http-proxy --name=bad --header=X-Foo:bar
+--target is required
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com
+--header (or --bearer) is required
+PROMPT ▶ integrations add unknown-type
+unknown integration type "unknown-type" (known types: http-proxy, github)
+PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://dup.com --header=X:y
+failed to add integration (name "otherproxy" may already be in use)
+PROMPT ▶ integrations add http-proxy --name=BadName --target=https://x.com --header=X-Foo:bar
+invalid name: name must be lowercase (got "BadName")
+PROMPT ▶ integrations add http-proxy --name=-bad --target=https://x.com --header=X-Foo:bar
+invalid name: name must not start or end with a hyphen
+PROMPT ▶ integrations add http-proxy --name=bad --target=example.com --header=X-Foo:bar
+target URL scheme must be https, got ""
+PROMPT ▶ integrations add http-proxy --name=bad --target=http://example.com --header=X-Foo:bar
+target URL scheme must be https, got "http"
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://example.com:8080 --header=X-Foo:bar
+target URL must use port 443 (got 8080)
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=novalue
+invalid header: header must be in Key:Value format
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=X-Exedev-Box:evil
+invalid header: header key "X-Exedev-Box" is reserved
+PROMPT ▶ integrations add http-proxy --name=bad --target=https://192.168.1.1 --header=X-Foo:bar
+target URL must use a hostname, not an IP address
+PROMPT ▶ integrations
+
+Command: integrations
+Aliases: int
+
+Manage integrations
+
+Usage: integrations <subcommand> [args...]
+
+Subcommands:
+  list     - List your integrations
+  setup    - Set up a service integration
+  add      - Add a new integration
+  remove   - Remove an integration
+  attach   - Attach an integration to a VM, tag, or all VMs
+  detach   - Detach an integration from a VM, tag, or all VMs
+  rename   - Rename an integration
+PROMPT ▶ integrations remove otherproxy
+Removed integration otherproxy
+PROMPT ▶
