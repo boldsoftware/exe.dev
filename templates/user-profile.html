@@ -678,15 +678,11 @@
         {{if not .BasicUser}}
         {{if .TeamInfo}}
         <div class="section" id="team">
-            <div class="section-title">Team</div>
+            <div class="section-title">{{.TeamInfo.DisplayName}}</div>
             <div class="info-card">
                 <div class="info-row">
-                    <div class="info-label">Team Name</div>
-                    <div class="info-value">{{.TeamInfo.DisplayName}}</div>
-                </div>
-                <div class="info-row">
                     <div class="info-label">Your Role</div>
-                    <div class="info-value">{{if eq .TeamInfo.Role "owner"}}Owner{{else}}Member{{end}}</div>
+                    <div class="info-value">{{.TeamInfo.Role}}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label">Members</div>
@@ -702,11 +698,11 @@
                         <div class="ssh-key-info">
                             <div class="ssh-key-comment">{{.Email}}</div>
                             <div class="ssh-key-meta">
-                                {{if eq .Role "owner"}}Team Owner{{else}}Team Member{{end}}
-                                · Joined {{formatTimeAgo .JoinedAt}}
+                                {{.Role}}
+                                {{if .JoinedAt}}· Joined {{formatTimeAgo .JoinedAt}}{{end}}
                             </div>
                         </div>
-                        {{if eq $.TeamInfo.Role "owner"}}
+                        {{if $.TeamInfo.IsAdmin}}
                         {{if ne .Email $.User.Email}}
                         <button class="btn btn-danger btn-small" onclick="openRemoveTeamMemberModal('{{.Email}}')">Remove</button>
                         {{end}}
@@ -716,10 +712,11 @@
                 </div>
             </div>
             {{end}}
-            
-            {{if eq .TeamInfo.Role "owner"}}
-            <div style="margin-top: 16px;">
-                <button class="btn" onclick="openAddTeamMemberModal()">Add Team Member</button>
+
+            {{if .TeamInfo.IsAdmin}}
+            <div style="margin-top: 16px; display: flex; gap: 8px;">
+                <button class="btn" onclick="openAddTeamMemberModal()">Invite Member</button>
+                <button class="btn" onclick="openTransferVMModal()">Transfer VM</button>
             </div>
             {{end}}
         </div>
@@ -1364,21 +1361,26 @@
 
         // Team management functions
         function openAddTeamMemberModal() {
-            const email = prompt('Enter the email address of the person you want to add to your team:');
-            if (email && email.trim()) {
-                cmdModal.open({
-                    title: 'Add Team Member',
-                    command: 'team add ' + email.trim(),
-                    danger: false
-                });
-            }
+            cmdModal.open({
+                title: 'Invite to Team',
+                commandPrefix: 'team add',
+                inputPlaceholder: 'user@example.com',
+            });
         }
 
         function openRemoveTeamMemberModal(email) {
             cmdModal.open({
-                title: 'Remove Team Member',
-                command: 'team remove ' + email,
-                danger: true
+                title: 'Remove from Team',
+                command: 'team remove ' + shellQuote(email),
+                danger: true,
+            });
+        }
+
+        function openTransferVMModal() {
+            cmdModal.open({
+                title: 'Transfer VM',
+                commandPrefix: 'team transfer',
+                inputPlaceholder: 'vm-name target@example.com',
             });
         }
     </script>

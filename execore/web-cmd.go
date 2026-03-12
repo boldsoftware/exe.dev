@@ -34,6 +34,7 @@ var allowedCommands = map[string]bool{
 	"ssh-key rename":    true,
 	"ssh-key list":      true,
 	"shelley prompt":    true,
+	"team members":      true,
 	"team add":          true,
 	"team remove":       true,
 	"team transfer":     true,

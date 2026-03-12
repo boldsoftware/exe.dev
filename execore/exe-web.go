@@ -1378,24 +1378,6 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		teamBoxes = append(teamBoxes, teamBoxInfo)
 	}
 
-	// Get team info for team section
-	var teamInfo *TeamDisplayInfo
-	if team, err := s.GetTeamForUser(r.Context(), user.UserID); err == nil && team != nil {
-		teamInfo = &TeamDisplayInfo{
-			DisplayName: team.DisplayName,
-			Role:        team.Role,
-			IsAdmin:     team.Role != "user",
-		}
-		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err == nil {
-			for _, m := range members {
-				teamInfo.Members = append(teamInfo.Members, TeamMemberDisplayInfo{
-					Email: m.Email,
-					Role:  m.Role,
-				})
-			}
-		}
-	}
-
 	// Prepare template data
 	data := UserPageData{
 		Env:         s.env,
@@ -1405,7 +1387,6 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		Boxes:       boxes,
 		SharedBoxes: sharedBoxes,
 		TeamBoxes:   teamBoxes,
-		TeamInfo:    teamInfo,
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,
