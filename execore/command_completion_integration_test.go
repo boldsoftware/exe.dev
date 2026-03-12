@@ -104,6 +104,117 @@ func TestCompletionIntegration(t *testing.T) {
 // Note: This is covered by unit tests in command_completion_test.go
 // The CompleteBoxNames function is tested there with nil container manager
 
+func TestLongestCommonPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected string
+	}{
+		{name: "empty", input: nil, expected: ""},
+		{name: "single", input: []string{"hello"}, expected: "hello"},
+		{name: "common prefix", input: []string{"gbench1", "gbench2"}, expected: "gbench"},
+		{name: "no common prefix", input: []string{"alpha", "beta"}, expected: ""},
+		{name: "exact match", input: []string{"same", "same"}, expected: "same"},
+		{name: "one is prefix of another", input: []string{"ssh", "ssh-key"}, expected: "ssh"},
+		{name: "three items", input: []string{"restart", "rename", "remove"}, expected: "re"},
+		{name: "multi-byte utf8 diverge", input: []string{"café", "cafê"}, expected: "caf"},
+		{name: "multi-byte utf8 common", input: []string{"über-a", "über-b"}, expected: "über-"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, longestCommonPrefix(tt.input))
+		})
+	}
+}
+
+// TestTwoTabSequence verifies the two-phase tab completion contract at the
+// CompleteCommand level: first tab expands to common prefix, second tab
+// returns the full completion list.
+func TestTwoTabSequence(t *testing.T) {
+	server := &Server{log: tslog.Slogger(t)}
+	sshServer := NewSSHServer(server)
+
+	cc := &exemenu.CommandContext{
+		User: &exemenu.UserInfo{
+			ID:    "test-user",
+			Email: "test@example.com",
+		},
+		PublicKey: "test-key",
+	}
+
+	// Simulate: user types "help ss" and presses tab.
+	line1 := "help ss"
+	pos1 := 7
+	completions := sshServer.commands.CompleteCommand(line1, pos1, cc)
+	assert.ElementsMatch(t, []string{"ssh", "ssh-key"}, completions)
+
+	prefix := longestCommonPrefix(completions)
+	assert.Equal(t, "ssh", prefix)
+
+	// First tab: prefix "ssh" > typed "ss", so expand to "help ssh".
+	wordStart := pos1
+	for wordStart > 0 && line1[wordStart-1] != ' ' && line1[wordStart-1] != '\t' {
+		wordStart--
+	}
+	currentWord := line1[wordStart:pos1]
+	assert.Equal(t, "ss", currentWord)
+	assert.Greater(t, len(prefix), len(currentWord), "prefix should extend beyond typed word")
+
+	expandedLine := line1[:wordStart] + prefix + line1[pos1:]
+	expandedPos := wordStart + len(prefix)
+	assert.Equal(t, "help ssh", expandedLine)
+	assert.Equal(t, 8, expandedPos)
+
+	// Second tab: same completions for expanded input.
+	completions2 := sshServer.commands.CompleteCommand(expandedLine, expandedPos, cc)
+	assert.ElementsMatch(t, []string{"ssh", "ssh-key"}, completions2)
+
+	// After expansion, the prefix equals the current word — showCompletions path.
+	wordStart2 := expandedPos
+	for wordStart2 > 0 && expandedLine[wordStart2-1] != ' ' && expandedLine[wordStart2-1] != '\t' {
+		wordStart2--
+	}
+	currentWord2 := expandedLine[wordStart2:expandedPos]
+	prefix2 := longestCommonPrefix(completions2)
+	assert.Equal(t, "ssh", currentWord2)
+	assert.Equal(t, "ssh", prefix2)
+	assert.Equal(t, len(prefix2), len(currentWord2), "prefix should NOT extend beyond typed word — showCompletions path")
+}
+
+// TestTwoTabSequenceMidCursor verifies that prefix expansion preserves
+// text after the cursor (mid-line editing).
+func TestTwoTabSequenceMidCursor(t *testing.T) {
+	server := &Server{log: tslog.Slogger(t)}
+	sshServer := NewSSHServer(server)
+
+	cc := &exemenu.CommandContext{
+		User: &exemenu.UserInfo{
+			ID:    "test-user",
+			Email: "test@example.com",
+		},
+		PublicKey: "test-key",
+	}
+
+	// Simulate: user types "help ss extra" with cursor on "ss" (pos=7).
+	line := "help ss extra"
+	pos := 7
+	completions := sshServer.commands.CompleteCommand(line, pos, cc)
+	assert.ElementsMatch(t, []string{"ssh", "ssh-key"}, completions)
+
+	prefix := longestCommonPrefix(completions)
+	assert.Equal(t, "ssh", prefix)
+
+	// Prefix expansion should replace "ss" with "ssh" and keep " extra".
+	wordStart := pos
+	for wordStart > 0 && line[wordStart-1] != ' ' && line[wordStart-1] != '\t' {
+		wordStart--
+	}
+	expandedLine := line[:wordStart] + prefix + line[pos:]
+	expandedPos := wordStart + len(prefix)
+	assert.Equal(t, "help ssh extra", expandedLine)
+	assert.Equal(t, 8, expandedPos)
+}
+
 // TestApplySingleCompletion tests the single completion logic
 func TestApplySingleCompletion(t *testing.T) {
 	server := &Server{}

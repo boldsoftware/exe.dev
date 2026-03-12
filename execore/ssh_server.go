@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"exe.dev/boxname"
 	"exe.dev/ctrlc"
@@ -1506,12 +1507,34 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 			return newLine, newPos, true
 		}
 
-		// Multiple completions - show options and return original line
+		// Multiple completions - complete common prefix first, then show options
+		prefix := longestCommonPrefix(completions)
+
+		// Find the current partial word
+		wordStart := pos
+		for wordStart > 0 && line[wordStart-1] != ' ' && line[wordStart-1] != '\t' {
+			wordStart--
+		}
+		currentWord := line[wordStart:pos]
+
+		if len(prefix) > len(currentWord) && strings.HasPrefix(prefix, currentWord) {
+			// Common prefix extends beyond what's typed - complete to it (no trailing space).
+			// Clear dedup state so the next tab with the same completions
+			// falls through to showCompletions.
+			lastCompletionLine = ""
+			lastCompletionPos = 0
+			lastCompletionResults = nil
+			newLine := line[:wordStart] + prefix + line[pos:]
+			newPos := wordStart + len(prefix)
+			return newLine, newPos, true
+		}
+
+		// Common prefix already typed - show options
 		ss.showCompletions(terminal, completions)
 		lastCompletionLine = line
 		lastCompletionPos = pos
 		lastCompletionResults = slices.Clone(completions)
-		return line, pos, true // Don't modify the line, just show completions
+		return line, pos, true
 	}
 
 	// Use regular ReadLine with completion enabled
@@ -1531,6 +1554,28 @@ func (ss *SSHServer) applySingleCompletion(line string, pos int, completion stri
 	newPos := wordStart + len(completion) + 1
 
 	return newLine, newPos
+}
+
+// longestCommonPrefix returns the longest common prefix of all strings.
+func longestCommonPrefix(strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	prefix := strs[0]
+	for _, s := range strs[1:] {
+		// Byte-level comparison may split a multi-byte rune; trimmed below.
+		for i := 0; i < len(prefix); i++ {
+			if i >= len(s) || s[i] != prefix[i] {
+				prefix = prefix[:i]
+				break
+			}
+		}
+	}
+	// Trim any trailing incomplete UTF-8 rune.
+	for len(prefix) > 0 && !utf8.Valid([]byte(prefix)) {
+		prefix = prefix[:len(prefix)-1]
+	}
+	return prefix
 }
 
 // showCompletions displays multiple completion options
