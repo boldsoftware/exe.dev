@@ -137,6 +137,7 @@ jobs:
           PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/testinfra|e1e/exelets|experiments/imageunpack)$')
           go tool gotestsum --format testname -- -race $PKGS
 
+  # These tests can also be run locally: go test ./e1e/ -run TestName -v -count=1
   test-e1e:
     runs-on: [self-hosted, linux, x64, libvirt, edric]
     permissions:
