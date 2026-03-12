@@ -25,7 +25,7 @@ func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id
 func TestMetadataService404(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestMetadataService404(t *testing.T) {
 func TestMetadataServiceRootResponse(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestMetadataServiceLoggingMiddleware(t *testing.T) {
 	tracingHandler := tracing.NewHandler(jsonHandler)
 	log := slog.New(tracingHandler)
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestMetadataServiceEmailProxyHandler(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, backend.URL, "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, backend.URL, "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestMetadataServiceEmailProxyNoBox(t *testing.T) {
 	// Mock that returns empty box name (box not found)
 	emptyLookup := &emptyInstanceLookup{}
 
-	svc, err := NewService(log, emptyLookup, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, emptyLookup, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 	log := slog.Default()
 	// Use gatewayDev=true because we're running in a test environment where
 	// outbound connections go through private interfaces.
-	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, true, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", true, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 	defer fakeExed.Close()
 
 	log := slog.Default()
-	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 func TestMetadataServiceIntegrationProxyNoBox(t *testing.T) {
 	log := slog.Default()
 	lookup := &failingInstanceLookup{}
-	svc, err := NewService(log, lookup, "http://localhost:9999", "127.0.0.1:0", []string{".int.exe.cloud"}, false, nil)
+	svc, err := NewService(log, lookup, "http://localhost:9999", "127.0.0.1:0", []string{".int.exe.cloud"}, "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}

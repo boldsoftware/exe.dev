@@ -521,7 +521,8 @@ func serveAction(clix *cli.Context) error {
 	if env.IntegrationHostSuffix() != ".int.exe.cloud" {
 		integrationSuffixes = append(integrationSuffixes, ".int.exe.cloud")
 	}
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, integrationSuffixes, env.GatewayDev, serviceContext.MetricsRegistry)
+	certCachePath := filepath.Join(cfg.DataDir, "certs")
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, integrationSuffixes, certCachePath, env.GatewayDev, serviceContext.MetricsRegistry)
 	if err != nil {
 		return err
 	}

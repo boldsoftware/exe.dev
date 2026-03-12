@@ -31,6 +31,7 @@ package metadata
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,12 +42,15 @@ import (
 	"net/http/httputil"
 	"net/netip"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"exe.dev/tracing"
+	"exe.dev/wildcardcert"
 	"github.com/prometheus/client_golang/prometheus"
 	sloghttp "github.com/samber/slog-http"
 	"tailscale.com/net/tsaddr"
@@ -58,7 +62,13 @@ const (
 	MetadataIP = "169.254.169.254"
 	// MetadataPort is the port where the metadata service listens
 	MetadataPort = 80
+	// MetadataHTTPSPort is the HTTPS port for integration proxy TLS termination
+	MetadataHTTPSPort = 443
 )
+
+// CertRefreshInterval is how often the exelet re-fetches the integration
+// wildcard certificate from exed. Exported so tests can shorten it.
+var CertRefreshInterval = 1 * time.Hour
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
@@ -73,6 +83,7 @@ type Service struct {
 	exedURL        string
 	exedTargetURL  *url.URL
 	listenAddr     string // actual address to bind to (may differ from MetadataIP for isolation)
+	certCachePath  string // path to cache the integration wildcard cert on disk (empty = no caching)
 	gatewayDev     bool   // true in local/test stages; relaxes outbound local-address checks
 
 	// integrationHostSuffixes is the list of domain suffixes for integration proxy
@@ -81,6 +92,14 @@ type Service struct {
 	integrationHostSuffixes []string
 
 	gatewayRequests *prometheus.CounterVec
+
+	// tlsCertMu protects tlsCert.
+	tlsCertMu sync.RWMutex
+	tlsCert   *tls.Certificate
+
+	// tlsServer is the HTTPS listener (port 443), started only when a
+	// certificate is available.
+	tlsServer *http.Server
 
 	integrationCacheMu sync.Mutex
 	integrationCache   map[integrationCacheKey]*integrationCacheEntry
@@ -107,9 +126,11 @@ var IntegrationCacheTTL = 1 * time.Minute
 // listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80").
 // integrationHostSuffixes is the list of domain suffixes for integration proxy
 // requests (e.g., [".int.exe.xyz", ".int.exe.cloud"]).
+// certCachePath is the directory where the integration wildcard cert is cached
+// on disk (e.g., "/data/exelet/certs"). Empty disables disk caching.
 // gatewayDev relaxes outbound local-address checks for dev environments
 // where connections legitimately route through private interfaces.
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, integrationHostSuffixes []string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, integrationHostSuffixes []string, certCachePath string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}
@@ -141,6 +162,7 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 		exedURL:                 exedURL,
 		exedTargetURL:           targetURL,
 		listenAddr:              listenAddr,
+		certCachePath:           certCachePath,
 		integrationHostSuffixes: integrationHostSuffixes,
 		gatewayDev:              gatewayDev,
 		gatewayRequests:         gatewayRequests,
@@ -150,7 +172,8 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 	return s, nil
 }
 
-// Start starts the metadata HTTP server
+// Start starts the metadata HTTP server and, if a TLS certificate can be
+// fetched from exed, an HTTPS server on port 443 for integration proxy.
 func (s *Service) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{$}", s.handleRoot)
@@ -193,7 +216,168 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}()
 
+	// In production, start the HTTPS listener and fetch the integration
+	// wildcard cert from exed asynchronously. The TLS server uses a
+	// GetCertificate callback so it will serve once a cert is available.
+	// Skip entirely in dev/test stages where there are no real certs.
+	if !s.gatewayDev {
+		s.startTLSServer(ctx, handler)
+		go s.refreshCertLoop(ctx)
+	}
+
 	return nil
+}
+
+// startTLSServer starts the HTTPS listener using the current TLS certificate.
+func (s *Service) startTLSServer(ctx context.Context, handler http.Handler) {
+	host, _, err := net.SplitHostPort(s.listenAddr)
+	if err != nil {
+		s.log.ErrorContext(ctx, "cannot derive HTTPS listen addr", "error", err)
+		return
+	}
+	httpsAddr := net.JoinHostPort(host, "443")
+
+	s.tlsServer = &http.Server{
+		Addr:    httpsAddr,
+		Handler: handler,
+		TLSConfig: &tls.Config{
+			GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				s.tlsCertMu.RLock()
+				cert := s.tlsCert
+				s.tlsCertMu.RUnlock()
+				if cert == nil {
+					return nil, fmt.Errorf("no TLS certificate available")
+				}
+				return cert, nil
+			},
+		},
+	}
+
+	s.log.InfoContext(ctx, "starting metadata HTTPS service", "addr", httpsAddr)
+
+	go func() {
+		// TLSConfig is set, so ListenAndServeTLS with empty cert/key files
+		// uses the GetCertificate callback.
+		if err := s.tlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			s.log.ErrorContext(ctx, "metadata HTTPS service error", "err", err)
+		}
+	}()
+}
+
+// refreshCertLoop fetches the integration certificate immediately and then
+// periodically re-fetches it from exed.
+func (s *Service) refreshCertLoop(ctx context.Context) {
+	// Fetch immediately on startup.
+	if err := s.fetchAndStoreIntegrationCert(ctx); err != nil {
+		s.log.WarnContext(ctx, "initial integration cert fetch failed", "error", err)
+	} else {
+		s.log.InfoContext(ctx, "integration cert loaded")
+	}
+
+	ticker := time.NewTicker(CertRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.fetchAndStoreIntegrationCert(ctx); err != nil {
+				s.log.WarnContext(ctx, "integration cert refresh failed", "error", err)
+			} else {
+				s.log.InfoContext(ctx, "integration cert refreshed")
+			}
+		}
+	}
+}
+
+// fetchAndStoreIntegrationCert fetches the PEM-encoded wildcard certificate
+// from exed's /_/integration-cert endpoint and stores it for TLS serving.
+// On success the PEM is cached to disk so that a subsequent startup can use
+// the cached cert if exed is unreachable.
+// If the fetch fails, the method tries to load a previously cached cert.
+func (s *Service) fetchAndStoreIntegrationCert(ctx context.Context) error {
+	pemBytes, fetchErr := s.fetchIntegrationCertPEM(ctx)
+	if fetchErr != nil {
+		// Try loading a cached cert from disk.
+		cached, diskErr := s.loadCachedCert()
+		if diskErr != nil {
+			return fmt.Errorf("fetch failed (%w) and no cached cert available (%v)", fetchErr, diskErr)
+		}
+		s.tlsCertMu.Lock()
+		s.tlsCert = cached
+		s.tlsCertMu.Unlock()
+		s.log.WarnContext(ctx, "using cached integration cert from disk", "fetch_error", fetchErr)
+		return nil
+	}
+
+	cert, err := wildcardcert.DecodeCertificate(pemBytes)
+	if err != nil {
+		return fmt.Errorf("decode cert: %w", err)
+	}
+
+	s.tlsCertMu.Lock()
+	s.tlsCert = cert
+	s.tlsCertMu.Unlock()
+
+	// Best-effort write to disk cache.
+	if err := s.writeCachedCert(pemBytes); err != nil {
+		s.log.WarnContext(ctx, "failed to cache integration cert to disk", "error", err)
+	}
+
+	return nil
+}
+
+// fetchIntegrationCertPEM does the HTTP request to exed's /_/integration-cert.
+func (s *Service) fetchIntegrationCertPEM(ctx context.Context) ([]byte, error) {
+	u := strings.TrimRight(s.exedURL, "/") + "/_/integration-cert"
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, body)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+const certCacheFile = "integration-cert.pem"
+
+// writeCachedCert writes the PEM cert to the disk cache directory.
+func (s *Service) writeCachedCert(pem []byte) error {
+	if s.certCachePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.certCachePath, 0o700); err != nil {
+		return err
+	}
+	// Write atomically via temp file + rename to avoid partial reads.
+	tmp := filepath.Join(s.certCachePath, certCacheFile+".tmp")
+	if err := os.WriteFile(tmp, pem, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(s.certCachePath, certCacheFile))
+}
+
+// loadCachedCert reads and decodes a previously cached cert from disk.
+func (s *Service) loadCachedCert() (*tls.Certificate, error) {
+	if s.certCachePath == "" {
+		return nil, fmt.Errorf("no cert cache path configured")
+	}
+	data, err := os.ReadFile(filepath.Join(s.certCachePath, certCacheFile))
+	if err != nil {
+		return nil, err
+	}
+	return wildcardcert.DecodeCertificate(data)
 }
 
 // loggerMiddleware builds the logging middleware chain.
@@ -230,12 +414,20 @@ func (s *Service) customAttrsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// Stop stops the metadata HTTP server
+// Stop stops the metadata HTTP and HTTPS servers.
 func (s *Service) Stop(ctx context.Context) error {
-	if s.server != nil {
-		return s.server.Shutdown(ctx)
+	var firstErr error
+	if s.tlsServer != nil {
+		if err := s.tlsServer.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return nil
+	if s.server != nil {
+		if err := s.server.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // MetadataResponse is the JSON response returned by the metadata service

@@ -488,7 +488,7 @@ func (n *NAT) applyIPTablesMasquerade(ctx context.Context, device, network strin
 }
 
 func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeName, bridgeIP string) error {
-	// Check if DNAT rule already exists
+	// Check which DNAT rules already exist (port 80 and 443).
 	args := []string{
 		"-t", "nat",
 		"-n",
@@ -503,37 +503,47 @@ func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeName, bridgeIP string
 
 	buf := bytes.NewBuffer(fOut)
 	sc := bufio.NewScanner(buf)
-	dnatRuleExists := false
-	// Look for a rule that DNATs metadata IP to our bridge IP for this specific bridge
+	has80, has443 := false, false
 	for sc.Scan() {
 		l := sc.Text()
 		if strings.Contains(l, bridgeName) && strings.Contains(l, MetadataIP) && strings.Contains(l, "DNAT") {
-			dnatRuleExists = true
-			break
+			if strings.Contains(l, "dpt:80") {
+				has80 = true
+			}
+			if strings.Contains(l, "dpt:443") {
+				has443 = true
+			}
 		}
 	}
 
-	if dnatRuleExists {
-		return nil
-	}
+	// Add DNAT rules: packets to 169.254.169.254:{80,443} get redirected to bridge IP.
+	// -i specifies incoming interface (our bridge), so only our VMs' traffic is affected.
+	for _, rule := range []struct {
+		port   string
+		exists bool
+	}{
+		{"80", has80},
+		{"443", has443},
+	} {
+		if rule.exists {
+			continue
+		}
 
-	n.log.DebugContext(ctx, "adding iptables DNAT rule for metadata service", "bridge", bridgeName, "metadata_ip", MetadataIP, "bridge_ip", bridgeIP)
+		n.log.DebugContext(ctx, "adding iptables DNAT rule for metadata service", "bridge", bridgeName, "metadata_ip", MetadataIP, "bridge_ip", bridgeIP, "port", rule.port)
 
-	// Add DNAT rule: packets to 169.254.169.254:80 get redirected to bridge IP:80
-	// -i specifies incoming interface (our bridge), so only our VMs' traffic is affected
-	cArgs := []string{
-		"-t", "nat",
-		"-A", "PREROUTING",
-		"-i", bridgeName,
-		"-d", MetadataIP,
-		"-p", "tcp",
-		"--dport", "80",
-		"-j", "DNAT",
-		"--to-destination", bridgeIP + ":80",
-	}
-
-	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
-		return fmt.Errorf("failed to add metadata DNAT rule: %w", err)
+		cArgs := []string{
+			"-t", "nat",
+			"-A", "PREROUTING",
+			"-i", bridgeName,
+			"-d", MetadataIP,
+			"-p", "tcp",
+			"--dport", rule.port,
+			"-j", "DNAT",
+			"--to-destination", bridgeIP + ":" + rule.port,
+		}
+		if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
+			return fmt.Errorf("failed to add metadata DNAT rule for port %s: %w", rule.port, err)
+		}
 	}
 
 	return nil
@@ -630,24 +640,26 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 
 	n.log.DebugContext(ctx, "adding iptables rules to block gateway access from guests", "bridge", bridgeName, "gateway_ip", bridgeIP)
 
-	// Rule 1: Allow port 80 traffic that was originally destined for the metadata IP (169.254.169.254).
+	// Allow port 80 and 443 traffic that was originally destined for the metadata IP (169.254.169.254).
 	// This traffic was DNATed to the bridge IP and should be allowed through to the metadata service.
 	// We use conntrack's --ctorigdst to check the original destination before DNAT.
-	allowArgs := []string{
-		"-I", "INPUT",
-		"-i", bridgeName,
-		"-d", bridgeIP,
-		"-p", "tcp",
-		"--dport", "80",
-		"-m", "conntrack",
-		"--ctorigdst", MetadataIP,
-		"-j", "ACCEPT",
-	}
-	if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
-		return fmt.Errorf("failed to add metadata allow rule: %w", err)
+	for _, port := range []string{"80", "443"} {
+		allowArgs := []string{
+			"-I", "INPUT",
+			"-i", bridgeName,
+			"-d", bridgeIP,
+			"-p", "tcp",
+			"--dport", port,
+			"-m", "conntrack",
+			"--ctorigdst", MetadataIP,
+			"-j", "ACCEPT",
+		}
+		if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
+			return fmt.Errorf("failed to add metadata allow rule for port %s: %w", port, err)
+		}
 	}
 
-	// Rule 2: Block all other new TCP connections from VMs to gateway.
+	// Block all other new TCP connections from VMs to gateway.
 	// We use INPUT chain because this traffic is destined for the host itself.
 	// The --syn flag matches only TCP SYN packets (new connection attempts),
 	// allowing established connection responses (like SSH proxy traffic) through.

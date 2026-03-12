@@ -13,6 +13,7 @@ import (
 
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/wildcardcert"
 	sloghttp "github.com/samber/slog-http"
 	"tailscale.com/net/tsaddr"
 )
@@ -173,4 +174,41 @@ func marshalEnrichedConfig(cfg githubIntegrationConfig, token string) (string, e
 		return "", err
 	}
 	return string(b), nil
+}
+
+// handleIntegrationCert serves GET /_/integration-cert.
+// Exelets call this to fetch the wildcard TLS certificate for *.int.{BoxHost}.
+func (s *Server) handleIntegrationCert(w http.ResponseWriter, r *http.Request) {
+	// Security: only accept from Tailscale IPs or in GatewayDev mode.
+	host := domz.StripPort(r.RemoteAddr)
+	remoteIP, err := netip.ParseAddr(host)
+	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.wildcardCertManager == nil {
+		http.Error(w, "no wildcard certificate manager", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Request a cert for any name under int.{BoxHost}; the wildcard cert
+	// covers all of *.int.{BoxHost}.
+	serverName := "integration-cert." + s.env.BoxSub("int")
+	cert, err := s.wildcardCertManager.GetCertificate(serverName)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "integration cert: GetCertificate failed", "error", err)
+		http.Error(w, "failed to get certificate", http.StatusInternalServerError)
+		return
+	}
+
+	pem, err := wildcardcert.EncodeCertificate(cert)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "integration cert: EncodeCertificate failed", "error", err)
+		http.Error(w, "failed to encode certificate", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	w.Write(pem)
 }
