@@ -203,7 +203,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("header", "", "header to inject (required for http-proxy)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
-	fs.String("attach", "", "attach to a spec (vm:<name>, tag:<name>, auto:all, or bare VM name)")
+	fs.String("attach", "", "attach to a spec (vm:<name>, tag:<name>, or auto:all)")
 	return fs
 }
 
@@ -407,13 +407,9 @@ func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.C
 	return nil
 }
 
-// parseAttachmentSpec normalises a user-supplied attachment spec.
-// Bare names (no colon) are treated as vm:<name> for backward compatibility.
+// parseAttachmentSpec validates a user-supplied attachment spec.
+// Must be vm:<name>, tag:<name>, or auto:all.
 func parseAttachmentSpec(spec string) (string, error) {
-	if !strings.Contains(spec, ":") {
-		// Bare VM name for backward compatibility.
-		return "vm:" + spec, nil
-	}
 	if spec == "auto:all" {
 		return spec, nil
 	}
@@ -448,7 +444,7 @@ func (ss *SSHServer) validateAttachmentSpec(ctx context.Context, cc *exemenu.Com
 
 func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name")
+		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
 	name := cc.Args[0]
 	rawSpec := cc.Args[1]
@@ -493,7 +489,7 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 
 func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: integrations detach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name")
+		return cc.Errorf("usage: integrations detach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
 	name := cc.Args[0]
 	rawSpec := cc.Args[1]
