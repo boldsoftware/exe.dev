@@ -17,6 +17,7 @@ import (
 func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "integrations",
+		Aliases:     []string{"int"},
 		Hidden:      true,
 		Description: "Manage integrations",
 		Usage:       "integrations <subcommand> [args...]",
@@ -172,11 +173,24 @@ func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.Comm
 		return cc.Errorf("unknown integration type %q (known types: %s)", typeName, strings.Join(knownIntegrationTypeNames(), ", "))
 	}
 
+	// Parse optional --attach flag.
+	var attachments string
+	if attachFlag := cc.FlagSet.Lookup("attach").Value.String(); attachFlag != "" {
+		spec, err := parseAttachmentSpec(attachFlag)
+		if err != nil {
+			return cc.Errorf("%v", err)
+		}
+		if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
+			return err
+		}
+		attachments = exedb.AttachmentsJSON([]string{spec})
+	}
+
 	switch typeName {
 	case "http-proxy":
-		return ss.handleAddHTTPProxy(ctx, cc)
+		return ss.handleAddHTTPProxy(ctx, cc, attachments)
 	case "github":
-		return ss.handleAddGitHub(ctx, cc)
+		return ss.handleAddGitHub(ctx, cc, attachments)
 	default:
 		return cc.Errorf("unknown integration type %q", typeName)
 	}
@@ -189,6 +203,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("header", "", "header to inject (required for http-proxy)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
+	fs.String("attach", "", "attach to a spec (vm:<name>, tag:<name>, auto:all, or bare VM name)")
 	return fs
 }
 
@@ -200,7 +215,7 @@ func knownIntegrationTypeNames() []string {
 	return names
 }
 
-func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.CommandContext, attachments string) error {
 	name := cc.FlagSet.Lookup("name").Value.String()
 	target := cc.FlagSet.Lookup("target").Value.String()
 	header := cc.FlagSet.Lookup("header").Value.String()
@@ -238,6 +253,10 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 		return err
 	}
 
+	if attachments == "" {
+		attachments = "[]"
+	}
+
 	id, err := generateID("int")
 	if err != nil {
 		return err
@@ -249,7 +268,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 			Type:          "http-proxy",
 			Config:        string(cfgJSON),
 			Name:          name,
-			Attachments:   "[]",
+			Attachments:   attachments,
 		})
 	})
 	if err != nil {
@@ -260,7 +279,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	return nil
 }
 
-func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandContext, attachments string) error {
 	name := cc.FlagSet.Lookup("name").Value.String()
 	repositoryFlag := cc.FlagSet.Lookup("repository").Value.String()
 
@@ -339,6 +358,10 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 		return err
 	}
 
+	if attachments == "" {
+		attachments = "[]"
+	}
+
 	id, err := generateID("int")
 	if err != nil {
 		return err
@@ -350,6 +373,7 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 			Type:          "github",
 			Config:        string(cfgJSON),
 			Name:          name,
+			Attachments:   attachments,
 		})
 	})
 	if err != nil {
@@ -402,6 +426,26 @@ func parseAttachmentSpec(spec string) (string, error) {
 	return "", fmt.Errorf("invalid attachment spec %q: must be vm:<name>, tag:<name>, or auto:all", spec)
 }
 
+// validateAttachmentSpec validates that the target of a parsed attachment spec exists.
+func (ss *SSHServer) validateAttachmentSpec(ctx context.Context, cc *exemenu.CommandContext, spec string) error {
+	switch {
+	case strings.HasPrefix(spec, "vm:"):
+		vmName := spec[3:]
+		_, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
+		if err != nil {
+			return cc.Errorf("vm %q not found", vmName)
+		}
+	case strings.HasPrefix(spec, "tag:"):
+		tagName := spec[4:]
+		if !tagNameRe.MatchString(tagName) {
+			return cc.Errorf("invalid tag name %q: must match %s", tagName, tagNameRe.String())
+		}
+	case spec == "auto:all":
+		// Nothing to validate.
+	}
+	return nil
+}
+
 func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 2 {
 		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name")
@@ -419,21 +463,8 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 		return err
 	}
 
-	// Validate the spec target exists / is well-formed.
-	switch {
-	case strings.HasPrefix(spec, "vm:"):
-		vmName := spec[3:]
-		_, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
-		if err != nil {
-			return cc.Errorf("vm %q not found", vmName)
-		}
-	case strings.HasPrefix(spec, "tag:"):
-		tagName := spec[4:]
-		if !tagNameRe.MatchString(tagName) {
-			return cc.Errorf("invalid tag name %q: must match %s", tagName, tagNameRe.String())
-		}
-	case spec == "auto:all":
-		// Nothing to validate.
+	if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
+		return err
 	}
 
 	// Add to attachments list, checking for duplicates.
