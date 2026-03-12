@@ -12,56 +12,72 @@ import (
 )
 
 // findListeningPID finds the PID of a process listening on the given TCP port.
-// It reads /proc/net/tcp to find the socket inode, then scans /proc/*/fd/ to find which process owns it.
+// It reads /proc/net/tcp to find socket inodes, then scans /proc/*/fd/ to find which process owns one.
 // Returns 0 if no process is listening on the port.
 func findListeningPID(port int) (int, error) {
-	// Find the socket inode for the listening port
-	inode, err := findListeningInode(port)
+	pids, err := findAllListeningPIDs(port)
 	if err != nil {
 		return 0, err
 	}
-	if inode == 0 {
-		return 0, nil // No process listening on this port
+	if len(pids) == 0 {
+		return 0, nil
 	}
-
-	// Find which process owns this inode
-	pid, err := findProcessByInode(inode)
-	if err != nil {
-		return 0, err
-	}
-
-	return pid, nil
+	return pids[0], nil
 }
 
-// findListeningInode reads /proc/net/tcp and /proc/net/tcp6 to find a socket listening on the given port.
-// Returns the inode number of the socket, or 0 if not found.
-func findListeningInode(port int) (uint64, error) {
-	// Try both IPv4 and IPv6
+// findAllListeningPIDs finds all PIDs of processes listening on the given TCP port.
+// This is used to detect and clean up duplicate socat processes.
+func findAllListeningPIDs(port int) ([]int, error) {
+	inodes, err := findAllListeningInodes(port)
+	if err != nil {
+		return nil, err
+	}
+	if len(inodes) == 0 {
+		return nil, nil
+	}
+
+	var pids []int
+	seen := make(map[int]bool)
+	for _, inode := range inodes {
+		pid, err := findProcessByInode(inode)
+		if err != nil || pid == 0 {
+			continue
+		}
+		if !seen[pid] {
+			seen[pid] = true
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
+}
+
+// findAllListeningInodes reads /proc/net/tcp and /proc/net/tcp6 to find all sockets listening on the given port.
+func findAllListeningInodes(port int) ([]uint64, error) {
+	var allInodes []uint64
 	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
-		inode, err := findListeningInodeInFile(path, port)
+		inodes, err := findListeningInodesInFile(path, port)
 		if err != nil {
 			continue // File might not exist (e.g., IPv6 disabled)
 		}
-		if inode > 0 {
-			return inode, nil
-		}
+		allInodes = append(allInodes, inodes...)
 	}
-	return 0, nil
+	return allInodes, nil
 }
 
-// findListeningInodeInFile parses a /proc/net/tcp or /proc/net/tcp6 file to find a listening socket.
+// findListeningInodesInFile parses a /proc/net/tcp or /proc/net/tcp6 file to find all listening sockets on a port.
 // Format: sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid timeout inode ...
 // State 0A = LISTEN
-func findListeningInodeInFile(path string, port int) (uint64, error) {
+func findListeningInodesInFile(path string, port int) ([]uint64, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer file.Close()
 
 	// Port in hex, uppercase
 	portHex := fmt.Sprintf("%04X", port)
 
+	var inodes []uint64
 	scanner := bufio.NewScanner(file)
 	scanner.Scan() // Skip header line
 
@@ -90,11 +106,11 @@ func findListeningInodeInFile(path string, port int) (uint64, error) {
 			if err != nil {
 				continue
 			}
-			return inode, nil
+			inodes = append(inodes, inode)
 		}
 	}
 
-	return 0, scanner.Err()
+	return inodes, scanner.Err()
 }
 
 // findProcessByInode scans /proc/*/fd/* to find which process owns the given socket inode.
