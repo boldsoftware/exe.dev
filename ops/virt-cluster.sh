@@ -30,6 +30,7 @@ EXELET_VCPUS="${EXELET_VCPUS:-4}"
 EXELET_RAM="${EXELET_RAM:-8192}"
 DISK_GB="${DISK_GB:-40}"
 EXELET_DATA_DISK_GB="${EXELET_DATA_DISK_GB:-50}"
+EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-16G}"
 SSH_PUBKEY_DIR="${SSH_PUBKEY_DIR:-$HOME/.ssh}"
 CLUSTER_PREFIX="${CLUSTER_PREFIX:-exe-local}"
 
@@ -434,6 +435,9 @@ runcmd:
       zpool create -f -m none tank /dev/vdb
       zfs create -o mountpoint=/data tank/data
     fi
+swap:
+  filename: /swapfile
+  size: ${EXELET_SWAP_SIZE}
 EOF
     cat >"${tmpdir}/meta-data" <<EOF
 instance-id: ${name}
@@ -1210,7 +1214,7 @@ deploy) cmd_deploy ;;
     echo "Environment variables:"
     echo "  NUM_EXELETS=${NUM_EXELETS}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
-    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}"
+    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     exit 1
     ;;
 esac
