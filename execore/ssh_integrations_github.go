@@ -63,7 +63,7 @@ func setupGitHubFlags() *flag.FlagSet {
 }
 
 func (ss *SSHServer) handleIntegrationsSetup(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) < 1 {
+	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: integrations setup <type> [-d]")
 	}
 	switch cc.Args[0] {

@@ -98,6 +98,10 @@ PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --heade
 invalid header: header key "X-Exedev-Box" is reserved
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://192.168.1.1 --header=X-Foo:bar
 target URL must use a hostname, not an IP address
+PROMPT ▶ integrations add http-proxy extraarg --name=bad --target=https://x.com --header=X-Foo:bar
+usage: integrations add <type> --name=<name> [args...]
+PROMPT ▶ integrations setup github extraarg
+usage: integrations setup <type> [-d]
 PROMPT ▶ integrations
 
 Command: integrations

@@ -226,7 +226,7 @@ var knownIntegrationTypes = map[string]bool{
 }
 
 func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) < 1 {
+	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: integrations add <type> --name=<name> [args...]")
 	}
 	typeName := cc.Args[0]

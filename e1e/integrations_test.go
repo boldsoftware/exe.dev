@@ -127,6 +127,16 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.Want("hostname, not an IP")
 	pty.WantPrompt()
 
+	// Test validation: extra args to add.
+	pty.SendLine("integrations add http-proxy extraarg --name=bad --target=https://x.com --header=X-Foo:bar")
+	pty.Want("usage: integrations add")
+	pty.WantPrompt()
+
+	// Test validation: extra args to setup.
+	pty.SendLine("integrations setup github extraarg")
+	pty.Want("usage: integrations setup")
+	pty.WantPrompt()
+
 	// Test help.
 	pty.SendLine("integrations")
 	pty.Want("list")
