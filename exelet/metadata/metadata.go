@@ -62,8 +62,11 @@ const (
 	MetadataIP = "169.254.169.254"
 	// MetadataPort is the port where the metadata service listens
 	MetadataPort = 80
-	// MetadataHTTPSPort is the HTTPS port for integration proxy TLS termination
-	MetadataHTTPSPort = 443
+	// MetadataHTTPSPort is the local listen port for integration proxy TLS
+	// termination. We use 4443 instead of 443 to avoid conflicting with
+	// exeprox, which binds 0.0.0.0:443. The iptables DNAT rule translates
+	// 169.254.169.254:443 → bridge_ip:4443 so VMs still connect on 443.
+	MetadataHTTPSPort = 4443
 )
 
 // CertRefreshInterval is how often the exelet re-fetches the integration
@@ -235,7 +238,7 @@ func (s *Service) startTLSServer(ctx context.Context, handler http.Handler) {
 		s.log.ErrorContext(ctx, "cannot derive HTTPS listen addr", "error", err)
 		return
 	}
-	httpsAddr := net.JoinHostPort(host, "443")
+	httpsAddr := net.JoinHostPort(host, fmt.Sprintf("%d", MetadataHTTPSPort))
 
 	s.tlsServer = &http.Server{
 		Addr:    httpsAddr,

@@ -503,46 +503,90 @@ func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeName, bridgeIP string
 
 	buf := bytes.NewBuffer(fOut)
 	sc := bufio.NewScanner(buf)
-	has80, has443 := false, false
+	has80 := false
+	// For port 443 we need to distinguish old rules (→ bridgeIP:443) from
+	// new rules (→ bridgeIP:4443). iptables -L -n -v shows the DNAT target
+	// as "to:<ip>:<port>", so we check for the full destination string.
+	hasMetadata443New := false // DNAT 169.254.169.254:443 → bridgeIP:4443
+	hasMetadata443Old := false // DNAT 169.254.169.254:443 → bridgeIP:443 (legacy)
+	hasBridge443 := false      // DNAT bridgeIP:443 → bridgeIP:4443
 	for sc.Scan() {
 		l := sc.Text()
-		if strings.Contains(l, bridgeName) && strings.Contains(l, MetadataIP) && strings.Contains(l, "DNAT") {
+		if !strings.Contains(l, bridgeName) || !strings.Contains(l, "DNAT") {
+			continue
+		}
+		if strings.Contains(l, MetadataIP) {
 			if strings.Contains(l, "dpt:80") {
 				has80 = true
 			}
 			if strings.Contains(l, "dpt:443") {
-				has443 = true
+				if strings.Contains(l, "to:"+bridgeIP+":4443") {
+					hasMetadata443New = true
+				} else {
+					hasMetadata443Old = true
+				}
 			}
+		}
+		// Also check for DNAT of bridgeIP:443 → bridgeIP:4443. This handles
+		// VMs that connect directly to the bridge IP on port 443.
+		if strings.Contains(l, bridgeIP) && strings.Contains(l, "dpt:443") && strings.Contains(l, "to:"+bridgeIP+":4443") {
+			hasBridge443 = true
+		}
+	}
+
+	// MIGRATION: Delete old DNAT rule that sent 443 → bridgeIP:443. The new
+	// rule sends 443 → bridgeIP:4443 to avoid conflicting with exeprox on
+	// port 443. Remove this block once all hosts have been upgraded.
+	if hasMetadata443Old {
+		n.log.InfoContext(ctx, "migrating old metadata DNAT rule for port 443", "bridge", bridgeName, "bridge_ip", bridgeIP)
+		delArgs := []string{
+			"-t", "nat",
+			"-D", "PREROUTING",
+			"-i", bridgeName,
+			"-d", MetadataIP,
+			"-p", "tcp",
+			"--dport", "443",
+			"-j", "DNAT",
+			"--to-destination", bridgeIP + ":443",
+		}
+		if err := exec.CommandContext(ctx, "iptables", delArgs...).Run(); err != nil {
+			n.log.WarnContext(ctx, "failed to delete old metadata DNAT rule (may not exist)", "bridge", bridgeName, "error", err)
 		}
 	}
 
 	// Add DNAT rules: packets to 169.254.169.254:{80,443} get redirected to bridge IP.
+	// Port 80 maps to bridgeIP:80, port 443 maps to bridgeIP:4443 (to avoid exeprox conflict).
 	// -i specifies incoming interface (our bridge), so only our VMs' traffic is affected.
 	for _, rule := range []struct {
-		port   string
+		destIP string // destination IP to match
+		dport  string // incoming port (what VMs connect to)
+		toPort string // local listen port on bridge IP
 		exists bool
 	}{
-		{"80", has80},
-		{"443", has443},
+		{MetadataIP, "80", "80", has80},
+		{MetadataIP, "443", "4443", hasMetadata443New},
+		// Also redirect bridgeIP:443 → bridgeIP:4443 for VMs that connect
+		// to the bridge IP directly (e.g., via direct DNS resolution).
+		{bridgeIP, "443", "4443", hasBridge443},
 	} {
 		if rule.exists {
 			continue
 		}
 
-		n.log.DebugContext(ctx, "adding iptables DNAT rule for metadata service", "bridge", bridgeName, "metadata_ip", MetadataIP, "bridge_ip", bridgeIP, "port", rule.port)
+		n.log.DebugContext(ctx, "adding iptables DNAT rule for metadata service", "bridge", bridgeName, "dest_ip", rule.destIP, "bridge_ip", bridgeIP, "dport", rule.dport, "to_port", rule.toPort)
 
 		cArgs := []string{
 			"-t", "nat",
 			"-A", "PREROUTING",
 			"-i", bridgeName,
-			"-d", MetadataIP,
+			"-d", rule.destIP,
 			"-p", "tcp",
-			"--dport", rule.port,
+			"--dport", rule.dport,
 			"-j", "DNAT",
-			"--to-destination", bridgeIP + ":" + rule.port,
+			"--to-destination", bridgeIP + ":" + rule.toPort,
 		}
 		if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
-			return fmt.Errorf("failed to add metadata DNAT rule for port %s: %w", rule.port, err)
+			return fmt.Errorf("failed to add metadata DNAT rule for %s:%s: %w", rule.destIP, rule.dport, err)
 		}
 	}
 
@@ -624,7 +668,9 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 
 	buf := bytes.NewBuffer(fOut)
 	sc := bufio.NewScanner(buf)
-	has80, has443, hasDrop := false, false, false
+	has80, has4443, hasDrop := false, false, false
+	has443Old := false     // old ACCEPT rule for dpt:443 (legacy)
+	has4443WithCT := false // old ACCEPT rule for dpt:4443 with --ctorigdst (needs migration)
 	for sc.Scan() {
 		l := sc.Text()
 		if strings.Contains(l, bridgeName) && strings.Contains(l, bridgeIP) {
@@ -632,8 +678,16 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 				if strings.Contains(l, "dpt:80") {
 					has80 = true
 				}
-				if strings.Contains(l, "dpt:443") {
-					has443 = true
+				if strings.Contains(l, "dpt:4443") {
+					if strings.Contains(l, "ctorigdst") {
+						// Old rule with --ctorigdst; needs replacing with
+						// a rule that omits ctorigdst (see below).
+						has4443WithCT = true
+					} else {
+						has4443 = true
+					}
+				} else if strings.Contains(l, "dpt:443") {
+					has443Old = true
 				}
 			}
 			if strings.Contains(l, "DROP") {
@@ -642,37 +696,82 @@ func (n *NAT) applyGatewayBlock(ctx context.Context, bridgeName, bridgeIP string
 		}
 	}
 
-	if has80 && has443 && hasDrop {
+	// MIGRATION: Delete old ACCEPT rules. The metadata HTTPS service now
+	// listens on 4443 and traffic arrives via two DNAT paths (from
+	// 169.254.169.254:443 and bridgeIP:443), so we can't filter by ctorigdst.
+	// Remove these blocks once all hosts have been upgraded.
+	if has443Old {
+		n.log.InfoContext(ctx, "migrating old gateway ACCEPT rule for port 443", "bridge", bridgeName, "bridge_ip", bridgeIP)
+		delArgs := []string{
+			"-D", "INPUT",
+			"-i", bridgeName,
+			"-d", bridgeIP,
+			"-p", "tcp",
+			"--dport", "443",
+			"-m", "conntrack",
+			"--ctorigdst", MetadataIP,
+			"-j", "ACCEPT",
+		}
+		if err := exec.CommandContext(ctx, "iptables", delArgs...).Run(); err != nil {
+			n.log.WarnContext(ctx, "failed to delete old gateway ACCEPT rule (may not exist)", "bridge", bridgeName, "error", err)
+		}
+	}
+	if has4443WithCT {
+		n.log.InfoContext(ctx, "migrating gateway ACCEPT rule for port 4443 (removing ctorigdst)", "bridge", bridgeName, "bridge_ip", bridgeIP)
+		delArgs := []string{
+			"-D", "INPUT",
+			"-i", bridgeName,
+			"-d", bridgeIP,
+			"-p", "tcp",
+			"--dport", "4443",
+			"-m", "conntrack",
+			"--ctorigdst", MetadataIP,
+			"-j", "ACCEPT",
+		}
+		if err := exec.CommandContext(ctx, "iptables", delArgs...).Run(); err != nil {
+			n.log.WarnContext(ctx, "failed to delete old gateway ACCEPT rule for 4443 (may not exist)", "bridge", bridgeName, "error", err)
+		}
+	}
+
+	if has80 && has4443 && hasDrop {
 		return nil
 	}
 
 	n.log.DebugContext(ctx, "adding iptables rules to block gateway access from guests", "bridge", bridgeName, "gateway_ip", bridgeIP)
 
-	// Allow port 80 and 443 traffic that was originally destined for the metadata IP (169.254.169.254).
-	// This traffic was DNATed to the bridge IP and should be allowed through to the metadata service.
-	// We use conntrack's --ctorigdst to check the original destination before DNAT.
-	for _, rule := range []struct {
-		port   string
-		exists bool
-	}{
-		{"80", has80},
-		{"443", has443},
-	} {
-		if rule.exists {
-			continue
-		}
+	// Allow port 80 traffic that was originally destined for 169.254.169.254 (DNATed).
+	if !has80 {
 		allowArgs := []string{
 			"-I", "INPUT",
 			"-i", bridgeName,
 			"-d", bridgeIP,
 			"-p", "tcp",
-			"--dport", rule.port,
+			"--dport", "80",
 			"-m", "conntrack",
 			"--ctorigdst", MetadataIP,
 			"-j", "ACCEPT",
 		}
 		if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
-			return fmt.Errorf("failed to add metadata allow rule for port %s: %w", rule.port, err)
+			return fmt.Errorf("failed to add metadata allow rule for port 80: %w", err)
+		}
+	}
+
+	// Allow port 4443 (metadata HTTPS). Traffic arrives via two DNAT paths:
+	//   169.254.169.254:443 → bridgeIP:4443  (integration domains via metadata IP)
+	//   bridgeIP:443        → bridgeIP:4443  (direct bridge IP access)
+	// Because ctorigdst differs between the two paths, we omit the check.
+	// This is safe: port 4443 is never advertised, so all traffic is from DNAT.
+	if !has4443 {
+		allowArgs := []string{
+			"-I", "INPUT",
+			"-i", bridgeName,
+			"-d", bridgeIP,
+			"-p", "tcp",
+			"--dport", "4443",
+			"-j", "ACCEPT",
+		}
+		if err := exec.CommandContext(ctx, "iptables", allowArgs...).Run(); err != nil {
+			return fmt.Errorf("failed to add metadata allow rule for port 4443: %w", err)
 		}
 	}
 
