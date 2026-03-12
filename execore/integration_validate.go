@@ -100,6 +100,7 @@ func validateTargetURL(raw string) error {
 		return fmt.Errorf("target URL must have a host")
 	}
 	hostname := u.Hostname()
+	hostname = strings.TrimRight(hostname, ".")
 	if net.ParseIP(hostname) != nil {
 		return fmt.Errorf("target URL must use a hostname, not an IP address")
 	}

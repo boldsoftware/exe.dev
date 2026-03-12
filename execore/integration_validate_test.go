@@ -84,6 +84,12 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://example.com/api",        // path not allowed
 		"https://api.example.com/v1/",    // path not allowed
 		"https://httpbin.org/anything",   // path not allowed
+		"https://evil.exe.cloud.",        // trailing dot bypass
+		"https://evil.exe.dev.",          // trailing dot bypass
+		"https://evil.ts.net.",           // trailing dot bypass
+		"https://localhost.",             // trailing dot bypass
+		"https://evil.internal.",         // trailing dot bypass
+		"https://evil.local.",            // trailing dot bypass
 	}
 	for _, u := range bad {
 		if err := validateTargetURL(u); err == nil {
