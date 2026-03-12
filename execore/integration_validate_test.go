@@ -44,6 +44,18 @@ func TestValidateHTTPHeader(t *testing.T) {
 		"host:evil",               // reserved
 		"X-Foo:",                  // empty value
 		"X-Foo:val\r\nX-Evil:inj", // CRLF injection
+
+		// Hop-by-hop / connection-management headers.
+		"Transfer-Encoding:chunked",   // request smuggling
+		"Content-Length:0",            // request smuggling
+		"Connection:keep-alive",       // hop-by-hop
+		"Connection:upgrade",          // hop-by-hop
+		"Upgrade:websocket",           // hop-by-hop
+		"Te:trailers",                 // hop-by-hop
+		"Trailer:X-Foo",               // hop-by-hop
+		"Proxy-Authorization:Basic x", // proxy header
+		"Proxy-Connection:keep-alive", // proxy header
+		"transfer-encoding:chunked",   // lowercase variant
 	}
 	for _, h := range bad {
 		if err := validateHTTPHeader(h); err == nil {

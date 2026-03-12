@@ -3,7 +3,6 @@ package execore
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/textproto"
 	"net/url"
 	"strings"
@@ -61,12 +60,31 @@ func validateHTTPHeader(header string) error {
 	if strings.ContainsAny(value, "\r\n") {
 		return fmt.Errorf("header value must not contain CR or LF characters")
 	}
-	// Reject internal headers that would be scrubbed.
+	// Reject internal and hop-by-hop/connection-management headers.
 	canon := textproto.CanonicalMIMEHeaderKey(key)
-	if canon == "X-Exedev-Box" || canon == "X-Exedev-Integration" || canon == http.CanonicalHeaderKey("Host") {
+	if reservedHeaders[canon] {
 		return fmt.Errorf("header key %q is reserved", key)
 	}
 	return nil
+}
+
+// reservedHeaders is the set of headers that integrations may not inject.
+// It includes exe-internal headers and hop-by-hop / connection-management
+// headers that could enable request smuggling against upstream targets.
+var reservedHeaders = map[string]bool{
+	"Host":                 true,
+	"X-Exedev-Box":         true,
+	"X-Exedev-Integration": true,
+
+	// Hop-by-hop and connection-management headers.
+	"Transfer-Encoding":   true,
+	"Content-Length":      true,
+	"Connection":          true,
+	"Upgrade":             true,
+	"Te":                  true,
+	"Trailer":             true,
+	"Proxy-Authorization": true,
+	"Proxy-Connection":    true,
 }
 
 // isTokenChar reports whether c is a valid HTTP token character per RFC 7230.
