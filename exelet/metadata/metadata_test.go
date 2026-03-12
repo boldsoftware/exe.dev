@@ -348,9 +348,7 @@ func TestIntegrationHostNameMultipleSuffixes(t *testing.T) {
 }
 
 func TestMetadataServiceIntegrationProxy(t *testing.T) {
-	cfgJSON := `{"target":"https://httpbin.org/anything","header":"X-Custom-Auth:secret123"}`
-
-	// Fake exed that serves /_/integration-config.
+	// Fake exed that serves /_/integration-config with the generic proxy format.
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_/integration-config" {
 			http.NotFound(w, r)
@@ -361,9 +359,9 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"ok":     true,
-			"type":   "http-proxy",
-			"config": cfgJSON,
+			"ok":      true,
+			"target":  "https://httpbin.org/anything",
+			"headers": map[string]string{"X-Custom-Auth": "secret123"},
 		})
 	}))
 	defer fakeExed.Close()

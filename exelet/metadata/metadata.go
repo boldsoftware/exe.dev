@@ -116,9 +116,15 @@ type integrationCacheKey struct {
 
 type integrationCacheEntry struct {
 	ok        bool
-	typ       string
-	config    string
+	target    *url.URL
+	headers   map[string]string
+	basicAuth *basicAuthConfig
 	fetchedAt time.Time
+}
+
+type basicAuthConfig struct {
+	User string `json:"user"`
+	Pass string `json:"pass"`
 }
 
 // IntegrationCacheTTL is the default cache duration for integration configs.
@@ -655,149 +661,29 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	sloghttp.AddCustomAttributes(r, slog.String("integration_type", cfg.typ))
-
-	switch cfg.typ {
-	case "http-proxy":
-		s.proxyHTTPIntegration(w, r, vmName, integrationName, cfg.config)
-	case "github":
-		s.proxyGitHubIntegration(w, r, vmName, integrationName, cfg.config)
-	default:
-		s.log.WarnContext(r.Context(), "integration proxy: unsupported type", "type", cfg.typ)
-		http.Error(w, "unsupported integration type", http.StatusBadRequest)
-	}
-}
-
-// httpProxyConfig matches the JSON config stored in the integrations table
-// for type "http-proxy".
-type httpProxyConfig struct {
-	Target string `json:"target"`
-	Header string `json:"header"`
-}
-
-// proxyHTTPIntegration handles the actual HTTP reverse-proxy for an http-proxy integration.
-func (s *Service) proxyHTTPIntegration(w http.ResponseWriter, r *http.Request, vmName, integrationName, configJSON string) {
-	var cfg httpProxyConfig
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		s.log.ErrorContext(r.Context(), "integration proxy: bad config JSON", "error", err)
-		http.Error(w, "invalid integration config", http.StatusInternalServerError)
-		return
-	}
-
-	targetURL, err := url.Parse(cfg.Target)
-	if err != nil {
-		s.log.ErrorContext(r.Context(), "integration proxy: bad target URL", "error", err)
-		http.Error(w, "invalid integration target", http.StatusInternalServerError)
-		return
-	}
-
-	headerName, headerValue, ok := strings.Cut(cfg.Header, ":")
-	if !ok {
-		s.log.ErrorContext(r.Context(), "integration proxy: bad header format", "header", cfg.Header)
-		http.Error(w, "invalid integration header config", http.StatusInternalServerError)
-		return
-	}
-	headerValue = strings.TrimSpace(headerValue)
-
 	proxy := &httputil.ReverseProxy{
 		Transport: s.integrationTransport(),
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(targetURL)
+			pr.SetURL(cfg.target)
 			if r.URL.Path != "" && r.URL.Path != "/" {
-				pr.Out.URL.Path = strings.TrimSuffix(targetURL.Path, "/") + r.URL.Path
+				pr.Out.URL.Path = strings.TrimSuffix(cfg.target.Path, "/") + r.URL.Path
 			} else {
-				pr.Out.URL.Path = targetURL.Path
+				pr.Out.URL.Path = cfg.target.Path
 			}
 			pr.Out.URL.RawQuery = r.URL.RawQuery
-			pr.Out.Host = targetURL.Host
-
-			// Forward URL credentials as HTTP Basic Auth.
-			if targetURL.User != nil {
-				password, _ := targetURL.User.Password()
-				pr.Out.SetBasicAuth(targetURL.User.Username(), password)
+			pr.Out.Host = cfg.target.Host
+			for k, v := range cfg.headers {
+				pr.Out.Header.Set(k, v)
 			}
-
-			pr.Out.Header.Set(headerName, headerValue)
+			if cfg.basicAuth != nil {
+				pr.Out.SetBasicAuth(cfg.basicAuth.User, cfg.basicAuth.Pass)
+			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
 				return
 			}
-			// Log the full error server-side; return a generic message to the VM
-			// so we don't leak target hostnames, IPs, or DNS errors.
 			s.log.WarnContext(r.Context(), "integration proxy upstream error",
-				"error", err, "vm_name", vmName, "integration", integrationName)
-			http.Error(w, "integration proxy: upstream request failed", http.StatusBadGateway)
-		},
-	}
-
-	proxy.ServeHTTP(w, r)
-}
-
-// githubProxyConfig is the enriched config for github integrations (includes token from exed).
-type githubProxyConfig struct {
-	Repositories   []string `json:"repositories"`
-	InstallationID int64    `json:"installation_id"`
-	Token          string   `json:"token"`
-}
-
-// proxyGitHubIntegration reverse-proxies requests to GitHub.
-// It routes API requests (used by the gh CLI) to api.github.com and
-// everything else (git operations) to github.com.
-func (s *Service) proxyGitHubIntegration(w http.ResponseWriter, r *http.Request, vmName, integrationName, configJSON string) {
-	var cfg githubProxyConfig
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		s.log.ErrorContext(r.Context(), "github integration proxy: bad config JSON", "error", err)
-		http.Error(w, "invalid integration config", http.StatusInternalServerError)
-		return
-	}
-	if cfg.Token == "" {
-		s.log.ErrorContext(r.Context(), "github integration proxy: missing token in config")
-		http.Error(w, "integration config missing token", http.StatusInternalServerError)
-		return
-	}
-
-	// Determine target based on path:
-	//   /api/v3/* → api.github.com/* (gh CLI REST API)
-	//   /api/graphql → api.github.com/graphql (gh CLI GraphQL)
-	//   everything else → github.com (git operations)
-	var targetHost string
-	var outPath string
-	var useBasicAuth bool
-
-	switch {
-	case strings.HasPrefix(r.URL.Path, "/api/v3/"):
-		targetHost = "api.github.com"
-		outPath = strings.TrimPrefix(r.URL.Path, "/api/v3")
-	case r.URL.Path == "/api/graphql":
-		targetHost = "api.github.com"
-		outPath = "/graphql"
-	default:
-		targetHost = "github.com"
-		outPath = r.URL.Path
-		useBasicAuth = true
-	}
-	targetURL, _ := url.Parse("https://" + targetHost)
-
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(targetURL)
-			pr.Out.URL.Path = outPath
-			pr.Out.URL.RawQuery = r.URL.RawQuery
-			pr.Out.Host = targetHost
-			if useBasicAuth {
-				// Git HTTP transport requires Basic auth with x-access-token as username.
-				pr.Out.SetBasicAuth("x-access-token", cfg.Token)
-			} else {
-				// GitHub API accepts token auth.
-				pr.Out.Header.Set("Authorization", "token "+cfg.Token)
-			}
-		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
-				return
-			}
-			s.log.WarnContext(r.Context(), "github integration proxy upstream error",
 				"error", err, "vm_name", vmName, "integration", integrationName)
 			http.Error(w, "integration proxy: upstream request failed", http.StatusBadGateway)
 		},
@@ -852,19 +738,30 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 	defer resp.Body.Close()
 
 	var result struct {
-		OK     bool   `json:"ok"`
-		Type   string `json:"type"`
-		Config string `json:"config"`
+		OK        bool              `json:"ok"`
+		Target    string            `json:"target"`
+		Headers   map[string]string `json:"headers"`
+		BasicAuth *basicAuthConfig  `json:"basic_auth"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.log.ErrorContext(ctx, "integration config: decode failed", "error", err)
 		return negative
 	}
+	if !result.OK {
+		return negative
+	}
+
+	targetURL, err := url.Parse(result.Target)
+	if err != nil {
+		s.log.ErrorContext(ctx, "integration config: bad target URL", "error", err, "target", result.Target)
+		return negative
+	}
 
 	return &integrationCacheEntry{
-		ok:        result.OK,
-		typ:       result.Type,
-		config:    result.Config,
+		ok:        true,
+		target:    targetURL,
+		headers:   result.Headers,
+		basicAuth: result.BasicAuth,
 		fetchedAt: time.Now(),
 	}
 }

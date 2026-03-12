@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,12 +20,18 @@ import (
 )
 
 // integrationConfigResponse is the JSON returned by /_/integration-config.
-// It returns the integration type and raw config so that the exelet can
-// handle type-specific proxy logic.
+// It returns a generic proxy configuration so the exelet can proxy the
+// request without any type-specific logic.
 type integrationConfigResponse struct {
-	OK     bool   `json:"ok"`
-	Type   string `json:"type,omitempty"`
-	Config string `json:"config,omitempty"`
+	OK        bool              `json:"ok"`
+	Target    string            `json:"target,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	BasicAuth *basicAuthConfig  `json:"basic_auth,omitempty"`
+}
+
+type basicAuthConfig struct {
+	User string `json:"user"`
+	Pass string `json:"pass"`
 }
 
 // handleIntegrationConfig serves GET /_/integration-config?vm_name={name}&integration={name}.
@@ -86,26 +93,73 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 	sloghttp.AddCustomAttributes(r, slog.String("integration_type", integration.Type))
 	sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
 
-	config := integration.Config
-
-	// For GitHub integrations, enrich the config with a fresh installation access token.
-	if integration.Type == "github" {
-		enriched, err := s.enrichGitHubConfig(ctx, config)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "integration config: failed to enrich github config", "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
-			return
-		}
-		config = enriched
+	resp, err := s.buildProxyConfig(ctx, integration.Type, integration.Config)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "integration config: failed to build proxy config", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(integrationConfigResponse{
+	json.NewEncoder(w).Encode(resp)
+}
+
+// buildProxyConfig transforms a type-specific integration config into a
+// generic proxy configuration that the exelet can apply without knowing
+// about integration types.
+func (s *Server) buildProxyConfig(ctx context.Context, typ, configJSON string) (integrationConfigResponse, error) {
+	switch typ {
+	case "http-proxy":
+		return buildHTTPProxyConfig(configJSON)
+	case "github":
+		return s.buildGitHubProxyConfig(ctx, configJSON)
+	default:
+		return integrationConfigResponse{OK: false}, errors.New("unsupported integration type: " + typ)
+	}
+}
+
+func buildHTTPProxyConfig(configJSON string) (integrationConfigResponse, error) {
+	var cfg httpProxyConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return integrationConfigResponse{OK: false}, err
+	}
+
+	resp := integrationConfigResponse{
+		OK:      true,
+		Target:  cfg.Target,
+		Headers: make(map[string]string),
+	}
+
+	if name, value, ok := strings.Cut(cfg.Header, ":"); ok {
+		resp.Headers[name] = strings.TrimSpace(value)
+	}
+
+	// Extract URL credentials as basic auth and strip them from the target.
+	if u, err := url.Parse(cfg.Target); err == nil && u.User != nil {
+		pass, _ := u.User.Password()
+		resp.BasicAuth = &basicAuthConfig{User: u.User.Username(), Pass: pass}
+		u.User = nil
+		resp.Target = u.String()
+	}
+
+	return resp, nil
+}
+
+func (s *Server) buildGitHubProxyConfig(ctx context.Context, configJSON string) (integrationConfigResponse, error) {
+	token, err := s.mintGitHubToken(ctx, configJSON)
+	if err != nil {
+		return integrationConfigResponse{OK: false}, err
+	}
+
+	return integrationConfigResponse{
 		OK:     true,
-		Type:   integration.Type,
-		Config: config,
-	})
+		Target: "https://github.com",
+		BasicAuth: &basicAuthConfig{
+			User: "x-access-token",
+			Pass: token,
+		},
+	}, nil
 }
 
 // ghTokenCacheKey identifies a cached GitHub installation access token.
@@ -120,10 +174,8 @@ type ghTokenCacheEntry struct {
 	ExpiresAt time.Time
 }
 
-// enrichGitHubConfig parses a github integration config, mints (or retrieves
-// from cache) an installation access token, and returns the config JSON with
-// a "token" field added.
-func (s *Server) enrichGitHubConfig(ctx context.Context, configJSON string) (string, error) {
+// mintGitHubToken returns a cached or freshly-minted installation access token.
+func (s *Server) mintGitHubToken(ctx context.Context, configJSON string) (string, error) {
 	var cfg githubIntegrationConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return "", err
@@ -137,7 +189,7 @@ func (s *Server) enrichGitHubConfig(ctx context.Context, configJSON string) (str
 
 	// Use cached token if it's still valid with a 10 minute buffer.
 	if ok && time.Until(entry.ExpiresAt) > 10*time.Minute {
-		return marshalEnrichedConfig(cfg, entry.Token)
+		return entry.Token, nil
 	}
 
 	// Mint a new token.
@@ -153,27 +205,7 @@ func (s *Server) enrichGitHubConfig(ctx context.Context, configJSON string) (str
 	}
 	s.ghTokenCacheMu.Unlock()
 
-	return marshalEnrichedConfig(cfg, iat.Token)
-}
-
-// githubIntegrationConfigWithToken is the enriched config sent to exelets.
-type githubIntegrationConfigWithToken struct {
-	Repositories   []string `json:"repositories"`
-	InstallationID int64    `json:"installation_id"`
-	Token          string   `json:"token"`
-}
-
-func marshalEnrichedConfig(cfg githubIntegrationConfig, token string) (string, error) {
-	enriched := githubIntegrationConfigWithToken{
-		Repositories:   cfg.Repositories,
-		InstallationID: cfg.InstallationID,
-		Token:          token,
-	}
-	b, err := json.Marshal(enriched)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	return iat.Token, nil
 }
 
 // handleIntegrationCert serves GET /_/integration-cert.
