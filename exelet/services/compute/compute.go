@@ -33,6 +33,8 @@ type Service struct {
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 	stopLogRotation     func()
 	migratingInstances  sync.Map // map[instanceID]struct{} - instances currently being migrated
+	instanceOpMu sync.Mutex                  // protects instanceOpLocks
+	instanceOpLocks map[string]*instanceLock // per-instance operation lock
 	reconcileGroup      singleflight.Group[string, struct{}]
 	// reconcileCtx is stored in the struct (rather than passed per-call) because
 	// background reconcile goroutines outlive the gRPC request that triggers them.
@@ -54,11 +56,12 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 	}
 
 	return &Service{
-		config:        cfg,
-		mu:            &sync.Mutex{},
-		log:           log,
-		portAllocator: portAllocator,
-		proxyManager:  sshproxy.NewManager(cfg.DataDir, cfg.ProxyBindIP, log),
+		config:          cfg,
+		mu:              &sync.Mutex{},
+		log:             log,
+		portAllocator:   portAllocator,
+		proxyManager:    sshproxy.NewManager(cfg.DataDir, cfg.ProxyBindIP, log),
+		instanceOpLocks: make(map[string]*instanceLock),
 	}, nil
 }
 
@@ -286,9 +289,14 @@ func (s *Service) Stop(ctx context.Context) error {
 	return nil
 }
 
-// lockForMigration locks an instance for migration, preventing other operations.
-// Returns an error if the instance is already being migrated.
+// lockForMigration marks an instance as migrating, preventing lifecycle operations.
+// It briefly acquires the per-instance lock to ensure atomicity with checkNotMigrating
+// (which is called under the same lock by lifecycle ops). The per-instance lock is
+// released after setting the flag so lifecycle ops fail fast rather than blocking
+// for the entire migration.
 func (s *Service) lockForMigration(id string) error {
+	unlock := s.lockInstance(id)
+	defer unlock()
 	if _, loaded := s.migratingInstances.LoadOrStore(id, struct{}{}); loaded {
 		return api.ErrMigrating
 	}
@@ -301,9 +309,43 @@ func (s *Service) unlockMigration(id string) {
 }
 
 // checkNotMigrating returns an error if the instance is currently being migrated.
+// Must be called while holding the per-instance lock (via lockInstance) to prevent
+// TOCTOU races with lockForMigration.
 func (s *Service) checkNotMigrating(id string) error {
 	if _, ok := s.migratingInstances.Load(id); ok {
 		return api.ErrMigrating
 	}
 	return nil
+}
+
+// instanceLock is a refcounted mutex. When the last waiter releases,
+// the entry is removed from instanceOpLocks to prevent unbounded growth.
+type instanceLock struct {
+	mu   sync.Mutex
+	refs int // protected by s.instanceOpMu
+}
+
+// lockInstance acquires a per-instance mutex to serialize lifecycle operations
+// (start, stop, delete) on the same instance. Returns a function to release the lock.
+func (s *Service) lockInstance(id string) func() {
+	s.instanceOpMu.Lock()
+	il, ok := s.instanceOpLocks[id]
+	if !ok {
+		il = &instanceLock{}
+		s.instanceOpLocks[id] = il
+	}
+	il.refs++
+	s.instanceOpMu.Unlock()
+
+	il.mu.Lock()
+	return func() {
+		il.mu.Unlock()
+
+		s.instanceOpMu.Lock()
+		il.refs--
+		if il.refs == 0 {
+			delete(s.instanceOpLocks, id)
+		}
+		s.instanceOpMu.Unlock()
+	}
 }

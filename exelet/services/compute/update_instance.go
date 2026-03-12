@@ -25,7 +25,10 @@ func (s *Service) UpdateInstance(ctx context.Context, req *api.UpdateInstanceReq
 		return nil, status.Errorf(codes.NotFound, "instance %s not found", req.ID)
 	}
 
-	// Check if instance is being migrated
+	// Serialize per-instance operations and check migration status atomically.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}

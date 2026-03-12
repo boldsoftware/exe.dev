@@ -86,7 +86,9 @@ func (s *Service) GetInstanceByID(ctx context.Context, id string) (*api.Instance
 
 // StopInstanceByID stops an instance by ID (for InstanceLookup interface)
 func (s *Service) StopInstanceByID(ctx context.Context, id string) error {
-	// Check if instance is being migrated
+	unlock := s.lockInstance(id)
+	defer unlock()
+
 	if err := s.checkNotMigrating(id); err != nil {
 		return err
 	}
@@ -109,7 +111,9 @@ func (s *Service) StopInstanceByID(ctx context.Context, id string) error {
 
 // StartInstanceByID starts an instance by ID (for InstanceLookup interface)
 func (s *Service) StartInstanceByID(ctx context.Context, id string) error {
-	// Check if instance is being migrated
+	unlock := s.lockInstance(id)
+	defer unlock()
+
 	if err := s.checkNotMigrating(id); err != nil {
 		return err
 	}

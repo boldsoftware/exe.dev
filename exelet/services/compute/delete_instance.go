@@ -18,7 +18,11 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 
 	// use singleflight to ensure only one delete per instance
 	resp, err, _ := s.instanceDeleteGroup.Do(req.ID, func() (*api.DeleteInstanceResponse, error) {
-		// Check if instance is being migrated
+		// Serialize per-instance operations to prevent concurrent Start+Stop/Delete races.
+		// Migration check must be under this lock to prevent TOCTOU with lockForMigration.
+		unlock := s.lockInstance(req.ID)
+		defer unlock()
+
 		if err := s.checkNotMigrating(req.ID); err != nil {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}

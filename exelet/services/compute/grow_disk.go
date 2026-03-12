@@ -33,7 +33,10 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("additional_bytes cannot exceed %s", humanize.Bytes(maxDiskGrowth)))
 	}
 
-	// Check if instance is being migrated
+	// Serialize per-instance operations and check migration status atomically.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}

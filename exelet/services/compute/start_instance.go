@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"strings"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc/codes"
@@ -18,7 +19,11 @@ import (
 func (s *Service) StartInstance(ctx context.Context, req *api.StartInstanceRequest) (*api.StartInstanceResponse, error) {
 	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
 
-	// Check if instance is being migrated
+	// Serialize per-instance operations to prevent concurrent Start+Stop/Delete races.
+	// Migration check must be under this lock to prevent TOCTOU with lockForMigration.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -42,7 +47,7 @@ func (s *Service) StartInstance(ctx context.Context, req *api.StartInstanceReque
 	return &api.StartInstanceResponse{}, nil
 }
 
-func (s *Service) startInstance(ctx context.Context, id string) error {
+func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 	// get instance config to update state and config
 	iCfg, err := s.loadInstanceConfig(id)
 	if err != nil {
@@ -89,6 +94,36 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	// Rollback on failure to prevent IP leaks and live-but-disconnected VMs.
+	// Before vmmgr.Start, only the network interface needs cleanup.
+	// After vmmgr.Start, we must also stop the VM before releasing networking.
+	vmStarted := false
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		if vmStarted {
+			if stopErr := vmmgr.Stop(ctx, id); stopErr != nil {
+				// VM may still be running — do NOT tear down networking or
+				// we create a live-but-disconnected guest. Leave the IP
+				// allocated; the reconciler will clean up once the VM is
+				// eventually stopped or the host restarts.
+				s.log.WarnContext(ctx, "failed to stop VM after start failure, leaving network intact for reconciliation",
+					"id", id, "error", stopErr)
+				return
+			}
+		}
+		ip := ""
+		if networkInterface.IP != nil {
+			ip = networkInterface.IP.IPV4
+			if idx := strings.Index(ip, "/"); idx > 0 {
+				ip = ip[:idx]
+			}
+		}
+		if delErr := s.context.NetworkManager.DeleteInterface(ctx, vmCfg.ID, ip); delErr != nil {
+			s.log.WarnContext(ctx, "failed to clean up network interface after start failure", "id", id, "error", delErr)
+		}
+	}()
 	// update network interface (ip= boot arg is derived from this at runtime)
 	vmCfg.NetworkInterface = networkInterface
 
@@ -108,12 +143,12 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	if err := vmmgr.Start(ctx, id); err != nil {
 		return err
 	}
+	vmStarted = true
 
 	// get SSH port from instance config (persisted from creation)
 	sshPort := int(iCfg.SSHPort)
 	if sshPort == 0 {
 		// shouldn't happen for instances created with new code, but allocate if needed
-		var err error
 		sshPort, err = s.portAllocator.Allocate()
 		if err != nil {
 			return fmt.Errorf("failed to allocate SSH port: %w", err)

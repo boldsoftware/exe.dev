@@ -20,7 +20,10 @@ func (s *Service) ResizeVM(ctx context.Context, req *api.ResizeVMRequest) (*api.
 		return nil, status.Error(codes.InvalidArgument, "at least one of memory or cpus must be specified")
 	}
 
-	// Check if instance is being migrated
+	// Serialize per-instance operations and check migration status atomically.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}

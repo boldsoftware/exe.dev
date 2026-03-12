@@ -1226,12 +1226,47 @@ func BuildExeletBinary(testRunID string) (string, error) {
 		}
 	}
 
-	// Rename to test binary path.
-	if err := os.Rename(filepath.Join(srcdir, "exeletd"), binPath); err != nil {
-		return "", fmt.Errorf("failed to rename exelet to %s: %v", binPath, err)
+	// Move to test binary path. Use rename when possible, fall back to
+	// copy+remove for cross-device moves (e.g., project dir and /tmp on
+	// different filesystems).
+	if err := moveFile(filepath.Join(srcdir, "exeletd"), binPath); err != nil {
+		return "", fmt.Errorf("failed to move exelet to %s: %v", binPath, err)
 	}
 
 	return binPath, nil
+}
+
+// moveFile attempts os.Rename and falls back to copy+remove when src and dst
+// are on different filesystems (EXDEV / "invalid cross-device link").
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+
+	return os.Remove(src)
 }
 
 // flock acquires an exclusive advisory lock on filename.

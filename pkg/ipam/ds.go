@@ -83,7 +83,12 @@ func NewDatastore(path string) (*Datastore, error) {
 func (d *Datastore) Reserve(macAddress, ip string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	return d.reserveLocked(macAddress, ip)
+}
 
+// reserveLocked performs the reservation without acquiring the lock.
+// The caller must hold d.mu.
+func (d *Datastore) reserveLocked(macAddress, ip string) error {
 	if v, ok := d.db.Hosts[macAddress]; ok {
 		// collision: MAC exists with different IP
 		if v.IP != ip {
@@ -191,9 +196,37 @@ func (d *Datastore) saveDB() error {
 		return err
 	}
 
-	if err := os.WriteFile(d.configPath, data, 0o660); err != nil {
+	// Write to a temp file, fsync, then rename for crash-safe persistence.
+	// Same-directory rename is atomic on Linux.
+	tmp := d.configPath + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o660)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, d.configPath); err != nil {
 		return err
 	}
 
-	return nil
+	// Fsync the parent directory so the rename metadata is durable.
+	dir, err := os.Open(filepath.Dir(d.configPath))
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	dir.Close()
+	return err
 }

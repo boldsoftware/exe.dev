@@ -58,6 +58,13 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	instanceID := startReq.InstanceID
 	s.log.InfoContext(ctx, "ReceiveVM started", "instance", instanceID)
 
+	// Lock instance to prevent concurrent ReceiveVM calls for the same instance
+	// (e.g., orchestrator retry + original still in-flight).
+	if err := s.lockForMigration(instanceID); err != nil {
+		return status.Errorf(codes.FailedPrecondition, "instance %s: %v", instanceID, err)
+	}
+	defer s.unlockMigration(instanceID)
+
 	// Suspend replication for this volume to prevent "dataset is busy" errors
 	// during zfs recv. The replication worker must not snapshot the dataset
 	// while we are receiving data into it.

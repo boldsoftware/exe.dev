@@ -47,28 +47,27 @@ func (m *Manager) ServerIP() (net.IP, error) {
 	return m.getServerIP()
 }
 
-// Reserve will reserve an IP for the specified mac address
+// Reserve will reserve an IP for the specified mac address.
+// The operation is atomic: the datastore lock is held for the entire
+// check-existing + allocate-new sequence, preventing a concurrent Release
+// from freeing an IP between the existence check and the caller using it.
 func (m *Manager) Reserve(macAddress string) (net.IP, error) {
-	existing, err := m.ds.Get(&Query{MACAddress: macAddress})
-	if err != nil {
-		if !errors.Is(err, ErrNotFound) {
-			return nil, err
-		}
-	}
-	// already reserved
-	if existing != nil {
+	m.ds.mu.Lock()
+	defer m.ds.mu.Unlock()
+
+	// Check if MAC already has a lease (lock held)
+	if existing, ok := m.ds.db.Hosts[macAddress]; ok {
 		m.log.Debug("IP lease already exists", "mac", macAddress, "ip", existing.IP)
 		return net.ParseIP(existing.IP), nil
 	}
 
-	// Retry loop to handle race conditions where another goroutine
-	// reserves the same IP between getNextIP() and Reserve()
+	// Find and reserve an IP atomically (lock already held)
 	for {
-		ip, err := m.getNextIP()
+		ip, err := m.getNextIPLocked()
 		if err != nil {
 			return nil, err
 		}
-		err = m.ds.Reserve(macAddress, ip.String())
+		err = m.ds.reserveLocked(macAddress, ip.String())
 		if err == nil {
 			m.log.Info("IP lease allocated", "mac", macAddress, "ip", ip.String())
 			return ip, nil

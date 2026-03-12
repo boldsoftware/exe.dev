@@ -1,7 +1,6 @@
 package ipam
 
 import (
-	"errors"
 	"fmt"
 	"net"
 
@@ -18,6 +17,13 @@ func (m *Manager) getServerIP() (net.IP, error) {
 }
 
 func (m *Manager) getNextIP() (net.IP, error) {
+	m.ds.mu.Lock()
+	defer m.ds.mu.Unlock()
+	return m.getNextIPLocked()
+}
+
+// getNextIPLocked finds the next available IP. The caller must hold m.ds.mu.
+func (m *Manager) getNextIPLocked() (net.IP, error) {
 	subnetIP, network, err := iplib.ParseCIDR(m.config.Network)
 	if err != nil {
 		return nil, err
@@ -33,11 +39,8 @@ func (m *Manager) getNextIP() (net.IP, error) {
 			continue
 		}
 
-		if _, err := m.ds.Get(&Query{IP: next.String()}); err != nil {
-			if !errors.Is(err, ErrNotFound) {
-				return nil, err
-			}
-
+		// Check directly against the in-memory db (lock already held)
+		if _, ok := m.ds.db.IPs[next.String()]; !ok {
 			return next, nil
 		}
 		if next.Equal(network.LastAddress()) {

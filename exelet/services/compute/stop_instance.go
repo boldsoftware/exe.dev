@@ -15,7 +15,11 @@ import (
 func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest) (*api.StopInstanceResponse, error) {
 	logging.AddFields(ctx, logging.Fields{"container_id", req.ID})
 
-	// Check if instance is being migrated
+	// Serialize per-instance operations to prevent concurrent Start+Stop/Delete races.
+	// Migration check must be under this lock to prevent TOCTOU with lockForMigration.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	if err := s.checkNotMigrating(req.ID); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -72,6 +76,21 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Save instance config (with NetworkInterface=nil) BEFORE releasing the IP.
+	// This ensures the config no longer references the IP if we crash between
+	// config save and IP release. The reconciler can then clean up the orphaned
+	// IPAM lease on restart.
+	iCfg, err := s.loadInstanceConfig(id)
+	if err != nil {
+		return err
+	}
+	iCfg.State = api.VMState_STOPPED
+	iCfg.VMConfig.NetworkInterface = nil
+	s.log.DebugContext(ctx, "updating instance config", "config", iCfg.VMConfig)
+	if err := s.saveInstanceConfig(iCfg); err != nil {
+		return err
+	}
+
 	// delete network interface and release DHCP lease
 	if err := s.context.NetworkManager.DeleteInterface(ctx, id, ip); err != nil {
 		return err
@@ -82,20 +101,6 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 		s.log.WarnContext(ctx, "failed to remove SSH proxy", "instance", id, "error", err)
 	} else {
 		s.log.DebugContext(ctx, "stopped SSH proxy", "instance", id)
-	}
-
-	// update instance config
-	iCfg, err := s.loadInstanceConfig(id)
-	if err != nil {
-		return err
-	}
-	// update state
-	iCfg.State = api.VMState_STOPPED
-	// remove network config
-	iCfg.VMConfig.NetworkInterface = nil
-	s.log.DebugContext(ctx, "updating instance config", "config", iCfg.VMConfig)
-	if err := s.saveInstanceConfig(iCfg); err != nil {
-		return err
 	}
 
 	return nil
