@@ -4,5 +4,6 @@
     {"name": "David Crawshaw",    "github": "crawshaw",        "slack_member_id": "U09RLSMG2LX", "aliases": ["crawshaw"]},
     {"name": "Shaun Loo",         "github": "zackerthescar",   "slack_member_id": "U0A8G92NNG1", "aliases": ["sean"]},
     {"name": "Ian Lance Taylor",  "github": "ianlancetaylor",  "slack_member_id": "U0A0PF9T3D3", "aliases": ["ian"]},
-    {"name": "Evan Hazlett",       "github": "ehazlett",        "slack_member_id": "U09RVUL6UN7", "aliases": ["evan"]}
+    {"name": "Evan Hazlett",       "github": "ehazlett",        "slack_member_id": "U09RVUL6UN7", "aliases": ["evan"]},
+    {"name": "Bryan Mikaelian",   "github": "bryanmikaelian",  "slack_member_id": "U0AL8FTPFME", "aliases": ["bryan"]}
 ]

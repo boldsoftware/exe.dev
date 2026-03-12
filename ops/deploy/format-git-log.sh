@@ -15,6 +15,7 @@ BEGIN {
     name["philip@bold.dev"] = "Philip"
     name["philz"] = "Philip"
     name["Shaun Loo"] = "Shaun"
+    name["Bryan Mikaelian"] = "Bryan"
 }
 {
     if ($3 ~ /fix formatting/) next
