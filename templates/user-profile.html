@@ -53,55 +53,43 @@
             border-bottom: 1px solid #f0f0f0;
         }
 
-        .credit-usage-row {
-            align-items: center;
-        }
+        /* ---- Hero area ---- */
+        .credit-hero { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+        .credit-hero-left { display: flex; align-items: baseline; gap: 8px; }
+        .credit-hero-number { font-size: 32px; font-weight: 700; color: #111; line-height: 1; }
+        .credit-hero-number.style-red { color: #e53e3e; }
+        .credit-hero-label { font-size: 14px; color: #666; }
+        .credit-hero-reset { font-size: 13px; color: #888; text-align: right; }
 
-        .credit-remaining {
-            margin-bottom: 6px;
-        }
+        /* ---- Bar ---- */
+        .credit-bar-wrap { margin-bottom: 6px; }
+        .credit-bar-track { background: #e0e0e0; border-radius: 4px; height: 8px; overflow: hidden; }
+        .credit-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+        .credit-bar-fill.green { background: #22a55b; }
+        .credit-bar-fill.yellow { background: #eab308; }
+        .credit-bar-fill.orange { background: #dd6b20; }
+        .credit-bar-fill.red { background: #e53e3e; }
+        .credit-bar-annotation { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
 
-        .credit-bar-track {
-            background: #e0e0e0;
-            border-radius: 3px;
-            height: 10px;
-            overflow: hidden;
-            display: flex;
-        }
+        /* ---- Detail rows ---- */
+        .credit-details { margin-top: 20px; border-top: 1px solid #f0f0f0; padding-top: 16px; }
+        .credit-detail-row { display: flex; padding: 8px 0; }
+        .credit-detail-label { font-size: 13px; color: #666; width: 120px; flex-shrink: 0; }
+        .credit-detail-value { font-size: 13px; color: #111; }
 
-        .credit-bar-monthly {
-            min-width: 2px;
-        }
+        /* ---- Buy form ---- */
+        .buy-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+        .buy-input { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 120px; }
 
-        .credit-bar-monthly.green { background: #22a55b; }
-        .credit-bar-monthly.yellow { background: #eab308; }
-        .credit-bar-monthly.orange { background: #dd6b20; }
-        .credit-bar-monthly.red { background: #e53e3e; }
-
-        .credit-bar-extra {
-            background: #3b82f6;
-            min-width: 2px;
-        }
-
-        .credit-legend-label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            width: 120px;
-        }
-
-        .credit-legend-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 2px;
-            flex-shrink: 0;
-        }
-
-        .credit-legend-dot.green { background: #22a55b; }
-        .credit-legend-dot.yellow { background: #eab308; }
-        .credit-legend-dot.orange { background: #dd6b20; }
-        .credit-legend-dot.red { background: #e53e3e; }
-        .credit-legend-dot.blue { background: #3b82f6; }
+        /* ---- Purchases ---- */
+        .purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+        .purchases-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+        .purchases-table { width: 100%; border-collapse: collapse; }
+        .purchases-table th, .purchases-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        .purchases-table th { color: #666; font-weight: 500; }
+        .purchases-table td { color: #111; }
+        .purchases-table tr:last-child td { border-bottom: none; }
+        .purchases-table a { color: #0066cc; }
 
         .info-row:last-child {
             border-bottom: none;
@@ -822,57 +810,58 @@
             <div class="section-title">Shelley Credits</div>
             <div class="info-card">
                 {{if .HasShelleyFreeCreditPct}}
-                <div class="info-row credit-usage-row">
-                    <div class="info-label">Usage</div>
-                    <div class="info-value info-value-full">
-                        <div class="credit-remaining">
-                            <span>{{printf "%.0f" .TotalRemainingPct}}% remaining</span>
-                        </div>
-                        <div class="credit-bar-track">
-                            <div class="credit-bar-monthly {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .MonthlyBarPct}}%;"></div>
-                            {{if gt .ExtraBarPct 0.0}}<div class="credit-bar-extra" style="width: {{printf "%.1f" .ExtraBarPct}}%;"></div>{{end}}
-                        </div>
+                <div class="credit-hero">
+                    <div class="credit-hero-left">
+                        <span class="credit-hero-number {{if le .TotalRemainingPct 10.0}}style-red{{end}}">{{printf "%.0f" .TotalCreditsUSD}}</span>
+                        <span class="credit-hero-label">credits remaining</span>
                     </div>
                 </div>
-                <div class="info-row">
-                    <div class="info-label credit-legend-label"><span class="credit-legend-dot {{if le .ShelleyFreeCreditRemainingPct 10.0}}red{{else if le .ShelleyFreeCreditRemainingPct 25.0}}orange{{else if le .ShelleyFreeCreditRemainingPct 50.0}}yellow{{else}}green{{end}}"></span><span>Monthly</span></div>
-                    <div class="info-value">{{printf "%.0f%%" .ShelleyFreeCreditRemainingPct}} left (resets {{.MonthlyCreditsResetAt}})</div>
+                <div class="credit-bar-wrap">
+                    <div class="credit-bar-track">
+                        <div class="credit-bar-fill {{if le .TotalRemainingPct 10.0}}red{{else if le .TotalRemainingPct 25.0}}orange{{else if le .TotalRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .UsedBarPct}}%;"></div>
+                    </div>
+                    <div class="credit-bar-annotation">
+                        <span>{{printf "%.0f" .UsedCreditsUSD}} used</span>
+                        <span>{{printf "%.0f" .TotalCapacityUSD}} total</span>
+                    </div>
                 </div>
-                <div class="info-row">
-                    <div class="info-label credit-legend-label"><span class="credit-legend-dot blue"></span><span>Extra</span></div>
-                    <div class="info-value">${{printf "%.2f" .ExtraCreditsUSD}}</div>
+                <div class="credit-details">
+                    <div class="credit-detail-row">
+                        <div class="credit-detail-label">Monthly</div>
+                        <div class="credit-detail-value">{{printf "%.0f" .ShelleyCreditsAvailable}} remaining · resets {{.MonthlyCreditsResetAt}}</div>
+                    </div>
+                    <div class="credit-detail-row">
+                        <div class="credit-detail-label">Extra</div>
+                        <div class="credit-detail-value">{{printf "%.0f" .ExtraCreditsUSD}} remaining</div>
+                    </div>
                 </div>
                 {{else}}
-                <div class="info-row">
-                    <div class="info-label">Credits</div>
-                    <div class="info-value">-</div>
+                <div class="credit-hero">
+                    <div class="credit-hero-left">
+                        <span class="credit-hero-number">-</span>
+                        <span class="credit-hero-label">credits remaining</span>
+                    </div>
                 </div>
                 {{end}}
-                {{if not .SkipBilling}}
-                <div class="info-row">
-                    <div class="info-label"><a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a></div>
-                    <div class="info-value">
-                        <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
-                            <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="$5" required style="padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 200px;">
-                            <button type="submit" class="btn">Buy</button>
-                        </form>
-                    </div>
+                <div class="buy-row">
+                    <a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a>
+                    <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5 credits" required class="buy-input">
+                        <button type="submit" class="btn">Buy</button>
+                    </form>
                 </div>
                 {{if .Purchases}}
-                <div class="info-row">
-                    <div class="info-label">Purchases<br>(Last 30D)</div>
-                    <div class="info-value info-value-full">
-                        <table class="sites-table">
-                        <thead><tr><th>Amount</th><th>Date</th><th>Receipt</th></tr></thead>
-                        <tbody>
-                        {{range .Purchases}}
-                        <tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
-                        {{end}}
-                        </tbody>
-                        </table>
-                    </div>
+                <div class="purchases">
+                    <div class="purchases-label">Purchases (Last 30D)</div>
+                    <table class="purchases-table">
+                    <thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
+                    <tbody>
+                    {{range .Purchases}}
+                    <tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
+                    {{end}}
+                    </tbody>
+                    </table>
                 </div>
-                {{end}}
                 {{end}}
             </div>
         </div>

@@ -1560,8 +1560,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 		for _, c := range credits {
 			if c.Amount > 0 && c.StripeEventID != nil && c.CreatedAt.After(cutoff) {
+				credits := c.Amount / 1_000_000
 				p := PurchaseRow{
-					Amount: tender.Mint(0, c.Amount).String(),
+					Amount: fmt.Sprintf("%d", credits),
 					Date:   c.CreatedAt.Format("02 Jan 2006"),
 				}
 				if c.StripeEventID != nil && receiptURLs != nil {
@@ -1604,6 +1605,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 				shelleyFreeCreditRemainingPct = 100
 			}
 			shelleyCreditsAvailable = effectiveAvailable
+			if shelleyCreditsAvailable < 0 {
+				shelleyCreditsAvailable = 0
+			}
 			shelleyCreditsMax = plan.MaxCredit
 			hasShelleyFreeCreditPct = true
 		}
@@ -1615,7 +1619,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Extra segment = (extra / total) * 100
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
 	var monthlyBarPct, extraBarPct, totalRemainingPct float64
-	totalCapacity := shelleyCreditsMax + extraCreditsUSD
+	monthlyCapacity := shelleyCreditsMax
+	if shelleyCreditsAvailable > monthlyCapacity {
+		monthlyCapacity = shelleyCreditsAvailable
+	}
+	totalCapacity := monthlyCapacity + extraCreditsUSD
 	if totalCapacity > 0 {
 		monthlyBarPct = (shelleyCreditsAvailable / totalCapacity) * 100
 		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
@@ -1628,6 +1636,17 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	}
 	if monthlyBarPct < 0 {
 		monthlyBarPct = 0
+	}
+	usedCreditsUSD := monthlyCapacity - shelleyCreditsAvailable
+	if usedCreditsUSD < 0 {
+		usedCreditsUSD = 0
+	}
+	var usedBarPct float64
+	if totalCapacity > 0 {
+		usedBarPct = (usedCreditsUSD / totalCapacity) * 100
+	}
+	if usedBarPct > 100 {
+		usedBarPct = 100
 	}
 
 	// Fetch integrations for sudoers
@@ -1681,8 +1700,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		TotalRemainingPct:             totalRemainingPct,
 		MonthlyBarPct:                 monthlyBarPct,
 		ExtraBarPct:                   extraBarPct,
+		UsedCreditsUSD:                usedCreditsUSD,
+		TotalCapacityUSD:              totalCapacity,
+		UsedBarPct:                    usedBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
-		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 UTC on 02 Jan 2006"),
+		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on Jan 2"),
 		Purchases:                     purchases,
 
 		IsSudoer:     isSudoer,
