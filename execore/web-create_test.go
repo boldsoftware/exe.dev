@@ -284,3 +284,68 @@ func TestDashboardWaitsForCreatingBox(t *testing.T) {
 		t.Errorf("Dashboard should contain creating status dot")
 	}
 }
+
+func TestStartBoxCreationReusesDeletedName(t *testing.T) {
+	// Test that startBoxCreation works after a previous creation stream
+	// for the same hostname is done. This is the fix for:
+	// https://github.com/boldsoftware/exe.dev/issues/167
+	server := newTestServer(t)
+
+	email := "reuse-name-test@example.com"
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	hostname := "reuse-me"
+
+	// Simulate a previous creation that completed: create a stream and mark it done.
+	cs := server.getOrCreateCreationStream(user.UserID, hostname)
+	cs.MarkDone(nil)
+
+	// The old stream should still be in memory (cleanup timer hasn't fired).
+	if got := server.getCreationStream(user.UserID, hostname); got == nil {
+		t.Fatal("Expected old creation stream to still be present")
+	}
+
+	// Now call startBoxCreation again with the same hostname.
+	// Before the fix, this returned early because the old (done) stream existed.
+	server.startBoxCreation(t.Context(), hostname, "", "exeuntu", user.UserID)
+
+	// After the fix, the old stream is replaced with a new one.
+	newCS := server.getCreationStream(user.UserID, hostname)
+	if newCS == nil {
+		t.Fatal("Expected a new creation stream to be created")
+	}
+	if newCS == cs {
+		t.Fatal("Expected a NEW creation stream, but got the old one")
+	}
+}
+
+func TestRemoveCreationStreamIfMatchStalePointer(t *testing.T) {
+	// Test that removeCreationStreamIfMatch is a no-op when called with a stale pointer.
+	// This is the core safety property: an old stream's cleanup timer cannot
+	// accidentally remove a replacement stream.
+	server := newTestServer(t)
+
+	userID := "user-stale-ptr"
+	hostname := "test-box"
+
+	// Create stream A.
+	streamA := server.getOrCreateCreationStream(userID, hostname)
+
+	// Replace it with stream B by removing A and creating a new one.
+	server.removeCreationStreamIfMatch(userID, hostname, streamA)
+	streamB := server.getOrCreateCreationStream(userID, hostname)
+	if streamB == streamA {
+		t.Fatal("Expected a different stream after replacement")
+	}
+
+	// Simulate stream A's cleanup timer firing with the stale pointer.
+	server.removeCreationStreamIfMatch(userID, hostname, streamA)
+
+	// Stream B must still be present.
+	if got := server.getCreationStream(userID, hostname); got != streamB {
+		t.Fatal("removeCreationStreamIfMatch with stale pointer removed the replacement stream")
+	}
+}

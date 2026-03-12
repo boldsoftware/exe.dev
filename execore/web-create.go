@@ -90,9 +90,10 @@ func (cs *CreationStream) startCleanupTimer() {
 			done := cs.done
 			cs.mu.Unlock()
 
-			// Clean up if done and idle for long enough
+			// Clean up if done and idle for long enough.
+			// Check pointer identity so we don't remove a replacement stream.
 			if done && idle > creationStreamIdleTimeout {
-				cs.server.removeCreationStream(cs.key.userID, cs.key.hostname)
+				cs.server.removeCreationStreamIfMatch(cs.key.userID, cs.key.hostname, cs)
 				return
 			}
 		}
@@ -151,14 +152,21 @@ func (s *Server) getCreationStream(userID, hostname string) *CreationStream {
 	return s.creationStreams[creationStreamKey{userID: userID, hostname: hostname}]
 }
 
-// removeCreationStream removes a creation stream after it's done
-func (s *Server) removeCreationStream(userID, hostname string) {
+// removeCreationStreamIfMatch removes the creation stream only if it matches the given pointer.
+// This prevents a cleanup timer from removing a replacement stream created after the original.
+func (s *Server) removeCreationStreamIfMatch(userID, hostname string, cs *CreationStream) {
 	s.creationStreamsMu.Lock()
 	defer s.creationStreamsMu.Unlock()
-	delete(s.creationStreams, creationStreamKey{userID: userID, hostname: hostname})
+	key := creationStreamKey{userID: userID, hostname: hostname}
+	if s.creationStreams[key] == cs {
+		delete(s.creationStreams, key)
+	}
 }
 
 // getActiveCreationHostnames returns the hostnames of active (non-done) creation streams for a user.
+// Lock ordering note: this acquires cs.mu while holding creationStreamsMu.
+// That is safe because startBoxCreation releases creationStreamsMu (via getCreationStream)
+// before acquiring cs.mu, so the two locks are never held in opposing order.
 func (s *Server) getActiveCreationHostnames(userID string) []string {
 	s.creationStreamsMu.Lock()
 	defer s.creationStreamsMu.Unlock()
@@ -181,8 +189,15 @@ func (s *Server) getActiveCreationHostnames(userID string) []string {
 func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, userID string) {
 	// Check if already creating
 	if cs := s.getCreationStream(userID, hostname); cs != nil {
-		s.slog().InfoContext(ctx, "Box creation already in progress", "hostname", hostname, "user_id", userID)
-		return
+		cs.mu.Lock()
+		done := cs.done
+		cs.mu.Unlock()
+		if !done {
+			s.slog().InfoContext(ctx, "Box creation already in progress", "hostname", hostname, "user_id", userID)
+			return
+		}
+		// Previous creation stream finished; remove it so we can start fresh.
+		s.removeCreationStreamIfMatch(userID, hostname, cs)
 	}
 
 	// Create the stream first so errors can be written to it
