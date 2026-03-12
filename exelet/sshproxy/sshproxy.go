@@ -65,15 +65,12 @@ func (p *socatSSHProxy) start() error {
 		return nil
 	}
 
-	// Build socat command.
-	// Note: we intentionally omit reuseaddr. Without it, a second socat
-	// cannot bind to the same port (EADDRINUSE), which lets us detect and
-	// adopt the existing process instead of silently spawning a duplicate.
+	// Build socat command
 	var listenAddr string
 	if p.bindIP != "" {
-		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,bind=%s", p.port, p.bindIP)
+		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr,bind=%s", p.port, p.bindIP)
 	} else {
-		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork", p.port)
+		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", p.port)
 	}
 	targetAddr := fmt.Sprintf("TCP:%s:%d,connect-timeout=3", p.targetIP, p.targetPort)
 
@@ -96,8 +93,9 @@ func (p *socatSSHProxy) start() error {
 
 	p.pid = cmd.Process.Pid
 
-	// Verify socat actually bound to the port. Without reuseaddr, a
-	// duplicate will fail with EADDRINUSE and exit immediately.
+	// Verify socat actually bound to the port. Without this check, socat
+	// can fail to bind (e.g. EADDRINUSE from ephemeral port collision) and
+	// exit immediately, while we incorrectly report success.
 	const (
 		pollInterval = 20 * time.Millisecond
 		pollTimeout  = 500 * time.Millisecond
@@ -115,20 +113,6 @@ func (p *socatSSHProxy) start() error {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 		return fmt.Errorf("socat failed to listen on port %d within %v", p.port, pollTimeout)
-	}
-
-	// Check if a different process is the actual listener (i.e. our socat
-	// exited due to EADDRINUSE but a pre-existing socat is still running).
-	// Adopt the existing process instead of reporting failure.
-	if listeningPID, err := findListeningPID(p.port); err == nil && listeningPID > 0 && listeningPID != p.pid {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		p.pid = listeningPID
-		p.log.Info("adopted existing proxy process (bind conflict)", "instance", p.instanceID, "port", p.port, "pid", listeningPID)
-		if err := p.saveToDisk(); err != nil {
-			return fmt.Errorf("failed to save proxy metadata after adopting: %w", err)
-		}
-		return nil
 	}
 
 	p.log.Info("ssh proxy started", "instance", p.instanceID, "port", p.port, "target", targetAddr, "pid", p.pid)

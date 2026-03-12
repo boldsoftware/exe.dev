@@ -1,15 +1,12 @@
 package sshproxy
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -178,26 +175,14 @@ func (m *socatManager) RecoverProxies(ctx context.Context, instances []*api.Inst
 			m.log.DebugContext(ctx, "no proxy metadata on disk", "instance", instance.ID)
 		}
 
-		// Check if the saved PID is alive AND is actually listening on the
-		// expected port. isRunning() alone only proves some process with
-		// that PID exists — if the PID was recycled, it could be an
-		// unrelated process. We check against ALL listeners on the port
-		// because with old reuseaddr duplicates the ordering from
-		// findListeningPID is arbitrary.
-		adopted := false
+		// Check if proxy is alive (by PID if we have metadata, or by port)
 		if proxy.isRunning() {
-			if listenerPIDs, err := findAllListeningPIDs(proxy.port); err == nil && containsPID(listenerPIDs, proxy.pid) {
-				m.log.InfoContext(ctx, "recovered running proxy", "instance", instance.ID, "port", proxy.port, "pid", proxy.pid)
-				m.proxies[instance.ID] = proxy
-				m.ports[instance.ID] = proxy.port
-				adopted = true
-			} else {
-				m.log.WarnContext(ctx, "saved PID is alive but not listening on expected port, ignoring stale metadata",
-					"instance", instance.ID, "saved_pid", proxy.pid, "port", proxy.port)
-			}
-		}
-		if !adopted {
-			// Proxy is dead, PID recycled, or no metadata — try to start/adopt
+			// Proxy is running, adopt it
+			m.log.InfoContext(ctx, "recovered running proxy", "instance", instance.ID, "port", proxy.port, "pid", proxy.pid)
+			m.proxies[instance.ID] = proxy
+			m.ports[instance.ID] = proxy.port
+		} else {
+			// Proxy is dead or no metadata, try to start/adopt
 			m.log.InfoContext(ctx, "starting proxy for running instance", "instance", instance.ID, "port", proxy.port)
 			if err := proxy.start(); err != nil {
 				m.log.ErrorContext(ctx, "failed to start proxy", "instance", instance.ID, "error", err)
@@ -206,63 +191,9 @@ func (m *socatManager) RecoverProxies(ctx context.Context, instances []*api.Inst
 			m.proxies[instance.ID] = proxy
 			m.ports[instance.ID] = proxy.port
 		}
-
-		// Clean up any duplicate socat processes on this port left over from
-		// previous exelet versions that used reuseaddr. Keep the adopted PID
-		// (which holds active connections) and kill the rest.
-		m.cleanupDuplicateListeners(ctx, instance.ID, proxy.pid, port)
 	}
 
 	return nil
-}
-
-// cleanupDuplicateListeners finds all socat processes listening on the given
-// port and kills any that are not the adopted PID. Only processes whose
-// /proc/PID/comm is "socat" are considered; other processes are left alone
-// to avoid killing unrelated services in case of a port collision.
-func (m *socatManager) cleanupDuplicateListeners(ctx context.Context, instanceID string, adoptedPID, port int) {
-	pids, err := findAllListeningPIDs(port)
-	if err != nil {
-		m.log.WarnContext(ctx, "failed to find listeners for cleanup", "instance", instanceID, "port", port, "error", err)
-		return
-	}
-	for _, pid := range pids {
-		if pid == adoptedPID {
-			continue
-		}
-		if !isSocatProcess(pid) {
-			m.log.WarnContext(ctx, "non-socat process listening on proxy port, skipping",
-				"instance", instanceID, "port", port, "pid", pid)
-			continue
-		}
-		m.log.InfoContext(ctx, "killing duplicate socat process", "instance", instanceID, "port", port, "duplicate_pid", pid, "kept_pid", adoptedPID)
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			continue
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
-			m.log.WarnContext(ctx, "failed to kill duplicate socat", "pid", pid, "error", err)
-		}
-	}
-}
-
-// isSocatProcess checks whether the given PID belongs to a socat process
-// by reading /proc/PID/comm.
-func isSocatProcess(pid int) bool {
-	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-	if err != nil {
-		return false
-	}
-	return string(bytes.TrimSpace(comm)) == "socat"
-}
-
-func containsPID(pids []int, target int) bool {
-	for _, p := range pids {
-		if p == target {
-			return true
-		}
-	}
-	return false
 }
 
 // MarkPortAllocated marks a port as allocated (for port allocator integration)
