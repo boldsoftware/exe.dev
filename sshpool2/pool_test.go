@@ -412,7 +412,6 @@ func TestPoolDifferentKeys(t *testing.T) {
 }
 
 func TestPoolExpiration(t *testing.T) {
-	// synctest.Test(t, func(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
@@ -431,16 +430,24 @@ func TestPoolExpiration(t *testing.T) {
 	}
 	conn1.Close() // Close to allow connection to expire
 
-	// Wait for expiration (timer should fire)
-	time.Sleep(ttl + 50*time.Millisecond)
+	// Poll for expiration rather than sleeping a fixed margin.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		pool.mu.Lock()
+		n := len(pool.conns)
+		pool.mu.Unlock()
+		if n == 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
-	// Check that the connection was removed
 	pool.mu.Lock()
 	numConns := len(pool.conns)
 	pool.mu.Unlock()
 
 	if numConns != 0 {
-		t.Errorf("expected 0 connections after expiration, got %d", numConns)
+		t.Fatalf("expected 0 connections after expiration, got %d", numConns)
 	}
 
 	// Make a new dial - should create a new SSH connection
@@ -458,7 +465,6 @@ func TestPoolExpiration(t *testing.T) {
 	if numConns != 1 {
 		t.Errorf("expected 1 connection after re-dial, got %d", numConns)
 	}
-	// })
 }
 
 func TestPoolConcurrentAccess(t *testing.T) {
@@ -954,15 +960,16 @@ func (p *blockingProxy) close() {
 	p.mu.Unlock()
 }
 
-// TestPoolStaleConnectionTimeout tests that the pool properly handles
-// connections that become unresponsive (timeout) rather than cleanly closed.
-// This simulates what happens when a VM reboots - the TCP connection hangs
-// rather than returning a clean error.
+// TestPoolTransportErrorEviction tests that the pool evicts connections when
+// proxy.block() tears down target-side connections, producing transport errors
+// (EOF/ECONNRESET) that hit isSSHConnError → eviction.
 //
-// BEFORE THE FIX: This test demonstrates the bug where timeout errors
-// are not recognized as SSH connection errors, so the stale connection
-// stays in the pool and subsequent requests also fail.
-func TestPoolStaleConnectionTimeout(t *testing.T) {
+// Note: this exercises the transport-error eviction path, not the stale-timeout
+// path. The 200ms caller deadline is shorter than staleTimeout (500ms), so the
+// shortTimeoutOwnership check correctly reports "not ours" and the stale branch
+// never fires. See TestDialThroughClientStaleConnEvicts for actual stale-timeout
+// testing.
+func TestPoolTransportErrorEviction(t *testing.T) {
 	// Create real SSH server
 	server := newTestSSHServer(t)
 	defer server.close()
@@ -986,11 +993,12 @@ func TestPoolStaleConnectionTimeout(t *testing.T) {
 	// Verify we have a pooled connection
 	original := getOnlyPooledConn(t, pool)
 
-	// Now block the proxy to simulate VM reboot (connection hangs, no clean close)
+	// Now block the proxy to simulate VM reboot: tears down target-side
+	// connections, producing EOF/ECONNRESET on the SSH transport.
 	proxy.block()
 
-	// Try to dial through the stale connection - should fail
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	// Try to dial through the dead connection - should fail with transport error.
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	_, err = pool.DialContext(ctx, "tcp", "127.0.0.1:80", proxy.host(), config.User, proxy.port(), signer, config)
@@ -999,7 +1007,7 @@ func TestPoolStaleConnectionTimeout(t *testing.T) {
 	}
 	t.Logf("first dial error (expected): %v", err)
 
-	// Check if the stale connection was removed from the pool
+	// The transport error should trigger eviction via isSSHConnError.
 	pool.mu.Lock()
 	connCount := len(pool.conns)
 	var current *pooledConn
@@ -1008,13 +1016,10 @@ func TestPoolStaleConnectionTimeout(t *testing.T) {
 	}
 	pool.mu.Unlock()
 
-	// THE FIX: After an error, the stale connection should be removed from the pool.
-	// Before the fix, connCount would be 1 and current == original (stale conn still there).
-	// After the fix, connCount should be 0 (stale connection removed).
 	if connCount != 0 {
-		t.Errorf("expected stale connection to be removed from pool, but pool has %d connections", connCount)
+		t.Errorf("expected dead connection to be evicted from pool, but pool has %d connections", connCount)
 		if current == original {
-			t.Error("the pooled connection is still the original stale one")
+			t.Error("the pooled connection is still the original dead one")
 		}
 	}
 }
@@ -1158,6 +1163,13 @@ func TestDialWithRetriesRetriesDialThroughClient(t *testing.T) {
 	if server.portForwardAttempts() < 3 {
 		t.Errorf("expected at least 3 port forward attempts, got %d", server.portForwardAttempts())
 	}
+
+	// ConnectionFailed rejections should not evict the SSH connection from the pool.
+	// Assert via TCP accept count: if eviction occurred, retries would establish
+	// a new TCP connection, so accepts > 1.
+	if n := server.sshAccepts(); n != 1 {
+		t.Errorf("expected 1 SSH connection (ConnectionFailed should not evict), got %d", n)
+	}
 }
 
 // testSSHServerWithFailingPortForward is a test SSH server that fails
@@ -1166,8 +1178,9 @@ type testSSHServerWithFailingPortForward struct {
 	*testSSHServer
 	failCount int // how many port-forwards to fail
 
-	mu       sync.Mutex
-	attempts int // count of port-forward attempts
+	mu         sync.Mutex
+	attempts   int // count of port-forward attempts
+	tcpAccepts int // count of TCP accepts (SSH connections)
 }
 
 func newTestSSHServerWithFailingPortForward(t *testing.T, failCount int) *testSSHServerWithFailingPortForward {
@@ -1212,6 +1225,9 @@ func (s *testSSHServerWithFailingPortForward) serveWithFailingPortForward() {
 		if err != nil {
 			return
 		}
+		s.mu.Lock()
+		s.tcpAccepts++
+		s.mu.Unlock()
 
 		go func(conn net.Conn) {
 			_, chans, reqs, err := ssh.NewServerConn(conn, s.config)
@@ -1253,6 +1269,12 @@ func (s *testSSHServerWithFailingPortForward) portForwardAttempts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.attempts
+}
+
+func (s *testSSHServerWithFailingPortForward) sshAccepts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tcpAccepts
 }
 
 // TestDialWithRetriesStaleConnectionRecovery tests that DialWithRetries
@@ -1660,25 +1682,33 @@ func TestOnConnClosedCalledWhenSSHDies(t *testing.T) {
 	}
 }
 
-// TestIsSSHConnErrorRecognizesTimeouts tests that isSSHConnError correctly
-// identifies timeout and cancellation errors as connection errors.
-func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
+// TestIsSSHConnError tests that isSSHConnError classifies transport errors
+// but NOT context errors (which are handled at call sites with context access).
+func TestIsSSHConnError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want bool
 	}{
-		{"DeadlineExceeded", context.DeadlineExceeded, true},
-		{"Canceled", context.Canceled, true},
 		{"EOF", io.EOF, true},
 		{"ErrClosed", net.ErrClosed, true},
 		{"ECONNRESET", syscall.ECONNRESET, true},
 		{"EPIPE", syscall.EPIPE, true},
 		{"wrapped ECONNRESET", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, true},
 		{"wrapped EPIPE", &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}, true},
-		{"wrapped DeadlineExceeded", fmt.Errorf("dial failed: %w", context.DeadlineExceeded), true},
-		{"wrapped Canceled", fmt.Errorf("dial failed: %w", context.Canceled), true},
+		{"DeadlineExceeded", context.DeadlineExceeded, false},
+		{"Canceled", context.Canceled, false},
+		{"wrapped DeadlineExceeded", fmt.Errorf("dial failed: %w", context.DeadlineExceeded), false},
+		{"wrapped Canceled", fmt.Errorf("dial failed: %w", context.Canceled), false},
 		{"random error", errors.New("some random error"), false},
+		{"OpenChannelError ConnectionFailed", &ssh.OpenChannelError{Reason: ssh.ConnectionFailed, Message: "connection failed"}, false},
+		{"OpenChannelError ResourceShortage", &ssh.OpenChannelError{Reason: ssh.ResourceShortage, Message: "too many channels"}, true},
+		{"OpenChannelError Prohibited", &ssh.OpenChannelError{Reason: ssh.Prohibited, Message: "denied by policy"}, false},
+		{"OpenChannelError UnknownChannelType", &ssh.OpenChannelError{Reason: ssh.UnknownChannelType, Message: "unknown"}, false},
+		{"wrapped OpenChannelError Prohibited", fmt.Errorf("dial: %w", &ssh.OpenChannelError{Reason: ssh.Prohibited, Message: "denied"}), false},
+		{"wrapped OpenChannelError ConnectionFailed", fmt.Errorf("dial: %w", &ssh.OpenChannelError{Reason: ssh.ConnectionFailed, Message: "failed"}), false},
+		{"unexpected packet string match", errors.New("ssh: unexpected packet in response to channel open"), true},
+		{"ECONNREFUSED", syscall.ECONNREFUSED, false},
 	}
 
 	for _, tt := range tests {
@@ -1688,6 +1718,420 @@ func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
 				t.Errorf("isSSHConnError(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestDialThroughClientCallerCancelDoesNotEvict verifies that when a caller's
+// context is cancelled, dialThroughClient does NOT evict the healthy SSH
+// connection from the pool. The ctx.Err() guard at entry returns immediately,
+// and the error is plain context.Canceled (not ErrStaleConnection).
+func TestDialThroughClientCallerCancelDoesNotEvict(t *testing.T) {
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	// Establish a connection to populate the pool.
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed to establish connection: %v", err)
+	}
+	conn.Close()
+
+	pc := getOnlyPooledConn(t, pool)
+
+	// Call dialThroughClient directly with an already-cancelled context.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = pool.dialThroughClient(ctx, pc, "tcp", "127.0.0.1:80")
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled in error chain, got: %v", err)
+	}
+	if errors.Is(err, ErrStaleConnection) {
+		t.Fatal("caller cancellation should not produce ErrStaleConnection")
+	}
+
+	// The healthy connection must NOT be evicted from the pool.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("healthy connection was evicted from pool: got %d conns, want 1", n)
+	}
+}
+
+// TestDialThroughClientMidFlightCancelDoesNotEvict verifies the harder case of
+// the TOCTOU race: the caller's context is cancelled DURING DialContext
+// (after passing the ctx.Err() guard at entry), and the eviction guard
+// correctly suppresses eviction of the healthy SSH connection.
+func TestDialThroughClientMidFlightCancelDoesNotEvict(t *testing.T) {
+	// Build an SSH server that gates direct-tcpip channel acceptance.
+	// The first channel (for pool population) goes through immediately;
+	// subsequent channels block until channelGate is closed.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	channelSeen := make(chan struct{})
+	channelGate := make(chan struct{})
+	defer close(channelGate)
+	var channelCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "direct-tcpip" {
+							if channelCount.Add(1) > 1 {
+								close(channelSeen)
+								<-channelGate
+							}
+							channel, _, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							channel.Close()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	// Populate the pool (first channel goes through ungated).
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err != nil {
+		t.Fatalf("failed to establish connection: %v", err)
+	}
+	conn.Close()
+
+	pc := getOnlyPooledConn(t, pool)
+
+	// Start dialThroughClient; the second channel will be gated.
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := pool.dialThroughClient(ctx, pc, "tcp", "127.0.0.1:80")
+		errCh <- err
+	}()
+
+	// Wait until the SSH server has received the channel request,
+	// proving dialThroughClient is past the ctx.Err() guard and
+	// inside DialContext.
+	select {
+	case <-channelSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for second channel request to arrive at server")
+	}
+
+	// Cancel the context mid-flight.
+	cancel()
+
+	if err := <-errCh; !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	} else if errors.Is(err, ErrStaleConnection) {
+		t.Fatal("mid-flight caller cancellation should not produce ErrStaleConnection")
+	}
+
+	// The healthy SSH connection must NOT be evicted.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("healthy connection was evicted from pool: got %d conns, want 1", n)
+	}
+}
+
+// TestDialThroughClientShortCallerDeadlineDoesNotEvict verifies that when the
+// caller's context has a deadline shorter than staleTimeout, the pool does NOT
+// evict the connection when the deadline expires. The timeout was the caller's,
+// not our stale detection probe, so the connection is probably healthy.
+//
+// This is the "both-contexts-done" edge case: shortCtx inherits the caller's
+// shorter deadline, both fire simultaneously, and the deadline comparison
+// (shortTimeoutIsOurs) correctly suppresses eviction.
+func TestDialThroughClientShortCallerDeadlineDoesNotEvict(t *testing.T) {
+	// SSH server that gates direct-tcpip channels (same pattern as other tests).
+	// First channel: immediate (pool population).
+	// Subsequent channels: blocked, but the point is the caller times out first.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	channelGate := make(chan struct{})
+	defer close(channelGate)
+	var channelCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "direct-tcpip" {
+							if channelCount.Add(1) > 1 {
+								<-channelGate
+								return
+							}
+							channel, _, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							channel.Close()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	// Populate pool (first channel goes through ungated).
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err != nil {
+		t.Fatalf("failed to establish connection: %v", err)
+	}
+	conn.Close()
+	original := getOnlyPooledConn(t, pool)
+
+	// Dial with a deadline SHORTER than staleTimeout.
+	// shortCtx inherits the caller's deadline, so the timeout is NOT
+	// our stale detection probe. The connection must not be evicted.
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = pool.DialContext(ctx, "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err == nil {
+		t.Fatal("expected error from short deadline")
+	}
+
+	// Must be the caller's deadline, not stale detection.
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded in error chain, got: %v", err)
+	}
+	if errors.Is(err, ErrStaleConnection) {
+		t.Fatalf("short caller deadline should not produce ErrStaleConnection, got: %v", err)
+	}
+
+	// The original pooled connection must still be present (not evicted and replaced).
+	if after := getOnlyPooledConn(t, pool); after != original {
+		t.Fatalf("pooled connection was replaced: original %p, after %p", original, after)
+	}
+}
+
+// TestShortTimeoutOwnership verifies the deadline comparison logic that
+// determines whether shortCtx's deadline came from staleTimeout or was
+// inherited from a shorter caller deadline.
+func TestShortTimeoutOwnership(t *testing.T) {
+	// Case 1: caller has no deadline — staleTimeout is always ours.
+	ctx := context.Background()
+	shortCtx, cancel := context.WithTimeout(ctx, staleTimeout)
+	cancel()
+	if !shortTimeoutOwnership(ctx, shortCtx) {
+		t.Error("no caller deadline: expected shortTimeoutIsOurs=true")
+	}
+
+	// Case 2: caller deadline is much longer — staleTimeout is ours.
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	shortCtx, cancel2 := context.WithTimeout(ctx, staleTimeout)
+	defer cancel2()
+	if !shortTimeoutOwnership(ctx, shortCtx) {
+		t.Error("long caller deadline: expected shortTimeoutIsOurs=true")
+	}
+
+	// Case 3: caller deadline is shorter — staleTimeout is inherited, not ours.
+	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	shortCtx, cancel2 = context.WithTimeout(ctx, staleTimeout)
+	defer cancel2()
+	if shortTimeoutOwnership(ctx, shortCtx) {
+		t.Error("short caller deadline: expected shortTimeoutIsOurs=false")
+	}
+
+	// Case 4: caller deadline equals staleTimeout — conservative: not ours.
+	// context.WithTimeout inherits the parent's earlier-or-equal deadline,
+	// so shortDeadline == ctxDeadline trivially. The strict Before() matters
+	// for near-equal cases where clock progression makes shortDeadline
+	// slightly later than ctxDeadline.
+	ctx, cancel = context.WithTimeout(context.Background(), staleTimeout)
+	defer cancel()
+	shortCtx, cancel2 = context.WithTimeout(ctx, staleTimeout)
+	defer cancel2()
+	if shortTimeoutOwnership(ctx, shortCtx) {
+		t.Error("equal deadlines: expected shortTimeoutIsOurs=false (conservative)")
+	}
+}
+
+// TestDialThroughClientStaleConnEvicts verifies that when a pooled SSH
+// connection is unresponsive (shortCtx's staleTimeout fires but the caller's
+// context is fine), the connection is evicted and the error wraps ErrStaleConnection
+// (preserving context.DeadlineExceeded in the chain).
+func TestDialThroughClientStaleConnEvicts(t *testing.T) {
+	// SSH server that gates direct-tcpip channels.
+	// First channel: immediate (pool population).
+	// Subsequent channels: blocked until test cleanup, simulating unresponsive SSH.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	channelGate := make(chan struct{})
+	defer close(channelGate)
+	var channelCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "direct-tcpip" {
+							if channelCount.Add(1) > 1 {
+								<-channelGate // block forever until cleanup
+								return
+							}
+							channel, _, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							channel.Close()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	// Populate pool (first channel goes through ungated).
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err != nil {
+		t.Fatalf("failed to establish connection: %v", err)
+	}
+	conn.Close()
+	getOnlyPooledConn(t, pool)
+
+	// Dial with a long timeout so shortCtx's 500ms fires first.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	_, err = pool.DialContext(ctx, "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err == nil {
+		t.Fatal("expected error from stale connection")
+	}
+
+	// Error wraps ErrStaleConnection.
+	if !errors.Is(err, ErrStaleConnection) {
+		t.Fatalf("expected ErrStaleConnection, got: %v", err)
+	}
+	// Original timeout error preserved in chain.
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded in error chain, got: %v", err)
+	}
+
+	// Stale connection should be evicted.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("expected stale connection to be evicted, got %d connections", n)
 	}
 }
 
@@ -2013,4 +2457,507 @@ func TestDoChanConnectFailurePropagates(t *testing.T) {
 		t.Fatalf("fresh singleflight call to real server failed: %v", err)
 	}
 	conn.Close()
+}
+
+// TestDialWithRetriesErrStaleConnectionRecovery verifies the full cycle:
+// first attempt hits a stale connection (shortCtx fires) → eviction with
+// ErrStaleConnection → retry → fresh SSH connection → success.
+// This is distinct from TestDialWithRetriesStaleConnectionRecovery, which
+// tests recovery from a forcibly-closed client (transport error, not stale detection).
+func TestDialWithRetriesErrStaleConnectionRecovery(t *testing.T) {
+	// SSH server where the first direct-tcpip channel per SSH connection
+	// succeeds, but the second hangs — simulating a stale connection.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	channelGate := make(chan struct{})
+	defer close(channelGate)
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				// Per-SSH-connection channel count: first channel works, second hangs.
+				var connChannelCount atomic.Int32
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "direct-tcpip" {
+							if connChannelCount.Add(1) > 1 {
+								<-channelGate // hang until cleanup
+								return
+							}
+							channel, _, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							channel.Close()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+
+	// Populate pool (first channel on first SSH connection goes through ungated).
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
+	if err != nil {
+		t.Fatalf("initial dial failed: %v", err)
+	}
+	conn.Close()
+	getOnlyPooledConn(t, pool)
+
+	// DialWithRetries: first attempt hits gated channel (stale detection fires,
+	// eviction + ErrStaleConnection), retry establishes new SSH connection
+	// (first channel on new connection works).
+	retries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
+	conn2, err := pool.DialWithRetries(t.Context(), "tcp", "127.0.0.1:80", host, config.User, port, signer, config, retries)
+	if conn2 == nil {
+		t.Fatalf("DialWithRetries failed to recover from stale connection: %v", err)
+	}
+	defer conn2.Close()
+
+	// Joined error chain should contain ErrStaleConnection from the first attempt.
+	if err == nil {
+		t.Fatal("expected joined error containing ErrStaleConnection from first attempt")
+	}
+	if !errors.Is(err, ErrStaleConnection) {
+		t.Fatalf("expected ErrStaleConnection in joined error chain, got: %v", err)
+	}
+	t.Logf("DialWithRetries recovered with prior errors: %v", err)
+}
+
+// TestRunCommandStaleConnectionEviction verifies that when NewSession hangs
+// (stale/half-open SSH connection), runCommandOnClient detects the stale
+// connection via a short timeout, evicts it, and returns ErrStaleConnection.
+func TestRunCommandStaleConnectionEviction(t *testing.T) {
+	// SSH server that gates session channels.
+	// First session: serves the command normally.
+	// Subsequent sessions: blocked, simulating unresponsive SSH.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	sessionGate := make(chan struct{})
+	defer close(sessionGate)
+	var sessionCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "session" {
+							if sessionCount.Add(1) > 1 {
+								<-sessionGate // block until cleanup
+								return
+							}
+							// First session: handle exec
+							channel, requests, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							go func() {
+								for req := range requests {
+									if req.Type == "exec" {
+										req.Reply(true, nil)
+										channel.Write([]byte("hello\n"))
+										channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+										channel.Close()
+										return
+									}
+									req.Reply(false, nil)
+								}
+							}()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond}
+
+	// First RunCommand succeeds (first session is ungated).
+	output, err := pool.RunCommand(t.Context(), host, config.User, port, signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("initial RunCommand failed: %v", err)
+	}
+	if string(output) != "hello\n" {
+		t.Fatalf("unexpected output: %q", output)
+	}
+	getOnlyPooledConn(t, pool)
+
+	// Second RunCommand: NewSession hangs (session channel gated).
+	// Should detect stale connection and evict.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	_, err = pool.RunCommand(ctx, host, config.User, port, signer, config, "echo world", nil, connRetries)
+	if err == nil {
+		t.Fatal("expected error from stale connection")
+	}
+
+	// Error should wrap ErrStaleConnection.
+	if !errors.Is(err, ErrStaleConnection) {
+		t.Fatalf("expected ErrStaleConnection, got: %v", err)
+	}
+
+	// Stale connection should be evicted.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("expected empty pool after stale eviction, got %d connections", n)
+	}
+}
+
+// TestRunCommandPreCancelledContext verifies that calling RunCommand with an
+// already-cancelled context returns immediately without pool state changes.
+// The pre-cancel is caught by connectTo's ctx.Err() guard at entry, so
+// runCommandOnClient is never reached. (TestRunCommandCallerCancelDoesNotEvict
+// covers the session path.)
+func TestRunCommandPreCancelledContext(t *testing.T) {
+	server := newTestSSHServerWithExec(t)
+	defer server.close()
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond}
+
+	// Establish a connection to populate the pool.
+	output, err := pool.RunCommand(t.Context(), server.host(), config.User, server.port(), signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("initial RunCommand failed: %v", err)
+	}
+	if string(output) != "hello\n" {
+		t.Fatalf("unexpected output: %q", output)
+	}
+	getOnlyPooledConn(t, pool)
+
+	// Call RunCommand with an already-cancelled context.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = pool.RunCommand(ctx, server.host(), config.User, server.port(), signer, config, "echo world", nil, connRetries)
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled in error chain, got: %v", err)
+	}
+	if errors.Is(err, ErrStaleConnection) {
+		t.Fatal("pre-cancelled context should not produce ErrStaleConnection")
+	}
+
+	// The healthy connection must NOT be evicted.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("healthy connection was evicted from pool: got %d conns, want 1", n)
+	}
+}
+
+// TestRunCommandCallerCancelDoesNotEvict verifies that when a caller's context
+// is cancelled, runCommandOnClient does NOT evict the healthy SSH connection.
+// Mirrors TestDialThroughClientCallerCancelDoesNotEvict for the session path.
+func TestRunCommandCallerCancelDoesNotEvict(t *testing.T) {
+	// SSH server that handles exec requests normally.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	sessionSeen := make(chan struct{})
+	sessionGate := make(chan struct{})
+	defer close(sessionGate)
+	var sessionCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "session" {
+							if sessionCount.Add(1) > 1 {
+								// Second session: signal arrival, then block.
+								close(sessionSeen)
+								<-sessionGate
+								return
+							}
+							// First session: handle exec.
+							channel, requests, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							go func() {
+								for req := range requests {
+									if req.Type == "exec" {
+										req.Reply(true, nil)
+										channel.Write([]byte("hello\n"))
+										channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+										channel.Close()
+										return
+									}
+									req.Reply(false, nil)
+								}
+							}()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond}
+
+	// First RunCommand succeeds (first session is ungated).
+	output, err := pool.RunCommand(t.Context(), host, config.User, port, signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("initial RunCommand failed: %v", err)
+	}
+	if string(output) != "hello\n" {
+		t.Fatalf("unexpected output: %q", output)
+	}
+	getOnlyPooledConn(t, pool)
+
+	// Second RunCommand with a context that will be cancelled mid-flight.
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := pool.RunCommand(ctx, host, config.User, port, signer, config, "echo world", nil, connRetries)
+		errCh <- err
+	}()
+
+	// Wait until the server sees the second session request.
+	select {
+	case <-sessionSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for second session request to arrive at server")
+	}
+
+	// Cancel the context mid-flight.
+	cancel()
+
+	if err := <-errCh; err == nil {
+		t.Fatal("expected error from cancelled context")
+	} else if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled in error chain, got: %v", err)
+	} else if errors.Is(err, ErrStaleConnection) {
+		t.Fatal("caller cancellation should not produce ErrStaleConnection")
+	}
+
+	// The healthy connection must NOT be evicted.
+	pool.mu.Lock()
+	nConns := len(pool.conns)
+	pool.mu.Unlock()
+	if nConns != 1 {
+		t.Fatalf("healthy connection was evicted from pool: got %d conns, want 1", nConns)
+	}
+}
+
+// TestRunCommandShortCallerDeadlineDoesNotEvict verifies that when the caller's
+// context has a deadline shorter than staleTimeout, the pool does NOT evict the
+// connection. Mirrors TestDialThroughClientShortCallerDeadlineDoesNotEvict for
+// the session path.
+func TestRunCommandShortCallerDeadlineDoesNotEvict(t *testing.T) {
+	// SSH server that gates session channels after the first.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig := &ssh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(serverSigner)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	sessionGate := make(chan struct{})
+	defer close(sessionGate)
+	var sessionCount atomic.Int32
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+				if err != nil {
+					conn.Close()
+					return
+				}
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					go func(ch ssh.NewChannel) {
+						if ch.ChannelType() == "session" {
+							if sessionCount.Add(1) > 1 {
+								<-sessionGate
+								return
+							}
+							// First session: handle exec.
+							channel, requests, err := ch.Accept()
+							if err != nil {
+								return
+							}
+							go func() {
+								for req := range requests {
+									if req.Type == "exec" {
+										req.Reply(true, nil)
+										channel.Write([]byte("hello\n"))
+										channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+										channel.Close()
+										return
+									}
+									req.Reply(false, nil)
+								}
+							}()
+						} else {
+							ch.Reject(ssh.UnknownChannelType, "not supported")
+						}
+					}(newChannel)
+				}
+			}(conn)
+		}
+	}()
+
+	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	pool := &Pool{TTL: 10 * time.Minute, Logger: tslog.Slogger(t)}
+	defer pool.Close()
+	config, signer := newTestClientConfig(t)
+	connRetries := []time.Duration{10 * time.Millisecond}
+
+	// First RunCommand succeeds.
+	output, err := pool.RunCommand(t.Context(), host, config.User, port, signer, config, "echo hello", nil, connRetries)
+	if err != nil {
+		t.Fatalf("initial RunCommand failed: %v", err)
+	}
+	if string(output) != "hello\n" {
+		t.Fatalf("unexpected output: %q", output)
+	}
+	original := getOnlyPooledConn(t, pool)
+
+	// RunCommand with a deadline SHORTER than staleTimeout.
+	// The session channel is gated, so the caller's deadline fires first.
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = pool.RunCommand(ctx, host, config.User, port, signer, config, "echo world", nil, connRetries)
+	if err == nil {
+		t.Fatal("expected error from short deadline")
+	}
+
+	// Must be the caller's deadline, not stale detection.
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded in error chain, got: %v", err)
+	}
+	if errors.Is(err, ErrStaleConnection) {
+		t.Fatalf("short caller deadline should not produce ErrStaleConnection, got: %v", err)
+	}
+
+	// The original pooled connection must still be present (not evicted and replaced).
+	if after := getOnlyPooledConn(t, pool); after != original {
+		t.Fatalf("pooled connection was replaced: original %p, after %p", original, after)
+	}
 }
