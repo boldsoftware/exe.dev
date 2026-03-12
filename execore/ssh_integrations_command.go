@@ -159,6 +159,44 @@ type httpProxyConfig struct {
 	Header string `json:"header"`
 }
 
+// printIntegrationUsage prints usage instructions after creating an integration.
+// For github integrations, repositories should be the list of repos; for other types, nil.
+func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name, attachments string, repositories []string) {
+	intHost := name + ".int." + ss.server.env.BoxHost
+
+	// Parse attachments to find a VM name for the example.
+	var specList []string
+	if attachments != "" && attachments != "[]" {
+		json.Unmarshal([]byte(attachments), &specList)
+	}
+
+	var vmName string
+	for _, spec := range specList {
+		if strings.HasPrefix(spec, "vm:") {
+			vmName = spec[3:]
+			break
+		}
+	}
+
+	cc.Writeln("")
+	if vmName == "" {
+		cc.Writeln("To use this integration, attach it to a VM first:")
+		cc.Writeln("  integrations attach %s vm:<vm-name>", name)
+		cc.Writeln("")
+		vmName = "<vm>"
+	}
+
+	switch typ {
+	case "http-proxy":
+		cc.Writeln("Usage from a VM:")
+		cc.Writeln("  ssh %s curl http://%s/", vmName, intHost)
+	case "github":
+		repo := repositories[0]
+		cc.Writeln("Usage from a VM:")
+		cc.Writeln("  ssh %s bash -c 'cd $(mktemp -d) && git init && git fetch http://%s/%s.git'", vmName, intHost, repo)
+	}
+}
+
 var knownIntegrationTypes = map[string]bool{
 	"http-proxy": true,
 	"github":     true,
@@ -276,6 +314,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	}
 
 	cc.Writeln("Added integration %s", name)
+	ss.printIntegrationUsage(cc, "http-proxy", name, attachments, nil)
 	return nil
 }
 
@@ -381,6 +420,7 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	}
 
 	cc.Writeln("Added integration %s", name)
+	ss.printIntegrationUsage(cc, "github", name, attachments, repositories)
 	return nil
 }
 
