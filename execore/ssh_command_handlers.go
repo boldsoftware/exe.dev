@@ -1515,6 +1515,10 @@ doneParsingSSHFlags:
 	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
 	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", boxSSHUser, "ctrhost", box.Ctrhost)
 
+	if cc.IsInteractive() {
+		cc.Write("\033[2mTip: connecting directly with \"ssh %s\" is typically faster.\033[0m\r\n", ss.server.env.BoxDest(box.Name))
+	}
+
 	sshConfig := &ssh.ClientConfig{
 		User: boxSSHUser,
 		Auth: []ssh.AuthMethod{
