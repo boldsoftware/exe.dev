@@ -3060,6 +3060,9 @@ func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount i
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
 func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool) (string, error) {
+	if !signupAllowlistPermits(s.env.SignupAllowlist, emailAddr) {
+		return "", fmt.Errorf("email not on signup allowlist: %s", emailAddr)
+	}
 	userID, err := generateUserID()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate user ID: %w", err)
@@ -3186,6 +3189,12 @@ func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams
 		s.recordSignupRejection(ctx, p, "login_creation_disabled", "")
 		return errors.New("account creation is temporarily unavailable")
 	}
+	if !signupAllowlistPermits(s.env.SignupAllowlist, p.email) {
+		s.slog().InfoContext(ctx, "blocking signup: email not on allowlist", "email", p.email)
+		s.signupMetrics.IncBlocked("allowlist", p.source)
+		s.recordSignupRejection(ctx, p, "allowlist", "")
+		return errors.New("account creation is not available for this email address")
+	}
 	s.slog().InfoContext(ctx, "vetting new signup", "ip", p.ip, "email", p.email)
 	sloghttp.AddContextAttributes(ctx, slog.String("email", p.email))
 
@@ -3223,6 +3232,39 @@ func (s *Server) validateNewSignup(ctx context.Context, p signupValidationParams
 		return fmt.Errorf("unable to process signup (trace=%s, email=%s)", tracing.TraceIDFromContext(ctx), p.email)
 	}
 	return nil
+}
+
+// signupAllowlistPermits reports whether addr is permitted by the allowlist.
+// A nil allowlist permits all addresses.
+func signupAllowlistPermits(a *stage.SignupAllowlist, addr string) bool {
+	if a == nil {
+		return true
+	}
+	canonical, err := email.CanonicalizeEmail(addr)
+	if err != nil {
+		return false
+	}
+	// Check domain entries.
+	if _, domain, ok := strings.Cut(canonical, "@"); ok {
+		for _, d := range a.Domains {
+			if strings.EqualFold(domain, d) {
+				return true
+			}
+		}
+	}
+	// Check individual email entries.
+	// Strip +suffix so that "user+tag@domain" matches allowlisted "user@domain".
+	base := email.StripPlusSuffix(canonical)
+	for _, allowed := range a.Emails {
+		allowedCanonical, err := email.CanonicalizeEmail(allowed)
+		if err != nil {
+			continue
+		}
+		if email.StripPlusSuffix(allowedCanonical) == base {
+			return true
+		}
+	}
+	return false
 }
 
 // recordSignupRejection records a rejected signup attempt to the database.

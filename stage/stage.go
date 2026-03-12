@@ -92,6 +92,8 @@ type Env struct {
 	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
 	DebugColor   string // CSS background color for the /debug UI badge (e.g. "#dc3545")
 	DebugBgColor string // subtle CSS page background tint keyed to stage (e.g. "#fff5f5" for prod)
+
+	SignupAllowlist *SignupAllowlist // if non-nil, only these emails/domains can sign up
 }
 
 // Invalid returns an Env with obviously invalid values.
@@ -150,6 +152,8 @@ func Invalid() Env {
 		DebugLabel:   "INVALID",
 		DebugColor:   "#999999",
 		DebugBgColor: "#f5f5f5",
+
+		SignupAllowlist: &SignupAllowlist{}, // fail closed: empty allowlist blocks all signups
 	}
 }
 
@@ -217,6 +221,8 @@ func Local() Env {
 		DebugLabel:   "dev",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
+
+		SignupAllowlist: nil, // no restriction for local dev
 	}
 }
 
@@ -277,6 +283,8 @@ func Test() Env {
 		DebugLabel:   "test",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
+
+		SignupAllowlist: nil, // no restriction for tests
 	}
 }
 
@@ -335,6 +343,23 @@ func Staging() Env {
 		DebugLabel:   "staging",
 		DebugColor:   "#5b3a9e",
 		DebugBgColor: "#f5f0ff",
+
+		SignupAllowlist: &SignupAllowlist{
+			Emails: []string{
+				"david.crawshaw@gmail.com",
+				"david@zentus.com",
+				"josharian@gmail.com",
+				"nchazlett@gmail.com",
+				"philip.zeyliger@gmail.com",
+			},
+			Domains: []string{
+				"bold.dev",
+				"chicken.exe.xyz",
+				"exe.dev",
+				"phil-dev.exe.xyz",
+				"example.com", // nobody can receive email here, which makes it convenient to open up for placeholder / similar tests
+			},
+		},
 	}
 }
 
@@ -392,6 +417,8 @@ func Prod() Env {
 		DebugLabel:   "prod",
 		DebugColor:   "#8b6914",
 		DebugBgColor: "#fdf8f0",
+
+		SignupAllowlist: nil, // no restriction for prod
 	}
 }
 
