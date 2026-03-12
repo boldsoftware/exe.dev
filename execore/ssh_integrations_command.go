@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 
 	"exe.dev/exedb"
@@ -250,6 +251,7 @@ func knownIntegrationTypeNames() []string {
 	for k := range knownIntegrationTypes {
 		names = append(names, k)
 	}
+	sort.Strings(names)
 	return names
 }
 

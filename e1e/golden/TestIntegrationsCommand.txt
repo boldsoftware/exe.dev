@@ -71,7 +71,7 @@ PROMPT ▶ integrations add http-proxy --name=bad --header=X-Foo:bar
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com
 --header (or --bearer) is required
 PROMPT ▶ integrations add unknown-type
-unknown integration type "unknown-type" (known types: http-proxy, github)
+unknown integration type "unknown-type" (known types: github, http-proxy)
 PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://dup.com --header=X:y
 failed to add integration (name "otherproxy" may already be in use)
 PROMPT ▶ integrations add http-proxy --name=BadName --target=https://x.com --header=X-Foo:bar
