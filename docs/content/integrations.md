@@ -20,10 +20,32 @@ For example, the following snippet creates, attaches, and uses the http proxy
 integration to inject a header into a request.
 
 ```
-integrations new http-proxy --name httpbin --target https://httpbin.org/ --header example:indeed
-integrations attach httpbin vm:my-vm
-ssh my-vm curl http://httpbin.int.exe.xyz/anything
-TODO show output
+exe.dev ▶ integrations add http-proxy --name mirror --target https://httpbin.org/ --header prettiest-of-them-all:me --attach vm:my-vm-name
+Added integration mirror
+
+Usage from a VM:
+  ssh my-vm-name curl http://mirror.int.exe-staging.xyz/
+
+exe.dev ▶ ssh my-vm-name curl -s http://mirror.int.exe-staging.xyz/anything -Hfoo:bar
+{
+  "args": {},
+  "data": "",
+  "files": {},
+  "form": {},
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip",
+    "Foo": "bar",
+    "Host": "httpbin.org",
+    "Prettiest-Of-Them-All": "me",
+    "User-Agent": "curl/8.5.0",
+    "X-Amzn-Trace-Id": "Root=1-69b339a2-0032d20f5263c6dc17235289"
+  },
+  "json": null,
+  "method": "GET",
+  "origin": "64.34.88.25",
+  "url": "https://httpbin.org/anything"
+}
 ```
 
 The HTTP Proxy integration supports HTTP basic auth as well.
