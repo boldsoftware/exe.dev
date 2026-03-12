@@ -32,9 +32,9 @@ type Service struct {
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 	stopLogRotation     func()
-	migratingInstances  sync.Map // map[instanceID]struct{} - instances currently being migrated
-	instanceOpMu sync.Mutex                  // protects instanceOpLocks
-	instanceOpLocks map[string]*instanceLock // per-instance operation lock
+	migratingInstances  sync.Map                 // map[instanceID]struct{} - instances currently being migrated
+	instanceOpMu        sync.Mutex               // protects instanceOpLocks
+	instanceOpLocks     map[string]*instanceLock // per-instance operation lock
 	reconcileGroup      singleflight.Group[string, struct{}]
 	// reconcileCtx is stored in the struct (rather than passed per-call) because
 	// background reconcile goroutines outlive the gRPC request that triggers them.
