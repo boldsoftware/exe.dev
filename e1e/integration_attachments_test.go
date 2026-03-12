@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestIntegrationAttachmentSpecs tests the new attachment spec system:
-// vm:<name>, tag:<name>, auto:all, and backward-compatible bare VM names.
+// TestIntegrationAttachmentSpecs tests the attachment spec system:
+// vm:<name>, tag:<name>, and auto:all.
 func TestIntegrationAttachmentSpecs(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 1)
@@ -62,28 +62,6 @@ func TestIntegrationAttachmentSpecs(t *testing.T) {
 
 		// Detach.
 		repl.SendLine(fmt.Sprintf("integrations detach testint vm:%s", bn))
-		repl.Want("Detached testint from vm:" + bn)
-		repl.WantPrompt()
-	})
-
-	// --- Bare VM name backward compat ---
-
-	t.Run("AttachBareVMName", func(t *testing.T) {
-		repl := sshToExeDev(t, keyFile)
-		defer repl.Disconnect()
-
-		// Bare VM name should auto-prefix with vm:
-		repl.SendLine(fmt.Sprintf("integrations attach testint %s", bn))
-		repl.Want("Attached testint to vm:" + bn)
-		repl.WantPrompt()
-
-		// List should show vm: prefix.
-		repl.SendLine("integrations list")
-		repl.Want("vm:" + bn)
-		repl.WantPrompt()
-
-		// Detach with bare name.
-		repl.SendLine(fmt.Sprintf("integrations detach testint %s", bn))
 		repl.Want("Detached testint from vm:" + bn)
 		repl.WantPrompt()
 	})

@@ -36,7 +36,7 @@ func TestIntegrationsProxy(t *testing.T) {
 	pty.WantPrompt()
 
 	// Attach the integration to the VM.
-	pty.SendLine(fmt.Sprintf("integrations attach echoproxy %s", bn))
+	pty.SendLine(fmt.Sprintf("integrations attach echoproxy vm:%s", bn))
 	pty.Want("Attached echoproxy to vm:" + bn)
 	pty.WantPrompt()
 
@@ -103,13 +103,13 @@ func TestIntegrationsProxy(t *testing.T) {
 	})
 
 	t.Run("detached_forbidden", func(t *testing.T) {
-		pty.SendLine(fmt.Sprintf("integrations detach echoproxy %s", bn))
+		pty.SendLine(fmt.Sprintf("integrations detach echoproxy vm:%s", bn))
 		pty.Want("Detached echoproxy from vm:" + bn)
 		pty.WantPrompt()
 
 		curlRetry(t, "-o /dev/null -w '%{http_code}' http://echoproxy.int.exe.cloud/", "403")
 
-		pty.SendLine(fmt.Sprintf("integrations attach echoproxy %s", bn))
+		pty.SendLine(fmt.Sprintf("integrations attach echoproxy vm:%s", bn))
 		pty.Want("Attached echoproxy to vm:" + bn)
 		pty.WantPrompt()
 	})
@@ -130,7 +130,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.SendLine("integrations add http-proxy --name=authproxy --target=https://testuser:testpass@httpbin.org --header=X-Custom:val")
 		pty.Want("Added integration authproxy")
 		pty.WantPrompt()
-		pty.SendLine(fmt.Sprintf("integrations attach authproxy %s", bn))
+		pty.SendLine(fmt.Sprintf("integrations attach authproxy vm:%s", bn))
 		pty.Want("Attached authproxy to vm:" + bn)
 		pty.WantPrompt()
 
@@ -151,7 +151,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.SendLine("integrations add http-proxy --name=badtarget --target=https://this-domain-does-not-exist-abc123.example.com --header=X-Auth:secret")
 		pty.Want("Added integration badtarget")
 		pty.WantPrompt()
-		pty.SendLine(fmt.Sprintf("integrations attach badtarget %s", bn))
+		pty.SendLine(fmt.Sprintf("integrations attach badtarget vm:%s", bn))
 		pty.Want("Attached badtarget to vm:" + bn)
 		pty.WantPrompt()
 
@@ -232,7 +232,7 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.SendLine(fmt.Sprintf("integrations add http-proxy --name=bearertest --target=%s --bearer=proxy-test-token-789", httpbinTarget))
 		pty.Want("Added integration bearertest")
 		pty.WantPrompt()
-		pty.SendLine(fmt.Sprintf("integrations attach bearertest %s", bn))
+		pty.SendLine(fmt.Sprintf("integrations attach bearertest vm:%s", bn))
 		pty.Want("Attached bearertest to vm:" + bn)
 		pty.WantPrompt()
 

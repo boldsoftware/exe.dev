@@ -18,9 +18,9 @@ PROMPT ▶ integrations detach testint tag:notattached
 testint is not attached via tag:notattached
 PROMPT ▶ integrations attach testint
 usage: integrations attach <name> <spec>
-  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name
+  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all
 PROMPT ▶ integrations detach testint
 usage: integrations detach <name> <spec>
-  <spec> is vm:<vm-name>, tag:<tag-name>, auto:all, or a bare VM name
+  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all
 PROMPT ▶ exit
 Goodbye!
