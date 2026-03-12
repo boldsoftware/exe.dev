@@ -236,7 +236,7 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 		return keyDelete, b[4:]
 	}
 
-	if !pasteActive && len(b) >= 6 && b[0] == keyEscape && b[1] == '[' && b[2] == '1' && b[3] == ';' && b[4] == '3' {
+	if !pasteActive && len(b) >= 6 && b[0] == keyEscape && b[1] == '[' && b[2] == '1' && b[3] == ';' && (b[4] == '3' || b[4] == '5') {
 		switch b[5] {
 		case 'C':
 			return keyAltRight, b[6:]
