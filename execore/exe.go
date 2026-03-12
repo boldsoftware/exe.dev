@@ -130,8 +130,9 @@ type UserPageData struct {
 	Passkeys     []PasskeyInfo
 	Boxes        []BoxDisplayInfo
 	SharedBoxes  []SharedBoxDisplayInfo
-	TeamBoxes    []TeamBoxDisplayInfo // Team VMs (for team admins)
-	TeamInfo     *TeamDisplayInfo     // Team info (for team members)
+	TeamBoxes          []TeamBoxDisplayInfo  // Team VMs (for team admins)
+	TeamInfo           *TeamDisplayInfo      // Team info (for team members)
+	PendingTeamInvites []PendingTeamInviteInfo // Pending team invites (for users not in a team)
 	SiteSessions []SiteSession
 	ActivePage   string
 	IsLoggedIn   bool
@@ -183,6 +184,15 @@ type IntegrationDisplayInfo struct {
 	Target      string   // for http-proxy: the target URL
 	HeaderName  string   // for http-proxy: header name (without value)
 	Attachments []string // e.g. ["vm:foo", "tag:bar"]
+}
+
+// PendingTeamInviteInfo represents a pending team invite shown on the profile page
+type PendingTeamInviteInfo struct {
+	Token     string
+	TeamName  string
+	InvitedBy string
+	ExpiresAt time.Time
+	VMCount   int64
 }
 
 // TeamBoxDisplayInfo represents a team member's box for the dashboard

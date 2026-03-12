@@ -10,6 +10,19 @@ import (
 	"time"
 )
 
+const countPendingTeamInvitesForUser = `-- name: CountPendingTeamInvitesForUser :one
+SELECT COUNT(*) as count
+FROM pending_team_invites
+WHERE canonical_email = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+`
+
+func (q *Queries) CountPendingTeamInvitesForUser(ctx context.Context, canonicalEmail string) (int64, error) {
+	row := q.queryRow(ctx, q.countPendingTeamInvitesForUserStmt, countPendingTeamInvitesForUser, canonicalEmail)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTeamBoxes = `-- name: CountTeamBoxes :one
 SELECT COUNT(*) as count
 FROM boxes b
@@ -45,6 +58,15 @@ WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL
 
 func (q *Queries) DeleteExpiredPendingTeamInvites(ctx context.Context) error {
 	_, err := q.exec(ctx, q.deleteExpiredPendingTeamInvitesStmt, deleteExpiredPendingTeamInvites)
+	return err
+}
+
+const deletePendingTeamInvite = `-- name: DeletePendingTeamInvite :exec
+DELETE FROM pending_team_invites WHERE token = ?
+`
+
+func (q *Queries) DeletePendingTeamInvite(ctx context.Context, token string) error {
+	_, err := q.exec(ctx, q.deletePendingTeamInviteStmt, deletePendingTeamInvite, token)
 	return err
 }
 
@@ -459,6 +481,59 @@ func (q *Queries) GetPendingTeamInvitesByTeam(ctx context.Context, teamID string
 	return items, nil
 }
 
+const getPendingTeamInvitesForUser = `-- name: GetPendingTeamInvitesForUser :many
+SELECT pti.id, pti.team_id, pti.token, pti.expires_at, pti.created_at,
+       t.display_name as team_name,
+       u.email as invited_by_email
+FROM pending_team_invites pti
+JOIN teams t ON pti.team_id = t.team_id
+JOIN users u ON pti.invited_by_user_id = u.user_id
+WHERE pti.canonical_email = ?
+AND pti.accepted_at IS NULL
+AND pti.expires_at > CURRENT_TIMESTAMP
+`
+
+type GetPendingTeamInvitesForUserRow struct {
+	ID             int64      `db:"id" json:"id"`
+	TeamID         string     `db:"team_id" json:"team_id"`
+	Token          string     `db:"token" json:"token"`
+	ExpiresAt      time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt      *time.Time `db:"created_at" json:"created_at"`
+	TeamName       string     `db:"team_name" json:"team_name"`
+	InvitedByEmail string     `db:"invited_by_email" json:"invited_by_email"`
+}
+
+func (q *Queries) GetPendingTeamInvitesForUser(ctx context.Context, canonicalEmail string) ([]GetPendingTeamInvitesForUserRow, error) {
+	rows, err := q.query(ctx, q.getPendingTeamInvitesForUserStmt, getPendingTeamInvitesForUser, canonicalEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPendingTeamInvitesForUserRow{}
+	for rows.Next() {
+		var i GetPendingTeamInvitesForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Token,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.TeamName,
+			&i.InvitedByEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTeam = `-- name: GetTeam :one
 SELECT team_id, display_name, limits, created_at, auth_provider FROM teams WHERE team_id = ?
 `
@@ -673,7 +748,9 @@ ON CONFLICT(team_id, canonical_email) DO UPDATE SET
     token = excluded.token,
     expires_at = excluded.expires_at,
     invited_by_user_id = excluded.invited_by_user_id,
-    auth_provider = excluded.auth_provider
+    auth_provider = excluded.auth_provider,
+    accepted_at = NULL,
+    accepted_by_user_id = NULL
 `
 
 type InsertPendingTeamInviteParams struct {

@@ -596,6 +596,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleInviteRequest(w, r, userID)
 		return
+	case "/team/invite/accept":
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape("/user"))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleTeamInviteAccept(w, r, userID)
+		return
+	case "/team/invite/decline":
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape("/user"))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleTeamInviteDecline(w, r, userID)
+		return
 	case "/health":
 		s.handleHealth(w, r)
 	case "/pull-exeuntu-everywhere-517c8a904":
@@ -1687,6 +1713,25 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			}
 		}
 		data.TeamInfo = ti
+	} else {
+		// Not in a team — check for pending invites
+		ce := canonicalizeEmail(user.Email)
+		if invites, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetPendingTeamInvitesForUser, ce); err == nil {
+			// Get user's VM count once for all invites
+			var vmCount int64
+			if len(invites) > 0 {
+				vmCount, _ = withRxRes1(s, r.Context(), (*exedb.Queries).CountBoxesForUser, userID)
+			}
+			for _, inv := range invites {
+				data.PendingTeamInvites = append(data.PendingTeamInvites, PendingTeamInviteInfo{
+					Token:     inv.Token,
+					TeamName:  inv.TeamName,
+					InvitedBy: inv.InvitedByEmail,
+					ExpiresAt: inv.ExpiresAt,
+					VMCount:   vmCount,
+				})
+			}
+		}
 	}
 
 	// Render template

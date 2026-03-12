@@ -279,21 +279,18 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("Only team admins can add members")
 	}
 
-	// Try to find the user by email
+	// Check if the user already exists — this affects the invite email wording.
 	ce := canonicalizeEmail(addr)
 	_, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
-	if err == nil {
-		// User already exists — do not allow adding existing users via team add.
-		// Existing users must be added via the debug panel to prevent
-		// accidentally merging accounts and taking over VMs.
-		return cc.Errorf("User %q already has an account; existing users can only be added to teams via support@exe.dev", addr)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	userExists := err == nil
+	if !userExists && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 
-	// User doesn't exist — create a pending invite and send email
-	if err := ss.server.createPendingTeamInvite(ctx, team.TeamID, team.DisplayName, addr, cc.User.ID); err != nil {
+	// Create a pending invite and send email.
+	// Existing users must explicitly accept via the web UI;
+	// new users auto-join when they sign up through the invite link.
+	if err := ss.server.createPendingTeamInvite(ctx, team.TeamID, team.DisplayName, addr, cc.User.ID, userExists); err != nil {
 		return cc.Errorf("Failed to invite user: %v", err)
 	}
 

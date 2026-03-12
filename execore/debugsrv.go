@@ -5158,7 +5158,7 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 			if inviterID == "" {
 				inviterID = members[0].UserID
 			}
-			if err := s.createPendingTeamInvite(ctx, teamID, team.DisplayName, addr, inviterID); err != nil {
+			if err := s.createPendingTeamInvite(ctx, teamID, team.DisplayName, addr, inviterID, false); err != nil {
 				http.Error(w, fmt.Sprintf("failed to create pending invite: %v", err), http.StatusInternalServerError)
 				return
 			}

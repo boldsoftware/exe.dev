@@ -143,7 +143,9 @@ ON CONFLICT(team_id, canonical_email) DO UPDATE SET
     token = excluded.token,
     expires_at = excluded.expires_at,
     invited_by_user_id = excluded.invited_by_user_id,
-    auth_provider = excluded.auth_provider;
+    auth_provider = excluded.auth_provider,
+    accepted_at = NULL,
+    accepted_by_user_id = NULL;
 
 -- name: GetPendingTeamInviteByToken :one
 SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id, auth_provider
@@ -170,6 +172,25 @@ WHERE id = ?;
 -- name: DeleteExpiredPendingTeamInvites :exec
 DELETE FROM pending_team_invites
 WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL;
+
+-- name: GetPendingTeamInvitesForUser :many
+SELECT pti.id, pti.team_id, pti.token, pti.expires_at, pti.created_at,
+       t.display_name as team_name,
+       u.email as invited_by_email
+FROM pending_team_invites pti
+JOIN teams t ON pti.team_id = t.team_id
+JOIN users u ON pti.invited_by_user_id = u.user_id
+WHERE pti.canonical_email = ?
+AND pti.accepted_at IS NULL
+AND pti.expires_at > CURRENT_TIMESTAMP;
+
+-- name: DeletePendingTeamInvite :exec
+DELETE FROM pending_team_invites WHERE token = ?;
+
+-- name: CountPendingTeamInvitesForUser :one
+SELECT COUNT(*) as count
+FROM pending_team_invites
+WHERE canonical_email = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP;
 
 -- name: GetBoxByTeamSSHAndShard :one
 SELECT b.*

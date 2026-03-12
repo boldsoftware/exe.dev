@@ -491,7 +491,19 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 		line("Welcome to EXE.DEV!")
 		line("")
 	}
+	// Check for pending team invites
+	ce := canonicalizeEmail(user.Email)
+	pendingInvites, _ := withRxRes1(ss.server, s.Context(), (*exedb.Queries).CountPendingTeamInvitesForUser, ce)
+
 	var printedTip bool
+	if pendingInvites > 0 {
+		if pendingInvites == 1 {
+			line("- You have a pending team invite — check your email or visit \033[1m%s/user\033[0m", ss.server.env.WebHost)
+		} else {
+			line("- You have %d pending team invites — check your email or visit \033[1m%s/user\033[0m", pendingInvites, ss.server.env.WebHost)
+		}
+		printedTip = true
+	}
 	if !hasCreatedBox {
 		line("- \033[1mnew\033[0m to create your first VM")
 		printedTip = true

@@ -676,6 +676,31 @@
         </div>
 
         {{if not .BasicUser}}
+        {{if .PendingTeamInvites}}
+        <div class="section" id="team-invites">
+            <div class="section-title">Team Invites</div>
+            {{range .PendingTeamInvites}}
+            <div class="info-card" style="margin-bottom: 12px;">
+                <div style="margin-bottom: 8px;">
+                    <strong>{{.TeamName}}</strong> invited you to join their team
+                </div>
+                <div style="margin-bottom: 8px; color: var(--muted); font-size: 13px;">
+                    Invited by {{.InvitedBy}}
+                    {{if gt .VMCount 0}}
+                    &middot; Accepting will make your {{.VMCount}} existing VM{{if ne .VMCount 1}}s{{end}} visible to team admins
+                    {{end}}
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn" onclick="openTeamInviteModal('{{.Token}}', '{{.TeamName}}', {{.VMCount}})">Accept</button>
+                    <form method="POST" action="/team/invite/decline">
+                        <input type="hidden" name="token" value="{{.Token}}">
+                        <button type="submit" class="btn btn-danger">Decline</button>
+                    </form>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
         {{if .TeamInfo}}
         <div class="section" id="team">
             <div class="section-title">{{.TeamInfo.DisplayName}}</div>
@@ -1014,6 +1039,28 @@
         </div>
     </div>
 
+    <div class="cmd-modal-overlay" id="team-invite-overlay" onclick="if(event.target===this) closeTeamInviteModal()">
+        <div class="cmd-modal" style="max-width: 520px;">
+            <div class="cmd-modal-title">Join <span id="team-invite-name"></span>?</div>
+            <div style="margin-bottom: 16px; font-size: 14px; line-height: 1.6;">
+                <p style="margin-bottom: 12px;">By joining this team:</p>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Team admins can see and SSH into your VMs (if team SSH is enabled per-VM)</li>
+                    <li>Your IP shards may be reassigned to avoid collisions with other members</li>
+                    <li id="team-invite-vm-warning" style="display:none">Your existing <strong><span id="team-invite-vm-count"></span> VM(s)</strong> will become visible to team admins</li>
+                    <li>You can only be in one team at a time</li>
+                </ul>
+            </div>
+            <form method="POST" action="/team/invite/accept">
+                <input type="hidden" name="token" id="team-invite-token">
+                <div class="cmd-modal-buttons">
+                    <button type="button" class="btn" onclick="closeTeamInviteModal()">Cancel</button>
+                    <button type="submit" class="btn">Join Team</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="/static/passkey.js"></script>
     <script>
         function shellQuote(s) {
@@ -1235,6 +1282,30 @@
                 command: 'ssh-key remove ' + shellQuote(publicKey),
                 danger: true
             });
+        }
+
+        function openTeamInviteModal(token, teamName, vmCount) {
+            document.getElementById('team-invite-token').value = token;
+            document.getElementById('team-invite-name').textContent = teamName;
+            const vmWarning = document.getElementById('team-invite-vm-warning');
+            if (vmCount > 0) {
+                document.getElementById('team-invite-vm-count').textContent = vmCount;
+                vmWarning.style.display = '';
+            } else {
+                vmWarning.style.display = 'none';
+            }
+            const overlay = document.getElementById('team-invite-overlay');
+            overlay.classList.add('visible');
+            document.addEventListener('keydown', handleTeamInviteEscape);
+        }
+
+        function closeTeamInviteModal() {
+            document.getElementById('team-invite-overlay').classList.remove('visible');
+            document.removeEventListener('keydown', handleTeamInviteEscape);
+        }
+
+        function handleTeamInviteEscape(e) {
+            if (e.key === 'Escape') closeTeamInviteModal();
         }
 
         function openAddSSHKeyModal() {

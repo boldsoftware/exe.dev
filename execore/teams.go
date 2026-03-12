@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"regexp"
 	"strings"
@@ -337,9 +338,10 @@ func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) er
 	return nil
 }
 
-// createPendingTeamInvite creates a pending invite for a non-existent user and sends them an email.
-// Returns nil if the invite was created and email sent successfully.
-func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, invitedEmail, invitedByUserID string) error {
+// createPendingTeamInvite creates a pending invite and sends an email.
+// If userExists is true, the email directs the user to accept via their profile page;
+// otherwise it directs them to sign up via the invite link.
+func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, invitedEmail, invitedByUserID string, userExists bool) error {
 	ce := canonicalizeEmail(invitedEmail)
 	token := generateRegistrationToken()
 
@@ -361,17 +363,35 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 		CanonicalEmail:  ce,
 		InvitedByUserID: invitedByUserID,
 		Token:           token,
-		ExpiresAt:       time.Now().Add(30 * 24 * time.Hour),
+		ExpiresAt:       time.Now().Add(24 * time.Hour),
 		AuthProvider:    authProvider,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create pending team invite: %w", err)
 	}
 
-	// Send invite email
-	link := fmt.Sprintf("https://%s/auth?team_invite=%s", s.env.WebHost, token)
+	// Send invite email — wording differs for existing vs new users.
 	subject := fmt.Sprintf("You've been invited to %s on %s", teamName, s.env.WebHost)
-	body := fmt.Sprintf(`Hello,
+	var link, body string
+	if userExists {
+		link = fmt.Sprintf("https://%s/user", s.env.WebHost)
+		body = fmt.Sprintf(`Hello,
+
+You've been invited to join the team "%s" on %s.
+
+You can review and accept this invite from your profile:
+
+%s
+
+Note: accepting will make your existing VMs visible to team admins.
+
+This invite expires in 24 hours.
+
+---
+%s`, teamName, s.env.WebHost, link, s.env.WebHost)
+	} else {
+		link = fmt.Sprintf("https://%s/auth?team_invite=%s", s.env.WebHost, token)
+		body = fmt.Sprintf(`Hello,
 
 You've been invited to join the team "%s" on %s.
 
@@ -379,10 +399,11 @@ Click below to create your account and join the team:
 
 %s
 
-This invite expires in 30 days.
+This invite expires in 24 hours.
 
 ---
 %s`, teamName, s.env.WebHost, link, s.env.WebHost)
+	}
 
 	if err := s.sendEmail(ctx, sendEmailParams{
 		emailType: email.TypeTeamInvitation,
@@ -461,4 +482,120 @@ func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userI
 	}
 
 	return nil
+}
+
+// handleTeamInviteAccept handles POST /team/invite/accept.
+// The logged-in user accepts a pending team invite by token.
+func (s *Server) handleTeamInviteAccept(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+	token := r.FormValue("token")
+	if token == "" {
+		http.Error(w, "Missing invite token", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the invite
+	invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingTeamInviteByToken, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Invite not found or expired", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to look up team invite", "error", err, "token", token)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Verify the invite is for this user
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	ce := canonicalizeEmail(user.Email)
+	if ce != invite.CanonicalEmail {
+		http.Error(w, "This invite is not for your account", http.StatusForbidden)
+		return
+	}
+
+	// Check user isn't already in a team
+	existingTeam, _ := s.GetTeamForUser(ctx, userID)
+	if existingTeam != nil {
+		http.Error(w, "You are already in a team", http.StatusConflict)
+		return
+	}
+
+	// Add user to team
+	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+		TeamID: invite.TeamID,
+		UserID: userID,
+		Role:   "user",
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to add user to team", "error", err, "team_id", invite.TeamID, "user_id", userID)
+		http.Error(w, "Failed to join team", http.StatusInternalServerError)
+		return
+	}
+
+	s.resolveTeamShardCollisions(ctx, invite.TeamID, userID)
+
+	// Mark invite as accepted
+	if err := withTx1(s, ctx, (*exedb.Queries).MarkPendingTeamInviteAccepted, exedb.MarkPendingTeamInviteAcceptedParams{
+		AcceptedByUserID: &userID,
+		ID:               invite.ID,
+	}); err != nil {
+		s.slog().ErrorContext(ctx, "failed to mark invite accepted", "error", err, "invite_id", invite.ID)
+	}
+
+	slog.InfoContext(ctx, "user accepted team invite",
+		"team_id", invite.TeamID, "user_id", userID, "email", user.Email)
+
+	http.Redirect(w, r, "/user", http.StatusSeeOther)
+}
+
+// handleTeamInviteDecline handles POST /team/invite/decline.
+// The logged-in user declines a pending team invite by token.
+func (s *Server) handleTeamInviteDecline(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+	token := r.FormValue("token")
+	if token == "" {
+		http.Error(w, "Missing invite token", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the invite
+	invite, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingTeamInviteByToken, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Invite not found or expired", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to look up team invite", "error", err, "token", token)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Verify the invite is for this user
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	ce := canonicalizeEmail(user.Email)
+	if ce != invite.CanonicalEmail {
+		http.Error(w, "This invite is not for your account", http.StatusForbidden)
+		return
+	}
+
+	// Delete the invite
+	if err := withTx1(s, ctx, (*exedb.Queries).DeletePendingTeamInvite, token); err != nil {
+		s.slog().ErrorContext(ctx, "failed to delete team invite", "error", err, "token", token)
+		http.Error(w, "Failed to decline invite", http.StatusInternalServerError)
+		return
+	}
+
+	slog.InfoContext(ctx, "user declined team invite",
+		"team_id", invite.TeamID, "user_id", userID, "email", user.Email)
+
+	http.Redirect(w, r, "/user", http.StatusSeeOther)
 }
