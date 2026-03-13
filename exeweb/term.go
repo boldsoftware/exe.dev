@@ -586,6 +586,8 @@ func (ps *ProxyServer) HandleTerminalRequest(w http.ResponseWriter, r *http.Requ
 		ps.withTerminalAuth(ps.handleTerminalWebSocket)(w, r)
 	case path == "/favicon.ico":
 		ps.serveStaticFile(w, r, "favicon.ico")
+	case path == "/apple-touch-icon.png":
+		ps.serveStaticFile(w, r, "apple-touch-icon.png")
 	case strings.HasPrefix(path, "/static/"):
 		// Serve static files using existing method
 		filename := strings.TrimPrefix(path, "/static/")

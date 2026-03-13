@@ -91,9 +91,12 @@ func main() {
 		fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`+"\n", time.Now().Format(time.RFC3339))
 	})
 
-	// Serve favicon from embedded static assets.
+	// Serve favicon and apple touch icon from embedded static assets.
 	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		serveStaticFile(w, r, "favicon.ico")
+	})
+	mux.HandleFunc("/apple-touch-icon.png", func(w http.ResponseWriter, r *http.Request) {
+		serveStaticFile(w, r, "apple-touch-icon.png")
 	})
 
 	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {

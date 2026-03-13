@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico">
     <title>{{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{else if and .ShowHidden (not .Entry.Embargo.IsZero) (.Entry.Embargo.After .Now)}} [embargoed]{{end}} - exe.dev blog</title>
     <meta name="description" content="{{.Entry.Description}}">
     <link rel="canonical" href="https://blog.exe.dev{{.Entry.Path}}">
