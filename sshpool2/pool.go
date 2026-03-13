@@ -361,7 +361,10 @@ func (p *Pool) RunCommand(ctx context.Context, host, user string, port int, sign
 		return nil, err
 	}
 	output, cmdErr := p.runCommandOnClient(ctx, pc, command, stdin)
-	return output, errors.Join(err, cmdErr)
+	if cmdErr != nil {
+		return output, cmdErr
+	}
+	return output, nil
 }
 
 // runCommandOnClient runs a command through the SSH client.
