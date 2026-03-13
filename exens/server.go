@@ -61,13 +61,17 @@ type Server struct {
 // boxHost is the domain for boxes (e.g., "exe.xyz" or "exe-staging.xyz").
 // webHost is the domain for the name servers (e.g., "exe.dev" or "exe-staging.dev").
 func NewServer(db *sqlite.DB, log *slog.Logger, boxHost, webHost string) *Server {
-	return &Server{
+	s := &Server{
 		db:         db,
 		log:        log,
 		boxHost:    boxHost,
 		webHost:    webHost,
 		txtRecords: make(map[string][]string),
 	}
+	// Public Suffix List DNS verification.
+	// https://github.com/publicsuffix/list/pull/2810
+	s.SetTXTRecord("_psl."+boxHost, "https://github.com/publicsuffix/list/pull/2810")
+	return s
 }
 
 // SetLobbyIP sets the lobby IP used for apex domain (exe.xyz) resolution.
@@ -138,7 +142,7 @@ func (s *Server) Handler() func(context.Context, dns.ResponseWriter, *dns.Msg) {
 	return s.handleDNS
 }
 
-// SetTXTRecord sets an in-memory TXT record (used for ACME challenges).
+// SetTXTRecord sets an in-memory TXT record (used for ACME challenges, PSL verification, etc.).
 func (s *Server) SetTXTRecord(name, value string) {
 	name = strings.ToLower(name)
 	s.txtMu.Lock()

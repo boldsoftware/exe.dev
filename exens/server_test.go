@@ -436,6 +436,20 @@ func TestDNSServer(t *testing.T) {
 	})
 }
 
+func TestPSLTXTRecord(t *testing.T) {
+	db := newTestDB(t)
+	log := tslog.Slogger(t)
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	values := server.GetTXTRecords("_psl.exe.xyz")
+	if len(values) != 1 {
+		t.Fatalf("expected 1 _psl TXT record, got %d", len(values))
+	}
+	if values[0] != "https://github.com/publicsuffix/list/pull/2810" {
+		t.Errorf("unexpected _psl TXT value: %s", values[0])
+	}
+}
+
 func TestTXTRecordManagement(t *testing.T) {
 	db := newTestDB(t)
 	log := tslog.Slogger(t)
@@ -903,6 +917,28 @@ func TestDNSServerIntegration(t *testing.T) {
 
 		if resp.Rcode != dns.RcodeNameError {
 			t.Errorf("expected NXDOMAIN for nonexistent latitude shard, got %s", dns.RcodeToString[resp.Rcode])
+		}
+	})
+
+	t.Run("QueryPSLTXTRecord", func(t *testing.T) {
+		msg := dns.NewMsg("_psl.exe.xyz.", dns.TypeTXT)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(resp.Answer) != 1 {
+			t.Fatalf("expected 1 answer, got %d", len(resp.Answer))
+		}
+
+		txt, ok := resp.Answer[0].(*dns.TXT)
+		if !ok {
+			t.Fatalf("expected TXT record, got %T", resp.Answer[0])
+		}
+
+		if len(txt.Txt) != 1 || txt.Txt[0] != "https://github.com/publicsuffix/list/pull/2810" {
+			t.Errorf("expected [https://github.com/publicsuffix/list/pull/2810], got %v", txt.Txt)
 		}
 	})
 
