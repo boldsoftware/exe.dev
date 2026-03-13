@@ -557,7 +557,9 @@ class CommandModal {
         // Reload if any command succeeded, preserving expanded state
         if (this.#needsReload) {
             saveExpandedState();
-            window.location.reload();
+            const url = new URL(window.location);
+            url.searchParams.delete('filter');
+            window.location.assign(url);
         }
     }
 
