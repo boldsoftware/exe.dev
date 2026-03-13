@@ -474,7 +474,7 @@ func TestExe1TokenProxyBearer(t *testing.T) {
 	}
 
 	// Use exe1 token as Bearer for proxy request.
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.servers.Exeprox.HTTPPort
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
 	client := noRedirectClient(nil)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
@@ -529,7 +529,7 @@ func TestExe1TokenProxyBasic(t *testing.T) {
 	}
 
 	// Use exe1 token as Basic auth password for proxy request.
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.servers.Exeprox.HTTPPort
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
 	client := noRedirectClient(nil)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
@@ -618,7 +618,7 @@ func TestExe1TokenInvalid(t *testing.T) {
 	})
 
 	t.Run("proxy_bearer", func(t *testing.T) {
-		httpPort := Env.servers.Exed.HTTPPort
+		httpPort := Env.servers.Exeprox.HTTPPort
 		proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
@@ -640,7 +640,7 @@ func TestExe1TokenInvalid(t *testing.T) {
 	})
 
 	t.Run("proxy_basic", func(t *testing.T) {
-		httpPort := Env.servers.Exed.HTTPPort
+		httpPort := Env.servers.Exeprox.HTTPPort
 		proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
@@ -707,7 +707,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		t.Fatalf("trade failed: %v", err)
 	}
 
-	httpPort := Env.servers.Exed.HTTPPort
+	httpPort := Env.servers.Exeprox.HTTPPort
 
 	t.Run("bearer_stripped", func(t *testing.T) {
 		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
@@ -783,18 +783,12 @@ chmod +x /home/exedev/cgi-bin/headers
 // TestExe1TokenDeletedKeyProxy tests that an exe1 token used for proxy auth
 // is rejected when the underlying SSH key has been deleted.
 func TestExe1TokenDeletedKeyProxy(t *testing.T) {
-	testExe1TokenDeletedKeyProxy(t, Env.servers.Exed.HTTPPort)
-}
-
-func TestExe1TokenDeletedKeyProxyExeprox(t *testing.T) {
-	testExe1TokenDeletedKeyProxy(t, Env.servers.Exeprox.HTTPPort)
-}
-
-func testExe1TokenDeletedKeyProxy(t *testing.T, httpPort int) {
 	t.Parallel()
 	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
+
+	httpPort := Env.servers.Exeprox.HTTPPort
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 

@@ -649,11 +649,13 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
-	testHTTPMetrics := func(t *testing.T, httpPort int) {
+	t.Run("http_metrics", func(t *testing.T) {
 		// Test that HTTP metrics are correctly instrumented with labels.
 		// This test verifies that after making requests, the /metrics endpoint
 		// shows http_requests_total with correct proxy, path, and box labels.
 		noGolden(t)
+
+		httpPort := Env.servers.Exeprox.HTTPPort
 
 		// Make a non-proxy request to /health
 		healthResp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", httpPort))
@@ -728,14 +730,6 @@ func TestVanillaBox(t *testing.T) {
 		if !strings.Contains(metrics, `path="/metrics",proxy="false"`) {
 			t.Errorf("expected http_requests_total for /metrics path\nmetrics (truncated):\n%s", truncate(metrics, 2000))
 		}
-	}
-
-	t.Run("http_metrics", func(t *testing.T) {
-		testHTTPMetrics(t, Env.servers.Exed.HTTPPort)
-	})
-
-	t.Run("exeprox_http_metrics", func(t *testing.T) {
-		testHTTPMetrics(t, Env.servers.Exeprox.HTTPPort)
 	})
 
 	// Exelet resource metrics tests - these verify the exelet reports VM resource usage.

@@ -41,7 +41,7 @@ var (
 	flagCinema          = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 	flagCoverProfile    = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 	flagPlaywright      = flag.Bool("playwright", true, "enable Playwright browser tests (requires installed browsers)")
-	flagDefaultExeprox  = flag.Bool("default-exeprox", false, "default to connecting to exeprox rather than exed")
+	flagDefaultExeprox  = flag.Bool("default-exeprox", true, "default to connecting to exeprox rather than exed")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
