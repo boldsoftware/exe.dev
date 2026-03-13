@@ -29,6 +29,7 @@ tr.shown td.details-control::before { content: '-'; }
 <th>Display Name</th>
 <th>Created At</th>
 <th>Members</th>
+<th>VMs</th>
 <th>Limits</th>
 <th>Auth</th>
 <th>SSO Config</th>
@@ -155,7 +156,7 @@ function formatMembers(d) {
         return '<em>No members</em>';
     }
     var html = '<table class="member-table"><thead><tr>' +
-        '<th>Email</th><th>User ID</th><th>Role</th><th>Auth</th><th>Joined</th><th>Actions</th>' +
+        '<th>Email</th><th>User ID</th><th>Role</th><th>VMs</th><th>Auth</th><th>Joined</th><th>Actions</th>' +
         '</tr></thead><tbody>';
     for (var i = 0; i < d.members.length; i++) {
         var m = d.members[i];
@@ -166,6 +167,7 @@ function formatMembers(d) {
             '<td><a href="/debug/users?search=' + encodeURIComponent(m.email) + '">' + m.email + '</a></td>' +
             '<td>' + m.user_id + '</td>' +
             '<td>' + m.role + '</td>' +
+            '<td>' + m.vm_count + '</td>' +
             '<td>' + authBadge + '</td>' +
             '<td>' + m.joined_at + '</td>' +
             '<td>' + roleBtn + ' ' + removeBtn + '</td>' +
@@ -202,6 +204,7 @@ $(document).ready(function() {
             { data: 'display_name' },
             { data: 'created_at' },
             { data: 'member_count' },
+            { data: 'vm_count' },
             { data: null, render: function(d) {
                 var summary = parseLimits(d.limits);
                 return summary + ' <button class="toggle-btn limits-btn" ' +

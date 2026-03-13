@@ -5283,6 +5283,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			Role         string `json:"role"`
 			JoinedAt     string `json:"joined_at"`
 			AuthProvider string `json:"auth_provider,omitempty"`
+			VMCount      int64  `json:"vm_count"`
 		}
 		type ssoInfo struct {
 			ProviderID  int64  `json:"provider_id"`
@@ -5295,6 +5296,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			DisplayName  string       `json:"display_name"`
 			CreatedAt    string       `json:"created_at"`
 			MemberCount  int64        `json:"member_count"`
+			VMCount      int64        `json:"vm_count"`
 			Limits       string       `json:"limits,omitempty"`
 			AuthProvider string       `json:"auth_provider,omitempty"`
 			Members      []memberInfo `json:"members"`
@@ -5329,13 +5331,18 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			// Fetch members
 			if members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, t.TeamID); err == nil {
 				for _, m := range members {
-					ti.Members = append(ti.Members, memberInfo{
+					mi := memberInfo{
 						UserID:       m.UserID,
 						Email:        m.Email,
 						Role:         m.Role,
 						JoinedAt:     m.JoinedAt,
 						AuthProvider: ptrStr(m.AuthProvider),
-					})
+					}
+					if vmCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, m.UserID); err == nil {
+						mi.VMCount = vmCount
+						ti.VMCount += vmCount
+					}
+					ti.Members = append(ti.Members, mi)
 				}
 			}
 			teamsJSON = append(teamsJSON, ti)
