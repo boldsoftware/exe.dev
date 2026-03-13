@@ -41,7 +41,8 @@ import {
   Threshold,
 } from "@grafana/grafana-foundation-sdk/dashboard";
 import { ThresholdsConfigBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
-import { GraphThresholdsStyleConfigBuilder } from "@grafana/grafana-foundation-sdk/common";
+import { GraphThresholdsStyleConfigBuilder, FrameGeometrySourceBuilder, FrameGeometrySourceMode, MapLayerOptionsBuilder } from "@grafana/grafana-foundation-sdk/common";
+import { PanelBuilder as GeomapPanelBuilder, MapViewConfigBuilder, TooltipMode as GeomapTooltipMode, TooltipOptionsBuilder as GeomapTooltipOptionsBuilder, ControlsOptionsBuilder as GeomapControlsOptionsBuilder } from "@grafana/grafana-foundation-sdk/geomap";
 import {
   RuleBuilder,
   QueryBuilder as AlertQueryBuilder,
@@ -6210,6 +6211,175 @@ function makeExeproxDashboard() {
   return dash;
 }
 
+// rummyd Dashboard - Real User Monitoring of blog.exe.dev via exeprox
+function makeRummydDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("rummyd - Blog RUM");
+  dash
+    .uid("rummyd")
+    .tags(["generated", "rummyd", "monitoring"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "rummyd");
+
+  addReadmePanel(dash);
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About rummyd")
+      .content(
+        `**rummyd** (Real User Monitoring) runs on [\`mon\`](http://mon.crocodile-vector.ts.net:9099/metrics) and SSH's to every production exeprox, ` +
+        `then curls \`https://blog.exe.dev/debug/gitsha\` from each one. ` +
+        `This verifies the full request path from each proxy through to the blog backend. ` +
+        `Alerts fire to #buzz if the blog is unreachable from any exeprox or if rummyd itself stops running.`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // Geomap: curl latency by exeprox location
+  // Dots are green < 1s, red >= 1s. Size scales with latency. Labels show the value.
+  const geomapPanel = new GeomapPanelBuilder()
+    .title("Blog Curl Latency by Location")
+    .gridPos(gp({ w: 24, h: 12 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`round(rummy_blog_curl_latency_seconds * 1000)`)
+        .legendFormat("{{city}} ({{host}})")
+        .instant()
+        .format(PromQueryFormat.Table)
+    )
+    .view(
+      new MapViewConfigBuilder()
+        .id("coords")
+        .lat(20)
+        .lon(0)
+        .zoom(2)
+    )
+    .tooltip(
+      new GeomapTooltipOptionsBuilder().mode(GeomapTooltipMode.Details)
+    )
+    .controls(
+      new GeomapControlsOptionsBuilder()
+        .showZoom(true)
+        .mouseWheelZoom(true)
+        .showAttribution(false)
+    )
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1000, color: "red" } as Threshold,
+        ])
+    )
+    .unit("ms")
+    .decimals(0)
+    .layers([
+      new MapLayerOptionsBuilder()
+        .type("markers")
+        .name("Curl Latency")
+        .config({
+          style: {
+            color: { mode: "thresholds" },
+            size: { fixed: 12 },
+            text: { field: "Value", mode: "field" },
+            textConfig: {
+              fontSize: 14,
+              offsetX: 0,
+              offsetY: -16,
+              textAlign: "center",
+              textBaseline: "bottom",
+            },
+          },
+          showLegend: true,
+        })
+        .location(
+          new FrameGeometrySourceBuilder()
+            .mode(FrameGeometrySourceMode.Coords)
+            .latitude("latitude")
+            .longitude("longitude")
+        )
+        .tooltip(true)
+    ]);
+  dash.withPanel(geomapPanel);
+
+  // Blog up/down per host
+  addTimeseriesChart(
+    "Blog Reachable from Exeprox",
+    `rummy_blog_up`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{host}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "2m",
+        summary: "Blog is unreachable from an exeprox",
+        description: "rummy_blog_up has been 0 for an exeprox host for 2 minutes. The blog may not be rendering for users routed through this proxy.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  // Curl-only latency (HTTP time, excludes SSH overhead)
+  addTimeseriesChart(
+    "Blog Curl Latency",
+    `rummy_blog_curl_latency_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{host}}"),
+    }
+  );
+
+  // Total latency including SSH connect + curl
+  addTimeseriesChart(
+    "Blog Total Latency (SSH + Curl)",
+    `rummy_blog_total_latency_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{host}}"),
+    }
+  );
+
+  // Check rate
+  addTimeseriesChart(
+    "Checks per Minute",
+    `rate(rummy_checks_total[5m]) * 60`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{host}} {{result}}"),
+    }
+  );
+
+  // rummyd liveness - time since last check
+  addTimeseriesChart(
+    "Time Since Last Check",
+    `time() - rummy_last_check_timestamp_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 6 },
+      alert: {
+        threshold: 300,
+        condition: "gt",
+        forDuration: "1m",
+        summary: "rummyd is not running",
+        description: "rummy_last_check_timestamp_seconds has not updated in over 5 minutes. rummyd may be down.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -6239,6 +6409,7 @@ async function main() {
   await createDashboard(makeDeployTopMetricsDashboard());
   await createDashboard(makeProxyRequestsDashboard());
   await createDashboard(makeExeproxDashboard());
+  await createDashboard(makeRummydDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();

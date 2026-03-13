@@ -225,6 +225,12 @@ receivers:
             - targets: ["mon:5000"]
           metrics_path: '/metrics'
 
+        - job_name: 'rummyd'
+          scheme: http
+          static_configs:
+            - targets: ["mon:9099"]
+          metrics_path: '/metrics'
+
 processors:
   batch:
     timeout: 1s
