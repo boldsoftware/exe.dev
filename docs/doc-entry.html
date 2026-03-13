@@ -57,12 +57,11 @@
         font-weight: 600;
         margin: 24px 0 12px 0;
         font-size: 14px;
-        text-transform: uppercase;
         letter-spacing: 0.5px;
         text-decoration: none;
       }
 
-      .sidebar-heading:hover {
+      a.sidebar-heading:hover {
         text-decoration: underline;
       }
 
@@ -427,6 +426,36 @@
         color: #000000;
       }
 
+      .page-nav {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 48px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e0e0;
+        font-size: 14px;
+        max-width: 800px;
+      }
+
+      .page-nav a + a::before {
+        display: none;
+      }
+
+      .page-nav-link {
+        color: #666666;
+        text-decoration: none;
+        text-transform: none;
+        font-variant: normal;
+        letter-spacing: normal;
+      }
+
+      .page-nav-link:hover {
+        color: #000000;
+      }
+
+      .page-nav-next {
+        margin-left: auto;
+      }
+
       /* Responsive */
       @media (max-width: 768px) {
         .doc-content pre {
@@ -620,6 +649,18 @@
         .back-to-list:hover {
           color: #f3f4f6;
         }
+
+        .page-nav {
+          border-color: #333;
+        }
+
+        .page-nav-link {
+          color: #9ca3af;
+        }
+
+        .page-nav-link:hover {
+          color: #f3f4f6;
+        }
       }
     </style>
   </head>
@@ -641,7 +682,7 @@
             <a href="/llms.txt" class="sidebar-link" style="padding: 0; margin: 0;">llms.txt</a>
           </div>
           {{range .Groups}}
-          <a href="/docs/section/{{.Slug}}" class="sidebar-heading">{{.Heading}}</a>
+          {{if $isAllDocs}}<a href="#{{.Slug}}" class="sidebar-heading">{{.Heading}}</a>{{else}}<span class="sidebar-heading">{{.Heading}}</span>{{end}}
           {{range .Docs}}{{if call $.CanShow .}}
           {{if $isAllDocs}}
           <a href="#{{.Slug}}" class="sidebar-link">
@@ -672,6 +713,12 @@
 
         <div class="doc-content">{{.Content}}</div>
         <textarea id="doc-markdown" style="display:none">{{.Markdown}}</textarea>
+        {{end}}
+        {{if or $.Prev $.Next}}
+        <nav class="page-nav">
+          {{if $.Prev}}<a href="{{$.Prev.Path}}" class="page-nav-link page-nav-prev">&larr; {{$.Prev.Title}}</a>{{end}}
+          {{if $.Next}}<a href="{{$.Next.Path}}" class="page-nav-link page-nav-next">{{$.Next.Title}} &rarr;</a>{{end}}
+        </nav>
         {{end}}
       </main>
     </div>
@@ -726,6 +773,16 @@
           wrap.appendChild(btn);
         });
       })();
+
+      {{if $isAllDocs}}
+      // Rewrite internal /docs/ links to anchor links on the all-docs page.
+      document.querySelectorAll('.doc-content a[href^="/docs/"]').forEach(function(a) {
+        var slug = a.getAttribute('href').replace(/^\/docs\//, '');
+        if (slug && document.getElementById(slug)) {
+          a.href = '#' + slug;
+        }
+      });
+      {{end}}
 
       document.querySelectorAll('.doc-content h1[id], .doc-content h2[id], .doc-content h3[id], .doc-content h4[id]').forEach(function(heading) {
         if (heading.querySelector('.anchor-link')) return;

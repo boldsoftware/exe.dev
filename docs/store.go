@@ -468,6 +468,28 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 	data := h.templateData(r)
 	data["Entry"] = entry
 
+	// Compute prev/next navigation from the flattened group order.
+	canShow := data["CanShow"].(func(*Entry) bool)
+	var flat []*Entry
+	for _, g := range h.store.Groups() {
+		for _, e := range g.Docs {
+			if canShow(e) {
+				flat = append(flat, e)
+			}
+		}
+	}
+	for i, e := range flat {
+		if e.Path == entry.Path {
+			if i > 0 {
+				data["Prev"] = flat[i-1]
+			}
+			if i < len(flat)-1 {
+				data["Next"] = flat[i+1]
+			}
+			break
+		}
+	}
+
 	if err := h.tmpl.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
 		http.Error(w, "error rendering doc", http.StatusInternalServerError)
 		return
@@ -868,7 +890,9 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 		}
 		firstGroup = false
 
-		contentBuf.WriteString("<h2>")
+		contentBuf.WriteString("<h2 id=\"")
+		contentBuf.WriteString(group.Slug)
+		contentBuf.WriteString("\">")
 		contentBuf.WriteString(template.HTMLEscapeString(group.Heading))
 		contentBuf.WriteString("</h2>\n")
 

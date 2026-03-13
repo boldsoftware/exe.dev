@@ -5,7 +5,7 @@ subheading: "2. Features"
 ---
 
 The exe.dev API is SSH. Run commands like `ssh exe.dev ls --json` or `ssh exe.dev new --json`
-directly from scripts and automation.
+directly from scripts and automation. See the [CLI Reference](/docs/cli-help) for the full list of commands.
 
 For example:
 
