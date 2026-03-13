@@ -72,7 +72,6 @@ func addBox(t *testing.T, db *sqlite.DB) int64 {
 			UserID:  "test-user",
 			IPShard: 1,
 		})
-
 	})
 	if err != nil {
 		t.Fatal(err)
