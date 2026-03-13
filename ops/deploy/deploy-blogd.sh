@@ -21,6 +21,17 @@ echo "Deploying blogd"
 echo "==========================================="
 echo ""
 
+# VCS build info (vcs.revision) is not embedded when building from a git
+# worktree, so the /debug/gitsha endpoint would return "unknown".
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    GIT_DIR="$(git rev-parse --git-dir)"
+    if [ -f "$GIT_DIR/commondir" ]; then
+        echo -e "${RED}ERROR: Cannot deploy from a git worktree (VCS build info won't be embedded).${NC}"
+        echo "Run this script from the main checkout instead."
+        exit 1
+    fi
+fi
+
 go mod verify
 
 echo -e "${YELLOW}Building binary...${NC}"

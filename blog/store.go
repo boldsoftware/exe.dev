@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -382,6 +383,12 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
+	if path == "/debug/gitsha" {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, gitSHA())
+		return true
+	}
+
 	if strings.HasSuffix(path, "/") && path != "/" {
 		trimmed := strings.TrimSuffix(path, "/")
 		http.Redirect(w, r, trimmed, http.StatusMovedPermanently)
@@ -646,6 +653,32 @@ func metadataBool(raw any, key string) (bool, error) {
 	default:
 		return false, fmt.Errorf("front matter field %s must be a boolean", key)
 	}
+}
+
+func gitSHA() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	var revision, dirty string
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			dirty = s.Value
+		}
+	}
+	if revision == "" {
+		return "unknown"
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if dirty == "true" {
+		revision += "-dirty"
+	}
+	return revision
 }
 
 func metadataTags(raw any) ([]string, error) {
