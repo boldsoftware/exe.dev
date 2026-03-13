@@ -25,7 +25,7 @@ for pid in /proc/[0-9]*/comm; do
     pid_num=$(basename "$dir")
     comm=$(cat "$pid" 2>/dev/null) || continue
     if [[ "$comm" == "socat" ]]; then
-        cmdline=$(tr '\0' ' ' < "$dir/cmdline" 2>/dev/null) || continue
+        cmdline=$(tr '\0' ' ' <"$dir/cmdline" 2>/dev/null) || continue
         if [[ "$cmdline" == *"TCP-LISTEN"* ]]; then
             LISTENER_PIDS+=("$pid_num")
             echo "  PID $pid_num: $cmdline"
@@ -83,7 +83,7 @@ for pid in /proc/[0-9]*/comm; do
     pid_num=$(basename "$dir")
     comm=$(cat "$pid" 2>/dev/null) || continue
     if [[ "$comm" == "socat" ]]; then
-        cmdline=$(tr '\0' ' ' < "$dir/cmdline" 2>/dev/null) || continue
+        cmdline=$(tr '\0' ' ' <"$dir/cmdline" 2>/dev/null) || continue
         if [[ "$cmdline" == *"TCP-LISTEN"* ]]; then
             NEW_COUNT=$((NEW_COUNT + 1))
             if [[ "$cmdline" == *"reuseaddr"* ]]; then
