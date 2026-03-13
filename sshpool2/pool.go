@@ -25,11 +25,14 @@ import (
 
 // Metrics holds Prometheus metrics for the SSH connection pool.
 type Metrics struct {
-	cacheTotal *prometheus.CounterVec
+	cacheTotal        *prometheus.CounterVec
+	operationTotal    *prometheus.CounterVec   // labels: method, result
+	operationDuration *prometheus.HistogramVec // labels: method, result
 }
 
 // NewMetrics creates and registers pool metrics.
 func NewMetrics(registry *prometheus.Registry) *Metrics {
+	opLabels := []string{"method", "result"}
 	m := &Metrics{
 		cacheTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
@@ -38,8 +41,28 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 			},
 			[]string{"result"}, // "hit" or "miss"
 		),
+		operationTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "sshpool_operation_total",
+				Help: "Total number of SSH pool operations.",
+			},
+			opLabels,
+		),
+		operationDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name: "sshpool_operation_duration_seconds",
+				Help: "Duration of SSH pool operations.",
+				// Bucket boundaries are shaped for SSH-through-pool latency to co-located
+				// backends: cache hits resolve in <10ms, cache misses (TCP+handshake) in
+				// ~50-500ms. The 10ms-100ms range gives resolution on the fast path;
+				// 250ms-1s covers cache misses; 2.5s-10s catches pathological retries
+				// and RunCommand tails.
+				Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			},
+			opLabels,
+		),
 	}
-	registry.MustRegister(m.cacheTotal)
+	registry.MustRegister(m.cacheTotal, m.operationTotal, m.operationDuration)
 	return m
 }
 
@@ -237,18 +260,9 @@ func (p *Pool) connectToWithRetries(ctx context.Context, host, user string, port
 	})
 }
 
-// DialContext dials the target address through a pooled SSH connection.
-//
-// network and addr specify the target to dial (e.g., "tcp", "example.com:80").
-// host, user, port, and signer specify the SSH connection to use.
-//
-// Pooling occurs on a per-(host,user,port,publicKey) basis.
-// Config is used only when establishing a new SSH connection.
-//
-// DialContext is a low level function that does no retries.
-// The caller is strongly encouraged to use DialWithRetries,
-// as there are many ways that dialing through an SSH pool can fail transiently.
-func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (net.Conn, error) {
+// dialContext dials the target address through a pooled SSH connection.
+// See DialContext for the exported wrapper.
+func (p *Pool) dialContext(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (net.Conn, error) {
 	pc, err := p.connectTo(ctx, host, user, port, signer, config)
 	if err != nil {
 		return nil, err
@@ -256,12 +270,11 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 	return p.dialThroughClient(ctx, pc, network, addr)
 }
 
-// DialWithRetries dials with retries on the entire operation (connect + port-forward).
-// This is safe because dialing is idempotent.
-// The returned error may contain errors from prior attempts, even on success.
-func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
+// dialWithRetries dials with retries on the entire operation (connect + port-forward).
+// See DialWithRetries for the exported wrapper.
+func (p *Pool) dialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
 	return retryLoop(ctx, retries, func() (net.Conn, error) {
-		return p.DialContext(ctx, network, addr, host, user, port, signer, config)
+		return p.dialContext(ctx, network, addr, host, user, port, signer, config)
 	})
 }
 
@@ -352,10 +365,9 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 	return &trackedConn{Conn: conn, pc: pc}, nil
 }
 
-// RunCommand runs a command on a remote host through a pooled SSH connection.
-// Connection establishment is retried according to connRetries; the command itself runs at most once.
-// stdin is optional; pass nil if the command doesn't need input.
-func (p *Pool) RunCommand(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, command string, stdin io.Reader, connRetries []time.Duration) ([]byte, error) {
+// runCommand runs a command on a remote host through a pooled SSH connection.
+// See RunCommand for the exported wrapper.
+func (p *Pool) runCommand(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, command string, stdin io.Reader, connRetries []time.Duration) ([]byte, error) {
 	pc, err := p.connectToWithRetries(ctx, host, user, port, signer, config, connRetries)
 	if pc == nil {
 		return nil, err
@@ -464,10 +476,9 @@ func (p *Pool) removeConn(pc *pooledConn) {
 	delete(p.conns, pc.key)
 }
 
-// DropConnectionsTo removes all pooled connections to the specified host and port.
-// This should be called when you know a host is going down (e.g., VM restart or delete)
-// to ensure subsequent requests create fresh connections rather than using stale ones.
-func (p *Pool) DropConnectionsTo(host string, port int) {
+// dropConnectionsTo removes all pooled connections to the specified host and port.
+// See DropConnectionsTo for the exported wrapper.
+func (p *Pool) dropConnectionsTo(host string, port int) {
 	if p == nil {
 		return
 	}
@@ -488,9 +499,9 @@ func (p *Pool) DropConnectionsTo(host string, port int) {
 	}
 }
 
-// Close shuts down the pool and closes all connections immediately.
-// Close is idempotent and safe to call multiple times.
-func (p *Pool) Close() error {
+// closePool shuts down the pool and closes all connections immediately.
+// See Close for the exported wrapper.
+func (p *Pool) closePool() error {
 	if p == nil {
 		return nil
 	}

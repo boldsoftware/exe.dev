@@ -1531,6 +1531,58 @@ func (s *testSSHServerWithExec) port() int {
 	return port
 }
 
+func TestClassifyError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		// success
+		{"nil", nil, "success"},
+
+		// error_stale — must precede timeout check because
+		// ErrStaleConnection wraps DeadlineExceeded via %w.
+		{"stale", ErrStaleConnection, "error_stale"},
+		{"wrapped stale", fmt.Errorf("dial: %w", ErrStaleConnection), "error_stale"},
+		{"stale beats deadline", fmt.Errorf("channel: %w",
+			fmt.Errorf("stale: %w", ErrStaleConnection)), "error_stale"},
+
+		// error_cancelled
+		{"canceled", context.Canceled, "error_cancelled"},
+		{"wrapped canceled", fmt.Errorf("op: %w", context.Canceled), "error_cancelled"},
+
+		// error_timeout
+		{"deadline exceeded", context.DeadlineExceeded, "error_timeout"},
+		{"wrapped deadline", fmt.Errorf("dial: %w", context.DeadlineExceeded), "error_timeout"},
+
+		// error_backend_refused
+		{"connection refused", fmt.Errorf("open failed: Connection refused"), "error_backend_refused"},
+
+		// error_transport
+		{"eof", io.EOF, "error_transport"},
+		{"net closed", net.ErrClosed, "error_transport"},
+		{"econnreset", syscall.ECONNRESET, "error_transport"},
+		{"epipe", syscall.EPIPE, "error_transport"},
+		{"etimedout", syscall.ETIMEDOUT, "error_transport"},
+		{"wrapped eof", fmt.Errorf("read: %w", io.EOF), "error_transport"},
+
+		// error_command
+		{"exit error", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}}, "error_command"},
+		{"wrapped exit error", fmt.Errorf("cmd: %w", &ssh.ExitError{Waitmsg: ssh.Waitmsg{}}), "error_command"},
+
+		// error_other
+		{"unknown", errors.New("something unexpected"), "error_other"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyError(tt.err)
+			if got != tt.want {
+				t.Errorf("classifyError(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestIsSSHConnErrorRecognizesTimeouts tests that isSSHConnError correctly
 // identifies timeout and cancellation errors as connection errors.
 func TestIsSSHConnErrorRecognizesTimeouts(t *testing.T) {
