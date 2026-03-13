@@ -34,6 +34,7 @@
       <code class="text-sm">ssh {{.BoxName | call .BoxDest}} sudo systemctl enable --now nginx</code>
     </div>
     {{end}}
+    {{if .TraceID}}<p class="text-zinc-400 dark:text-zinc-600 text-sm mt-6">trace: {{.TraceID}}</p>{{end}}
   </main>
 </body>
 </html>

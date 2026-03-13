@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"exe.dev/tracing"
+
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"golang.org/x/crypto/ssh"
@@ -163,9 +165,11 @@ func (ps *ProxyServer) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc 
 			data := struct {
 				BoxName      string
 				DashboardURL string
+				TraceID      string
 			}{
 				BoxName:      boxName,
 				DashboardURL: dashboardURL,
+				TraceID:      tracing.TraceIDFromContext(r.Context()),
 			}
 			ps.renderTemplate(r.Context(), w, "terminal-access-denied.html", data)
 			return

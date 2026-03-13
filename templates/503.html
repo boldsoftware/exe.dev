@@ -26,6 +26,7 @@
   <main class="w-full max-w-2xl">
     <h1 class="text-4xl font-semibold mb-6">Service Unavailable</h1>
     <p class="text-zinc-500">This service is temporarily unavailable. Please try again later.</p>
+    {{if .TraceID}}<p class="text-zinc-400 dark:text-zinc-600 text-sm mt-6">trace: {{.TraceID}}</p>{{end}}
   </main>
 </body>
 </html>

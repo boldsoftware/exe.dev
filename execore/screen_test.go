@@ -245,6 +245,7 @@ func TestScreenFlow(t *testing.T) {
 			ShowWelcomeStep bool
 			SSHCommand      string
 			TerminalURL     string
+			TraceID         string
 		}{
 			WebHost:         server.env.WebHost,
 			BoxName:         "testbox",
@@ -254,6 +255,7 @@ func TestScreenFlow(t *testing.T) {
 			ShowWelcomeStep: true,
 			SSHCommand:      "ssh testbox@" + server.env.ReplHost,
 			TerminalURL:     "https://testbox.term." + server.env.WebHost,
+			TraceID:         "test-trace-id",
 		}
 		server.renderTemplate(context.Background(), rec, "proxy-unreachable.html", data)
 
@@ -270,9 +272,11 @@ func TestScreenFlow(t *testing.T) {
 		data := struct {
 			BoxName      string
 			DashboardURL string
+			TraceID      string
 		}{
 			BoxName:      "testbox",
 			DashboardURL: "/",
+			TraceID:      "test-trace-id",
 		}
 		server.renderTemplate(context.Background(), rec, "terminal-access-denied.html", data)
 

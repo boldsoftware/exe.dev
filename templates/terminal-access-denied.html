@@ -27,6 +27,7 @@
     <h1 class="text-4xl font-semibold mb-6">Unauthorized</h1>
     <p class="text-zinc-500 mb-8">You don't have access to <strong>{{.BoxName}}</strong>.</p>
     <a href="{{.DashboardURL}}" class="text-blue-600 dark:text-blue-400 hover:underline">Return to your VMs</a>
+    {{if .TraceID}}<p class="text-zinc-400 dark:text-zinc-600 text-sm mt-6">trace: {{.TraceID}}</p>{{end}}
   </main>
 </body>
 </html>

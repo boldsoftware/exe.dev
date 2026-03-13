@@ -389,6 +389,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 				ShowWelcomeStep bool
 				IsShelleyPort   bool
 				ShelleyURL      string
+				TraceID         string
 			}{
 				Env:             ps.Env,
 				BoxName:         boxName,
@@ -399,6 +400,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
 				IsShelleyPort:   route.Port == 9999,
 				ShelleyURL:      ps.shelleyURL(boxName),
+				TraceID:         tracing.TraceIDFromContext(r.Context()),
 			}
 
 			w.WriteHeader(http.StatusBadGateway)
@@ -408,7 +410,11 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 
 		// Non-owner: render 503 page
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = ps.renderTemplate(r.Context(), w, "503.html", nil)
+		_ = ps.renderTemplate(r.Context(), w, "503.html", struct {
+			TraceID string
+		}{
+			TraceID: tracing.TraceIDFromContext(r.Context()),
+		})
 		return
 	}
 }
