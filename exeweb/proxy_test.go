@@ -941,3 +941,82 @@ func TestRelativeRedirect(t *testing.T) {
 		})
 	}
 }
+
+func TestCookieDomainRe(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "basic domain", input: "name=val; Domain=.example.com; Path=/", want: "name=val; Path=/"},
+		{name: "domain last", input: "name=val; Path=/; Domain=.example.com", want: "name=val; Path=/"},
+		{name: "mixed case", input: "name=val; DOMAIN=.example.com; Path=/", want: "name=val; Path=/"},
+		{name: "space around equals", input: "name=val; Domain = .example.com; Path=/", want: "name=val; Path=/"},
+		{name: "space before equals", input: "name=val; Domain =.example.com; Path=/", want: "name=val; Path=/"},
+		{name: "no domain", input: "name=val; Path=/", want: "name=val; Path=/"},
+		{name: "domain only attr", input: "name=val; Domain=.example.com", want: "name=val"},
+		{name: "extra whitespace", input: "name=val;  domain=.foo.bar; Path=/", want: "name=val; Path=/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cookieDomainRe.ReplaceAllString(tt.input, "")
+			if got != tt.want {
+				t.Errorf("cookieDomainRe.ReplaceAllString(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripSetCookieDomain(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		host      string
+		boxHost   string
+		setCookie string
+		want      string
+	}{
+		{
+			name:      "shared domain strips domain attr",
+			host:      "myvm.exe.xyz",
+			boxHost:   "exe.xyz",
+			setCookie: "sid=abc; Domain=.exe.xyz; Path=/",
+			want:      "sid=abc; Path=/",
+		},
+		{
+			name:      "custom domain preserves domain attr",
+			host:      "app.example.com",
+			boxHost:   "exe.xyz",
+			setCookie: "sid=abc; Domain=.example.com; Path=/",
+			want:      "sid=abc; Domain=.example.com; Path=/",
+		},
+		{
+			name:      "custom domain preserves all cookies",
+			host:      "mysite.org",
+			boxHost:   "exe.xyz",
+			setCookie: "token=xyz; Domain=.mysite.org; Secure",
+			want:      "token=xyz; Domain=.mysite.org; Secure",
+		},
+		{
+			name:      "shared domain with port strips domain attr",
+			host:      "myvm.exe.xyz:8080",
+			boxHost:   "exe.xyz",
+			setCookie: "sid=abc; Domain=.exe.xyz; Path=/",
+			want:      "sid=abc; Path=/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			resp.Header.Set("Set-Cookie", tt.setCookie)
+			stripSetCookieDomain(tt.host, tt.boxHost, resp)
+			got := resp.Header.Get("Set-Cookie")
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

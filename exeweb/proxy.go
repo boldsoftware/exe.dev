@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,27 @@ import (
 	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/ssh"
 )
+
+// cookieDomainRe matches the Domain attribute in a Set-Cookie header value.
+var cookieDomainRe = regexp.MustCompile(`(?i);\s*domain\s*=\s*[^;]*`)
+
+// stripSetCookieDomain removes the Domain attribute from Set-Cookie response
+// headers when the request host is a subdomain of boxHost. This prevents a VM
+// from setting domain-wide cookies that the browser would send to other VMs on
+// the same parent domain. Custom-domain requests are left untouched.
+func stripSetCookieDomain(host, boxHost string, resp *http.Response) {
+	if _, ok := domz.CutBase(domz.Canonicalize(domz.StripPort(host)), boxHost); !ok {
+		return
+	}
+	setCookies := resp.Header.Values("Set-Cookie")
+	if len(setCookies) == 0 {
+		return
+	}
+	resp.Header.Del("Set-Cookie")
+	for _, sc := range setCookies {
+		resp.Header.Add("Set-Cookie", cookieDomainRe.ReplaceAllString(sc, ""))
+	}
+}
 
 // ProxyServer handles proxy requests for both exed and exeprox.
 // Data is handled via the ProxyData interface,
@@ -945,6 +967,11 @@ func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Req
 				req.AddCookie(c)
 			}
 		}
+	}
+
+	rp.ModifyResponse = func(resp *http.Response) error {
+		stripSetCookieDomain(r.Host, ps.Env.BoxHost, resp)
+		return nil
 	}
 
 	// Capture proxy errors and return them to the caller

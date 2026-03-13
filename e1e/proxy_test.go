@@ -448,6 +448,75 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 	})
 
+	t.Run("cookie_domain_isolation", func(t *testing.T) {
+		const internalPort = 8080
+
+		// Write a CGI script that sets cookies with various Domain attributes.
+		writeCookieCGI := boxSSHShell(t, box, keyFile, fmt.Sprintf(`set -e
+cat <<'ENDCGI' >/home/exedev/cgi-bin/setcookie
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo "Set-Cookie: hostonly=val1; Path=/"
+echo "Set-Cookie: domainwide=val2; Domain=.exe.cloud; Path=/"
+echo "Set-Cookie: subdomain=val3; Domain=%s.exe.cloud; Path=/"
+echo
+echo ok
+ENDCGI
+chmod +x /home/exedev/cgi-bin/setcookie`, box))
+		writeCookieCGI.Stdout = t.Output()
+		writeCookieCGI.Stderr = t.Output()
+		if err := writeCookieCGI.Run(); err != nil {
+			t.Fatalf("failed to create setcookie CGI: %v", err)
+		}
+
+		serveHTTP(t, internalPort)
+		configureProxyRoute(t, keyFile, box, internalPort, "public")
+
+		client := noRedirectClient(nil)
+		req := makeProxyRequestWithPath(t, box, httpPort, "/cgi-bin/setcookie")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+
+		// Check Set-Cookie headers: Domain attributes must be stripped
+		// for requests on shared domains (*.exe.cloud).
+		setCookies := resp.Header.Values("Set-Cookie")
+		if len(setCookies) == 0 {
+			t.Fatal("expected Set-Cookie headers in response, got none")
+		}
+
+		for _, sc := range setCookies {
+			lower := strings.ToLower(sc)
+			// Look for "; domain=" — the attribute form.
+			// This avoids false positives from cookie names like "subdomain=...".
+			if strings.Contains(lower, "; domain=") || strings.Contains(lower, ";domain=") {
+				t.Errorf("Set-Cookie should not contain Domain attribute on shared domain, got: %s", sc)
+			}
+		}
+
+		// Verify cookie name=value pairs survived the stripping.
+		found := map[string]bool{}
+		for _, sc := range setCookies {
+			for _, name := range []string{"hostonly", "domainwide", "subdomain"} {
+				if strings.HasPrefix(sc, name+"=") {
+					found[name] = true
+				}
+			}
+		}
+		for _, name := range []string{"hostonly", "domainwide", "subdomain"} {
+			if !found[name] {
+				t.Errorf("cookie %q missing from response; Set-Cookie headers: %v", name, setCookies)
+			}
+		}
+	})
+
 	// Test that deleting a box also deletes its auth cookies.
 	t.Run("delete_removes_auth_cookies", func(t *testing.T) {
 		noGolden(t)
