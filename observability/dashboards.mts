@@ -1448,6 +1448,58 @@ function makeDevExeDashboard() {
     }
   );
 
+  // ========== EXEPROX (Regional Proxies) ==========
+  dash.withRow(
+    new RowBuilder("Exeprox (Regional Proxies)").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Exeprox CPU Usage",
+    `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exeprox",${STAGE_FILTER},mode="idle"}[5m])) * 100)`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Exeprox Memory Usage",
+    `(1 - (node_memory_MemAvailable_bytes{role="exeprox",${STAGE_FILTER}} / node_memory_MemTotal_bytes{role="exeprox",${STAGE_FILTER}})) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 6, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  const exeproxNetworkPanel = new TimeseriesBuilder()
+    .title("Exeprox Network Traffic")
+    .unit("Bps")
+    .min(0)
+    .gridPos(gp({ w: 6, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_receive_bytes_total{role="exeprox",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} rx")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`irate(node_network_transmit_bytes_total{role="exeprox",${STAGE_FILTER},device!="lo"}[5m])`)
+        .legendFormat("{{instance}} tx")
+    );
+  dash.withPanel(exeproxNetworkPanel);
+
+  addTimeseriesChart(
+    "Exeprox Error Logs",
+    `sum(increase(logs_total{job="exeprox",level="ERROR",${STAGE_FILTER}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 6, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
   // ========== LOGGING ==========
   dash.withRow(
     new RowBuilder("Logging").gridPos(gp({ w: 24, h: 1 }))
@@ -3050,6 +3102,46 @@ function makeHostsDashboard() {
         labels: { signal: "strong" },
       },
       alertQueryOverride: `up{job="exelet",stage="production"}`,
+    }
+  );
+
+  // Exeprox host availability
+  addTimeseriesChart(
+    "Exeprox Host Up",
+    `up{job="node",role="exeprox",stage=~"$stage"}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "3m",
+        summary: "Exeprox host is not reporting metrics",
+        description: "A production exeprox host has stopped reporting metrics to Prometheus for more than 3 minutes.",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `up{job="node",role="exeprox",stage="production"}`,
+    }
+  );
+
+  // Exeprox application availability
+  addTimeseriesChart(
+    "Exeprox App Up",
+    `up{job="exeprox",stage=~"$stage"}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "3m",
+        summary: "Exeprox application is not reporting metrics",
+        description: "An exeprox process has stopped reporting metrics to Prometheus for more than 3 minutes.",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `up{job="exeprox",stage="production"}`,
     }
   );
 

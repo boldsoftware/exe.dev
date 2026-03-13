@@ -67,14 +67,14 @@ scrape_configs:
           stage: 'production'
           role: 'exelet'
       - targets:
-        - 'exeprox-lax2-prod-01'
-        - 'exeprox-dal-prod-01'
-        - 'exeprox-fra2-prod-01'
-        - 'exeprox-lon2-prod-01'
-        - 'exeprox-nyc-prod-01'
-        - 'exeprox-sjc2-prod-01'
-        - 'exeprox-syd2-prod-01'
-        - 'exeprox-tyo4-prod-01'
+        - 'exeprox-lax2-prod-01:19100'  # exeprox listens on 3000-9999 for proxy, so use 10000+9100
+        - 'exeprox-dal-prod-01:19100'
+        - 'exeprox-fra2-prod-01:19100'
+        - 'exeprox-lon2-prod-01:19100'
+        - 'exeprox-nyc-prod-01:19100'
+        - 'exeprox-sjc2-prod-01:19100'
+        - 'exeprox-syd2-prod-01:19100'
+        - 'exeprox-tyo4-prod-01:19100'
         labels:
           stage: 'production'
           role: 'exeprox'
@@ -162,6 +162,14 @@ scrape_configs:
       - targets: ["exelet-lax2-staging-01:9081", "exelet-nyc-staging-01:9081"]
         labels:
           stage: 'staging'
+    metrics_path: '/metrics'
+
+  - job_name: 'exeprox'
+    scheme: https
+    static_configs:
+      - targets: ["exeprox-lax2-prod-01.crocodile-vector.ts.net", "exeprox-dal-prod-01.crocodile-vector.ts.net", "exeprox-fra2-prod-01.crocodile-vector.ts.net", "exeprox-lon2-prod-01.crocodile-vector.ts.net", "exeprox-nyc-prod-01.crocodile-vector.ts.net", "exeprox-sjc2-prod-01.crocodile-vector.ts.net", "exeprox-syd2-prod-01.crocodile-vector.ts.net", "exeprox-tyo4-prod-01.crocodile-vector.ts.net"]
+        labels:
+          stage: 'production'
     metrics_path: '/metrics'
 
   - job_name: 'metricsd'
