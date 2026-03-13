@@ -124,6 +124,8 @@ function DiffViewer({
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<ViewMode>(mode);
   const hoverDecorationsRef = useRef<string[]>([]);
+  const touchScrolledRef = useRef(false);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Keep modeRef in sync with mode state and update editor options
   useEffect(() => {
@@ -337,24 +339,59 @@ function DiffViewer({
       });
     };
 
-    modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
-      // In comment mode, clicking on line content opens comment dialog
-      const isLineClick =
-        e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
-        e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
+    // Desktop: open comment dialog on mousedown (immediate response).
+    // Mobile uses onMouseUp below to distinguish taps from scrolls.
+    if (!isMobile) {
+      modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
+        const isLineClick =
+          e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
+          e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
 
-      if (isLineClick && modeRef.current === "comment") {
-        const position = e.target.position;
-        if (position) {
-          openCommentDialog(position.lineNumber);
+        if (isLineClick && modeRef.current === "comment") {
+          const position = e.target.position;
+          if (position) {
+            openCommentDialog(position.lineNumber);
+          }
         }
-      }
-    });
+      });
+    }
 
-    // For mobile: use onMouseUp which fires more reliably on touch devices
+    // For mobile: use onMouseUp which fires more reliably on touch devices,
+    // but only if the user tapped without scrolling (issue #153).
+    // Track touch gestures to distinguish taps from scrolls.
+    let touchCleanup: (() => void) | null = null;
     if (isMobile) {
+      const editorDom = editorContainerRef.current!;
+      const onTouchStart = (e: TouchEvent) => {
+        touchScrolledRef.current = false;
+        const t = e.touches[0];
+        touchStartPosRef.current = { x: t.clientX, y: t.clientY };
+      };
+      const onTouchMove = (e: TouchEvent) => {
+        if (touchScrolledRef.current || !touchStartPosRef.current) return;
+        const t = e.touches[0];
+        const dx = t.clientX - touchStartPosRef.current.x;
+        const dy = t.clientY - touchStartPosRef.current.y;
+        if (dx * dx + dy * dy > 100) {
+          // 10px threshold
+          touchScrolledRef.current = true;
+        }
+      };
+      const onTouchEnd = () => {
+        touchStartPosRef.current = null;
+      };
+      editorDom.addEventListener("touchstart", onTouchStart, { passive: true });
+      editorDom.addEventListener("touchmove", onTouchMove, { passive: true });
+      editorDom.addEventListener("touchend", onTouchEnd, { passive: true });
+      touchCleanup = () => {
+        editorDom.removeEventListener("touchstart", onTouchStart);
+        editorDom.removeEventListener("touchmove", onTouchMove);
+        editorDom.removeEventListener("touchend", onTouchEnd);
+      };
+
       modifiedEditor.onMouseUp((e: Monaco.editor.IEditorMouseEvent) => {
         if (modeRef.current !== "comment") return;
+        if (touchScrolledRef.current) return; // was a scroll, not a tap
 
         const isLineClick =
           e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
@@ -428,6 +465,7 @@ function DiffViewer({
       diffUpdateDisposable.dispose();
       contentChangeDisposableRef.current?.dispose();
       contentChangeDisposableRef.current = null;
+      touchCleanup?.();
       if (editorRef.current) {
         editorRef.current.dispose();
         editorRef.current = null;
