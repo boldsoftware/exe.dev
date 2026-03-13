@@ -19,6 +19,7 @@ import (
 	templatespkg "exe.dev/templates"
 	"github.com/yuin/goldmark"
 	gmmeta "github.com/yuin/goldmark-meta"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	htmlrenderer "github.com/yuin/goldmark/renderer/html"
 )
@@ -43,7 +44,7 @@ var docTemplates = template.Must(func() (*template.Template, error) {
 }())
 
 var markdown = goldmark.New(
-	goldmark.WithExtensions(gmmeta.Meta),
+	goldmark.WithExtensions(gmmeta.Meta, extension.Table),
 	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 	goldmark.WithRendererOptions(htmlrenderer.WithUnsafe()),
 )
