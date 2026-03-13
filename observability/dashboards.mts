@@ -5671,6 +5671,545 @@ function makeDeployTopMetricsDashboard() {
   return dash;
 }
 
+// Proxy Requests Dashboard - HTTP proxy metrics across exed and exeprox
+function makeProxyRequestsDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("Proxy Requests");
+  dash
+    .uid("proxy-requests-dashboard")
+    .tags(["generated", "exe.dev", "proxy"])
+    .refresh("30s")
+    .time({ from: "now-1h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  dash.withVariable(
+    new QueryVariableBuilder("service")
+      .label("Service")
+      .includeAll(true)
+      .query('label_values(http_requests_total{proxy="true"}, job)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .label("Instance")
+      .includeAll(true)
+      .query('label_values(http_requests_total{proxy="true",job=~"$service"}, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "proxy-requests-dashboard");
+  const F = 'proxy="true",stage=~"$stage",job=~"$service",instance=~"$instance"';
+
+  addReadmePanel(dash);
+
+  // ========== Request Counts ==========
+  dash.withRow(
+    new RowBuilder("Request Counts").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const requestCountsTable = new TableBuilder()
+    .title("Proxy Requests by Instance")
+    .gridPos(gp({ w: 24, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(http_requests_total{${F}}[$__range])) by (instance)`)
+        .instant()
+        .format(PromQueryFormat.Table)
+        .legendFormat("{{instance}}")
+    );
+  dash.withPanel(requestCountsTable);
+
+  // ========== Proxy Request Rate ==========
+  dash.withRow(
+    new RowBuilder("Proxy Request Rate").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Request Rate by Service",
+    `sum(rate(http_requests_total{${F}}[$__rate_interval])) by (job)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{job}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Request Rate by Instance",
+    `sum(rate(http_requests_total{${F}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== In Flight ==========
+  dash.withRow(
+    new RowBuilder("In Flight").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "In Flight by Service",
+    `sum(http_requests_in_flight{${F}}) by (job)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{job}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "In Flight by Instance",
+    `sum(http_requests_in_flight{${F}}) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== Errors ==========
+  dash.withRow(
+    new RowBuilder("Errors").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Error Rate by Service",
+    `sum(rate(http_requests_total{${F},code=~"[45].."}[$__rate_interval])) by (job)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{job}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Error Rate by Instance",
+    `sum(rate(http_requests_total{${F},code=~"[45].."}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Success Rate by Service",
+    `sum(rate(http_requests_total{${F},code=~"[23].."}[$__rate_interval])) by (job) / sum(rate(http_requests_total{${F}}[$__rate_interval])) by (job) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{job}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Success Rate by Instance",
+    `sum(rate(http_requests_total{${F},code=~"[23].."}[$__rate_interval])) by (instance) / sum(rate(http_requests_total{${F}}[$__rate_interval])) by (instance) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== Bytes Proxied ==========
+  dash.withRow(
+    new RowBuilder("Bytes Proxied").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Bytes Proxied by Service",
+    `sum(rate(proxy_bytes_total{stage=~"$stage",job=~"$service",instance=~"$instance"}[$__rate_interval])) by (job, direction)`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{job}} {{direction}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Bytes Proxied by Instance",
+    `sum(rate(proxy_bytes_total{stage=~"$stage",job=~"$service",instance=~"$instance"}[$__rate_interval])) by (instance, direction)`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} {{direction}}"),
+    }
+  );
+
+  // ========== By Status Code ==========
+  dash.withRow(
+    new RowBuilder("By Status Code").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Request Rate by Status Code",
+    `sum(rate(http_requests_total{${F}}[$__rate_interval])) by (code)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{code}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "4xx Errors by Code",
+    `sum(rate(http_requests_total{${F},code=~"4.."}[$__rate_interval])) by (code)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{code}}"),
+    }
+  );
+
+  // ========== By Box ==========
+  dash.withRow(
+    new RowBuilder("By Box").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Top 10 Boxes by Request Rate",
+    `topk(10, sum(rate(http_requests_total{${F}}[$__rate_interval])) by (box))`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{box}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Top 10 Boxes by Errors",
+    `topk(10, sum(rate(http_requests_total{${F},code=~"[45].."}[$__rate_interval])) by (box))`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{box}}"),
+    }
+  );
+
+  return dash;
+}
+
+// exeprox Dashboard - detailed exeprox application metrics
+function makeExeproxDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("exeprox");
+  dash
+    .uid("exeprox-dashboard")
+    .tags(["generated", "exe.dev", "exeprox"])
+    .refresh("30s")
+    .time({ from: "now-1h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .label("Instance")
+      .includeAll(true)
+      .query('label_values(up{job="exeprox"}, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "exeprox-dashboard");
+  const F = 'job="exeprox",instance=~"$instance"';
+
+  addReadmePanel(dash);
+
+  // ========== HTTP Proxy ==========
+  dash.withRow(
+    new RowBuilder("HTTP Proxy").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Request Rate",
+    `sum(rate(http_requests_total{${F},proxy="true"}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Requests In Flight",
+    `sum(http_requests_in_flight{${F},proxy="true"}) by (instance)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Status Codes",
+    `sum(rate(http_requests_total{${F},proxy="true"}[$__rate_interval])) by (code)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{code}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Top 10 Boxes by Request Rate",
+    `topk(10, sum(rate(http_requests_total{${F},proxy="true"}[$__rate_interval])) by (box))`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{box}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Error Rate by Box",
+    `topk(10, sum(rate(http_requests_total{${F},proxy="true",code=~"[45].."}[$__rate_interval])) by (box))`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{box}}"),
+    }
+  );
+
+  // ========== Proxy Bytes ==========
+  dash.withRow(
+    new RowBuilder("Proxy Bytes").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Bytes Proxied by Direction",
+    `sum(rate(proxy_bytes_total{${F}}[$__rate_interval])) by (direction)`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{direction}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Bytes Proxied by Instance",
+    `sum(rate(proxy_bytes_total{${F}}[$__rate_interval])) by (instance, direction)`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 16, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} {{direction}}"),
+    }
+  );
+
+  // ========== gRPC Client (to exed) ==========
+  dash.withRow(
+    new RowBuilder("gRPC Client (to exed)").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "gRPC Call Rate by Method",
+    `sum(rate(grpc_client_handled_total{${F}}[$__rate_interval])) by (grpc_method)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "gRPC Errors",
+    `sum(rate(grpc_client_handled_total{${F},grpc_code!="OK"}[$__rate_interval])) by (grpc_method, grpc_code)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}} {{grpc_code}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "gRPC Latency p99",
+    `histogram_quantile(0.99, sum(rate(grpc_client_handling_seconds_bucket{${F}}[$__rate_interval])) by (le, grpc_method))`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "gRPC Call Rate by Instance",
+    `sum(rate(grpc_client_handled_total{${F}}[$__rate_interval])) by (instance)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "gRPC Latency p50",
+    `histogram_quantile(0.50, sum(rate(grpc_client_handling_seconds_bucket{${F}}[$__rate_interval])) by (le, grpc_method))`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  // ========== SSH Pool ==========
+  dash.withRow(
+    new RowBuilder("SSH Pool").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Cache Hit/Miss Rate",
+    `sum(rate(sshpool_cache_total{${F}}[$__rate_interval])) by (result)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{result}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Hit Rate %",
+    `sum(rate(sshpool_cache_total{${F},result="hit"}[$__rate_interval])) / sum(rate(sshpool_cache_total{${F}}[$__rate_interval])) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("hit rate"),
+    }
+  );
+
+  addTimeseriesChart(
+    "SSH Pool Cache by Instance",
+    `sum(rate(sshpool_cache_total{${F}}[$__rate_interval])) by (instance, result)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} {{result}}"),
+    }
+  );
+
+  // ========== Logs ==========
+  dash.withRow(
+    new RowBuilder("Logs").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "Log Rate by Level",
+    `sum(rate(logs_total{${F}}[$__rate_interval])) by (level)`,
+    {
+      panelCustomization: (x) => x.unit("reqps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{level}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Warn/Error Logs by Instance",
+    `sum(rate(logs_total{${F},level=~"WARN|ERROR"}[$__rate_interval])) by (instance, level)`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} {{level}}"),
+    }
+  );
+
+  // ========== Process / Runtime ==========
+  dash.withRow(
+    new RowBuilder("Process / Runtime").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "CPU Usage",
+    `rate(process_cpu_seconds_total{${F}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.unit("percentunit").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Resident Memory",
+    `process_resident_memory_bytes{${F}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Goroutines",
+    `go_goroutines{${F}}`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Open File Descriptors",
+    `process_open_fds{${F}}`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Heap Alloc",
+    `go_memstats_heap_alloc_bytes{${F}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "GC Pause Rate",
+    `rate(go_gc_duration_seconds_sum{${F}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network I/O",
+    `rate(process_network_receive_bytes_total{${F}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} rx"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Network TX",
+    `rate(process_network_transmit_bytes_total{${F}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.unit("Bps").min(0),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} tx"),
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -5698,6 +6237,8 @@ async function main() {
   await createDashboard(makeAbuseSignalsDashboard());
   await createDashboard(makeMetricsdDashboard());
   await createDashboard(makeDeployTopMetricsDashboard());
+  await createDashboard(makeProxyRequestsDashboard());
+  await createDashboard(makeExeproxDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
