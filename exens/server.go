@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -172,7 +173,7 @@ func (s *Server) GetTXTRecords(name string) []string {
 	name = strings.ToLower(name)
 	s.txtMu.RLock()
 	defer s.txtMu.RUnlock()
-	return append([]string{}, s.txtRecords[name]...)
+	return slices.Clone(s.txtRecords[name])
 }
 
 // SetGLBRolloutPrefixes sets the binary prefixes used for hash-prefix gating
@@ -187,7 +188,7 @@ func (s *Server) SetGLBRolloutPrefixes(prefixes []string) {
 func (s *Server) GLBRolloutPrefixes() []string {
 	s.glbPrefixMu.RLock()
 	defer s.glbPrefixMu.RUnlock()
-	return append([]string{}, s.glbPrefixes...)
+	return slices.Clone(s.glbPrefixes)
 }
 
 // userMatchesGLBPrefix returns true if the user ID matches any of the
@@ -501,7 +502,7 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 // lookupTXT handles TXT record queries from in-memory storage.
 func (s *Server) lookupTXT(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
 	s.txtMu.RLock()
-	values := s.txtRecords[qname]
+	values := slices.Clone(s.txtRecords[qname])
 	s.txtMu.RUnlock()
 
 	if len(values) == 0 {
