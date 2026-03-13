@@ -49,8 +49,19 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 	if rs := s.context.ReplicationSuspender; rs != nil {
 		rs.SuspendVolume(instanceID)
 		defer rs.ResumeVolume(instanceID)
-		s.log.InfoContext(ctx, "waiting on VM storage replication", "instance", instanceID)
-		rs.WaitVolumeIdle(ctx, instanceID)
+		if rs.IsVolumeActive(instanceID) {
+			s.log.InfoContext(ctx, "waiting on VM storage replication", "instance", instanceID)
+			if startReq.AcceptStatus {
+				_ = stream.Send(&api.SendVMResponse{
+					Type: &api.SendVMResponse_Status{
+						Status: &api.SendVMStatus{
+							Message: "waiting for storage replication to complete",
+						},
+					},
+				})
+			}
+			rs.WaitVolumeIdle(ctx, instanceID)
+		}
 	}
 
 	// Load instance

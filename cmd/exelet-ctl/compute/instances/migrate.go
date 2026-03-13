@@ -78,20 +78,29 @@ var migrateInstanceCommand = &cli.Command{
 					InstanceID:         instanceID,
 					TargetHasBaseImage: true,
 					TwoPhase:           twoPhase,
+					AcceptStatus:       true,
 				},
 			},
 		}); err != nil {
 			return fmt.Errorf("failed to send start request: %w", err)
 		}
 
-		// Receive metadata from source
-		resp, err := sendStream.Recv()
-		if err != nil {
-			return fmt.Errorf("failed to receive metadata: %w", err)
-		}
-		metadata := resp.GetMetadata()
-		if metadata == nil {
-			return fmt.Errorf("expected metadata, got %T", resp.Type)
+		// Receive metadata from source (may be preceded by status messages)
+		var metadata *api.SendVMMetadata
+		for {
+			resp, err := sendStream.Recv()
+			if err != nil {
+				return fmt.Errorf("failed to receive metadata: %w", err)
+			}
+			if st := resp.GetStatus(); st != nil {
+				sp.Update(fmt.Sprintf("source: %s", st.Message))
+				continue
+			}
+			metadata = resp.GetMetadata()
+			if metadata == nil {
+				return fmt.Errorf("expected metadata, got %T", resp.Type)
+			}
+			break
 		}
 
 		if twoPhase {

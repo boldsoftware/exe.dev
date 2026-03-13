@@ -30,6 +30,7 @@ EXELET_VCPUS="${EXELET_VCPUS:-4}"
 EXELET_RAM="${EXELET_RAM:-8192}"
 DISK_GB="${DISK_GB:-40}"
 EXELET_DATA_DISK_GB="${EXELET_DATA_DISK_GB:-50}"
+EXELET_BACKUP_DISK_GB="${EXELET_BACKUP_DISK_GB:-50}"
 EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-16G}"
 SSH_PUBKEY_DIR="${SSH_PUBKEY_DIR:-$HOME/.ssh}"
 CLUSTER_PREFIX="${CLUSTER_PREFIX:-exe-local}"
@@ -435,6 +436,11 @@ runcmd:
       zpool create -f -m none tank /dev/vdb
       zfs create -o mountpoint=/data tank/data
     fi
+  # Backup ZFS pool on /dev/vdc
+  - |
+    if ! zpool list backup >/dev/null 2>&1; then
+      zpool create -f -m none backup /dev/vdc
+    fi
 swap:
   filename: /swapfile
   size: ${EXELET_SWAP_SIZE}
@@ -477,6 +483,10 @@ create_vm() {
         local data_disk="${WORKDIR}/${name}-data.qcow2"
         sudo qemu-img create -f qcow2 "${data_disk}" "${EXELET_DATA_DISK_GB}G"
         data_disk_args=(--disk "path=${data_disk},format=qcow2,cache=none,discard=unmap")
+
+        local backup_disk="${WORKDIR}/${name}-backup.qcow2"
+        sudo qemu-img create -f qcow2 "${backup_disk}" "${EXELET_BACKUP_DISK_GB}G"
+        data_disk_args+=(--disk "path=${backup_disk},format=qcow2,cache=none,discard=unmap")
     fi
 
     # Cloud-init seed ISO
@@ -625,7 +635,7 @@ IOWeight=1024
 LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 
-ExecStart=/usr/local/bin/exeletd -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0
+ExecStart=/usr/local/bin/exeletd -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
 
 Restart=always
 RestartSec=5
@@ -1182,7 +1192,7 @@ cmd_destroy() {
         fi
 
         # Clean up any leftover disk images and seed ISOs
-        for f in "${WORKDIR}/${name}.qcow2" "${WORKDIR}/${name}-data.qcow2" "${WORKDIR}/${name}-seed.iso"; do
+        for f in "${WORKDIR}/${name}.qcow2" "${WORKDIR}/${name}-data.qcow2" "${WORKDIR}/${name}-backup.qcow2" "${WORKDIR}/${name}-seed.iso"; do
             sudo rm -f "$f" 2>/dev/null || true
         done
     done
@@ -1214,7 +1224,7 @@ deploy) cmd_deploy ;;
     echo "Environment variables:"
     echo "  NUM_EXELETS=${NUM_EXELETS}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
-    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
+    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     exit 1
     ;;
 esac

@@ -23,9 +23,10 @@ import (
 // live migration. It can act as either source (SendVM) or target (ReceiveVM).
 type fakeLiveMigrationServer struct {
 	computeapi.UnimplementedComputeServiceServer
-	sshPort    int32
-	coldBooted bool   // controls what ReceiveVMResult.ColdBooted returns
-	role       string // "source" or "target"
+	sshPort                int32
+	coldBooted             bool   // controls what ReceiveVMResult.ColdBooted returns
+	role                   string // "source" or "target"
+	sendPreMetadataStatus  bool   // when true, sends a SendVMStatus before metadata (if client accepts)
 }
 
 func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
@@ -42,11 +43,27 @@ func (f *fakeLiveMigrationServer) DeleteInstance(_ context.Context, _ *computeap
 }
 
 // SendVM implements the source side: sends metadata, a data chunk, and complete.
+// When sendPreMetadataStatus is true and the client sets AcceptStatus, a
+// SendVMStatus message is sent before metadata to simulate a replication wait.
 func (f *fakeLiveMigrationServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
 	// Receive start request.
-	_, err := stream.Recv()
+	req, err := stream.Recv()
 	if err != nil {
 		return err
+	}
+	startReq := req.GetStart()
+
+	// If configured, send a status frame before metadata (simulates replication wait).
+	if f.sendPreMetadataStatus && startReq != nil && startReq.AcceptStatus {
+		if err := stream.Send(&computeapi.SendVMResponse{
+			Type: &computeapi.SendVMResponse_Status{
+				Status: &computeapi.SendVMStatus{
+					Message: "waiting for storage replication to complete",
+				},
+			},
+		}); err != nil {
+			return err
+		}
 	}
 
 	// Send metadata.
@@ -272,6 +289,106 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 22222
+
+	// Source sends a status frame before metadata.
+	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source", sendPreMetadataStatus: true}
+	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	userID := createTestUser(t, server, "migrate-status@example.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          "status-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containerID := "container-status"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+			SSHPort:     nil,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	box, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, "status-vm")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var messages []string
+	progress := func(format string, args ...any) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	}
+
+	_, _, err = server.migrateVMLive(ctx, migrateVMLiveParams{
+		source:     sourceClient,
+		target:     targetClient,
+		instanceID: containerID,
+		box:        box,
+		progress:   progress,
+	})
+	if err != nil {
+		t.Fatalf("migrateVMLive failed: %v", err)
+	}
+
+	// Verify the status message was surfaced through progress.
+	joined := strings.Join(messages, "\n")
+	if !strings.Contains(joined, "Source: waiting for storage replication to complete") {
+		t.Errorf("expected replication status in progress messages, got:\n%s", joined)
+	}
+}
+
+func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Source sends a status frame before metadata.
+	sourceSrv := &fakeLiveMigrationServer{role: "source", sendPreMetadataStatus: true}
+	_, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+
+	targetSrv := &fakeLiveMigrationServer{role: "target"}
+	_, targetClient := startFakeMigrationExelet(t, targetSrv)
+
+	var messages []string
+	progress := func(format string, args ...any) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	}
+
+	err := server.migrateVM(ctx, sourceClient, targetClient, "test-instance", false, progress)
+	if err != nil {
+		t.Fatalf("migrateVM failed: %v", err)
+	}
+
+	// Verify the status message was surfaced through progress.
+	joined := strings.Join(messages, "\n")
+	if !strings.Contains(joined, "Source: waiting for storage replication to complete") {
+		t.Errorf("expected replication status in progress messages, got:\n%s", joined)
 	}
 }
 

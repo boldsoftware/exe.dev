@@ -694,6 +694,14 @@ func (s *Service) SuspendVolume(volumeID string) {
 	s.log.Info("suspended replication for volume", "volume_id", volumeID)
 }
 
+// IsVolumeActive returns true if the given volume has an active replication job.
+func (s *Service) IsVolumeActive(volumeID string) bool {
+	if s.workerPool != nil {
+		return s.workerPool.IsVolumeActive(volumeID)
+	}
+	return false
+}
+
 // WaitVolumeIdle blocks until the given volume has no active replication job.
 func (s *Service) WaitVolumeIdle(ctx context.Context, volumeID string) {
 	if s.workerPool != nil {

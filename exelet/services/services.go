@@ -50,6 +50,7 @@ type ImageLoader interface {
 type ReplicationSuspender interface {
 	SuspendVolume(volumeID string)
 	ResumeVolume(volumeID string)
+	IsVolumeActive(volumeID string) bool
 	WaitVolumeIdle(ctx context.Context, volumeID string)
 }
 

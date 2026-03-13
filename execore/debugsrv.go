@@ -819,20 +819,29 @@ func (s *Server) migrateVM(ctx context.Context, source, target *exeletclient.Cli
 				InstanceID:         instanceID,
 				TargetHasBaseImage: true,
 				TwoPhase:           twoPhase,
+				AcceptStatus:       true,
 			},
 		},
 	}); err != nil {
 		return fmt.Errorf("failed to send start request: %w", err)
 	}
 
-	// Receive metadata from source
-	resp, err := sendStream.Recv()
-	if err != nil {
-		return fmt.Errorf("failed to receive metadata: %w", err)
-	}
-	metadata := resp.GetMetadata()
-	if metadata == nil {
-		return fmt.Errorf("expected metadata, got %T", resp.Type)
+	// Receive metadata from source (may be preceded by status messages)
+	var metadata *computeapi.SendVMMetadata
+	for {
+		resp, err := sendStream.Recv()
+		if err != nil {
+			return fmt.Errorf("failed to receive metadata: %w", err)
+		}
+		if st := resp.GetStatus(); st != nil {
+			progress("Source: %s", st.Message)
+			continue
+		}
+		metadata = resp.GetMetadata()
+		if metadata == nil {
+			return fmt.Errorf("expected metadata, got %T", resp.Type)
+		}
+		break
 	}
 
 	progress("Received metadata: image=%s, base_image=%s, encrypted=%v",
@@ -1016,20 +1025,29 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 				InstanceID:         instanceID,
 				TargetHasBaseImage: true,
 				Live:               true,
+				AcceptStatus:       true,
 			},
 		},
 	}); err != nil {
 		return 0, false, fmt.Errorf("failed to send start request: %w", err)
 	}
 
-	// Receive metadata from source
-	resp, err := sendStream.Recv()
-	if err != nil {
-		return 0, false, fmt.Errorf("failed to receive metadata: %w", err)
-	}
-	metadata := resp.GetMetadata()
-	if metadata == nil {
-		return 0, false, fmt.Errorf("expected metadata, got %T", resp.Type)
+	// Receive metadata from source (may be preceded by status messages)
+	var metadata *computeapi.SendVMMetadata
+	for {
+		resp, err := sendStream.Recv()
+		if err != nil {
+			return 0, false, fmt.Errorf("failed to receive metadata: %w", err)
+		}
+		if st := resp.GetStatus(); st != nil {
+			progress("Source: %s", st.Message)
+			continue
+		}
+		metadata = resp.GetMetadata()
+		if metadata == nil {
+			return 0, false, fmt.Errorf("expected metadata, got %T", resp.Type)
+		}
+		break
 	}
 
 	progress("Received metadata: image=%s, encrypted=%v", metadata.Instance.Image, metadata.Encrypted)

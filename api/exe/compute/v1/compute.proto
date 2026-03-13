@@ -293,6 +293,9 @@ message SendVMStartRequest {
   // Enable live migration: pause + CH snapshot/restore instead of stop + cold boot.
   // The VM's process state is preserved across the migration.
   bool live = 4;
+  // When true, the source may send SendVMStatus messages before metadata.
+  // Clients that don't set this will only receive metadata as the first response.
+  bool accept_status = 5;
 }
 
 message SendVMControl {
@@ -310,7 +313,12 @@ message SendVMResponse {
     SendVMPhaseComplete phase_complete = 4;
     SendVMSnapshotChunk snapshot_data = 5;
     SendVMAwaitControl await_control = 6;
+    SendVMStatus status = 7;
   }
+}
+
+message SendVMStatus {
+  string message = 1; // Human-readable status message (e.g., "waiting for storage replication to complete")
 }
 
 message SendVMSnapshotChunk {
