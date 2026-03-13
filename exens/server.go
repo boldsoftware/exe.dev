@@ -312,7 +312,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // lookupA handles A record queries.
 // Format: sNNN.{domain} where NNN is a shard number (001-025)
 // For box names, returns the CNAME and chases it to get the A record.
-// For *.xterm.{boxHost} and *.shelley.{boxHost}, returns the lobby IP.
+// For *.xterm.{boxHost} and *.shelley.{boxHost}, returns the box CNAME and A.
 // For *.int.{boxHost}, returns the metadata IP (169.254.169.254).
 // For the base domain ({boxHost}), returns the lobby IP.
 // For mail.{boxHost}, returns the lobby IP (mail server).
@@ -329,11 +329,20 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 
 	// Check for xterm/shelley wildcard (*.xterm.{boxHost} or *.shelley.{boxHost})
 	// e.g., "anything.xterm.exe.xyz" or "foo.shelley.exe.xyz"
-	xtermSuffix := ".xterm." + s.boxHost
-	shelleySuffix := ".shelley." + s.boxHost
-	if strings.HasSuffix(qname, xtermSuffix) || strings.HasSuffix(qname, shelleySuffix) {
-		// Return lobby IP for all xterm/shelley subdomains
-		return s.lookupLobbyA(fqdn, class)
+	box, ok := strings.CutSuffix(qname, ".xterm."+s.boxHost)
+	if !ok {
+		box, ok = strings.CutSuffix(qname, ".shelley."+s.boxHost)
+	}
+	if ok && len(box) > 0 {
+		// Handle xterm/shelley as a box name.
+		// If that fails send them to the lobby,
+		// as that is what we've historically done.
+		// TODO: stop sending unknown names to lobby?
+		rrs, err := s.lookupBoxA(ctx, box+"."+s.boxHost, fqdn, class)
+		if err != nil || len(rrs) == 0 {
+			return s.lookupLobbyA(fqdn, class)
+		}
+		return rrs, err
 	}
 
 	// Check for integration wildcard (*.int.{boxHost})
@@ -356,6 +365,12 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 	}
 
 	// Not a shard name, check if there's a CNAME (box name)
+	return s.lookupBoxA(ctx, qname, fqdn, class)
+}
+
+// lookupBoxA looks for a CNAME for a box name,
+// and returns the CNAME and A record.
+func (s *Server) lookupBoxA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
 	cnameRRs, err := s.lookupCNAME(ctx, qname, fqdn, class)
 	if err != nil || len(cnameRRs) == 0 {
 		return nil, err

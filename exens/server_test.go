@@ -226,20 +226,27 @@ func TestXtermWildcardA(t *testing.T) {
 
 	// Test wildcard xterm subdomain
 	t.Run("WildcardXterm", func(t *testing.T) {
-		rrs, err := server.lookupA(ctx, "anything.xterm.exe.xyz", "anything.xterm.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupA(ctx, "testbox.xterm.exe.xyz", "testbox.xterm.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 A record, got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 
-		a, ok := rrs[0].(*dns.A)
+		cname, ok := rrs[0].(*dns.CNAME)
 		if !ok {
-			t.Fatalf("expected *dns.A, got %T", rrs[0])
+			t.Fatalf("expected first record to be *dns.CNAME, got %T", rrs[0])
 		}
-		if a.A.String() != "10.0.0.100" {
-			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
+		if cname.Target != "s001.exe.xyz." {
+			t.Errorf("expected CNAME target s001.exe.xyz., got %s", cname.Target)
+		}
+		a, ok := rrs[1].(*dns.A)
+		if !ok {
+			t.Fatalf("expected second record to be *dns.A, got %T", rrs[1])
+		}
+		if a.A.String() != "1.2.3.4" {
+			t.Errorf("expected A record 1.2.3.4, got %s", a.A.String())
 		}
 	})
 
@@ -261,20 +268,27 @@ func TestXtermWildcardA(t *testing.T) {
 
 	// Test wildcard shelley subdomain
 	t.Run("WildcardShelley", func(t *testing.T) {
-		rrs, err := server.lookupA(ctx, "mybox.shelley.exe.xyz", "mybox.shelley.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupA(ctx, "testbox.shelley.exe.xyz", "mybox.shelley.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 A record for shelley wildcard, got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 
-		a, ok := rrs[0].(*dns.A)
+		cname, ok := rrs[0].(*dns.CNAME)
 		if !ok {
-			t.Fatalf("expected *dns.A, got %T", rrs[0])
+			t.Fatalf("expected first record to be *dns.CNAME, got %T", rrs[0])
 		}
-		if a.A.String() != "10.0.0.100" {
-			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
+		if cname.Target != "s001.exe.xyz." {
+			t.Errorf("expected CNAME target s001.exe.xyz., got %s", cname.Target)
+		}
+		a, ok := rrs[1].(*dns.A)
+		if !ok {
+			t.Fatalf("expected second record to be *dns.A, got %T", rrs[1])
+		}
+		if a.A.String() != "1.2.3.4" {
+			t.Errorf("expected A record 1.2.3.4, got %s", a.A.String())
 		}
 	})
 
@@ -283,12 +297,12 @@ func TestXtermWildcardA(t *testing.T) {
 		stagingServer := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
 		stagingServer.SetLobbyIP(lobbyIP)
 
-		rrs, err := stagingServer.lookupA(ctx, "test.xterm.exe-staging.xyz", "test.xterm.exe-staging.xyz.", dns.ClassINET)
+		rrs, err := stagingServer.lookupA(ctx, "testbox.xterm.exe-staging.xyz", "test.xterm.exe-staging.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 A record for staging xterm, got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 	})
 
