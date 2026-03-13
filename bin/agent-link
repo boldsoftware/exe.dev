@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+set -e
+trap 'echo "Error in $0 at line $LINENO: $(awk "NR == $LINENO" "$0")"' ERR
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+
+# Discover all .ai/ resources across the repo.
+# Populates: AGENTS, SKILLS, DOCS arrays (each entry: "name|source_path|package")
+discover() {
+	AGENTS=()
+	SKILLS=()
+	DOCS=()
+
+	while IFS= read -r ai_dir; do
+		pkg="$(basename "$(dirname "$ai_dir")")"
+
+		# Agents: .ai/agents/*.md
+		if [[ -d "$ai_dir/agents" ]]; then
+			for f in "$ai_dir/agents"/*.md; do
+				[[ -f "$f" ]] || continue
+				name="$(basename "$f" .md)"
+				AGENTS+=("$name|$f|$pkg")
+			done
+		fi
+
+		# Skills: .ai/skills/*/SKILL.md
+		if [[ -d "$ai_dir/skills" ]]; then
+			for d in "$ai_dir/skills"/*/; do
+				[[ -f "$d/SKILL.md" ]] || continue
+				name="$(basename "$d")"
+				SKILLS+=("$name|$d|$pkg")
+			done
+		fi
+
+		# Docs: .ai/docs/*.md
+		if [[ -d "$ai_dir/docs" ]]; then
+			for f in "$ai_dir/docs"/*.md; do
+				[[ -f "$f" ]] || continue
+				name="$(basename "$f" .md)"
+				DOCS+=("$name|$f|$pkg")
+			done
+		fi
+	done < <(find "$REPO_ROOT" -name .ai -type d | sort)
+}
+
+symlink_status() {
+	local target="$1"
+	if [[ -L "$target" ]]; then
+		local dest
+		dest="$(readlink "$target")"
+		if [[ -e "$dest" ]]; then
+			echo "installed"
+		else
+			echo "broken"
+		fi
+	elif [[ -e "$target" ]]; then
+		echo "conflict"
+	else
+		echo "not installed"
+	fi
+}
+
+points_to_repo() {
+	local link="$1"
+	[[ -L "$link" ]] || return 1
+	local dest
+	dest="$(readlink "$link")"
+	[[ "$dest" == "$REPO_ROOT"* ]]
+}
+
+cmd_list() {
+	discover
+
+	# Collect unique packages in order
+	local pkgs=""
+	for entry in "${AGENTS[@]}" "${SKILLS[@]}" "${DOCS[@]}"; do
+		IFS='|' read -r _ _ pkg <<< "$entry"
+		case "$pkgs" in
+			*"|$pkg|"*) ;;
+			*) pkgs="${pkgs}|${pkg}|" ;;
+		esac
+	done
+
+	# Iterate packages
+	local remaining="$pkgs"
+	while [[ -n "$remaining" ]]; do
+		# Extract next package name
+		remaining="${remaining#|}"
+		local p="${remaining%%|*}"
+		remaining="${remaining#*|}"
+		[[ -z "$p" ]] && continue
+
+		echo "[$p]"
+		for entry in "${AGENTS[@]}" "${SKILLS[@]}" "${DOCS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			[[ "$pkg" != "$p" ]] && continue
+
+			local kind
+			if [[ "$source" == *"/agents/"* ]]; then
+				kind="agent"
+			elif [[ "$source" == *"/skills/"* ]]; then
+				kind="skill"
+			else
+				kind="doc"
+			fi
+
+			local target
+			case "$kind" in
+				agent) target="$CLAUDE_DIR/agents/$name.md" ;;
+				skill) target="$CLAUDE_DIR/skills/$name" ;;
+				doc)   target="$CLAUDE_DIR/docs/$name.md" ;;
+			esac
+
+			local status
+			status="$(symlink_status "$target")"
+			local marker=""
+			[[ "$status" == "installed" ]] && marker=" [installed]"
+			[[ "$status" == "broken" ]] && marker=" [broken]"
+			echo "  $kind  $name$marker"
+		done
+		echo
+	done
+}
+
+install_one() {
+	local kind="$1" name="$2" source="$3"
+	local target
+
+	case "$kind" in
+		agent)
+			mkdir -p "$CLAUDE_DIR/agents"
+			target="$CLAUDE_DIR/agents/$name.md"
+			ln -sf "$source" "$target"
+			;;
+		skill)
+			mkdir -p "$CLAUDE_DIR/skills"
+			target="$CLAUDE_DIR/skills/$name"
+			ln -sfn "$source" "$target"
+			;;
+		doc)
+			mkdir -p "$CLAUDE_DIR/docs"
+			target="$CLAUDE_DIR/docs/$name.md"
+			ln -sf "$source" "$target"
+			;;
+	esac
+	echo "  installed $kind: $name -> $source"
+}
+
+cmd_install() {
+	discover
+	local filter="$1"
+
+	if [[ "$filter" == "--all" ]]; then
+		for entry in "${AGENTS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			install_one agent "$name" "$source"
+		done
+		for entry in "${SKILLS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			install_one skill "$name" "$source"
+		done
+		for entry in "${DOCS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			install_one doc "$name" "$source"
+		done
+		return
+	fi
+
+	if [[ "$filter" == "--pkg" ]]; then
+		local pkg_name="$2"
+		[[ -z "$pkg_name" ]] && { echo "usage: agent-link install --pkg <package>"; exit 1; }
+		local found=false
+		for entry in "${AGENTS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			[[ "$pkg" == "$pkg_name" ]] && { install_one agent "$name" "$source"; found=true; }
+		done
+		for entry in "${SKILLS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			[[ "$pkg" == "$pkg_name" ]] && { install_one skill "$name" "$source"; found=true; }
+		done
+		for entry in "${DOCS[@]}"; do
+			IFS='|' read -r name source pkg <<< "$entry"
+			[[ "$pkg" == "$pkg_name" ]] && { install_one doc "$name" "$source"; found=true; }
+		done
+		$found || { echo "no .ai/ resources found for package: $pkg_name"; exit 1; }
+		return
+	fi
+
+	# Install a specific named resource
+	[[ -z "$filter" ]] && { echo "usage: agent-link install <name>|--all|--pkg <package>"; exit 1; }
+	for entry in "${AGENTS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		[[ "$name" == "$filter" ]] && { install_one agent "$name" "$source"; return; }
+	done
+	for entry in "${SKILLS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		[[ "$name" == "$filter" ]] && { install_one skill "$name" "$source"; return; }
+	done
+	for entry in "${DOCS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		[[ "$name" == "$filter" ]] && { install_one doc "$name" "$source"; return; }
+	done
+	echo "not found: $filter"
+	exit 1
+}
+
+uninstall_one() {
+	local target="$1" name="$2"
+	if points_to_repo "$target"; then
+		rm -f "$target"
+		echo "  removed: $name"
+	fi
+}
+
+cmd_uninstall() {
+	discover
+	local filter="$1"
+
+	if [[ "$filter" == "--all" ]]; then
+		for entry in "${AGENTS[@]}"; do
+			IFS='|' read -r name _ _ <<< "$entry"
+			uninstall_one "$CLAUDE_DIR/agents/$name.md" "$name"
+		done
+		for entry in "${SKILLS[@]}"; do
+			IFS='|' read -r name _ _ <<< "$entry"
+			uninstall_one "$CLAUDE_DIR/skills/$name" "$name"
+		done
+		for entry in "${DOCS[@]}"; do
+			IFS='|' read -r name _ _ <<< "$entry"
+			uninstall_one "$CLAUDE_DIR/docs/$name.md" "$name"
+		done
+		return
+	fi
+
+	[[ -z "$filter" ]] && { echo "usage: agent-link uninstall <name>|--all"; exit 1; }
+
+	# Try each type
+	uninstall_one "$CLAUDE_DIR/agents/$filter.md" "$filter" 2>/dev/null && return
+	uninstall_one "$CLAUDE_DIR/skills/$filter" "$filter" 2>/dev/null && return
+	uninstall_one "$CLAUDE_DIR/docs/$filter.md" "$filter" 2>/dev/null && return
+	echo "not found or not managed by this repo: $filter"
+	exit 1
+}
+
+cmd_status() {
+	discover
+	local has_any=false
+
+	for entry in "${AGENTS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		local target="$CLAUDE_DIR/agents/$name.md"
+		local status
+		status="$(symlink_status "$target")"
+		if [[ "$status" != "not installed" ]]; then
+			has_any=true
+			printf "  %-8s %-6s %s -> %s\n" "$status" "agent" "$name" "$source"
+		fi
+	done
+	for entry in "${SKILLS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		local target="$CLAUDE_DIR/skills/$name"
+		local status
+		status="$(symlink_status "$target")"
+		if [[ "$status" != "not installed" ]]; then
+			has_any=true
+			printf "  %-8s %-6s %s -> %s\n" "$status" "skill" "$name" "$source"
+		fi
+	done
+	for entry in "${DOCS[@]}"; do
+		IFS='|' read -r name source pkg <<< "$entry"
+		local target="$CLAUDE_DIR/docs/$name.md"
+		local status
+		status="$(symlink_status "$target")"
+		if [[ "$status" != "not installed" ]]; then
+			has_any=true
+			printf "  %-8s %-6s %s -> %s\n" "$status" "doc" "$name" "$source"
+		fi
+	done
+
+	$has_any || echo "  nothing installed from this repo"
+}
+
+usage() {
+	cat <<'USAGE'
+Usage:
+  agent-link list                    show all available agents, skills, docs across repo
+  agent-link install <name>          symlink a specific agent, skill, or doc
+  agent-link install --all           symlink everything
+  agent-link install --pkg <pkg>     symlink everything from a package
+  agent-link uninstall <name>        remove symlink
+  agent-link uninstall --all         remove all symlinks from this repo
+  agent-link status                  show what's installed and symlink health
+USAGE
+}
+
+case "${1:-}" in
+	list)      cmd_list ;;
+	install)   shift; cmd_install "$@" ;;
+	uninstall) shift; cmd_uninstall "$@" ;;
+	status)    cmd_status ;;
+	*)         usage ;;
+esac
