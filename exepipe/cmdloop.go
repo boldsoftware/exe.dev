@@ -77,7 +77,10 @@ func (cl *cmdLoop) commandLoop(ctx context.Context, uc *net.UnixConn) {
 		var buf, oob [1024]byte
 		n, oobn, _, _, err := uc.ReadMsgUnix(buf[:], oob[:])
 		if err != nil {
-			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
+			// We should be able to check err != io.EOF here,
+			// but there is a bug in the Go standard library
+			// as of 1.26: https://go.dev/issue/78137.
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				cl.pipeInstance.lg.ErrorContext(ctx, "exepipe unix socket read failure", "error", err)
 				uc.Close()
 			}

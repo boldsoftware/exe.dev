@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -150,8 +151,15 @@ func (p *piping) copyConns(ctx context.Context, c1, c2 net.Conn, typ string) {
 	copy := func(to, from net.Conn) {
 		n, err := io.Copy(to, from)
 		p.pipeInstance.metrics.bytesTotal.WithLabelValues(typ).Add(float64(n))
-		if err != nil && !errors.Is(err, net.ErrClosed) {
-			p.pipeInstance.lg.WarnContext(ctx, "exepipe copy error", "type", typ, "error", err)
+		if err != nil {
+			switch {
+			case err == io.EOF:
+			case errors.Is(err, net.ErrClosed):
+			case errors.Is(err, syscall.EPIPE):
+			case errors.Is(err, syscall.ECONNRESET):
+			default:
+				p.pipeInstance.lg.WarnContext(ctx, "exepipe copy error", "type", typ, "error", err)
+			}
 		}
 	}
 
@@ -201,6 +209,8 @@ func (p *piping) Listen(ctx context.Context, key string, fd int, host string, po
 		return
 	}
 
+	p.pipeInstance.lg.DebugContext(ctx, "exepipe listening", "key", key, "port", port, "host", host, "type", typ)
+
 	p.addListener(ctx, key, ln, host, port, typ)
 
 	go p.doListen(ctx, key, ln, host, port, typ)
@@ -220,7 +230,7 @@ func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, host
 			return
 		}
 
-		go p.connect(ctx, conn, host, port, typ)
+		go p.connect(ctx, conn, key, host, port, typ)
 	}
 }
 
@@ -231,22 +241,36 @@ func (p *piping) Unlisten(ctx context.Context, key string) error {
 
 	info, ok := p.listeners[key]
 	if !ok {
-		return fmt.Errorf("exepipe: request to remove non-existent listener %q", key)
+		// We don't consider a non-existent listener to be an error.
+		// An exelet will close a listener before opening a new one,
+		// to be safe.
+		return nil
 	}
 
 	info.ln.Close()
 	delete(p.listeners, key)
+
+	p.pipeInstance.lg.DebugContext(ctx, "exepipe unlistening", "key", key)
 
 	return nil
 }
 
 // connect opens a connection to host/port, and starts copying from conn.
 // This runs in a separate goroutine.
-func (p *piping) connect(ctx context.Context, conn1 net.Conn, host string, port int, typ string) {
+func (p *piping) connect(ctx context.Context, conn1 net.Conn, key, host string, port int, typ string) {
 	conn2, err := net.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		conn1.Close()
-		p.pipeInstance.lg.ErrorContext(ctx, "exepipe failed to connect", "host", host, "port", port, "type", typ, "error", err)
+		level := slog.LevelError
+		switch {
+		case errors.Is(err, syscall.ECONNREFUSED),
+			errors.Is(err, syscall.EHOSTUNREACH):
+
+			// The VM may have been shut down by the user.
+			level = slog.LevelWarn
+		}
+
+		p.pipeInstance.lg.Log(ctx, level, "exepipe failed to connect", "key", key, "host", host, "port", port, "type", typ, "error", err)
 		return
 	}
 
