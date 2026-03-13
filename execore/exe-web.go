@@ -475,6 +475,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
 	}
 
+	if (isProxy || isTerminal) && s.env.ExedWarnProxy {
+		s.slog().WarnContext(r.Context(), "exed saw proxy/terminal request that should have gone to exeprox", "host", r.Host, "isProxy", isProxy, "isTerminal", isTerminal, "userID", loggedUserID)
+	}
+
 	if isProxy {
 		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		// box label is set in handleProxyRequest after resolving the box name

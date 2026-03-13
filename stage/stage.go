@@ -60,6 +60,7 @@ type Env struct {
 	GatewayDev     bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
 	SkipBanner     bool // whether to skip showing the EXE banner on repl login
 	BehindTLSProxy bool // whether running behind an external TLS-terminating proxy (e.g., exe.dev proxy)
+	ExedWarnProxy  bool // exed will issue an error if it sees a proxy request that should have gone to exeprox
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	ShowDocsPreview   bool // whether to display preview docs to all users; true for all stages except prod (sudoers always see them)
@@ -120,6 +121,7 @@ func Invalid() Env {
 		GatewayDev:     false,
 		SkipBanner:     false,
 		BehindTLSProxy: false,
+		ExedWarnProxy:  false,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   false,
@@ -189,6 +191,7 @@ func Local() Env {
 		GatewayDev:     true,
 		SkipBanner:     false,
 		BehindTLSProxy: onExeBox,
+		ExedWarnProxy:  false,
 
 		ShowHiddenDocs:    true,
 		ShowDocsPreview:   true,
@@ -251,6 +254,7 @@ func Test() Env {
 		GatewayDev:     true,
 		SkipBanner:     true,
 		BehindTLSProxy: false,
+		ExedWarnProxy:  true,
 
 		ShowHiddenDocs:    true,
 		ShowDocsPreview:   true,
@@ -311,6 +315,7 @@ func Staging() Env {
 		GatewayDev:     false,
 		SkipBanner:     false,
 		BehindTLSProxy: false,
+		ExedWarnProxy:  true,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   true,
@@ -385,6 +390,7 @@ func Prod() Env {
 		GatewayDev:     false,
 		SkipBanner:     false,
 		BehindTLSProxy: false,
+		ExedWarnProxy:  true,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   false,
