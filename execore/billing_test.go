@@ -1451,10 +1451,11 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 	}
 }
 
-func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
+func TestUserProfile_ShowsBillingSection_ActiveAccountActiveBilling(t *testing.T) {
 	t.Parallel()
 	// Test that the user profile page shows billing info for users with active billing
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 
 	// Create a user with an active billing account
 	email := "profile-billing@example.com"
@@ -1503,6 +1504,62 @@ func TestUserProfile_ShowsBillingSection_ActiveAccount(t *testing.T) {
 	}
 	if !strings.Contains(body, "/billing/update") {
 		t.Errorf("Expected billing portal link in body")
+	}
+}
+
+func TestUserProfile_ShowsBillingSection_ActiveAccountSkipBilling(t *testing.T) {
+	t.Parallel()
+	// Test that the user profile page shows setup instructions when SkipBilling is true
+	server := newBillingTestServer(t)
+	// SkipBilling defaults to true
+
+	// Create a user with an active billing account
+	email := "profile-billing-skip@example.com"
+	publicKey := testSSHPubKey
+	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Add an active account record
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        "exe_profilebillingskip",
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
+		CreatedBy: user.UserID,
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
+	}
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Visit /user profile page
+	req := httptest.NewRequest("GET", "/user", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	// Should show setup instructions when billing is skipped
+	if !strings.Contains(body, "Not configured") {
+		t.Errorf("Expected 'Not configured' billing status in body")
+	}
+	if !strings.Contains(body, "STRIPE_SECRET_KEY") {
+		t.Errorf("Expected Stripe setup instructions in body")
 	}
 }
 
