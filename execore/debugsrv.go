@@ -41,8 +41,6 @@ import (
 	"exe.dev/publicips"
 	"exe.dev/region"
 	"exe.dev/stage"
-	"exe.dev/styleguide"
-
 	"tailscale.com/client/local"
 )
 
@@ -50,10 +48,6 @@ import (
 // (pprof, expvar). Creating this handler is cheap and avoids global state.
 func (s *Server) debugHandler() http.Handler {
 	mux := http.NewServeMux()
-
-	// style guide: template index + static component previews
-	mux.HandleFunc("GET /debug/styleguide", s.handleDebugStyleguide)
-	mux.Handle("/debug/styleguide/", http.StripPrefix("/debug/styleguide/", styleguide.Handler()))
 
 	// index & aux
 	mux.HandleFunc("/debug$", s.handleDebugIndex)
@@ -170,10 +164,6 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderDebugTemplate(r.Context(), w, "index.html", data)
-}
-
-func (s *Server) handleDebugStyleguide(w http.ResponseWriter, r *http.Request) {
-	s.renderDebugTemplate(r.Context(), w, "styleguide.html", nil)
 }
 
 func (s *Server) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
