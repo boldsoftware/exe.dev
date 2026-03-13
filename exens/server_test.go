@@ -28,6 +28,58 @@ func newTestDB(t *testing.T) *sqlite.DB {
 	return db
 }
 
+// addBox adds a box to the test database, returning the box ID.
+func addBox(t *testing.T, db *sqlite.DB) int64 {
+	var boxID int64
+	err := db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		// Add ip_shard
+		err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
+			Shard:    1,
+			PublicIP: "1.2.3.4",
+		})
+		if err != nil {
+			return err
+		}
+
+		// Add a user (required for box)
+		err = queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: "test-user",
+			Email:  "test@example.com",
+			Region: "pdx",
+		})
+		if err != nil {
+			return err
+		}
+
+		// Add a box
+		boxID, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Name:            "testbox",
+			Status:          "running",
+			Image:           "ubuntu",
+			Ctrhost:         "localhost",
+			CreatedByUserID: "test-user",
+			Region:          "pdx",
+		})
+		if err != nil {
+			return err
+		}
+
+		// Add box_ip_shard mapping
+		return queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
+			BoxID:   int(boxID),
+			UserID:  "test-user",
+			IPShard: 1,
+		})
+
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return boxID
+}
+
 func TestNSRecords(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -167,17 +219,7 @@ func TestXtermWildcardA(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
-	// Add shard 1 IP (for box resolution, not used for xterm/shelley/apex)
-	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    1,
-			PublicIP: "10.0.0.1",
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBox(t, db)
 
 	lobbyIP := netip.MustParseAddr("10.0.0.100")
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
@@ -277,49 +319,7 @@ func TestDNSServer(t *testing.T) {
 	log := tslog.Slogger(t)
 
 	// Add test data: ip_shards and boxes
-	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-
-		// Add ip_shard
-		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    1,
-			PublicIP: "1.2.3.4",
-		}); err != nil {
-			return err
-		}
-
-		// Add a user (required for box)
-		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: "test-user",
-			Email:  "test@example.com",
-			Region: "pdx",
-		}); err != nil {
-			return err
-		}
-
-		// Add a box
-		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Name:            "testbox",
-			Status:          "running",
-			Image:           "ubuntu",
-			Ctrhost:         "localhost",
-			CreatedByUserID: "test-user",
-			Region:          "pdx",
-		})
-		if err != nil {
-			return err
-		}
-
-		// Add box_ip_shard mapping
-		return queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
-			BoxID:   int(boxID),
-			UserID:  "test-user",
-			IPShard: 1,
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBox(t, db)
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
@@ -543,37 +543,9 @@ func TestDNSServerIntegration(t *testing.T) {
 	log := tslog.Slogger(t)
 
 	// Add test data
+	boxID := addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    1,
-			PublicIP: "192.168.1.1",
-		}); err != nil {
-			return err
-		}
-
-		// Add a user for box ownership
-		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: "integration-user",
-			Email:  "integration@example.com",
-			Region: "pdx",
-		}); err != nil {
-			return err
-		}
-
-		// Add a box with email enabled for MX testing
-		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Name:            "mxtest",
-			Status:          "running",
-			Image:           "ubuntu",
-			Ctrhost:         "localhost",
-			CreatedByUserID: "integration-user",
-			Region:          "pdx",
-		})
-		if err != nil {
-			return err
-		}
-
 		if err := queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
 			EmailReceiveEnabled: 1,
 			EmailMaildirPath:    "/home/testuser/Maildir",
@@ -636,8 +608,8 @@ func TestDNSServerIntegration(t *testing.T) {
 			t.Fatalf("expected A record, got %T", resp.Answer[0])
 		}
 
-		if a.A.String() != "192.168.1.1" {
-			t.Errorf("expected 192.168.1.1, got %s", a.A.String())
+		if a.A.String() != "1.2.3.4" {
+			t.Errorf("expected 1.2.3.4, got %s", a.A.String())
 		}
 	})
 
@@ -803,7 +775,7 @@ func TestDNSServerIntegration(t *testing.T) {
 	})
 
 	t.Run("QueryMXRecord", func(t *testing.T) {
-		msg := dns.NewMsg("mxtest.exe.xyz.", dns.TypeMX)
+		msg := dns.NewMsg("testbox.exe.xyz.", dns.TypeMX)
 
 		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
 		if err != nil {
@@ -939,46 +911,12 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
+	addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-
-		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    7,
-			PublicIP: "1.2.3.4",
-		}); err != nil {
-			return err
-		}
-		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
-			Shard:    7,
+		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+			Shard:    1,
 			PublicIP: "5.6.7.8",
-		}); err != nil {
-			return err
-		}
-
-		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: "glb-user",
-			Email:  "glb@example.com",
-			Region: "pdx",
-		}); err != nil {
-			return err
-		}
-
-		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Name:            "glbbox",
-			Status:          "running",
-			Image:           "ubuntu",
-			Ctrhost:         "localhost",
-			CreatedByUserID: "glb-user",
-			Region:          "pdx",
-		})
-		if err != nil {
-			return err
-		}
-
-		return queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
-			BoxID:   int(boxID),
-			UserID:  "glb-user",
-			IPShard: 7,
 		})
 	})
 	if err != nil {
@@ -988,7 +926,7 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
 	t.Run("without GLB", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -996,8 +934,8 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
 		}
 		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "s007.exe.xyz." {
-			t.Errorf("expected s007.exe.xyz., got %s", cname.Target)
+		if cname.Target != "s001.exe.xyz." {
+			t.Errorf("expected s001.exe.xyz., got %s", cname.Target)
 		}
 	})
 
@@ -1006,7 +944,7 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		return queries.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
-			UserID:             "glb-user",
+			UserID:             "test-user",
 			GlobalLoadBalancer: &enabled,
 		})
 	})
@@ -1015,7 +953,7 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	}
 
 	t.Run("with GLB", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1023,13 +961,13 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
 		}
 		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "n007.exe.xyz." {
-			t.Errorf("expected n007.exe.xyz., got %s", cname.Target)
+		if cname.Target != "n001.exe.xyz." {
+			t.Errorf("expected n001.exe.xyz., got %s", cname.Target)
 		}
 	})
 
 	t.Run("A record resolves via latitude shard", func(t *testing.T) {
-		rrs, err := server.lookupA(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1037,8 +975,8 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "n007.exe.xyz." {
-			t.Errorf("expected CNAME target n007.exe.xyz., got %s", cname.Target)
+		if cname.Target != "n001.exe.xyz." {
+			t.Errorf("expected CNAME target n001.exe.xyz., got %s", cname.Target)
 		}
 		a := rrs[1].(*dns.A)
 		if a.A.String() != "5.6.7.8" {
@@ -1049,14 +987,14 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	// Disable GLB
 	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, "glb-user")
+		return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, "test-user")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("after disabling GLB", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "glbbox.exe.xyz", "glbbox.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1064,8 +1002,8 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
 		}
 		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "s007.exe.xyz." {
-			t.Errorf("expected s007.exe.xyz., got %s", cname.Target)
+		if cname.Target != "s001.exe.xyz." {
+			t.Errorf("expected s001.exe.xyz., got %s", cname.Target)
 		}
 	})
 }
@@ -1076,38 +1014,9 @@ func TestMXRecords(t *testing.T) {
 	log := tslog.Slogger(t)
 
 	// Add test data: user and box with email enabled
+	boxID := addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-
-		// Add ip_shard
-		if err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    1,
-			PublicIP: "1.2.3.4",
-		}); err != nil {
-			return err
-		}
-
-		// Add a user (required for box)
-		if err := queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: "test-user",
-			Email:  "test@example.com",
-			Region: "pdx",
-		}); err != nil {
-			return err
-		}
-
-		// Add a box with email enabled
-		boxID, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Name:            "emailbox",
-			Status:          "running",
-			Image:           "ubuntu",
-			Ctrhost:         "localhost",
-			CreatedByUserID: "test-user",
-			Region:          "pdx",
-		})
-		if err != nil {
-			return err
-		}
 
 		// Enable email receive
 		if err := queries.SetBoxEmailReceive(ctx, exedb.SetBoxEmailReceiveParams{
@@ -1119,7 +1028,7 @@ func TestMXRecords(t *testing.T) {
 		}
 
 		// Add another box without email enabled
-		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
+		_, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
 			Name:            "noemailbox",
 			Status:          "running",
 			Image:           "ubuntu",
@@ -1136,7 +1045,7 @@ func TestMXRecords(t *testing.T) {
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 
 	t.Run("MX_for_email_enabled_box", func(t *testing.T) {
-		rrs, err := server.lookupMX(ctx, "emailbox.exe.xyz", "emailbox.exe.xyz.", dns.ClassINET)
+		rrs, err := server.lookupMX(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
