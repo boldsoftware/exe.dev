@@ -20,10 +20,10 @@ type fakeReplicationSuspender struct {
 	active bool
 }
 
-func (f *fakeReplicationSuspender) SuspendVolume(string)                          {}
-func (f *fakeReplicationSuspender) ResumeVolume(string)                           {}
-func (f *fakeReplicationSuspender) IsVolumeActive(string) bool                    { return f.active }
-func (f *fakeReplicationSuspender) WaitVolumeIdle(context.Context, string)        {}
+func (f *fakeReplicationSuspender) SuspendVolume(string)                   {}
+func (f *fakeReplicationSuspender) ResumeVolume(string)                    {}
+func (f *fakeReplicationSuspender) IsVolumeActive(string) bool             { return f.active }
+func (f *fakeReplicationSuspender) WaitVolumeIdle(context.Context, string) {}
 
 // startRealSendVMServer creates a real compute Service wired to a gRPC server
 // and returns a client stream factory. The service has no instances on disk, so

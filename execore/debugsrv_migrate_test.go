@@ -23,10 +23,10 @@ import (
 // live migration. It can act as either source (SendVM) or target (ReceiveVM).
 type fakeLiveMigrationServer struct {
 	computeapi.UnimplementedComputeServiceServer
-	sshPort                int32
-	coldBooted             bool   // controls what ReceiveVMResult.ColdBooted returns
-	role                   string // "source" or "target"
-	sendPreMetadataStatus  bool   // when true, sends a SendVMStatus before metadata (if client accepts)
+	sshPort               int32
+	coldBooted            bool   // controls what ReceiveVMResult.ColdBooted returns
+	role                  string // "source" or "target"
+	sendPreMetadataStatus bool   // when true, sends a SendVMStatus before metadata (if client accepts)
 }
 
 func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
