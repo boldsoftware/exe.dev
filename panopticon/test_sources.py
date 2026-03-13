@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -24,6 +25,7 @@ from panopticon.sources.missive import (
     MissiveClient, MissiveComment, MissiveContact, MissiveConversation,
     MissiveMessage, MissiveSource,
 )
+from panopticon.sources.clickhouse import ClickHouseClient, ClickHouseSource
 
 
 # ---------------------------------------------------------------------------
@@ -1861,3 +1863,594 @@ class TestMissiveMethods:
         source = MissiveSource(client)
         assert "search_contacts" in source._proxy_attr_docs
         assert "not cached" in source._proxy_attr_docs["search_contacts"]
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse mock helpers
+# ---------------------------------------------------------------------------
+
+
+def make_clickhouse_json(meta, data, rows=None, rows_before_limit_at_least=None):
+    """Build a ClickHouse FORMAT JSON response dict."""
+    result = {
+        "meta": meta,
+        "data": data,
+        "rows": rows if rows is not None else len(data),
+        "statistics": {"elapsed": 0.001, "rows_read": 100, "bytes_read": 5000},
+    }
+    if rows_before_limit_at_least is not None:
+        result["rows_before_limit_at_least"] = rows_before_limit_at_least
+    return result
+
+
+def make_clickhouse_databases():
+    return make_clickhouse_json(
+        meta=[{"name": "name", "type": "String"}],
+        data=[
+            {"name": "default"},
+            {"name": "otel"},
+            {"name": "system"},
+            {"name": "INFORMATION_SCHEMA"},
+            {"name": "information_schema"},
+        ],
+    )
+
+
+def make_clickhouse_tables():
+    return make_clickhouse_json(
+        meta=[
+            {"name": "name", "type": "String"},
+            {"name": "engine", "type": "String"},
+            {"name": "total_rows", "type": "Nullable(UInt64)"},
+        ],
+        data=[
+            {"name": "otel_logs", "engine": "MergeTree", "total_rows": 123456},
+            {"name": "otel_traces", "engine": "MergeTree", "total_rows": 789},
+        ],
+    )
+
+
+def make_clickhouse_describe():
+    return make_clickhouse_json(
+        meta=[
+            {"name": "name", "type": "String"},
+            {"name": "type", "type": "String"},
+            {"name": "default_type", "type": "String"},
+            {"name": "default_expression", "type": "String"},
+            {"name": "comment", "type": "String"},
+        ],
+        data=[
+            {"name": "Timestamp", "type": "DateTime64(9)", "default_type": "", "default_expression": "", "comment": ""},
+            {"name": "SeverityText", "type": "String", "default_type": "", "default_expression": "", "comment": ""},
+            {"name": "Body", "type": "String", "default_type": "", "default_expression": "", "comment": ""},
+        ],
+    )
+
+
+def make_clickhouse_query_result():
+    return make_clickhouse_json(
+        meta=[
+            {"name": "Timestamp", "type": "DateTime64(9)"},
+            {"name": "Body", "type": "String"},
+        ],
+        data=[
+            {"Timestamp": "2025-03-06 14:00:00.000000000", "Body": "SSE stream completed"},
+            {"Timestamp": "2025-03-06 13:59:00.000000000", "Body": "Request received"},
+        ],
+        rows_before_limit_at_least=42,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse client tests
+# ---------------------------------------------------------------------------
+
+
+class TestClickHouseClient:
+
+    def test_missing_url_raises(self):
+        with pytest.raises(ValueError, match="EXE_CLICKHOUSE_URL"):
+            ClickHouseClient("", password="secret")
+
+    def test_whitespace_url_raises(self):
+        with pytest.raises(ValueError, match="EXE_CLICKHOUSE_URL"):
+            ClickHouseClient("   ", password="secret")
+
+    def test_missing_password_raises(self):
+        with pytest.raises(ValueError, match="EXE_CLICKHOUSE_PASSWORD"):
+            ClickHouseClient("https://ch.example.com:8443", password="")
+
+    def test_execute_sends_post_with_auth(self, monkeypatch):
+        captured_reqs = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_reqs.append(req)
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        client = ClickHouseClient("https://ch.example.com:8443", password="secret")
+        client.execute("SELECT 1")
+
+        assert len(captured_reqs) == 1
+        req = captured_reqs[0]
+        assert req.get_method() == "POST"
+        assert "Basic " in req.get_header("Authorization")
+        assert b"FORMAT JSON" in req.data
+
+    def test_execute_with_database_param(self, monkeypatch):
+        captured_urls = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        client = ClickHouseClient("https://ch.example.com:8443", password="secret")
+        client.execute("SELECT 1", database="otel")
+
+        assert "database=otel" in captured_urls[0]
+
+    def test_trailing_slash_stripped(self, monkeypatch):
+        captured_urls = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        client = ClickHouseClient("https://ch.example.com:8443/", password="secret")
+        client.execute("SELECT 1")
+
+        assert not captured_urls[0].startswith("https://ch.example.com:8443//")
+
+    def test_http_error_logged(self, monkeypatch, caplog):
+        def mock_urlopen(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 400, "Bad Request",
+                {}, io.BytesIO(b"Code: 62. Syntax error"),
+            )
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        client = ClickHouseClient("https://ch.example.com:8443", password="secret")
+
+        import logging
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(urllib.error.HTTPError):
+                client.execute("INVALID SQL")
+        assert "ClickHouse HTTP 400" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse proxy object tests
+# ---------------------------------------------------------------------------
+
+
+class TestClickHouseProxyObjects:
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("unexpected HTTP call")))
+        return ClickHouseClient("https://ch.example.com:8443", password="secret")
+
+    def test_source_structure(self, client):
+        source = ClickHouseSource(client, database="otel")
+        assert source._proxy_id == "clickhouse"
+        assert source._proxy_type_name == "ClickHouseSource"
+        assert "databases" in source._proxy_dir
+        assert "tables" in source._proxy_dir
+        assert "query" in source._proxy_dir
+        assert "describe_table" in source._proxy_dir
+
+    def test_source_methods(self, client):
+        source = ClickHouseSource(client)
+        assert "query" in source._proxy_methods
+        assert "describe_table" in source._proxy_methods
+
+    def test_source_attr_docs(self, client):
+        source = ClickHouseSource(client)
+        assert "query" in source._proxy_attr_docs
+        assert "not cached" in source._proxy_attr_docs["query"]
+        assert "describe_table" in source._proxy_attr_docs
+        assert "not cached" in source._proxy_attr_docs["describe_table"]
+
+    def test_databases_filters_system(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_databases())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        dbs = source.databases
+        assert "default" in dbs
+        assert "otel" in dbs
+        assert "system" not in dbs
+        assert "INFORMATION_SCHEMA" not in dbs
+        assert "information_schema" not in dbs
+
+    def test_databases_cached(self, client, monkeypatch):
+        fetch_count = 0
+
+        def mock_urlopen(req, timeout=None):
+            nonlocal fetch_count
+            fetch_count += 1
+            return MockResponse(make_clickhouse_databases())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        source.databases
+        assert fetch_count == 1
+
+        source.databases
+        assert fetch_count == 1
+
+    def test_databases_ttl_expiry(self, client, monkeypatch):
+        fetch_count = 0
+
+        def mock_urlopen(req, timeout=None):
+            nonlocal fetch_count
+            fetch_count += 1
+            return MockResponse(make_clickhouse_databases())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        source.databases
+        assert fetch_count == 1
+
+        source._databases_fetched_at = time.monotonic() - 3601
+        source.databases
+        assert fetch_count == 2
+
+    def test_tables_structure(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_tables())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+
+        tables = source.tables
+        assert len(tables) == 2
+        assert tables[0] == {"name": "otel_logs", "engine": "MergeTree", "total_rows": 123456}
+        assert tables[1] == {"name": "otel_traces", "engine": "MergeTree", "total_rows": 789}
+
+    def test_tables_uses_database_filter(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_tables())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+        source.tables
+
+        assert "database = 'otel'" in captured_data[0]
+
+    def test_tables_without_database_excludes_system(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_tables())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)  # no database
+        source.tables
+
+        assert "NOT IN" in captured_data[0]
+
+    def test_tables_cached(self, client, monkeypatch):
+        fetch_count = 0
+
+        def mock_urlopen(req, timeout=None):
+            nonlocal fetch_count
+            fetch_count += 1
+            return MockResponse(make_clickhouse_tables())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+
+        source.tables
+        assert fetch_count == 1
+
+        source.tables
+        assert fetch_count == 1
+
+    def test_tables_ttl_expiry(self, client, monkeypatch):
+        fetch_count = 0
+
+        def mock_urlopen(req, timeout=None):
+            nonlocal fetch_count
+            fetch_count += 1
+            return MockResponse(make_clickhouse_tables())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+
+        source.tables
+        assert fetch_count == 1
+
+        source._tables_fetched_at = time.monotonic() - 3601
+        source.tables
+        assert fetch_count == 2
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse query tests
+# ---------------------------------------------------------------------------
+
+
+class TestClickHouseQuery:
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("unexpected HTTP call")))
+        return ClickHouseClient("https://ch.example.com:8443", password="secret")
+
+    def test_query_returns_clickhouse_response(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        result = source._query("SELECT Timestamp, Body FROM otel_logs LIMIT 2")
+        assert len(result["meta"]) == 2
+        assert result["meta"][0]["name"] == "Timestamp"
+        assert len(result["data"]) == 2
+        assert result["rows"] == 2
+        assert result["rows_before_limit_at_least"] == 42
+        assert result["statistics"]["rows_read"] == 100
+
+    def test_query_appends_limit_when_missing(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SELECT * FROM t")
+
+        assert "LIMIT 1000" in captured_data[0]
+
+    def test_query_preserves_existing_limit(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SELECT * FROM t LIMIT 5")
+
+        # Should NOT append another LIMIT
+        body = captured_data[0]
+        assert body.count("LIMIT") == 1
+
+    def test_query_custom_limit(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SELECT * FROM t", limit=50)
+
+        assert "LIMIT 50" in captured_data[0]
+
+    def test_query_limit_clamped_to_max(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SELECT * FROM t", limit=99999)
+
+        assert "LIMIT 10000" in captured_data[0]
+
+    def test_query_limit_clamped_to_min(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SELECT * FROM t", limit=0)
+
+        assert "LIMIT 1" in captured_data[0]
+
+    def test_query_show_does_not_append_limit(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_databases())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        source._query("SHOW DATABASES")
+
+        assert "LIMIT" not in captured_data[0]
+
+    def test_query_via_resolve_call(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        result = reg.resolve_call(
+            source._proxy_id, "query",
+            ["SELECT * FROM t LIMIT 5"], {},
+        )
+        assert result["type"] == "concrete"
+        assert "meta" in result["value"]
+        assert "data" in result["value"]
+        assert "rows" in result["value"]
+
+    def test_query_with_database(self, client, monkeypatch):
+        captured_urls = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return MockResponse(make_clickhouse_query_result())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+        source._query("SELECT * FROM t LIMIT 1")
+
+        assert "database=otel" in captured_urls[0]
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse describe_table tests
+# ---------------------------------------------------------------------------
+
+
+class TestClickHouseDescribeTable:
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("unexpected HTTP call")))
+        return ClickHouseClient("https://ch.example.com:8443", password="secret")
+
+    def test_describe_table_returns_columns(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_describe())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        result = source._describe_table("otel_logs")
+        assert len(result) == 3
+        assert result[0]["name"] == "Timestamp"
+        assert result[0]["type"] == "DateTime64(9)"
+        assert result[1]["name"] == "SeverityText"
+        assert result[2]["name"] == "Body"
+
+    def test_describe_table_with_database(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_describe())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+
+        source._describe_table("otel_logs", database="otel")
+        assert "`otel`.`otel_logs`" in captured_data[0]
+
+    def test_describe_table_uses_default_database(self, client, monkeypatch):
+        captured_data = []
+
+        def mock_urlopen(req, timeout=None):
+            captured_data.append(req.data.decode())
+            return MockResponse(make_clickhouse_describe())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client, database="otel")
+
+        source._describe_table("otel_logs")
+        assert "`otel`.`otel_logs`" in captured_data[0]
+
+    def test_describe_table_via_resolve_call(self, client, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_describe())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        result = reg.resolve_call(source._proxy_id, "describe_table", ["otel_logs"], {})
+        assert result["type"] == "concrete"
+        assert len(result["value"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse security tests
+# ---------------------------------------------------------------------------
+
+
+class TestClickHouseSecurity:
+
+    def test_client_not_in_proxy_dir(self):
+        client = ClickHouseClient.__new__(ClickHouseClient)
+        client._url = "https://ch.example.com:8443"
+        client._auth_header = "Basic dGVzdA=="
+        client._user = "readonly"
+        client._password = "secret"
+        source = ClickHouseSource(client)
+        assert "_client" not in source._proxy_dir
+        assert "_database" not in source._proxy_dir
+
+    def test_registry_blocks_private_attrs(self):
+        client = ClickHouseClient.__new__(ClickHouseClient)
+        client._url = "https://ch.example.com:8443"
+        client._auth_header = "Basic dGVzdA=="
+        client._user = "readonly"
+        client._password = "secret"
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        with pytest.raises(AttributeError, match="not exposed"):
+            reg.resolve_getattr(source._proxy_id, "_client")
+
+    def test_registry_allows_public_attrs(self, monkeypatch):
+        def mock_urlopen(req, timeout=None):
+            return MockResponse(make_clickhouse_databases())
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        client = ClickHouseClient("https://ch.example.com:8443", password="secret")
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        result = reg.resolve_getattr(source._proxy_id, "databases")
+        assert result["type"] == "concrete"
+        assert "default" in result["value"]
+
+    def test_unknown_method_rejected(self):
+        client = ClickHouseClient.__new__(ClickHouseClient)
+        client._url = "https://ch.example.com:8443"
+        client._auth_header = "Basic dGVzdA=="
+        client._user = "readonly"
+        client._password = "secret"
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        with pytest.raises(AttributeError, match="not exposed"):
+            reg.resolve_call(source._proxy_id, "execute_raw", ["DROP TABLE t"], {})
+
+    def test_query_returns_method_type(self):
+        client = ClickHouseClient.__new__(ClickHouseClient)
+        client._url = "https://ch.example.com:8443"
+        client._auth_header = "Basic dGVzdA=="
+        client._user = "readonly"
+        client._password = "secret"
+        source = ClickHouseSource(client)
+        reg = ProxyRegistry()
+        reg.register(source)
+
+        result = reg.resolve_getattr(source._proxy_id, "query")
+        assert result["type"] == "method"
+        assert result["name"] == "query"
