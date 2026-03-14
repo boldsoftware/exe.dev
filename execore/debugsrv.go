@@ -3143,7 +3143,15 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
-	err := sender.Send(ctx, email.TypeDebugTest, from, to, subject, body, "")
+	err := sender.Send(ctx, email.Message{
+		Type:    email.TypeDebugTest,
+		From:    from,
+		To:      to,
+		Subject: subject,
+		Body:    body,
+		ReplyTo: "",
+		Attrs:   nil,
+	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "debug email send failed", "provider", provider, "to", to, "error", err)
 		http.Redirect(w, r, fmt.Sprintf("/debug/email?result=%s&error=1", html.EscapeString(err.Error())), http.StatusSeeOther)
@@ -3561,6 +3569,7 @@ https://%s/
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     []slog.Attr{slog.String("user_id", user.UserID)},
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)

@@ -723,6 +723,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     []slog.Attr{slog.String("user_id", cc.User.ID)},
 	}); err != nil {
 		return fmt.Errorf("failed to send share invitation email: %w", err)

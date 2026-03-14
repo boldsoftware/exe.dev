@@ -72,14 +72,23 @@ func RegisterMetrics(registry *prometheus.Registry, postmarkCollector *PostmarkS
 	}
 }
 
+// Message holds the parameters for sending an email.
+//
+//exe:completeinit
+type Message struct {
+	Type    Type
+	From    string // "Name <email@example.com>"
+	To      string
+	Subject string
+	Body    string
+	ReplyTo string // when non-empty, sets the Reply-To header
+	// Attrs are included in the "email sent" log line.
+	Attrs []slog.Attr
+}
+
 // Sender is an interface for sending emails.
 type Sender interface {
-	// Send sends an email with the given parameters.
-	// emailType identifies the type of email being sent.
-	// from should be in the format "Name <email@example.com>"
-	// replyTo, when non-empty, sets the Reply-To header.
-	// Extra slog attributes are included in the "email sent" log line.
-	Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error
+	Send(ctx context.Context, msg Message) error
 }
 
 // Senders holds multiple email provider implementations.
@@ -144,20 +153,20 @@ func NewPostmarkSender(apiKey string) *PostmarkSender {
 }
 
 // Send sends an email via Postmark.
-func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error {
+func (s *PostmarkSender) Send(ctx context.Context, msg Message) error {
 	email := postmark.Email{
-		From:          from,
-		To:            to,
-		Subject:       subject,
-		TextBody:      body,
-		ReplyTo:       replyTo,
-		MessageStream: postmarkMessageStreams[emailType],
+		From:          msg.From,
+		To:            msg.To,
+		Subject:       msg.Subject,
+		TextBody:      msg.Body,
+		ReplyTo:       msg.ReplyTo,
+		MessageStream: postmarkMessageStreams[msg.Type],
 	}
 	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
 	if err == nil {
-		emailsSentTotal.WithLabelValues("postmark", string(emailType)).Inc()
-		logAttrs := []any{"provider", "postmark", "type", emailType, "to", to, "subject", subject}
-		for _, a := range attrs {
+		emailsSentTotal.WithLabelValues("postmark", string(msg.Type)).Inc()
+		logAttrs := []any{"provider", "postmark", "type", msg.Type, "to", msg.To, "subject", msg.Subject}
+		for _, a := range msg.Attrs {
 			logAttrs = append(logAttrs, a)
 		}
 		slog.InfoContext(ctx, "email sent", logAttrs...)
@@ -180,22 +189,22 @@ func NewMailgunSender(domain, apiKey string) *MailgunSender {
 }
 
 // Send sends an email via Mailgun.
-func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error {
-	msg := s.mg.NewMessage(from, subject, body, to)
-	if replyTo != "" {
-		msg.SetReplyTo(replyTo)
+func (s *MailgunSender) Send(ctx context.Context, msg Message) error {
+	m := s.mg.NewMessage(msg.From, msg.Subject, msg.Body, msg.To)
+	if msg.ReplyTo != "" {
+		m.SetReplyTo(msg.ReplyTo)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	_, _, err := s.mg.Send(ctx, msg)
+	_, _, err := s.mg.Send(ctx, m)
 	if err != nil {
 		return fmt.Errorf("mailgun send failed: %w", err)
 	}
-	emailsSentTotal.WithLabelValues("mailgun", string(emailType)).Inc()
-	logAttrs := []any{"provider", "mailgun", "type", emailType, "to", to, "subject", subject}
-	for _, a := range attrs {
+	emailsSentTotal.WithLabelValues("mailgun", string(msg.Type)).Inc()
+	logAttrs := []any{"provider", "mailgun", "type", msg.Type, "to", msg.To, "subject", msg.Subject}
+	for _, a := range msg.Attrs {
 		logAttrs = append(logAttrs, a)
 	}
 	slog.InfoContext(ctx, "email sent", logAttrs...)

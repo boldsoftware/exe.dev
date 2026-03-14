@@ -1773,7 +1773,15 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 		displayName = p.fromName
 	}
 	from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-	err := sender.Send(ctx, p.emailType, from, p.to, p.subject, p.body, replyTo, p.attrs...)
+	err := sender.Send(ctx, email.Message{
+		Type:    p.emailType,
+		From:    from,
+		To:      p.to,
+		Subject: p.subject,
+		Body:    p.body,
+		ReplyTo: replyTo,
+		Attrs:   p.attrs,
+	})
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", p.to, "subject", p.subject, "type", p.emailType, "error", err)
 		// Record bounce/inactive recipient errors
@@ -1868,6 +1876,7 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, det
 		subject:   subject,
 		body:      body.String(),
 		fromName:  "",
+		replyTo:   "",
 		attrs:     []slog.Attr{slog.String("user_id", userID)},
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
@@ -1894,6 +1903,7 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)

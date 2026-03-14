@@ -778,6 +778,7 @@ The %s team`, verifyURL, s.env.WebHost)
 			subject:   subject,
 			body:      body,
 			fromName:  "",
+			replyTo:   "",
 			attrs:     []slog.Attr{slog.String("user_id", userID)},
 		}); err != nil {
 			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
@@ -1726,6 +1727,7 @@ The %s team`, code, webHost)
 			subject:   subject,
 			body:      body,
 			fromName:  "",
+			replyTo:   "",
 			attrs:     nil,
 		})
 		if err != nil {
@@ -1769,6 +1771,7 @@ The %s team`, verifyEmailURL, webHost)
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     nil,
 	})
 	if err != nil {

@@ -1255,6 +1255,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 			subject:   subject,
 			body:      body,
 			fromName:  "",
+			replyTo:   "",
 			attrs:     []slog.Attr{slog.String("user_id", userID)},
 		}); err != nil {
 			ss.server.deleteEmailVerification(verif)
@@ -1290,6 +1291,7 @@ The EXE.DEV team`, verifyURL)
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     nil,
 	}); err != nil {
 		ss.server.deleteEmailVerification(verif)

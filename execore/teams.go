@@ -411,6 +411,7 @@ This invite expires in 24 hours.
 		subject:   subject,
 		body:      body,
 		fromName:  "",
+		replyTo:   "",
 		attrs:     []slog.Attr{slog.String("invited_by_user_id", invitedByUserID)},
 	}); err != nil {
 		slog.ErrorContext(ctx, "failed to send team invite email", "error", err, "email", invitedEmail, "team_id", teamID)

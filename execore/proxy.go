@@ -501,6 +501,7 @@ func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, su
 		subject:   subject,
 		body:      body,
 		fromName:  fromName,
+		replyTo:   "",
 		attrs:     attrs,
 	})
 }
