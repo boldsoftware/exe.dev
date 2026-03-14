@@ -778,16 +778,12 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 //  3. Post-connect: verify the TCP connection's actual remote IP
 //     in case of any routing/NAT surprises
 //
-// Also enforces that connections go to port 443 only.
 func (s *Service) integrationTransport() *http.Transport {
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, fmt.Errorf("invalid address %q: %w", addr, err)
-			}
-			if port != "443" {
-				return nil, fmt.Errorf("integration targets must use port 443")
 			}
 
 			// IPv4 only. Resolving "ip4" avoids IPv6 entirely.
