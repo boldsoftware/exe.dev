@@ -9,7 +9,10 @@ import (
 
 // handleGitHubCallback handles the GitHub App installation callback.
 // GitHub redirects here after the user installs/authorizes the app.
-// Query params: code, installation_id, state.
+//
+// OAuth authorize flow sends: code, state (and optionally installation_id).
+// App install flow sends: code, installation_id, setup_action — but NOT state.
+// We handle both: state-based lookup for OAuth, fallback scan for installs.
 func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -18,7 +21,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	installationIDStr := q.Get("installation_id")
 	state := q.Get("state")
 
-	if code == "" || state == "" {
+	if code == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
@@ -33,15 +36,26 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Look up and consume the pending setup by state.
-	// Consuming immediately prevents replay of the callback.
+	// Look up and consume the pending setup.
+	// OAuth flow: match by state. Install flow: state is absent, so scan
+	// for a pending setup (GitHub's install redirect doesn't relay state).
 	s.githubSetupsMu.Lock()
-	setup := s.githubSetups[state]
-	delete(s.githubSetups, state)
+	var setup *GitHubSetup
+	if state != "" {
+		setup = s.githubSetups[state]
+		delete(s.githubSetups, state)
+	} else if installationID != 0 {
+		// Install flow without state — find the single pending setup.
+		for st, gs := range s.githubSetups {
+			setup = gs
+			delete(s.githubSetups, st)
+			break
+		}
+	}
 	s.githubSetupsMu.Unlock()
 
 	if setup == nil {
-		http.Error(w, "unknown or expired state parameter — please try again from SSH", http.StatusBadRequest)
+		http.Error(w, "unknown or expired setup — please try again from SSH", http.StatusBadRequest)
 		return
 	}
 
