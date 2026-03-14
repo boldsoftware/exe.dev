@@ -22,7 +22,6 @@ scrape_configs:
   - job_name: 'node'
     static_configs:
       - targets:
-        - 'sketch-01:9100'
         - 'mon:9100'
         - 'sketch-dev:9100'
         - 'docker-01:9100'
@@ -90,19 +89,6 @@ scrape_configs:
         labels:
           stage: 'staging'
           role: 'exelet'
-
-  - job_name: 'authd'
-    static_configs:
-      - targets: ["sketch-01:3001"]
-    metrics_path: '/authd/metrics'
-
-  - job_name: 'merde'
-    scheme: 'https'
-    tls_config:
-      insecure_skip_verify: true
-    static_configs:
-      - targets: ["merde"]
-    metrics_path: '/metrics'
 
   - job_name: 'skabandd'
     scheme: https

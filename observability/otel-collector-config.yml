@@ -83,7 +83,6 @@ receivers:
           scrape_interval: 60s
           static_configs:
             - targets:
-                - 'sketch-01:9100'
                 - 'mon:9100'
                 - 'sketch-dev:9100'
                 - 'docker-01:9100'
@@ -127,21 +126,6 @@ receivers:
           scheme: https
           static_configs:
             - targets: ["grafana.crocodile-vector.ts.net"]
-          metrics_path: '/metrics'
-
-        - job_name: 'authd-production'
-          scrape_interval: 60s
-          static_configs:
-            - targets: ["sketch-01:3001"]
-          metrics_path: '/authd/metrics'
-
-        - job_name: 'merde-production'
-          scrape_interval: 60s
-          scheme: https
-          tls_config:
-            insecure_skip_verify: true
-          static_configs:
-            - targets: ["merde"]
           metrics_path: '/metrics'
 
         - job_name: 'skabandd-production'
