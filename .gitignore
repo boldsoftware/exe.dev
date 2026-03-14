@@ -67,3 +67,4 @@ iOS/exe.dev.xcodeproj/project.xcworkspace/xcuserdata/
 # env files with secrets
 .env*
 !.env.example
+/rollcalld

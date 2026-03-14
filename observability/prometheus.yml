@@ -201,3 +201,9 @@ scrape_configs:
     static_configs:
       - targets: ["mon:9099"]
     metrics_path: '/metrics'
+
+  - job_name: 'rollcalld'
+    scheme: http
+    static_configs:
+      - targets: ["mon:9098"]
+    metrics_path: '/metrics'
