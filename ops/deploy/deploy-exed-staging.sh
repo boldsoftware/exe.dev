@@ -19,6 +19,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INSTANCE_NAME="exed-staging-01"
 DOMAIN="exe-staging.dev"
 
+# Verify target host matches expected environment
+"$REPO_ROOT/scripts/check-deploy-env.sh" staging "$INSTANCE_NAME"
+
 # Get currently deployed SHA (best-effort, for Slack notification)
 OLD_SHA=$(curl -s "https://${INSTANCE_NAME}.crocodile-vector.ts.net/debug/gitsha" 2>/dev/null || true)
 

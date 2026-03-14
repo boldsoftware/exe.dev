@@ -14,6 +14,9 @@ fi
 
 INSTANCE_NAME="$1"
 
+# Verify target host matches expected environment
+"$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/check-deploy-env.sh" staging "$INSTANCE_NAME"
+
 # Require Slack bot token for deployments
 if [ -z "$EXE_SLACK_BOT_TOKEN" ]; then
     echo "ERROR: EXE_SLACK_BOT_TOKEN is not set. Deployments require Slack notifications." >&2

@@ -10,6 +10,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INSTANCE_NAME="exed-staging-01"
 BOX_DOMAIN="exe-staging.xyz"
 
+# Verify target host matches expected environment
+"$REPO_ROOT/scripts/check-deploy-env.sh" staging "$INSTANCE_NAME"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

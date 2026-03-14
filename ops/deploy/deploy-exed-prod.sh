@@ -22,6 +22,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 INSTANCE_NAME="exed-02"
 
+# Verify target host matches expected environment
+"$REPO_ROOT/scripts/check-deploy-env.sh" prod "$INSTANCE_NAME"
+
 # Check that deployed SHA exists locally (prevents rolling back someone else's code)
 "$REPO_ROOT/scripts/check-remote-sha.sh" "https://${INSTANCE_NAME}.crocodile-vector.ts.net/debug/gitsha"
 
