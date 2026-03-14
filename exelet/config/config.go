@@ -123,6 +123,8 @@ type ExeletConfig struct {
 	// MetadataURL is the URL of the metadata server,
 	// either exed or exeprox.
 	MetadataURL string
+	// ExepipeAddress is the Unix domain address of the exepipe server.
+	ExepipeAddress string
 	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
 	InstanceDomain string
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs

@@ -145,6 +145,12 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_METADATA_URL", "EXELET_EXED_URL"},
 		},
+		&cli.StringFlag{
+			Name:    "exepipe-address",
+			Usage:   "Unix address of exepipe server",
+			Value:   "",
+			EnvVars: []string{"EXEPIPE_ADDRESS"},
+		},
 		&cli.BoolFlag{
 			Name:    "desired-state-sync",
 			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
@@ -340,6 +346,7 @@ func serveAction(clix *cli.Context) error {
 	if metadataURL == "" {
 		metadataURL = exedURL
 	}
+	exepipeAddress := clix.String("exepipe-address")
 	instanceDomain := clix.String("instance-domain")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
@@ -395,6 +402,7 @@ func serveAction(clix *cli.Context) error {
 		ProxyPortMax:                proxyPortMax,
 		ExedURL:                     exedURL,
 		MetadataURL:                 metadataURL,
+		ExepipeAddress:              exepipeAddress,
 		InstanceDomain:              instanceDomain,
 		ResourceManagerInterval:     resourceManagerInterval,
 		EnableHugepages:             enableHugepages,
@@ -465,7 +473,7 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	// Create compute service
-	computeSvc, err := computeservice.New(cfg, log)
+	computeSvc, err := computeservice.New(ctx, cfg, log)
 	if err != nil {
 		return err
 	}

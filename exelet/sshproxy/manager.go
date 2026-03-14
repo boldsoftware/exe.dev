@@ -47,13 +47,17 @@ type socatManager struct {
 
 // NewManager creates a new SSH proxy manager.
 // bindIP specifies the IP address to bind proxies to; empty string means all interfaces.
-func NewManager(dataDir, bindIP string, log *slog.Logger) Manager {
-	return &socatManager{
-		proxies: make(map[string]*socatSSHProxy),
-		ports:   make(map[string]int),
-		dataDir: dataDir,
-		bindIP:  bindIP,
-		log:     log,
+func NewManager(ctx context.Context, dataDir, bindIP, exepipeAddress string, log *slog.Logger) Manager {
+	if exepipeAddress != "" {
+		return NewExepipeManager(ctx, exepipeAddress, bindIP, log)
+	} else {
+		return &socatManager{
+			proxies: make(map[string]*socatSSHProxy),
+			ports:   make(map[string]int),
+			dataDir: dataDir,
+			bindIP:  bindIP,
+			log:     log,
+		}
 	}
 }
 

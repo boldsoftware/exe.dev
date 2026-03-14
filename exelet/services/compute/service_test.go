@@ -17,6 +17,14 @@ import (
 
 // TestCreateSSHProxy tests that CreateProxy correctly creates a SSH proxy for an instance.
 func TestCreateSSHProxy(t *testing.T) {
+	testCreateSSHProxy(t, "")
+}
+
+func TestCreateSSHProxyExepipe(t *testing.T) {
+	testCreateSSHProxy(t, exepipe.UnixAddr)
+}
+
+func testCreateSSHProxy(t *testing.T, exepipeAddress string) {
 	// Skip test if socat is not installed
 	if _, err := exec.LookPath("socat"); err != nil {
 		t.Skip("socat not found in PATH, skipping test")
@@ -28,15 +36,16 @@ func TestCreateSSHProxy(t *testing.T) {
 
 	dataDir := t.TempDir()
 	cfg := &config.ExeletConfig{
-		Name:          "test",
-		ListenAddress: "127.0.0.1:0",
-		DataDir:       dataDir,
-		ProxyPortMin:  20000, // Use different range to avoid conflicts with dev
-		ProxyPortMax:  30000,
+		Name:           "test",
+		ListenAddress:  "127.0.0.1:0",
+		DataDir:        dataDir,
+		ProxyPortMin:   20000, // Use different range to avoid conflicts with dev
+		ProxyPortMax:   30000,
+		ExepipeAddress: exepipeAddress,
 	}
 
 	// Create a service instance
-	svc, err := New(cfg, log)
+	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -126,21 +135,30 @@ func TestCreateSSHProxy(t *testing.T) {
 // TestRecoverProxiesStopsProxyForStoppedInstance verifies that RecoverProxies
 // stops proxies for instances that are in STOPPED state.
 func TestRecoverProxiesStopsProxyForStoppedInstance(t *testing.T) {
+	testRecoverProxiesStopsProxyForStoppedInstance(t, "")
+}
+
+func TestRecoverProxiesStopsProxyForStoppedInstanceExepipe(t *testing.T) {
+	testRecoverProxiesStopsProxyForStoppedInstance(t, exepipe.UnixAddr)
+}
+
+func testRecoverProxiesStopsProxyForStoppedInstance(t *testing.T, exepipeAddress string) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
 
 	dataDir := t.TempDir()
 	cfg := &config.ExeletConfig{
-		Name:          "test",
-		ListenAddress: "127.0.0.1:0",
-		DataDir:       dataDir,
-		ProxyPortMin:  20000, // Use different range to avoid conflicts with dev
-		ProxyPortMax:  30000,
+		Name:           "test",
+		ListenAddress:  "127.0.0.1:0",
+		DataDir:        dataDir,
+		ProxyPortMin:   20000, // Use different range to avoid conflicts with dev
+		ProxyPortMax:   30000,
+		ExepipeAddress: exepipeAddress,
 	}
 
 	// Create a service instance
-	svc, err := New(cfg, log)
+	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -194,7 +212,7 @@ func TestRegisterRequiresImageLoader(t *testing.T) {
 		DataDir: t.TempDir(),
 	}
 
-	svc, err := New(cfg, log)
+	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}

@@ -44,7 +44,7 @@ type Service struct {
 }
 
 // New returns a new service.
-func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
+func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 	// Use configured port range, or defaults if not set
 	minPort := cfg.ProxyPortMin
 	maxPort := cfg.ProxyPortMax
@@ -60,7 +60,7 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		mu:              &sync.Mutex{},
 		log:             log,
 		portAllocator:   portAllocator,
-		proxyManager:    sshproxy.NewManager(cfg.DataDir, cfg.ProxyBindIP, log),
+		proxyManager:    sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log),
 		instanceOpLocks: make(map[string]*instanceLock),
 	}, nil
 }

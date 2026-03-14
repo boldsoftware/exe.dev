@@ -73,7 +73,7 @@ func newTestService(t *testing.T) (*Service, *mockNetworkManager) {
 		ProxyPortMin: 20000,
 		ProxyPortMax: 30000,
 	}
-	svc, err := New(cfg, log)
+	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}

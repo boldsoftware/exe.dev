@@ -39,7 +39,7 @@ func startRealSendVMServer(t *testing.T, rs services.ReplicationSuspender) api.C
 		DataDir: t.TempDir(),
 	}
 
-	svc, err := New(cfg, log)
+	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
 		t.Fatalf("failed to create compute service: %v", err)
 	}
