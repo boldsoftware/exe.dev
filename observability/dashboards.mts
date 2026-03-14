@@ -6380,6 +6380,93 @@ function makeRummydDashboard() {
   return dash;
 }
 
+// rollcalld Dashboard - service discovery gap detector
+function makeRollcalldDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("rollcalld - Service Discovery");
+  dash
+    .uid("rollcalld")
+    .tags(["generated", "rollcalld", "monitoring"])
+    .refresh("5m")
+    .time({ from: "now-24h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "rollcalld");
+
+  addReadmePanel(dash);
+
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("About rollcalld")
+      .content(
+        `**rollcalld** runs on [\`mon\`](http://mon.crocodile-vector.ts.net:9098/metrics) and compares online tailscale hosts against prometheus scrape targets. ` +
+        `It reports machines that are online but not being monitored. ` +
+        `Staging hosts and single-word infra singletons are ignored. ` +
+        `Alerts fire to #poke if unmonitored hosts are detected for 30+ minutes.`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos(gp({ w: 24, h: 2 }))
+  );
+
+  // Unmonitored hosts count
+  addTimeseriesChart(
+    "Unmonitored Hosts",
+    `rollcall_unmonitored_hosts`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 8 },
+      alert: {
+        threshold: 0,
+        condition: "gt",
+        forDuration: "30m",
+        noDataState: "OK",
+        summary: "Unmonitored hosts detected",
+        description: "rollcalld has found online tagged tailscale hosts that are not in any prometheus scrape config. Run `rollcalld -once` on mon to see which hosts.",
+        labels: { channel: "poke" },
+      },
+    }
+  );
+
+  // Tailscale vs prometheus host counts
+  dash.withPanel(
+    new TimeseriesBuilder()
+      .title("Host Counts")
+      .min(0)
+      .gridPos(gp({ w: 12, h: 8 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`rollcall_tailscale_hosts_total`)
+          .legendFormat("Tailscale online tagged")
+      )
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`rollcall_monitored_hosts_total`)
+          .legendFormat("Prometheus targets")
+      )
+  );
+
+  // rollcalld liveness - time since last check
+  addTimeseriesChart(
+    "Time Since Last Check",
+    `time() - rollcall_last_check_timestamp_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 6 },
+      alert: {
+        threshold: 600,
+        condition: "gt",
+        forDuration: "1m",
+        summary: "rollcalld is not running",
+        description: "rollcall_last_check_timestamp_seconds has not updated in over 10 minutes. rollcalld may be down.",
+        labels: { channel: "poke" },
+      },
+    }
+  );
+
+  return dash;
+}
+
 // SSH Pool Dashboard - sshpool2 connection pool metrics
 function makeSshpoolDashboard() {
   resetLayout();
@@ -6544,6 +6631,7 @@ async function main() {
   await createDashboard(makeProxyRequestsDashboard());
   await createDashboard(makeExeproxDashboard());
   await createDashboard(makeRummydDashboard());
+  await createDashboard(makeRollcalldDashboard());
   await createDashboard(makeSshpoolDashboard());
 
   // Create alerts after dashboards are created
