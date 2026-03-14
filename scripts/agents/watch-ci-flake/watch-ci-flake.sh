@@ -2,7 +2,7 @@
 set -e
 
 REPO="boldsoftware/exe"
-CLAUDE_TIMEOUT=86400  # 24h
+CLAUDE_TIMEOUT=86400 # 24h
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(pwd)"
 STATE_DIR="${WATCH_CI_FLAKE_STATE_DIR:-$HOME/watch-ci-flake-state}"
@@ -18,7 +18,7 @@ trap 'rm -f "$RUNS_FILE" "$GH_ERR"' EXIT INT TERM
 DRY_RUN=false
 for arg in "$@"; do
     case "$arg" in
-        --dry-run) DRY_RUN=true ;;
+    --dry-run) DRY_RUN=true ;;
     esac
 done
 
@@ -26,8 +26,8 @@ done
 if [ ! -f "$STATE_FILE" ]; then
     echo "watch-ci-flake: first run, snapshotting existing failures..."
     if gh run list --repo "$REPO" --status failure \
-        --json databaseId --limit 100 > "$RUNS_FILE" 2>"$GH_ERR"; then
-        jq -r '.[].databaseId | tostring' "$RUNS_FILE" | sort -u > "$STATE_FILE"
+        --json databaseId --limit 100 >"$RUNS_FILE" 2>"$GH_ERR"; then
+        jq -r '.[].databaseId | tostring' "$RUNS_FILE" | sort -u >"$STATE_FILE"
     else
         touch "$STATE_FILE"
     fi
@@ -44,7 +44,7 @@ is_processed() {
 mark_processed() {
     processed=$(printf '%s\n%s' "$processed" "$1")
     tmp="$STATE_FILE.tmp"
-    echo "$processed" | grep '[0-9]' | sort -u > "$tmp"
+    echo "$processed" | grep '[0-9]' | sort -u >"$tmp"
     mv "$tmp" "$STATE_FILE"
 }
 
@@ -56,7 +56,7 @@ process_run() {
 
 if ! gh run list --repo "$REPO" --status failure \
     --json databaseId,url,displayTitle,headBranch,createdAt \
-    --limit 100 > "$RUNS_FILE" 2>"$GH_ERR"; then
+    --limit 100 >"$RUNS_FILE" 2>"$GH_ERR"; then
     echo "watch-ci-flake: gh run list failed:" >&2
     cat "$GH_ERR" >&2
     exit 1
@@ -98,7 +98,7 @@ for rid in $new_ids; do
     else
         process_run "$rid" || true
     fi
-    elapsed=$(( $(date +%s) - t0 ))
+    elapsed=$(($(date +%s) - t0))
 
     now=$(date +%H:%M:%S)
     echo "[$now] <- done (${elapsed}s): $url"
