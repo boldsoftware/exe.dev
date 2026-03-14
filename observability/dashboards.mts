@@ -6380,6 +6380,140 @@ function makeRummydDashboard() {
   return dash;
 }
 
+// SSH Pool Dashboard - sshpool2 connection pool metrics
+function makeSshpoolDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("SSH Pool");
+  dash
+    .uid("sshpool-dashboard")
+    .tags(["generated", "sshpool"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  dash.withVariable(
+    new QueryVariableBuilder("instance")
+      .label("Instance")
+      .includeAll(true)
+      .query('label_values(sshpool_operation_total, instance)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "sshpool-dashboard");
+  const FILTER = 'stage=~"$stage",instance=~"$instance"';
+
+  addReadmePanel(dash);
+
+  // Row: Operations
+  dash.withRow(new RowBuilder("Operations"));
+
+  addTimeseriesChart(
+    "Operation Rate",
+    `sum by (method) (rate(sshpool_operation_total{${FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Operation Rate by Result",
+    `sum by (method, result) (rate(sshpool_operation_total{${FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{method}} {{result}}"),
+    }
+  );
+
+  // Row: Error Rates
+  dash.withRow(new RowBuilder("Error Rates"));
+
+  // Pool health error ratio — the primary alert signal from exports.go
+  addTimeseriesChart(
+    "Pool Health Error Ratio",
+    `sum(rate(sshpool_operation_total{${FILTER},result=~"error_transport|error_timeout|error_stale"}[$__rate_interval])) / sum(rate(sshpool_operation_total{${FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.unit("percentunit").min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Errors by Category",
+    `sum by (result) (rate(sshpool_operation_total{${FILTER},result=~"error_.*"}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{result}}"),
+    }
+  );
+
+  // Row: Latency
+  dash.withRow(new RowBuilder("Latency"));
+
+  addTimeseriesChart(
+    "p50 Latency by Method",
+    `histogram_quantile(0.5, sum by (method, le) (rate(sshpool_operation_duration_seconds_bucket{${FILTER}}[$__rate_interval])))`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "p99 Latency by Method",
+    `histogram_quantile(0.99, sum by (method, le) (rate(sshpool_operation_duration_seconds_bucket{${FILTER}}[$__rate_interval])))`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "p99.9 Latency by Method",
+    `histogram_quantile(0.999, sum by (method, le) (rate(sshpool_operation_duration_seconds_bucket{${FILTER}}[$__rate_interval])))`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{method}}"),
+    }
+  );
+
+  // Row: Cache
+  dash.withRow(new RowBuilder("Cache"));
+
+  addTimeseriesChart(
+    "Cache Hit/Miss Rate",
+    `sum by (result) (rate(sshpool_cache_total{${FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{result}}"),
+    }
+  );
+
+  // Cache miss ratio — connection churn signal from exports.go
+  addTimeseriesChart(
+    "Cache Miss Ratio",
+    `sum(rate(sshpool_cache_total{${FILTER},result="miss"}[$__rate_interval])) / sum(rate(sshpool_cache_total{${FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.unit("percentunit").min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -6410,6 +6544,7 @@ async function main() {
   await createDashboard(makeProxyRequestsDashboard());
   await createDashboard(makeExeproxDashboard());
   await createDashboard(makeRummydDashboard());
+  await createDashboard(makeSshpoolDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
