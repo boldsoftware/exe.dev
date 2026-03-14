@@ -1,0 +1,102 @@
+.swim-container {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.swimmer {
+  position: absolute;
+  height: 100px;
+  width: auto;
+  animation-duration: 1.8s;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation-fill-mode: forwards;
+}
+
+.swimmer.github-mark {
+  left: 0;
+  animation-name: swim-from-left;
+  /* gentle bobbing after arrival */
+  height: 80px;
+}
+
+.swimmer.exy {
+  right: 0;
+  animation-name: swim-from-right;
+  height: 100px;
+}
+
+@keyframes swim-from-left {
+  0% {
+    transform: translateX(-120vw) translateY(0px);
+  }
+  20% {
+    transform: translateX(-80vw) translateY(-6px);
+  }
+  40% {
+    transform: translateX(-40vw) translateY(4px);
+  }
+  60% {
+    transform: translateX(-10vw) translateY(-4px);
+  }
+  80% {
+    transform: translateX(10px) translateY(3px);
+  }
+  100% {
+    transform: translateX(30px) translateY(0px);
+  }
+}
+
+@keyframes swim-from-right {
+  0% {
+    transform: translateX(120vw) translateY(0px);
+  }
+  20% {
+    transform: translateX(80vw) translateY(5px);
+  }
+  40% {
+    transform: translateX(40vw) translateY(-5px);
+  }
+  60% {
+    transform: translateX(10vw) translateY(4px);
+  }
+  80% {
+    transform: translateX(-10px) translateY(-3px);
+  }
+  100% {
+    transform: translateX(-30px) translateY(0px);
+  }
+}
+
+/* Gentle bobbing after they meet */
+.swimmer.github-mark {
+  animation: swim-from-left 1.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+             bob-left 3s ease-in-out 1.8s infinite;
+}
+
+.swimmer.exy {
+  animation: swim-from-right 1.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+             bob-right 3s ease-in-out 1.8s infinite;
+}
+
+@keyframes bob-left {
+  0%, 100% {
+    transform: translateX(30px) translateY(0px);
+  }
+  50% {
+    transform: translateX(30px) translateY(-6px);
+  }
+}
+
+@keyframes bob-right {
+  0%, 100% {
+    transform: translateX(-30px) translateY(0px);
+  }
+  50% {
+    transform: translateX(-30px) translateY(-6px);
+  }
+}

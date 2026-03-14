@@ -2,7 +2,6 @@ package execore
 
 import (
 	"fmt"
-	"html"
 	"net/http"
 	"strconv"
 	"time"
@@ -86,11 +85,9 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html><head><title>GitHub Connected</title></head>
-<body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 80px auto; text-align: center;">
-<h1>GitHub Connected</h1>
-<p>Connected as <strong>%s</strong>. You can close this tab and return to your terminal.</p>
-</body></html>`, html.EscapeString(login))
+	s.renderTemplate(r.Context(), w, "github-connected.html", struct {
+		GitHubLogin string
+	}{
+		GitHubLogin: login,
+	})
 }
