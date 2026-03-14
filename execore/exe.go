@@ -1716,6 +1716,7 @@ type sendEmailParams struct {
 	subject   string
 	body      string
 	fromName  string
+	replyTo   string
 	// attrs are forwarded to the email provider's "email sent" log line.
 	attrs []slog.Attr
 }
@@ -1736,13 +1737,19 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 		return nil
 	}
 
+	// For VM emails, set Reply-To so recipients can reply to the VM's address.
+	replyTo := p.replyTo
+	if replyTo == "" && p.emailType == email.TypeSendFromInsideVM && p.fromName != "" {
+		replyTo = "yes-reply@" + p.fromName
+	}
+
 	if s.fakeHTTPEmail != "" {
 		displayName := s.env.WebHost
 		if p.fromName != "" {
 			displayName = p.fromName
 		}
 		from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-		err := s.sendFakeEmail(ctx, from, p.to, p.subject, p.body)
+		err := s.sendFakeEmail(ctx, from, p.to, p.subject, p.body, replyTo)
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to send fake email", "to", p.to, "subject", p.subject, "error", err)
 		}
@@ -1766,7 +1773,7 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 		displayName = p.fromName
 	}
 	from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-	err := sender.Send(ctx, p.emailType, from, p.to, p.subject, p.body, p.attrs...)
+	err := sender.Send(ctx, p.emailType, from, p.to, p.subject, p.body, replyTo, p.attrs...)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", p.to, "subject", p.subject, "type", p.emailType, "error", err)
 		// Record bounce/inactive recipient errors
@@ -1788,12 +1795,13 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 }
 
 // sendFakeEmail sends an email to the fake HTTP email server
-func (s *Server) sendFakeEmail(ctx context.Context, from, to, subject, body string) error {
+func (s *Server) sendFakeEmail(ctx context.Context, from, to, subject, body, replyTo string) error {
 	emailData := map[string]string{
-		"from":    from,
-		"to":      to,
-		"subject": subject,
-		"body":    body,
+		"from":     from,
+		"to":       to,
+		"subject":  subject,
+		"body":     body,
+		"reply_to": replyTo,
 	}
 
 	jsonData, err := json.Marshal(emailData)

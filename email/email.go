@@ -77,8 +77,9 @@ type Sender interface {
 	// Send sends an email with the given parameters.
 	// emailType identifies the type of email being sent.
 	// from should be in the format "Name <email@example.com>"
+	// replyTo, when non-empty, sets the Reply-To header.
 	// Extra slog attributes are included in the "email sent" log line.
-	Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error
+	Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error
 }
 
 // Senders holds multiple email provider implementations.
@@ -143,12 +144,13 @@ func NewPostmarkSender(apiKey string) *PostmarkSender {
 }
 
 // Send sends an email via Postmark.
-func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error {
+func (s *PostmarkSender) Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error {
 	email := postmark.Email{
 		From:          from,
 		To:            to,
 		Subject:       subject,
 		TextBody:      body,
+		ReplyTo:       replyTo,
 		MessageStream: postmarkMessageStreams[emailType],
 	}
 	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
@@ -178,8 +180,11 @@ func NewMailgunSender(domain, apiKey string) *MailgunSender {
 }
 
 // Send sends an email via Mailgun.
-func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body string, attrs ...slog.Attr) error {
+func (s *MailgunSender) Send(ctx context.Context, emailType Type, from, to, subject, body, replyTo string, attrs ...slog.Attr) error {
 	msg := s.mg.NewMessage(from, subject, body, to)
+	if replyTo != "" {
+		msg.SetReplyTo(replyTo)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

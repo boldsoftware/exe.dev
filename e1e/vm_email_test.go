@@ -64,6 +64,12 @@ func TestVMEmail(t *testing.T) {
 		if email.From != wantFrom {
 			t.Errorf("expected from %q, got %q", wantFrom, email.From)
 		}
+
+		// Reply-To should be set to the VM's yes-reply address.
+		wantReplyTo := fmt.Sprintf("yes-reply@%s.%s", box, stage.Test().BoxHost)
+		if email.ReplyTo != wantReplyTo {
+			t.Errorf("expected reply-to %q, got %q", wantReplyTo, email.ReplyTo)
+		}
 	})
 
 	t.Run("reject_non_owner_recipient", func(t *testing.T) {

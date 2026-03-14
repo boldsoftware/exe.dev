@@ -33,6 +33,7 @@ type EmailMessage struct {
 	To      string `json:"to"`
 	Subject string `json:"subject"`
 	Body    string `json:"body"`
+	ReplyTo string `json:"reply_to"`
 }
 
 // inboxMap is the type of the mapping from an email address

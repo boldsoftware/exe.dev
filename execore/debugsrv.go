@@ -3143,7 +3143,7 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
-	err := sender.Send(ctx, email.TypeDebugTest, from, to, subject, body)
+	err := sender.Send(ctx, email.TypeDebugTest, from, to, subject, body, "")
 	if err != nil {
 		s.slog().ErrorContext(ctx, "debug email send failed", "provider", provider, "to", to, "error", err)
 		http.Redirect(w, r, fmt.Sprintf("/debug/email?result=%s&error=1", html.EscapeString(err.Error())), http.StatusSeeOther)

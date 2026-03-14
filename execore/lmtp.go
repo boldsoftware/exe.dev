@@ -391,7 +391,7 @@ Regards,
 %s
 `, boxName, env.BoxHost, count, env.MaxMaildirEmails, env.ReplHost, boxName, env.WebHost)
 
-	if err := sender.Send(ctx, email.TypeEmailLimitExceeded, from, boxInfo.OwnerEmail, subject, body, slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
+	if err := sender.Send(ctx, email.TypeEmailLimitExceeded, from, boxInfo.OwnerEmail, subject, body, "", slog.String("user_id", boxInfo.CreatedByUserID)); err != nil {
 		srv.slog().ErrorContext(ctx, "failed to send email limit notification", "box", boxName, "to", boxInfo.OwnerEmail, "error", err)
 	} else {
 		srv.slog().InfoContext(ctx, "sent email limit notification", "box", boxName, "to", boxInfo.OwnerEmail)
