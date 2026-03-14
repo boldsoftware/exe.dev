@@ -15,7 +15,7 @@ cleanup_notify() {
 }
 trap cleanup_notify EXIT
 
-INSTANCE_NAME="${INSTANCE_NAME:-exed-01}"
+INSTANCE_NAME="${INSTANCE_NAME:-exed-02}"
 REMOTE_USER="${REMOTE_USER:-ubuntu}"
 TAILSCALE_HOST="${REMOTE_USER}@${INSTANCE_NAME}"
 REMOTE_DIR="${REMOTE_DIR:-/home/${REMOTE_USER}/ghuser}"
