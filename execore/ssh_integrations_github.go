@@ -156,9 +156,18 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		if err != nil {
 			return cc.Errorf("failed to save GitHub connection: %v", err)
 		}
+		existingIDs[inst.ID] = true
 		targets = append(targets, inst.Account.Login)
 	}
 	cc.Writeln("Connected: %s", strings.Join(targets, ", "))
+	cc.Writeln("Install on another account? Follow the browser prompt, or Ctrl+C to finish.")
+
+	// Chain to install flow so the user can install on additional accounts.
+	// The browser is redirected from the authorize callback to the install page.
+	err = ss.setupGitHubInstallChained(ctx, cc, existingIDs, authSetup)
+	if err != nil {
+		return err
+	}
 	ss.printGitHubAppSettingsHint(cc)
 	return nil
 }
