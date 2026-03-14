@@ -45,13 +45,9 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
 	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
 
-	// Check if new name already exists (globally)
-	exists, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithNameExists, newName)
-	if err != nil {
-		return cc.Errorf("failed to check name availability: %v", err)
-	}
-	if exists != 0 {
-		return cc.Errorf("name %q already exists", newName)
+	// Check if new name is available for this user (respects name stickiness)
+	if !ss.server.isBoxNameAvailableForUser(ctx, newName, box.CreatedByUserID) {
+		return cc.Errorf("name %q is not available", newName)
 	}
 
 	if box.ContainerID == nil {
@@ -72,15 +68,30 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("vm rename not supported when vm is not running!")
 	}
 
-	// Update the box name in the database
+	// Update the box name in the database, reserve old name, and release new name reservation
 	slog.InfoContext(ctx, "rename: starting DB update",
 		"box_id", box.ID,
 		"old_name", oldName,
 		"new_name", newName,
 		"user_id", cc.User.ID)
-	err = withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxNameByID, exedb.UpdateBoxNameByIDParams{
-		Name: newName,
-		ID:   box.ID,
+	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.UpdateBoxNameByID(ctx, exedb.UpdateBoxNameByIDParams{
+			Name: newName,
+			ID:   box.ID,
+		}); err != nil {
+			return err
+		}
+		// Reserve the old name for the owner (24h stickiness)
+		if err := queries.InsertReleasedBoxName(ctx, exedb.InsertReleasedBoxNameParams{
+			Name:   oldName,
+			BoxID:  int64(box.ID),
+			UserID: box.CreatedByUserID,
+		}); err != nil {
+			slog.ErrorContext(ctx, "rename: failed to reserve old name",
+				"old_name", oldName, "error", err)
+		}
+		// Clear any sticky reservation on the new name (it's now in use)
+		return queries.DeleteReleasedBoxName(ctx, newName)
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "rename: DB update failed",

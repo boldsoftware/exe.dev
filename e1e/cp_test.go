@@ -84,7 +84,7 @@ func TestCp(t *testing.T) {
 		// Try to copy to a name that already exists (the source box itself)
 		repl := sshToExeDev(t, keyFile)
 		repl.SendLine("cp " + sourceBox + " " + sourceBox)
-		repl.Want("already exists")
+		repl.Want("not available")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})

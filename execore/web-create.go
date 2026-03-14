@@ -203,8 +203,8 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, 
 	// Create the stream first so errors can be written to it
 	cs := s.getOrCreateCreationStream(userID, hostname)
 
-	// Check if hostname is available
-	if !s.isBoxNameAvailable(ctx, hostname) {
+	// Check if hostname is available for this user
+	if !s.isBoxNameAvailableForUser(ctx, hostname, userID) {
 		s.slog().ErrorContext(ctx, "Box name not available", "hostname", hostname)
 		cs.MarkDone(fmt.Errorf("VM name %q is not available", hostname))
 		return
@@ -355,7 +355,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		// (limit attempts to avoid infinite loop in pathological cases)
 		for range 10 {
 			hostnameSuggestion = boxname.Random()
-			if s.isBoxNameAvailable(r.Context(), hostnameSuggestion) {
+			if s.isBoxNameAvailableForUser(r.Context(), hostnameSuggestion, userID) {
 				break
 			}
 		}
@@ -421,7 +421,8 @@ func (s *Server) handleHostnameCheck(w http.ResponseWriter, r *http.Request) {
 	isAvailable := true
 
 	if validErr == nil {
-		isAvailable = s.isBoxNameAvailable(r.Context(), name)
+		userID, _ := s.validateAuthCookie(r)
+		isAvailable = s.isBoxNameAvailableForUser(r.Context(), name, userID)
 	}
 
 	response := struct {

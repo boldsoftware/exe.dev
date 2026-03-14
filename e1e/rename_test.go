@@ -69,7 +69,7 @@ func TestRename(t *testing.T) {
 		// Try to rename box1 to box2's name
 		repl := sshToExeDev(t, keyFile)
 		repl.SendLine("rename " + box1 + " " + box2)
-		repl.Want("already exists")
+		repl.Want("not available")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})

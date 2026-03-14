@@ -114,7 +114,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	if newName == "" {
 		for range 10 {
 			randBoxName := boxname.Random()
-			if ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			if ss.server.isBoxNameAvailableForUser(ctx, randBoxName, user.ID) {
 				newName = randBoxName
 				break
 			}
@@ -129,9 +129,9 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 		return cc.Errorf("invalid name: %v", err)
 	}
 
-	// Check if clone name already exists (globally)
-	if !ss.server.isBoxNameAvailable(ctx, newName) {
-		return cc.Errorf("name %q already exists", newName)
+	// Check if clone name is available for this user
+	if !ss.server.isBoxNameAvailableForUser(ctx, newName, user.ID) {
+		return cc.Errorf("name %q is not available", newName)
 	}
 
 	// Get exelet client for the source box (clone must happen on same exelet)

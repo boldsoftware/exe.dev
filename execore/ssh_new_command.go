@@ -169,7 +169,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	if boxName == "" {
 		for range 10 {
 			randBoxName := boxname.Random()
-			if ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			if ss.server.isBoxNameAvailableForUser(ctx, randBoxName, user.ID) {
 				boxName = randBoxName
 				break
 			}
@@ -181,7 +181,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("%s", err)
 	}
 
-	if !ss.server.isBoxNameAvailable(ctx, boxName) {
+	if !ss.server.isBoxNameAvailableForUser(ctx, boxName, user.ID) {
 		return cc.Errorf("VM name %q is not available", boxName)
 	}
 

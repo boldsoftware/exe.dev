@@ -2260,6 +2260,11 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 		}
 		boxID = int(id)
 
+		// Clear any sticky name reservation (the name is now in use)
+		if err := queries.DeleteReleasedBoxName(ctx, opts.name); err != nil {
+			s.slog().WarnContext(ctx, "failed to clear released box name", "name", opts.name, "error", err)
+		}
+
 		if opts.noShard {
 			return nil
 		}
@@ -2428,6 +2433,17 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		if err != nil {
 			return fmt.Errorf("tracking deletion: %w", err)
 		}
+
+		// Reserve the name for the owner for 24 hours (name stickiness)
+		if err := queries.InsertReleasedBoxName(ctx, exedb.InsertReleasedBoxNameParams{
+			Name:   box.Name,
+			BoxID:  int64(box.ID),
+			UserID: userID,
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "failed to reserve released box name",
+				"box_id", box.ID, "box_name", box.Name, "error", err)
+		}
+
 		return queries.DeleteBox(ctx, box.ID)
 	})
 
@@ -2452,9 +2468,19 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 	})
 }
 
-// isBoxNameAvailable checks if a box name is available for use.
+// isBoxNameAvailable checks if a box name is available for use by anyone.
+// A name is unavailable if it currently exists as a box OR if it was recently
+// released by another user (sticky name, 24h cooldown).
 // Errors are translated into false (unavailability).
 func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
+	return s.isBoxNameAvailableForUser(ctx, name, "")
+}
+
+// isBoxNameAvailableForUser checks if a box name is available for a specific user.
+// A name is unavailable if it currently exists as a box, or if it was recently
+// released by a different user (24h cooldown). The original owner can always
+// reclaim their released name within the cooldown period.
+func (s *Server) isBoxNameAvailableForUser(ctx context.Context, name, userID string) bool {
 	if !boxname.IsValid(name) {
 		return false
 	}
@@ -2464,7 +2490,18 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 		s.slog().WarnContext(ctx, "failed to check box name availability", "error", err, "box_name", name)
 		return false
 	}
-	return box == 0
+	if box != 0 {
+		return false
+	}
+
+	// Check if the name is in the 24h sticky period
+	released, err := withRxRes1(s, ctx, (*exedb.Queries).GetReleasedBoxName, name)
+	if err != nil {
+		// sql.ErrNoRows means no sticky reservation — name is available
+		return true
+	}
+	// The original owner can always reclaim their name
+	return userID != "" && released.UserID == userID
 }
 
 func (s *Server) boxByNameExists(ctx context.Context, name string) bool {

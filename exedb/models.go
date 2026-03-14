@@ -356,6 +356,13 @@ type Redirect struct {
 	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
 }
 
+type ReleasedBoxName struct {
+	Name       string    `db:"name" json:"name"`
+	BoxID      int64     `db:"box_id" json:"box_id"`
+	UserID     string    `db:"user_id" json:"user_id"`
+	ReleasedAt time.Time `db:"released_at" json:"released_at"`
+}
+
 type SSHKey struct {
 	ID          int64      `db:"id" json:"id"`
 	UserID      string     `db:"user_id" json:"user_id"`

@@ -9,6 +9,6 @@ cp BOX_NAME BOX_NAME
 - help to see a list of commands
 
 PROMPT ▶ cp BOX_NAME BOX_NAME
-name "BOX_NAME" already exists
+name "BOX_NAME" is not available
 PROMPT ▶ exit
 Goodbye!
