@@ -777,7 +777,6 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 //     prevent DNS-rebinding TOCTOU attacks
 //  3. Post-connect: verify the TCP connection's actual remote IP
 //     in case of any routing/NAT surprises
-//
 func (s *Service) integrationTransport() *http.Transport {
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
