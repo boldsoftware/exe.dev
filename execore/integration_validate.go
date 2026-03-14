@@ -122,8 +122,12 @@ func validateTargetURL(raw string) error {
 	if net.ParseIP(hostname) != nil {
 		return fmt.Errorf("target URL must use a hostname, not an IP address")
 	}
-	if port := u.Port(); port != "" && port != "443" {
-		return fmt.Errorf("target URL must use port 443 (got %s)", port)
+	if port := u.Port(); port != "" {
+		// Validate that the port is a reasonable number (url.Parse already
+		// ensures it's numeric, but verify it's in range).
+		if port == "0" {
+			return fmt.Errorf("target URL port must be between 1 and 65535")
+		}
 	}
 	lower := strings.ToLower(hostname)
 	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {

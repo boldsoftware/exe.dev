@@ -180,9 +180,12 @@ func TestIntegrationsProxy(t *testing.T) {
 		pty.WantPrompt()
 	})
 
-	t.Run("reject_non443_port", func(t *testing.T) {
-		pty.SendLine("integrations add http-proxy --name=badport --target=https://example.com:8080 --header=X-Auth:secret")
-		pty.Want("port 443")
+	t.Run("accept_non_standard_port", func(t *testing.T) {
+		pty.SendLine("integrations add http-proxy --name=customport --target=https://example.com:8080 --header=X-Auth:secret")
+		pty.Want("Added integration customport")
+		pty.WantPrompt()
+		pty.SendLine("integrations remove customport")
+		pty.Want("Removed")
 		pty.WantPrompt()
 	})
 

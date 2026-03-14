@@ -82,8 +82,16 @@ PROMPT ▶ integrations add http-proxy --name=bad --target=example.com --header=
 target URL scheme must be https, got ""
 PROMPT ▶ integrations add http-proxy --name=bad --target=http://example.com --header=X-Foo:bar
 target URL scheme must be https, got "http"
-PROMPT ▶ integrations add http-proxy --name=bad --target=https://example.com:8080 --header=X-Foo:bar
-target URL must use port 443 (got 8080)
+PROMPT ▶ integrations add http-proxy --name=customport --target=https://example.com:8080 --header=X-Foo:bar
+Added integration customport
+
+To use this integration, attach it to a VM first:
+  integrations attach customport vm:<vm-name>
+
+Usage from a VM:
+  ssh <vm> curl http://customport.int.exe.cloud/
+PROMPT ▶ integrations remove customport
+Removed integration customport
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=novalue
 invalid header: header must be in Key:Value format
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=X-Exedev-Box:evil

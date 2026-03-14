@@ -104,9 +104,12 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.Want("scheme must be https")
 	pty.WantPrompt()
 
-	// Test validation: non-443 port.
-	pty.SendLine("integrations add http-proxy --name=bad --target=https://example.com:8080 --header=X-Foo:bar")
-	pty.Want("port 443")
+	// Non-standard HTTPS port is allowed.
+	pty.SendLine("integrations add http-proxy --name=customport --target=https://example.com:8080 --header=X-Foo:bar")
+	pty.Want("Added integration customport")
+	pty.WantPrompt()
+	pty.SendLine("integrations remove customport")
+	pty.Want("Removed")
 	pty.WantPrompt()
 
 	// Test validation: invalid header (no colon).

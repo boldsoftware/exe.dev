@@ -69,7 +69,10 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://example.com",
 		"https://api.example.com/",
 		"https://httpbin.org",
-		"https://user:pass@example.com", // credentials are allowed
+		"https://user:pass@example.com",     // credentials are allowed
+		"https://example.com:8080",          // non-standard port
+		"https://example.com:443",           // explicit standard port
+		"https://registry.example.com:5000", // registry-style port
 	}
 	for _, u := range good {
 		if err := validateTargetURL(u); err != nil {
@@ -84,7 +87,7 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://",                       // no host
 		"https://192.168.1.1/api",        // bare IP
 		"https://10.0.0.1:8080/api",      // bare IP with port
-		"https://example.com:8080/api",   // non-443 port
+		"https://example.com:8080/api",   // path not allowed (port is fine)
 		"https://localhost/api",          // localhost
 		"https://foo.localhost/api",      // subdomain of localhost
 		"https://printer.local",          // mDNS .local
