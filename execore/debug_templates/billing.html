@@ -30,9 +30,10 @@ table.info th { width: 200px; }
 {{if .HasShelleyFreeCreditPct}}
 <table class="info">
 <tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
-<tr><th>Monthly</th><td>{{printf "%.0f" .ShelleyCreditsAvailable}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+{{if gt .BonusRemainingUSD 0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
 <tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>
-<tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}}</td></tr>
+<tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} monthly</td></tr>
 {{if .Purchases}}
 <tr><th>Purchases (Last 30D)</th><td>
     <table>
@@ -61,6 +62,7 @@ table.info th { width: 200px; }
 <tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
 <tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
 <tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
+{{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
 <tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
 <tr><th>Total Used</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>

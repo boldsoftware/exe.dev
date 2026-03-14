@@ -914,8 +914,14 @@
                 <div class="credit-details">
                     <div class="credit-detail-row">
                         <div class="credit-detail-label">Monthly</div>
-                        <div class="credit-detail-value">{{printf "%.0f" .ShelleyCreditsAvailable}} remaining · resets {{.MonthlyCreditsResetAt}}</div>
+                        <div class="credit-detail-value">{{printf "%.0f" .MonthlyAvailableUSD}} remaining · resets {{.MonthlyCreditsResetAt}}</div>
                     </div>
+                    {{if gt .BonusRemainingUSD 0.0}}
+                    <div class="credit-detail-row">
+                        <div class="credit-detail-label">Bonus</div>
+                        <div class="credit-detail-value">{{printf "%.0f" .BonusRemainingUSD}} remaining</div>
+                    </div>
+                    {{end}}
                     <div class="credit-detail-row">
                         <div class="credit-detail-label">Extra</div>
                         <div class="credit-detail-value">{{printf "%.0f" .ExtraCreditsUSD}} remaining</div>

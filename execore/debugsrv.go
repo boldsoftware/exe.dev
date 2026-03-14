@@ -4008,6 +4008,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CreditEffectiveUSD         float64
 		CreditMaxUSD               float64
 		CreditMaxUSDOverride       *float64
+		CreditBonusRemainingUSD    float64
 		CreditRefreshPerHrUSD      float64
 		CreditRefreshPerHrOverride *float64
 		CreditTotalUsedUSD         float64
@@ -4075,6 +4076,9 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditEffectiveUSD = creditEffective
 		data.CreditMaxUSD = plan.MaxCredit
 		data.CreditMaxUSDOverride = credit.MaxCredit
+		if credit.BillingUpgradeBonusGranted == 1 && credit.AvailableCredit > plan.MaxCredit {
+			data.CreditBonusRemainingUSD = credit.AvailableCredit - plan.MaxCredit
+		}
 		data.CreditRefreshPerHrUSD = plan.RefreshPerHour
 		data.CreditRefreshPerHrOverride = credit.RefreshPerHour
 		data.CreditTotalUsedUSD = credit.TotalUsed
@@ -4267,9 +4271,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				shelleyCreditsAvailable = 0
 			}
 			shelleyCreditsMax = plan.MaxCredit
-			if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && effectiveAvailable > plan.MaxCredit {
-				shelleyCreditsMax = plan.MaxCredit + llmgateway.UpgradeBonusCreditUSD
-			}
 			hasShelleyFreeCreditPct = true
 		}
 	}
@@ -4286,9 +4287,14 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// Compute stacked bar percentages (same as profile page).
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
+	var bonusRemaining float64
+	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && shelleyCreditsAvailable > shelleyCreditsMax {
+		bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+	}
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
-		shelleyCreditsMax:       shelleyCreditsMax,
+		planMaxCredit:           shelleyCreditsMax,
+		bonusRemaining:          bonusRemaining,
 		extraCreditsUSD:         extraCreditsUSD,
 	})
 	monthlyBarPct := bar.monthlyBarPct
@@ -4323,6 +4329,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt         string
 		TotalRemainingPct             float64
 		MonthlyBarPct                 float64
+		BonusBarPct                   float64
+		BonusRemainingUSD             float64
+		MonthlyAvailableUSD           float64
 		ExtraBarPct                   float64
 		UsedCreditsUSD                float64
 		TotalCapacityUSD              float64
@@ -4352,6 +4361,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
 		TotalRemainingPct:             totalRemainingPct,
 		MonthlyBarPct:                 monthlyBarPct,
+		BonusBarPct:                   bar.bonusBarPct,
+		BonusRemainingUSD:             bar.bonusRemaining,
+		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		ExtraBarPct:                   extraBarPct,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,

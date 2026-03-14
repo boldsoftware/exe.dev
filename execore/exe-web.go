@@ -1625,20 +1625,23 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 				shelleyCreditsAvailable = 0
 			}
 			shelleyCreditsMax = plan.MaxCredit
-			if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && effectiveAvailable > plan.MaxCredit {
-				shelleyCreditsMax = plan.MaxCredit + llmgateway.UpgradeBonusCreditUSD
-			}
 			hasShelleyFreeCreditPct = true
 		}
 	}
 
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
+	var bonusRemaining float64
+	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && shelleyCreditsAvailable > shelleyCreditsMax {
+		bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+	}
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
-		shelleyCreditsMax:       shelleyCreditsMax,
+		planMaxCredit:           shelleyCreditsMax,
+		bonusRemaining:          bonusRemaining,
 		extraCreditsUSD:         extraCreditsUSD,
 	})
 	monthlyBarPct := bar.monthlyBarPct
+	bonusBarPct := bar.bonusBarPct
 	extraBarPct := bar.extraBarPct
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
@@ -1695,6 +1698,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
 		TotalRemainingPct:             totalRemainingPct,
 		MonthlyBarPct:                 monthlyBarPct,
+		BonusBarPct:                   bonusBarPct,
+		BonusRemainingUSD:             bar.bonusRemaining,
+		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		ExtraBarPct:                   extraBarPct,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,
