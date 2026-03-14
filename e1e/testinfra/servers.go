@@ -22,6 +22,7 @@ type ServerEnv struct {
 	Exed                 *ExedInstance
 	Exelets              []*ExeletInstance
 	Exeprox              *ExeproxInstance
+	Exepipe              *ExepipeInstance
 	SSHProxy             *TCPProxy
 	ExedHTTPProxy        *TCPProxy
 	ExedPiperPluginProxy *TCPProxy
@@ -47,9 +48,10 @@ type ServerEnv struct {
 // verboseEmailServer is whether email server should be verbose.
 //
 // metricsd, if not nil, is a metricsd instance to include in the environment.
-func StartServers(ctx context.Context, exelets []*ExeletInstance, tcpProxies []*TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
+func StartServers(ctx context.Context, exelets []*ExeletInstance, exepipe *ExepipeInstance, tcpProxies []*TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
 	env := &ServerEnv{
 		Exelets:    exelets,
+		Exepipe:    exepipe,
 		TCPProxies: tcpProxies,
 		Metricsd:   metricsd,
 	}
@@ -218,6 +220,10 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 
 	if env.Exeprox != nil {
 		env.Exeprox.Stop(ctx)
+	}
+
+	if env.Exepipe != nil {
+		env.Exepipe.Stop(ctx)
 	}
 
 	if env.SSHPiperd != nil {

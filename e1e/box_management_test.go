@@ -1537,6 +1537,8 @@ func TestRestart(t *testing.T) {
 	// This specifically tests the scenario where SSH pool connections become stale
 	// when the VM is stopped from inside (not via restart command) and then restarted.
 	t.Run("stopped_vm", func(t *testing.T) {
+		noGolden(t)
+
 		if err := boxSSHCommand(t, boxName, keyFile, "echo stopped-restart-test > /home/exedev/stopped-marker.txt && sync").Run(); err != nil {
 			t.Fatalf("failed to write marker file: %v", err)
 		}

@@ -215,7 +215,7 @@ func StartExeprox(ctx context.Context, exedHTTPPort, exedGRPCPort int, extraProx
 			}
 		}
 		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
-			slog.ErrorContext(ctx, "error scanning exed output", "error", err)
+			slog.ErrorContext(ctx, "error scanning exeprox output", "error", err)
 		}
 	}()
 

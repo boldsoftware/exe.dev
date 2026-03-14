@@ -15,6 +15,7 @@ import (
 
 // ExepipeInstance describes a single running exepipe.
 type ExepipeInstance struct {
+	BinPath  string          // exepipe binary
 	Exited   <-chan struct{} // closed when exepipe exits
 	Cause    func() error    // why context was canceled
 	Cmd      *exec.Cmd       // exepipe command
@@ -62,7 +63,7 @@ func StartExepipe(ctx context.Context, logFile io.Writer) (*ExepipeInstance, err
 
 	unixAddr := fmt.Sprintf("@exepipe%08x", rand.Uint32())
 	exepipeCmd := exec.Command(binPath,
-		"-state=test",
+		"-stage=test",
 		"-addr="+unixAddr,
 		"-http-port=", // no metrics server
 	)
@@ -91,6 +92,7 @@ func StartExepipe(ctx context.Context, logFile io.Writer) (*ExepipeInstance, err
 	})
 
 	instance := &ExepipeInstance{
+		BinPath:  binPath,
 		Exited:   cmdCtx.Done(),
 		Cause:    cause,
 		Cmd:      exepipeCmd,

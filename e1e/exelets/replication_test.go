@@ -29,7 +29,7 @@ func TestReplication(t *testing.T) {
 	}
 
 	// Setup log file if requested
-	var replExeletLogFile *os.File
+	var replExeletLogFile, replExepipeLogFile *os.File
 	logDir := os.Getenv("E1E_LOG_DIR")
 	if logDir != "" {
 		logDir = filepath.Join(logDir, "replication")
@@ -37,6 +37,10 @@ func TestReplication(t *testing.T) {
 			t.Logf("failed to create log dir: %v", err)
 		} else {
 			replExeletLogFile, err = os.OpenFile(filepath.Join(logDir, "exelet"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+			if err != nil {
+				t.Logf("failed to open log file: %v", err)
+			}
+			replExepipeLogFile, err = os.OpenFile(filepath.Join(logDir, "exepipe"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {
 				t.Logf("failed to open log file: %v", err)
 			}
@@ -53,8 +57,8 @@ func TestReplication(t *testing.T) {
 	}
 
 	exelet, err := testinfra.StartExelet(t.Context(), exeletBinary, exeletHost,
-		serverEnv.ExedHTTPProxy.Port(), serverEnv.Exeprox.HTTPPort,
-		testRunID, replExeletLogFile, false, replConfig, nil)
+		serverEnv.ExedHTTPProxy.Port(), serverEnv.Exeprox.HTTPPort, nil,
+		testRunID, replExeletLogFile, replExepipeLogFile, false, replConfig, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

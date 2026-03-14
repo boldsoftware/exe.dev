@@ -33,6 +33,9 @@ var exeproxHTTPProxy *testinfra.TCPProxy
 // exeletLogFile is the file for exelet logs.
 var exeletLogFile *os.File
 
+// exepipeLogFile is the file for exepipe logs.
+var exepipeLogFile *os.File
+
 var (
 	// exeletsMu proects exeletHosts and exelets.
 	exeletsMu sync.Mutex
@@ -93,6 +96,10 @@ func TestMain(m *testing.M) {
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
+			exepipeLogFile, err = os.OpenFile(filepath.Join(logDir, "exepipe"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
 			sshPiperLogFile, err = os.OpenFile(filepath.Join(logDir, "sshpiper"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -139,7 +146,7 @@ func TestMain(m *testing.M) {
 		os.Remove(exeletBinary)
 	})
 
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, exeletHost, exedHTTPProxy.Port(), exeproxHTTPProxy.Port(), testRunID, exeletLogFile, false, nil, nil)
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, exeletHost, exedHTTPProxy.Port(), exeproxHTTPProxy.Port(), nil, testRunID, exeletLogFile, exepipeLogFile, false, nil, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "starting exelet failed: %v\n", err)
 		exit(1)
@@ -148,6 +155,7 @@ func TestMain(m *testing.M) {
 
 	serverEnv, err = testinfra.StartServers(context.Background(),
 		[]*testinfra.ExeletInstance{exelet},
+		nil,
 		[]*testinfra.TCPProxy{exedHTTPProxy, exeproxHTTPProxy},
 		exedLogFile,
 		exeproxLogFile,
@@ -187,7 +195,7 @@ func ensureExeletCount(ctx context.Context, count int) error {
 	}
 
 	for len(exelets) < count {
-		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.ExedHTTPProxy.Port(), exeproxHTTPProxy.Port(), exeletTestRunIDs[len(exelets)], exeletLogFile, false, nil, nil)
+		exelet, err := testinfra.StartExelet(ctx, exeletBinary, exeletHosts[len(exelets)], serverEnv.ExedHTTPProxy.Port(), exeproxHTTPProxy.Port(), nil, exeletTestRunIDs[len(exelets)], exeletLogFile, exepipeLogFile, false, nil, nil)
 		if err != nil {
 			return fmt.Errorf("error starting exelet %d: %v", len(exelets), err)
 		}

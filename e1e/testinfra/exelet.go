@@ -59,9 +59,12 @@ type ExeletInstance struct {
 	CoverDir      string                // remote directory for Go coverage artifacts (GOCOVERDIR)
 	Errors        chan string           // exelet errors are sent on this channel
 	Client        func() *client.Client // function returns exelet control client
+	ExepipeErrors chan string           // error from remote exepipe
 
-	testRunID        string    // argument to StartExelet
-	exeletLoggerDone chan bool // closed when logging goroutine done
+	exepipeCmd        *exec.Cmd // remote exepipe process if there is one
+	testRunID         string    // argument to StartExelet
+	exeletLoggerDone  chan bool // closed when logging goroutine done
+	exepipeLoggerDone chan bool // closed when exepipe logging done
 }
 
 // exeletLogWatcher watches exelet output and extracts addresses and errors.
@@ -213,16 +216,19 @@ func parseAndCreateClient(ctx context.Context, grpcAddr, httpAddr, host string) 
 // HTTP server is listening on. metadataPort is the same,
 // but can be either exed or exeprox.
 //
+// exepipeInstance describes an exepipe process.
+//
 // testRunID is a unique string for this invocation.
 //
 // logFile, if not nil, is a file to write logs to.
+// exepipeLogFile, if not nil, is for remote exepipe logs.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
 //
 // replication, if not nil, configures storage replication.
 //
 // metrics, if not nil, configures metrics collection.
-func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, metadataPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig) (ei *ExeletInstance, err error) {
+func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, metadataPort int, exepipe *ExepipeInstance, testRunID string, logFile, exepipeLogFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig) (ei *ExeletInstance, err error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exelet", "ID", testRunID)
 
@@ -237,7 +243,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 
 	// For localhost, run exelet directly without SSH
 	if host == "localhost" {
-		return startExeletLocal(ctx, exeletBinary, exedPort, metadataPort, testRunID, logFile, logPorts, replication, metrics, start)
+		return startExeletLocal(ctx, exeletBinary, exedPort, metadataPort, exepipe, testRunID, logFile, logPorts, replication, metrics, start)
 	}
 
 	// Get the gateway address of the VM.
@@ -283,29 +289,60 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 	}
 
 	// Use test-run-specific binary name to avoid conflicts with
-	// parallel test runs. This is the name of the exelet binary
+	// parallel test runs. This is the name of the binary
 	// on the VM, not on the host running the test.
 
-	remoteBinaryPath := "/tmp/exelet-test-" + testRunID
+	remoteExeletPath := "/tmp/exelet-test-" + testRunID
+
+	type remoteBin struct {
+		local, remote string
+	}
+	bins := []remoteBin{
+		{
+			local:  exeletBinary,
+			remote: remoteExeletPath,
+		},
+	}
+
+	remoteExepipePath := ""
+	if exepipe != nil {
+		remoteExepipePath = "/tmp/exepipe-onvm-" + testRunID
+		bins = append(bins,
+			remoteBin{
+				local:  exepipe.BinPath,
+				remote: remoteExepipePath,
+			},
+		)
+	}
 
 	// Ensure no existing binaries exist for this test run
 	// (e.g. on failed re-run).
-	if out, err := sshExec(ctx, host, fmt.Sprintf("rm -rf %s", remoteBinaryPath)); err != nil {
-		return nil, fmt.Errorf("failed to remove existing exelet: %w\n%s", err, out)
+	for _, bin := range bins {
+		if out, err := sshExec(ctx, host, fmt.Sprintf("rm -rf %s", bin.remote)); err != nil {
+			return nil, fmt.Errorf("failed to remove existing binary %s: %w\n%s", bin.remote, err, out)
+		}
+
+		// Ensure no existing processes exist for this test run only.
+		sshExec(ctx, host, fmt.Sprintf("pkill -f %s", bin.remote))
+
+		// Upload binary to remote host with unique name.
+		slog.InfoContext(ctx, "uploading binary to remote host", "host", host, "binary", bin.local, "path", bin.remote)
+		if out, err := scpUpload(ctx, bin.local, host, bin.remote); err != nil {
+			return nil, fmt.Errorf("failed to upload exelet: %w\n%s", err, out)
+		}
+
+		// Make binary executable
+		if out, err := sshExec(ctx, host, fmt.Sprintf("chmod +x %s", bin.remote)); err != nil {
+			return nil, fmt.Errorf("failed to chmod exelet: %w\n%s", err, out)
+		}
 	}
 
-	// Ensure no existing processes exist for this test run only.
-	sshExec(ctx, host, fmt.Sprintf("pkill -f %s", remoteBinaryPath))
-
-	// Upload binary to remote host with unique name.
-	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remoteBinaryPath)
-	if out, err := scpUpload(ctx, exeletBinary, host, remoteBinaryPath); err != nil {
-		return nil, fmt.Errorf("failed to upload exelet: %w\n%s", err, out)
-	}
-
-	// Make binary executable
-	if out, err := sshExec(ctx, host, fmt.Sprintf("chmod +x %s", remoteBinaryPath)); err != nil {
-		return nil, fmt.Errorf("failed to chmod exelet: %w\n%s", err, out)
+	var exepipeWaiter *exepipeVMWaiter
+	if exepipe != nil {
+		exepipeWaiter, err = startExepipeOnVM(ctx, host, remoteExepipePath, exepipeLogFile)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Compute unique resource names for this test run
@@ -327,7 +364,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		"sudo",
 		"GOCOVERDIR=" + res.coverDir,
 		"LOG_FORMAT=json",
-		remoteBinaryPath,
+		remoteExeletPath,
 		"--debug",
 		"--stage", "test",
 		"--name", host,
@@ -351,6 +388,10 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		"--pktflow-mapping-refresh", "500ms",
 	}
 
+	if exepipe != nil {
+		args = append(args, "--exepipe-address=@exepipe")
+	}
+
 	// Add replication flags if configured
 	if replication != nil && replication.Enabled {
 		args = append(args,
@@ -371,6 +412,12 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 			"--metrics-daemon-url", daemonURL,
 			"--metrics-daemon-interval", metrics.Interval.String(),
 		)
+	}
+
+	if exepipeWaiter != nil {
+		if err := exepipeWaiter.wait(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	slog.DebugContext(ctx, "starting exelet", "cmd", args)
@@ -446,6 +493,10 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		testRunID:        testRunID,
 		exeletLoggerDone: watcher.done,
 	}
+	if exepipeWaiter != nil {
+		instance.ExepipeErrors = exepipeWaiter.errors
+		instance.exepipeLoggerDone = exepipeWaiter.done
+	}
 
 	AddCanonicalization(instance.Address, "EXELET_ADDRESS")
 	AddCanonicalization(instance.HTTPAddress, "EXELET_HTTP_ADDRESS")
@@ -454,8 +505,114 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 	return instance, nil
 }
 
+// exepipeVMWaiter waits for exepipe to start on the VM.
+type exepipeVMWaiter struct {
+	ch     chan bool
+	errors chan string
+	done   chan bool
+	teeMu  sync.Mutex
+	tee    strings.Builder
+}
+
+// wait waits for exepipe to start.
+func (ew *exepipeVMWaiter) wait(ctx context.Context) error {
+	select {
+	case <-ew.ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Minute):
+		ew.teeMu.Lock()
+		output := ew.tee.String()
+		ew.teeMu.Unlock()
+		return fmt.Errorf("timeout waiting for exepipe; output:\n%s", output)
+	}
+}
+
+// startExepipeOnVM starts an exepipe process on the VM.
+func startExepipeOnVM(ctx context.Context, host, remoteExepipePath string, logFile io.Writer) (*exepipeVMWaiter, error) {
+	waiter := &exepipeVMWaiter{
+		ch:     make(chan bool),
+		done:   make(chan bool),
+		errors: make(chan string, 16),
+	}
+
+	args := []string{
+		"sudo",
+		"LOG_FORMAT=json",
+		"LOG_LEVEL=debug",
+		remoteExepipePath,
+		"--stage", "test",
+		"--addr", "@exepipe",
+		"--http-port=", // no metrics
+	}
+
+	exepipeCmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		host, strings.Join(args, " "),
+	)
+
+	exepipeOut, err := exepipeCmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get exepipe stdout pipe: %w", err)
+	}
+	exepipeCmd.Stderr = exepipeCmd.Stdout
+
+	if err := exepipeCmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start remote exepipe: %w", err)
+	}
+
+	go func() {
+		defer close(waiter.done)
+
+		scan := bufio.NewScanner(exepipeOut)
+		for scan.Scan() {
+			line := scan.Bytes()
+
+			waiter.teeMu.Lock()
+			waiter.tee.Write(line)
+			waiter.tee.WriteString("\n")
+			waiter.teeMu.Unlock()
+
+			if logFile != nil {
+				fmt.Fprintf(logFile, "%s\n", line)
+			}
+
+			if !json.Valid(line) {
+				continue
+			}
+
+			var entry map[string]any
+			if err := json.Unmarshal(line, &entry); err != nil {
+				continue
+			}
+
+			if level, ok := entry["level"].(string); ok && level == "ERROR" {
+				select {
+				case waiter.errors <- string(line):
+				default:
+				}
+			}
+
+			if entry["msg"] == "server started" {
+				close(waiter.ch)
+			}
+		}
+		if err := scan.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			waiter.teeMu.Lock()
+			output := waiter.tee.String()
+			waiter.teeMu.Unlock()
+			slog.WarnContext(ctx, "scanning exepipe output failed", "error", err, "output", output)
+		}
+	}()
+
+	return waiter, nil
+}
+
 // startExeletLocal starts exelet locally (for CTR_HOST=localhost).
-func startExeletLocal(ctx context.Context, exeletBinary string, exedPort, metadataPort int, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig, start time.Time) (*ExeletInstance, error) {
+func startExeletLocal(ctx context.Context, exeletBinary string, exedPort, metadataPort int, exepipe *ExepipeInstance, testRunID string, logFile io.Writer, logPorts bool, replication *ReplicationConfig, metrics *MetricsConfig, start time.Time) (*ExeletInstance, error) {
 	// For localhost, exelet can directly reach exed via localhost
 	exedProxyURL := fmt.Sprintf("http://localhost:%d", exedPort)
 	metadataProxyURL := fmt.Sprintf("http://localhost:%d", metadataPort)
@@ -491,6 +648,11 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort, metada
 	if metrics != nil && metrics.DaemonURL != "" {
 		localCmd += fmt.Sprintf(` --metrics-daemon-url %s --metrics-daemon-interval %s`,
 			metrics.DaemonURL, metrics.Interval.String())
+	}
+
+	// Add exepipe flag if using.
+	if exepipe != nil {
+		localCmd += " --exepipe-address" + exepipe.UnixAddr
 	}
 
 	// Start exelet directly
@@ -655,14 +817,14 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	// Let it write out coverage data.
 	exeletCtx, exeletCancel := context.WithTimeout(ctx, 10*time.Second)
 	slog.InfoContext(ctx, "sending SIGTERM to exelet", "ID", ei.testRunID)
-	remoteBinaryPath := "/tmp/exelet-test-" + ei.testRunID
-	pkillCmd := "sudo pkill -TERM -f " + remoteBinaryPath
+	remoteExeletPath := "/tmp/exelet-test-" + ei.testRunID
+	pkillCmd := "sudo pkill -TERM -f " + remoteExeletPath
 	if out, err := sshExec(exeletCtx, ei.RemoteHost, pkillCmd); err != nil {
 		slog.WarnContext(exeletCtx, "ssh command to kill exelet failed", "error", err, "output", out)
 	}
 
 	// Poll for process exit.
-	pgrepCmd := "pgrep -f " + remoteBinaryPath
+	pgrepCmd := "pgrep -f " + remoteExeletPath
 	for range 50 {
 		// pgrep returns exit code 1 if no process matched.
 		if out, err := sshExec(exeletCtx, ei.RemoteHost, pgrepCmd); err != nil {
@@ -674,8 +836,14 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	}
 
 	// Force kill the exelet process in case it is still running.
-	pkillCmd = "sudo pkill -KILL -f " + remoteBinaryPath
+	pkillCmd = "sudo pkill -KILL -f " + remoteExeletPath
 	sshExec(exeletCtx, ei.RemoteHost, pkillCmd)
+
+	// Stop the exepipe process if there is one.
+	if ei.exepipeCmd != nil {
+		remoteExepipePath := "/tmp/exepipe-test-" + ei.testRunID
+		sshExec(exeletCtx, ei.RemoteHost, "sudo pkill -KILL -f "+remoteExepipePath)
+	}
 
 	exeletCancel()
 
@@ -684,12 +852,25 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	ei.Cmd.Process.Kill()
 	ei.Cmd.Wait()
 
+	if ei.exepipeCmd != nil {
+		ei.exepipeCmd.Process.Kill()
+		ei.exepipeCmd.Wait()
+	}
+
 	// Close the Errors channel the caller may be using.
 	select {
 	case <-ei.exeletLoggerDone:
 	case <-time.After(10 * time.Second):
 	}
 	close(ei.Errors)
+
+	if ei.ExepipeErrors != nil {
+		select {
+		case <-ei.exepipeLoggerDone:
+		case <-time.After(10 * time.Second):
+		}
+		close(ei.ExepipeErrors)
+	}
 
 	// Stop the ssh tunnels if there are any..
 	if ei.TunnelCancel1 != nil {
@@ -760,7 +941,7 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	}
 
 	// Remove remote binary.
-	if out, err := sshExec(cleanupCtx, ei.RemoteHost, "rm -f "+remoteBinaryPath); err != nil {
+	if out, err := sshExec(cleanupCtx, ei.RemoteHost, "rm -f "+remoteExeletPath); err != nil {
 		slog.ErrorContext(cleanupCtx, "failed to cleanup remote exelet binary", "error", err, "output", out)
 	}
 

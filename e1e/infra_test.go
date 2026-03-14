@@ -32,6 +32,7 @@ var (
 	flagVerboseExed     = flag.Bool("vexed", false, "enable verbose logging from exed")
 	flagVerboseExelet   = flag.Bool("vexelet", false, "enable verbose logging from exelet")
 	flagVerboseExeprox  = flag.Bool("vexeprox", false, "enable verbose logging from exeprox")
+	flagVerboseExepipe  = flag.Bool("vexepipe", false, "enable verbose logging from exepipe")
 	flagVerbosePorts    = flag.Bool("vports", false, "enable verbose logging about ports")
 	flagVerboseEmail    = flag.Bool("vemail", false, "enable verbose logging from email server")
 	flagVerbosePty      = flag.Bool("vpty", false, "enable verbose logging from pty connections")
@@ -42,6 +43,7 @@ var (
 	flagCoverProfile    = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 	flagPlaywright      = flag.Bool("playwright", true, "enable Playwright browser tests (requires installed browsers)")
 	flagDefaultExeprox  = flag.Bool("default-exeprox", true, "default to connecting to exeprox rather than exed")
+	flagUseExepipe      = flag.Bool("use-exepipe", false, "start exepipe processes")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
@@ -63,6 +65,7 @@ func TestMain(m *testing.M) {
 		*flagVerboseExed = true
 		*flagVerboseExelet = true
 		*flagVerboseExeprox = true
+		*flagVerboseExepipe = true
 		*flagVerbosePorts = true
 		*flagVerboseEmail = true
 		*flagVerbosePty = true
@@ -117,7 +120,7 @@ func TestMain(m *testing.M) {
 		runFilter = f.Value.String()
 	}
 	hasSpecificRun := runFilter != "" && runFilter != "." && runFilter != ".*"
-	if testing.Verbose() && !hasSpecificRun && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerboseExeprox && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
+	if testing.Verbose() && !hasSpecificRun && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerboseExeprox && !*flagVerboseExepipe && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
@@ -129,6 +132,8 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 -vpiperd  print sshpiperd logs
 -vexed    print exed logs
 -vexelet  print exelet logs
+-vexeprox print exeprox logs
+-vexepipe print exepipe logs
 -vports   print port mappings
 -vemail   print email server logs
 -vpty     print pty (ssh) logs
@@ -199,6 +204,15 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	})
 
 	testinfra.AddCleanup(func() {
+		if env.servers.Exelets[0].ExepipeErrors != nil {
+			for line := range env.servers.Exelets[0].ExepipeErrors {
+				exitCode = 1
+				fmt.Fprintf(os.Stderr, "\n\nremote exepipe emitted ERROR log during e1e run\n%s\n\n", line)
+			}
+		}
+	})
+
+	testinfra.AddCleanup(func() {
 		for line := range env.servers.Exed.Errors {
 			// TODO(philip): TestNewWithPrompt triggers this, because Shelley talks
 			// to the gateway and even though it's supposed to use "predictable" model, we get an error.
@@ -264,6 +278,7 @@ var logFiles = map[string]*os.File{
 	"exed":      nil,
 	"exeprox":   nil,
 	"exelet":    nil,
+	"exepipe":   nil,
 	"e1e":       nil,
 }
 
@@ -310,6 +325,7 @@ func initLogging() error {
 	*flagVerboseExed = true
 	*flagVerboseExelet = true
 	*flagVerboseExeprox = true
+	*flagVerboseExepipe = true
 	*flagVerbosePorts = true
 	*flagVerboseEmail = true
 	return nil
@@ -418,6 +434,18 @@ func setup(ctrHost string) (*testEnv, error) {
 		return env, fmt.Errorf("failed to start metricsd: %w", err)
 	}
 
+	var exepipe *testinfra.ExepipeInstance
+	if *flagUseExepipe {
+		var exepipeLog io.Writer
+		if *flagVerboseExepipe {
+			exepipeLog = logFileFor("exepipe")
+		}
+		exepipe, err = testinfra.StartExepipe(context.Background(), exepipeLog)
+		if err != nil {
+			return env, fmt.Errorf("failed to start exepipe: %w", err)
+		}
+	}
+
 	exeletBinary, err := testinfra.BuildExeletBinary(testRunID)
 	if err != nil {
 		return env, err
@@ -431,6 +459,11 @@ func setup(ctrHost string) (*testEnv, error) {
 		exeletLog = logFileFor("exelet")
 	}
 
+	var exepipeVMLog io.Writer
+	if *flagVerboseExepipe {
+		exepipeVMLog = logFileFor("exepipe")
+	}
+
 	// Configure metrics collection for exelet
 	metricsConfig := &testinfra.MetricsConfig{
 		DaemonURL: metricsdInstance.Address,
@@ -439,7 +472,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	// Both exedPort and metadataPort use the exed proxy because infra tests
 	// don't run exeprox; exed handles metadata requests directly.
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), exedHTTPProxy.Port(), testRunID, exeletLog, *flagVerbosePorts, nil, metricsConfig)
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, ctrHost, exedHTTPProxy.Port(), exedHTTPProxy.Port(), exepipe, testRunID, exeletLog, exepipeVMLog, *flagVerbosePorts, nil, metricsConfig)
 	if err != nil {
 		return env, err
 	}
@@ -461,6 +494,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	serverEnv, err := testinfra.StartServers(context.Background(),
 		[]*testinfra.ExeletInstance{exelet},
+		exepipe,
 		[]*testinfra.TCPProxy{exedHTTPProxy},
 		exedLog,
 		exeproxLog,
