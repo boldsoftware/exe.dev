@@ -160,14 +160,11 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		targets = append(targets, inst.Account.Login)
 	}
 	cc.Writeln("Connected: %s", strings.Join(targets, ", "))
-	cc.Writeln("Install on another account? Follow the browser prompt, or Ctrl+C to finish.")
 
-	// Chain to install flow so the user can install on additional accounts.
-	// The browser is redirected from the authorize callback to the install page.
-	err = ss.setupGitHubInstallChained(ctx, cc, existingIDs, authSetup)
-	if err != nil {
-		return err
-	}
+	// Redirect the browser to the app's install page so the user can
+	// install on additional accounts, then run setup again to sync.
+	authSetup.respond(fmt.Sprintf("https://github.com/apps/%s/installations/new", ss.server.githubApp.AppSlug))
+	cc.Writeln("To install on another account, choose one in your browser and then run \"integrations setup github\" again.")
 	ss.printGitHubAppSettingsHint(cc)
 	return nil
 }

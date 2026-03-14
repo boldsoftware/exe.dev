@@ -51,22 +51,8 @@ func simulateGitHubCallback(t *testing.T, state string, installationID int) stri
 	}
 }
 
-// extractInstallState extracts the state parameter from a GitHub install URL redirect.
-func extractInstallState(t *testing.T, loc string) string {
-	t.Helper()
-	u, err := url.Parse(loc)
-	if err != nil {
-		t.Fatalf("could not parse redirect URL %q: %v", loc, err)
-	}
-	state := u.Query().Get("state")
-	if state == "" {
-		t.Fatalf("no state parameter in redirect URL: %s", loc)
-	}
-	return state
-}
-
 // TestIntegrationsSetupGitHub tests the GitHub App setup flow:
-// authorize → discover installations → connect → chain to install for more accounts.
+// authorize → discover installations → connect → browser redirected to install page.
 // Then: delete → verify delete-again error → re-setup → delete.
 func TestIntegrationsSetupGitHub(t *testing.T) {
 	t.Parallel()
@@ -83,22 +69,16 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	state := extractRedirectKey(t, out)
 
 	// Simulate OAuth callback (no installation_id — authorize flow).
-	// After discovering installations, SSH chains to install flow, so the
-	// authorize callback gets a redirect to the install URL.
+	// After syncing installations, the authorize callback's browser is
+	// redirected to the install page for additional accounts.
 	loc := simulateGitHubCallback(t, state, 0)
+	if loc == "" {
+		t.Fatal("expected redirect to install page after connecting existing installations")
+	}
 
 	// Server discovers installation 12345 via API and connects it.
 	pty.Want("Connected: testghuser")
-	pty.Want("Install on another account")
-
-	// The authorize callback was redirected to the install page.
-	// Simulate the user installing on an already-connected account.
-	if loc == "" {
-		t.Fatal("expected redirect to install URL after connecting existing installations")
-	}
-	installState := extractInstallState(t, loc)
-	simulateGitHubCallback(t, installState, 12345)
-	pty.Want("Already connected")
+	pty.Want("integrations setup github")
 	pty.WantPrompt()
 
 	// List shows the connection.
@@ -107,23 +87,17 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.Want("testghuser")
 	pty.WantPrompt()
 
-	// Setup again: authorize discovers same installation, chains to install.
+	// Setup again: authorize discovers same installation, upserts idempotently.
 	pty.SendLine("integrations setup github")
 	out = pty.WantREMatch(`Authorize your GitHub account`)
 	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
 	state = extractRedirectKey(t, out)
 
 	loc = simulateGitHubCallback(t, state, 0)
-	pty.Want("Connected: testghuser")
-	pty.Want("Install on another account")
-
-	// Follow install redirect, same account again.
 	if loc == "" {
-		t.Fatal("expected redirect to install URL")
+		t.Fatal("expected redirect to install page")
 	}
-	installState = extractInstallState(t, loc)
-	simulateGitHubCallback(t, installState, 12345)
-	pty.Want("Already connected")
+	pty.Want("Connected: testghuser")
 	pty.WantPrompt()
 
 	// Delete all connections.
@@ -136,21 +110,13 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Re-setup: authorize discovers installation, chains to install.
+	// Re-setup: authorize discovers installation again.
 	pty.SendLine("integrations setup github")
 	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
 	state = extractRedirectKey(t, out)
 
-	loc = simulateGitHubCallback(t, state, 0)
+	simulateGitHubCallback(t, state, 0)
 	pty.Want("Connected: testghuser")
-
-	// Follow the install redirect.
-	if loc == "" {
-		t.Fatal("expected redirect to install URL")
-	}
-	installState = extractInstallState(t, loc)
-	simulateGitHubCallback(t, installState, 12345)
-	pty.Want("Already connected")
 	pty.WantPrompt()
 
 	// Delete.
@@ -182,16 +148,8 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 	pty.SendLine("integrations setup github")
 	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
 	state := extractRedirectKey(t, out)
-	loc := simulateGitHubCallback(t, state, 0)
+	simulateGitHubCallback(t, state, 0)
 	pty.Want("Connected: testghuser")
-	pty.Want("Install on another account")
-	// Follow the install redirect to complete the flow.
-	if loc == "" {
-		t.Fatal("expected redirect to install URL")
-	}
-	installState := extractInstallState(t, loc)
-	simulateGitHubCallback(t, installState, 12345)
-	pty.Want("Already connected")
 	pty.WantPrompt()
 
 	// Error: missing --repository.
