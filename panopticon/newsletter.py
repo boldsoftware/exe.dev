@@ -217,7 +217,7 @@ def generate(args) -> str:
     with MuxServer(registry) as mux:
         log.info("MuxServer on %s", mux.socket_path)
 
-        lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=8192)
+        lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=16384)
         dspy.configure(lm=lm)
 
         now = datetime.now(timezone.utc)
@@ -252,7 +252,7 @@ def generate(args) -> str:
         rlm = RLM(
             newsletter_sig,
             max_iterations=20,
-            max_llm_calls=10,
+            max_llm_calls=50,
             uds_path=mux.socket_path,
             verbose=args.verbose,
             tools=tools,

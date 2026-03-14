@@ -267,14 +267,14 @@ def main():
         log.info(f"MuxServer listening on {mux.socket_path}")
 
         # Configure dspy with Claude
-        lm = dspy.LM("anthropic/claude-sonnet-4-20250514", max_tokens=4096)
+        lm = dspy.LM("anthropic/claude-sonnet-4-20250514", max_tokens=16384)
         dspy.configure(lm=lm)
 
         # Create the RLM module (vendored version with proxy support)
         rlm = RLM(
             "company -> report",
             max_iterations=15,
-            max_llm_calls=5,
+            max_llm_calls=50,
             uds_path=mux.socket_path,
             verbose=True,
         )

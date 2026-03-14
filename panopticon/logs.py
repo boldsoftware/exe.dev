@@ -125,7 +125,7 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
         if mux:
             log.info("MuxServer on %s", mux.socket_path)
 
-        lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=8192)
+        lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=16384)
         dspy.configure(lm=lm)
 
         now = datetime.now(timezone.utc)
@@ -144,7 +144,7 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
 
         rlm_kwargs = dict(
             max_iterations=20,
-            max_llm_calls=10,
+            max_llm_calls=50,
             verbose=verbose,
         )
         if mux:

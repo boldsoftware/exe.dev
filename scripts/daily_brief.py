@@ -205,13 +205,13 @@ def generate_brief(date, commits, history, verbose=False):
     # node_modules resolution, which breaks pyodide loading in the sandbox.
     os.environ["DENO_NO_PACKAGE_JSON"] = "1"
 
-    lm = dspy.LM("anthropic/claude-opus-4-6")
+    lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=16384)
     dspy.configure(lm=lm)
 
     rlm = dspy.RLM(
         DailyBrief,
         max_iterations=15,
-        max_llm_calls=30,
+        max_llm_calls=50,
     )
 
     result = rlm(

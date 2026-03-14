@@ -141,13 +141,13 @@ def main():
     source = load_source(repo_root)
     log(f"loaded {len(source)} source files ({sum(len(v) for v in source.values()) // 1024}KB)")
 
-    lm = dspy.LM("anthropic/claude-opus-4-6")
+    lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=16384)
     dspy.configure(lm=lm)
 
     rlm = dspy.RLM(
         DocReview,
         max_iterations=15,
-        max_llm_calls=30,
+        max_llm_calls=50,
         verbose=args.verbose,
     )
 

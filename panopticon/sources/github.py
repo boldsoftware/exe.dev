@@ -47,6 +47,14 @@ class GitHubClient:
             raise ValueError("EXE_GITHUB_TOKEN must be set")
         self._token = token
 
+    def repo_exists(self, owner: str, repo: str) -> bool:
+        """Return True if the repo is accessible with the current token."""
+        try:
+            self._request(f"/repos/{owner}/{repo}")
+            return True
+        except urllib.error.HTTPError:
+            return False
+
     def _request(self, path: str, params: dict | None = None) -> tuple[dict | list, dict]:
         """Make an authenticated GET request. Returns (parsed_json, response_headers)."""
         url = f"{_API_BASE}{path}"
