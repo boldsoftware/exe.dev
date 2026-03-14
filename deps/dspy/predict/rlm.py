@@ -80,9 +80,9 @@ PROXY OBJECTS: Some inputs are proxy objects representing external data sources.
 """
 
 # Pattern to match markdown code fences: ```python\n...\n```
-# Uses a non-greedy match so it stops at the FIRST closing fence,
-# discarding any trailing text the LLM may have appended (e.g. predicted output).
-_CODE_FENCE_PATTERN = re.compile(r"^```(?:python|py)?\s*\n(.*?)\n```", re.DOTALL)
+# Uses a greedy match so it captures up to the LAST closing fence,
+# correctly handling code that contains nested triple backticks.
+_CODE_FENCE_PATTERN = re.compile(r"^```(?:python|py)?\s*\n(.*)\n```", re.DOTALL)
 
 
 def _strip_code_fences(code: str) -> str:
