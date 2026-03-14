@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -196,7 +197,6 @@ func TestToPromptXML(t *testing.T) {
 
 	xml := ToPromptXML(skills)
 
-	// Check that it contains expected elements
 	expected := []string{
 		"<available_skills>",
 		"</available_skills>",
@@ -204,7 +204,8 @@ func TestToPromptXML(t *testing.T) {
 		"</skill>",
 		"<name>pdf-processing</name>",
 		"<description>Extract text &amp; tables from PDF files.</description>",
-		"<location>/home/user/.shelley/skills/pdf-processing/SKILL.md</location>",
+		"<activate>shelley skill cat pdf-processing</activate>",
+		"<activate>shelley skill cat data-analysis</activate>",
 		"<name>data-analysis</name>",
 	}
 
@@ -212,6 +213,11 @@ func TestToPromptXML(t *testing.T) {
 		if !contains(xml, s) {
 			t.Errorf("expected XML to contain %q", s)
 		}
+	}
+
+	// Should not contain filesystem paths
+	if contains(xml, "/home/user") {
+		t.Error("XML should use uniform 'shelley skill cat' commands, not file paths")
 	}
 }
 
@@ -559,6 +565,218 @@ func TestSkillsFoundRegardlessOfWorkingDir(t *testing.T) {
 	}
 
 	_ = projectDir // used above
+}
+
+func TestBuiltinSkills(t *testing.T) {
+	builtins := BuiltinSkills()
+	if len(builtins) != 1 {
+		t.Fatalf("expected exactly 1 built-in skill, got %d: %v", len(builtins), skillNames(builtins))
+	}
+
+	// Find the schedule skill
+	var schedule *Skill
+	for i := range builtins {
+		if builtins[i].Name == "schedule" {
+			schedule = &builtins[i]
+			break
+		}
+	}
+	if schedule == nil {
+		t.Fatal("expected built-in 'schedule' skill")
+	}
+
+	if schedule.Description == "" {
+		t.Error("schedule skill has empty description")
+	}
+	if schedule.Body == "" {
+		t.Error("schedule skill has empty body")
+	}
+	if schedule.Path != "" {
+		t.Errorf("built-in skill should have empty Path, got %q", schedule.Path)
+	}
+}
+
+func TestToPromptXMLBuiltinSkill(t *testing.T) {
+	skills := []Skill{
+		{
+			Name:        "schedule",
+			Description: "Create recurring tasks",
+			Body:        "# Schedule\n\nInstructions here.",
+		},
+	}
+
+	xml := ToPromptXML(skills)
+
+	// Built-in skills use the same uniform location as filesystem skills
+	if !contains(xml, "<activate>shelley skill cat schedule</activate>") {
+		t.Error("built-in skill should use 'shelley skill cat' location")
+	}
+	// Content should NOT be inlined
+	if contains(xml, "# Schedule") {
+		t.Error("skill content should not be inlined (progressive disclosure)")
+	}
+}
+
+func TestExtractBody(t *testing.T) {
+	content := "---\nname: test\n---\n\n# Body\n\nContent here."
+	body := extractBody(content)
+	if body != "# Body\n\nContent here." {
+		t.Errorf("extractBody = %q, want %q", body, "# Body\n\nContent here.")
+	}
+
+	// No frontmatter
+	body = extractBody("just content")
+	if body != "" {
+		t.Errorf("extractBody with no frontmatter = %q, want empty", body)
+	}
+}
+
+func TestFindByNameBuiltin(t *testing.T) {
+	content, err := FindByName("schedule", t.TempDir())
+	if err != nil {
+		t.Fatalf("FindByName(schedule): %v", err)
+	}
+	if !strings.Contains(content, "name: schedule") {
+		t.Error("expected content to contain frontmatter")
+	}
+	if !strings.Contains(content, "systemd") {
+		t.Error("expected content to contain skill body")
+	}
+}
+
+func TestFindByNameNotFound(t *testing.T) {
+	_, err := FindByName("nonexistent-skill", t.TempDir())
+	if err == nil {
+		t.Error("expected error for nonexistent skill")
+	}
+}
+
+func TestFindByNameFilesystem(t *testing.T) {
+	// Create a skill on the filesystem in a default dir location
+	tmpHome := t.TempDir()
+	skillDir := filepath.Join(tmpHome, ".config", "shelley", "my-fs-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillContent := "---\nname: my-fs-skill\ndescription: A filesystem skill.\n---\n\nFS instructions.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	content, err := FindByName("my-fs-skill", t.TempDir())
+	if err != nil {
+		t.Fatalf("FindByName(my-fs-skill): %v", err)
+	}
+	if !strings.Contains(content, "FS instructions") {
+		t.Error("expected filesystem skill content")
+	}
+}
+
+func TestEmptySkillMDSuppressesBuiltin(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	// Create an empty SKILL.md for "schedule" — should suppress the built-in.
+	skillDir := filepath.Join(tmpHome, ".config", "shelley", "schedule")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	// FindByName should report the skill as disabled.
+	_, err := FindByName("schedule", t.TempDir())
+	if err == nil {
+		t.Fatal("expected error for suppressed built-in skill")
+	}
+	if !strings.Contains(err.Error(), "disabled") {
+		t.Errorf("expected 'disabled' in error, got: %v", err)
+	}
+
+	// ListAll should not include the suppressed built-in.
+	for _, s := range ListAll(t.TempDir(), "") {
+		if s.Name == "schedule" {
+			t.Error("suppressed built-in 'schedule' should not appear in ListAll")
+		}
+	}
+}
+
+func TestMalformedSkillMDShowsParseError(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	// Create a non-empty but malformed SKILL.md for "schedule".
+	skillDir := filepath.Join(tmpHome, ".config", "shelley", "schedule")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("this is not valid frontmatter"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	// FindByName should return the parse error, not a generic "disabled" message.
+	_, err := FindByName("schedule", t.TempDir())
+	if err == nil {
+		t.Fatal("expected error for malformed SKILL.md")
+	}
+	if strings.Contains(err.Error(), "disabled") {
+		t.Errorf("expected parse error, not 'disabled': %v", err)
+	}
+	if !strings.Contains(err.Error(), "frontmatter") {
+		t.Errorf("expected error to mention frontmatter issue, got: %v", err)
+	}
+}
+
+func TestFilesystemSkillOverridesBuiltin(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	// Create a filesystem "schedule" skill that overrides the built-in.
+	skillDir := filepath.Join(tmpHome, ".config", "shelley", "schedule")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	customContent := "---\nname: schedule\ndescription: My custom schedule skill.\n---\n\nCustom instructions.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(customContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpHome)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
+	// FindByName should return the filesystem version, not the built-in.
+	content, err := FindByName("schedule", t.TempDir())
+	if err != nil {
+		t.Fatalf("FindByName(schedule): %v", err)
+	}
+	if !strings.Contains(content, "Custom instructions") {
+		t.Error("expected filesystem skill content, got built-in")
+	}
+
+	// ListAll should include the filesystem version.
+	found := false
+	for _, s := range ListAll(t.TempDir(), "") {
+		if s.Name == "schedule" {
+			found = true
+			if s.Description != "My custom schedule skill." {
+				t.Errorf("expected filesystem description, got %q", s.Description)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'schedule' in ListAll (filesystem override)")
+	}
 }
 
 func TestDiscoverFollowsSymlinks(t *testing.T) {

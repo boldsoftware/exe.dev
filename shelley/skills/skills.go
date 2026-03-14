@@ -4,6 +4,7 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"html"
 	"os"
 	"path/filepath"
@@ -26,7 +27,8 @@ type Skill struct {
 	Compatibility string            `json:"compatibility,omitempty"`
 	AllowedTools  string            `json:"allowed_tools,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
-	Path          string            `json:"path"` // Path to SKILL.md file
+	Path          string            `json:"path"`           // Path to SKILL.md file (empty for built-in skills)
+	Body          string            `json:"body,omitempty"` // Full markdown body (set for built-in skills)
 }
 
 // Discover finds all skills in the given directories.
@@ -80,6 +82,44 @@ func Discover(dirs []string) []Skill {
 	}
 
 	return skills
+}
+
+// CreateTemplate creates a new skill directory with a template SKILL.md
+// in ~/.config/shelley/<name>/SKILL.md. It returns the path to the created file.
+func CreateTemplate(name string) (string, error) {
+	if err := validateName(name); err != nil {
+		return "", err
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+
+	dir := filepath.Join(home, ".config", "shelley", name)
+	path := filepath.Join(dir, "SKILL.md")
+
+	if _, err := os.Stat(path); err == nil {
+		return "", fmt.Errorf("%s already exists", path)
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("creating directory: %w", err)
+	}
+
+	content := fmt.Sprintf(`---
+name: %s
+description: Use when %s.
+---
+
+When %s, act accordingly.
+`, name, name, name)
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return "", fmt.Errorf("writing SKILL.md: %w", err)
+	}
+
+	return path, nil
 }
 
 // findSkillMD looks for SKILL.md or skill.md in a directory.
@@ -296,9 +336,9 @@ func ToPromptXML(skills []Skill) string {
 		sb.WriteString("<description>")
 		sb.WriteString(html.EscapeString(skill.Description))
 		sb.WriteString("</description>\n")
-		sb.WriteString("<location>")
-		sb.WriteString(html.EscapeString(skill.Path))
-		sb.WriteString("</location>\n")
+		sb.WriteString("<activate>shelley skill cat ")
+		sb.WriteString(html.EscapeString(skill.Name))
+		sb.WriteString("</activate>\n")
 		sb.WriteString("</skill>\n")
 	}
 
@@ -447,4 +487,193 @@ func DiscoverInTree(workingDir, gitRoot string) []Skill {
 	})
 
 	return skills
+}
+
+// ListAll returns all available skills (built-in + filesystem), deduplicated by name.
+//
+// Filesystem skills take priority over built-in skills with the same name.
+// An empty SKILL.md on the filesystem suppresses the corresponding built-in
+// skill entirely — this is the mechanism for users to disable built-in skills.
+//
+// If gitRoot is empty, it is computed from workingDir.
+func ListAll(workingDir, gitRoot string) []Skill {
+	if gitRoot == "" {
+		gitRoot = findGitRoot(workingDir)
+	}
+
+	dirs := DefaultDirs()
+	dirs = append(dirs, ProjectSkillsDirs(workingDir, gitRoot)...)
+
+	all := Discover(dirs)
+
+	// Add tree-discovered skills, deduplicated by name (first-seen wins).
+	seen := make(map[string]bool)
+	for _, s := range all {
+		seen[s.Name] = true
+	}
+	for _, s := range DiscoverInTree(workingDir, gitRoot) {
+		if !seen[s.Name] {
+			all = append(all, s)
+			seen[s.Name] = true
+		}
+	}
+
+	// Collect all skill names claimed on the filesystem (including empty
+	// SKILL.md files that wouldn't survive Parse). A filesystem SKILL.md —
+	// even an empty one — takes precedence over a built-in skill of the
+	// same name. This lets users suppress a built-in skill by placing an
+	// empty SKILL.md in the matching directory.
+	fsNames := filesystemSkillNames(dirs, workingDir, gitRoot)
+	for _, s := range all {
+		fsNames[s.Name] = true
+	}
+
+	for _, s := range BuiltinSkills() {
+		if !fsNames[s.Name] {
+			all = append(all, s)
+		}
+	}
+
+	return all
+}
+
+// FindByName looks up a skill by name and returns its raw SKILL.md content.
+//
+// Filesystem skills take priority: if a SKILL.md exists on the filesystem
+// for the given name it is returned, even if a built-in skill with the
+// same name exists. An empty filesystem SKILL.md suppresses the built-in
+// skill — this lets users delete built-in skills they don't want.
+func FindByName(name string, workingDir string) (string, error) {
+	gitRoot := findGitRoot(workingDir)
+	dirs := DefaultDirs()
+	dirs = append(dirs, ProjectSkillsDirs(workingDir, gitRoot)...)
+
+	// Filesystem first: check directory-based discovery, then tree discovery.
+	for _, s := range Discover(dirs) {
+		if s.Name == name {
+			content, err := os.ReadFile(s.Path)
+			if err != nil {
+				return "", fmt.Errorf("reading skill %q: %w", name, err)
+			}
+			return string(content), nil
+		}
+	}
+	for _, s := range DiscoverInTree(workingDir, gitRoot) {
+		if s.Name == name {
+			content, err := os.ReadFile(s.Path)
+			if err != nil {
+				return "", fmt.Errorf("reading skill %q: %w", name, err)
+			}
+			return string(content), nil
+		}
+	}
+
+	// If a SKILL.md exists on the filesystem for this name but didn't
+	// parse (e.g. it's empty), the user is deliberately suppressing
+	// the built-in skill. Don't fall through.
+	fsNames := filesystemSkillNames(dirs, workingDir, gitRoot)
+	if fsNames[name] {
+		// Distinguish intentional suppression (empty file) from parse errors.
+		for _, dir := range dirs {
+			dir = expandPath(dir)
+			if path := findSkillMD(filepath.Join(dir, name)); path != "" {
+				if data, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(data))) > 0 {
+					if _, parseErr := Parse(path); parseErr != nil {
+						return "", fmt.Errorf("skill %q (%s): %w", name, path, parseErr)
+					}
+				}
+				break
+			}
+		}
+		return "", fmt.Errorf("skill %q is disabled", name)
+	}
+
+	// Fall back to built-in skills.
+	for _, s := range BuiltinSkills() {
+		if s.Name == name {
+			data, err := builtinFS.ReadFile("builtin/" + name + "/SKILL.md")
+			if err != nil {
+				return "", fmt.Errorf("reading built-in skill %q: %w", name, err)
+			}
+			return string(data), nil
+		}
+	}
+
+	return "", fmt.Errorf("skill %q not found", name)
+}
+
+// filesystemSkillNames returns the set of names that have a SKILL.md file on
+// the filesystem, regardless of whether the file is valid/non-empty. This is
+// used to determine which built-in skills are suppressed: an empty SKILL.md in
+// a directory like ~/.config/shelley/schedule/ prevents the built-in "schedule"
+// skill from appearing.
+func filesystemSkillNames(dirs []string, workingDir, gitRoot string) map[string]bool {
+	names := make(map[string]bool)
+
+	// Scan skill directories for subdirs containing any SKILL.md.
+	for _, dir := range dirs {
+		dir = expandPath(dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			skillDir := filepath.Join(dir, entry.Name())
+			if info, err := os.Stat(skillDir); err != nil || !info.IsDir() {
+				continue
+			}
+			if findSkillMD(skillDir) != "" {
+				names[entry.Name()] = true
+			}
+		}
+	}
+
+	// Also scan the project tree for any SKILL.md files.
+	searchRoot := gitRoot
+	if searchRoot == "" {
+		searchRoot = workingDir
+	}
+	if searchRoot != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+			if ctx.Err() != nil {
+				return filepath.SkipAll
+			}
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				n := info.Name()
+				if n != "." && (strings.HasPrefix(n, ".") || n == "node_modules" || n == "vendor") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.ToLower(info.Name()) == "skill.md" {
+				names[filepath.Base(filepath.Dir(path))] = true
+			}
+			return nil
+		})
+	}
+
+	return names
+}
+
+// findGitRoot returns the git root for the given directory, or "" if not in a repo.
+func findGitRoot(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	current := dir
+	for {
+		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return ""
+		}
+		current = parent
+	}
 }

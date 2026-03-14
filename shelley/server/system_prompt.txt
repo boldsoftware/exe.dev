@@ -48,8 +48,7 @@ AGENTS.md/CLAUDE.md contain project conventions. Root-level contents included be
 {{end}}
 {{if .SkillsXML}}
 <skills>
-Skills extend your capabilities. When a task matches a skill's description, activate it by reading its SKILL.md.
-
+Skills extend your capabilities. When a task matches a skill's description, activate it.
 {{.SkillsXML}}
 </skills>
 {{end}}

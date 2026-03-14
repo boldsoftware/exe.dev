@@ -370,34 +370,9 @@ func isExeDev() bool {
 }
 
 // collectSkills discovers skills from default directories, project .skills dirs,
-// and the project tree.
+// the project tree, and built-in skills. See skills.ListAll for precedence rules.
 func collectSkills(workingDir, gitRoot string) string {
-	// Start with default directories (user-level skills)
-	dirs := skills.DefaultDirs()
-
-	// Add .skills directories found in the project tree
-	dirs = append(dirs, skills.ProjectSkillsDirs(workingDir, gitRoot)...)
-
-	// Discover skills from all directories
-	foundSkills := skills.Discover(dirs)
-
-	// Also discover skills anywhere in the project tree
-	treeSkills := skills.DiscoverInTree(workingDir, gitRoot)
-
-	// Merge, avoiding duplicates by path
-	seen := make(map[string]bool)
-	for _, s := range foundSkills {
-		seen[s.Path] = true
-	}
-	for _, s := range treeSkills {
-		if !seen[s.Path] {
-			foundSkills = append(foundSkills, s)
-			seen[s.Path] = true
-		}
-	}
-
-	// Generate XML
-	return skills.ToPromptXML(foundSkills)
+	return skills.ToPromptXML(skills.ListAll(workingDir, gitRoot))
 }
 
 // resolveAndNormalize returns a canonical lowercase path for dedup.

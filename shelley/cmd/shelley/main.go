@@ -17,6 +17,7 @@ import (
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	_ "shelley.exe.dev/server/notifications/channels" // register channel types
+	"shelley.exe.dev/skills"
 	"shelley.exe.dev/templates"
 	"shelley.exe.dev/version"
 )
@@ -50,6 +51,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "\nCommands:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  client [flags] <subcommand>   CLI client (chat, read, list, archive) (experimental)\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  skill <cat|ls|new> [name]     Read, list, or create skills\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  unpack-template <name> <dir>  Unpack a project template to a directory\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  version                       Print version information as JSON\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
@@ -70,6 +72,8 @@ func main() {
 		runServe(global, args[1:])
 	case "client":
 		client.Run(args[1:])
+	case "skill":
+		runSkill(args[1:])
 	case "unpack-template":
 		runUnpackTemplate(args[1:])
 	case "version":
@@ -77,6 +81,55 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+func runSkill(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: shelley skill <cat|ls|new> [name]\n")
+		os.Exit(1)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "cat":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: shelley skill cat SKILL_NAME\n")
+			os.Exit(1)
+		}
+		content, err := skills.FindByName(args[1], wd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(content)
+
+	case "ls":
+		all := skills.ListAll(wd, "")
+		for _, s := range all {
+			fmt.Printf("%s\t%s\n", s.Name, s.Description)
+		}
+
+	case "new":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: shelley skill new SKILL_NAME\n")
+			os.Exit(1)
+		}
+		path, err := skills.CreateTemplate(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown skill subcommand: %s\nUsage: shelley skill <cat|ls|new> [name]\n", args[0])
 		os.Exit(1)
 	}
 }
