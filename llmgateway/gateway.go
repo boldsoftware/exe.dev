@@ -331,16 +331,6 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.ContentLength = int64(len(bodyBytes))
 	}
 
-	// Construct filtered header to send to origin server
-	hh := http.Header{}
-	for hk := range r.Header {
-		if hk == "X-Api-Key" || hk == "Authorization" { // filter out any auth tokens or API keys passed to us.
-			continue
-		}
-		if hv, ok := r.Header[hk]; ok {
-			hh[hk] = hv
-		}
-	}
 	r.URL.Path = remainder
 	var proxy *httputil.ReverseProxy
 	var transport *accountingTransport
