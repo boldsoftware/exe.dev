@@ -79,6 +79,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
+	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
@@ -5777,6 +5778,56 @@ func (s *Server) handleDebugDeleteUser(w http.ResponseWriter, r *http.Request) {
 		"deleted_by", deletedBy, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "deleted user %s (%s), %d VMs deleted", userID, user.Email, len(boxIDs))
+}
+
+// handleDebugRenameUserEmail changes a user's email address.
+// POST /debug/users/rename-email with user_id, new_email
+func (s *Server) handleDebugRenameUserEmail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	newEmail := strings.TrimSpace(r.FormValue("new_email"))
+	if userID == "" || newEmail == "" {
+		http.Error(w, "user_id and new_email are required", http.StatusBadRequest)
+		return
+	}
+
+	newCanonical, err := email.CanonicalizeEmail(newEmail)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid new email: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Verify the source user exists.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("user %q not found: %v", userID, err), http.StatusNotFound)
+		return
+	}
+	oldEmail := user.Email
+
+	// Check if another user already has this email.
+	conflictingUser, err := s.GetUserByEmail(ctx, newEmail)
+	if err == nil && conflictingUser.UserID != userID {
+		http.Error(w, fmt.Sprintf("another user %q already has email %q (canonical: %s) — delete that account first",
+			conflictingUser.UserID, conflictingUser.Email, newCanonical), http.StatusConflict)
+		return
+	}
+
+	// Update the user's email.
+	if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserEmail, exedb.UpdateUserEmailParams{
+		Email:          newEmail,
+		CanonicalEmail: &newCanonical,
+		UserID:         userID,
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to update email: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "renamed user email via debug",
+		"user_id", userID, "old_email", oldEmail, "new_email", newEmail)
+
+	http.Redirect(w, r, fmt.Sprintf("/debug/user?userId=%s", url.QueryEscape(userID)), http.StatusSeeOther)
 }
 
 // loadGLBRolloutPrefixes reads the GLB rollout prefixes from the database and

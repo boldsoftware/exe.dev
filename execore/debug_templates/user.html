@@ -32,6 +32,16 @@ table.info th { width: 200px; }
 </div>
 
 <div class="section">
+<h2>Rename Email</h2>
+<p style="font-size:13px;color:#666;">Changes the user's email and canonical_email. Will fail if another user already has the target email.</p>
+<form method="post" action="/debug/users/rename-email" style="display: flex; gap: 8px; align-items: center;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<input type="email" name="new_email" placeholder="new@example.com" required style="padding: 8px; font-family: inherit; width: 300px;">
+<button type="submit" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Rename</button>
+</form>
+</div>
+
+<div class="section">
 <h2>Migrate to Region</h2>
 <p style="font-size:13px;color:#666;">Sets user region and enables GLB default.</p>
 <form method="post" action="/debug/user/migrate-region" style="display: flex; gap: 8px; align-items: center;">

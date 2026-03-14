@@ -81,3 +81,6 @@ UPDATE users SET region = ? WHERE user_id = ?;
 
 -- name: GetUserByDiscordUsername :one
 SELECT * FROM users WHERE discord_username = ?;
+
+-- name: UpdateUserEmail :exec
+UPDATE users SET email = ?, canonical_email = ? WHERE user_id = ?;

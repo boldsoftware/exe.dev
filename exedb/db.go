@@ -1053,6 +1053,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateTemplateStatusStmt, err = db.PrepareContext(ctx, updateTemplateStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTemplateStatus: %w", err)
 	}
+	if q.updateUserEmailStmt, err = db.PrepareContext(ctx, updateUserEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateUserEmail: %w", err)
+	}
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
 	}
@@ -2818,6 +2821,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTemplateStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateUserEmailStmt != nil {
+		if cerr := q.updateUserEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateUserEmailStmt: %w", cerr)
+		}
+	}
 	if q.updateUserLLMAvailableCreditStmt != nil {
 		if cerr := q.updateUserLLMAvailableCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
@@ -3275,6 +3283,7 @@ type Queries struct {
 	updateTeamSSOProviderStmt                  *sql.Stmt
 	updateTemplateStmt                         *sql.Stmt
 	updateTemplateStatusStmt                   *sql.Stmt
+	updateUserEmailStmt                        *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
 	upsertGitHubAccountStmt                    *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
@@ -3639,6 +3648,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTeamSSOProviderStmt:                  q.updateTeamSSOProviderStmt,
 		updateTemplateStmt:                         q.updateTemplateStmt,
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
+		updateUserEmailStmt:                        q.updateUserEmailStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
 		upsertGitHubAccountStmt:                    q.upsertGitHubAccountStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,

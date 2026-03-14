@@ -465,3 +465,18 @@ func (q *Queries) SetUserRootSupport(ctx context.Context, arg SetUserRootSupport
 	_, err := q.exec(ctx, q.setUserRootSupportStmt, setUserRootSupport, arg.RootSupport, arg.UserID)
 	return err
 }
+
+const updateUserEmail = `-- name: UpdateUserEmail :exec
+UPDATE users SET email = ?, canonical_email = ? WHERE user_id = ?
+`
+
+type UpdateUserEmailParams struct {
+	Email          string  `db:"email" json:"email"`
+	CanonicalEmail *string `db:"canonical_email" json:"canonical_email"`
+	UserID         string  `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error {
+	_, err := q.exec(ctx, q.updateUserEmailStmt, updateUserEmail, arg.Email, arg.CanonicalEmail, arg.UserID)
+	return err
+}
