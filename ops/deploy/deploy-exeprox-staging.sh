@@ -8,7 +8,7 @@ set -e
 if [ $# -ne 1 ] || [ -z "$1" ]; then
     echo "ERROR: Machine name must be specified" >&2
     echo "Usage: $0 <machine-name>" >&2
-    echo "Example: $0 exelet-lax2-staging-01" >&2
+    echo "Example: $0 exeprox-lax2-staging-01" >&2
     exit 1
 fi
 
