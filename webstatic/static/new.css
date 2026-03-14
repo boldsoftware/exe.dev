@@ -503,11 +503,12 @@
   }
 
   .new-prompt {
+    font-size: 16px;
     height: min(calc(12 * 1.5em), calc(100vh - 400px));
   }
 
   .new-hostname {
-    font-size: 14px;
+    font-size: 16px;
     padding: 10px 12px;
   }
 

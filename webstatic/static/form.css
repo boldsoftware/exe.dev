@@ -165,6 +165,14 @@
     border-color: #999;
 }
 
+/* Prevent iOS auto-zoom on focus (Safari zooms inputs with font-size < 16px) */
+@media screen and (max-width: 600px) {
+    .form-input,
+    .form-textarea {
+        font-size: 16px;
+    }
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
     .form-card {
