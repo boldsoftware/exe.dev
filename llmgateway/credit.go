@@ -13,7 +13,7 @@ import (
 
 const (
 	initialFreeCreditNoSubscriptionUSD = 20.0
-	upgradeBonusCreditUSD              = 100.0
+	UpgradeBonusCreditUSD              = 100.0
 	monthlyTopUpSubscribedUSD          = 20.0
 )
 
@@ -247,7 +247,7 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 			if hasBilling {
 				if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
 					UserID:          userID,
-					AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+					AvailableCredit: initialFreeCreditNoSubscriptionUSD + UpgradeBonusCreditUSD,
 					LastRefreshAt:   initialLastRefresh,
 				}); err != nil {
 					return err
@@ -297,7 +297,7 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 		if hasBilling && credit.BillingUpgradeBonusGranted == 0 {
 			if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
 				UserID:          userID,
-				AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+				AvailableCredit: initialFreeCreditNoSubscriptionUSD + UpgradeBonusCreditUSD,
 				LastRefreshAt:   now.UTC(),
 			}); err != nil {
 				return err
@@ -351,7 +351,7 @@ func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, 
 	return exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		return q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
 			UserID:          userID,
-			AvailableCredit: initialFreeCreditNoSubscriptionUSD + upgradeBonusCreditUSD,
+			AvailableCredit: initialFreeCreditNoSubscriptionUSD + UpgradeBonusCreditUSD,
 			LastRefreshAt:   now.UTC(),
 		})
 	})

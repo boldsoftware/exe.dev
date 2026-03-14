@@ -467,8 +467,8 @@ func TestPlanCategories(t *testing.T) {
 		if info.Plan.Name != "has_billing" {
 			t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
 		}
-		if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
-			t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
+		if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD, 0.000001) {
+			t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD)
 		}
 		if !floatClose(info.Max, monthlyTopUpSubscribedUSD, 0.000001) {
 			t.Fatalf("max = %f, want %f", info.Max, monthlyTopUpSubscribedUSD)
@@ -539,7 +539,7 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 	if _, err := mgr.DebitCredit(ctx, userID, 10); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
-	wantAvailable := info.Available - 10 + upgradeBonusCreditUSD
+	wantAvailable := info.Available - 10 + UpgradeBonusCreditUSD
 
 	createBillingAccount(t, db, userID, "acct-upgrade", now)
 	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
@@ -604,8 +604,8 @@ func TestCreditManager_TopUpOnBillingUpgrade_NoCreditRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check failed: %v", err)
 	}
-	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
-		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD, 0.000001) {
+		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD)
 	}
 	if info.Plan.Name != "has_billing" {
 		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
@@ -664,8 +664,8 @@ func TestCreditManager_TopUpOnBillingUpgrade_ConcurrentIdempotent(t *testing.T) 
 	if err != nil {
 		t.Fatalf("check failed: %v", err)
 	}
-	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD, 0.000001) {
-		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+upgradeBonusCreditUSD)
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD, 0.000001) {
+		t.Fatalf("available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD+UpgradeBonusCreditUSD)
 	}
 
 	var credit exedb.UserLlmCredit

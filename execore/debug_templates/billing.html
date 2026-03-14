@@ -29,8 +29,8 @@ table.info th { width: 200px; }
 <h2>Shelley Credits (same as profile page)</h2>
 {{if .HasShelleyFreeCreditPct}}
 <table class="info">
-<tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining</td></tr>
-<tr><th>Monthly</th><td>{{printf "%.0f" .ShelleyCreditsAvailable}} remaining · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
+<tr><th>Monthly</th><td>{{printf "%.0f" .ShelleyCreditsAvailable}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
 <tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>
 <tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}}</td></tr>
 {{if .Purchases}}

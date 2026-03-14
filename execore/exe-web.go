@@ -1625,45 +1625,25 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 				shelleyCreditsAvailable = 0
 			}
 			shelleyCreditsMax = plan.MaxCredit
+			if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && effectiveAvailable > plan.MaxCredit {
+				shelleyCreditsMax = plan.MaxCredit + llmgateway.UpgradeBonusCreditUSD
+			}
 			hasShelleyFreeCreditPct = true
 		}
 	}
 
-	// Compute stacked bar percentages.
-	// Total capacity = monthly max + extra credits.
-	// Monthly segment = (monthly available / total) * 100
-	// Extra segment = (extra / total) * 100
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
-	var monthlyBarPct, extraBarPct, totalRemainingPct float64
-	monthlyCapacity := shelleyCreditsMax
-	if shelleyCreditsAvailable > monthlyCapacity {
-		monthlyCapacity = shelleyCreditsAvailable
-	}
-	totalCapacity := monthlyCapacity + extraCreditsUSD
-	if totalCapacity > 0 {
-		monthlyBarPct = (shelleyCreditsAvailable / totalCapacity) * 100
-		extraBarPct = (extraCreditsUSD / totalCapacity) * 100
-		totalRemainingPct = ((shelleyCreditsAvailable + extraCreditsUSD) / totalCapacity) * 100
-	}
-	if totalRemainingPct < 0 {
-		totalRemainingPct = 0
-	} else if totalRemainingPct > 100 {
-		totalRemainingPct = 100
-	}
-	if monthlyBarPct < 0 {
-		monthlyBarPct = 0
-	}
-	usedCreditsUSD := monthlyCapacity - shelleyCreditsAvailable
-	if usedCreditsUSD < 0 {
-		usedCreditsUSD = 0
-	}
-	var usedBarPct float64
-	if totalCapacity > 0 {
-		usedBarPct = (usedCreditsUSD / totalCapacity) * 100
-	}
-	if usedBarPct > 100 {
-		usedBarPct = 100
-	}
+	bar := computeCreditBar(creditBarInput{
+		shelleyCreditsAvailable: shelleyCreditsAvailable,
+		shelleyCreditsMax:       shelleyCreditsMax,
+		extraCreditsUSD:         extraCreditsUSD,
+	})
+	monthlyBarPct := bar.monthlyBarPct
+	extraBarPct := bar.extraBarPct
+	totalRemainingPct := bar.totalRemainingPct
+	usedCreditsUSD := bar.usedCreditsUSD
+	usedBarPct := bar.usedBarPct
+	totalCapacity := bar.totalCapacity
 
 	// Fetch integrations for sudoers
 	// TODO: integrations are sudoer-only while the feature is still hidden; will be public soon.
