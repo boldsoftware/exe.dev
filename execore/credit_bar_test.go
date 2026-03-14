@@ -206,14 +206,14 @@ func TestCreditBar_FreeUserNoBonus(t *testing.T) {
 // drains smoothly, then monthly credit starts showing usage. No cliff.
 func TestCreditBar_BonusDrainsToZero(t *testing.T) {
 	cases := []struct {
-		name           string
-		available      float64
-		bonus          float64
-		wantCapacity   float64
-		wantMonthly    float64
-		wantBonus      float64
-		wantUsed       float64
-		wantRemainPct  float64
+		name          string
+		available     float64
+		bonus         float64
+		wantCapacity  float64
+		wantMonthly   float64
+		wantBonus     float64
+		wantUsed      float64
+		wantRemainPct float64
 	}{
 		{
 			name: "full bonus", available: 120, bonus: 100,
