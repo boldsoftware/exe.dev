@@ -22,21 +22,26 @@
         box-sizing: border-box;
       }
 
+      html {
+        overflow-x: visible;
+      }
+
       body {
         font-family:
           ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         line-height: 1.6;
-        color: #333;
-        background-color: #fafafa;
+        color: #111;
+        background-color: #fff;
+        background-image: none;
         font-size: 16px;
+        overflow-x: hidden;
       }
 
       /* Layout */
       .container {
         display: flex;
         max-width: 1200px;
-        margin: 48px auto 96px;
-        gap: 40px;
+        margin: 0 auto;
         align-items: flex-start;
         padding: 0 24px;
       }
@@ -46,9 +51,11 @@
         width: 240px;
         flex: 0 0 240px;
         padding: 24px 20px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        position: sticky;
+        top: 57px;
+        max-height: calc(100vh - 57px);
+        overflow-y: auto;
+        border-right: 1px solid #e5e5e5;
       }
 
       .sidebar-heading {
@@ -71,7 +78,7 @@
 
       .sidebar-link {
         display: block;
-        color: #666666;
+        color: #414141;
         text-decoration: none;
         padding: 6px 0;
         font-size: 14px;
@@ -92,10 +99,7 @@
       .main {
         flex: 1;
         min-width: 0;
-        padding: 32px 40px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        padding: 32px 40px 96px;
       }
 
       h1 {
@@ -122,27 +126,23 @@
       .copy-md-btn {
         flex-shrink: 0;
         display: inline-grid;
-        padding: 8px 12px;
+        padding: 6px 10px;
         font-family: inherit;
         font-size: 13px;
-        color: #666666;
-        background: #f5f5f5;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        color: #9ca3af;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: color 0.15s ease;
       }
 
       .copy-md-btn:hover {
-        color: #333333;
-        background: #eeeeee;
-        border-color: #cccccc;
+        color: #111;
       }
 
       .copy-md-btn.copied {
         color: #2e7d32;
-        background: #e8f5e9;
-        border-color: #a5d6a7;
       }
 
       .copy-btn-text,
@@ -158,14 +158,22 @@
       }
 
       .copy-icon {
-        font-size: 14px;
+        display: inline-flex;
+        width: 18px;
+        height: 18px;
+        vertical-align: middle;
+      }
+
+      .copy-icon svg {
+        width: 100%;
+        height: 100%;
       }
 
       .doc-content {
         max-width: 800px;
         font-size: 16px;
         line-height: 1.7;
-        color: #333333;
+        color: #111;
       }
 
       .doc-content p {
@@ -236,7 +244,7 @@
       }
 
       .doc-content code {
-        background: #f5f5f5;
+        background: #f3f4f6;
         padding: 2px 6px;
         border-radius: 3px;
         font-size: 14px;
@@ -245,14 +253,14 @@
       }
 
       .doc-content pre {
-        background: #f8f8f8;
+        background: #f3f4f6;
         padding: 16px;
         border-radius: 4px;
         overflow-x: auto;
         margin: 24px 0;
         font-size: 14px;
         line-height: 1.5;
-        border: 1px solid #e0e0e0;
+        border: 1px solid #e5e7eb;
         font-family:
           ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
       }
@@ -344,8 +352,8 @@
       .doc-content blockquote {
         margin: 24px 0;
         padding: 20px;
-        border-left: 4px solid #e5e5e5;
-        background: #fafafa;
+        border-left: 4px solid #e5e7eb;
+        background: #f9fafb;
         font-style: italic;
       }
 
@@ -431,7 +439,7 @@
         justify-content: space-between;
         margin-top: 48px;
         padding-top: 24px;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid #e5e7eb;
         font-size: 14px;
         max-width: 800px;
       }
@@ -465,9 +473,7 @@
 
         .container {
           flex-direction: column;
-          gap: 24px;
           padding: 0 20px;
-          margin: 24px auto 72px;
         }
 
         .sidebar {
@@ -475,8 +481,7 @@
         }
 
         .main {
-          padding: 24px 20px;
-          border-radius: 6px;
+          padding: 24px 0 72px;
         }
 
         .doc-title {
@@ -501,11 +506,10 @@
       @media (prefers-color-scheme: dark) {
         body {
           color: #d1d5db;
-          background-color: #111;
+          background-color: #09090b;
         }
 
         .sidebar {
-          background: #1f1f1f;
           border-color: #333;
         }
 
@@ -533,31 +537,16 @@
           border-bottom-color: #333 !important;
         }
 
-        .main {
-          background: #1f1f1f;
-          border-color: #333;
-        }
-
         h1 {
           color: #f3f4f6;
         }
 
-        .copy-md-btn {
-          color: #9ca3af;
-          background: #2a2a2a;
-          border-color: #333;
-        }
-
         .copy-md-btn:hover {
           color: #f3f4f6;
-          background: #333;
-          border-color: #444;
         }
 
         .copy-md-btn.copied {
           color: #86efac;
-          background: #052e16;
-          border-color: #166534;
         }
 
         .doc-content {
@@ -590,13 +579,13 @@
 
         .copy-code-button {
           color: #9ca3af;
-          background: #2a2a2a;
-          border-color: #444;
+          background: #1a1a1a;
+          border-color: #333;
         }
 
         .copy-code-button:hover {
           color: #f3f4f6;
-          background: #333;
+          background: #2a2a2a;
         }
 
         .copy-code-button.is-copied {
@@ -672,7 +661,7 @@
       <div class="sidebar" role="navigation" aria-label="Documentation sections">
         <div>
           {{$isAllDocs := eq .Entry.Path "/docs/all"}}
-          <div style="display: flex; gap: 8px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0; align-items: center;">
+          <div style="display: flex; gap: 8px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; align-items: center;">
             {{if $isAllDocs}}
             <a href="/docs/what-is-exe" class="sidebar-link" style="padding: 0; margin: 0;">Many Pages</a>
             {{else}}
@@ -705,8 +694,8 @@
           <h1 class="doc-title">{{.Title}}{{call $.StatusTag .}}</h1>
           {{if .Markdown}}
           <button class="copy-md-btn" onclick="copyMarkdown()" title="Copy as Markdown">
-            <span class="copy-btn-sizer" aria-hidden="true"><span class="copy-icon">&#x2398;</span> Copy as Markdown</span>
-            <span class="copy-btn-text"><span class="copy-icon">&#x2398;</span> Copy as Markdown</span>
+            <span class="copy-btn-sizer" aria-hidden="true"><span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> Copy as Markdown</span>
+            <span class="copy-btn-text"><span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> Copy as Markdown</span>
           </button>
           {{end}}
         </div>
@@ -733,7 +722,7 @@
           const textEl = btn.querySelector('.copy-btn-text');
           const originalText = textEl.innerHTML;
           btn.classList.add('copied');
-          textEl.innerHTML = '<span class="copy-icon">&#x2713;</span> Copied!';
+          textEl.innerHTML = '<span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Copied!';
           setTimeout(function() {
             btn.classList.remove('copied');
             textEl.innerHTML = originalText;
@@ -783,6 +772,17 @@
         }
       });
       {{end}}
+
+      // Restore sidebar scroll position across page navigations.
+      (function() {
+        var sidebar = document.querySelector('.sidebar');
+        if (!sidebar) return;
+        var saved = sessionStorage.getItem('docs-sidebar-scroll');
+        if (saved) sidebar.scrollTop = parseInt(saved, 10);
+        sidebar.addEventListener('click', function() {
+          sessionStorage.setItem('docs-sidebar-scroll', sidebar.scrollTop);
+        });
+      })();
 
       document.querySelectorAll('.doc-content h1[id], .doc-content h2[id], .doc-content h3[id], .doc-content h4[id]').forEach(function(heading) {
         if (heading.querySelector('.anchor-link')) return;
