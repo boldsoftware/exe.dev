@@ -250,19 +250,25 @@ func TestXtermWildcardA(t *testing.T) {
 		}
 	})
 
-	// Test multiple levels of subdomain
+	// Test multiple levels of subdomain (not a valid box name)
 	t.Run("DeepWildcardXterm", func(t *testing.T) {
 		rrs, err := server.lookupA(ctx, "foo.bar.xterm.exe.xyz", "foo.bar.xterm.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 A record for deep wildcard, got %d", len(rrs))
+		if len(rrs) != 0 {
+			t.Fatalf("expected 0 records for unknown box, got %d", len(rrs))
 		}
+	})
 
-		a := rrs[0].(*dns.A)
-		if a.A.String() != "10.0.0.100" {
-			t.Errorf("expected 10.0.0.100 (lobby IP), got %s", a.A.String())
+	// Test that a known box name with extra labels doesn't resolve via fallthrough.
+	t.Run("DeepWildcardXtermKnownBox", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "testbox.bar.xterm.exe.xyz", "testbox.bar.xterm.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Fatalf("expected 0 records for dotted xterm name, got %d", len(rrs))
 		}
 	})
 
@@ -289,6 +295,17 @@ func TestXtermWildcardA(t *testing.T) {
 		}
 		if a.A.String() != "1.2.3.4" {
 			t.Errorf("expected A record 1.2.3.4, got %s", a.A.String())
+		}
+	})
+
+	// Test that a known box name with extra labels doesn't resolve via shelley fallthrough.
+	t.Run("DeepWildcardShelleyKnownBox", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "testbox.bar.shelley.exe.xyz", "testbox.bar.shelley.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Fatalf("expected 0 records for dotted shelley name, got %d", len(rrs))
 		}
 	})
 
@@ -714,7 +731,7 @@ func TestDNSServerIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("QueryXtermWildcard", func(t *testing.T) {
+	t.Run("QueryXtermWildcardUnknownBox", func(t *testing.T) {
 		msg := dns.NewMsg("something.xterm.exe.xyz.", dns.TypeA)
 
 		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
@@ -722,17 +739,43 @@ func TestDNSServerIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if len(resp.Answer) != 1 {
-			t.Fatalf("expected 1 A answer for xterm wildcard, got %d", len(resp.Answer))
+		if resp.Rcode != dns.RcodeNameError {
+			t.Errorf("expected NXDOMAIN for unknown xterm box, got %s", dns.RcodeToString[resp.Rcode])
+		}
+		if len(resp.Answer) != 0 {
+			t.Errorf("expected 0 answers for unknown xterm box, got %d", len(resp.Answer))
+		}
+	})
+
+	t.Run("QueryXtermWildcardKnownBox", func(t *testing.T) {
+		msg := dns.NewMsg("testbox.xterm.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
 		}
 
-		a, ok := resp.Answer[0].(*dns.A)
-		if !ok {
-			t.Fatalf("expected A record, got %T", resp.Answer[0])
+		if resp.Rcode != dns.RcodeSuccess {
+			t.Errorf("expected NOERROR for known xterm box, got %s", dns.RcodeToString[resp.Rcode])
 		}
-		// Should return lobby IP (192.168.0.1 from test setup)
-		if a.A.String() != "192.168.0.1" {
-			t.Errorf("expected 192.168.0.1, got %s", a.A.String())
+		if len(resp.Answer) != 2 {
+			t.Fatalf("expected 2 answers (CNAME + A) for known xterm box, got %d", len(resp.Answer))
+		}
+	})
+
+	t.Run("DeepXtermKnownBoxNxdomain", func(t *testing.T) {
+		msg := dns.NewMsg("testbox.bar.xterm.exe.xyz.", dns.TypeA)
+
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resp.Rcode != dns.RcodeNameError {
+			t.Errorf("expected NXDOMAIN for dotted xterm known box, got %s", dns.RcodeToString[resp.Rcode])
+		}
+		if len(resp.Answer) != 0 {
+			t.Errorf("expected 0 answers for dotted xterm known box, got %d", len(resp.Answer))
 		}
 	})
 
@@ -844,21 +887,35 @@ func TestDNSServerIntegration(t *testing.T) {
 	// return NOERROR (not NXDOMAIN). NXDOMAIN means "name doesn't exist"
 	// which is wrong for names the server knows about.
 	t.Run("ShelleySubdomainNodataNotNxdomain", func(t *testing.T) {
-		// Shelley subdomains exist (A record works), so MX/AAAA should be NOERROR with empty answer.
+		// Known shelley subdomains (A record works), so MX/AAAA should be NOERROR with empty answer.
 		for _, qtype := range []uint16{dns.TypeMX, dns.TypeAAAA} {
-			msg := dns.NewMsg("something.shelley.exe.xyz.", qtype)
+			msg := dns.NewMsg("testbox.shelley.exe.xyz.", qtype)
 			resp, _, err := client.Exchange(ctx, msg, "udp", addr)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if resp.Rcode != dns.RcodeSuccess {
-				t.Errorf("query type %s for shelley subdomain: expected NOERROR, got %s",
+				t.Errorf("query type %s for known shelley subdomain: expected NOERROR, got %s",
 					dns.TypeToString[qtype], dns.RcodeToString[resp.Rcode])
 			}
 			if len(resp.Answer) != 0 {
-				t.Errorf("query type %s for shelley subdomain: expected 0 answers, got %d",
+				t.Errorf("query type %s for known shelley subdomain: expected 0 answers, got %d",
 					dns.TypeToString[qtype], len(resp.Answer))
 			}
+		}
+	})
+
+	t.Run("ShelleySubdomainUnknownBoxNxdomain", func(t *testing.T) {
+		msg := dns.NewMsg("something.shelley.exe.xyz.", dns.TypeA)
+		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeNameError {
+			t.Errorf("expected NXDOMAIN for unknown shelley box, got %s", dns.RcodeToString[resp.Rcode])
+		}
+		if len(resp.Answer) != 0 {
+			t.Errorf("expected 0 answers for unknown shelley box, got %d", len(resp.Answer))
 		}
 	})
 
@@ -875,13 +932,13 @@ func TestDNSServerIntegration(t *testing.T) {
 	})
 
 	t.Run("XtermSubdomainNodataNotNxdomain", func(t *testing.T) {
-		msg := dns.NewMsg("something.xterm.exe.xyz.", dns.TypeAAAA)
+		msg := dns.NewMsg("testbox.xterm.exe.xyz.", dns.TypeAAAA)
 		resp, _, err := client.Exchange(ctx, msg, "udp", addr)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if resp.Rcode != dns.RcodeSuccess {
-			t.Errorf("AAAA for xterm subdomain: expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
+			t.Errorf("AAAA for known xterm subdomain: expected NOERROR, got %s", dns.RcodeToString[resp.Rcode])
 		}
 	})
 

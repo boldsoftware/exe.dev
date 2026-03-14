@@ -339,15 +339,11 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		box, ok = strings.CutSuffix(qname, ".shelley."+s.boxHost)
 	}
 	if ok && len(box) > 0 {
-		// Handle xterm/shelley as a box name.
-		// If that fails send them to the lobby,
-		// as that is what we've historically done.
-		// TODO: stop sending unknown names to lobby?
-		rrs, err := s.lookupBoxA(ctx, box+"."+s.boxHost, fqdn, class)
-		if err != nil || len(rrs) == 0 {
-			return s.lookupLobbyA(fqdn, class)
+		if strings.Contains(box, ".") {
+			return nil, nil
 		}
-		return rrs, err
+		// Handle xterm/shelley as a box name.
+		return s.lookupBoxA(ctx, box+"."+s.boxHost, fqdn, class)
 	}
 
 	// Check for integration wildcard (*.int.{boxHost})
@@ -468,6 +464,22 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 	}
 	boxName := parts[0]
 	domain := parts[1]
+
+	// Only resolve CNAMEs for {boxname}.{boxHost} — not for deeper
+	// subdomains like testbox.bar.xterm.exe.xyz where the first label
+	// happens to match a known box.
+	// This guard is load-bearing for NXDOMAIN correctness: the existence
+	// sweep calls lookupCNAME with the full qname, so without this check
+	// a dotted xterm/shelley name like testbox.bar.xterm.exe.xyz would
+	// extract boxName="testbox", find it in the DB, and return NODATA
+	// instead of NXDOMAIN.
+	// This also means direct CNAME-type queries for xterm/shelley names
+	// (e.g. testbox.xterm.exe.xyz) return nil here. That's correct —
+	// xterm/shelley CNAMEs are resolved through the A-record path, not
+	// via direct CNAME lookup.
+	if domain != s.boxHost {
+		return nil, nil
+	}
 
 	// Skip shard names (s001, s002, n001, etc.)
 	if _, err := parseShardFromName(qname); err == nil {
