@@ -147,3 +147,6 @@ SELECT tags FROM boxes WHERE id = ?;
 
 -- name: UpdateBoxOwner :exec
 UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: SetBoxLockReason :exec
+UPDATE boxes SET lock_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;

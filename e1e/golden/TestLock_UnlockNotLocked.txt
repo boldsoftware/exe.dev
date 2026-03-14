@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+unlock BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ unlock BOX_NAME
+vm "BOX_NAME" is not locked
+PROMPT ▶ exit
+Goodbye!

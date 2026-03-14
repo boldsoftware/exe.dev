@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+unlock
+
+- help to see a list of commands
+
+PROMPT ▶ unlock
+usage: unlock <vmname>
+PROMPT ▶ exit
+Goodbye!

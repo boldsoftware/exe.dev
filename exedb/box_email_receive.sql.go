@@ -10,7 +10,7 @@ import (
 )
 
 const getBoxByNameWithEmailReceiveEnabled = `-- name: GetBoxByNameWithEmailReceiveEnabled :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE name = ? AND email_receive_enabled = 1
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND email_receive_enabled = 1
 `
 
 func (q *Queries) GetBoxByNameWithEmailReceiveEnabled(ctx context.Context, name string) (Box, error) {
@@ -41,6 +41,7 @@ func (q *Queries) GetBoxByNameWithEmailReceiveEnabled(ctx context.Context, name 
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }

@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+lock BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ lock BOX_NAME
+vm "BOX_NAME" is already locked: "important-data"
+PROMPT ▶ exit
+Goodbye!

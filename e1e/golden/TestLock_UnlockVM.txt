@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+unlock BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ unlock BOX_NAME
+Unlocked "BOX_NAME"
+PROMPT ▶ exit
+Goodbye!

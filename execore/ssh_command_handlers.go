@@ -327,6 +327,26 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleSudoCommand,
 			RawArgs:     true,
 		},
+		{
+			Name:              "lock",
+			Hidden:            true,
+			Description:       "Lock a VM to prevent deletion",
+			Usage:             "lock <vmname> [reason]",
+			Handler:           ss.handleLockCommand,
+			FlagSetFunc:       jsonOnlyFlags("lock"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
+		{
+			Name:              "unlock",
+			Hidden:            true,
+			Description:       "Unlock a VM to allow deletion",
+			Usage:             "unlock <vmname>",
+			Handler:           ss.handleUnlockCommand,
+			FlagSetFunc:       jsonOnlyFlags("unlock"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
 		ss.shareCommand(),
 		{
 			Name:        "whoami",
@@ -924,6 +944,12 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		if err != nil {
 			failed = append(failed, boxName)
 			cc.WriteError("VM %q not found", boxName)
+			continue
+		}
+
+		if box.LockReason != nil {
+			failed = append(failed, boxName)
+			cc.WriteError("VM %q is locked: %q (unlock it first with: unlock %s)", boxName, *box.LockReason, boxName)
 			continue
 		}
 

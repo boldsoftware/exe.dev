@@ -882,6 +882,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setBoxEmailReceiveStmt, err = db.PrepareContext(ctx, setBoxEmailReceive); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxEmailReceive: %w", err)
 	}
+	if q.setBoxLockReasonStmt, err = db.PrepareContext(ctx, setBoxLockReason); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxLockReason: %w", err)
+	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
 	}
@@ -2518,6 +2521,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxEmailReceiveStmt: %w", cerr)
 		}
 	}
+	if q.setBoxLockReasonStmt != nil {
+		if cerr := q.setBoxLockReasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxLockReasonStmt: %w", cerr)
+		}
+	}
 	if q.setBoxSupportAccessAllowedStmt != nil {
 		if cerr := q.setBoxSupportAccessAllowedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
@@ -3178,6 +3186,7 @@ type Queries struct {
 	recordUserEventStmt                        *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
+	setBoxLockReasonStmt                       *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setGLBRolloutPrefixesStmt                  *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
@@ -3537,6 +3546,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
+		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setGLBRolloutPrefixesStmt:                  q.setGLBRolloutPrefixesStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,

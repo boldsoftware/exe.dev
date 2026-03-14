@@ -11,7 +11,7 @@ import (
 )
 
 const boxNamed = `-- name: BoxNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE name = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ?
 `
 
 // This is not a secure API!
@@ -44,6 +44,7 @@ func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
@@ -60,7 +61,7 @@ func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, er
 }
 
 const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
 `
 
 type BoxWithOwnerNamedParams struct {
@@ -96,12 +97,13 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
 
 const boxesForUser = `-- name: BoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason
 FROM boxes
 WHERE created_by_user_id = ?
 ORDER BY updated_at DESC, id DESC
@@ -141,6 +143,7 @@ func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]B
 			&i.AllocatedCpus,
 			&i.CgroupOverrides,
 			&i.Tags,
+			&i.LockReason,
 		); err != nil {
 			return nil, err
 		}
@@ -231,7 +234,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 }
 
 const getBoxByContainerID = `-- name: GetBoxByContainerID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE container_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE container_id = ?
 `
 
 func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) (Box, error) {
@@ -262,12 +265,13 @@ func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) 
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
 
 const getBoxByID = `-- name: GetBoxByID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE id = ?
 `
 
 func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
@@ -298,12 +302,13 @@ func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE name = ? AND created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND created_by_user_id = ?
 `
 
 type GetBoxByNameAndAllocParams struct {
@@ -339,12 +344,13 @@ func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndA
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
 
 const getBoxByNameWithSupportAccess = `-- name: GetBoxByNameWithSupportAccess :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes WHERE name = ? AND support_access_allowed = 1
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND support_access_allowed = 1
 `
 
 func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string) (Box, error) {
@@ -375,6 +381,7 @@ func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string
 		&i.AllocatedCpus,
 		&i.CgroupOverrides,
 		&i.Tags,
+		&i.LockReason,
 	)
 	return i, err
 }
@@ -438,7 +445,7 @@ func (q *Queries) GetBoxTags(ctx context.Context, id int) (string, error) {
 }
 
 const getBoxesByHost = `-- name: GetBoxesByHost :many
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
 FROM boxes b
 WHERE b.ctrhost = ? AND b.status != 'failed'
 `
@@ -477,6 +484,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.AllocatedCpus,
 			&i.CgroupOverrides,
 			&i.Tags,
+			&i.LockReason,
 		); err != nil {
 			return nil, err
 		}
@@ -555,7 +563,7 @@ func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, createdByUserID 
 }
 
 const getBoxesWithNullAllocatedCPUs = `-- name: GetBoxesWithNullAllocatedCPUs :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags FROM boxes
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
 ORDER BY id
 LIMIT ?
@@ -595,6 +603,7 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 			&i.AllocatedCpus,
 			&i.CgroupOverrides,
 			&i.Tags,
+			&i.LockReason,
 		); err != nil {
 			return nil, err
 		}
@@ -748,6 +757,20 @@ type SetBoxCgroupOverridesParams struct {
 
 func (q *Queries) SetBoxCgroupOverrides(ctx context.Context, arg SetBoxCgroupOverridesParams) error {
 	_, err := q.exec(ctx, q.setBoxCgroupOverridesStmt, setBoxCgroupOverrides, arg.CgroupOverrides, arg.ID)
+	return err
+}
+
+const setBoxLockReason = `-- name: SetBoxLockReason :exec
+UPDATE boxes SET lock_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type SetBoxLockReasonParams struct {
+	LockReason *string `db:"lock_reason" json:"lock_reason"`
+	ID         int     `db:"id" json:"id"`
+}
+
+func (q *Queries) SetBoxLockReason(ctx context.Context, arg SetBoxLockReasonParams) error {
+	_, err := q.exec(ctx, q.setBoxLockReasonStmt, setBoxLockReason, arg.LockReason, arg.ID)
 	return err
 }
 

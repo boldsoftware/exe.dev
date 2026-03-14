@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+lock
+
+- help to see a list of commands
+
+PROMPT ▶ lock
+usage: lock <vmname> [reason]
+PROMPT ▶ exit
+Goodbye!

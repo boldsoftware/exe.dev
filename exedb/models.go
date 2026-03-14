@@ -91,6 +91,7 @@ type Box struct {
 	AllocatedCpus        *int64     `db:"allocated_cpus" json:"allocated_cpus"`
 	CgroupOverrides      *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
 	Tags                 string     `db:"tags" json:"tags"`
+	LockReason           *string    `db:"lock_reason" json:"lock_reason"`
 }
 
 type BoxEmailCredit struct {
