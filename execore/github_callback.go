@@ -5,6 +5,7 @@ import (
 	"html"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // handleGitHubCallback handles the GitHub App installation callback.
@@ -33,10 +34,12 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Look up the pending setup by state.
-	s.githubSetupsMu.RLock()
+	// Look up and consume the pending setup by state.
+	// Consuming immediately prevents replay of the callback.
+	s.githubSetupsMu.Lock()
 	setup := s.githubSetups[state]
-	s.githubSetupsMu.RUnlock()
+	delete(s.githubSetups, state)
+	s.githubSetupsMu.Unlock()
 
 	if setup == nil {
 		http.Error(w, "unknown or expired state parameter — please try again from SSH", http.StatusBadRequest)
@@ -69,6 +72,19 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	setup.AccessToken = tokenResp.AccessToken
 	setup.RefreshToken = tokenResp.RefreshToken
 	setup.Close()
+
+	// Wait for the SSH session to decide the response.
+	// It may redirect the browser (e.g., to the install URL) or show "Connected".
+	var redirectURL string
+	select {
+	case redirectURL = <-setup.RespondCh:
+	case <-time.After(30 * time.Second):
+	}
+
+	if redirectURL != "" {
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>

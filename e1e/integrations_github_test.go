@@ -8,35 +8,53 @@ import (
 	"testing"
 )
 
-// extractState extracts the state parameter from a URL string in PTY output.
-func extractState(t *testing.T, output string) string {
+// extractRedirectKey extracts the /r/<key> from a URL in PTY output.
+// The key is the state token used as the redirect key.
+func extractRedirectKey(t *testing.T, output string) string {
 	t.Helper()
-	re := regexp.MustCompile(`state=([0-9a-f]{32})`)
+	re := regexp.MustCompile(`/r/([0-9a-f]{32})`)
 	matches := re.FindStringSubmatch(output)
 	if len(matches) < 2 {
-		t.Fatalf("could not extract state from output: %s", output)
+		t.Fatalf("could not extract redirect key from output: %s", output)
 	}
 	return matches[1]
 }
 
 // simulateGitHubCallback sends an HTTP GET to exed's /github/callback endpoint,
-// simulating the browser redirect after GitHub App installation.
-func simulateGitHubCallback(t *testing.T, state string, installationID int) {
+// simulating the browser redirect after GitHub App authorization or installation.
+// If installationID is 0, no installation_id parameter is sent (authorize-only flow).
+// Returns the redirect Location if the callback responded with a redirect, or empty string.
+func simulateGitHubCallback(t *testing.T, state string, installationID int) string {
 	t.Helper()
-	callbackURL := fmt.Sprintf("http://localhost:%d/github/callback?code=mock-code&installation_id=%d&state=%s",
-		Env.servers.Exed.HTTPPort, installationID, url.QueryEscape(state))
-	resp, err := http.Get(callbackURL)
+	callbackURL := fmt.Sprintf("http://localhost:%d/github/callback?code=mock-code&state=%s",
+		Env.servers.Exed.HTTPPort, url.QueryEscape(state))
+	if installationID != 0 {
+		callbackURL += fmt.Sprintf("&installation_id=%d", installationID)
+	}
+	resp, err := noRedirectClient(nil).Get(callbackURL)
 	if err != nil {
 		t.Fatalf("callback request failed: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return ""
+	case http.StatusFound:
+		loc := resp.Header.Get("Location")
+		if loc == "" {
+			t.Fatal("redirect with no Location header")
+		}
+		return loc
+	default:
 		t.Fatalf("callback returned %d", resp.StatusCode)
+		return ""
 	}
 }
 
-// TestIntegrationsSetupGitHub tests the GitHub App installation flow:
-// setup → duplicate install detected → delete → verify delete-again error → re-setup → delete.
+// TestIntegrationsSetupGitHub tests the GitHub App setup flow:
+// authorize → discover installations → connect.
+// Then: duplicate detected → all connected → browser auto-redirected to install.
+// Then: delete → verify delete-again error → re-setup → delete.
 func TestIntegrationsSetupGitHub(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -45,25 +63,40 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 
 	pty, _, _, _ := registerForExeDev(t)
 
-	// First setup: should print install URL and wait.
+	// First setup: authorize flow discovers installation via API.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`state=[0-9a-f]{32}`)
-	state := extractState(t, out)
+	out := pty.WantREMatch(`Authorize your GitHub account`)
+	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
+	state := extractRedirectKey(t, out)
 
-	// Simulate the GitHub callback.
-	simulateGitHubCallback(t, state, 12345)
+	// Simulate OAuth callback (no installation_id — authorize flow).
+	// Callback blocks until SSH session processes and responds.
+	loc := simulateGitHubCallback(t, state, 0)
+	if loc != "" {
+		t.Fatalf("expected no redirect on first setup, got %s", loc)
+	}
 
-	// SSH session should unblock and print success with target account.
-	pty.Want("Connected GitHub account: testghuser")
+	// Server discovers installation 12345 via API and connects it.
+	pty.Want("Connected: testghuser")
 	pty.WantPrompt()
 
-	// Setup again with same installation: should detect duplicate.
+	// List shows the connection.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
+	pty.Want("testghuser")
+	pty.WantPrompt()
+
+	// Setup again: authorize discovers same installation, upserts idempotently.
 	pty.SendLine("integrations setup github")
-	pty.Want("Already connected")
-	out = pty.WantREMatch(`state=[0-9a-f]{32}`)
-	state = extractState(t, out)
-	simulateGitHubCallback(t, state, 12345)
-	pty.Want("Already connected: testghuser")
+	out = pty.WantREMatch(`Authorize your GitHub account`)
+	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
+	state = extractRedirectKey(t, out)
+
+	loc = simulateGitHubCallback(t, state, 0)
+	if loc != "" {
+		t.Fatalf("expected no redirect on idempotent setup, got %s", loc)
+	}
+	pty.Want("Connected: testghuser")
 	pty.WantPrompt()
 
 	// Delete all connections.
@@ -76,19 +109,23 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Re-setup: should succeed again.
+	// Re-setup: authorize discovers installation again.
 	pty.SendLine("integrations setup github")
-	out = pty.WantREMatch(`state=[0-9a-f]{32}`)
-	state = extractState(t, out)
+	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
+	state = extractRedirectKey(t, out)
 
-	simulateGitHubCallback(t, state, 67890)
+	simulateGitHubCallback(t, state, 0)
 
-	pty.Want("Connected GitHub account: testghuser")
+	pty.Want("Connected: testghuser")
 	pty.WantPrompt()
 
-	// Final cleanup: delete.
+	// List shows empty after deletion.
 	pty.SendLine("integrations setup github -d")
 	pty.Want("Disconnected GitHub")
+	pty.WantPrompt()
+
+	pty.SendLine("integrations setup github --list")
+	pty.Want("No GitHub accounts connected")
 	pty.WantPrompt()
 }
 
@@ -107,12 +144,12 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Connect a GitHub account first.
+	// Connect a GitHub account first (authorize flow).
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`state=[0-9a-f]{32}`)
-	state := extractState(t, out)
-	simulateGitHubCallback(t, state, 12345)
-	pty.Want("Connected GitHub account: testghuser")
+	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
+	state := extractRedirectKey(t, out)
+	simulateGitHubCallback(t, state, 0)
+	pty.Want("Connected: testghuser")
 	pty.WantPrompt()
 
 	// Error: missing --repository.

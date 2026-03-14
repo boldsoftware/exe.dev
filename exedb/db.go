@@ -714,9 +714,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertExe1TokenStmt, err = db.PrepareContext(ctx, insertExe1Token); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertExe1Token: %w", err)
 	}
-	if q.insertGitHubAccountStmt, err = db.PrepareContext(ctx, insertGitHubAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertGitHubAccount: %w", err)
-	}
 	if q.insertIntegrationStmt, err = db.PrepareContext(ctx, insertIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertIntegration: %w", err)
 	}
@@ -1043,6 +1040,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
+	}
+	if q.upsertGitHubAccountStmt, err = db.PrepareContext(ctx, upsertGitHubAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertGitHubAccount: %w", err)
 	}
 	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
@@ -2238,11 +2238,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertExe1TokenStmt: %w", cerr)
 		}
 	}
-	if q.insertGitHubAccountStmt != nil {
-		if cerr := q.insertGitHubAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertGitHubAccountStmt: %w", cerr)
-		}
-	}
 	if q.insertIntegrationStmt != nil {
 		if cerr := q.insertIntegrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertIntegrationStmt: %w", cerr)
@@ -2788,6 +2783,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
 		}
 	}
+	if q.upsertGitHubAccountStmt != nil {
+		if cerr := q.upsertGitHubAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertGitHubAccountStmt: %w", cerr)
+		}
+	}
 	if q.upsertHLLSketchStmt != nil {
 		if cerr := q.upsertHLLSketchStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertHLLSketchStmt: %w", cerr)
@@ -3122,7 +3122,6 @@ type Queries struct {
 	insertEmailQualityBypassStmt               *sql.Stmt
 	insertEmailVerificationStmt                *sql.Stmt
 	insertExe1TokenStmt                        *sql.Stmt
-	insertGitHubAccountStmt                    *sql.Stmt
 	insertIntegrationStmt                      *sql.Stmt
 	insertOAuthStateStmt                       *sql.Stmt
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
@@ -3232,6 +3231,7 @@ type Queries struct {
 	updateTemplateStmt                         *sql.Stmt
 	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
+	upsertGitHubAccountStmt                    *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
 	upsertIPShardStmt                          *sql.Stmt
 	upsertLatitudeIPShardStmt                  *sql.Stmt
@@ -3481,7 +3481,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertEmailQualityBypassStmt:               q.insertEmailQualityBypassStmt,
 		insertEmailVerificationStmt:                q.insertEmailVerificationStmt,
 		insertExe1TokenStmt:                        q.insertExe1TokenStmt,
-		insertGitHubAccountStmt:                    q.insertGitHubAccountStmt,
 		insertIntegrationStmt:                      q.insertIntegrationStmt,
 		insertOAuthStateStmt:                       q.insertOAuthStateStmt,
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
@@ -3591,6 +3590,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTemplateStmt:                         q.updateTemplateStmt,
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
+		upsertGitHubAccountStmt:                    q.upsertGitHubAccountStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
 		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,

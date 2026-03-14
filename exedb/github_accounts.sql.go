@@ -80,31 +80,6 @@ func (q *Queries) GetGitHubAccountByTarget(ctx context.Context, arg GetGitHubAcc
 	return i, err
 }
 
-const insertGitHubAccount = `-- name: InsertGitHubAccount :exec
-INSERT INTO github_accounts (user_id, github_login, installation_id, target_login, access_token, refresh_token) VALUES (?, ?, ?, ?, ?, ?)
-`
-
-type InsertGitHubAccountParams struct {
-	UserID         string `db:"user_id" json:"user_id"`
-	GitHubLogin    string `db:"github_login" json:"github_login"`
-	InstallationID int64  `db:"installation_id" json:"installation_id"`
-	TargetLogin    string `db:"target_login" json:"target_login"`
-	AccessToken    string `db:"access_token" json:"access_token"`
-	RefreshToken   string `db:"refresh_token" json:"refresh_token"`
-}
-
-func (q *Queries) InsertGitHubAccount(ctx context.Context, arg InsertGitHubAccountParams) error {
-	_, err := q.exec(ctx, q.insertGitHubAccountStmt, insertGitHubAccount,
-		arg.UserID,
-		arg.GitHubLogin,
-		arg.InstallationID,
-		arg.TargetLogin,
-		arg.AccessToken,
-		arg.RefreshToken,
-	)
-	return err
-}
-
 const listGitHubAccounts = `-- name: ListGitHubAccounts :many
 SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? ORDER BY created_at
 `
@@ -138,4 +113,35 @@ func (q *Queries) ListGitHubAccounts(ctx context.Context, userID string) ([]Gith
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertGitHubAccount = `-- name: UpsertGitHubAccount :exec
+INSERT INTO github_accounts (user_id, github_login, installation_id, target_login, access_token, refresh_token)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (user_id, target_login) DO UPDATE SET
+    github_login = excluded.github_login,
+    installation_id = excluded.installation_id,
+    access_token = excluded.access_token,
+    refresh_token = excluded.refresh_token
+`
+
+type UpsertGitHubAccountParams struct {
+	UserID         string `db:"user_id" json:"user_id"`
+	GitHubLogin    string `db:"github_login" json:"github_login"`
+	InstallationID int64  `db:"installation_id" json:"installation_id"`
+	TargetLogin    string `db:"target_login" json:"target_login"`
+	AccessToken    string `db:"access_token" json:"access_token"`
+	RefreshToken   string `db:"refresh_token" json:"refresh_token"`
+}
+
+func (q *Queries) UpsertGitHubAccount(ctx context.Context, arg UpsertGitHubAccountParams) error {
+	_, err := q.exec(ctx, q.upsertGitHubAccountStmt, upsertGitHubAccount,
+		arg.UserID,
+		arg.GitHubLogin,
+		arg.InstallationID,
+		arg.TargetLogin,
+		arg.AccessToken,
+		arg.RefreshToken,
+	)
+	return err
 }

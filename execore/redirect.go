@@ -20,7 +20,15 @@ const redirectTTL = 10 * time.Minute
 // the redirect is issued verbatim with no validation.
 func (s *Server) createRedirect(ctx context.Context, target string) (string, error) {
 	key := crand.Text()
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+	if err := s.createRedirectForKey(ctx, key, target); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// createRedirectForKey stores a redirect with a caller-chosen key.
+func (s *Server) createRedirectForKey(ctx context.Context, key, target string) error {
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		if err := queries.CleanupExpiredRedirects(ctx, time.Now()); err != nil {
 			s.slog().WarnContext(ctx, "cleanup expired redirects", "error", err)
 		}
@@ -30,10 +38,6 @@ func (s *Server) createRedirect(ctx context.Context, target string) (string, err
 			ExpiresAt: time.Now().Add(redirectTTL),
 		})
 	})
-	if err != nil {
-		return "", err
-	}
-	return key, nil
 }
 
 // redirectURL returns the full short URL for a redirect key.

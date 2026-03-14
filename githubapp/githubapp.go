@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,22 @@ const (
 	defaultTokenURL = "https://github.com/login/oauth/access_token"
 	defaultAPIURL   = "https://api.github.com"
 )
+
+// AuthError indicates an authentication/authorization failure (HTTP 401/403).
+type AuthError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *AuthError) Error() string {
+	return fmt.Sprintf("auth error (HTTP %d): %s", e.StatusCode, e.Body)
+}
+
+// IsAuthError reports whether err is a GitHub authentication failure.
+func IsAuthError(err error) bool {
+	var ae *AuthError
+	return errors.As(err, &ae)
+}
 
 // Client holds the GitHub App configuration for the installation flow.
 type Client struct {
@@ -183,6 +200,9 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("reading user response: %w", err)
 	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", &AuthError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("user request returned %d: %s", resp.StatusCode, body)
 	}
@@ -199,13 +219,60 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (string, error
 	return u.Login, nil
 }
 
+// RefreshUserToken exchanges a refresh token for a new access token.
+func (c *Client) RefreshUserToken(ctx context.Context, refreshToken string) (*TokenResponse, error) {
+	data := url.Values{
+		"client_id":     {c.ClientID},
+		"client_secret": {c.ClientSecret},
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.tokenURL(), strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("token refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return nil, fmt.Errorf("reading token refresh response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("token refresh returned %d: %s", resp.StatusCode, body)
+	}
+
+	var tr TokenResponse
+	if err := json.Unmarshal(body, &tr); err != nil {
+		return nil, fmt.Errorf("parsing token refresh response: %w", err)
+	}
+
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+		return nil, fmt.Errorf("token refresh error: %s", errResp.Error)
+	}
+
+	if tr.AccessToken == "" {
+		return nil, fmt.Errorf("empty access token in refresh response")
+	}
+	return &tr, nil
+}
+
 // GetInstallationAccount returns the login of the account (user or org) where
 // the given installation is installed. Requires App JWT authentication.
 func (c *Client) GetInstallationAccount(ctx context.Context, installationID int64) (string, error) {
 	now := time.Now()
 	claims := jwt.RegisteredClaims{
 		Issuer:    fmt.Sprintf("%d", c.AppID),
-		IssuedAt:  jwt.NewNumericDate(now.Add(-60 * time.Second)),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-10 * time.Second)),
 		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
@@ -279,7 +346,7 @@ func (c *Client) MintInstallationToken(ctx context.Context, installationID int64
 	now := time.Now()
 	claims := jwt.RegisteredClaims{
 		Issuer:    fmt.Sprintf("%d", c.AppID),
-		IssuedAt:  jwt.NewNumericDate(now.Add(-60 * time.Second)),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-10 * time.Second)),
 		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
