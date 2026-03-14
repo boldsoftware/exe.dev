@@ -51,18 +51,31 @@ scrape_configs:
         - 'exe-ctr-18:9100'
         - 'exe-ctr-19:9100'
         - 'exelet-lax2-prod-01:9100'
+        - 'exelet-lax2-prod-01-replica:9100'
         - 'exelet-lax2-prod-02:9100'
+        - 'exelet-lax2-prod-02-replica:9100'
         - 'exelet-lax-prod-03:9100'
+        - 'exelet-lax-prod-03-replica:9100'
         - 'exelet-lax-prod-04:9100'
+        - 'exelet-lax-prod-04-replica:9100'
         - 'exelet-nyc-prod-01:9100'
+        - 'exelet-nyc-prod-01-replica:9100'
         - 'exelet-nyc-prod-02:9100'
+        - 'exelet-nyc-prod-02-replica:9100'
         - 'exelet-nyc-prod-03:9100'
+        - 'exelet-nyc-prod-03-replica:9100'
         - 'exelet-tyo4-prod-01:9100'
+        - 'exelet-tyo4-prod-01-replica:9100'
         - 'exelet-tyo4-prod-02:9100'
+        - 'exelet-tyo4-prod-02-replica:9100'
         - 'exelet-lon2-prod-01:9100'
+        - 'exelet-lon2-prod-01-replica:9100'
         - 'exelet-fra2-prod-01:9100'
+        - 'exelet-fra2-prod-01-replica:9100'
         - 'exelet-fra2-prod-02:9100'
+        - 'exelet-fra2-prod-02-replica:9100'
         - 'exelet-fra2-prod-03:9100'
+        - 'exelet-fra2-prod-03-replica:9100'
         labels:
           stage: 'production'
           role: 'exelet'
@@ -85,6 +98,7 @@ scrape_configs:
           role: 'exed'
       - targets:
         - 'exelet-lax2-staging-01:9100'
+        - 'exelet-lax2-staging-01-replica:9100'
         - 'exelet-nyc-staging-01:9100'
         labels:
           stage: 'staging'
@@ -143,10 +157,10 @@ scrape_configs:
   - job_name: 'exelet'
     scheme: http
     static_configs:
-      - targets: ["exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081", "exe-ctr-12:9081", "exe-ctr-13:9081", "exe-ctr-14:9081", "exe-ctr-15:9081", "exe-ctr-16:9081", "exe-ctr-18:9081", "exe-ctr-19:9081", "exelet-lax2-prod-01:9081", "exelet-lax2-prod-02:9081", "exelet-lax-prod-03:9081", "exelet-lax-prod-04:9081", "exelet-nyc-prod-01:9081", "exelet-nyc-prod-02:9081", "exelet-nyc-prod-03:9081", "exelet-tyo4-prod-01:9081", "exelet-tyo4-prod-02:9081", "exelet-lon2-prod-01:9081", "exelet-fra2-prod-01:9081", "exelet-fra2-prod-02:9081", "exelet-fra2-prod-03:9081"]
+      - targets: ["exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081", "exe-ctr-12:9081", "exe-ctr-13:9081", "exe-ctr-14:9081", "exe-ctr-15:9081", "exe-ctr-16:9081", "exe-ctr-18:9081", "exe-ctr-19:9081", "exelet-lax2-prod-01:9081", "exelet-lax2-prod-01-replica:9081", "exelet-lax2-prod-02:9081", "exelet-lax2-prod-02-replica:9081", "exelet-lax-prod-03:9081", "exelet-lax-prod-03-replica:9081", "exelet-lax-prod-04:9081", "exelet-lax-prod-04-replica:9081", "exelet-nyc-prod-01:9081", "exelet-nyc-prod-01-replica:9081", "exelet-nyc-prod-02:9081", "exelet-nyc-prod-02-replica:9081", "exelet-nyc-prod-03:9081", "exelet-nyc-prod-03-replica:9081", "exelet-tyo4-prod-01:9081", "exelet-tyo4-prod-01-replica:9081", "exelet-tyo4-prod-02:9081", "exelet-tyo4-prod-02-replica:9081", "exelet-lon2-prod-01:9081", "exelet-lon2-prod-01-replica:9081", "exelet-fra2-prod-01:9081", "exelet-fra2-prod-01-replica:9081", "exelet-fra2-prod-02:9081", "exelet-fra2-prod-02-replica:9081", "exelet-fra2-prod-03:9081", "exelet-fra2-prod-03-replica:9081"]
         labels:
           stage: 'production'
-      - targets: ["exelet-lax2-staging-01:9081", "exelet-nyc-staging-01:9081"]
+      - targets: ["exelet-lax2-staging-01:9081", "exelet-lax2-staging-01-replica:9081", "exelet-nyc-staging-01:9081"]
         labels:
           stage: 'staging'
     metrics_path: '/metrics'
