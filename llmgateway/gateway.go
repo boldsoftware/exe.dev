@@ -325,6 +325,8 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBytes = m.maybeInjectStreamOptions(r.Context(), provider, remainder, bodyBytes)
+
 	// Restore the body for the proxy
 	if bodyBytes != nil {
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -514,6 +516,79 @@ func extractModelFromRequest(r *http.Request) (string, []byte, error) {
 	}
 
 	return req.Model, bodyBytes, nil
+}
+
+// maybeInjectStreamOptions ensures that OpenAI/Fireworks Chat Completions streaming requests include stream_options so the provider returns usage data in the final SSE chunk.
+// It returns body unmodified for other providers, non-chat-completions paths, or on error (after logging a warning).
+// The Responses API (/v1/responses) already includes usage by default and does not need this.
+func (m *llmGateway) maybeInjectStreamOptions(ctx context.Context, provider llmpricing.Provider, path string, body []byte) []byte {
+	switch provider {
+	case llmpricing.ProviderOpenAI, llmpricing.ProviderFireworks:
+	default:
+		return body
+	}
+	if !strings.HasSuffix(path, "/chat/completions") {
+		return body
+	}
+	modified, err := ensureOpenAIStreamOptions(body)
+	if err != nil {
+		m.log.WarnContext(ctx, "ensureOpenAIStreamOptions failed", "error", err)
+		return body
+	}
+	return modified
+}
+
+// ensureOpenAIStreamOptions injects {"stream_options": {"include_usage": true}} into body when "stream" is true.
+// It returns body unchanged if stream is not true, body is not a JSON object, or include_usage is already set.
+func ensureOpenAIStreamOptions(body []byte) ([]byte, error) {
+	// The unmarshal/remarshal round-trip may reorder top-level JSON keys.
+	// This is semantically equivalent and harmless for all known providers.
+	if len(body) == 0 {
+		return body, nil
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(body, &obj); err != nil {
+		return body, nil // not a JSON object, return as-is
+	}
+
+	// Only modify streaming requests.
+	var stream bool
+	if raw, ok := obj["stream"]; !ok || json.Unmarshal(raw, &stream) != nil || !stream {
+		return body, nil
+	}
+
+	// Parse existing stream_options, or start fresh.
+	// Note: unmarshaling null (or invalid JSON) can nil out the map,
+	// so we re-initialize if needed. If stream_options is malformed
+	// (e.g. a number or string instead of an object), Unmarshal fails
+	// and we overwrite it with our own object — this is intentional,
+	// since the provider would reject the malformed value anyway.
+	so := make(map[string]json.RawMessage)
+	if raw, ok := obj["stream_options"]; ok {
+		_ = json.Unmarshal(raw, &so) // best effort; overwrite on failure
+	}
+	if so == nil {
+		so = make(map[string]json.RawMessage)
+	}
+
+	// If already correctly set, return original bytes unchanged.
+	var includeUsage bool
+	if raw, ok := so["include_usage"]; ok {
+		_ = json.Unmarshal(raw, &includeUsage)
+	}
+	if includeUsage {
+		return body, nil
+	}
+
+	// Set include_usage: true.
+	so["include_usage"] = json.RawMessage("true")
+	soBytes, err := json.Marshal(so)
+	if err != nil {
+		return body, err
+	}
+	obj["stream_options"] = json.RawMessage(soBytes)
+	return json.Marshal(obj)
 }
 
 // isBlockedEndpoint reports whether path should be blocked.
