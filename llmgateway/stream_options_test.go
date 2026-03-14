@@ -226,7 +226,7 @@ func TestOpenAI_SSE_UsageWithStreamOptions(t *testing.T) {
 
 // openaiSSEHelper sends a real streaming Chat Completions request to OpenAI
 // and returns the transport (for usage inspection) and the raw SSE body.
-func openaiSSEHelper(t *testing.T, apiKey string, body string) (*accountingTransport, string) {
+func openaiSSEHelper(t *testing.T, apiKey, body string) (*accountingTransport, string) {
 	t.Helper()
 
 	logs := &logCapture{}
