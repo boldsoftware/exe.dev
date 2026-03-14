@@ -28,7 +28,7 @@ type exepipeManager struct {
 }
 
 // NewExepipeManager creates a new SSH proxy manager using exepipe.
-func NewExepipeManager(ctx context.Context, exepipeAddress string, bindIP string, lg *slog.Logger) Manager {
+func NewExepipeManager(ctx context.Context, exepipeAddress, bindIP string, lg *slog.Logger) Manager {
 	epm := &exepipeManager{
 		exepipeAddress: exepipeAddress,
 		bindIP:         bindIP,
