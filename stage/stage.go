@@ -195,7 +195,7 @@ func Local() Env {
 
 		ShowHiddenDocs:    true,
 		ShowDocsPreview:   true,
-		AutoStartSSHPiper: !onExeBox,
+		AutoStartSSHPiper: true,
 		SSHCommandUsesAt:  true,
 		AllowDeleteUser:   true,
 		PostSlackFeed:     false,

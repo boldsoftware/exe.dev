@@ -2978,12 +2978,23 @@ func (s *Server) autoStartSSHPiper(ctx context.Context) {
 		return
 	}
 
+	// Read host key from the actual database so sshpiper.sh works regardless of DB path.
+	hostKey, err := withRxRes0(s, ctx, (*exedb.Queries).GetSSHHostKey)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to read SSH host key from database for sshpiper", "error", err)
+		return
+	}
+
 	// Start sshpiper.sh with the piper plugin port
 	s.slog().InfoContext(ctx, "Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.pluginLn.tcp.Port)
 
 	cmd := exec.CommandContext(ctx, "./sshpiper.sh", fmt.Sprint(s.pluginLn.tcp.Port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "HOST_PRIVATE_KEY="+hostKey.PrivateKey)
+	if hostKey.CertSig != nil {
+		cmd.Env = append(cmd.Env, "HOST_CERT_SIG="+*hostKey.CertSig)
+	}
 
 	if err := cmd.Start(); err != nil {
 		s.slog().ErrorContext(ctx, "Failed to start sshpiper.sh", "error", err)

@@ -21,13 +21,16 @@ if [ ! -f "$SSHPIPER_DIR/metrics" ]; then
     (cd "$SSHPIPER_DIR" && go build -o metrics ./plugin/metrics)
 fi
 
-# Get private key (and optional cert) from database
-HOST_PRIVATE_KEY=$(sqlite3 exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;")
-[ -z "$HOST_PRIVATE_KEY" ] && {
-    echo "No SSH host key found"
-    exit 1
-}
-HOST_CERT_SIG=$(sqlite3 exe.db "SELECT cert_sig FROM ssh_host_key WHERE id = 1;")
+# Get private key (and optional cert) from database.
+# HOST_PRIVATE_KEY and HOST_CERT_SIG can be passed via env to avoid hardcoding the db path.
+if [ -z "$HOST_PRIVATE_KEY" ]; then
+    HOST_PRIVATE_KEY=$(sqlite3 exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;")
+    [ -z "$HOST_PRIVATE_KEY" ] && {
+        echo "No SSH host key found"
+        exit 1
+    }
+    HOST_CERT_SIG=$(sqlite3 exe.db "SELECT cert_sig FROM ssh_host_key WHERE id = 1;")
+fi
 
 # Wait until something is listening on the piper plugin port
 echo "Waiting for service on port $PIPER_PLUGIN_PORT..."
