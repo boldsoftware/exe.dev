@@ -31,7 +31,7 @@ table.info th { width: 200px; }
 <table class="info">
 <tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
 <tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
-{{if gt .BonusRemainingUSD 0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
+{{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
 <tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>
 <tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} monthly</td></tr>
 {{if .Purchases}}
