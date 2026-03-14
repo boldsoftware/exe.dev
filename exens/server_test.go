@@ -668,6 +668,22 @@ func TestDNSServerIntegration(t *testing.T) {
 		if resp.Rcode != dns.RcodeNameError {
 			t.Errorf("expected NXDOMAIN, got %s", dns.RcodeToString[resp.Rcode])
 		}
+		if len(resp.Ns) != 1 {
+			t.Fatalf("expected 1 authority record (SOA), got %d", len(resp.Ns))
+		}
+		soa, ok := resp.Ns[0].(*dns.SOA)
+		if !ok {
+			t.Fatalf("expected SOA record in authority, got %T", resp.Ns[0])
+		}
+		if soa.Hdr.Name != "exe.xyz." {
+			t.Errorf("SOA name = %q, want %q", soa.Hdr.Name, "exe.xyz.")
+		}
+		if soa.Hdr.TTL != 10 {
+			t.Errorf("SOA TTL = %d, want 10", soa.Hdr.TTL)
+		}
+		if soa.Minttl != 10 {
+			t.Errorf("SOA Minttl = %d, want 10", soa.Minttl)
+		}
 	})
 
 	t.Run("QueryTXTRecord", func(t *testing.T) {

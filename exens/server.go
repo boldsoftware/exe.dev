@@ -306,6 +306,18 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		}
 		if !nameExists {
 			resp.Rcode = dns.RcodeNameError
+			resp.Ns = []dns.RR{
+				&dns.SOA{
+					Hdr:     dns.Header{Name: s.boxHost + ".", Class: dns.ClassINET, TTL: 10}, // short: new VMs should resolve quickly after creation
+					Ns:      "ns1." + s.webHost + ".",
+					Mbox:    "hostmaster." + s.webHost + ".",
+					Serial:  1,
+					Refresh: 86400,
+					Retry:   7200,
+					Expire:  1209600,
+					Minttl:  10, // negative cache TTL; prefer extra queries over stale NXDOMAIN
+				},
+			}
 		}
 	}
 
