@@ -23,10 +23,11 @@ import (
 // It returns a generic proxy configuration so the exelet can proxy the
 // request without any type-specific logic.
 type integrationConfigResponse struct {
-	OK        bool              `json:"ok"`
-	Target    string            `json:"target,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	BasicAuth *basicAuthConfig  `json:"basic_auth,omitempty"`
+	OK                  bool              `json:"ok"`
+	Target              string            `json:"target,omitempty"`
+	Headers             map[string]string `json:"headers,omitempty"`
+	BasicAuth           *basicAuthConfig  `json:"basic_auth,omitempty"`
+	AllowedPathPrefixes []string          `json:"allowed_path_prefixes,omitempty"`
 }
 
 type basicAuthConfig struct {
@@ -147,14 +148,27 @@ func buildHTTPProxyConfig(configJSON string) (integrationConfigResponse, error) 
 }
 
 func (s *Server) buildGitHubProxyConfig(ctx context.Context, configJSON string) (integrationConfigResponse, error) {
+	var cfg githubIntegrationConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return integrationConfigResponse{OK: false}, err
+	}
+
 	token, err := s.mintGitHubToken(ctx, configJSON)
 	if err != nil {
 		return integrationConfigResponse{OK: false}, err
 	}
 
+	// Build allowed path prefixes from the configured repositories.
+	// Each repo "owner/repo" allows paths starting with "/owner/repo".
+	var prefixes []string
+	for _, repo := range cfg.Repositories {
+		prefixes = append(prefixes, "/"+repo)
+	}
+
 	return integrationConfigResponse{
-		OK:     true,
-		Target: "https://github.com",
+		OK:                  true,
+		Target:              "https://github.com",
+		AllowedPathPrefixes: prefixes,
 		BasicAuth: &basicAuthConfig{
 			User: "x-access-token",
 			Pass: token,

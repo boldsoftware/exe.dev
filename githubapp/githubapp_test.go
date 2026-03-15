@@ -206,6 +206,18 @@ func TestMintInstallationToken(t *testing.T) {
 			t.Errorf("unexpected repositories: %v", reqBody["repositories"])
 		}
 
+		// Verify permissions are scoped to contents:write only.
+		perms, ok := reqBody["permissions"].(map[string]any)
+		if !ok {
+			t.Fatal("missing permissions in request body")
+		}
+		if perms["contents"] != "write" {
+			t.Errorf("expected contents=write, got %v", perms["contents"])
+		}
+		if len(perms) != 1 {
+			t.Errorf("expected exactly 1 permission, got %d: %v", len(perms), perms)
+		}
+
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]any{
 			"token":      "ghs_mock_installation_token",

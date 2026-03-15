@@ -117,11 +117,12 @@ type integrationCacheKey struct {
 }
 
 type integrationCacheEntry struct {
-	ok        bool
-	target    *url.URL
-	headers   map[string]string
-	basicAuth *basicAuthConfig
-	fetchedAt time.Time
+	ok                  bool
+	target              *url.URL
+	headers             map[string]string
+	basicAuth           *basicAuthConfig
+	allowedPathPrefixes []string
+	fetchedAt           time.Time
 }
 
 type basicAuthConfig struct {
@@ -612,6 +613,21 @@ func (s *Service) integrationHostName(host string) (string, bool) {
 	return "", false
 }
 
+// pathMatchesPrefixes reports whether the request path matches one of the
+// allowed prefixes. Only git-over-HTTP paths are allowed:
+//   - /owner/repo.git (exact, for git clone)
+//   - /owner/repo.git/ (trailing slash)
+//   - /owner/repo.git/anything (subpath, e.g. /info/refs, /git-upload-pack)
+func pathMatchesPrefixes(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		gitPrefix := prefix + ".git"
+		if path == gitPrefix || strings.HasPrefix(path, gitPrefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // isValidIntegrationName checks whether name matches the creation-time rules
 // (lowercase letters, digits, hyphens, 1-63 chars, no leading/trailing hyphen).
 // This is the same validation as execore.validateIntegrationName but returns
@@ -660,6 +676,14 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	cfg, ok := s.getIntegrationConfig(r.Context(), vmName, integrationName)
 	if !ok {
 		http.Error(w, "integration not found or not attached to this VM", http.StatusForbidden)
+		return
+	}
+
+	// If the config specifies allowed path prefixes, reject requests that
+	// don't match. This prevents proxying arbitrary paths (e.g., "/") to
+	// upstream services like github.com.
+	if len(cfg.allowedPathPrefixes) > 0 && !pathMatchesPrefixes(r.URL.Path, cfg.allowedPathPrefixes) {
+		http.Error(w, "path does not match any configured repository", http.StatusForbidden)
 		return
 	}
 
@@ -740,10 +764,11 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 	defer resp.Body.Close()
 
 	var result struct {
-		OK        bool              `json:"ok"`
-		Target    string            `json:"target"`
-		Headers   map[string]string `json:"headers"`
-		BasicAuth *basicAuthConfig  `json:"basic_auth"`
+		OK                  bool              `json:"ok"`
+		Target              string            `json:"target"`
+		Headers             map[string]string `json:"headers"`
+		BasicAuth           *basicAuthConfig  `json:"basic_auth"`
+		AllowedPathPrefixes []string          `json:"allowed_path_prefixes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.log.ErrorContext(ctx, "integration config: decode failed", "error", err)
@@ -760,11 +785,12 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 	}
 
 	return &integrationCacheEntry{
-		ok:        true,
-		target:    targetURL,
-		headers:   result.Headers,
-		basicAuth: result.BasicAuth,
-		fetchedAt: time.Now(),
+		ok:                  true,
+		target:              targetURL,
+		headers:             result.Headers,
+		basicAuth:           result.BasicAuth,
+		allowedPathPrefixes: result.AllowedPathPrefixes,
+		fetchedAt:           time.Now(),
 	}
 }
 

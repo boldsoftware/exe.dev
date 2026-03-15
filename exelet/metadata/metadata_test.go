@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"exe.dev/tracing"
@@ -402,6 +403,79 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 	}
 }
 
+func TestMetadataServiceIntegrationProxyPathFilter(t *testing.T) {
+	// Fake exed that serves /_/integration-config with allowed_path_prefixes.
+	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_/integration-config" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":                    true,
+			"target":                "https://github.com",
+			"basic_auth":            map[string]string{"user": "x-access-token", "pass": "test-token"},
+			"allowed_path_prefixes": []string{"/owner/repo"},
+		})
+	}))
+	defer fakeExed.Close()
+
+	log := slog.Default()
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", true, nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	// Paths that should be blocked (403) by our filter.
+	blocked := []string{
+		"/",
+		"/other/path",
+		"/owner",
+		"/owner/repo",
+		"/owner/repo/anything",
+		"/owner/repo-other",
+		"/owner/repo-other.git/info/refs",
+	}
+	for _, path := range blocked {
+		t.Run("blocked:"+path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud"+path, nil)
+			req.Host = "myproxy.int.exe.cloud"
+			req.RemoteAddr = "10.42.0.2:12345"
+			rr := httptest.NewRecorder()
+			svc.server.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusForbidden {
+				t.Errorf("path %s: got %d, want 403: %s", path, rr.Code, rr.Body.String())
+			}
+		})
+	}
+
+	// Git paths that match a configured repo should NOT be blocked by our filter.
+	// They'll be proxied to github.com and may get various responses from
+	// upstream, but crucially not our path-filter 403.
+	const ourForbiddenMsg = "path does not match any configured repository"
+	allowed := []string{"/owner/repo.git/info/refs", "/owner/repo.git/git-upload-pack"}
+	for _, path := range allowed {
+		t.Run("allowed:"+path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud"+path, nil)
+			req.Host = "myproxy.int.exe.cloud"
+			req.RemoteAddr = "10.42.0.2:12345"
+			rr := httptest.NewRecorder()
+			svc.server.Handler.ServeHTTP(rr, req)
+
+			body := rr.Body.String()
+			if strings.Contains(body, ourForbiddenMsg) {
+				t.Errorf("path %s: blocked by path filter (should have been proxied)", path)
+			}
+		})
+	}
+}
+
 func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 	// Fake exed returns ok=false (integration not found).
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -461,6 +535,54 @@ type failingInstanceLookup struct{}
 
 func (f *failingInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
 	return "", "", context.DeadlineExceeded
+}
+
+func TestPathMatchesPrefixes(t *testing.T) {
+	prefixes := []string{"/owner/repo", "/org/other-repo"}
+
+	allowed := []string{
+		"/owner/repo.git",
+		"/owner/repo.git/",
+		"/owner/repo.git/info/refs",
+		"/owner/repo.git/git-upload-pack",
+		"/owner/repo.git/git-receive-pack",
+		"/org/other-repo.git",
+		"/org/other-repo.git/info/refs",
+	}
+	for _, path := range allowed {
+		if !pathMatchesPrefixes(path, prefixes) {
+			t.Errorf("pathMatchesPrefixes(%q, ...) = false, want true", path)
+		}
+	}
+
+	blocked := []string{
+		"/",
+		"/owner",
+		"/owner/",
+		"/owner/repo",
+		"/owner/repo/",
+		"/owner/repo/anything",
+		"/owner/repo-other",
+		"/owner/repo-other.git/info/refs",
+		"/other/repo",
+		"/owner/repoextra",
+		"/owner/repo.gitfoo",
+	}
+	for _, path := range blocked {
+		if pathMatchesPrefixes(path, prefixes) {
+			t.Errorf("pathMatchesPrefixes(%q, ...) = true, want false", path)
+		}
+	}
+}
+
+func TestPathMatchesPrefixesEmpty(t *testing.T) {
+	// Empty prefixes should match nothing.
+	if pathMatchesPrefixes("/anything", nil) {
+		t.Error("nil prefixes should match nothing")
+	}
+	if pathMatchesPrefixes("/anything", []string{}) {
+		t.Error("empty prefixes should match nothing")
+	}
 }
 
 func TestIsValidIntegrationName(t *testing.T) {
