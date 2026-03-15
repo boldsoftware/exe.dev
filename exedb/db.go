@@ -243,6 +243,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingTeamInvitesByUserStmt, err = db.PrepareContext(ctx, deletePendingTeamInvitesByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvitesByUser: %w", err)
 	}
+	if q.deletePushTokenStmt, err = db.PrepareContext(ctx, deletePushToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePushToken: %w", err)
+	}
+	if q.deletePushTokensByUserIDStmt, err = db.PrepareContext(ctx, deletePushTokensByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePushTokensByUserID: %w", err)
+	}
 	if q.deleteReleasedBoxNameStmt, err = db.PrepareContext(ctx, deleteReleasedBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteReleasedBoxName: %w", err)
 	}
@@ -530,6 +536,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getPreferredExeletStmt, err = db.PrepareContext(ctx, getPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPreferredExelet: %w", err)
+	}
+	if q.getPushTokensByUserIDStmt, err = db.PrepareContext(ctx, getPushTokensByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPushTokensByUserID: %w", err)
 	}
 	if q.getRecentSignupRejectionsStmt, err = db.PrepareContext(ctx, getRecentSignupRejections); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRecentSignupRejections: %w", err)
@@ -1056,6 +1065,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
 	}
+	if q.updatePushTokenLastUsedStmt, err = db.PrepareContext(ctx, updatePushTokenLastUsed); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdatePushTokenLastUsed: %w", err)
+	}
 	if q.updateSSHKeyCommentStmt, err = db.PrepareContext(ctx, updateSSHKeyComment); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSSHKeyComment: %w", err)
 	}
@@ -1106,6 +1118,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertNetActuateIPShardStmt, err = db.PrepareContext(ctx, upsertNetActuateIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertNetActuateIPShard: %w", err)
+	}
+	if q.upsertPushTokenStmt, err = db.PrepareContext(ctx, upsertPushToken); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertPushToken: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -1508,6 +1523,16 @@ func (q *Queries) Close() error {
 	if q.deletePendingTeamInvitesByUserStmt != nil {
 		if cerr := q.deletePendingTeamInvitesByUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingTeamInvitesByUserStmt: %w", cerr)
+		}
+	}
+	if q.deletePushTokenStmt != nil {
+		if cerr := q.deletePushTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePushTokenStmt: %w", cerr)
+		}
+	}
+	if q.deletePushTokensByUserIDStmt != nil {
+		if cerr := q.deletePushTokensByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePushTokensByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.deleteReleasedBoxNameStmt != nil {
@@ -1988,6 +2013,11 @@ func (q *Queries) Close() error {
 	if q.getPreferredExeletStmt != nil {
 		if cerr := q.getPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPreferredExeletStmt: %w", cerr)
+		}
+	}
+	if q.getPushTokensByUserIDStmt != nil {
+		if cerr := q.getPushTokensByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPushTokensByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getRecentSignupRejectionsStmt != nil {
@@ -2865,6 +2895,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
 		}
 	}
+	if q.updatePushTokenLastUsedStmt != nil {
+		if cerr := q.updatePushTokenLastUsedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updatePushTokenLastUsedStmt: %w", cerr)
+		}
+	}
 	if q.updateSSHKeyCommentStmt != nil {
 		if cerr := q.updateSSHKeyCommentStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateSSHKeyCommentStmt: %w", cerr)
@@ -2948,6 +2983,11 @@ func (q *Queries) Close() error {
 	if q.upsertNetActuateIPShardStmt != nil {
 		if cerr := q.upsertNetActuateIPShardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertNetActuateIPShardStmt: %w", cerr)
+		}
+	}
+	if q.upsertPushTokenStmt != nil {
+		if cerr := q.upsertPushTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertPushTokenStmt: %w", cerr)
 		}
 	}
 	if q.upsertSSHHostKeyStmt != nil {
@@ -3117,6 +3157,8 @@ type Queries struct {
 	deletePendingTeamInviteStmt                *sql.Stmt
 	deletePendingTeamInvitesByTeamIDStmt       *sql.Stmt
 	deletePendingTeamInvitesByUserStmt         *sql.Stmt
+	deletePushTokenStmt                        *sql.Stmt
+	deletePushTokensByUserIDStmt               *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
@@ -3213,6 +3255,7 @@ type Queries struct {
 	getPendingTeamInvitesByTeamStmt            *sql.Stmt
 	getPendingTeamInvitesForUserStmt           *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
+	getPushTokensByUserIDStmt                  *sql.Stmt
 	getRecentSignupRejectionsStmt              *sql.Stmt
 	getRedirectStmt                            *sql.Stmt
 	getReleasedBoxNameStmt                     *sql.Stmt
@@ -3388,6 +3431,7 @@ type Queries struct {
 	updateIntegrationAttachmentsStmt           *sql.Stmt
 	updateIntegrationNameStmt                  *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
+	updatePushTokenLastUsedStmt                *sql.Stmt
 	updateSSHKeyCommentStmt                    *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
@@ -3405,6 +3449,7 @@ type Queries struct {
 	upsertLatitudeIPShardStmt                  *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertNetActuateIPShardStmt                *sql.Stmt
+	upsertPushTokenStmt                        *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertTemplateRatingStmt                   *sql.Stmt
@@ -3495,6 +3540,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingTeamInviteStmt:                q.deletePendingTeamInviteStmt,
 		deletePendingTeamInvitesByTeamIDStmt:       q.deletePendingTeamInvitesByTeamIDStmt,
 		deletePendingTeamInvitesByUserStmt:         q.deletePendingTeamInvitesByUserStmt,
+		deletePushTokenStmt:                        q.deletePushTokenStmt,
+		deletePushTokensByUserIDStmt:               q.deletePushTokensByUserIDStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
@@ -3591,6 +3638,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingTeamInvitesByTeamStmt:            q.getPendingTeamInvitesByTeamStmt,
 		getPendingTeamInvitesForUserStmt:           q.getPendingTeamInvitesForUserStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
+		getPushTokensByUserIDStmt:                  q.getPushTokensByUserIDStmt,
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
 		getRedirectStmt:                            q.getRedirectStmt,
 		getReleasedBoxNameStmt:                     q.getReleasedBoxNameStmt,
@@ -3766,6 +3814,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateIntegrationAttachmentsStmt:           q.updateIntegrationAttachmentsStmt,
 		updateIntegrationNameStmt:                  q.updateIntegrationNameStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
+		updatePushTokenLastUsedStmt:                q.updatePushTokenLastUsedStmt,
 		updateSSHKeyCommentStmt:                    q.updateSSHKeyCommentStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
@@ -3783,6 +3832,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertNetActuateIPShardStmt:                q.upsertNetActuateIPShardStmt,
+		upsertPushTokenStmt:                        q.upsertPushTokenStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,

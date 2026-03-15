@@ -777,6 +777,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/exec":
 		s.handleExec(w, r)
 		return
+	case "/api/push-tokens":
+		s.handlePushTokens(w, r)
+		return
 	case "/api/ideas":
 		s.handleTemplatesAPI(w, r)
 		return

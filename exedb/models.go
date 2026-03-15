@@ -359,6 +359,15 @@ type PendingTeamInvite struct {
 	AuthProvider     *string    `db:"auth_provider" json:"auth_provider"`
 }
 
+type PushToken struct {
+	ID         int64      `db:"id" json:"id"`
+	UserID     string     `db:"user_id" json:"user_id"`
+	Token      string     `db:"token" json:"token"`
+	Platform   string     `db:"platform" json:"platform"`
+	CreatedAt  time.Time  `db:"created_at" json:"created_at"`
+	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
 type Redirect struct {
 	Key       string    `db:"key" json:"key"`
 	Target    string    `db:"target" json:"target"`
