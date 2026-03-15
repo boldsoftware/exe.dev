@@ -2060,3 +2060,72 @@ func doProxyGet(t *testing.T, boxName string, httpPort int, path string) (*http.
 	req := makeProxyRequestWithPath(t, boxName, httpPort, path)
 	return client.Do(req)
 }
+
+// TestProxyDebugForwarding verifies that /debug requests addressed to a VM
+// are proxied to the VM and not intercepted by exeprox's own debug handler.
+func TestProxyDebugForwarding(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	httpPort := Env.servers.Exeprox.HTTPPort
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
+	pty.Disconnect()
+	waitForSSH(t, box, keyFile)
+
+	// Create a file at /debug so the VM's httpd serves it,
+	// giving us a marker to distinguish from exeprox's debug page.
+	mkDebug := boxSSHCommand(t, box, keyFile, "sh", "-c",
+		"'echo vm-debug-marker > /home/exedev/debug'")
+	if err := mkDebug.Run(); err != nil {
+		t.Fatalf("failed to create debug file: %v", err)
+	}
+
+	serveIndex(t, box, keyFile, "alive")
+	configureProxyRoute(t, keyFile, box, 8080, "public")
+
+	// Wait for the proxy to be ready by polling /.
+	var lastErr error
+	for _, d := range []time.Duration{
+		0, 100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
+		1 * time.Second, 1 * time.Second, 2 * time.Second, 2 * time.Second,
+	} {
+		time.Sleep(d)
+		resp, err := doProxyRequest(t, box, httpPort)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK && strings.Contains(string(body), "alive") {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("status %d, body %q", resp.StatusCode, body)
+	}
+	if lastErr != nil {
+		t.Fatalf("proxy not ready: %v", lastErr)
+	}
+
+	// Request /debug through the proxy — must reach the VM, not exeprox.
+	req := makeProxyRequestWithPath(t, box, httpPort, "/debug")
+	resp, err := noRedirectClient(nil).Do(req)
+	if err != nil {
+		t.Fatalf("proxy /debug request failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if strings.Contains(string(body), "exeprox debug") {
+		t.Fatal("/debug was intercepted by exeprox instead of being proxied to the VM")
+	}
+	if !strings.Contains(string(body), "vm-debug-marker") {
+		t.Fatalf("/debug response not from VM; status=%d body=%q", resp.StatusCode, body)
+	}
+
+	cleanupBox(t, keyFile, box)
+}

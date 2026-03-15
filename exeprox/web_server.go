@@ -88,10 +88,14 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		exedebug.RequireLocalAccess(http.HandlerFunc(wp.handleMetrics)).ServeHTTP(w, r)
 		return
 	case r.URL.Path == "/debug" || strings.HasPrefix(r.URL.Path, "/debug/"):
-		// exeprox handles its own /debug surface (pprof, expvar, gitsha).
-		// exed's /debug endpoints (vms, users, billing, etc.) are accessed directly, not through the proxy.
-		exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
-		return
+		// exeprox serves its own /debug surface (pprof, expvar, gitsha)
+		// only when accessed via the Tailscale domain. On all other hosts,
+		// /debug falls through to the redirect to exed below, so that we
+		// don't shadow user VMs or exed's /debug endpoints.
+		if wp.tsDomain != "" && domz.Canonicalize(domz.StripPort(r.Host)) == wp.tsDomain {
+			exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
+			return
+		}
 	case r.URL.Path == "/__exe.dev/who":
 		wp.handleDebugWho(w, r)
 		return
