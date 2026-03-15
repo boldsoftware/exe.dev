@@ -499,7 +499,6 @@ func (wp *WebProxy) handleDebugWho(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(hostname))
 }
 
-
 // handleMetrics serves the /metrics HTTP request.
 // Access control is handled by exedebug.RequireLocalAccess in the caller.
 func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
