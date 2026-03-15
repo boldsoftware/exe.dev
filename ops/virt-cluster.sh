@@ -22,6 +22,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ── Configuration ────────────────────────────────────────────────────────────
 
 NUM_EXELETS="${NUM_EXELETS:-2}"
+NUM_EXEPROXES="${NUM_EXEPROXES:-1}"
 EXED_VCPUS="${EXED_VCPUS:-2}"
 EXED_RAM="${EXED_RAM:-4096}"
 EXEPROX_VCPUS="${EXEPROX_VCPUS:-1}"
@@ -49,12 +50,14 @@ CACHE_DIR="$HOME/.cache/exedops"
 # ── VM Names ─────────────────────────────────────────────────────────────────
 
 vm_name_exed() { echo "${CLUSTER_PREFIX}-exed"; }
-vm_name_exeprox() { echo "${CLUSTER_PREFIX}-exeprox"; }
-vm_name_exelet() { printf '%s-dev-ctr-%02d\n' "${CLUSTER_PREFIX}" "$1"; }
+vm_name_exeprox() { printf 'exeprox-local-dev-%02d\n' "$1"; }
+vm_name_exelet() { printf 'exelet-local-dev-%02d\n' "$1"; }
 
 all_vm_names() {
     vm_name_exed
-    vm_name_exeprox
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        vm_name_exeprox "$i"
+    done
     for i in $(seq 1 "${NUM_EXELETS}"); do
         vm_name_exelet "$i"
     done
@@ -608,21 +611,21 @@ provision_exelet() {
 
     # Copy exeletd and exelet-ctl
     scp_to "$ip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl"
-    ssh_run "$ip" 'sudo mv ~/exeletd /usr/local/bin/exeletd && sudo chmod +x /usr/local/bin/exeletd'
+    ssh_run "$ip" 'sudo mv ~/exeletd /usr/local/bin/exeletd.latest && sudo chmod +x /usr/local/bin/exeletd.latest'
     ssh_run "$ip" 'sudo mv ~/exelet-ctl /usr/local/bin/exelet-ctl && sudo chmod +x /usr/local/bin/exelet-ctl'
 
     # Copy setup-exelet.sh — run a modified version for the cluster
     # (We start exelet briefly to preload images, then stop it and install the real systemd unit)
     scp_to "$ip" "${SCRIPT_DIR}/setup-exelet.sh"
     # Patch the script to use /usr/local/bin paths
-    ssh_run "$ip" "sudo bash -c 'sed -e \"s|/home/ubuntu/.cache/exedops/exeletd-amd64|/usr/local/bin/exeletd|\" -e \"s|/home/ubuntu/.cache/exedops/exelet-ctl-amd64|/usr/local/bin/exelet-ctl|\" -e \"s|ASSETS_DIR=.*|ASSETS_DIR=/home/ubuntu/.cache/exedops|\" ~/setup-exelet.sh > /root/setup-exelet.sh && chmod +x /root/setup-exelet.sh'"
+    ssh_run "$ip" "sudo bash -c 'sed -e \"s|/home/ubuntu/.cache/exedops/exeletd-amd64|/usr/local/bin/exeletd.latest|\" -e \"s|/home/ubuntu/.cache/exedops/exelet-ctl-amd64|/usr/local/bin/exelet-ctl|\" -e \"s|ASSETS_DIR=.*|ASSETS_DIR=/home/ubuntu/.cache/exedops|\" ~/setup-exelet.sh > /root/setup-exelet.sh && chmod +x /root/setup-exelet.sh'"
     ssh_run "$ip" 'sudo /bin/bash /root/setup-exelet.sh'
 
     # Ensure data directory exists (ZFS mounts /data but /data/exelet must be created)
     ssh_run "$ip" 'sudo mkdir -p /data/exelet'
 
     # Install systemd unit
-    ssh_run "$ip" "sudo tee /etc/systemd/system/exeletd.service >/dev/null" <<EOF
+    ssh_run "$ip" "sudo tee /etc/systemd/system/exelet.service >/dev/null" <<EOF
 [Unit]
 Description=exeletd (virt-cluster)
 After=network.target zfs.target
@@ -635,7 +638,7 @@ IOWeight=1024
 LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 
-ExecStart=/usr/local/bin/exeletd -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
+ExecStart=/usr/local/bin/exeletd.latest -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
 
 Restart=always
 RestartSec=5
@@ -732,14 +735,12 @@ EOF
 }
 
 provision_exeprox() {
-    local ip="$1" exed_ip="$2"
-    local name
-    name="$(vm_name_exeprox)"
+    local ip="$1" exed_ip="$2" name="$3"
     log "Provisioning exeprox VM ${name} (${ip})..."
 
     # Copy exeprox binary
     scp_to "$ip" "${CACHE_DIR}/exeprox"
-    ssh_run "$ip" 'sudo mv ~/exeprox /usr/local/bin/exeprox && sudo chmod +x /usr/local/bin/exeprox'
+    ssh_run "$ip" 'sudo mv ~/exeprox /usr/local/bin/exeprox.latest && sudo chmod +x /usr/local/bin/exeprox.latest'
 
     # Install exeprox systemd unit
     ssh_run "$ip" "sudo tee /etc/systemd/system/exeprox.service >/dev/null" <<EOF
@@ -753,7 +754,7 @@ User=${USER_NAME}
 Group=${USER_NAME}
 WorkingDirectory=/home/${USER_NAME}
 
-ExecStart=/usr/local/bin/exeprox -exed-grpc-addr=tcp://${exed_ip}:2225 -http=:8080 -https=:443 -stage=local
+ExecStart=/usr/local/bin/exeprox.latest -exed-grpc-addr=tcp://${exed_ip}:2225 -http=:8080 -https=:443 -stage=local
 
 Restart=always
 RestartSec=5
@@ -820,6 +821,7 @@ write_envfile() {
         echo "# Generated by ops/virt-cluster.sh on $(date -Iseconds)"
         echo "CLUSTER_PREFIX=${CLUSTER_PREFIX}"
         echo "NUM_EXELETS=${NUM_EXELETS}"
+        echo "NUM_EXEPROXES=${NUM_EXEPROXES}"
         echo ""
 
         local exed_ip
@@ -828,10 +830,13 @@ write_envfile() {
         echo "EXED_IP=${exed_ip}"
         echo ""
 
-        local exeprox_ip
-        exeprox_ip="$(get_vm_ip "$(vm_name_exeprox)")"
-        echo "EXEPROX_VM=$(vm_name_exeprox)"
-        echo "EXEPROX_IP=${exeprox_ip}"
+        for i in $(seq 1 "${NUM_EXEPROXES}"); do
+            local pname pip
+            pname="$(vm_name_exeprox "$i")"
+            pip="$(get_vm_ip "$pname")"
+            echo "EXEPROX_${i}_VM=${pname}"
+            echo "EXEPROX_${i}_IP=${pip}"
+        done
         echo ""
 
         for i in $(seq 1 "${NUM_EXELETS}"); do
@@ -865,8 +870,10 @@ cmd_start() {
     # Create exed VM
     create_vm "$(vm_name_exed)" "${EXED_VCPUS}" "${EXED_RAM}" generate_cloud_init_exed false
 
-    # Create exeprox VM
-    create_vm "$(vm_name_exeprox)" "${EXEPROX_VCPUS}" "${EXEPROX_RAM}" generate_cloud_init_exeprox false
+    # Create exeprox VMs
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        create_vm "$(vm_name_exeprox "$i")" "${EXEPROX_VCPUS}" "${EXEPROX_RAM}" generate_cloud_init_exeprox false
+    done
 
     # Create exelet VMs
     for i in $(seq 1 "${NUM_EXELETS}"); do
@@ -886,15 +893,20 @@ cmd_start() {
     # Collect all VM names for the display loop
     local all_names=()
     all_names+=("$(vm_name_exed)")
-    all_names+=("$(vm_name_exeprox)")
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        all_names+=("$(vm_name_exeprox "$i")")
+    done
     for i in $(seq 1 "${NUM_EXELETS}"); do
         all_names+=("$(vm_name_exelet "$i")")
     done
 
     wait_for_vm_ready "$(vm_name_exed)" "$status_dir" >"${wait_dir}/exed" &
     local pid_exed=$!
-    wait_for_vm_ready "$(vm_name_exeprox)" "$status_dir" >"${wait_dir}/exeprox" &
-    local pid_exeprox=$!
+    declare -A exeprox_pids
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        wait_for_vm_ready "$(vm_name_exeprox "$i")" "$status_dir" >"${wait_dir}/exeprox-${i}" &
+        exeprox_pids[$i]=$!
+    done
 
     declare -A exelet_pids
     for i in $(seq 1 "${NUM_EXELETS}"); do
@@ -907,15 +919,21 @@ cmd_start() {
 
     # Wait for all background jobs
     wait "$pid_exed" || die "exed VM failed to become ready"
-    wait "$pid_exeprox" || die "exeprox VM failed to become ready"
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        wait "${exeprox_pids[$i]}" || die "exeprox-${i} VM failed to become ready"
+    done
     for i in $(seq 1 "${NUM_EXELETS}"); do
         wait "${exelet_pids[$i]}" || die "exelet-${i} VM failed to become ready"
     done
 
     # Read IPs from temp files
-    local exed_ip exeprox_ip
+    local exed_ip
     exed_ip="$(cat "${wait_dir}/exed")"
-    exeprox_ip="$(cat "${wait_dir}/exeprox")"
+
+    declare -A exeprox_ips
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        exeprox_ips[$i]="$(cat "${wait_dir}/exeprox-${i}")"
+    done
 
     declare -A exelet_ips
     for i in $(seq 1 "${NUM_EXELETS}"); do
@@ -969,13 +987,15 @@ cmd_start() {
 
         # Patch exelet units with actual exed IP and start them
         for i in $(seq 1 "${NUM_EXELETS}"); do
-            ssh_run "${exelet_ips[$i]}" "sudo sed -i 's|EXED_IP_PLACEHOLDER|${exed_ip}|g' /etc/systemd/system/exeletd.service"
-            ssh_run "${exelet_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl enable --now exeletd'
+            ssh_run "${exelet_ips[$i]}" "sudo sed -i 's|EXED_IP_PLACEHOLDER|${exed_ip}|g' /etc/systemd/system/exelet.service"
+            ssh_run "${exelet_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl enable --now exelet'
             log "Started exeletd on $(vm_name_exelet "$i")"
         done
 
-        # ── Provision exeprox VM ─────────────────────────────────────────
-        provision_exeprox "$exeprox_ip" "$exed_ip"
+        # ── Provision exeprox VMs ────────────────────────────────────────
+        for i in $(seq 1 "${NUM_EXEPROXES}"); do
+            provision_exeprox "${exeprox_ips[$i]}" "$exed_ip" "$(vm_name_exeprox "$i")"
+        done
     else
         # ── Refresh IPs in systemd units (DHCP may have reassigned) ──────
         log "Refreshing service configs with current IPs..."
@@ -987,13 +1007,15 @@ cmd_start() {
 
         # Update exelets with current exed IP
         for i in $(seq 1 "${NUM_EXELETS}"); do
-            ssh_run "${exelet_ips[$i]}" "sudo sed -i 's|--exed-url=http://[^:]*:8080|--exed-url=http://${exed_ip}:8080|' /etc/systemd/system/exeletd.service"
-            ssh_run "${exelet_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl restart exeletd'
+            ssh_run "${exelet_ips[$i]}" "sudo sed -i 's|--exed-url=http://[^:]*:8080|--exed-url=http://${exed_ip}:8080|' /etc/systemd/system/exelet.service"
+            ssh_run "${exelet_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl restart exelet'
         done
 
-        # Update exeprox with current exed IP
-        ssh_run "$exeprox_ip" "sudo sed -i 's|-exed-grpc-addr=tcp://[^:]*:2225|-exed-grpc-addr=tcp://${exed_ip}:2225|' /etc/systemd/system/exeprox.service"
-        ssh_run "$exeprox_ip" 'sudo systemctl daemon-reload && sudo systemctl restart exeprox'
+        # Update exeproxes with current exed IP
+        for i in $(seq 1 "${NUM_EXEPROXES}"); do
+            ssh_run "${exeprox_ips[$i]}" "sudo sed -i 's|-exed-grpc-addr=tcp://[^:]*:2225|-exed-grpc-addr=tcp://${exed_ip}:2225|' /etc/systemd/system/exeprox.service"
+            ssh_run "${exeprox_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl restart exeprox'
+        done
     fi
 
     # ── Port forwarding ──────────────────────────────────────────────────
@@ -1017,9 +1039,8 @@ cmd_deploy() {
     build_binaries
 
     # Discover IPs from running VMs
-    local exed_ip exeprox_ip
+    local exed_ip
     exed_ip="$(get_vm_ip "$(vm_name_exed)")"
-    exeprox_ip="$(get_vm_ip "$(vm_name_exeprox)")"
 
     if [[ -z "$exed_ip" ]]; then
         die "exed VM not running. Run 'start' first."
@@ -1036,10 +1057,10 @@ cmd_deploy() {
         fi
         log "Deploying exeletd to ${ename} (${eip})..."
         scp_to "$eip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl"
-        ssh_run "$eip" 'sudo systemctl stop exeletd || true'
-        ssh_run "$eip" 'sudo mv ~/exeletd /usr/local/bin/exeletd && sudo chmod +x /usr/local/bin/exeletd'
+        ssh_run "$eip" 'sudo systemctl stop exelet || true'
+        ssh_run "$eip" 'sudo mv ~/exeletd /usr/local/bin/exeletd.latest && sudo chmod +x /usr/local/bin/exeletd.latest'
         ssh_run "$eip" 'sudo mv ~/exelet-ctl /usr/local/bin/exelet-ctl && sudo chmod +x /usr/local/bin/exelet-ctl'
-        ssh_run "$eip" 'sudo systemctl start exeletd'
+        ssh_run "$eip" 'sudo systemctl start exelet'
         log "  ${ename}: exeletd restarted"
     done
 
@@ -1052,15 +1073,22 @@ cmd_deploy() {
     ssh_run "$exed_ip" 'sudo systemctl start exed'
     log "  exed restarted"
 
-    # ── Deploy to exeprox VM ─────────────────────────────────────────────
-    if [[ -n "$exeprox_ip" ]]; then
-        log "Deploying exeprox to $(vm_name_exeprox) (${exeprox_ip})..."
-        scp_to "$exeprox_ip" "${CACHE_DIR}/exeprox"
-        ssh_run "$exeprox_ip" 'sudo systemctl stop exeprox || true'
-        ssh_run "$exeprox_ip" 'sudo mv ~/exeprox /usr/local/bin/exeprox && sudo chmod +x /usr/local/bin/exeprox'
-        ssh_run "$exeprox_ip" 'sudo systemctl start exeprox'
-        log "  exeprox restarted"
-    fi
+    # ── Deploy to exeprox VMs ────────────────────────────────────────────
+    for i in $(seq 1 "${NUM_EXEPROXES}"); do
+        local pname pip
+        pname="$(vm_name_exeprox "$i")"
+        pip="$(get_vm_ip "$pname")"
+        if [[ -z "$pip" ]]; then
+            warn "Exeprox VM ${pname} not running, skipping"
+            continue
+        fi
+        log "Deploying exeprox to ${pname} (${pip})..."
+        scp_to "$pip" "${CACHE_DIR}/exeprox"
+        ssh_run "$pip" 'sudo systemctl stop exeprox || true'
+        ssh_run "$pip" 'sudo mv ~/exeprox /usr/local/bin/exeprox.latest && sudo chmod +x /usr/local/bin/exeprox.latest'
+        ssh_run "$pip" 'sudo systemctl start exeprox'
+        log "  ${pname}: exeprox restarted"
+    done
 
     # Refresh port forwarding (IPs may have changed after reboot, though unlikely)
     setup_port_forwarding "$exed_ip"
@@ -1133,16 +1161,16 @@ cmd_status() {
                         else
                             service="exed (inactive)"
                         fi
-                    elif [[ "$name" == *-exeprox ]]; then
+                    elif [[ "$name" == exeprox-* ]]; then
                         service="exeprox"
                         if ssh_run "$ip" 'systemctl is-active exeprox' 2>/dev/null | grep -q "^active$"; then
                             service="exeprox (active)"
                         else
                             service="exeprox (inactive)"
                         fi
-                    elif [[ "$name" == *-ctr-* ]]; then
+                    elif [[ "$name" == exelet-* ]]; then
                         service="exeletd"
-                        if ssh_run "$ip" 'systemctl is-active exeletd' 2>/dev/null | grep -q "^active$"; then
+                        if ssh_run "$ip" 'systemctl is-active exelet' 2>/dev/null | grep -q "^active$"; then
                             service="exeletd (active)"
                         else
                             service="exeletd (inactive)"
@@ -1222,7 +1250,7 @@ deploy) cmd_deploy ;;
     echo "  deploy   Rebuild binaries, push to VMs, restart services"
     echo ""
     echo "Environment variables:"
-    echo "  NUM_EXELETS=${NUM_EXELETS}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
+    echo "  NUM_EXELETS=${NUM_EXELETS}  NUM_EXEPROXES=${NUM_EXEPROXES}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
     echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     exit 1
