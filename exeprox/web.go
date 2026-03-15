@@ -137,9 +137,15 @@ func (wp *WebProxy) setupHTTPServer() {
 	}
 }
 
-// httpToHTTPSHandler returns an HTTP handler that redirects all requests to HTTPS.
+// httpToHTTPSHandler returns an HTTP handler that redirects all requests to HTTPS,
+// except for /__exe.dev/who which is served over plain HTTP.
 func (wp *WebProxy) httpToHTTPSHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/__exe.dev/who":
+			wp.handleDebugWho(w, r)
+			return
+		}
 		host, _, err := net.SplitHostPort(r.Host)
 		if err != nil {
 			host = r.Host
@@ -485,6 +491,14 @@ func (wp *WebProxy) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 }
+
+// handleDebugWho serves the /__exe.dev/who HTTP request.
+// Returns the hostname, like cmd/whoserver.
+func (wp *WebProxy) handleDebugWho(w http.ResponseWriter, r *http.Request) {
+	hostname, _ := os.Hostname()
+	w.Write([]byte(hostname))
+}
+
 
 // handleMetrics serves the /metrics HTTP request.
 // Access control is handled by exedebug.RequireLocalAccess in the caller.

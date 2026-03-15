@@ -92,6 +92,9 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// exed's /debug endpoints (vms, users, billing, etc.) are accessed directly, not through the proxy.
 		exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
 		return
+	case r.URL.Path == "/__exe.dev/who":
+		wp.handleDebugWho(w, r)
+		return
 	}
 
 	// This is a web request that we aren't going to handle
