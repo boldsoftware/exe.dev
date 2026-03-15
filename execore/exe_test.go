@@ -15,6 +15,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/exedb"
+	"exe.dev/exedebug"
 	"exe.dev/sqlite"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -550,7 +551,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 		req.RemoteAddr = "192.168.1.100:12345" // Simulate external IP
 		w := httptest.NewRecorder()
 
-		requireLocalAccess(testHandler)(w, req)
+		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
 
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404 for external IP, got %d", w.Code)
@@ -563,7 +564,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:12345" // Localhost IP
 		w := httptest.NewRecorder()
 
-		requireLocalAccess(testHandler)(w, req)
+		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200 for localhost, got %d", w.Code)
@@ -580,7 +581,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 		req.RemoteAddr = "[::1]:12345" // IPv6 localhost
 		w := httptest.NewRecorder()
 
-		requireLocalAccess(testHandler)(w, req)
+		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200 for IPv6 localhost, got %d", w.Code)
@@ -597,7 +598,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 		req.RemoteAddr = "100.64.1.1:12345" // Tailscale IP range
 		w := httptest.NewRecorder()
 
-		requireLocalAccess(testHandler)(w, req)
+		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200 for Tailscale IP, got %d", w.Code)
@@ -614,7 +615,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 		req.RemoteAddr = "invalid-ip" // Malformed IP
 		w := httptest.NewRecorder()
 
-		requireLocalAccess(testHandler)(w, req)
+		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected status 500 for malformed IP, got %d", w.Code)

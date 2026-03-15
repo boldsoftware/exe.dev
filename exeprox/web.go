@@ -23,7 +23,6 @@ import (
 	"exe.dev/domz"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
-	"exe.dev/logging"
 	"exe.dev/metricsbag"
 	"exe.dev/publicips"
 	"exe.dev/stage"
@@ -34,7 +33,6 @@ import (
 	"golang.org/x/crypto/acme"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale"
-	"tailscale.com/net/tsaddr"
 )
 
 // WebProxy implements HTTP/HTTPS proxying.
@@ -488,36 +486,9 @@ func (wp *WebProxy) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 }
 
-// handleDebugGitsha serves the /debug/gitsha HTTP request.
-// Restricted to Tailscale and loopback IPs like /metrics.
-func (wp *WebProxy) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if err != nil {
-		http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprint(w, logging.GitCommit())
-}
-
 // handleMetrics serves the /metrics HTTP request.
+// Access control is handled by exedebug.RequireLocalAccess in the caller.
 func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if err != nil {
-		http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
-		http.NotFound(w, r)
-		return
-	}
-
 	handler := promhttp.HandlerFor(wp.proxy.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
 }

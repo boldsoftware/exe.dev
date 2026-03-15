@@ -806,7 +806,7 @@ func TestLoginWithExeFlow(t *testing.T) {
 	})
 
 	// Step 9: Verify user was created with CreatedForLoginWithExe=true
-	verifyUserCreatedForLoginWithExe(t, httpPort, visitorEmail)
+	verifyUserCreatedForLoginWithExe(t, visitorEmail)
 
 	// Step 10: Verify cookies were set on both main domain and subdomain
 	flow.verifyCookiesOnBothDomains()
@@ -817,11 +817,11 @@ func TestLoginWithExeFlow(t *testing.T) {
 
 // verifyUserCreatedForLoginWithExe verifies that a user was created with the
 // CreatedForLoginWithExe flag set to true.
-func verifyUserCreatedForLoginWithExe(t *testing.T, httpPort int, email string) {
+func verifyUserCreatedForLoginWithExe(t *testing.T, email string) {
 	t.Helper()
 
-	// Query the debug API to get user info
-	debugURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
+	// Query exed's debug API directly (not through exeprox).
+	debugURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort)
 	resp, err := http.Get(debugURL)
 	if err != nil {
 		t.Fatalf("failed to query debug API: %v", err)

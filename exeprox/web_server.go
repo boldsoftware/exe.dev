@@ -8,9 +8,11 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"exe.dev/domz"
 	"exe.dev/email"
+	"exe.dev/exedebug"
 	"exe.dev/exeweb"
 	"exe.dev/metricsbag"
 	"exe.dev/sshkey"
@@ -60,8 +62,8 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Non-proxy content (main site, terminal) should only be served
-	// on the main port.
+	// Non-proxy content (main site, terminal, debug, metrics) should only
+	// be served on the main port.
 	if !wp.isRequestOnMainPort(w, r) {
 		return
 	}
@@ -78,15 +80,17 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metricsbag.SetLabel(r.Context(), exeweb.LabelPath, exeweb.SanitizePath(r.URL.Path))
 
 	// Handle some paths locally.
-	switch r.URL.Path {
-	case "/health":
+	switch {
+	case r.URL.Path == "/health":
 		wp.handleHealth(w, r)
 		return
-	case "/metrics":
-		wp.handleMetrics(w, r)
+	case r.URL.Path == "/metrics":
+		exedebug.RequireLocalAccess(http.HandlerFunc(wp.handleMetrics)).ServeHTTP(w, r)
 		return
-	case "/debug/gitsha":
-		wp.handleDebugGitsha(w, r)
+	case r.URL.Path == "/debug" || strings.HasPrefix(r.URL.Path, "/debug/"):
+		// exeprox handles its own /debug surface (pprof, expvar, gitsha).
+		// exed's /debug endpoints (vms, users, billing, etc.) are accessed directly, not through the proxy.
+		exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
 		return
 	}
 

@@ -17,7 +17,7 @@ func TestNewVMCreationDisabled(t *testing.T) {
 	pty, _, _, email := registerForExeDev(t)
 
 	// Get user_id from debug endpoint
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.HTTPPort()))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort))
 	if err != nil {
 		t.Fatalf("failed to get users: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestNewVMCreationDisabled(t *testing.T) {
 
 	// Disable VM creation for this user
 	resp, err = http.PostForm(
-		fmt.Sprintf("http://localhost:%d/debug/users/toggle-vm-creation", Env.HTTPPort()),
+		fmt.Sprintf("http://localhost:%d/debug/users/toggle-vm-creation", Env.servers.Exed.HTTPPort),
 		url.Values{"user_id": {userID}, "disable": {"1"}},
 	)
 	if err != nil {

@@ -17,7 +17,6 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"slices"
@@ -32,6 +31,7 @@ import (
 	"exe.dev/cobble"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/exedebug"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
@@ -49,7 +49,6 @@ import (
 	_ "modernc.org/sqlite"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale"
-	"tailscale.com/net/tsaddr"
 )
 
 func (s *Server) prepareHandler() http.Handler {
@@ -491,7 +490,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// exed's main listener port, causing isRequestOnMainPort to reject
 	// the request. Access is already restricted by requireLocalAccess.
 	if r.URL.Path == "/exelet-desired" {
-		requireLocalAccess(s.handleExeletDesired)(w, r)
+		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleExeletDesired)).ServeHTTP(w, r)
 		return
 	}
 
@@ -520,7 +519,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	// Debug endpoints (pprof, expvar), gated by localhost or Tailscale access
 	if strings.HasPrefix(path, "/debug") {
-		requireLocalAccess(s.handleDebug)(w, r)
+		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleDebug)).ServeHTTP(w, r)
 		return
 	} else if strings.HasPrefix(path, "/docs") || path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" {
 		if s.docs != nil && s.docs.Handle(w, r) {
@@ -637,7 +636,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(w, "ok")
 	case "/metrics":
-		requireLocalAccess(s.handleMetrics)(w, r)
+		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleMetrics)).ServeHTTP(w, r)
 	case exeweb.SSHKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return
@@ -867,23 +866,6 @@ func (s *Server) handleRobots(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprint(w, "Allow: /\n")
 	fmt.Fprint(w, "\n")
 	fmt.Fprintf(w, "Sitemap: https://%s/sitemap.xml\n", s.env.WebHost)
-}
-
-// requireLocalAccess wraps an HTTP handler to only allow access from localhost or Tailscale IPs
-func requireLocalAccess(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		remoteIP, err := netip.ParseAddr(host)
-		if err != nil {
-			http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
-			http.NotFound(w, r)
-			return
-		}
-		handler(w, r)
-	}
 }
 
 // handleMetrics serves Prometheus metrics, gated by localhost or Tailscale access

@@ -31,6 +31,7 @@ import (
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
+	"exe.dev/exedebug"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
@@ -50,7 +51,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux := http.NewServeMux()
 
 	// index & aux
-	mux.HandleFunc("/debug$", s.handleDebugIndex)
+	mux.HandleFunc("/debug", s.handleDebugIndex)
 	mux.HandleFunc("/debug/", s.handleDebugIndex)
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
 	mux.HandleFunc("/debug/vms", s.handleDebugBoxes)
@@ -148,9 +149,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 // handleDebugIndex renders a simple HTML index of debug endpoints.
 func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	commit := logging.GitCommit()
-	if commit == "" || commit == "unknown" {
-		commit = "(dev build)"
-	}
+	displayCommit := exedebug.DisplayCommit(commit)
 
 	data := struct {
 		Stage      string
@@ -160,8 +159,8 @@ func (s *Server) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	}{
 		Stage:      s.env.DebugLabel,
 		StageColor: s.env.DebugColor,
-		GitCommit:  commit,
-		GitHubLink: template.HTML(gitHubLink(commit)),
+		GitCommit:  displayCommit,
+		GitHubLink: exedebug.GitHubLink(commit),
 	}
 
 	s.renderDebugTemplate(r.Context(), w, "index.html", data)
@@ -309,14 +308,6 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(boxes); err != nil {
 		s.slog().InfoContext(ctx, "Failed to encode boxes", "error", err)
 	}
-}
-
-// gitHubLink returns an HTML link to the GitHub commit history starting at the given SHA.
-func gitHubLink(commit string) string {
-	if commit == "" || commit == "unknown" {
-		return ""
-	}
-	return fmt.Sprintf(`(<a href="https://github.com/boldsoftware/exe/commits/%s">gh</a>)`, commit)
 }
 
 // handleDebugBoxDelete handles deletion of a box from the debug page.

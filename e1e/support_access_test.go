@@ -215,7 +215,7 @@ func TestSupportAccess(t *testing.T) {
 func enableRootSupport(t *testing.T, email string) {
 	t.Helper()
 
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.HTTPPort()))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/users?format=json", Env.servers.Exed.HTTPPort))
 	if err != nil {
 		t.Fatalf("failed to get users list: %v", err)
 	}
@@ -252,7 +252,7 @@ func enableRootSupport(t *testing.T, email string) {
 	form.Add("confirm_email", email)
 
 	postResp, err := http.PostForm(
-		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.HTTPPort()),
+		fmt.Sprintf("http://localhost:%d/debug/users/toggle-root-support", Env.servers.Exed.HTTPPort),
 		form,
 	)
 	if err != nil {
