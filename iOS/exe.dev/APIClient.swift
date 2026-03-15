@@ -164,6 +164,23 @@ final class APIClient: Sendable {
         }
     }
 
+    // MARK: - Push Tokens
+
+    func registerPushToken(_ token: String, platform: String = "apns") async throws {
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/push-tokens")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuth(&request)
+
+        let body = ["token": token, "platform": platform]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+    }
+
     // MARK: - Helpers
 
     private func addAuth(_ request: inout URLRequest) {
