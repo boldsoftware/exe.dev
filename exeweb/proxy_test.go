@@ -778,6 +778,14 @@ func (m *mockProxyData) ResolveExe1Token(ctx context.Context, exe1Token string) 
 	return "", fmt.Errorf("not implemented")
 }
 
+func (m *mockProxyData) GetPushTokensByUserID(ctx context.Context, userID string) ([]PushTokenData, error) {
+	return nil, nil
+}
+
+func (m *mockProxyData) DeletePushToken(ctx context.Context, token, userID string) error {
+	return nil
+}
+
 func (m *mockProxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
 	if uid, ok := m.appTokens[token]; ok {
 		return uid, nil

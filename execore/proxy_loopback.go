@@ -304,3 +304,17 @@ func (lb *loopbackProxyData) CheckAndDebitVMEmailCredit(ctx context.Context, box
 	}
 	return nil
 }
+
+// GetPushTokensByUserID implements [exeweb.ProxyData.GetPushTokensByUserID].
+// No gRPC RPC exists for this yet, so it returns nil.
+// Push notifications are only sent from exed (not exeprox),
+// so this is acceptable.
+func (lb *loopbackProxyData) GetPushTokensByUserID(ctx context.Context, userID string) ([]exeweb.PushTokenData, error) {
+	return nil, nil
+}
+
+// DeletePushToken implements [exeweb.ProxyData.DeletePushToken].
+// No gRPC RPC exists for this yet.
+func (lb *loopbackProxyData) DeletePushToken(ctx context.Context, token, userID string) error {
+	return nil
+}

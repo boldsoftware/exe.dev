@@ -90,6 +90,12 @@ type ProxyData interface {
 	// If there is no credit available, the error is
 	// [ErrVMEmailRateLimited].
 	CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error
+
+	// GetPushTokensByUserID returns all push tokens for a user.
+	GetPushTokensByUserID(ctx context.Context, userID string) ([]PushTokenData, error)
+
+	// DeletePushToken deletes a push token for a user.
+	DeletePushToken(ctx context.Context, token, userID string) error
 }
 
 // AppTokenPrefix is the prefix for app tokens. Tokens with this prefix

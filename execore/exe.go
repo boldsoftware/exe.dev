@@ -40,6 +40,7 @@ import (
 	txttmpl "text/template"
 	"time"
 
+	"exe.dev/apns"
 	"exe.dev/billing"
 	"exe.dev/billing/tender"
 	"exe.dev/boxname"
@@ -512,6 +513,9 @@ type Server struct {
 	// Google OAuth credentials
 	googleOAuth *googleoauth.Client
 
+	// APNs push notification client (nil if not configured)
+	apnsClient *apns.Client
+
 	// GitHub App for installation flow
 	githubApp      *githubapp.Client
 	githubSetupsMu sync.RWMutex
@@ -911,6 +915,21 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize Discord link secret for account linking
 	discordLinkSecret := os.Getenv("EXE_LINK_SECRET")
 
+	// Initialize APNs push notification client
+	var apnsClient *apns.Client
+	if apnsKeyID := os.Getenv("APNS_KEY_ID"); apnsKeyID != "" {
+		apnsTeamID := os.Getenv("APNS_TEAM_ID")
+		apnsKey := os.Getenv("APNS_KEY")
+		apnsSandbox := os.Getenv("APNS_SANDBOX") == "true"
+		client, err := apns.NewClient(apnsKeyID, apnsTeamID, apnsKey, apnsSandbox)
+		if err != nil {
+			slog.Error("failed to create APNs client", "error", err)
+		} else {
+			apnsClient = client
+			slog.Info("APNs push notifications enabled", "sandbox", apnsSandbox)
+		}
+	}
+
 	// Initialize Google OAuth credentials
 	googleClientID := os.Getenv("EXE_GOOGLE_CLIENT_ID")
 	googleClientSecret := os.Getenv("EXE_GOOGLE_CLIENT_SECRET")
@@ -1164,6 +1183,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		bouncePoller:           bouncePoller,
 		ipqsAPIKey:             ipqsAPIKey,
 		discordLinkSecret:      discordLinkSecret,
+		apnsClient:             apnsClient,
 		googleOAuth: &googleoauth.Client{
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,

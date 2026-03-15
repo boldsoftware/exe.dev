@@ -79,6 +79,7 @@ type ProxyServer struct {
 	LobbyIP        netip.Addr
 	PublicIPs      map[netip.Addr]publicips.PublicIP
 	Transports     *TransportCache
+	PushSender     PushSender
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
