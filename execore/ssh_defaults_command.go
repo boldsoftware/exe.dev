@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -13,6 +14,7 @@ import (
 var knownDefaultsKeys = map[string]string{
 	"new-vm-email":         "bool",
 	"global-load-balancer": "bool",
+	"anycast-network":      "int",
 }
 
 // defaultsCommand returns the command definition for the hidden defaults command
@@ -108,6 +110,24 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 				})
 			})
 		}
+	case "int":
+		intVal, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return cc.Errorf("invalid value %q for %s (expected integer)", value, key)
+		}
+
+		switch key {
+		case "anycast-network":
+			if intVal != 1 && intVal != 2 {
+				return cc.Errorf("invalid value %d for %s (expected 1 or 2)", intVal, key)
+			}
+			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
+					UserID:         cc.User.ID,
+					AnycastNetwork: &intVal,
+				})
+			})
+		}
 	}
 
 	return cc.Errorf("unsupported key %q", key)
@@ -132,6 +152,7 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	if len(cc.Args) == 1 {
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
 		cc.Writeln("global-load-balancer: %s", formatBoolPtr(defaults.GlobalLoadBalancer))
+		cc.Writeln("anycast-network: %s", formatIntPtr(defaults.AnycastNetwork))
 		return nil
 	}
 
@@ -142,6 +163,8 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("%s", formatBoolPtr(defaults.NewVMEmail))
 	case "global-load-balancer":
 		cc.Writeln("%s", formatBoolPtr(defaults.GlobalLoadBalancer))
+	case "anycast-network":
+		cc.Writeln("%s", formatIntPtr(defaults.AnycastNetwork))
 	default:
 		return cc.Errorf("unknown key %q", key)
 	}
@@ -174,6 +197,10 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, cc.User.ID)
 		})
+	case "anycast-network":
+		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteUserDefaultAnycastNetwork(ctx, cc.User.ID)
+		})
 	}
 
 	return nil
@@ -188,6 +215,14 @@ func formatBoolPtr(v *int64) string {
 		return "false"
 	}
 	return "true"
+}
+
+// formatIntPtr formats an *int64 as an integer string for display
+func formatIntPtr(v *int64) string {
+	if v == nil {
+		return "(not set)"
+	}
+	return strconv.FormatInt(*v, 10)
 }
 
 // getUserDefaultNewVMEmail returns whether the user wants new-vm-email enabled.

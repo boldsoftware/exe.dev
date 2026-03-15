@@ -268,6 +268,13 @@ type MobilePendingVm struct {
 	VMImage   *string    `db:"vm_image" json:"vm_image"`
 }
 
+type NetActuateIPShard struct {
+	Shard     int64     `db:"shard" json:"shard"`
+	PublicIP  string    `db:"public_ip" json:"public_ip"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
 type OauthState struct {
 	State                string     `db:"state" json:"state"`
 	Provider             string     `db:"provider" json:"provider"`
@@ -520,6 +527,7 @@ type UserDefault struct {
 	CreatedAt          *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt          *time.Time `db:"updated_at" json:"updated_at"`
 	GlobalLoadBalancer *int64     `db:"global_load_balancer" json:"global_load_balancer"`
+	AnycastNetwork     *int64     `db:"anycast_network" json:"anycast_network"`
 }
 
 type UserEvent struct {

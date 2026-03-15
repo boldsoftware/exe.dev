@@ -35,7 +35,7 @@ WHERE s.user_id = ? AND s.ip_shard = ?;
 UPDATE box_ip_shard SET user_id = ? WHERE box_id = ?;
 
 -- name: GetIPShardAndUserGLBByBoxName :one
-SELECT s.ip_shard, ud.global_load_balancer, b.created_by_user_id
+SELECT s.ip_shard, ud.global_load_balancer, ud.anycast_network, b.created_by_user_id
 FROM box_ip_shard s
 JOIN boxes b ON b.id = s.box_id
 LEFT JOIN user_defaults ud ON ud.user_id = b.created_by_user_id

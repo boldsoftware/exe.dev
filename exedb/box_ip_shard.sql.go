@@ -77,7 +77,7 @@ func (q *Queries) GetBoxIPShard(ctx context.Context, boxID int) (int64, error) {
 }
 
 const getIPShardAndUserGLBByBoxName = `-- name: GetIPShardAndUserGLBByBoxName :one
-SELECT s.ip_shard, ud.global_load_balancer, b.created_by_user_id
+SELECT s.ip_shard, ud.global_load_balancer, ud.anycast_network, b.created_by_user_id
 FROM box_ip_shard s
 JOIN boxes b ON b.id = s.box_id
 LEFT JOIN user_defaults ud ON ud.user_id = b.created_by_user_id
@@ -87,13 +87,19 @@ WHERE b.name = ?
 type GetIPShardAndUserGLBByBoxNameRow struct {
 	IPShard            int64  `db:"ip_shard" json:"ip_shard"`
 	GlobalLoadBalancer *int64 `db:"global_load_balancer" json:"global_load_balancer"`
+	AnycastNetwork     *int64 `db:"anycast_network" json:"anycast_network"`
 	CreatedByUserID    string `db:"created_by_user_id" json:"created_by_user_id"`
 }
 
 func (q *Queries) GetIPShardAndUserGLBByBoxName(ctx context.Context, name string) (GetIPShardAndUserGLBByBoxNameRow, error) {
 	row := q.queryRow(ctx, q.getIPShardAndUserGLBByBoxNameStmt, getIPShardAndUserGLBByBoxName, name)
 	var i GetIPShardAndUserGLBByBoxNameRow
-	err := row.Scan(&i.IPShard, &i.GlobalLoadBalancer, &i.CreatedByUserID)
+	err := row.Scan(
+		&i.IPShard,
+		&i.GlobalLoadBalancer,
+		&i.AnycastNetwork,
+		&i.CreatedByUserID,
+	)
 	return i, err
 }
 

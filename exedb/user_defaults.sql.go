@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const deleteUserDefaultAnycastNetwork = `-- name: DeleteUserDefaultAnycastNetwork :exec
+UPDATE user_defaults SET anycast_network = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserDefaultAnycastNetwork(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteUserDefaultAnycastNetworkStmt, deleteUserDefaultAnycastNetwork, userID)
+	return err
+}
+
 const deleteUserDefaultGlobalLoadBalancer = `-- name: DeleteUserDefaultGlobalLoadBalancer :exec
 UPDATE user_defaults SET global_load_balancer = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
 `
@@ -28,7 +37,7 @@ func (q *Queries) DeleteUserDefaultNewVMEmail(ctx context.Context, userID string
 }
 
 const getUserDefaults = `-- name: GetUserDefaults :one
-SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer FROM user_defaults WHERE user_id = ?
+SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network FROM user_defaults WHERE user_id = ?
 `
 
 func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefault, error) {
@@ -40,8 +49,27 @@ func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefau
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GlobalLoadBalancer,
+		&i.AnycastNetwork,
 	)
 	return i, err
+}
+
+const upsertUserDefaultAnycastNetwork = `-- name: UpsertUserDefaultAnycastNetwork :exec
+INSERT INTO user_defaults (user_id, anycast_network, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    anycast_network = excluded.anycast_network,
+    updated_at = CURRENT_TIMESTAMP
+`
+
+type UpsertUserDefaultAnycastNetworkParams struct {
+	UserID         string `db:"user_id" json:"user_id"`
+	AnycastNetwork *int64 `db:"anycast_network" json:"anycast_network"`
+}
+
+func (q *Queries) UpsertUserDefaultAnycastNetwork(ctx context.Context, arg UpsertUserDefaultAnycastNetworkParams) error {
+	_, err := q.exec(ctx, q.upsertUserDefaultAnycastNetworkStmt, upsertUserDefaultAnycastNetwork, arg.UserID, arg.AnycastNetwork)
+	return err
 }
 
 const upsertUserDefaultGlobalLoadBalancer = `-- name: UpsertUserDefaultGlobalLoadBalancer :exec

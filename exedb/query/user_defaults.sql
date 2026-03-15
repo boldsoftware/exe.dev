@@ -20,3 +20,13 @@ ON CONFLICT(user_id) DO UPDATE SET
 
 -- name: DeleteUserDefaultGlobalLoadBalancer :exec
 UPDATE user_defaults SET global_load_balancer = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;
+
+-- name: UpsertUserDefaultAnycastNetwork :exec
+INSERT INTO user_defaults (user_id, anycast_network, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    anycast_network = excluded.anycast_network,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- name: DeleteUserDefaultAnycastNetwork :exec
+UPDATE user_defaults SET anycast_network = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;

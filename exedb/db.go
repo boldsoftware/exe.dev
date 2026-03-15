@@ -210,6 +210,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteMobilePendingVMByUserAndHostnameStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByUserAndHostname); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByUserAndHostname: %w", err)
 	}
+	if q.deleteNetActuateIPShardStmt, err = db.PrepareContext(ctx, deleteNetActuateIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteNetActuateIPShard: %w", err)
+	}
 	if q.deleteOldCheckoutParamsStmt, err = db.PrepareContext(ctx, deleteOldCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteOldCheckoutParams: %w", err)
 	}
@@ -257,6 +260,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
+	}
+	if q.deleteUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, deleteUserDefaultAnycastNetwork); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUserDefaultAnycastNetwork: %w", err)
 	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, deleteUserDefaultGlobalLoadBalancer); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGlobalLoadBalancer: %w", err)
@@ -458,6 +464,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, getMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMobilePendingVMByToken: %w", err)
+	}
+	if q.getNetActuateShardPublicIPStmt, err = db.PrepareContext(ctx, getNetActuateShardPublicIP); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNetActuateShardPublicIP: %w", err)
 	}
 	if q.getNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, getNewThrottleEmailPatterns); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNewThrottleEmailPatterns: %w", err)
@@ -867,6 +876,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listLatitudeIPShardsStmt, err = db.PrepareContext(ctx, listLatitudeIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLatitudeIPShards: %w", err)
 	}
+	if q.listNetActuateIPShardsStmt, err = db.PrepareContext(ctx, listNetActuateIPShards); err != nil {
+		return nil, fmt.Errorf("error preparing query ListNetActuateIPShards: %w", err)
+	}
 	if q.listTeamBoxesForAdminStmt, err = db.PrepareContext(ctx, listTeamBoxesForAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForAdmin: %w", err)
 	}
@@ -1074,6 +1086,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertMobilePendingVMStmt, err = db.PrepareContext(ctx, upsertMobilePendingVM); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertMobilePendingVM: %w", err)
 	}
+	if q.upsertNetActuateIPShardStmt, err = db.PrepareContext(ctx, upsertNetActuateIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertNetActuateIPShard: %w", err)
+	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
 	}
@@ -1082,6 +1097,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertTemplateRatingStmt, err = db.PrepareContext(ctx, upsertTemplateRating); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTemplateRating: %w", err)
+	}
+	if q.upsertUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, upsertUserDefaultAnycastNetwork); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertUserDefaultAnycastNetwork: %w", err)
 	}
 	if q.upsertUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, upsertUserDefaultGlobalLoadBalancer); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultGlobalLoadBalancer: %w", err)
@@ -1416,6 +1434,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteMobilePendingVMByUserAndHostnameStmt: %w", cerr)
 		}
 	}
+	if q.deleteNetActuateIPShardStmt != nil {
+		if cerr := q.deleteNetActuateIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteNetActuateIPShardStmt: %w", cerr)
+		}
+	}
 	if q.deleteOldCheckoutParamsStmt != nil {
 		if cerr := q.deleteOldCheckoutParamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteOldCheckoutParamsStmt: %w", cerr)
@@ -1494,6 +1517,11 @@ func (q *Queries) Close() error {
 	if q.deleteUserStmt != nil {
 		if cerr := q.deleteUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteUserDefaultAnycastNetworkStmt != nil {
+		if cerr := q.deleteUserDefaultAnycastNetworkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserDefaultAnycastNetworkStmt: %w", cerr)
 		}
 	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt != nil {
@@ -1829,6 +1857,11 @@ func (q *Queries) Close() error {
 	if q.getMobilePendingVMByTokenStmt != nil {
 		if cerr := q.getMobilePendingVMByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getMobilePendingVMByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getNetActuateShardPublicIPStmt != nil {
+		if cerr := q.getNetActuateShardPublicIPStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNetActuateShardPublicIPStmt: %w", cerr)
 		}
 	}
 	if q.getNewThrottleEmailPatternsStmt != nil {
@@ -2511,6 +2544,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listLatitudeIPShardsStmt: %w", cerr)
 		}
 	}
+	if q.listNetActuateIPShardsStmt != nil {
+		if cerr := q.listNetActuateIPShardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listNetActuateIPShardsStmt: %w", cerr)
+		}
+	}
 	if q.listTeamBoxesForAdminStmt != nil {
 		if cerr := q.listTeamBoxesForAdminStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamBoxesForAdminStmt: %w", cerr)
@@ -2856,6 +2894,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertMobilePendingVMStmt: %w", cerr)
 		}
 	}
+	if q.upsertNetActuateIPShardStmt != nil {
+		if cerr := q.upsertNetActuateIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertNetActuateIPShardStmt: %w", cerr)
+		}
+	}
 	if q.upsertSSHHostKeyStmt != nil {
 		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
@@ -2869,6 +2912,11 @@ func (q *Queries) Close() error {
 	if q.upsertTemplateRatingStmt != nil {
 		if cerr := q.upsertTemplateRatingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertTemplateRatingStmt: %w", cerr)
+		}
+	}
+	if q.upsertUserDefaultAnycastNetworkStmt != nil {
+		if cerr := q.upsertUserDefaultAnycastNetworkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertUserDefaultAnycastNetworkStmt: %w", cerr)
 		}
 	}
 	if q.upsertUserDefaultGlobalLoadBalancerStmt != nil {
@@ -3002,6 +3050,7 @@ type Queries struct {
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
+	deleteNetActuateIPShardStmt                *sql.Stmt
 	deleteOldCheckoutParamsStmt                *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
 	deletePasskeyChallengeStmt                 *sql.Stmt
@@ -3018,6 +3067,7 @@ type Queries struct {
 	deleteTeamSSOProviderStmt                  *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
 	deleteUserStmt                             *sql.Stmt
+	deleteUserDefaultAnycastNetworkStmt        *sql.Stmt
 	deleteUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
@@ -3085,6 +3135,7 @@ type Queries struct {
 	getLatitudeShardPublicIPStmt               *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
+	getNetActuateShardPublicIPStmt             *sql.Stmt
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
 	getNewThrottleEnabledStmt                  *sql.Stmt
 	getNewThrottleMessageStmt                  *sql.Stmt
@@ -3221,6 +3272,7 @@ type Queries struct {
 	listIPShardsForUserStmt                    *sql.Stmt
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listLatitudeIPShardsStmt                   *sql.Stmt
+	listNetActuateIPShardsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
 	listTemplatesByAuthorStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
@@ -3290,9 +3342,11 @@ type Queries struct {
 	upsertIPShardStmt                          *sql.Stmt
 	upsertLatitudeIPShardStmt                  *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
+	upsertNetActuateIPShardStmt                *sql.Stmt
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertTemplateRatingStmt                   *sql.Stmt
+	upsertUserDefaultAnycastNetworkStmt        *sql.Stmt
 	upsertUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
@@ -3367,6 +3421,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
+		deleteNetActuateIPShardStmt:                q.deleteNetActuateIPShardStmt,
 		deleteOldCheckoutParamsStmt:                q.deleteOldCheckoutParamsStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
@@ -3383,6 +3438,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
 		deleteUserStmt:                             q.deleteUserStmt,
+		deleteUserDefaultAnycastNetworkStmt:        q.deleteUserDefaultAnycastNetworkStmt,
 		deleteUserDefaultGlobalLoadBalancerStmt:    q.deleteUserDefaultGlobalLoadBalancerStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
@@ -3450,6 +3506,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLatitudeShardPublicIPStmt:               q.getLatitudeShardPublicIPStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
+		getNetActuateShardPublicIPStmt:             q.getNetActuateShardPublicIPStmt,
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
 		getNewThrottleEnabledStmt:                  q.getNewThrottleEnabledStmt,
 		getNewThrottleMessageStmt:                  q.getNewThrottleMessageStmt,
@@ -3586,6 +3643,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
+		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
 		listTemplatesByAuthorStmt:                  q.listTemplatesByAuthorStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
@@ -3655,9 +3713,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
 		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
+		upsertNetActuateIPShardStmt:                q.upsertNetActuateIPShardStmt,
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,
+		upsertUserDefaultAnycastNetworkStmt:        q.upsertUserDefaultAnycastNetworkStmt,
 		upsertUserDefaultGlobalLoadBalancerStmt:    q.upsertUserDefaultGlobalLoadBalancerStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,

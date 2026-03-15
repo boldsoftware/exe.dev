@@ -1347,6 +1347,25 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 		}
 	}
 
+	// Get NetActuate shard->public_ip mappings from the database.
+	// NetActuate doesn't NAT, so sshpiper sees the public IP directly.
+	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list netactuate_ip_shards: %w", err)
+	}
+	for _, row := range netActuateShards {
+		ip, err := netip.ParseAddr(row.PublicIP)
+		if err != nil {
+			s.slog().WarnContext(ctx, "invalid public IP in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
+			continue
+		}
+		result[ip] = publicips.PublicIP{
+			IP:     ip,
+			Domain: publicips.ShardSub(int(row.Shard)) + "." + s.env.BoxHost,
+			Shard:  int(row.Shard),
+		}
+	}
+
 	return result, nil
 }
 
@@ -1366,7 +1385,7 @@ func (s *Server) logIPResolver() {
 
 // validateIPShards validates IP shard configuration:
 //  1. All AWS shards should have corresponding local (private) IPs on this machine.
-//  2. All serving shards (ip_shards) should match either AWS or Latitude IPs.
+//  2. All serving shards (ip_shards) should match either AWS, Latitude, or NetActuate IPs.
 func (s *Server) validateIPShards(ctx context.Context) {
 	awsShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListAWSIPShards)
 	if err != nil {
@@ -1390,7 +1409,7 @@ func (s *Server) validateIPShards(ctx context.Context) {
 		}
 	}
 
-	// All serving shards should match either AWS or Latitude IP for that shard.
+	// All serving shards should match either AWS, Latitude, or NetActuate IP for that shard.
 	servingShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListIPShards)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to list ip_shards for validation", "error", err)
@@ -1399,6 +1418,11 @@ func (s *Server) validateIPShards(ctx context.Context) {
 	latitudeShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListLatitudeIPShards)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to list latitude_ip_shards for validation", "error", err)
+		return
+	}
+	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to list netactuate_ip_shards for validation", "error", err)
 		return
 	}
 
@@ -1410,16 +1434,21 @@ func (s *Server) validateIPShards(ctx context.Context) {
 	for _, row := range latitudeShards {
 		latByS[row.Shard] = row.PublicIP
 	}
+	naByS := make(map[int64]string, len(netActuateShards))
+	for _, row := range netActuateShards {
+		naByS[row.Shard] = row.PublicIP
+	}
 
 	for _, serving := range servingShards {
 		shard := serving.Shard
 		ip := serving.PublicIP
-		if ip != awsByS[shard] && ip != latByS[shard] {
-			s.slog().ErrorContext(ctx, "ip_shard serving IP doesn't match AWS or Latitude",
+		if ip != awsByS[shard] && ip != latByS[shard] && ip != naByS[shard] {
+			s.slog().ErrorContext(ctx, "ip_shard serving IP doesn't match AWS, Latitude, or NetActuate",
 				"shard", shard,
 				"serving_ip", ip,
 				"aws_ip", awsByS[shard],
-				"latitude_ip", latByS[shard])
+				"latitude_ip", latByS[shard],
+				"netactuate_ip", naByS[shard])
 		}
 	}
 }

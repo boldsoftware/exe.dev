@@ -1,0 +1,8 @@
+CREATE TABLE netactuate_ip_shards (
+    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 253),
+    public_ip TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE user_defaults ADD COLUMN anycast_network INTEGER;

@@ -563,6 +563,39 @@ func TestParseLatitudeShardFromName(t *testing.T) {
 	}
 }
 
+func TestParseNetActuateShardFromName(t *testing.T) {
+	tests := []struct {
+		name    string
+		want    int
+		wantErr bool
+	}{
+		{"na001.exe.xyz", 1, false},
+		{"na025.exe.xyz", 25, false},
+		{"na043.exe.xyz", 43, false},
+		{"na253.exe.xyz", 253, false},
+		{"na000.exe.xyz", 0, true}, // invalid shard (zero)
+		{"na254.exe.xyz", 0, true}, // out of range
+		{"na1.exe.xyz", 0, true},   // wrong format (too short)
+		{"n001.exe.xyz", 0, true},  // latitude not netactuate
+		{"s001.exe.xyz", 0, true},  // AWS shard
+		{"testbox.exe.xyz", 0, true},
+		{"", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseNetActuateShardFromName(tt.name)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseNetActuateShardFromName(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseNetActuateShardFromName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestServerStartStop(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -1126,6 +1159,185 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 		cname := rrs[0].(*dns.CNAME)
 		if cname.Target != "s001.exe.xyz." {
 			t.Errorf("expected s001.exe.xyz., got %s", cname.Target)
+		}
+	})
+}
+
+func TestNetActuateShardA(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	// Insert a NetActuate IP shard
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
+			Shard:    1,
+			PublicIP: "161.210.92.1",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	t.Run("QueryNetActuateShardA", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "na001.exe.xyz", "na001.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 A record, got %d", len(rrs))
+		}
+		a := rrs[0].(*dns.A)
+		if a.A.String() != "161.210.92.1" {
+			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
+		}
+	})
+
+	t.Run("QueryNetActuateShardNonexistent", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "na099.exe.xyz", "na099.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 records for nonexistent shard, got %d", len(rrs))
+		}
+	})
+}
+
+func TestAnycastNetworkCNAME(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	addBox(t, db)
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+			Shard:    1,
+			PublicIP: "5.6.7.8",
+		}); err != nil {
+			return err
+		}
+		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
+			Shard:    1,
+			PublicIP: "161.210.92.1",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	t.Run("without anycast-network set", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "s001.exe.xyz." {
+			t.Errorf("expected s001.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	// Set anycast_network=2 (NetActuate)
+	network := int64(2)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
+			UserID:         "test-user",
+			AnycastNetwork: &network,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("with anycast-network=2", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	t.Run("A record resolves via netactuate shard", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a := rrs[1].(*dns.A)
+		if a.A.String() != "161.210.92.1" {
+			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
+		}
+	})
+
+	// anycast_network=2 should take priority over GLB
+	enabled := int64(1)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
+			UserID:             "test-user",
+			GlobalLoadBalancer: &enabled,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("anycast-network=2 takes priority over GLB", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz., got %s (anycast-network=2 should override GLB)", cname.Target)
+		}
+	})
+
+	// Delete anycast_network, GLB should still work
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.DeleteUserDefaultAnycastNetwork(ctx, "test-user")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("after deleting anycast-network, GLB still works", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "n001.exe.xyz." {
+			t.Errorf("expected n001.exe.xyz. (latitude via GLB), got %s", cname.Target)
 		}
 	})
 }

@@ -7,11 +7,13 @@
       table { width: 100%; }
       .serving-aws { background: #d4edda; }
       .serving-latitude { background: #cce5ff; }
+      .serving-netactuate { background: #e2d4f0; }
       .serving-unknown { background: #fff3cd; }
       .empty { color: #999; font-style: italic; }
       button { padding: 4px 8px; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; }
       button.aws { background: #d4edda; }
       button.latitude { background: #cce5ff; }
+      button.netactuate { background: #e2d4f0; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
       input.ip { width: 120px; padding: 2px 4px; font-family: monospace; }
       form.ip-form { display: inline; }
@@ -36,6 +38,7 @@
       <strong>Legend:</strong>
       <span class="serving-aws">Serving from AWS</span>
       <span class="serving-latitude">Serving from Latitude</span>
+      <span class="serving-netactuate">Serving from NetActuate</span>
       <span class="serving-unknown">Unknown/Mismatched</span>
     </div>
 
@@ -43,13 +46,14 @@
     <p>
       <strong>Serving IP</strong> = what DNS returns (ip_shards table)<br />
       <strong>AWS IP</strong> = aws_ip_shards table<br />
-      <strong>Latitude IP</strong> = latitude_ip_shards table
+      <strong>Latitude IP</strong> = latitude_ip_shards table<br />
+      <strong>NetActuate IP</strong> = netactuate_ip_shards table
     </p>
 
     <div class="warning">
-      <strong>Warning:</strong> Changes to Latitude IPs are saved to the
-      database immediately, but exed must be restarted before it can route
-      traffic received via those Latitude IPs.
+      <strong>Warning:</strong> Changes to Latitude/NetActuate IPs are saved to
+      the database immediately, but exed must be restarted before it can route
+      traffic received via those IPs.
     </div>
 
     <table>
@@ -58,6 +62,7 @@
         <th>Serving IP (DNS)</th>
         <th>AWS IP</th>
         <th>Latitude IP</th>
+        <th>NetActuate IP</th>
         <th>Actions</th>
       </tr>
       {{range .Entries}}
@@ -86,6 +91,19 @@
           </form>
         </td>
         <td>
+          <form method="POST" action="/debug/ipshards/netactuate" class="ip-form">
+            <input type="hidden" name="shard" value="{{.Shard}}" />
+            <input
+              type="text"
+              name="ip"
+              value="{{.NetActuateIP}}"
+              class="ip"
+              placeholder="1.2.3.4"
+            />
+            <button type="submit">Set</button>
+          </form>
+        </td>
+        <td>
           {{if and .AWSIP (ne .ServingFrom "aws")}}
           <form
             method="POST"
@@ -105,6 +123,16 @@
             <input type="hidden" name="shard" value="{{.Shard}}" />
             <input type="hidden" name="target" value="latitude" />
             <button type="submit" class="latitude">Use Latitude</button>
+          </form>
+          {{end}} {{if and .NetActuateIP (ne .ServingFrom "netactuate")}}
+          <form
+            method="POST"
+            action="/debug/ipshards/toggle"
+            style="display: inline"
+          >
+            <input type="hidden" name="shard" value="{{.Shard}}" />
+            <input type="hidden" name="target" value="netactuate" />
+            <button type="submit" class="netactuate">Use NetActuate</button>
           </form>
           {{end}}
         </td>

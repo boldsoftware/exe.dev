@@ -377,6 +377,12 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return s.lookupLatitudeShardA(ctx, latShard, fqdn, class)
 	}
 
+	// Parse NetActuate shard from name (e.g., "na043.exe.xyz" -> shard 43)
+	naShard, err := parseNetActuateShardFromName(qname)
+	if err == nil {
+		return s.lookupNetActuateShardA(ctx, naShard, fqdn, class)
+	}
+
 	// Not a shard name, check if there's a CNAME (box name)
 	return s.lookupBoxA(ctx, qname, fqdn, class)
 }
@@ -431,6 +437,27 @@ func (s *Server) lookupLatitudeShardA(ctx context.Context, shard int, fqdn strin
 	ip := net.ParseIP(publicIP)
 	if ip == nil {
 		s.log.WarnContext(ctx, "invalid IP in latitude_ip_shards table", "shard", shard, "ip", publicIP)
+		return nil, nil
+	}
+
+	return []dns.RR{
+		&dns.A{
+			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
+			A:   ip.To4(),
+		},
+	}, nil
+}
+
+// lookupNetActuateShardA returns an A record for the given NetActuate shard number.
+func (s *Server) lookupNetActuateShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
+	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetNetActuateShardPublicIP, int64(shard))
+	if err != nil {
+		return nil, nil
+	}
+
+	ip := net.ParseIP(publicIP)
+	if ip == nil {
+		s.log.WarnContext(ctx, "invalid IP in netactuate_ip_shards table", "shard", shard, "ip", publicIP)
 		return nil, nil
 	}
 
@@ -500,6 +527,9 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 	if _, err := parseLatitudeShardFromName(qname); err == nil {
 		return nil, nil
 	}
+	if _, err := parseNetActuateShardFromName(qname); err == nil {
+		return nil, nil
+	}
 
 	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardAndUserGLBByBoxName, boxName)
 	if err != nil {
@@ -508,7 +538,10 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 	}
 
 	shardSub := publicips.ShardSub(int(row.IPShard))
-	if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
+	if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
+		// User explicitly set to anycast network 2 (NetActuate)
+		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
+	} else if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
 		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
 	} else if row.GlobalLoadBalancer == nil && s.userMatchesGLBPrefix(row.CreatedByUserID) {
 		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
@@ -649,6 +682,24 @@ func parseLatitudeShardFromName(name string) (int, error) {
 		return 0, fmt.Errorf("not a latitude shard name")
 	}
 	shard, err := strconv.Atoi(sub[1:])
+	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {
+		return 0, fmt.Errorf("invalid shard number")
+	}
+	return shard, nil
+}
+
+// parseNetActuateShardFromName extracts the NetActuate shard number from a DNS name.
+// Returns error if the name is not a NetActuate shard name (e.g., "na043.exe.xyz" -> 43).
+func parseNetActuateShardFromName(name string) (int, error) {
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) < 1 {
+		return 0, fmt.Errorf("invalid name")
+	}
+	sub := parts[0]
+	if len(sub) != 5 || sub[0] != 'n' || sub[1] != 'a' {
+		return 0, fmt.Errorf("not a netactuate shard name")
+	}
+	shard, err := strconv.Atoi(sub[2:])
 	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {
 		return 0, fmt.Errorf("invalid shard number")
 	}
