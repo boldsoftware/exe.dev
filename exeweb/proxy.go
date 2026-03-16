@@ -1024,9 +1024,11 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 			//   it times out and is removed;
 			// - Retries can establish a fresh connection
 			//   (up to 3s for SSH dial).
+			// 8s gives enough headroom for stale recovery
+			// when the exelet is far away (e.g. FRA→LAX).
 			// Note: "port not bound" still fails fast
 			// since connection refused is immediate.
-			ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			defer cancel()
 			conn, err := ps.SSHPool.DialWithRetries(ctx, network, addr, sshHost, box.SSHUser, box.SSHPort, sshKey, cfg, []time.Duration{
 				50 * time.Millisecond,

@@ -6348,8 +6348,8 @@ function makeRummydDashboard() {
         threshold: 1,
         condition: "lt",
         forDuration: "2m",
-        summary: "Blog is unreachable from an exeprox",
-        description: "rummy_blog_up has been 0 for an exeprox host for 2 minutes. The blog may not be rendering for users routed through this proxy.",
+        summary: "blog.exe.dev unreachable via exeprox (check if blog backend is down)",
+        description: "rummy_blog_up has been 0 for an exeprox host for 2 minutes. rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
         labels: { channel: "buzz" },
       },
     }

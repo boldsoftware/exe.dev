@@ -194,6 +194,8 @@ func checkHost(host string, blogUp, blogCurlLatency, blogTotalLatency, blogGitSH
 		"ubuntu@"+host,
 		`curl -sf --max-time 10 -w '\n%{time_total}' https://blog.exe.dev/debug/gitsha`,
 	)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	elapsed := time.Since(start)
 
@@ -202,7 +204,25 @@ func checkHost(host string, blogUp, blogCurlLatency, blogTotalLatency, blogGitSH
 	lonStr := fmt.Sprintf("%.4f", lon)
 
 	if err != nil {
-		log.Printf("check %s: FAIL after %s (%v)", host, elapsed, err)
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			switch ee.ExitCode() {
+			case 6:
+				detail = " (DNS resolution failed)"
+			case 22:
+				detail = " (HTTP error from blog)"
+			case 28:
+				detail = " (curl timeout)"
+			case 255:
+				detail = " (SSH connection failed)"
+			}
+		}
+		stderrStr := strings.TrimSpace(stderr.String())
+		if stderrStr != "" {
+			log.Printf("check %s: FAIL after %s (%v)%s: %s", host, elapsed, err, detail, stderrStr)
+		} else {
+			log.Printf("check %s: FAIL after %s (%v)%s", host, elapsed, err, detail)
+		}
 		blogUp.WithLabelValues(host).Set(0)
 		blogTotalLatency.WithLabelValues(host, latStr, lonStr, city).Set(elapsed.Seconds())
 		checksTotal.WithLabelValues(host, "fail").Inc()
