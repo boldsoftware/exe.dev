@@ -51,6 +51,15 @@ func (q *Queries) DeleteBoxTeamShare(ctx context.Context, arg DeleteBoxTeamShare
 	return err
 }
 
+const deleteBoxTeamSharesByTeamID = `-- name: DeleteBoxTeamSharesByTeamID :exec
+DELETE FROM box_team_shares WHERE team_id = ?
+`
+
+func (q *Queries) DeleteBoxTeamSharesByTeamID(ctx context.Context, teamID string) error {
+	_, err := q.exec(ctx, q.deleteBoxTeamSharesByTeamIDStmt, deleteBoxTeamSharesByTeamID, teamID)
+	return err
+}
+
 const deleteExpiredPendingTeamInvites = `-- name: DeleteExpiredPendingTeamInvites :exec
 DELETE FROM pending_team_invites
 WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL
@@ -70,12 +79,30 @@ func (q *Queries) DeletePendingTeamInvite(ctx context.Context, token string) err
 	return err
 }
 
+const deletePendingTeamInvitesByTeamID = `-- name: DeletePendingTeamInvitesByTeamID :exec
+DELETE FROM pending_team_invites WHERE team_id = ?
+`
+
+func (q *Queries) DeletePendingTeamInvitesByTeamID(ctx context.Context, teamID string) error {
+	_, err := q.exec(ctx, q.deletePendingTeamInvitesByTeamIDStmt, deletePendingTeamInvitesByTeamID, teamID)
+	return err
+}
+
 const deletePendingTeamInvitesByUser = `-- name: DeletePendingTeamInvitesByUser :exec
 DELETE FROM pending_team_invites WHERE invited_by_user_id = ?
 `
 
 func (q *Queries) DeletePendingTeamInvitesByUser(ctx context.Context, invitedByUserID string) error {
 	_, err := q.exec(ctx, q.deletePendingTeamInvitesByUserStmt, deletePendingTeamInvitesByUser, invitedByUserID)
+	return err
+}
+
+const deleteTeam = `-- name: DeleteTeam :exec
+DELETE FROM teams WHERE team_id = ?
+`
+
+func (q *Queries) DeleteTeam(ctx context.Context, teamID string) error {
+	_, err := q.exec(ctx, q.deleteTeamStmt, deleteTeam, teamID)
 	return err
 }
 

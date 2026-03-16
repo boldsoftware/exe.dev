@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team enable
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team enable
+exe.dev repl: command not available: "team enable"
+PROMPT ▶ exit
+Goodbye!

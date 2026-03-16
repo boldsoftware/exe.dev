@@ -223,6 +223,15 @@ WHERE b.id = @box_id
 AND tm_member.user_id = @user_id
 AND json_extract(b.routes, '$.team_shelley') = 1;
 
+-- name: DeleteBoxTeamSharesByTeamID :exec
+DELETE FROM box_team_shares WHERE team_id = ?;
+
+-- name: DeletePendingTeamInvitesByTeamID :exec
+DELETE FROM pending_team_invites WHERE team_id = ?;
+
+-- name: DeleteTeam :exec
+DELETE FROM teams WHERE team_id = ?;
+
 -- name: GetBoxByTeamSSHAndName :one
 SELECT b.*
 FROM boxes b

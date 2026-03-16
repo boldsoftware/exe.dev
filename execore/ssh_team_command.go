@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -24,8 +27,22 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 		Description: "View and manage your team",
 		Handler:     ss.handleTeamCommand,
 		FlagSetFunc: jsonOnlyFlags("team"),
-		Available:   ss.isInTeamOrSudo,
+		Available:   ss.isInTeamOrSudoOrCanEnable,
 		Subcommands: []*exemenu.Command{
+			{
+				Name:        "enable",
+				Description: "Create a new team",
+				Usage:       "team enable",
+				Handler:     ss.handleTeamEnableCommand,
+				Available:   ss.isNotInTeamWithBilling,
+			},
+			{
+				Name:        "disable",
+				Description: "Disband your team",
+				Usage:       "team disable",
+				Handler:     ss.handleTeamDisableCommand,
+				Available:   ss.isTeamBillingOwner,
+			},
 			{
 				Name:        "members",
 				Aliases:     []string{"ls"},
@@ -160,6 +177,12 @@ func (ss *SSHServer) isInTeamOrSudo(cc *exemenu.CommandContext) bool {
 	return ss.isInTeam(cc) || ss.isSudoUser(cc)
 }
 
+// isInTeamOrSudoOrCanEnable makes the team command visible to team members, sudo users,
+// and users who are eligible to enable teams (not in a team + active billing).
+func (ss *SSHServer) isInTeamOrSudoOrCanEnable(cc *exemenu.CommandContext) bool {
+	return ss.isInTeam(cc) || ss.isSudoUser(cc) || ss.isNotInTeamWithBilling(cc)
+}
+
 // isTeamAdmin checks if the user is a team admin — billing_owner or admin (for command availability)
 func (ss *SSHServer) isTeamAdmin(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
@@ -176,6 +199,246 @@ func (ss *SSHServer) isSudoUser(cc *exemenu.CommandContext) bool {
 	return ss.server.UserHasExeSudo(context.Background(), cc.User.ID)
 }
 
+// isNotInTeamWithBilling checks if user is NOT in a team and HAS active billing (for team enable)
+func (ss *SSHServer) isNotInTeamWithBilling(cc *exemenu.CommandContext) bool {
+	if ss.server == nil || ss.server.db == nil {
+		return false
+	}
+	// Must not already be in a team
+	team, _ := ss.server.GetTeamForUser(context.Background(), cc.User.ID)
+	if team != nil {
+		return false
+	}
+	// Must have active billing
+	if ss.server.env.SkipBilling {
+		return true
+	}
+	billingStatus, err := withRxRes1(ss.server, context.Background(), (*exedb.Queries).GetUserBillingStatus, cc.User.ID)
+	if err != nil {
+		return false
+	}
+	return !userNeedsBilling(&billingStatus)
+}
+
+// isTeamBillingOwner checks if the user is a team billing owner (for team disable)
+func (ss *SSHServer) isTeamBillingOwner(cc *exemenu.CommandContext) bool {
+	if ss.server == nil || ss.server.db == nil {
+		return false
+	}
+	isOwner, err := withRxRes1(ss.server, context.Background(), (*exedb.Queries).IsUserTeamBillingOwner, cc.User.ID)
+	if err != nil {
+		return false
+	}
+	return isOwner
+}
+
+// slugifyTeamName converts a display name to a valid team slug.
+// Lowercases, replaces non-alphanumeric with underscores, collapses runs, trims.
+var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+func slugifyTeamName(name string) string {
+	s := strings.ToLower(name)
+	s = nonAlphanumRe.ReplaceAllString(s, "_")
+	s = strings.Trim(s, "_")
+	return s
+}
+
+// handleTeamEnableCommand lets a user create a new team for themselves.
+func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	slog.InfoContext(ctx, "handleTeamEnableCommand called", "user_id", cc.User.ID)
+
+	// Double-check: not already in a team
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team != nil {
+		return cc.Errorf("You are already in a team: %s", team.DisplayName)
+	}
+
+	if !cc.IsInteractive() {
+		return cc.Errorf("team enable requires an interactive session")
+	}
+
+	cc.Writeln("")
+	cc.Writeln("Teams lets you:")
+	cc.Writeln("  - Manage shared billing for your organization")
+	cc.Writeln("  - Invite members and control access")
+	cc.Writeln("  - SSH into team members' VMs as an admin")
+	cc.Writeln("  - Share VMs across your team")
+	cc.Writeln("")
+	cc.Writeln("You will become the billing owner for this team.")
+	cc.Writeln("Your existing VMs will become part of the team.")
+	cc.Writeln("")
+
+	cc.Write("Enable teams? (yes/no): ")
+	confirm, err := cc.ReadLine()
+	if err != nil {
+		return err
+	}
+	confirm = strings.TrimSpace(strings.ToLower(confirm))
+	if confirm != "yes" && confirm != "y" {
+		cc.Writeln("Cancelled.")
+		return nil
+	}
+
+	// Prompt for team name, retry on slug collision
+	for {
+		cc.Write("Team name: ")
+		displayName, err := cc.ReadLine()
+		if err != nil {
+			return err
+		}
+		displayName = strings.TrimSpace(displayName)
+		if displayName == "" {
+			cc.Writeln("Team name cannot be empty.")
+			continue
+		}
+
+		slug := slugifyTeamName(displayName)
+		if slug == "" {
+			cc.Writeln("Team name must contain at least one letter or number.")
+			continue
+		}
+
+		teamID := "tm_" + slug
+
+		// Create team + add self as billing_owner in one transaction
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			if err := queries.InsertTeam(ctx, exedb.InsertTeamParams{
+				TeamID:      teamID,
+				DisplayName: displayName,
+			}); err != nil {
+				return fmt.Errorf("insert team: %w", err)
+			}
+			if err := queries.InsertTeamMember(ctx, exedb.InsertTeamMemberParams{
+				TeamID: teamID,
+				UserID: cc.User.ID,
+				Role:   "billing_owner",
+			}); err != nil {
+				return fmt.Errorf("insert member: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			// Check for unique constraint violation (slug collision)
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "teams.team_id") {
+				cc.Writeln("Team ID %q is already taken. Please choose a different name.", teamID)
+				continue
+			}
+			return cc.Errorf("Failed to create team: %v", err)
+		}
+
+		slog.InfoContext(ctx, "team created via enable",
+			"team_id", teamID,
+			"display_name", displayName,
+			"user_id", cc.User.ID)
+
+		cc.Writeln("")
+		cc.Writeln("Team \033[1m%s\033[0m created! (ID: %s)", displayName, teamID)
+		cc.Writeln("Use \033[1mteam add <email>\033[0m to invite members.")
+		return nil
+	}
+}
+
+// handleTeamDisableCommand lets a billing owner disband their team.
+func (ss *SSHServer) handleTeamDisableCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	slog.InfoContext(ctx, "handleTeamDisableCommand called", "user_id", cc.User.ID)
+
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		return cc.Errorf("You are not part of a team")
+	}
+	if team.Role != "billing_owner" {
+		return cc.Errorf("Only billing owners can disable teams")
+	}
+
+	// Check team has no other members
+	members, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, team.TeamID)
+	if err != nil {
+		return err
+	}
+	if len(members) > 1 {
+		cc.Writeln("Your team still has %d other member(s).", len(members)-1)
+		cc.Writeln("Remove all members with \033[1mteam remove <email>\033[0m before disabling.")
+		return nil
+	}
+
+	if !cc.IsInteractive() {
+		return cc.Errorf("team disable requires an interactive session")
+	}
+
+	cc.Writeln("")
+	cc.Writeln("Disabling team \033[1m%s\033[0m will:", team.DisplayName)
+	cc.Writeln("  - Remove all team shares")
+	cc.Writeln("  - Cancel all pending invites")
+	cc.Writeln("  - Remove team auth/SSO configuration")
+	cc.Writeln("  - Delete the team")
+	cc.Writeln("")
+	cc.Writeln("Your VMs will remain on your personal account.")
+	cc.Writeln("")
+
+	cc.Write("Disable team? (yes/no): ")
+	confirm, err := cc.ReadLine()
+	if err != nil {
+		return err
+	}
+	confirm = strings.TrimSpace(strings.ToLower(confirm))
+	if confirm != "yes" && confirm != "y" {
+		cc.Writeln("Cancelled.")
+		return nil
+	}
+
+	teamID := team.TeamID
+
+	// Delete everything in a transaction
+	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.DeleteBoxTeamSharesByTeamID(ctx, teamID); err != nil {
+			return fmt.Errorf("delete team shares: %w", err)
+		}
+		if err := queries.DeletePendingTeamInvitesByTeamID(ctx, teamID); err != nil {
+			return fmt.Errorf("delete pending invites: %w", err)
+		}
+		if err := queries.DeleteTeamSSOProvider(ctx, teamID); err != nil {
+			return fmt.Errorf("delete SSO provider: %w", err)
+		}
+		// Clear team auth_provider column
+		if err := queries.SetTeamAuthProvider(ctx, exedb.SetTeamAuthProviderParams{
+			AuthProvider: nil,
+			TeamID:       teamID,
+		}); err != nil {
+			return fmt.Errorf("clear auth provider: %w", err)
+		}
+		if err := queries.DeleteTeamMember(ctx, exedb.DeleteTeamMemberParams{
+			TeamID: teamID,
+			UserID: cc.User.ID,
+		}); err != nil {
+			return fmt.Errorf("delete self from team: %w", err)
+		}
+		if err := queries.DeleteTeam(ctx, teamID); err != nil {
+			return fmt.Errorf("delete team: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return cc.Errorf("Failed to disable team: %v", err)
+	}
+
+	// Notify proxy
+	proxyChangeDeletedTeamMember(teamID, cc.User.ID)
+
+	slog.InfoContext(ctx, "team disabled",
+		"team_id", teamID,
+		"display_name", team.DisplayName,
+		"user_id", cc.User.ID)
+
+	cc.Writeln("Team \033[1m%s\033[0m has been disabled.", team.DisplayName)
+	return nil
+}
+
 // handleTeamCommand shows team info
 func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	slog.InfoContext(ctx, "handleTeamCommand called", "user_id", cc.User.ID, "args", cc.Args)
@@ -184,7 +447,9 @@ func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandC
 		return err
 	}
 	if team == nil {
-		return cc.Errorf("You are not part of a team")
+		cc.Writeln("You are not part of a team.")
+		cc.Writeln("Use \033[1mteam enable\033[0m to create one.")
+		return nil
 	}
 
 	// Count team members

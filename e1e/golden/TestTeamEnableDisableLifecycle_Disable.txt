@@ -1,0 +1,25 @@
+
+
+●
+● ssh localhost
+●
+
+team disable
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team disable
+
+Disabling team Self Service Squad will:
+  - Remove all team shares
+  - Cancel all pending invites
+  - Remove team auth/SSO configuration
+  - Delete the team
+
+Your VMs will remain on your personal account.
+
+Disable team? (yes/no): localhost ▶ yes
+Team Self Service Squad has been disabled.
+PROMPT ▶ exit
+Goodbye!

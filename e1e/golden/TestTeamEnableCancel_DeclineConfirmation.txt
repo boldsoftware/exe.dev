@@ -1,0 +1,29 @@
+
+
+●
+● ssh localhost
+●
+
+team enable
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team enable
+
+Teams lets you:
+  - Manage shared billing for your organization
+  - Invite members and control access
+  - SSH into team members' VMs as an admin
+  - Share VMs across your team
+
+You will become the billing owner for this team.
+Your existing VMs will become part of the team.
+
+Enable teams? (yes/no): localhost ▶ no
+Cancelled.
+PROMPT ▶ team
+You are not part of a team.
+Use team enable to create one.
+PROMPT ▶ exit
+Goodbye!

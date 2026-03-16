@@ -1,0 +1,26 @@
+
+
+●
+● ssh localhost
+●
+
+team disable
+yes
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team disable
+
+Disabling team Cancel Test Team will:
+  - Remove all team shares
+  - Cancel all pending invites
+  - Remove team auth/SSO configuration
+  - Delete the team
+
+Your VMs will remain on your personal account.
+
+Disable team? (yes/no): localhost ▶ yes
+Team Cancel Test Team has been disabled.
+PROMPT ▶ exit
+Goodbye!

@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+team
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team
+You are not part of a team.
+Use team enable to create one.
+PROMPT ▶ exit
+Goodbye!

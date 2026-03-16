@@ -1,0 +1,27 @@
+
+
+●
+● ssh localhost
+●
+
+team remove member@test-disable-members.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team remove member@test-disable-members.example
+Removed member@test-disable-members.example from the team
+PROMPT ▶ team disable
+
+Disabling team DisableMembersTeam will:
+  - Remove all team shares
+  - Cancel all pending invites
+  - Remove team auth/SSO configuration
+  - Delete the team
+
+Your VMs will remain on your personal account.
+
+Disable team? (yes/no): localhost ▶ yes
+Team DisableMembersTeam has been disabled.
+PROMPT ▶ exit
+Goodbye!

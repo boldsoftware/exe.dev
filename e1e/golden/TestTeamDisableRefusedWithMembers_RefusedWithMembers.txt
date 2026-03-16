@@ -1,0 +1,16 @@
+
+
+●
+● ssh localhost
+●
+
+team disable
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team disable
+Your team still has 1 other member(s).
+Remove all members with team remove <email> before disabling.
+PROMPT ▶ exit
+Goodbye!

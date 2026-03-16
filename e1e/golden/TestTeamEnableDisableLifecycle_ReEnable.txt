@@ -1,0 +1,46 @@
+
+
+●
+● ssh localhost
+●
+
+team enable
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team enable
+
+Teams lets you:
+  - Manage shared billing for your organization
+  - Invite members and control access
+  - SSH into team members' VMs as an admin
+  - Share VMs across your team
+
+You will become the billing owner for this team.
+Your existing VMs will become part of the team.
+
+Enable teams? (yes/no): localhost ▶ yes
+Team name: localhost ▶ Self Service Squad
+
+Team Self Service Squad created! (ID: tm_self_service_squad)
+Use team add <email> to invite members.
+PROMPT ▶ team
+Team: Self Service Squad
+Your role: billing_owner
+Members: 1
+VMs: 0
+PROMPT ▶ team disable
+
+Disabling team Self Service Squad will:
+  - Remove all team shares
+  - Cancel all pending invites
+  - Remove team auth/SSO configuration
+  - Delete the team
+
+Your VMs will remain on your personal account.
+
+Disable team? (yes/no): localhost ▶ yes
+Team Self Service Squad has been disabled.
+PROMPT ▶ exit
+Goodbye!

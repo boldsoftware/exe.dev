@@ -180,6 +180,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxTeamShareStmt, err = db.PrepareContext(ctx, deleteBoxTeamShare); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxTeamShare: %w", err)
 	}
+	if q.deleteBoxTeamSharesByTeamIDStmt, err = db.PrepareContext(ctx, deleteBoxTeamSharesByTeamID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxTeamSharesByTeamID: %w", err)
+	}
 	if q.deleteEmailBounceStmt, err = db.PrepareContext(ctx, deleteEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailBounce: %w", err)
 	}
@@ -234,6 +237,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingTeamInviteStmt, err = db.PrepareContext(ctx, deletePendingTeamInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvite: %w", err)
 	}
+	if q.deletePendingTeamInvitesByTeamIDStmt, err = db.PrepareContext(ctx, deletePendingTeamInvitesByTeamID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvitesByTeamID: %w", err)
+	}
 	if q.deletePendingTeamInvitesByUserStmt, err = db.PrepareContext(ctx, deletePendingTeamInvitesByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvitesByUser: %w", err)
 	}
@@ -248,6 +254,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
+	}
+	if q.deleteTeamStmt, err = db.PrepareContext(ctx, deleteTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeam: %w", err)
 	}
 	if q.deleteTeamMemberStmt, err = db.PrepareContext(ctx, deleteTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeamMember: %w", err)
@@ -1387,6 +1396,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxTeamShareStmt: %w", cerr)
 		}
 	}
+	if q.deleteBoxTeamSharesByTeamIDStmt != nil {
+		if cerr := q.deleteBoxTeamSharesByTeamIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxTeamSharesByTeamIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteEmailBounceStmt != nil {
 		if cerr := q.deleteEmailBounceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailBounceStmt: %w", cerr)
@@ -1477,6 +1491,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePendingTeamInviteStmt: %w", cerr)
 		}
 	}
+	if q.deletePendingTeamInvitesByTeamIDStmt != nil {
+		if cerr := q.deletePendingTeamInvitesByTeamIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingTeamInvitesByTeamIDStmt: %w", cerr)
+		}
+	}
 	if q.deletePendingTeamInvitesByUserStmt != nil {
 		if cerr := q.deletePendingTeamInvitesByUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingTeamInvitesByUserStmt: %w", cerr)
@@ -1500,6 +1519,11 @@ func (q *Queries) Close() error {
 	if q.deleteTagResolutionStmt != nil {
 		if cerr := q.deleteTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.deleteTeamStmt != nil {
+		if cerr := q.deleteTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamStmt: %w", cerr)
 		}
 	}
 	if q.deleteTeamMemberStmt != nil {
@@ -3048,6 +3072,7 @@ type Queries struct {
 	deleteBoxShareLinkByBoxAndTokenStmt        *sql.Stmt
 	deleteBoxSharesByBoxStmt                   *sql.Stmt
 	deleteBoxTeamShareStmt                     *sql.Stmt
+	deleteBoxTeamSharesByTeamIDStmt            *sql.Stmt
 	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
@@ -3066,11 +3091,13 @@ type Queries struct {
 	deletePendingRegistrationByTokenStmt       *sql.Stmt
 	deletePendingSSHKeyByTokenStmt             *sql.Stmt
 	deletePendingTeamInviteStmt                *sql.Stmt
+	deletePendingTeamInvitesByTeamIDStmt       *sql.Stmt
 	deletePendingTeamInvitesByUserStmt         *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
+	deleteTeamStmt                             *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
 	deleteTeamSSOProviderStmt                  *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
@@ -3420,6 +3447,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxShareLinkByBoxAndTokenStmt:        q.deleteBoxShareLinkByBoxAndTokenStmt,
 		deleteBoxSharesByBoxStmt:                   q.deleteBoxSharesByBoxStmt,
 		deleteBoxTeamShareStmt:                     q.deleteBoxTeamShareStmt,
+		deleteBoxTeamSharesByTeamIDStmt:            q.deleteBoxTeamSharesByTeamIDStmt,
 		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
@@ -3438,11 +3466,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingRegistrationByTokenStmt:       q.deletePendingRegistrationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
 		deletePendingTeamInviteStmt:                q.deletePendingTeamInviteStmt,
+		deletePendingTeamInvitesByTeamIDStmt:       q.deletePendingTeamInvitesByTeamIDStmt,
 		deletePendingTeamInvitesByUserStmt:         q.deletePendingTeamInvitesByUserStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
+		deleteTeamStmt:                             q.deleteTeamStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
 		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
