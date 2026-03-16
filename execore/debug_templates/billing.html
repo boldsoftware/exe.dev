@@ -32,6 +32,7 @@ table.info th { width: 200px; }
 <tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
 <tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}} total</td></tr>
 {{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
+{{if gt .SupportGiftUSD 0.0}}<tr><th>Support Gift</th><td>{{printf "%.0f" .SupportGiftUSD}} (detected from manual DB adjustment)</td></tr>{{end}}
 <tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
 {{if gt .ExtraCreditsUSD 0.0}}<tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>{{end}}
 {{if .Gifts}}

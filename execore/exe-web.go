@@ -1618,14 +1618,19 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
 		if shelleyCreditsAvailable > shelleyCreditsMax {
 			bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+			if bonusRemaining > bonusGrantAmount {
+				bonusRemaining = bonusGrantAmount
+			}
 		}
 	}
+	supportGiftUSD := computeSupportGift(shelleyCreditsAvailable, shelleyCreditsMax, bonusGrantAmount)
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
 		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
+		supportGiftUSD:          supportGiftUSD,
 	})
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
@@ -1688,7 +1693,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on Jan 2"),
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusGrantAmount),
+		Gifts:                         giftsForUser(bonusGrantAmount, supportGiftUSD),
 
 		IsSudoer:     isSudoer,
 		Integrations: integrations,

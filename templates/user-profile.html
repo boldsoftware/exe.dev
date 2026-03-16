@@ -903,13 +903,13 @@
                 {{if .HasShelleyFreeCreditPct}}
                 <div class="credit-hero">
                     <div class="credit-hero-left">
-                        <span class="credit-hero-number {{if le .TotalRemainingPct 10.0}}style-red{{end}}">{{printf "%.0f" .TotalCreditsUSD}}</span>
+                        <span class="credit-hero-number {{if ge .UsedBarPct 90.0}}style-red{{end}}">{{printf "%.0f" .TotalCreditsUSD}}</span>
                         <span class="credit-hero-label">credits remaining</span>
                     </div>
                 </div>
                 <div class="credit-bar-wrap">
                     <div class="credit-bar-track">
-                        <div class="credit-bar-fill {{if le .TotalRemainingPct 10.0}}red{{else if le .TotalRemainingPct 25.0}}orange{{else if le .TotalRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .TotalRemainingPct}}%;"></div>
+                        <div class="credit-bar-fill {{if ge .UsedBarPct 90.0}}red{{else if ge .UsedBarPct 75.0}}orange{{else if ge .UsedBarPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .UsedBarPct}}%;"></div>
                     </div>
                     <div class="credit-bar-annotation">
                         <span>{{printf "%.0f" .UsedCreditsUSD}} used</span>

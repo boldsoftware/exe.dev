@@ -14,6 +14,8 @@ type creditBarInput struct {
 	bonusGrantAmount float64
 	// extraCreditsUSD is the user's purchased extra credit balance in USD.
 	extraCreditsUSD float64
+	// supportGiftUSD is the detected support gift amount (manual DB credit adjustments).
+	supportGiftUSD float64
 }
 
 // creditBarResult holds the computed credit bar display values.
@@ -24,11 +26,12 @@ type creditBarResult struct {
 	totalCapacity     float64
 	monthlyAvailable  float64
 	bonusRemaining    float64
+	supportGiftUSD    float64
 }
 
 // computeCreditBar calculates a single unified bar.
 //
-// Capacity = planMax + bonusGrant + extra (fixed denominator).
+// Capacity = planMax + bonusGrant + extra + supportGift (fixed denominator).
 // All credit pools are combined into one bar that depletes as credits are used.
 func computeCreditBar(in creditBarInput) creditBarResult {
 	monthlyAvailable := in.shelleyCreditsAvailable
@@ -44,12 +47,17 @@ func computeCreditBar(in creditBarInput) creditBarResult {
 		bonusRemaining = 0
 	}
 
-	totalCapacity := in.planMaxCredit + in.bonusGrantAmount + in.extraCreditsUSD
+	supportGift := in.supportGiftUSD
+	if supportGift < 0 {
+		supportGift = 0
+	}
+
+	totalCapacity := in.planMaxCredit + in.bonusGrantAmount + in.extraCreditsUSD + supportGift
 	if totalCapacity < 0 {
 		totalCapacity = 0
 	}
 
-	remaining := monthlyAvailable + bonusRemaining + in.extraCreditsUSD
+	remaining := monthlyAvailable + bonusRemaining + in.extraCreditsUSD + supportGift
 
 	var totalRemainingPct float64
 	if totalCapacity > 0 {
@@ -80,19 +88,36 @@ func computeCreditBar(in creditBarInput) creditBarResult {
 		totalCapacity:     totalCapacity,
 		monthlyAvailable:  monthlyAvailable,
 		bonusRemaining:    bonusRemaining,
+		supportGiftUSD:    supportGift,
 	}
 }
 
-// giftsForUser returns the list of credit gifts to display on the profile page.
-// Currently the only gift is the one-time upgrade bonus.
-func giftsForUser(bonusGrantAmount float64) []GiftRow {
-	if bonusGrantAmount <= 0 {
-		return nil
+// computeSupportGift detects manual DB credit adjustments by comparing the
+// available credit to the sum of known credit sources (plan max + bonus grant).
+// Any excess is treated as a support gift.
+func computeSupportGift(shelleyCreditsAvailable, planMaxCredit, bonusGrantAmount float64) float64 {
+	expected := planMaxCredit + bonusGrantAmount
+	excess := shelleyCreditsAvailable - expected
+	if excess > 0.5 {
+		return excess
 	}
-	return []GiftRow{
-		{
+	return 0
+}
+
+// giftsForUser returns the list of credit gifts to display on the profile page.
+func giftsForUser(bonusGrantAmount, supportGiftUSD float64) []GiftRow {
+	var gifts []GiftRow
+	if bonusGrantAmount > 0 {
+		gifts = append(gifts, GiftRow{
 			Amount: fmt.Sprintf("%.0f", bonusGrantAmount),
 			Reason: "Welcome bonus for upgrading to a paid plan",
-		},
+		})
 	}
+	if supportGiftUSD > 0 {
+		gifts = append(gifts, GiftRow{
+			Amount: fmt.Sprintf("%.0f", supportGiftUSD),
+			Reason: "exe.dev Support Gift",
+		})
+	}
+	return gifts
 }

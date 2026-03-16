@@ -4424,14 +4424,19 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
 		if shelleyCreditsAvailable > shelleyCreditsMax {
 			bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+			if bonusRemaining > bonusGrantAmount {
+				bonusRemaining = bonusGrantAmount
+			}
 		}
 	}
+	supportGiftUSD := computeSupportGift(shelleyCreditsAvailable, shelleyCreditsMax, bonusGrantAmount)
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
 		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
+		supportGiftUSD:          supportGiftUSD,
 	})
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
@@ -4463,6 +4468,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt         string
 		TotalRemainingPct             float64
 		BonusRemainingUSD             float64
+		SupportGiftUSD                float64
 		MonthlyAvailableUSD           float64
 		UsedCreditsUSD                float64
 		TotalCapacityUSD              float64
@@ -4493,6 +4499,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
 		TotalRemainingPct:             totalRemainingPct,
 		BonusRemainingUSD:             bar.bonusRemaining,
+		SupportGiftUSD:                bar.supportGiftUSD,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,
@@ -4502,7 +4509,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusGrantAmount),
+		Gifts:                         giftsForUser(bonusGrantAmount, supportGiftUSD),
 		HasCredit:                     hasCredit,
 	}
 
