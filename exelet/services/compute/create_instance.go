@@ -613,6 +613,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 	// boot args (network config is derived from NetworkInterface at runtime)
 	bootArgs := getBootArgs()
+	bootArgs = append(bootArgs, fmt.Sprintf("domain=%s", s.config.InstanceDomain))
 	// TODO: handle duplicates (e.g. init= etc.)
 	bootArgs = append(bootArgs, req.BootArgs...)
 

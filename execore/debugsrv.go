@@ -706,6 +706,22 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		writeProgress("Live migration complete — VM is running on target.")
 		if coldBooted {
 			writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
+
+			// Update /etc/hosts — cold boot means the VM restarted with the
+			// correct IP on the interface but /etc/hosts still has the old IP.
+			if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil {
+				targetInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+				if err == nil && targetInstance.Instance.VMConfig != nil && targetInstance.Instance.VMConfig.NetworkInterface != nil {
+					sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+					targetNet := targetInstance.Instance.VMConfig.NetworkInterface
+					if sourceNet.IP != nil && targetNet.IP != nil {
+						targetBox := box
+						targetBox.Ctrhost = targetAddr
+						targetBox.SSHPort = sshPort
+						s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+					}
+				}
+			}
 		}
 	} else {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
@@ -739,6 +755,19 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 			newSSHPort := int64(instance.Instance.SSHPort)
 			sshPort = &newSSHPort
 			writeProgress("New SSH port: %d", newSSHPort)
+
+			// Update /etc/hosts to reflect the new IP.
+			if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil &&
+				instance.Instance.VMConfig != nil && instance.Instance.VMConfig.NetworkInterface != nil {
+				sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+				targetNet := instance.Instance.VMConfig.NetworkInterface
+				if sourceNet.IP != nil && targetNet.IP != nil {
+					targetBox := box
+					targetBox.Ctrhost = targetAddr
+					targetBox.SSHPort = sshPort
+					s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+				}
+			}
 		} else {
 			writeProgress("Source VM was stopped, leaving stopped on target.")
 			dbStatus = "stopped"
@@ -1310,6 +1339,12 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 	if _, err := netip.ParseAddr(sourceIPAddr); err != nil {
 		return fmt.Errorf("invalid source IP %q: %w", sourceIPAddr, err)
 	}
+	targetIPAddr := targetIP
+	if idx := strings.Index(targetIPAddr, "/"); idx > 0 {
+		targetIPAddr = targetIPAddr[:idx]
+	}
+	// Escape dots for sed regex so "10.0.0.2" doesn't match "10X0Y0Z2".
+	sourceIPSed := strings.ReplaceAll(sourceIPAddr, ".", "\\.")
 	detectCmd := fmt.Sprintf("ip -o addr show to %s | awk '{print $2}'", sourceIPAddr)
 	devOutput, err := runCommandOnBox(ctx, s.sshPool, box, detectCmd)
 	if err != nil {
@@ -1334,12 +1369,14 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 		"echo \"before:\" >> %s; ip addr show dev %s >> %s 2>&1; ip route >> %s 2>&1; "+
 		"echo 1 > /proc/sys/net/ipv4/conf/%s/promote_secondaries; "+
 		"ip addr add %s dev %s 2>> %s; "+
+		"sed -i \"s/^%s /%s /\" /etc/hosts 2>> %s; sync; "+
 		"echo \"after add:\" >> %s; ip addr show dev %s >> %s 2>&1"+
 		"'",
 		logFile,
 		logFile, guestDev, logFile, logFile,
 		guestDev,
 		targetIP, guestDev, logFile,
+		sourceIPSed, targetIPAddr, logFile,
 		logFile, guestDev, logFile)
 	output, err := runCommandOnBox(ctx, s.sshPool, box, addCmd)
 	if err != nil {
@@ -1369,6 +1406,56 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 
 	progress("IP reconfiguration complete.")
 	return nil
+}
+
+// updateVMHostsFile SSHes into a running VM and updates /etc/hosts to replace
+// sourceIP with targetIP. This is used after cold migrations where the VM boots
+// with the correct IP on the interface (from boot args) but /etc/hosts still
+// has the old IP baked into the disk image.
+func (s *Server) updateVMHostsFile(ctx context.Context, box *exedb.Box, sourceIP, targetIP string, progress func(string, ...any)) {
+	// Strip CIDR notation — /etc/hosts uses bare IPs.
+	if idx := strings.Index(sourceIP, "/"); idx > 0 {
+		sourceIP = sourceIP[:idx]
+	}
+	if idx := strings.Index(targetIP, "/"); idx > 0 {
+		targetIP = targetIP[:idx]
+	}
+	if sourceIP == targetIP {
+		return
+	}
+
+	// In /etc/hosts the IP is at the start of the line followed by a space.
+	// Match that pattern to avoid partial matches (e.g. 10.0.0.2 inside 10.0.0.20).
+	// We avoid \b because BusyBox sed doesn't support it and truncates the file.
+	sourceIPSed := strings.ReplaceAll(sourceIP, ".", "\\.")
+	cmd := fmt.Sprintf(
+		"sudo /exe.dev/bin/sh -c 'sed -i \"s/^%s /%s /\" /etc/hosts && sync'",
+		sourceIPSed, targetIP,
+	)
+
+	progress("Updating /etc/hosts: %s -> %s", sourceIP, targetIP)
+
+	// Retry with backoff — after a cold boot the VM may take several seconds
+	// before SSH is ready to accept connections.
+	deadline := time.Now().Add(30 * time.Second)
+	delay := 1 * time.Second
+	for attempt := 1; ; attempt++ {
+		sshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := runCommandOnBox(sshCtx, s.sshPool, box, cmd)
+		cancel()
+		if err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			progress("WARNING: failed to update /etc/hosts after %d attempts: %v", attempt, err)
+			return
+		}
+		time.Sleep(delay)
+		delay *= 2
+		if delay > 5*time.Second {
+			delay = 5 * time.Second
+		}
+	}
 }
 
 // handleDebugMassMigrateForm shows the migration form for multiple boxes.
@@ -1567,6 +1654,22 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 			writeProgress("Live migration complete — VM is running on target.")
 			if coldBooted {
 				writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
+
+				// Update /etc/hosts — cold boot means the VM restarted with the
+				// correct IP on the interface but /etc/hosts still has the old IP.
+				if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil {
+					targetInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+					if err == nil && targetInstance.Instance.VMConfig != nil && targetInstance.Instance.VMConfig.NetworkInterface != nil {
+						sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+						targetNet := targetInstance.Instance.VMConfig.NetworkInterface
+						if sourceNet.IP != nil && targetNet.IP != nil {
+							targetBox := box
+							targetBox.Ctrhost = targetAddr
+							targetBox.SSHPort = sshPort
+							s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+						}
+					}
+				}
 			}
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
@@ -1604,6 +1707,19 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 				newSSHPort := int64(instance.Instance.SSHPort)
 				sshPort = &newSSHPort
 				writeProgress("New SSH port: %d", newSSHPort)
+
+				// Update /etc/hosts to reflect the new IP.
+				if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil &&
+					instance.Instance.VMConfig != nil && instance.Instance.VMConfig.NetworkInterface != nil {
+					sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+					targetNet := instance.Instance.VMConfig.NetworkInterface
+					if sourceNet.IP != nil && targetNet.IP != nil {
+						targetBox := box
+						targetBox.Ctrhost = targetAddr
+						targetBox.SSHPort = sshPort
+						s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+					}
+				}
 			} else {
 				writeProgress("Source VM was stopped, leaving stopped on target.")
 				dbStatus = "stopped"
@@ -4922,6 +5038,22 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 			writeProgress("Live migration complete.")
 			if coldBooted {
 				writeProgress("WARNING: fell back to cold boot.")
+
+				// Update /etc/hosts — cold boot means the VM restarted with the
+				// correct IP on the interface but /etc/hosts still has the old IP.
+				if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil {
+					targetInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+					if err == nil && targetInstance.Instance.VMConfig != nil && targetInstance.Instance.VMConfig.NetworkInterface != nil {
+						sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+						targetNet := targetInstance.Instance.VMConfig.NetworkInterface
+						if sourceNet.IP != nil && targetNet.IP != nil {
+							targetBox := box
+							targetBox.Ctrhost = targetAddr
+							targetBox.SSHPort = sshPort
+							s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+						}
+					}
+				}
 			}
 		} else {
 			// VM was already stopped (live == wasRunning, so !live implies !wasRunning); leave stopped on target.
@@ -5140,6 +5272,19 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 		sshPort = &newSSHPort
 		dbStatus = "running"
 		writeProgress("VM started on target (SSH port: %d).", newSSHPort)
+
+		// Update /etc/hosts to reflect the new IP.
+		if sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil &&
+			instance.Instance.VMConfig != nil && instance.Instance.VMConfig.NetworkInterface != nil {
+			sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+			targetNet := instance.Instance.VMConfig.NetworkInterface
+			if sourceNet.IP != nil && targetNet.IP != nil {
+				targetBox := box
+				targetBox.Ctrhost = targetAddr
+				targetBox.SSHPort = sshPort
+				s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+			}
+		}
 	}
 
 	// Update database.

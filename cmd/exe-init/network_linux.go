@@ -132,5 +132,21 @@ func configureNetworking() error {
 		return err
 	}
 
+	// configure /etc/hosts — rewrite on every boot so that migrations
+	// (which assign a new IP via boot args) always get the correct entry.
+	if netConfig.Hostname != "" && netConfig.IP != "" {
+		// Include FQDN if domain is available (e.g. "charlie-indigo.exe.cloud charlie-indigo").
+		domain, _ := getBootArg("domain")
+		hostEntry := netConfig.Hostname
+		if domain != "" {
+			hostEntry = fmt.Sprintf("%s.%s %s", netConfig.Hostname, domain, netConfig.Hostname)
+		}
+		hostsContents := fmt.Sprintf("# managed by exe.dev\n127.0.0.1 localhost\n%s %s\n", netConfig.IP, hostEntry)
+		slog.Debug("configuring /etc/hosts", "ip", netConfig.IP, "hostname", netConfig.Hostname, "domain", domain)
+		if err := os.WriteFile("/etc/hosts", []byte(hostsContents), 0o644); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

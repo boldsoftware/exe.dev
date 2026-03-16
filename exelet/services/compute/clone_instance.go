@@ -354,6 +354,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	}
 
 	bootArgs := getBootArgs()
+	bootArgs = append(bootArgs, fmt.Sprintf("domain=%s", s.config.InstanceDomain))
 	vmCfg := &api.VMConfig{
 		ID:               newInstanceID,
 		Name:             req.NewName,
