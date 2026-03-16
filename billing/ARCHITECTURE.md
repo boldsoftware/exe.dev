@@ -17,6 +17,38 @@ What follows is a proposed evolution of the billing system.
 | VIP | `"vip"` | $0 | — | — | — | `access:exempt` | per-user override | per-user override | — | `compute:credits` | — | — |
 | Grandfathered | `"grandfathered"` | $0 | — | — | — | `access:legacy` | `llm:no_billing` ($50) | `llm:refresh:1/hr` | — | `compute:credits` | — | — |
 
+## Entitlement Migration Status
+
+Tracks which entitlements use `UserHasEntitlement` (new) vs `userNeedsBilling`/`GetUserBillingStatus` (old).
+
+| Entitlement | `UserHasEntitlement` | Old Logic |
+|-------------|:---:|:---:|
+| `vm:create` | ✅ | |
+| `vm:connect` | | ❌ |
+| `llm:use` | | ❌ |
+| `credit:renew` | | ❌ |
+| `credit:purchase` | | ❌ |
+| `credit:refresh` | | ❌ |
+| `compute:spend` | | ❌ |
+| `compute:purchase` | | ❌ |
+| `compute:debt` | | ❌ |
+| `compute:on_demand` | | ❌ |
+| `admin:override` | | ❌ |
+
+## Plan Migration Status
+
+Tracks whether each plan is a real, code-defined plan or just a label we use to describe existing ad-hoc logic.
+
+| Plan | In `GetPlanVersion` | In Stripe | Shown in UI | Notes |
+|------|:---:|:---:|:---:|-------|
+| Individual | ✅ | ✅ | ✅ | Only self-serve plan with a Stripe price |
+| Team | | | ✅ | Display-only override in profile when user is on a team. No `VersionTeam` resolution yet — team members resolve to `Individual` via `has_billing` category |
+| VIP | ✅ | | | Friend + explicit overrides. No UI surface |
+| Friend | ✅ | | | `billing_exemption='free'` without overrides |
+| Grandfathered | ✅ | | ✅ | Created before 2026-01-06, no billing |
+| Invite | ✅ | | | Trial exemption with valid expiry |
+| Basic | ✅ | | ✅ | Default fallback. Shows "Subscribe" in UI |
+
 ## Three Billing Systems
 
 ### 1. Subscriptions (Access Gating)
