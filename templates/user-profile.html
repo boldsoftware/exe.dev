@@ -797,6 +797,24 @@
             {{end}}
         </div>
         {{end}}
+        {{if .CanEnableTeam}}
+        <div class="section" id="team">
+            <div class="section-title">Teams</div>
+            <div class="info-card">
+                <p style="margin: 0 0 12px; font-size: 14px; line-height: 1.6;">
+                    Teams lets you manage shared billing, invite members, SSH into team members' VMs, and share VMs across your organization.
+                </p>
+                <p style="margin: 0 0 16px; font-size: 13px; color: var(--muted);">
+                    You'll become the billing owner. Your existing VMs will become part of the team.
+                </p>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="text" id="team-name-input" class="input" placeholder="Team name" style="flex: 1;" onkeydown="if(event.key==='Enter'){createTeam()}">
+                    <button class="btn" id="create-team-btn" onclick="createTeam()">Create Team</button>
+                </div>
+                <div id="team-enable-error" style="display:none; color: #dc2626; font-size: 13px; margin-top: 8px;"></div>
+            </div>
+        </div>
+        {{end}}
         {{if .TeamInfo}}
         <div class="section" id="team">
             <div class="section-title">{{.TeamInfo.DisplayName}}</div>
@@ -838,6 +856,16 @@
             <div style="margin-top: 16px; display: flex; gap: 8px;">
                 <button class="btn" onclick="openAddTeamMemberModal()">Invite Member</button>
                 <button class="btn" onclick="openTransferVMModal()">Transfer VM</button>
+            </div>
+            {{end}}
+
+            {{if and .TeamInfo.IsBillingOwner .TeamInfo.OnlyMember}}
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border, #e0e0e0);">
+                <div style="font-size: 14px; font-weight: 600; color: #dc2626; margin-bottom: 8px;">Danger Zone</div>
+                <p style="margin: 0 0 12px; font-size: 13px; color: var(--muted);">
+                    Disabling your team will remove all team shares, cancel pending invites, and delete team auth/SSO configuration. Your VMs will remain on your personal account.
+                </p>
+                <button class="btn btn-danger" onclick="openDisableTeamModal()">Disable Team</button>
             </div>
             {{end}}
         </div>
@@ -1197,6 +1225,30 @@
             </form>
         </div>
     </div>
+
+    {{if and .TeamInfo .TeamInfo.IsBillingOwner .TeamInfo.OnlyMember}}
+    <div class="cmd-modal-overlay" id="disable-team-overlay" onclick="if(event.target===this) closeDisableTeamModal()">
+        <div class="cmd-modal" style="max-width: 480px;">
+            <div class="cmd-modal-title" style="color: #dc2626;">Disable Team</div>
+            <div style="margin-bottom: 16px; font-size: 14px; line-height: 1.6;">
+                <p style="margin-bottom: 8px;">This will permanently:</p>
+                <ul style="margin: 0 0 12px; padding-left: 20px;">
+                    <li>Remove all team shares</li>
+                    <li>Cancel all pending invites</li>
+                    <li>Delete team auth/SSO configuration</li>
+                </ul>
+                <p>Your VMs will remain on your personal account.</p>
+                <p style="margin-top: 12px;">Type <strong>{{.TeamInfo.DisplayName}}</strong> to confirm:</p>
+            </div>
+            <input type="text" id="disable-team-confirm" class="input" placeholder="Type team name to confirm" style="width: 100%; box-sizing: border-box;" onkeydown="if(event.key==='Enter'){disableTeam()}">
+            <div id="disable-team-error" style="display:none; color: #dc2626; font-size: 13px; margin-top: 8px;"></div>
+            <div class="cmd-modal-buttons" style="margin-top: 16px;">
+                <button class="btn" onclick="closeDisableTeamModal()">Cancel</button>
+                <button class="btn btn-danger" id="disable-team-btn" onclick="disableTeam()">Disable Team</button>
+            </div>
+        </div>
+    </div>
+    {{end}}
 
     <script src="/static/passkey.js"></script>
     <script>
@@ -1590,6 +1642,103 @@
                 commandPrefix: 'team transfer',
                 inputPlaceholder: 'vm-name target@example.com',
             });
+        }
+
+        // Team self-service functions
+        async function createTeam() {
+            var nameInput = document.getElementById('team-name-input');
+            var errorDiv = document.getElementById('team-enable-error');
+            var btn = document.getElementById('create-team-btn');
+            if (!nameInput || !errorDiv || !btn) return;
+            var name = nameInput.value.trim();
+            if (!name) {
+                errorDiv.textContent = 'Team name is required.';
+                errorDiv.style.display = '';
+                return;
+            }
+            errorDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+            try {
+                var resp = await fetch('/team/enable', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    errorDiv.textContent = data.error || 'Failed to create team.';
+                    errorDiv.style.display = '';
+                    btn.disabled = false;
+                    btn.textContent = 'Create Team';
+                }
+            } catch (e) {
+                errorDiv.textContent = 'Request failed.';
+                errorDiv.style.display = '';
+                btn.disabled = false;
+                btn.textContent = 'Create Team';
+            }
+        }
+
+        function openDisableTeamModal() {
+            var overlay = document.getElementById('disable-team-overlay');
+            if (!overlay) return;
+            var input = document.getElementById('disable-team-confirm');
+            var errorDiv = document.getElementById('disable-team-error');
+            if (input) input.value = '';
+            if (errorDiv) errorDiv.style.display = 'none';
+            overlay.classList.add('visible');
+            if (input) input.focus();
+            document.addEventListener('keydown', handleDisableTeamEscape);
+        }
+
+        function closeDisableTeamModal() {
+            var overlay = document.getElementById('disable-team-overlay');
+            if (overlay) overlay.classList.remove('visible');
+            document.removeEventListener('keydown', handleDisableTeamEscape);
+        }
+
+        function handleDisableTeamEscape(e) {
+            if (e.key === 'Escape') closeDisableTeamModal();
+        }
+
+        async function disableTeam() {
+            var input = document.getElementById('disable-team-confirm');
+            var errorDiv = document.getElementById('disable-team-error');
+            var btn = document.getElementById('disable-team-btn');
+            if (!input || !errorDiv || !btn) return;
+            var confirmName = input.value.trim();
+            if (!confirmName) {
+                errorDiv.textContent = 'Please type the team name to confirm.';
+                errorDiv.style.display = '';
+                return;
+            }
+            errorDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Disabling...';
+            try {
+                var resp = await fetch('/team/disable', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({confirm_name: confirmName}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    errorDiv.textContent = data.error || 'Failed to disable team.';
+                    errorDiv.style.display = '';
+                    btn.disabled = false;
+                    btn.textContent = 'Disable Team';
+                }
+            } catch (e) {
+                errorDiv.textContent = 'Request failed.';
+                errorDiv.style.display = '';
+                btn.disabled = false;
+                btn.textContent = 'Disable Team';
+            }
         }
     </script>
 </body>

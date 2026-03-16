@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -282,7 +281,7 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 		return nil
 	}
 
-	// Prompt for team name, retry on slug collision
+	// Prompt for team name, retry on slug collision or validation error
 	for {
 		cc.Write("Team name: ")
 		displayName, err := cc.ReadLine()
@@ -301,38 +300,14 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 			continue
 		}
 
-		teamID := "tm_" + slug
-
-		// Create team + add self as billing_owner in one transaction
-		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			if err := queries.InsertTeam(ctx, exedb.InsertTeamParams{
-				TeamID:      teamID,
-				DisplayName: displayName,
-			}); err != nil {
-				return fmt.Errorf("insert team: %w", err)
-			}
-			if err := queries.InsertTeamMember(ctx, exedb.InsertTeamMemberParams{
-				TeamID: teamID,
-				UserID: cc.User.ID,
-				Role:   "billing_owner",
-			}); err != nil {
-				return fmt.Errorf("insert member: %w", err)
-			}
-			return nil
-		})
+		teamID, err := ss.server.EnableTeam(ctx, cc.User.ID, displayName)
 		if err != nil {
-			// Check for unique constraint violation (slug collision)
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "teams.team_id") {
-				cc.Writeln("Team ID %q is already taken. Please choose a different name.", teamID)
+			if errors.Is(err, ErrTeamSlugTaken) {
+				cc.Writeln("Team ID %q is already taken. Please choose a different name.", "tm_"+slug)
 				continue
 			}
 			return cc.Errorf("Failed to create team: %v", err)
 		}
-
-		slog.InfoContext(ctx, "team created via enable",
-			"team_id", teamID,
-			"display_name", displayName,
-			"user_id", cc.User.ID)
 
 		cc.Writeln("")
 		cc.Writeln("Team \033[1m%s\033[0m created! (ID: %s)", displayName, teamID)
@@ -392,48 +367,9 @@ func (ss *SSHServer) handleTeamDisableCommand(ctx context.Context, cc *exemenu.C
 		return nil
 	}
 
-	teamID := team.TeamID
-
-	// Delete everything in a transaction
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		if err := queries.DeleteBoxTeamSharesByTeamID(ctx, teamID); err != nil {
-			return fmt.Errorf("delete team shares: %w", err)
-		}
-		if err := queries.DeletePendingTeamInvitesByTeamID(ctx, teamID); err != nil {
-			return fmt.Errorf("delete pending invites: %w", err)
-		}
-		if err := queries.DeleteTeamSSOProvider(ctx, teamID); err != nil {
-			return fmt.Errorf("delete SSO provider: %w", err)
-		}
-		// Clear team auth_provider column
-		if err := queries.SetTeamAuthProvider(ctx, exedb.SetTeamAuthProviderParams{
-			AuthProvider: nil,
-			TeamID:       teamID,
-		}); err != nil {
-			return fmt.Errorf("clear auth provider: %w", err)
-		}
-		if err := queries.DeleteTeamMember(ctx, exedb.DeleteTeamMemberParams{
-			TeamID: teamID,
-			UserID: cc.User.ID,
-		}); err != nil {
-			return fmt.Errorf("delete self from team: %w", err)
-		}
-		if err := queries.DeleteTeam(ctx, teamID); err != nil {
-			return fmt.Errorf("delete team: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
+	if err := ss.server.DisableTeam(ctx, cc.User.ID); err != nil {
 		return cc.Errorf("Failed to disable team: %v", err)
 	}
-
-	// Notify proxy
-	proxyChangeDeletedTeamMember(teamID, cc.User.ID)
-
-	slog.InfoContext(ctx, "team disabled",
-		"team_id", teamID,
-		"display_name", team.DisplayName,
-		"user_id", cc.User.ID)
 
 	cc.Writeln("Team \033[1m%s\033[0m has been disabled.", team.DisplayName)
 	return nil
