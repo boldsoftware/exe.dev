@@ -30,6 +30,7 @@ import {
   BigValueColorMode,
   BigValueGraphMode,
   BigValueTextMode,
+  GraphDrawStyle,
   GraphThresholdsStyleMode,
   ScaleDistribution,
   StackingMode,
@@ -4266,7 +4267,35 @@ function makeLLMGatewayDashboard() {
     }
   );
 
-  // Row 5: Latency
+  // Row 5: Daily LLM Cost
+  dash.withRow(
+    new RowBuilder("Daily LLM Cost").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  const dailyCostPanel = new TimeseriesBuilder()
+    .title("LLM Cost per Day (UTC)")
+    .unit("currencyUSD")
+    .min(0)
+    .drawStyle(GraphDrawStyle.Bars)
+    .lineWidth(0)
+    .fillOpacity(80)
+    .interval("1d")
+    .gridPos(gp({ w: 24, h: 8 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[1d]))`)
+        .legendFormat("Total")
+        .interval("1d")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(increase(llm_cost_usd_total{${STAGE_FILTER}}[1d])) by (model)`)
+        .legendFormat("{{model}}")
+        .interval("1d")
+    );
+  dash.withPanel(dailyCostPanel);
+
+  // Row 6: Latency
   dash.withRow(
     new RowBuilder("Latency").gridPos(gp({ w: 24, h: 1 }))
   );
