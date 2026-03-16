@@ -655,6 +655,7 @@ class CommandModal {
     static setPublic(boxName) {
         cmdModal.open({
             title: 'Make Public',
+            description: 'Making this VM public means anyone with the link can access it. Currently only people you\'ve shared it with can access it.',
             command: `share set-public ${shellQuote(boxName)}`
         });
     }
@@ -662,13 +663,15 @@ class CommandModal {
     static setPrivate(boxName) {
         cmdModal.open({
             title: 'Make Private',
+            description: 'Making this VM private means only you and people you\'ve shared it with can access it.',
             command: `share set-private ${shellQuote(boxName)}`
         });
     }
 
-    static setPort(boxName) {
+    static setPort(boxName, proxyURL) {
         cmdModal.open({
             title: 'Set Proxy Port',
+            description: `The proxy port is the port on your VM that <a href="${proxyURL}" target="_blank"><b>${proxyURL}</b></a> connects to.`,
             commandPrefix: `share port ${shellQuote(boxName)}`,
             inputPlaceholder: 'port (e.g. 8080)'
         });
@@ -736,7 +739,7 @@ const openDeleteBoxModal = (boxName) => CommandModal.deleteBox(boxName);
 const openRestartBoxModal = (boxName) => CommandModal.restartBox(boxName);
 const openSetPublicModal = (boxName) => CommandModal.setPublic(boxName);
 const openSetPrivateModal = (boxName) => CommandModal.setPrivate(boxName);
-const openSetPortModal = (boxName) => CommandModal.setPort(boxName);
+const openSetPortModal = (boxName, proxyURL) => CommandModal.setPort(boxName, proxyURL);
 const openAddTagModal = (boxName) => CommandModal.addTag(boxName);
 const openRemoveTagModal = (boxName, tagName) => CommandModal.removeTag(boxName, tagName);
 

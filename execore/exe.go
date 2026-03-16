@@ -2338,7 +2338,14 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 		return 0, fmt.Errorf("invalid region: %w", err)
 	}
 
-	routes := exedb.DefaultRouteJSON()
+	// Only set routes at creation for images where we know the default port.
+	// For other images, leave routes nil until auto-detection runs after
+	// container creation, so the UI doesn't show a misleading port.
+	var routes *string
+	if strings.Contains(opts.image, "exeuntu") {
+		r := exedb.RouteJSON(exedb.Route{Port: 8000, Share: "private"})
+		routes = &r
+	}
 	var boxID int
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var allocCPUs *int64
@@ -2352,7 +2359,7 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 			Status:          "creating",
 			Image:           opts.image,
 			CreatedByUserID: opts.userID,
-			Routes:          &routes,
+			Routes:          routes,
 			Region:          opts.region,
 			AllocatedCpus:   allocCPUs,
 		})

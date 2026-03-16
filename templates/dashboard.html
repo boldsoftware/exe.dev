@@ -182,30 +182,34 @@
             color: #000;
         }
 
-        .edit-btn {
-            background: none;
+        .inline-action-btn {
+            padding: 3px 10px;
             border: 1px solid #e0e0e0;
-            border-radius: 3px;
-            padding: 2px 4px;
-            cursor: pointer;
+            background: #fff;
             color: #666;
-            vertical-align: middle;
-            margin-left: 4px;
+            font-size: 12px;
+            font-family: inherit;
+            border-radius: 4px;
+            cursor: pointer;
             transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            vertical-align: middle;
+            margin-left: 6px;
         }
 
-        .edit-btn:hover {
+        .inline-action-btn:hover {
             background: #f5f5f5;
             border-color: #d0d0d0;
             color: #333;
         }
 
-        .edit-btn svg {
+        .inline-action-btn svg {
             width: 12px;
             height: 12px;
-            display: block;
         }
-        
+
         .status-dot {
             width: 8px;
             height: 8px;
@@ -1320,6 +1324,18 @@
                 color: #f3f4f6;
             }
 
+            .inline-action-btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .inline-action-btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
             .copy-btn {
                 background: #2a2a2a;
                 border-color: #333;
@@ -1329,17 +1345,6 @@
             .copy-btn:hover {
                 background: #333;
                 border-color: #444;
-            }
-
-            .edit-btn {
-                border-color: #333;
-                color: #6b7280;
-            }
-
-            .edit-btn:hover {
-                background: #333;
-                border-color: #444;
-                color: #f3f4f6;
             }
 
             .toast {
@@ -1761,8 +1766,10 @@
                         {{if .RouteKnown}}
                         <span class="box-info-label">Proxy:</span>
                         <span class="box-info-value">
-                            Port {{.ProxyPort}} <button onclick="openSetPortModal('{{.Name}}')" class="edit-btn" title="Change port"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>,
-                            {{if eq .ProxyShare "public"}}public <button onclick="openSetPrivateModal('{{.Name}}')" class="edit-btn" title="Make private"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>{{else}}private <button onclick="openSetPublicModal('{{.Name}}')" class="edit-btn" title="Make public"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>{{end}}
+                            Port {{.ProxyPort}}
+                            <button onclick="openSetPortModal('{{.Name}}', '{{.ProxyURL}}')" class="inline-action-btn" title="Change port">Change</button>
+                            · {{.ProxyShare}}
+                            {{if eq .ProxyShare "public"}}<button onclick="openSetPrivateModal('{{.Name}}')" class="inline-action-btn" title="Make private">Make Private</button>{{else}}<button onclick="openSetPublicModal('{{.Name}}')" class="inline-action-btn" title="Make public">Make Public</button>{{end}}
                         </span>
                         {{end}}
                         {{if or (gt .SharedUserCount 0) (gt .ShareLinkCount 0)}}

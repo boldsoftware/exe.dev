@@ -49,10 +49,14 @@ func DefaultRoute() Route {
 
 // DefaultRouteJSON returns the default route as JSON.
 func DefaultRouteJSON() string {
-	route := DefaultRoute()
+	return RouteJSON(DefaultRoute())
+}
+
+// RouteJSON returns the given route as a JSON string.
+func RouteJSON(route Route) string {
 	data, err := json.Marshal(route)
 	if err != nil {
-		log.Fatalf("Failed to marshal default route: %v", err)
+		log.Fatalf("Failed to marshal route: %v", err)
 	}
 	return string(data)
 }
