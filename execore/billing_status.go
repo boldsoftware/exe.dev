@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
@@ -59,6 +60,46 @@ func (s *Server) teamBillingCovers(ctx context.Context, userID string) bool {
 	return !userNeedsBilling(&status)
 }
 
+// UserHasEntitlement reports whether the user's plan grants the given entitlement.
+// Returns false on any error (safe default). Handles SkipBilling internally.
+// Logs all denials with user_id, email, and entitlement.
+func (s *Server) UserHasEntitlement(ctx context.Context, source entitlement.Source, ent entitlement.Entitlement, userID string) bool {
+	if s.env.SkipBilling {
+		return true
+	}
+
+	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "entitlement check failed",
+			"source", string(source),
+			"user_id", userID,
+			"entitlement", ent.ID,
+			"error", err,
+		)
+		return false
+	}
+
+	inputs := entitlement.UserPlanInputs{
+		Category:           row.Category,
+		BillingStatus:      row.BillingStatus,
+		BillingExemption:   row.BillingExemption,
+		CreatedAt:          row.CreatedAt,
+		BillingTrialEndsAt: row.BillingTrialEndsAt,
+	}
+	version := entitlement.GetPlanVersion(inputs)
+	granted := entitlement.PlanGrants(version, ent)
+	if !granted {
+		s.slog().InfoContext(ctx, "entitlement denied by plan",
+			"source", string(source),
+			"user_id", userID,
+			"email", row.Email,
+			"entitlement", ent.ID,
+			"plan", string(version),
+		)
+	}
+	return granted
+}
+
 // checkCanCreateVM validates that a user is allowed to create a new VM.
 // Returns an error message if blocked, or empty string if allowed.
 // The allowOverride parameter bypasses throttle and disabled checks (used for exelet override).
@@ -77,29 +118,10 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 		}
 	}
 
-	// Check if user needs billing
-	if !ss.server.env.SkipBilling {
-		billingStatus, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserBillingStatus, user.ID)
-		if err != nil {
-			ss.server.slog().WarnContext(ctx, "billing status lookup failed",
-				"user_id", user.ID,
-				"email", user.Email,
-				"source", "ssh",
-				"error", err,
-			)
-		} else if userNeedsBilling(&billingStatus) {
-			// User doesn't have their own billing — check if team billing_owner covers them
-			if !ss.server.teamBillingCovers(ctx, user.ID) {
-				ss.server.slog().InfoContext(ctx, "vm creation blocked by billing requirement",
-					"user_id", user.ID,
-					"email", user.Email,
-					"source", "ssh",
-					"billing_status", billingStatus.BillingStatus,
-				)
-				billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-				return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
-			}
-		}
+	// Check if user's plan grants VM creation
+	if !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.VMCreate, user.ID) {
+		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
+		return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
 	}
 
 	return ""

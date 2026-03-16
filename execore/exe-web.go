@@ -1526,6 +1526,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	var hasBilling bool
 	var billingStatus string
 	var planName string
+	var selfServeBilling bool
 	if billingRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID); err == nil {
 		billingStatus = billingRow.BillingStatus
 		hasBilling = billingStatus == "active"
@@ -1536,7 +1537,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			CreatedAt:          billingRow.CreatedAt,
 			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
 		}
-		planName = entitlement.PlanName(entitlement.GetPlanVersion(inputs))
+		version := entitlement.GetPlanVersion(inputs)
+		planName = entitlement.PlanName(version)
+		selfServeBilling = version == entitlement.VersionIndividual
 	}
 
 	// Fetch credit balance if credit purchases are enabled and user has a billing account.
@@ -1681,9 +1684,10 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ActivePage:    "profile",
 		IsLoggedIn:    true,
 		BasicUser:     basicUser,
-		HasBilling:    hasBilling,
-		BillingStatus: billingStatus,
-		PlanName:      planName,
+		HasBilling:       hasBilling,
+		BillingStatus:    billingStatus,
+		PlanName:         planName,
+		SelfServeBilling: selfServeBilling,
 
 		CreditBalance:                 creditBalance,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
