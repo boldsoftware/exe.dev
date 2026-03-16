@@ -137,6 +137,101 @@ func (q *Queries) GetTeamBillingOwnerAccountID(ctx context.Context, memberUserID
 	return id, err
 }
 
+const getUserBilling = `-- name: GetUserBilling :one
+SELECT
+    CASE
+        WHEN u.billing_exemption = 'free' THEN 'friend'
+        WHEN EXISTS (
+            SELECT 1 FROM accounts a
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE a.created_by = ?1
+            AND e.event_type = 'active'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'has_billing'
+        WHEN EXISTS (
+            SELECT 1 FROM team_members tm_user
+            JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
+            JOIN accounts a ON a.created_by = tm_billing.user_id
+            JOIN billing_events e ON e.account_id = a.id
+            WHERE tm_user.user_id = ?1
+            AND tm_billing.role = 'billing_owner'
+            AND e.event_type = 'active'
+            AND e.id = (
+                SELECT e2.id FROM billing_events e2
+                WHERE e2.account_id = a.id
+                ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                LIMIT 1
+            )
+        ) THEN 'has_billing'
+        ELSE 'no_billing'
+    END AS category,
+    CAST(COALESCE(
+        CASE
+            WHEN EXISTS (
+                SELECT 1 FROM accounts a
+                JOIN billing_events e ON e.account_id = a.id
+                WHERE a.created_by = u.user_id
+                AND e.event_type = 'active'
+                AND e.id = (
+                    SELECT e2.id FROM billing_events e2
+                    WHERE e2.account_id = a.id
+                    ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                    LIMIT 1
+                )
+            ) THEN 'active'
+            WHEN EXISTS (
+                SELECT 1 FROM accounts a
+                JOIN billing_events e ON e.account_id = a.id
+                WHERE a.created_by = u.user_id
+                AND e.event_type = 'canceled'
+                AND e.id = (
+                    SELECT e2.id FROM billing_events e2
+                    WHERE e2.account_id = a.id
+                    ORDER BY parse_timestamp(e2.event_at) DESC, e2.id DESC
+                    LIMIT 1
+                )
+            ) THEN 'canceled'
+        END,
+    '') AS TEXT) AS billing_status,
+    u.email,
+    u.created_at,
+    u.billing_exemption,
+    u.billing_trial_ends_at
+FROM users u
+WHERE u.user_id = ?1
+`
+
+type GetUserBillingRow struct {
+	Category           string     `db:"category" json:"category"`
+	BillingStatus      string     `db:"billing_status" json:"billing_status"`
+	Email              string     `db:"email" json:"email"`
+	CreatedAt          *time.Time `db:"created_at" json:"created_at"`
+	BillingExemption   *string    `db:"billing_exemption" json:"billing_exemption"`
+	BillingTrialEndsAt *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
+}
+
+// GetUserBilling returns a single row with the user's plan category, billing status,
+// account creation date, billing exemption, and trial end date.
+// Combines GetUserBillingStatus and GetUserPlanCategory into one round trip.
+func (q *Queries) GetUserBilling(ctx context.Context, createdBy string) (GetUserBillingRow, error) {
+	row := q.queryRow(ctx, q.getUserBillingStmt, getUserBilling, createdBy)
+	var i GetUserBillingRow
+	err := row.Scan(
+		&i.Category,
+		&i.BillingStatus,
+		&i.Email,
+		&i.CreatedAt,
+		&i.BillingExemption,
+		&i.BillingTrialEndsAt,
+	)
+	return i, err
+}
+
 const getUserBillingStatus = `-- name: GetUserBillingStatus :one
 SELECT
     CASE

@@ -615,6 +615,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserAuthProviderStmt, err = db.PrepareContext(ctx, getUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserAuthProvider: %w", err)
 	}
+	if q.getUserBillingStmt, err = db.PrepareContext(ctx, getUserBilling); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserBilling: %w", err)
+	}
 	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
@@ -2109,6 +2112,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserAuthProviderStmt: %w", cerr)
 		}
 	}
+	if q.getUserBillingStmt != nil {
+		if cerr := q.getUserBillingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserBillingStmt: %w", cerr)
+		}
+	}
 	if q.getUserBillingExemptionStmt != nil {
 		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
@@ -3185,6 +3193,7 @@ type Queries struct {
 	getTemplateBySlugAnyStmt                   *sql.Stmt
 	getTemplateRatingStatsStmt                 *sql.Stmt
 	getUserAuthProviderStmt                    *sql.Stmt
+	getUserBillingStmt                         *sql.Stmt
 	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByDiscordUsernameStmt               *sql.Stmt
@@ -3556,6 +3565,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
 		getTemplateRatingStatsStmt:                 q.getTemplateRatingStatsStmt,
 		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
+		getUserBillingStmt:                         q.getUserBillingStmt,
 		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByDiscordUsernameStmt:               q.getUserByDiscordUsernameStmt,
