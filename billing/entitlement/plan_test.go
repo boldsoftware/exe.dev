@@ -34,7 +34,8 @@ func TestPlanGrants(t *testing.T) {
 func TestPlanGrantsWildcard(t *testing.T) {
 	for _, ent := range []Entitlement{
 		LLMUse, CreditPurchase, VMCreate,
-		ComputeSpend, AdminOverride, Entitlement{"anything:else", "Made Up"},
+		ComputeSpend, AdminOverride,
+		{"anything:else", "Made Up"},
 	} {
 		if !PlanGrants(VersionVIP, ent) {
 			t.Errorf("PlanGrants(%q, %q) = false, want true (wildcard)", VersionVIP, ent)
