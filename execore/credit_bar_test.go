@@ -388,7 +388,7 @@ func TestCreditBar_TemplateLabels(t *testing.T) {
 
 func TestTotalCreditsUSD_NeverNegative(t *testing.T) {
 	cases := []struct {
-		name                   string
+		name                    string
 		shelleyCreditsAvailable float64
 		extraCreditsUSD         float64
 		want                    float64
