@@ -1,0 +1,4 @@
+.venv/
+host_vars/*
+!host_vars/sample
+*.retry

@@ -1,0 +1,15 @@
+---
+auth_token: "VTa335cjC9p22tdZ91VSzDScICEOMUiApyXGT995tcPSfWEarESctavJLQ42AV73npOF77kRlv"
+ansible_ssh_extra_args: '-o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10'
+
+ssh_public_key: keys.pub
+operating_system: 'Ubuntu 24.04 LTS (20240423)'
+bgp_group: 3277
+contract_id: 520
+
+#NetActuate Test Prefix configuration for BIRD/worker
+bgp_networks:
+    IPv4:
+    - { net: "161.210.92.0/22", ips: [ "161.210.92.1" ], bind_ranges: ["161.210.92.1-254"], origin: "402146" }
+    IPv6:
+    - { net: "2607:f740:e610::/48", ips: [ "2607:f740:e610::1" ], origin: "402146" }

@@ -1,0 +1,4 @@
+---
+# file: host_vars/{{ inventory_hostname }}
+ansible_ssh_host: {{ ansible_ssh_host }}
+{{ { "nodesetup": nodesetup } | to_nice_yaml }}

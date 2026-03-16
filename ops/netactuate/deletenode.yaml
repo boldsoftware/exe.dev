@@ -1,0 +1,83 @@
+- name: Delete the nodes via API
+  hosts: nodes
+  gather_facts: no
+
+  vars:
+    api_base_url: "https://vapi2.netactuate.com/api"  # Adjust to match your API endpoint
+
+  tasks:
+    # Step 1: Fetch all servers from the API
+    - name: Get list of all cloud servers
+      delegate_to: localhost
+      uri:
+        url: "{{ api_base_url }}/cloud/servers?key={{ auth_token }}"
+        method: GET
+        headers:
+          accept: "application/json"
+        return_content: yes
+      register: server_list
+
+    # Step 2a: Use the mbpkgid from host_vars if available
+    - name: Set mbpkgid from host_vars if provided
+      delegate_to: localhost
+      set_fact:
+        mbpkgid: "{{ hostvars[inventory_hostname].id }}"
+      when: hostvars[inventory_hostname].id is defined
+
+    # Step 2b: If mbpkgid is not provided, filter servers by matching IP
+    - name: Filter servers with matching IP if no mbpkgid is given in host_vars
+      delegate_to: localhost
+      set_fact:
+        matching_servers: >-
+          {{ server_list.json.data
+             | selectattr('ip', 'equalto', (ansible_ssh_host | default(ansible_host)))
+             | list }}
+      when: hostvars[inventory_hostname].id is not defined
+
+    - name: Fail if no server found in the API by IP
+      delegate_to: localhost
+      fail:
+        msg: "No server found in the API for host IP {{ ansible_ssh_host }} / {{ hostvars[inventory_hostname].id | default('no known mbpkgid') }}"
+      when: hostvars[inventory_hostname].id is not defined and (matching_servers | length == 0)
+
+    - name: Set mbpkgid from the first matching server when not provided in host_vars
+      delegate_to: localhost
+      set_fact:
+        mbpkgid: "{{ matching_servers[0].mbpkgid | string | trim }}"
+      when: hostvars[inventory_hostname].id is not defined
+
+    # Step 3: Delete the server with billing cancellation
+    - name: Terminate the compute node
+      delegate_to: localhost
+      uri:
+        url: "{{ api_base_url }}/cloud/server/delete?mbpkgid={{ mbpkgid }}&key={{ auth_token }}"
+        method: POST
+        headers:
+          accept: "application/json"
+          content-type: "multipart/form-data"
+        body_format: form-multipart
+        body:
+          cancel_billing: "1"
+        status_code: [200, 422]  # Adjust based on your API response codes
+      register: delete_result
+
+    # Step 4: Poll server status until terminated
+    - name: Poll server status until terminated
+      delegate_to: localhost
+      uri:
+        url: "{{ api_base_url }}/cloud/server?mbpkgid={{ mbpkgid }}&key={{ auth_token }}"
+        method: GET
+        headers:
+          accept: "application/json"
+        return_content: yes
+        status_code: [200, 422]  # 422 if the server is gone
+      register: server_status
+      until: server_status.status == 422 or server_status.status == 404 or (server_status.status == 200 and server_status.json.data.status == 'TERMINATED')
+      retries: 30
+      delay: 10
+
+    # Step 5: Confirm deletion
+    - name: Confirm server is terminated
+      delegate_to: localhost
+      debug:
+        msg: "Server with mbpkgid={{ mbpkgid }} has been terminated."

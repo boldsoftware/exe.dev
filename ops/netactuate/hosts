@@ -1,0 +1,19 @@
+[master]
+localhost ansible_connection=local ansible_python_interpreter=.venv/bin/python3
+
+[nodes]
+edge1-LAX.exe.dev location=LAX bgp_enabled=True plan='VR8x4x50'
+edge1-SJC.exe.dev location=SJC bgp_enabled=True plan='VR8x4x50'
+edge1-FRA.exe.dev location=FRA bgp_enabled=True plan='VR8x4x50'
+edge1-LHR.exe.dev location=LHR bgp_enabled=True plan='VR8x4x50'
+edge1-HKG.exe.dev location=HKG bgp_enabled=True plan='VR8x4x50'
+edge1-TYO.exe.dev location=TYO bgp_enabled=True plan='VR8x4x50'
+edge1-SIN.exe.dev location=SIN bgp_enabled=True plan='VR8x4x50'
+edge1-DFW.exe.dev location=DFW bgp_enabled=True plan='VR8x4x50'
+edge1-CHI.exe.dev location=CHI bgp_enabled=True plan='VR8x4x50'
+edge1-SYD.exe.dev location=SYD bgp_enabled=True plan='VR8x4x50'
+edge1-GRU.exe.dev location=GRU bgp_enabled=True plan='VR8x4x50'
+edge1-MIA.exe.dev location=MIA bgp_enabled=True plan='VR8x4x50'
+edge1-LGA.exe.dev location=LGA bgp_enabled=True plan='VR8x4x50'
+edge1-OTP.exe.dev location=OTP bgp_enabled=True plan='VR8x4x50'
+edge1-IAD3.exe.dev location=IAD3 bgp_enabled=True plan='VR8x4x50'

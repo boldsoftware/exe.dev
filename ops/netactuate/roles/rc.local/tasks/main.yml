@@ -1,0 +1,22 @@
+- include_vars: sysctl.yml
+
+- name: Create rc.local
+  template: src=rc.local dest=/etc/rc.local
+
+- name: Set permissions for rc.local
+  file: path=/etc/rc.local owner=root group=root mode=0755
+
+- name: Re-run rc.local to bind IPs
+  command:
+    cmd: /etc/rc.local
+  ignore_errors: yes
+
+- name: Update sysctl
+  sysctl:
+    name: '{{ item.key }}'
+    value: '{{ item.value }}'
+    sysctl_set: yes
+    state: present
+    reload: yes
+    ignoreerrors: yes
+  with_dict: '{{ sysctl_conf }}'

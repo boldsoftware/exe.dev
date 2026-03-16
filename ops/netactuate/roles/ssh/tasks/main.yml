@@ -1,0 +1,4 @@
+# file: roles/ssh/tasks/main.yml
+- authorized_key: user=root key="{{ lookup('file', './' + ssh_public_key) }}"
+  tags:
+     - ssh

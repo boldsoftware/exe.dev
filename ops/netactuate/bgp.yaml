@@ -1,0 +1,51 @@
+- name: Fetch the node information
+  hosts: nodes
+  tags:
+    - setup
+  gather_facts: no
+  serial: 1
+
+  tasks:
+  - name: Node lookup
+    netactuate.compute.bgp:
+      auth_token: '{{ auth_token }}'
+      hostname: '{{ inventory_hostname }}'
+      build: true
+      group_id: '{{ bgp_group }}'
+      ipv6: true
+      redundant: true
+    delegate_to: localhost
+    register: na
+
+  - name: Initialize node configuration
+    set_fact:
+      nodesetup: {}
+    when: nodesetup is not defined
+
+  - name: Append node configuration
+    set_fact:
+      nodesetup: "{{ nodesetup | combine(na.device) }}"
+
+  - name: Set SSH IP
+    set_fact:
+      ansible_ssh_host: "{{ na.device.public_ipv4 }}"
+
+  - name: Update node vars
+    template:
+      src: nodevars.yml
+      dest: "./host_vars/{{ inventory_hostname }}"
+    delegate_to: localhost
+
+- name: Setup BGP on nodes
+  hosts: nodes
+  remote_user: ubuntu
+  become: true
+  gather_facts: yes
+  roles:
+    - role: ssh
+      tags: ssh
+    - role: rc.local
+      tags: rc.local
+    - role: bird
+      tags: bird
+

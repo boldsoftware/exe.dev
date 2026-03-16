@@ -1,0 +1,11 @@
+---
+- include_vars: bird.yml
+
+- name: Install BIRD
+  apt: package=bird2 state=present
+
+- name: Create config files
+  template: src={{ item.name }} dest=/etc/bird/{{ item.name }} owner={{ item.owner }} group={{ item.group }} mode={{ item.mode }}
+  with_items: '{{ conffiles }}'
+  notify:
+     - reload bird2

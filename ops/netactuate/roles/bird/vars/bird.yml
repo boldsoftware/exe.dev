@@ -1,0 +1,2 @@
+conffiles:
+    - { name: bird.conf, owner: bird, group: bird, mode: "0640" }

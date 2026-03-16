@@ -1,0 +1,73 @@
+- name: Build the nodes
+  hosts: nodes
+  gather_facts: no
+
+  tasks:
+    - name: Create compute node
+      netactuate.compute.node:
+        auth_token: "{{ auth_token }}"
+        hostname: "{{ inventory_hostname }}"
+        ssh_public_key: "{{ ssh_public_key }}"
+        operating_system: "{{ operating_system }}"
+        location: "{{ location }}"
+        plan: "{{ plan }}"
+        mbpkgid: "{{ mbpkgid|default(omit) }}"
+        state: running
+        unique: true
+        # contract_id: CODE
+        package_billing: "{{ 'usage' if contract_id is defined else 'package' }}"
+        contract_id: "{{ contract_id|default(omit) }}"
+      delegate_to: localhost
+      register: na
+
+    - name: Wait for port 22 to be reachable
+      wait_for:
+        port: 22
+        host: "{{ na.device.public_ipv4 }}"
+        search_regex: OpenSSH
+        sleep: 10
+        connect_timeout: 5
+      retries: 10
+      delegate_to: localhost
+
+    - name: Initialize node configuration
+      set_fact:
+        nodesetup: {}
+      when: nodesetup is not defined
+
+    - name: Set SSH IP
+      set_fact:
+        ansible_ssh_host: "{{ na.device.public_ipv4 }}"
+
+    - name: Update node vars
+      template:
+        src: nodevars.yml
+        dest: "./host_vars/{{ inventory_hostname }}"
+      delegate_to: localhost
+
+- name: Basic ubuntu prep
+  hosts: nodes
+  remote_user: ubuntu
+  become: true
+  gather_facts: yes
+  tags: ubuntu
+  tasks:
+    - name: Wait for cloud-init to finish
+      command: cloud-init status --wait
+      changed_when: false
+
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done
+      changed_when: false
+
+    - name: apt update && upgrade
+      apt:
+        upgrade: "yes"
+        update_cache: yes
+    - name: install required packages
+      apt:
+        package:
+          - net-tools
+          - sysstat
+          - atop
+        state: present
