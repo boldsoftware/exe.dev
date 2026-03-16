@@ -1718,7 +1718,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		ExtraCreditsUSD:               extraCreditsUSD,
-		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
+		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD, 0),
 		TotalRemainingPct:             totalRemainingPct,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		UsedCreditsUSD:                usedCreditsUSD,
@@ -1727,7 +1727,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on Jan 2"),
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusGrantAmount, supportGiftUSD),
+		Gifts:                         giftsForUser(bonusRemaining, supportGiftUSD),
 
 		IsSudoer:     isSudoer,
 		Integrations: integrations,

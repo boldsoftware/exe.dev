@@ -4523,9 +4523,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ExtraCreditsUSD:               extraCreditsUSD,
 		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
 		ShelleyCreditsMax:             shelleyCreditsMax,
-		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
+		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD, 0),
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusGrantAmount, supportGiftUSD),
+		Gifts:                         giftsForUser(bonusRemaining, supportGiftUSD),
 		HasCredit:                     hasCredit,
 	}
 

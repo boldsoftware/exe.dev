@@ -358,6 +358,15 @@ func TestCreditBar_TemplateLabels(t *testing.T) {
 				`20 total`,
 			},
 		},
+		{
+			name: "negative zero clamped to zero",
+			data: data{TotalCreditsUSD: max(-0.004, 0), UsedCreditsUSD: 120, TotalCapacityUSD: 120},
+			wantContain: []string{
+				`>0</span>`,
+				`120 used`,
+				`120 total`,
+			},
+		},
 	}
 
 	parsed := template.Must(template.New("bar").Parse(tmpl))
@@ -377,6 +386,31 @@ func TestCreditBar_TemplateLabels(t *testing.T) {
 	}
 }
 
+func TestTotalCreditsUSD_NeverNegative(t *testing.T) {
+	cases := []struct {
+		name                   string
+		shelleyCreditsAvailable float64
+		extraCreditsUSD         float64
+		want                    float64
+	}{
+		{"both positive", 50, 20, 70},
+		{"both zero", 0, 0, 0},
+		{"extra slightly negative", 0, -0.004, 0},
+		{"sum exactly zero", 5, -5, 0},
+		{"sum negative", 0, -1.5, 0},
+		{"large positive", 100, 30, 130},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := max(tc.shelleyCreditsAvailable+tc.extraCreditsUSD, 0)
+			if got != tc.want {
+				t.Errorf("max(%v + %v, 0) = %v, want %v",
+					tc.shelleyCreditsAvailable, tc.extraCreditsUSD, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestGiftsForUser(t *testing.T) {
 	t.Run("no bonus no support gift returns nil", func(t *testing.T) {
 		gifts := giftsForUser(0, 0)
@@ -385,7 +419,7 @@ func TestGiftsForUser(t *testing.T) {
 		}
 	})
 
-	t.Run("bonus grant returns gift row", func(t *testing.T) {
+	t.Run("full bonus remaining returns gift row", func(t *testing.T) {
 		gifts := giftsForUser(100, 0)
 		if len(gifts) != 1 {
 			t.Fatalf("expected 1 gift, got %d", len(gifts))
@@ -398,7 +432,24 @@ func TestGiftsForUser(t *testing.T) {
 		}
 	})
 
-	t.Run("negative grant returns nil", func(t *testing.T) {
+	t.Run("partial bonus remaining shows remaining amount", func(t *testing.T) {
+		gifts := giftsForUser(35, 0)
+		if len(gifts) != 1 {
+			t.Fatalf("expected 1 gift, got %d", len(gifts))
+		}
+		if gifts[0].Amount != "35" {
+			t.Errorf("amount = %q, want 35", gifts[0].Amount)
+		}
+	})
+
+	t.Run("bonus fully used returns nil", func(t *testing.T) {
+		gifts := giftsForUser(0, 0)
+		if gifts != nil {
+			t.Fatalf("expected nil, got %v", gifts)
+		}
+	})
+
+	t.Run("negative bonus returns nil", func(t *testing.T) {
 		gifts := giftsForUser(-5, 0)
 		if gifts != nil {
 			t.Fatalf("expected nil, got %v", gifts)
@@ -418,7 +469,7 @@ func TestGiftsForUser(t *testing.T) {
 		}
 	})
 
-	t.Run("bonus and support gift", func(t *testing.T) {
+	t.Run("bonus remaining and support gift", func(t *testing.T) {
 		gifts := giftsForUser(100, 50)
 		if len(gifts) != 2 {
 			t.Fatalf("expected 2 gifts, got %d", len(gifts))
@@ -723,7 +774,7 @@ func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
 			}
 
 			// Verify gifts
-			gifts := giftsForUser(bonusGrantAmount, supportGiftUSD)
+			gifts := giftsForUser(bonusRemaining, supportGiftUSD)
 			if len(gifts) != tc.wantGiftCount {
 				t.Errorf("gift count = %d, want %d; gifts = %v", len(gifts), tc.wantGiftCount, gifts)
 			}

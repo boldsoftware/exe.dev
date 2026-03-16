@@ -105,11 +105,11 @@ func computeSupportGift(shelleyCreditsAvailable, planMaxCredit, bonusGrantAmount
 }
 
 // giftsForUser returns the list of credit gifts to display on the profile page.
-func giftsForUser(bonusGrantAmount, supportGiftUSD float64) []GiftRow {
+func giftsForUser(bonusRemaining, supportGiftUSD float64) []GiftRow {
 	var gifts []GiftRow
-	if bonusGrantAmount > 0 {
+	if bonusRemaining > 0 {
 		gifts = append(gifts, GiftRow{
-			Amount: fmt.Sprintf("%.0f", bonusGrantAmount),
+			Amount: fmt.Sprintf("%.0f", bonusRemaining),
 			Reason: "Welcome bonus for upgrading to a paid plan",
 		})
 	}
