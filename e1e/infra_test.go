@@ -650,6 +650,10 @@ func serveIndex(t *testing.T, box, keyFile, content string) {
 }
 
 // cleanupBox connects to exed, deletes the box, and disconnects.
+//
+// Do NOT use t.Cleanup(func() { cleanupBox(...) }). The test context is
+// canceled by the time t.Cleanup runs, so the SSH connection will fail.
+// Call cleanupBox directly at the end of the test instead.
 func cleanupBox(t *testing.T, keyFile, boxName string) {
 	t.Helper()
 	pty := sshToExeDev(t, keyFile)
