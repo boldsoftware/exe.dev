@@ -805,6 +805,8 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 //     in case of any routing/NAT surprises
 func (s *Service) integrationTransport() *http.Transport {
 	return &http.Transport{
+		TLSHandshakeTimeout:   20 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {

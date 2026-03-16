@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -16,6 +17,29 @@ import (
 func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
+
+	// GitHub sends error/error_description when the user denies the OAuth
+	// request (e.g. error=access_denied). Signal the waiting SSH session
+	// so it doesn't hang until the 10-minute timeout.
+	if errCode := q.Get("error"); errCode != "" {
+		state := q.Get("state")
+		s.githubSetupsMu.Lock()
+		setup := s.githubSetups[state]
+		delete(s.githubSetups, state)
+		s.githubSetupsMu.Unlock()
+
+		desc := q.Get("error_description")
+		if desc == "" {
+			desc = errCode
+		}
+		if setup != nil {
+			setup.Err = errors.New(desc)
+			setup.Close()
+		}
+		s.slog().WarnContext(ctx, "GitHub OAuth error", "error", errCode, "description", desc, "state", state)
+		http.Error(w, "GitHub authorization was denied. You may close this tab.", http.StatusForbidden)
+		return
+	}
 
 	code := q.Get("code")
 	installationIDStr := q.Get("installation_id")
