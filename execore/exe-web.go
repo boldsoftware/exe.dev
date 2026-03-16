@@ -1551,7 +1551,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	var billingStatus string
 	var planName string
 	var selfServeBilling bool
-	if billingRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID); err == nil {
+	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
+	if billingErr == nil {
 		billingStatus = billingRow.BillingStatus
 		hasBilling = billingStatus == "active"
 		inputs := entitlement.UserPlanInputs{
@@ -1811,12 +1812,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			}
 		}
 		// Show "Create Team" option for eligible users (match SSH isNotInTeamWithBilling logic)
-		if !basicUser {
-			if s.env.SkipBilling {
-				data.CanEnableTeam = true
-			} else if err == nil {
-				data.CanEnableTeam = !userNeedsBilling(&userBilling)
-			}
+		if !basicUser && hasBilling {
+			data.CanEnableTeam = true
 		}
 	}
 
