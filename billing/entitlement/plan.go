@@ -110,6 +110,16 @@ var plans = map[PlanVersion]Plan{
 	},
 }
 
+// PlanName returns the human-readable name for a plan version (e.g., "Individual").
+// Returns empty string for unknown plan versions.
+func PlanName(version PlanVersion) string {
+	p, ok := plans[version]
+	if !ok {
+		return ""
+	}
+	return p.Name
+}
+
 // PlanGrants reports whether the given plan version grants the specified entitlement.
 // Returns false for unknown plan versions.
 func PlanGrants(version PlanVersion, ent Entitlement) bool {
@@ -151,6 +161,12 @@ type UserPlanInputs struct {
 
 // GetPlanVersion maps existing billing state to a PlanVersion.
 func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
+	// Canceled users go straight to Basic — canceling overrides
+	// grandfathered status, exemptions, and trial access.
+	if inputs.BillingStatus == "canceled" {
+		return VersionBasic
+	}
+
 	// VIP: friend category with explicit overrides.
 	if inputs.Category == "friend" && inputs.HasExplicitOverrides {
 		return VersionVIP

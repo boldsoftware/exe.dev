@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
@@ -4127,6 +4128,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CreatedForLoginWithExe     bool
 		RootSupport                bool
 		VMCreationDisabled         bool
+		PlanName                   string
+		PlanVersion                string
 		DiscordID                  string
 		DiscordUsername            string
 		BillingExemption           string
@@ -4166,8 +4169,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		BillingExemption:         ptrStr(user.BillingExemption),
 		BillingTrialEndsAt:       formatTime(user.BillingTrialEndsAt),
 		SignedUpWithInviteID:     formatInt64Ptr(user.SignedUpWithInviteID),
-		BillingAccounts:          billingAccounts,
-		HasCredit:                hasCredit,
+		BillingAccounts: billingAccounts,
+		HasCredit:       hasCredit,
 		InvitesTotalAllTimeGiven: inviteStats.TotalAllTimeGiven,
 		InvitesAllocatedCount:    inviteStats.AllocatedCount,
 		InvitesAcceptedCount:     inviteStats.AcceptedCount,
@@ -4175,6 +4178,19 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		Boxes:                    boxList,
 		Region:                   user.Region,
 		AllRegions:               region.All(),
+	}
+
+	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
+		inputs := entitlement.UserPlanInputs{
+			Category:           billingRow.Category,
+			BillingStatus:      billingRow.BillingStatus,
+			BillingExemption:   billingRow.BillingExemption,
+			CreatedAt:          billingRow.CreatedAt,
+			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
+		}
+		version := entitlement.GetPlanVersion(inputs)
+		data.PlanVersion = string(version)
+		data.PlanName = entitlement.PlanName(version)
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {

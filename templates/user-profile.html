@@ -860,14 +860,26 @@
                         </ol>
                     </div>
                 </div>
-                {{else if eq .BillingStatus "active"}}
+                {{else}}
+                {{if .SelfServeBilling}}
+                <div class="info-row">
+                    <div class="info-label">Plan</div>
+                    <div class="info-value"><a href="/billing/update?source=profile">{{.PlanName}} (Monthly)</a></div>
+                </div>
+                {{else if .PlanName}}
+                <div class="info-row">
+                    <div class="info-label">Plan</div>
+                    <div class="info-value">{{.PlanName}}</div>
+                </div>
+                {{end}}
+                {{if .SelfServeBilling}}
                 <div class="info-row">
                     <div class="info-label">Status</div>
                     <div class="info-value">Active</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Payment &amp; Plan</div>
-                    <div class="info-value"><a href="/billing/update?source=profile">Manage / View Invoices</a></div>
+                    <div class="info-label">Invoices</div>
+                    <div class="info-value"><a href="/billing/update?source=profile">View</a></div>
                 </div>
                 {{else if eq .BillingStatus "canceled"}}
                 <div class="info-row">
@@ -878,15 +890,12 @@
                     <div class="info-label">Subscription</div>
                     <div class="info-value"><a href="/billing/update?source=profile">Renew</a></div>
                 </div>
-                {{else}}
-                <div class="info-row">
-                    <div class="info-label">Status</div>
-                    <div class="info-value">Developer Preview</div>
-                </div>
+                {{else if not .SelfServeBilling}}
                 <div class="info-row">
                     <div class="info-label">Subscribe</div>
                     <div class="info-value"><a href="/billing/update?source=profile">Upgrade to a paid plan</a></div>
                 </div>
+                {{end}}
                 {{end}}
                 {{if not .SkipBilling}}
                 <div class="info-row">

@@ -61,6 +61,16 @@ func TestGetPlanVersion(t *testing.T) {
 		want   PlanVersion
 	}{
 		{
+			name:   "canceled overrides grandfathered",
+			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", CreatedAt: &oldDate},
+			want:   VersionBasic,
+		},
+		{
+			name:   "canceled overrides trial",
+			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", BillingExemption: &trial, BillingTrialEndsAt: &future},
+			want:   VersionBasic,
+		},
+		{
 			name:   "friend with overrides is VIP",
 			inputs: UserPlanInputs{Category: "friend", HasExplicitOverrides: true},
 			want:   VersionVIP,

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/idea"
 
 	"exe.dev/boxname"
@@ -459,31 +460,19 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt, "image", image)
 
-	// If user is logged in, check billing status before proceeding
+	// If user is logged in, check entitlements before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
-		// Check if user needs billing (only new users need billing)
-		// Skip this check if SkipBilling is set (for tests)
-		if !s.env.SkipBilling {
-			billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-			if err == nil && userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), userID) {
-				// User is logged in but needs to add billing info
-				// Preserve the name and prompt so they can be passed to Stripe and restored after checkout
-				s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
-					"user_id", userID,
-					"source", "web",
-					"hostname", hostname,
-					"billing_status", billingStatus.BillingStatus,
-				)
-				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
-				if prompt != "" {
-					billingURL += "&prompt=" + url.QueryEscape(prompt)
-				}
-				if image != "" {
-					billingURL += "&image=" + url.QueryEscape(image)
-				}
-				http.Redirect(w, r, billingURL, http.StatusSeeOther)
-				return
+		// Check if user's plan grants VM creation
+		if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.VMCreate, userID) {
+			billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
+			if prompt != "" {
+				billingURL += "&prompt=" + url.QueryEscape(prompt)
 			}
+			if image != "" {
+				billingURL += "&image=" + url.QueryEscape(image)
+			}
+			http.Redirect(w, r, billingURL, http.StatusSeeOther)
+			return
 		}
 
 		// Check if user has reached their VM limit before starting async creation

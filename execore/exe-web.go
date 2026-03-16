@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/cobble"
@@ -1521,17 +1522,21 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	// Check if this is a basic user (created for login-with-exe, no SSH keys, no boxes)
 	basicUser := s.isBasicUser(r.Context(), user, len(sshKeys))
 
-	// Check billing status
+	// Check billing status and resolve plan
 	var hasBilling bool
 	var billingStatus string
-	userBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-	if err == nil {
-		// BillingStatus is the derived status from billing_events table
-		// GetUserBillingStatus checks if ANY account connected to the user has active billing
-		billingStatus = userBilling.BillingStatus
-		if billingStatus == "active" {
-			hasBilling = true
+	var planName string
+	if billingRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID); err == nil {
+		billingStatus = billingRow.BillingStatus
+		hasBilling = billingStatus == "active"
+		inputs := entitlement.UserPlanInputs{
+			Category:           billingRow.Category,
+			BillingStatus:      billingRow.BillingStatus,
+			BillingExemption:   billingRow.BillingExemption,
+			CreatedAt:          billingRow.CreatedAt,
+			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
 		}
+		planName = entitlement.PlanName(entitlement.GetPlanVersion(inputs))
 	}
 
 	// Fetch credit balance if credit purchases are enabled and user has a billing account.
@@ -1678,6 +1683,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		BasicUser:     basicUser,
 		HasBilling:    hasBilling,
 		BillingStatus: billingStatus,
+		PlanName:      planName,
 
 		CreditBalance:                 creditBalance,
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
@@ -1703,6 +1709,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if team, err := s.GetTeamForUser(r.Context(), userID); err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get team for user", "error", err, "user_id", userID)
 	} else if team != nil {
+		data.PlanName = "Team"
 		ti := &TeamDisplayInfo{
 			DisplayName: team.DisplayName,
 			Role:        team.Role,

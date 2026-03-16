@@ -22,6 +22,7 @@ table.info th { width: 200px; }
 <tr><th>Login-only Account</th><td>{{if .CreatedForLoginWithExe}}Yes{{else}}No{{end}}</td></tr>
 <tr><th>Root Support</th><td>{{if .RootSupport}}Yes{{else}}No{{end}}</td></tr>
 <tr><th>VM Creation Disabled</th><td>{{if .VMCreationDisabled}}Yes{{else}}No{{end}}</td></tr>
+{{if .PlanName}}<tr><th>Plan</th><td>{{.PlanName}}</td></tr>{{end}}
 {{if .DiscordID}}<tr><th>Discord</th><td>{{.DiscordUsername}} ({{.DiscordID}})</td></tr>{{end}}
 {{if .BillingExemption}}<tr><th>Billing Exemption</th><td>{{.BillingExemption}}</td></tr>{{end}}
 {{if .BillingTrialEndsAt}}<tr><th>Billing Trial Ends</th><td>{{.BillingTrialEndsAt}}</td></tr>{{end}}
