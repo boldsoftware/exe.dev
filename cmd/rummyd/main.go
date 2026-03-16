@@ -123,32 +123,58 @@ type hostLocation struct {
 }
 
 var locationByPrefix = map[string]hostLocation{
-	"lax": {33.9425, -118.4081, "Los Angeles"},
-	"sjc": {37.3639, -121.9289, "San Jose"},
+	"atl": {33.6407, -84.4277, "Atlanta"},
+	"chi": {41.9742, -87.9073, "Chicago"},
 	"dal": {32.8998, -97.0403, "Dallas"},
-	"nyc": {40.6413, -73.7781, "New York"},
+	"dfw": {32.8998, -97.0403, "Dallas"},
+	"dxb": {25.2532, 55.3657, "Dubai"},
 	"fra": {50.0379, 8.5622, "Frankfurt"},
+	"gru": {-23.4356, -46.4731, "São Paulo"},
+	"hkg": {22.3080, 113.9185, "Hong Kong"},
+	"iad": {38.9531, -77.4565, "Washington DC"},
+	"jnb": {-26.1367, 28.2411, "Johannesburg"},
+	"lax": {33.9425, -118.4081, "Los Angeles"},
+	"lga": {40.7769, -73.8740, "New York"},
+	"lhr": {51.4700, -0.4543, "London"},
 	"lon": {51.4700, -0.4543, "London"},
-	"tyo": {35.5494, 139.7798, "Tokyo"},
+	"mia": {25.7959, -80.2870, "Miami"},
+	"nyc": {40.6413, -73.7781, "New York"},
+	"otp": {44.5711, 26.0850, "Bucharest"},
+	"pdx": {45.5898, -122.5951, "Portland"},
+	"sea": {47.4502, -122.3088, "Seattle"},
+	"sin": {1.3644, 103.9915, "Singapore"},
+	"sjc": {37.3639, -121.9289, "San Jose"},
 	"syd": {-33.9461, 151.1772, "Sydney"},
+	"tyo": {35.5494, 139.7798, "Tokyo"},
+	"yyz": {43.6777, -79.6248, "Toronto"},
 }
 
-// locationForHost extracts the airport code from a hostname like "exeprox-lax2-prod-01"
-// and returns the coordinates. Returns zero values if unknown.
+// locationForHost extracts the airport code from an exeprox hostname and
+// returns the coordinates. Supports hostname formats:
+//
+//	exeprox-lax2-prod-01   → lax
+//	exeprox-atl-na-01      → atl
+//	exeprox-na-chi-01      → chi
+//
+// Returns zero values if unknown.
 func locationForHost(host string) (lat, lon float64, city string) {
-	// hostname format: exeprox-{code}{N}-{stage}-{num}
-	parts := strings.SplitN(host, "-", 3)
-	if len(parts) < 2 {
+	parts := strings.Split(host, "-")
+	if len(parts) < 3 {
 		return 0, 0, ""
 	}
+	// "exeprox-na-{code}-{num}" → code is parts[2]
 	code := strings.TrimRight(parts[1], "0123456789")
+	if code == "na" && len(parts) >= 4 {
+		code = parts[2]
+	}
 	if loc, ok := locationByPrefix[code]; ok {
 		return loc.lat, loc.lon, loc.city
 	}
 	return 0, 0, ""
 }
 
-// findExeproxHosts runs "tailscale status --json" and returns all online exeprox-*-prod-* hostnames.
+// findExeproxHosts runs "tailscale status --json" and returns all online
+// production exeprox hostnames (matching -prod- or -na-, excluding -staging-).
 func findExeproxHosts() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -165,9 +191,13 @@ func findExeproxHosts() ([]string, error) {
 
 	var hosts []string
 	for _, peer := range status.Peer {
-		if strings.HasPrefix(peer.HostName, "exeprox-") && strings.Contains(peer.HostName, "-prod-") && peer.Online {
-			hosts = append(hosts, peer.HostName)
+		if !strings.HasPrefix(peer.HostName, "exeprox-") || !peer.Online {
+			continue
 		}
+		if strings.Contains(peer.HostName, "-staging-") {
+			continue
+		}
+		hosts = append(hosts, peer.HostName)
 	}
 	return hosts, nil
 }

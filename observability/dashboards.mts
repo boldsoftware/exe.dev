@@ -6336,6 +6336,58 @@ function makeRummydDashboard() {
     ]);
   dash.withPanel(geomapPanel);
 
+  // Table: latest latency values per region
+  const latencyTable = new TableBuilder()
+    .title("Latest Latency by Region")
+    .gridPos(gp({ w: 24, h: 10 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sort(rummy_blog_curl_latency_seconds)`)
+        .legendFormat("{{city}} ({{host}})")
+        .instant()
+        .format(PromQueryFormat.Table)
+        .refId("curl")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sort(rummy_blog_total_latency_seconds)`)
+        .legendFormat("{{city}} ({{host}})")
+        .instant()
+        .format(PromQueryFormat.Table)
+        .refId("total")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sort(rummy_blog_up)`)
+        .instant()
+        .format(PromQueryFormat.Table)
+        .refId("up")
+    )
+    .unit("s")
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 0.5, color: "yellow" } as Threshold,
+          { value: 1.0, color: "red" } as Threshold,
+        ])
+    )
+    .withOverride({
+      matcher: { id: "byName", options: "Value #up" },
+      properties: [
+        { id: "custom.displayMode", value: "color-background" },
+        { id: "thresholds", value: { mode: "absolute", steps: [
+          { value: null, color: "red" },
+          { value: 1, color: "green" },
+        ]}},
+        { id: "mappings", value: [
+          { type: "value" as any, options: { "0": { text: "DOWN", color: "red" }, "1": { text: "UP", color: "green" } } },
+        ]},
+      ],
+    });
+  dash.withPanel(latencyTable);
+
   // Blog up/down per host
   addTimeseriesChart(
     "Blog Reachable from Exeprox",
