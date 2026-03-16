@@ -133,6 +133,7 @@ type UserPageData struct {
 	TeamBoxes          []TeamBoxDisplayInfo    // Team VMs (for team admins)
 	TeamInfo           *TeamDisplayInfo        // Team info (for team members)
 	PendingTeamInvites []PendingTeamInviteInfo // Pending team invites (for users not in a team)
+	CanEnableTeam      bool                    // User can create a team (has billing, not in a team)
 	SiteSessions       []SiteSession
 	ActivePage         string
 	IsLoggedIn         bool
@@ -230,10 +231,12 @@ type TeamBoxDisplayInfo struct {
 
 // TeamDisplayInfo represents team info for the dashboard team section
 type TeamDisplayInfo struct {
-	DisplayName string
-	Role        string // current user's role in the team
-	IsAdmin     bool   // true if role is admin or billing_owner
-	Members     []TeamMemberDisplayInfo
+	DisplayName    string
+	Role           string // current user's role in the team
+	IsAdmin        bool   // true if role is admin or billing_owner
+	IsBillingOwner bool   // true if role is billing_owner
+	OnlyMember     bool   // true if team has exactly 1 member (can disable)
+	Members        []TeamMemberDisplayInfo
 }
 
 // TeamMemberDisplayInfo represents a team member for the dashboard
