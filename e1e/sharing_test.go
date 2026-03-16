@@ -1001,9 +1001,9 @@ func (f *loginWithExeFlow) verify401PageShowsHostname() {
 		f.t.Errorf("401 page should show hostname %q, but it wasn't found in page", f.returnHost)
 	}
 
-	// Verify "Access required" message
-	if !strings.Contains(pageContent, "Access required") {
-		f.t.Errorf("401 page should show 'Access required' message")
+	// Verify the page prompts the user to sign in
+	if !strings.Contains(pageContent, "Sign in to continue") {
+		f.t.Errorf("401 page should show 'Sign in to continue' message")
 	}
 
 	// Verify the form action goes to /auth

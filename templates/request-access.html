@@ -25,7 +25,8 @@
 <body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
     <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
-    <h1 class="text-4xl font-semibold mb-8">You need access</h1>
+    <h1 class="text-4xl font-semibold mb-4">You need access</h1>
+    <p class="text-zinc-500 text-lg mb-8">Ask the owner to let you in.</p>
     <form method="POST" action="/__exe.dev/request-access">
       <textarea name="message" placeholder="Message (optional)" rows="3"
         class="w-full text-lg border-2 border-zinc-300 dark:border-zinc-600 p-3 bg-transparent focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 resize-none"></textarea>

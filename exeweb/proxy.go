@@ -1154,6 +1154,7 @@ type UnauthorizedData struct {
 	RedirectURL    string
 	ReturnHost     string
 	LoginWithExe   bool
+	HasShareLink   bool
 	InvalidSecret  bool
 	InvalidToken   bool
 	PasskeyEnabled bool

@@ -849,6 +849,15 @@ func (s *Server) render401(w http.ResponseWriter, r *http.Request, data exeweb.U
 	// Enable passkeys on the main domain (RPID matches)
 	data.PasskeyEnabled = true
 
+	// Detect share link in the redirect URL so the template
+	// can show friendlier messaging ("sign in to get access"
+	// instead of the generic "access required").
+	if data.RedirectURL != "" {
+		if u, err := url.Parse(data.RedirectURL); err == nil {
+			data.HasShareLink = u.Query().Get("share") != ""
+		}
+	}
+
 	w.WriteHeader(http.StatusUnauthorized)
 	s.renderTemplate(r.Context(), w, "401.html", data)
 }

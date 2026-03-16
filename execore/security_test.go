@@ -447,6 +447,65 @@ func TestRenderAccessRequiredRedirect(t *testing.T) {
 	})
 }
 
+func TestRender401PageVariants(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	handler := server.prepareHandler()
+
+	t.Run("login-with-exe without share link", func(t *testing.T) {
+		req := httptest.NewRequest("GET",
+			"http://"+server.env.WebHost+"/auth?redirect=%2F&return_host=mybox."+server.env.BoxHost, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("got status %d, want %d", w.Code, http.StatusUnauthorized)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Sign in to continue.") {
+			t.Errorf("expected 'Sign in to continue.' heading for login-with-exe flow")
+		}
+		if !strings.Contains(body, "log in or create an account") {
+			t.Errorf("expected 'log in or create an account' hint")
+		}
+	})
+
+	t.Run("login-with-exe with share link", func(t *testing.T) {
+		redirect := url.QueryEscape("/?share=abc123")
+		req := httptest.NewRequest("GET",
+			"http://"+server.env.WebHost+"/auth?redirect="+redirect+"&return_host=mybox."+server.env.BoxHost, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("got status %d, want %d", w.Code, http.StatusUnauthorized)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "You've been invited.") {
+			t.Errorf("expected 'You've been invited.' heading for share link flow, got: %s", body[:min(500, len(body))])
+		}
+		if !strings.Contains(body, "get access") {
+			t.Errorf("expected 'get access' hint")
+		}
+	})
+
+	t.Run("no return_host shows auth form", func(t *testing.T) {
+		req := httptest.NewRequest("GET",
+			"http://"+server.env.WebHost+"/auth", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", w.Code, http.StatusOK)
+		}
+		body := w.Body.String()
+		// Should show the regular auth form, not "Access required"
+		if strings.Contains(body, "Sign in to continue") {
+			t.Errorf("regular auth page should not show login-with-exe messaging")
+		}
+	})
+}
+
 func TestCSRFProtection(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
