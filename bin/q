@@ -1,93 +1,258 @@
-#!/usr/bin/env bash
-# q — push to a CI queue branch and wait for the run to finish.
-#
-# Pushes the given ref (default HEAD) to queue-main-$USER-$BRANCH on origin,
-# then polls GitHub Actions until the run completes.
-#
-# Usage:
-#   q [ref]
+#!/usr/bin/env python3
+"""q — push to a CI queue branch and wait for the run to finish.
 
-set -euo pipefail
+Pushes the given ref (default HEAD) to a queue-main-* branch on origin,
+then polls GitHub Actions until the run completes.
+"""
 
-REF="${1:-HEAD}"
-COMMIT="$(git rev-parse "$REF")"
-SHORT="${COMMIT:0:7}"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-QUEUE_BRANCH="queue-main-${USER}-${BRANCH}"
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
 
-# --- Validation ---
 
-if [ "$BRANCH" = "HEAD" ]; then
-	echo "q: detached HEAD; check out a branch first" >&2
-	exit 1
-fi
+def run(cmd, *, check=True, capture=True, quiet=False):
+    """Run a command, return stdout (stripped). Prints stderr on failure."""
+    r = subprocess.run(
+        cmd,
+        capture_output=capture,
+        text=True,
+    )
+    if check and r.returncode != 0:
+        if capture and r.stderr:
+            sys.stderr.write(r.stderr)
+        raise SystemExit(1)
+    return r.stdout.strip() if capture else ""
 
-if ! command -v gh >/dev/null 2>&1; then
-	echo "q: gh CLI not found" >&2
-	exit 1
-fi
 
-if ! command -v jq >/dev/null 2>&1; then
-	echo "q: jq not found" >&2
-	exit 1
-fi
+def git(*args, **kwargs):
+    return run(["git", *args], **kwargs)
 
-# --- Push ---
 
-echo "q: pushing ${SHORT} to ${QUEUE_BRANCH}" >&2
-git push -f origin "${COMMIT}:refs/heads/${QUEUE_BRANCH}"
+def gh(*args, **kwargs):
+    return run(["gh", *args], **kwargs)
 
-# --- Find the CI run ---
 
-echo "q: waiting for run..." >&2
+def slugify(text):
+    """Convert text to a branch-name-safe slug."""
+    s = text.lower()
+    s = re.sub(r"[^a-z0-9._-]+", "_", s)
+    s = s.strip("_.-")
+    return s
 
-RUN_ID=""
-for _ in $(seq 1 20); do
-	RUNS="$(gh run list --branch "$QUEUE_BRANCH" --json headSha,databaseId --limit 10 2>/dev/null || echo '[]')"
-	RUN_ID="$(echo "$RUNS" | jq -r --arg sha "$COMMIT" '.[] | select(.headSha == $sha) | .databaseId' | head -1)"
-	if [ -n "$RUN_ID" ]; then
-		break
-	fi
-	sleep 3
-done
 
-if [ -z "$RUN_ID" ]; then
-	echo "q: no run found for ${SHORT} after 60s" >&2
-	exit 1
-fi
+def find_run(branch, commit, timeout=120, interval=2):
+    """Poll until a workflow run appears for the given branch+commit."""
+    for _ in range(timeout // interval):
+        try:
+            out = gh(
+                "run", "list",
+                "--branch", branch,
+                "--limit", "10",
+                "--json", "headSha,databaseId",
+                check=False,
+            )
+            if not out:
+                time.sleep(interval)
+                continue
+            for r in json.loads(out):
+                if r.get("headSha") == commit:
+                    return r["databaseId"]
+        except (json.JSONDecodeError, KeyError):
+            pass
+        time.sleep(interval)
+    return None
 
-echo "q: run ${RUN_ID}" >&2
 
-# --- Poll loop ---
+def poll_run(run_id, interval=10):
+    """Poll a run until completion. Returns (conclusion, elapsed_secs)."""
+    t0 = time.monotonic()
+    while True:
+        out = gh("run", "view", str(run_id), "--json", "status,conclusion", check=False)
+        try:
+            data = json.loads(out)
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        status = data.get("status", "")
+        conclusion = data.get("conclusion", "")
+        elapsed = int(time.monotonic() - t0)
+        if status == "completed":
+            sys.stderr.write("\n")
+            return conclusion, elapsed
+        m, s = divmod(elapsed, 60)
+        sys.stderr.write(f"\rq: running [{m}m{s:02d}s]")
+        sys.stderr.flush()
+        time.sleep(interval)
 
-START_TIME="$(date +%s)"
 
-while true; do
-	RUN_JSON="$(gh run view "$RUN_ID" --json status,conclusion 2>/dev/null || echo '{}')"
-	STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
-	CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+def run_formatters(ref):
+    """Run formatters if available and ref is HEAD. Returns True if commit was amended."""
+    if ref != "HEAD":
+        return False
+    git_root = git("rev-parse", "--show-toplevel")
+    formatter = os.path.join(git_root, "bin", "run_formatters.sh")
+    if not os.path.isfile(formatter) or not os.access(formatter, os.X_OK):
+        return False
 
-	ELAPSED=$(( $(date +%s) - START_TIME ))
-	MINS=$(( ELAPSED / 60 ))
-	SECS=$(( ELAPSED % 60 ))
+    # Check for staged or modified files
+    dirty_unstaged = subprocess.run(
+        ["git", "diff", "--quiet"], capture_output=True
+    ).returncode != 0
+    dirty_staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"], capture_output=True
+    ).returncode != 0
+    if dirty_unstaged or dirty_staged:
+        print("q: worktree has staged or modified files; commit or stash first", file=sys.stderr)
+        raise SystemExit(1)
 
-	if [ "$STATUS" = "completed" ]; then
-		echo "" >&2
-		break
-	fi
+    print("q: running formatters...", file=sys.stderr)
+    subprocess.run([formatter], check=True)
 
-	printf "\rq: running [%dm%02ds]" "$MINS" "$SECS" >&2
-	sleep 15
-done
+    # If formatters changed files that are in HEAD, amend
+    if subprocess.run(["git", "diff", "--quiet"], capture_output=True).returncode != 0:
+        print("q: formatters produced changes, amending commit...", file=sys.stderr)
+        # Only add files that were both changed by formatters AND in the HEAD commit
+        changed = git("diff", "--name-only").splitlines()
+        in_head = git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines()
+        to_add = [f for f in changed if f in set(in_head)]
+        if to_add:
+            git("add", *to_add)
+            git("commit", "--amend", "--no-edit")
+            return True
+    return False
 
-# --- Result ---
 
-if [ "$CONCLUSION" = "success" ]; then
-	echo "q: passed [${MINS}m${SECS}s]" >&2
-	git fetch origin main --quiet 2>/dev/null || true
-else
-	RUN_URL="$(gh run view "$RUN_ID" --json url -q '.url' 2>/dev/null || echo "(unknown)")"
-	echo "q: FAILED [${MINS}m${SECS}s]" >&2
-	echo "$RUN_URL" >&2
-	exit 1
-fi
+# Per-user default flags, keyed by git config user.email.
+# Add your email and preferred defaults here.
+USER_DEFAULTS = {
+    "philip@bold.dev":          ["--slug"],
+    "philip.zeyliger@gmail.com": ["--slug"],
+}
+
+
+def get_user_email():
+    """Get git config user.email, or empty string on failure."""
+    r = subprocess.run(
+        ["git", "config", "user.email"],
+        capture_output=True, text=True,
+    )
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def main():
+    email = get_user_email()
+    user_defaults = USER_DEFAULTS.get(email, [])
+
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("ref", nargs="?", default="HEAD", help="ref to push (default: HEAD)")
+    p.add_argument("--no-format", "-F", action="store_true",
+                    help="skip running formatters")
+    p.add_argument("--no-check", "-C", action="store_true",
+                    help="skip fast-forward dry-run check against origin/main")
+    p.add_argument("--slug", "-s", action="store_true", default=None,
+                    help="name queue branch from commit message instead of branch name")
+    p.add_argument("--no-slug", "-S", action="store_true",
+                    help="name queue branch from git branch name")
+    p.add_argument("--no-fetch", action="store_true",
+                    help="skip fetching origin/main on success")
+
+    # Parse user defaults first, then real args on top.
+    args = p.parse_args(user_defaults)
+    args = p.parse_args(namespace=args)
+
+    # Resolve --slug/--no-slug: explicit --no-slug wins, then --slug, then False.
+    if args.no_slug:
+        args.slug = False
+    elif args.slug is None:
+        args.slug = False
+    del args.no_slug
+
+    ref = args.ref
+
+    # --- Validation ---
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if branch == "HEAD":
+        print("q: detached HEAD; check out a branch first", file=sys.stderr)
+        raise SystemExit(1)
+
+    for tool in ["gh"]:
+        if subprocess.run(["which", tool], capture_output=True).returncode != 0:
+            print(f"q: {tool} not found", file=sys.stderr)
+            raise SystemExit(1)
+
+    # --- Formatters ---
+    if not args.no_format:
+        run_formatters(ref)
+
+    # --- Resolve commit (after possible formatter amend) ---
+    commit = git("rev-parse", ref)
+    short = commit[:7]
+
+    # --- Fetch + check ---
+    if not args.no_check:
+        print("q: fetching origin/main...", file=sys.stderr)
+        git("fetch", "origin", "main")
+        dry = subprocess.run(
+            ["git", "push", "--dry-run", "origin", f"{ref}:main"],
+            capture_output=True,
+        )
+        if dry.returncode != 0:
+            print(f"q: {ref} cannot fast-forward to origin/main; rebase first", file=sys.stderr)
+            raise SystemExit(1)
+
+    # --- Show what's being pushed ---
+    log_out = git("--no-pager", "log", "--oneline", f"origin/main..{ref}")
+    stat_out = git("--no-pager", "diff", "--stat", f"origin/main..{ref}")
+    if log_out:
+        print(f"\n{log_out}\n", file=sys.stderr)
+    if stat_out:
+        print(stat_out, file=sys.stderr)
+
+    # --- Queue branch name ---
+    user = os.environ.get("USER", "unknown")
+    if args.slug:
+        subject = git("--no-pager", "log", "--format=%s", "-n", "1", ref)
+        queue_branch = f"queue-main-{user}-{slugify(subject)}"
+    else:
+        queue_branch = f"queue-main-{user}-{branch}"
+
+    # --- Push ---
+    print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
+    git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
+
+    # --- Find the CI run ---
+    print("q: waiting for run...", file=sys.stderr)
+    run_id = find_run(queue_branch, commit)
+    if not run_id:
+        print(f"q: no run found for {short} after 120s", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Show run URL
+    try:
+        repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+        url = f"https://github.com/{repo}/actions/runs/{run_id}"
+        print(f"q: {url}", file=sys.stderr)
+    except SystemExit:
+        url = None
+
+    # --- Poll ---
+    conclusion, elapsed = poll_run(run_id)
+    m, s = divmod(elapsed, 60)
+
+    if conclusion == "success":
+        print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+        if not args.no_fetch:
+            git("fetch", "origin", "main", "--quiet", check=False)
+    else:
+        if url:
+            print(f"q: FAILED [{m}m{s}s] {url}", file=sys.stderr)
+        else:
+            print(f"q: FAILED [{m}m{s}s]", file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
