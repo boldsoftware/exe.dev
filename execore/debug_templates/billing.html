@@ -30,10 +30,22 @@ table.info th { width: 200px; }
 {{if .HasShelleyFreeCreditPct}}
 <table class="info">
 <tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
-<tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}} total</td></tr>
 {{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
-<tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>
-<tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} monthly</td></tr>
+<tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+{{if gt .ExtraCreditsUSD 0.0}}<tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>{{end}}
+{{if .Gifts}}
+<tr><th>Gifts</th><td>
+    <table>
+    <thead><tr><th>Credits</th><th>Reason</th></tr></thead>
+    <tbody>
+    {{range .Gifts}}
+    <tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
+    {{end}}
+    </tbody>
+    </table>
+</td></tr>
+{{end}}
 {{if .Purchases}}
 <tr><th>Purchases (Last 30D)</th><td>
     <table>

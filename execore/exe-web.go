@@ -1613,18 +1613,20 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
 	var bonusRemaining float64
-	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && shelleyCreditsAvailable > shelleyCreditsMax {
-		bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+	var bonusGrantAmount float64
+	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
+		bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
+		if shelleyCreditsAvailable > shelleyCreditsMax {
+			bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+		}
 	}
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
+		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
 	})
-	monthlyBarPct := bar.monthlyBarPct
-	bonusBarPct := bar.bonusBarPct
-	extraBarPct := bar.extraBarPct
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
 	usedBarPct := bar.usedBarPct
@@ -1679,17 +1681,14 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ExtraCreditsUSD:               extraCreditsUSD,
 		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
 		TotalRemainingPct:             totalRemainingPct,
-		MonthlyBarPct:                 monthlyBarPct,
-		BonusBarPct:                   bonusBarPct,
-		BonusRemainingUSD:             bar.bonusRemaining,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
-		ExtraBarPct:                   extraBarPct,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,
 		UsedBarPct:                    usedBarPct,
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on Jan 2"),
 		Purchases:                     purchases,
+		Gifts:                         giftsForUser(bonusGrantAmount),
 
 		IsSudoer:     isSudoer,
 		Integrations: integrations,

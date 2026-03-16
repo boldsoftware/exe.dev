@@ -154,18 +154,15 @@ type UserPageData struct {
 	ShelleyCreditsMax             float64 // USD ceiling
 	ExtraCreditsUSD               float64 // purchased billing credits in dollars
 	TotalCreditsUSD               float64 // monthly available + extra credits
-	TotalRemainingPct             float64 // (monthly available + extra) / (monthly max + extra) * 100
-	MonthlyBarPct                 float64 // stacked bar: monthly segment width %
-	BonusBarPct                   float64 // stacked bar: bonus segment width %
-	BonusRemainingUSD             float64 // upgrade bonus credit remaining in dollars
+	TotalRemainingPct             float64 // remaining / capacity * 100
 	MonthlyAvailableUSD           float64 // monthly portion of available credit (capped at plan max)
-	ExtraBarPct                   float64 // stacked bar: extra segment width %
-	UsedCreditsUSD                float64 // monthly used = plan max - monthly available (clamped)
-	TotalCapacityUSD              float64 // plan max + bonus remaining + extra
+	UsedCreditsUSD                float64 // total used across all pools
+	TotalCapacityUSD              float64 // planMax + bonusGrant + extra
 	UsedBarPct                    float64 // (used / capacity) * 100
 	HasShelleyFreeCreditPct       bool
 	MonthlyCreditsResetAt         string // e.g. "00:00 on 01 Mar"
 	Purchases                     []PurchaseRow
+	Gifts                         []GiftRow
 
 	// Auto-open share modal (from access request email link)
 	ShareVM    string
@@ -181,6 +178,12 @@ type PurchaseRow struct {
 	Amount     string
 	Date       string
 	ReceiptURL string
+}
+
+// GiftRow represents a credit gift for the profile page.
+type GiftRow struct {
+	Amount string
+	Reason string
 }
 
 // IntegrationDisplayInfo represents an integration for the profile page.

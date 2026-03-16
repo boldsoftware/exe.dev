@@ -2365,18 +2365,15 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Shelley Credits") {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
-	if !strings.Contains(body, "Monthly") {
-		t.Error("Expected monthly credits row on profile page")
+	if !strings.Contains(body, "Plan (Monthly)") {
+		t.Error("Expected 'Plan (Monthly)' section on profile page")
 	}
 	expectedReset := nextUTCMonthStart().Format("15:04 on Jan 2")
-	if !strings.Contains(body, "resets "+expectedReset) {
-		t.Errorf("Expected monthly credits reset time format %q on profile page", expectedReset)
+	if !strings.Contains(body, expectedReset) {
+		t.Errorf("Expected monthly credits reset time %q on profile page", expectedReset)
 	}
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
-	}
-	if !strings.Contains(body, "Extra") {
-		t.Error("Expected extra credits row on profile page")
 	}
 	if !strings.Contains(body, ">9<") {
 		t.Fatalf("Expected hero number '9' in body")
@@ -2408,8 +2405,8 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 		t.Fatalf("Expected hero number '10' after month rollover, got body: %s", body[:min(1200, len(body))])
 	}
 	expectedReset = nextUTCMonthStart().Format("15:04 on Jan 2")
-	if !strings.Contains(body, "resets "+expectedReset) {
-		t.Errorf("Expected monthly credits reset time format %q after month rollover scenario", expectedReset)
+	if !strings.Contains(body, expectedReset) {
+		t.Errorf("Expected monthly credits reset time %q after month rollover scenario", expectedReset)
 	}
 }
 
@@ -2556,12 +2553,12 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 	if !strings.Contains(body, "#22a55b") {
 		t.Error("Expected green progress bar color for 90% remaining")
 	}
-	// Monthly detail row
-	if !strings.Contains(body, "Monthly") {
-		t.Error("Expected Monthly detail row")
+	// Plan credits table
+	if !strings.Contains(body, "Plan (Monthly)") {
+		t.Error("Expected 'Plan (Monthly)' section")
 	}
-	if !strings.Contains(body, "9 remaining") {
-		t.Error("Expected '9 remaining' in monthly detail row")
+	if !strings.Contains(body, "Credits Remaining") {
+		t.Error("Expected 'Credits Remaining' column header")
 	}
 
 	// Test full credits (100%) = green

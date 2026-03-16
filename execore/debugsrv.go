@@ -4419,17 +4419,20 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	// Compute stacked bar percentages (same as profile page).
 	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
 	var bonusRemaining float64
-	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 && shelleyCreditsAvailable > shelleyCreditsMax {
-		bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+	var bonusGrantAmount float64
+	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
+		bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
+		if shelleyCreditsAvailable > shelleyCreditsMax {
+			bonusRemaining = shelleyCreditsAvailable - shelleyCreditsMax
+		}
 	}
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
+		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
 	})
-	monthlyBarPct := bar.monthlyBarPct
-	extraBarPct := bar.extraBarPct
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
 	usedBarPct := bar.usedBarPct
@@ -4459,11 +4462,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ShelleyFreeCreditRemainingPct float64
 		MonthlyCreditsResetAt         string
 		TotalRemainingPct             float64
-		MonthlyBarPct                 float64
-		BonusBarPct                   float64
 		BonusRemainingUSD             float64
 		MonthlyAvailableUSD           float64
-		ExtraBarPct                   float64
 		UsedCreditsUSD                float64
 		TotalCapacityUSD              float64
 		UsedBarPct                    float64
@@ -4472,6 +4472,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ShelleyCreditsMax             float64
 		TotalCreditsUSD               float64
 		Purchases                     []PurchaseRow
+		Gifts                         []GiftRow
 		HasCredit                     bool
 		CreditPlanName                string
 		CreditAvailableUSD            float64
@@ -4491,11 +4492,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ShelleyFreeCreditRemainingPct: shelleyFreeCreditRemainingPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
 		TotalRemainingPct:             totalRemainingPct,
-		MonthlyBarPct:                 monthlyBarPct,
-		BonusBarPct:                   bar.bonusBarPct,
 		BonusRemainingUSD:             bar.bonusRemaining,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
-		ExtraBarPct:                   extraBarPct,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,
 		UsedBarPct:                    usedBarPct,
@@ -4504,6 +4502,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		TotalCreditsUSD:               shelleyCreditsAvailable + extraCreditsUSD,
 		Purchases:                     purchases,
+		Gifts:                         giftsForUser(bonusGrantAmount),
 		HasCredit:                     hasCredit,
 	}
 

@@ -69,6 +69,7 @@
         .credit-bar-fill.yellow { background: #eab308; }
         .credit-bar-fill.orange { background: #dd6b20; }
         .credit-bar-fill.red { background: #e53e3e; }
+
         .credit-bar-annotation { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
 
         /* ---- Detail rows ---- */
@@ -83,7 +84,9 @@
 
         /* ---- Purchases ---- */
         .purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
-        .purchases-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+        .credit-section-divider { border: none; border-top: 2px solid #d0d0d0; margin: 20px 0; }
+        .credit-section-divider + .purchases { border-top: none; margin-top: 0; padding-top: 0; }
+        .purchases-label { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .purchases-table { width: 100%; border-collapse: collapse; }
         .purchases-table th, .purchases-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
         .purchases-table th { color: #666; font-weight: 500; }
@@ -661,6 +664,8 @@
             .credit-bar-fill.yellow { background: #fde047; }
             .credit-bar-fill.orange { background: #fb923c; }
             .credit-bar-fill.red { background: #fca5a5; }
+            .credit-section-divider { border-top-color: #444; }
+            .purchases-label { color: #9ca3af; }
 
             .credit-hero-label {
                 color: #9ca3af;
@@ -904,44 +909,36 @@
                 </div>
                 <div class="credit-bar-wrap">
                     <div class="credit-bar-track">
-                        <div class="credit-bar-fill {{if le .TotalRemainingPct 10.0}}red{{else if le .TotalRemainingPct 25.0}}orange{{else if le .TotalRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .UsedBarPct}}%;"></div>
+                        <div class="credit-bar-fill {{if le .TotalRemainingPct 10.0}}red{{else if le .TotalRemainingPct 25.0}}orange{{else if le .TotalRemainingPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .TotalRemainingPct}}%;"></div>
                     </div>
                     <div class="credit-bar-annotation">
                         <span>{{printf "%.0f" .UsedCreditsUSD}} used</span>
                         <span>{{printf "%.0f" .TotalCapacityUSD}} total</span>
                     </div>
                 </div>
-                <div class="credit-details">
-                    <div class="credit-detail-row">
-                        <div class="credit-detail-label">Monthly</div>
-                        <div class="credit-detail-value">{{printf "%.0f" .MonthlyAvailableUSD}} remaining · resets {{.MonthlyCreditsResetAt}}</div>
-                    </div>
-                    {{if gt .BonusRemainingUSD 0.0}}
-                    <div class="credit-detail-row">
-                        <div class="credit-detail-label">Bonus</div>
-                        <div class="credit-detail-value">{{printf "%.0f" .BonusRemainingUSD}} remaining</div>
-                    </div>
-                    {{end}}
-                    <div class="credit-detail-row">
-                        <div class="credit-detail-label">Extra</div>
-                        <div class="credit-detail-value">{{printf "%.0f" .ExtraCreditsUSD}} remaining</div>
-                    </div>
+                <hr class="credit-section-divider">
+                <div class="purchases">
+                    <div class="purchases-label">Plan (Monthly)</div>
+                    <table class="purchases-table">
+                    <thead><tr><th>Credits Remaining</th><th>Resets</th></tr></thead>
+                    <tbody>
+                    <tr><td>{{printf "%.0f" .MonthlyAvailableUSD}}</td><td>{{.MonthlyCreditsResetAt}}</td></tr>
+                    </tbody>
+                    </table>
                 </div>
-                {{else}}
-                <div class="credit-hero">
-                    <div class="credit-hero-left">
-                        <span class="credit-hero-number">-</span>
-                        <span class="credit-hero-label">credits remaining</span>
-                    </div>
+                {{if .Gifts}}
+                <div class="purchases">
+                    <div class="purchases-label">Gifts</div>
+                    <table class="purchases-table">
+                    <thead><tr><th>Credits</th><th>Reason</th></tr></thead>
+                    <tbody>
+                    {{range .Gifts}}
+                    <tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
+                    {{end}}
+                    </tbody>
+                    </table>
                 </div>
                 {{end}}
-                <div class="buy-row">
-                    <a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a>
-                    <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
-                        <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5 credits" required class="buy-input">
-                        <button type="submit" class="btn">Buy</button>
-                    </form>
-                </div>
                 {{if .Purchases}}
                 <div class="purchases">
                     <div class="purchases-label">Purchases (Last 30D)</div>
@@ -953,6 +950,21 @@
                     {{end}}
                     </tbody>
                     </table>
+                </div>
+                {{end}}
+                <div class="buy-row">
+                    <a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a>
+                    <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5 credits" required class="buy-input">
+                        <button type="submit" class="btn">Buy</button>
+                    </form>
+                </div>
+                {{else}}
+                <div class="credit-hero">
+                    <div class="credit-hero-left">
+                        <span class="credit-hero-number">-</span>
+                        <span class="credit-hero-label">credits remaining</span>
+                    </div>
                 </div>
                 {{end}}
             </div>
