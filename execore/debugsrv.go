@@ -121,6 +121,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/set-sso", s.handleDebugTeamSetSSO)
 	mux.HandleFunc("POST /debug/teams/delete-sso", s.handleDebugTeamDeleteSSO)
 	mux.HandleFunc("POST /debug/teams/test-sso", s.handleDebugTeamTestSSO)
+	mux.HandleFunc("GET /debug/integrations", s.handleDebugIntegrations)
 	mux.HandleFunc("GET /debug/ideas", s.handleDebugTemplateReview)
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 	mux.HandleFunc("/debug/glb-rollout", s.handleDebugGLBRollout)
@@ -6389,6 +6390,103 @@ func (s *Server) handleDebugJump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, fmt.Sprintf("no match found for %q", q), http.StatusNotFound)
+}
+
+// handleDebugIntegrations displays integration counts per user with GitHub usernames.
+func (s *Server) handleDebugIntegrations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	integrations, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllIntegrations)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list integrations: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Group by user, count by type.
+	type userRow struct {
+		UserID string
+		Counts map[string]int
+		Total  int
+	}
+	userMap := map[string]*userRow{}
+	typeSet := map[string]bool{}
+	for _, ig := range integrations {
+		ur, ok := userMap[ig.OwnerUserID]
+		if !ok {
+			ur = &userRow{UserID: ig.OwnerUserID, Counts: map[string]int{}}
+			userMap[ig.OwnerUserID] = ur
+		}
+		ur.Counts[ig.Type]++
+		ur.Total++
+		typeSet[ig.Type] = true
+	}
+
+	// Sorted type names.
+	types := make([]string, 0, len(typeSet))
+	for t := range typeSet {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+
+	// Collect user IDs and resolve emails + GitHub usernames.
+	userIDs := make([]string, 0, len(userMap))
+	for uid := range userMap {
+		userIDs = append(userIDs, uid)
+	}
+
+	emailMap := map[string]string{}
+	ghMap := map[string]string{}
+	for _, uid := range userIDs {
+		if email, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, uid); err == nil {
+			emailMap[uid] = email
+		}
+		if accounts, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubAccounts, uid); err == nil && len(accounts) > 0 {
+			ghMap[uid] = accounts[0].GitHubLogin
+		}
+	}
+
+	if r.URL.Query().Get("format") == "json" {
+		type jsonRow struct {
+			UserID         string         `json:"user_id"`
+			Email          string         `json:"email"`
+			GitHubUsername string         `json:"github_username,omitempty"`
+			Total          int            `json:"total"`
+			Counts         map[string]int `json:"counts"`
+		}
+		rows := make([]jsonRow, 0, len(userMap))
+		for _, uid := range userIDs {
+			ur := userMap[uid]
+			rows = append(rows, jsonRow{
+				UserID:         uid,
+				Email:          emailMap[uid],
+				GitHubUsername: ghMap[uid],
+				Total:          ur.Total,
+				Counts:         ur.Counts,
+			})
+		}
+		// Sort by total descending.
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Total > rows[j].Total })
+
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(struct {
+			Types []string  `json:"types"`
+			Rows  []jsonRow `json:"rows"`
+		}{Types: types, Rows: rows})
+		return
+	}
+
+	data := struct {
+		TotalCount int
+		UserCount  int
+		Types      []string
+	}{
+		TotalCount: len(integrations),
+		UserCount:  len(userMap),
+		Types:      types,
+	}
+	s.renderDebugTemplate(ctx, w, "integrations.html", data)
 }
 
 // renderDebugTemplate renders a debug template to a browser.

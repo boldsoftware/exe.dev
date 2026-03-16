@@ -26,3 +26,8 @@ ORDER BY created_at DESC, rowid DESC;
 
 -- name: DeleteIntegration :exec
 DELETE FROM integrations WHERE integration_id = ? AND owner_user_id = ?;
+
+-- name: ListAllIntegrations :many
+SELECT *
+FROM integrations
+ORDER BY created_at DESC, rowid DESC;

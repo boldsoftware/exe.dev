@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><title>Integrations</title>
+{{template "base-head"}}
+{{template "base-datatables"}}
+<style>
+#integrationsTable { width: 100%; }
+#integrationsTable td, #integrationsTable th { font-size: 13px; }
+#integrationsTable thead tr.filters th { padding: 4px; }
+#integrationsTable thead tr.filters input { width: 100%; box-sizing: border-box; font-size: 11px; padding: 4px; }
+</style>
+</head><body>
+<h1>Integrations</h1>
+<div><a href="/debug">/debug</a> &gt; <a href="/debug/integrations">integrations</a> | <a href="/debug/integrations?format=json">json</a></div>
+<p>Total integrations: {{.TotalCount}} | Users with integrations: {{.UserCount}}</p>
+
+<table id="integrationsTable" class="display stripe hover">
+<thead>
+<tr>
+<th>Email</th>
+<th>User ID</th>
+<th>GitHub Username</th>
+<th>Total</th>
+{{range .Types}}<th>{{.}}</th>{{end}}
+</tr>
+<tr class="filters">
+<th>Email</th>
+<th>User ID</th>
+<th>GitHub Username</th>
+<th>Total</th>
+{{range .Types}}<th>{{.}}</th>{{end}}
+</tr>
+</thead>
+</table>
+
+<script>
+$(document).ready(function() {
+    $('#integrationsTable thead tr.filters th').each(function() {
+        var title = $(this).text();
+        $(this).html('<input type="text" placeholder="' + title + '">');
+    });
+
+    var table = $('#integrationsTable').DataTable({
+        ajax: {
+            url: '/debug/integrations?format=json',
+            dataSrc: 'rows'
+        },
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
+        order: [[3, 'desc']],
+        orderCellsTop: true,
+        columns: [
+            { data: null, render: function(d) {
+                return '<a href="/debug/user?userId=' + encodeURIComponent(d.user_id) + '">' + d.email + '</a>';
+            }},
+            { data: 'user_id' },
+            { data: 'github_username', defaultContent: '-' },
+            { data: 'total' },
+            {{range .Types}}{ data: 'counts.{{.}}', defaultContent: '0' },
+            {{end}}
+        ],
+        initComplete: function() {
+            var api = this.api();
+            api.columns().every(function(idx) {
+                var column = this;
+                $('input', $('#integrationsTable thead tr.filters th').eq(idx)).on('keyup change clear', function() {
+                    if (column.search() !== this.value) {
+                        column.search(this.value).draw();
+                    }
+                });
+            });
+        }
+    });
+});
+</script>
+</body></html>

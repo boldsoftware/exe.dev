@@ -96,6 +96,43 @@ func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationPa
 	return err
 }
 
+const listAllIntegrations = `-- name: ListAllIntegrations :many
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
+FROM integrations
+ORDER BY created_at DESC, rowid DESC
+`
+
+func (q *Queries) ListAllIntegrations(ctx context.Context) ([]Integration, error) {
+	rows, err := q.query(ctx, q.listAllIntegrationsStmt, listAllIntegrations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Integration{}
+	for rows.Next() {
+		var i Integration
+		if err := rows.Scan(
+			&i.IntegrationID,
+			&i.OwnerUserID,
+			&i.Type,
+			&i.Name,
+			&i.Config,
+			&i.CreatedAt,
+			&i.Attachments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIntegrationsByUser = `-- name: ListIntegrationsByUser :many
 SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
 FROM integrations
