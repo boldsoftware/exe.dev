@@ -626,30 +626,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleTeamInviteDecline(w, r, userID)
 		return
-	case "/team/enable":
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-		s.handleTeamEnable(w, r, userID)
-		return
-	case "/team/disable":
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-		s.handleTeamDisable(w, r, userID)
-		return
 	case "/health":
 		s.handleHealth(w, r)
 	case "/pull-exeuntu-everywhere-517c8a904":
@@ -1739,15 +1715,13 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	} else if team != nil {
 		data.PlanName = "Team"
 		ti := &TeamDisplayInfo{
-			DisplayName:    team.DisplayName,
-			Role:           team.Role,
-			IsAdmin:        team.Role != "user",
-			IsBillingOwner: team.Role == "billing_owner",
+			DisplayName: team.DisplayName,
+			Role:        team.Role,
+			IsAdmin:     team.Role != "user",
 		}
 		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to get team members", "error", err, "team_id", team.TeamID)
 		} else {
-			ti.OnlyMember = len(members) == 1
 			for _, m := range members {
 				mdi := TeamMemberDisplayInfo{
 					Email: m.Email,
@@ -1777,14 +1751,6 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 					ExpiresAt: inv.ExpiresAt,
 					VMCount:   vmCount,
 				})
-			}
-		}
-		// Show "Create Team" option for eligible users (match SSH isNotInTeamWithBilling logic)
-		if !basicUser {
-			if s.env.SkipBilling {
-				data.CanEnableTeam = true
-			} else if err == nil {
-				data.CanEnableTeam = !userNeedsBilling(&userBilling)
 			}
 		}
 	}
