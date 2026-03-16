@@ -173,6 +173,42 @@
             font-style: italic;
         }
 
+        .integration-subsection {
+            margin-bottom: 16px;
+        }
+
+        .integration-subsection-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+
+        .integration-hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+
+        .integration-hint code {
+            background: #f3f4f6;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .integration-hint a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .integration-hint a:hover {
+            text-decoration: underline;
+        }
+
         .ssh-key-error {
             color: #dc2626;
             font-size: 13px;
@@ -514,6 +550,23 @@
 
             .no-keys {
                 color: #6b7280;
+            }
+
+            .integration-subsection-title {
+                color: #9ca3af;
+            }
+
+            .integration-hint {
+                color: #6b7280;
+            }
+
+            .integration-hint code {
+                background: #2a2a2a;
+                color: #f3f4f6;
+            }
+
+            .integration-hint a {
+                color: #60a5fa;
             }
 
             .btn {
@@ -980,33 +1033,66 @@
         </div>
         {{end}}
 
-        {{if .IsSudoer}}
+        {{if .ShowIntegrations}}
         <div class="section" id="integrations">
-            <div class="section-title">Integrations (superuser)</div>
-            {{if .Integrations}}
-            <div class="ssh-keys-list">
-                {{range .Integrations}}
-                <div class="ssh-key-item">
-                    <div class="ssh-key-info">
-                        <div class="ssh-key-comment">{{.Name}}</div>
-                        <div class="ssh-key-fingerprint">
-                            {{if eq .Type "http-proxy"}}http-proxy → {{.Target}}{{if .HeaderName}} ({{.HeaderName}}){{end}}{{else}}{{.Type}}{{end}}
+            <div class="section-title">Integrations</div>
+            <div class="section-help">Integrations connect your VMs to external services. Manage them via SSH with <code>integrations</code> commands. <a href="/docs/integrations" target="_blank">Learn more →</a></div>
+
+            {{if .GitHubEnabled}}
+            <div class="integration-subsection">
+                <div class="integration-subsection-title">GitHub</div>
+                {{if .GitHubAccounts}}
+                <div class="ssh-keys-list">
+                    {{range .GitHubAccounts}}
+                    <div class="ssh-key-item">
+                        <div class="ssh-key-info">
+                            <div class="ssh-key-comment">{{.GitHubLogin}}</div>
+                            <div class="ssh-key-fingerprint">installed on <strong>{{.TargetLogin}}</strong></div>
                         </div>
-                        {{if .Attachments}}
-                        <div class="ssh-key-meta">attached to {{range $i, $a := .Attachments}}{{if $i}}, {{end}}{{$a}}{{end}}</div>
-                        {{else}}
-                        <div class="ssh-key-meta">not attached</div>
-                        {{end}}
                     </div>
-                    <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{.Name}}), danger: true})">Remove</button>
+                    {{end}}
+                </div>
+                <div class="integration-hint">Manage via SSH: <code>integrations setup github --list</code>{{if .GitHubAppSlug}} · <a href="https://github.com/apps/{{.GitHubAppSlug}}" target="_blank">Manage app permissions</a>{{end}}</div>
+                {{else}}
+                <div class="info-card">
+                    <div class="no-keys">No GitHub account connected.</div>
+                    <div class="integration-hint">Connect via SSH: <code>integrations setup github</code></div>
                 </div>
                 {{end}}
             </div>
+            {{end}}
+
+            {{if .Integrations}}
+            <div class="integration-subsection">
+                <div class="integration-subsection-title">Proxy &amp; Repo Integrations</div>
+                <div class="ssh-keys-list">
+                    {{range .Integrations}}
+                    <div class="ssh-key-item">
+                        <div class="ssh-key-info">
+                            <div class="ssh-key-comment">{{.Name}}</div>
+                            <div class="ssh-key-fingerprint">
+                                {{if eq .Type "http-proxy"}}http-proxy → {{.Target}}{{if .HasHeader}} · custom header{{end}}{{if .HasBasicAuth}} · basic auth{{end}}{{else if eq .Type "github"}}github · {{range $i, $r := .Repositories}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}{{.Type}}{{end}}
+                            </div>
+                            {{if .Attachments}}
+                            <div class="ssh-key-meta">attached to {{range $i, $a := .Attachments}}{{if $i}}, {{end}}{{$a}}{{end}}</div>
+                            {{else}}
+                            <div class="ssh-key-meta">not attached</div>
+                            {{end}}
+                        </div>
+                        <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{.Name}}), danger: true})">Remove</button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
             {{else}}
+            {{if not .GitHubAccounts}}
             <div class="info-card">
                 <div class="no-keys">No integrations configured.</div>
             </div>
             {{end}}
+            {{end}}
+
+            <div class="integration-hint">Add integrations via SSH: <code>integrations add &lt;type&gt; --name=&lt;name&gt; ...</code> · <a href="/docs/integrations" target="_blank">Docs</a></div>
         </div>
         {{end}}
 

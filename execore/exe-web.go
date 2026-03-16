@@ -1645,33 +1645,60 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	usedBarPct := bar.usedBarPct
 	totalCapacity := bar.totalCapacity
 
-	// Fetch integrations for sudoers
-	// TODO: integrations are sudoer-only while the feature is still hidden; will be public soon.
+	// Fetch integrations and GitHub accounts for all users.
 	isSudoer := s.UserHasExeSudo(r.Context(), userID)
 	var integrations []IntegrationDisplayInfo
-	if isSudoer {
-		dbIntegrations, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListIntegrationsByUser, userID)
-		if err != nil {
-			s.slog().ErrorContext(r.Context(), "Failed to get integrations for profile", "error", err, "user_id", userID)
+	dbIntegrations, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListIntegrationsByUser, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get integrations for profile", "error", err, "user_id", userID)
+	}
+	for _, ig := range dbIntegrations {
+		info := IntegrationDisplayInfo{
+			Name:        ig.Name,
+			Type:        ig.Type,
+			Attachments: ig.GetAttachments(),
 		}
-		for _, ig := range dbIntegrations {
-			info := IntegrationDisplayInfo{
-				Name:        ig.Name,
-				Type:        ig.Type,
-				Attachments: ig.GetAttachments(),
-			}
-			if ig.Type == "http-proxy" {
-				var cfg httpProxyConfig
-				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
-					info.Target = redactURLPassword(cfg.Target)
-					if name, _, ok := strings.Cut(cfg.Header, ":"); ok {
-						info.HeaderName = name
-					}
+		switch ig.Type {
+		case "http-proxy":
+			var cfg httpProxyConfig
+			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+				info.HasHeader = cfg.Header != ""
+				parsedURL, _ := url.Parse(cfg.Target)
+				if parsedURL != nil && parsedURL.User != nil {
+					info.HasBasicAuth = true
+					parsedURL.User = nil // strip credentials entirely
+					info.Target = parsedURL.String()
+				} else {
+					info.Target = cfg.Target
 				}
 			}
-			integrations = append(integrations, info)
+		case "github":
+			var cfg githubIntegrationConfig
+			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+				info.Repositories = cfg.Repositories
+			}
 		}
+		integrations = append(integrations, info)
 	}
+
+	// Fetch GitHub account connections.
+	var ghAccounts []GitHubAccountDisplayInfo
+	dbGHAccounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get GitHub accounts for profile", "error", err, "user_id", userID)
+	}
+	for _, a := range dbGHAccounts {
+		ghAccounts = append(ghAccounts, GitHubAccountDisplayInfo{
+			GitHubLogin: a.GitHubLogin,
+			TargetLogin: a.TargetLogin,
+		})
+	}
+	ghEnabled := s.githubApp.Enabled()
+	var ghAppSlug string
+	if ghEnabled {
+		ghAppSlug = s.githubApp.AppSlug
+	}
+	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0
 
 	// Prepare template data
 	data := UserPageData{
@@ -1705,8 +1732,12 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		Purchases:                     purchases,
 		Gifts:                         giftsForUser(bonusRemaining, supportGiftUSD),
 
-		IsSudoer:     isSudoer,
-		Integrations: integrations,
+		IsSudoer:         isSudoer,
+		Integrations:     integrations,
+		GitHubAccounts:   ghAccounts,
+		GitHubEnabled:    ghEnabled,
+		GitHubAppSlug:    ghAppSlug,
+		ShowIntegrations: showIntegrations,
 	}
 
 	// Fetch team data if user is in a team

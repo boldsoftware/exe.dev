@@ -170,9 +170,13 @@ type UserPageData struct {
 	ShareVM    string
 	ShareEmail string
 
-	// Integrations (sudoer only)
-	IsSudoer     bool
-	Integrations []IntegrationDisplayInfo
+	// Integrations
+	IsSudoer         bool
+	Integrations     []IntegrationDisplayInfo
+	GitHubAccounts   []GitHubAccountDisplayInfo
+	GitHubEnabled    bool   // whether the GitHub App is configured on this server
+	GitHubAppSlug    string // GitHub App slug for manage link
+	ShowIntegrations bool   // true if user has integrations/github or is sudoer
 }
 
 // PurchaseRow represents a credit purchase for the profile page.
@@ -190,11 +194,19 @@ type GiftRow struct {
 
 // IntegrationDisplayInfo represents an integration for the profile page.
 type IntegrationDisplayInfo struct {
-	Name        string
-	Type        string
-	Target      string   // for http-proxy: the target URL
-	HeaderName  string   // for http-proxy: header name (without value)
-	Attachments []string // e.g. ["vm:foo", "tag:bar"]
+	Name         string
+	Type         string
+	Target       string   // for http-proxy: the target URL (password redacted)
+	HasHeader    bool     // for http-proxy: whether a header is configured
+	HasBasicAuth bool     // for http-proxy: whether target URL has basic auth
+	Repositories []string // for github: list of repos
+	Attachments  []string // e.g. ["vm:foo", "tag:bar"]
+}
+
+// GitHubAccountDisplayInfo represents a connected GitHub account for the profile page.
+type GitHubAccountDisplayInfo struct {
+	GitHubLogin string // the GitHub username that authorized
+	TargetLogin string // the org/user the app is installed on
 }
 
 // PendingTeamInviteInfo represents a pending team invite shown on the profile page
