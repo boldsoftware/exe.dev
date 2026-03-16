@@ -6400,8 +6400,8 @@ function makeRummydDashboard() {
         threshold: 1,
         condition: "lt",
         forDuration: "2m",
-        summary: "blog.exe.dev unreachable via exeprox (check if blog backend is down)",
-        description: "rummy_blog_up has been 0 for an exeprox host for 2 minutes. rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
+        summary: "blog.exe.dev unreachable from {{ $labels.host }}",
+        description: "{{ $labels.host }} cannot reach blog.exe.dev (rummy_blog_up=0 for 2+ minutes). rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
         labels: { channel: "buzz" },
       },
     }
@@ -6484,7 +6484,7 @@ function makeRollcalldDashboard() {
         `**rollcalld** runs on [\`mon\`](http://mon.crocodile-vector.ts.net:9098/metrics) and compares online tailscale hosts against prometheus scrape targets. ` +
         `It reports machines that are online but not being monitored. ` +
         `Staging hosts and single-word infra singletons are ignored. ` +
-        `Alerts fire to #poke if unmonitored hosts are detected for 30+ minutes.`
+        `Alerts fire to #poke if a host is unmonitored for 1+ hour.`
       )
       .mode(TextMode.Markdown)
       .gridPos(gp({ w: 24, h: 2 }))
@@ -6497,13 +6497,14 @@ function makeRollcalldDashboard() {
     {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 12, h: 8 },
+      alertQueryOverride: `rollcall_unmonitored_host_info`,
       alert: {
         threshold: 0,
         condition: "gt",
-        forDuration: "30m",
+        forDuration: "1h",
         noDataState: "OK",
-        summary: "Unmonitored hosts detected",
-        description: "rollcalld has found online tagged tailscale hosts that are not in any prometheus scrape config. Run `rollcalld -once` on mon to see which hosts.",
+        summary: "Unmonitored host: {{ $labels.host }}",
+        description: "{{ $labels.host }} is online in tailscale with tags but is not in any prometheus scrape config. It has been unmonitored for over 1 hour.",
         labels: { channel: "poke" },
       },
     }
