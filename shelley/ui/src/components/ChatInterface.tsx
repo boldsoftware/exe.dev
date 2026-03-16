@@ -410,7 +410,9 @@ const CoalescedToolCall = React.memo(function CoalescedToolCall({
             <div className={`tool-result-section output ${toolError ? "error" : ""}`}>
               <div className="tool-result-label">Output{toolError ? " (Error)" : ""}:</div>
               <div className="space-y-2">
-                {toolResult?.map((result, idx) => <div key={idx}>{renderContent(result)}</div>)}
+                {toolResult?.map((result, idx) => (
+                  <div key={idx}>{renderContent(result)}</div>
+                ))}
               </div>
             </div>
           </div>
