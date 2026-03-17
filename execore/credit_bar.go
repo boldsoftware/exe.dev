@@ -1,6 +1,10 @@
 package execore
 
-import "fmt"
+import (
+	"fmt"
+
+	"exe.dev/billing"
+)
 
 // creditBarInput holds the inputs needed to compute credit bar display values.
 type creditBarInput struct {
@@ -14,8 +18,8 @@ type creditBarInput struct {
 	bonusGrantAmount float64
 	// extraCreditsUSD is the user's purchased extra credit balance in USD.
 	extraCreditsUSD float64
-	// supportGiftUSD is the detected support gift amount (manual DB credit adjustments).
-	supportGiftUSD float64
+	// giftCreditsUSD is the total gift credits amount in USD (from billing ledger + detected support gifts).
+	giftCreditsUSD float64
 }
 
 // creditBarResult holds the computed credit bar display values.
@@ -26,12 +30,12 @@ type creditBarResult struct {
 	totalCapacity     float64
 	monthlyAvailable  float64
 	bonusRemaining    float64
-	supportGiftUSD    float64
+	giftCreditsUSD    float64
 }
 
 // computeCreditBar calculates a single unified bar.
 //
-// Capacity = planMax + bonusGrant + extra + supportGift (fixed denominator).
+// Capacity = planMax + bonusGrant + extra + giftCredits (fixed denominator).
 // All credit pools are combined into one bar that depletes as credits are used.
 func computeCreditBar(in creditBarInput) creditBarResult {
 	monthlyAvailable := in.shelleyCreditsAvailable
@@ -47,17 +51,17 @@ func computeCreditBar(in creditBarInput) creditBarResult {
 		bonusRemaining = 0
 	}
 
-	supportGift := in.supportGiftUSD
-	if supportGift < 0 {
-		supportGift = 0
+	giftCredits := in.giftCreditsUSD
+	if giftCredits < 0 {
+		giftCredits = 0
 	}
 
-	totalCapacity := in.planMaxCredit + in.bonusGrantAmount + in.extraCreditsUSD + supportGift
+	totalCapacity := in.planMaxCredit + in.bonusGrantAmount + in.extraCreditsUSD + giftCredits
 	if totalCapacity < 0 {
 		totalCapacity = 0
 	}
 
-	remaining := monthlyAvailable + bonusRemaining + in.extraCreditsUSD + supportGift
+	remaining := monthlyAvailable + bonusRemaining + in.extraCreditsUSD + giftCredits
 
 	var totalRemainingPct float64
 	if totalCapacity > 0 {
@@ -88,10 +92,47 @@ func computeCreditBar(in creditBarInput) creditBarResult {
 		totalCapacity:     totalCapacity,
 		monthlyAvailable:  monthlyAvailable,
 		bonusRemaining:    bonusRemaining,
-		supportGiftUSD:    supportGift,
+		giftCreditsUSD:    giftCredits,
 	}
 }
 
+// giftsFromLedger converts billing gift entries to display rows for the profile page.
+func giftsFromLedger(gifts []billing.GiftEntry) []GiftRow {
+	if len(gifts) == 0 {
+		return nil
+	}
+	var rows []GiftRow
+	for _, g := range gifts {
+		dollar, cents := g.Amount.Dollars()
+		var amount string
+		if cents > 0 {
+			amount = fmt.Sprintf("%d.%02d", dollar, cents)
+		} else {
+			amount = fmt.Sprintf("%d", dollar)
+		}
+		reason := g.Note
+		if reason == "" {
+			reason = "Credit gift"
+		}
+		rows = append(rows, GiftRow{
+			Amount: amount,
+			Reason: reason,
+		})
+	}
+	return rows
+}
+
+// giftCreditsUSDFromLedger computes the total gift credits in USD from billing gift entries.
+func giftCreditsUSDFromLedger(gifts []billing.GiftEntry) float64 {
+	var total float64
+	for _, g := range gifts {
+		total += float64(g.Amount.Microcents()) / 1_000_000
+	}
+	return total
+}
+
+// Deprecated: computeSupportGift detects manual DB credit adjustments. Use giftsFromLedger instead.
+//
 // computeSupportGift detects manual DB credit adjustments by comparing the
 // available credit to the sum of known credit sources (plan max + bonus grant).
 // Any excess is treated as a support gift.
@@ -120,4 +161,22 @@ func giftsForUser(bonusRemaining, supportGiftUSD float64) []GiftRow {
 		})
 	}
 	return gifts
+}
+
+// buildGiftRows combines the bonus gift row with gift entries from the billing ledger.
+// bonusGrantAmount is the original one-time bonus (e.g. $100), not the remaining balance.
+// We always show the full grant amount so the user knows they received it.
+func buildGiftRows(bonusGrantAmount float64, giftEntries []billing.GiftEntry) []GiftRow {
+	var rows []GiftRow
+	if bonusGrantAmount > 0 {
+		rows = append(rows, GiftRow{
+			Amount: fmt.Sprintf("%.0f", bonusGrantAmount),
+			Reason: "Welcome bonus for upgrading to a paid plan",
+		})
+	}
+	rows = append(rows, giftsFromLedger(giftEntries)...)
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows
 }

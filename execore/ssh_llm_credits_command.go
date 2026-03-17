@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/llmgateway"
@@ -43,20 +44,26 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 		return nil
 	}
 
-	// Get billing account and balance
+	// Get billing account and credit state
 	var billingAccountID string
-	var billingBalance int64
 	var hasBillingAccount bool
+	var creditState *billing.CreditState
+	var gifts []billing.GiftEntry
 	account, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err == nil {
 		hasBillingAccount = true
 		billingAccountID = account.ID
-		balance, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetCreditBalance, account.ID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		cs, err := ss.server.billing.GetCreditState(ctx, account.ID)
+		if err != nil {
 			cc.WriteInternalError(ctx, "sudo-exe llm-credits", err)
 			return nil
 		}
-		billingBalance = balance
+		creditState = cs
+		gifts, err = ss.server.billing.ListGifts(ctx, account.ID)
+		if err != nil {
+			cc.WriteInternalError(ctx, "sudo-exe llm-credits", err)
+			return nil
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		cc.WriteInternalError(ctx, "sudo-exe llm-credits", err)
 		return nil
@@ -96,19 +103,37 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 		}
 		result["gateway_credit"] = gateway
 
-		billing := map[string]any{
+		billingJSON := map[string]any{
 			"has_account":    hasBillingAccount,
 			"billing_status": billingStatus.BillingStatus,
 		}
 		if billingStatus.BillingExemption != nil {
-			billing["billing_exemption"] = *billingStatus.BillingExemption
+			billingJSON["billing_exemption"] = *billingStatus.BillingExemption
 		}
 		if hasBillingAccount {
-			billing["account_id"] = billingAccountID
-			billing["balance_microcents"] = billingBalance
-			billing["balance_usd"] = fmt.Sprintf("$%.2f", float64(billingBalance)/1_000_000)
+			billingJSON["account_id"] = billingAccountID
+			billingJSON["credit_state"] = map[string]any{
+				"paid_usd":  creditState.Paid.String(),
+				"gift_usd":  creditState.Gift.String(),
+				"used_usd":  creditState.Used.String(),
+				"total_usd": creditState.Total.String(),
+			}
 		}
-		result["billing_credit"] = billing
+		result["billing_credit"] = billingJSON
+
+		if hasBillingAccount {
+			giftList := []map[string]any{}
+			for _, g := range gifts {
+				giftList = append(giftList, map[string]any{
+					"amount_usd": g.Amount.String(),
+					"note":       g.Note,
+					"gift_id":    g.GiftID,
+					"created_at": g.CreatedAt.Format(time.RFC3339),
+				})
+			}
+			result["gifts"] = giftList
+		}
+
 		cc.WriteJSON(result)
 		return nil
 	}
@@ -138,14 +163,32 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	cc.Writeln("")
-	cc.Writeln("\033[1;33m── Billing Credit (Stripe) ──\033[0m")
+	cc.Writeln("\033[1;33m── Gift Credits ──\033[0m")
+	if hasBillingAccount && len(gifts) > 0 {
+		var totalGiftMicrocents int64
+		for _, g := range gifts {
+			dollar, cents := g.Amount.Dollars()
+			cc.Writeln("  $%d.%02d  %s  (id: %s, %s)", dollar, cents, g.Note, g.GiftID, g.CreatedAt.Format(time.RFC3339))
+			totalGiftMicrocents += g.Amount.Microcents()
+		}
+		cc.Writeln("  ──")
+		cc.Writeln("  Total gifts:     $%.2f", float64(totalGiftMicrocents)/1_000_000)
+	} else {
+		cc.Writeln("  No gifts")
+	}
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;33m── Billing Credit ──\033[0m")
 	cc.Writeln("  Billing status:  %s", cmp.Or(billingStatus.BillingStatus, "(none)"))
 	if billingStatus.BillingExemption != nil {
 		cc.Writeln("  Exemption:       %s", *billingStatus.BillingExemption)
 	}
 	if hasBillingAccount {
 		cc.Writeln("  Account ID:      %s", billingAccountID)
-		cc.Writeln("  Balance:         $%.2f (%d microcents)", float64(billingBalance)/1_000_000, billingBalance)
+		cc.Writeln("  Paid:            %s", creditState.Paid)
+		cc.Writeln("  Gift:            %s", creditState.Gift)
+		cc.Writeln("  Used:            %s", creditState.Used)
+		cc.Writeln("  Total:           %s", creditState.Total)
 	} else {
 		cc.Writeln("  (no billing account)")
 	}

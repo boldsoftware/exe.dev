@@ -936,6 +936,7 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 		"resize":                  true,
 		"backfill-allocated-cpus": true,
 		"sudo-exe":                true,
+		"sudo-exe add-gift":       true,
 		"sudo-exe llm-credits":    true,
 		"sudo-exe set-limits":     true,
 		"team create":             true,

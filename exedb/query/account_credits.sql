@@ -17,6 +17,6 @@ INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
 VALUES (?1, ?2, ?3);
 
 -- name: ListBillingCreditsForAccount :many
-SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type
+SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type, gift_id, note
 FROM billing_credits WHERE account_id = ?
 ORDER BY id DESC;

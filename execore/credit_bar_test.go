@@ -5,6 +5,10 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
+
+	"exe.dev/billing"
+	"exe.dev/billing/tender"
 )
 
 func closeTo(a, b, epsilon float64) bool {
@@ -554,6 +558,131 @@ func TestGiftsTemplateRendering(t *testing.T) {
 	})
 }
 
+func TestGiftsFromLedger(t *testing.T) {
+	t.Run("nil entries returns nil", func(t *testing.T) {
+		gifts := giftsFromLedger(nil)
+		if gifts != nil {
+			t.Fatalf("expected nil, got %v", gifts)
+		}
+	})
+
+	t.Run("empty entries returns nil", func(t *testing.T) {
+		gifts := giftsFromLedger([]billing.GiftEntry{})
+		if gifts != nil {
+			t.Fatalf("expected nil, got %v", gifts)
+		}
+	})
+
+	t.Run("single gift entry", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(1000, 0), // $10.00
+				Note:      "Thanks for testing",
+				GiftID:    "debug_gift:abc:123",
+				CreatedAt: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 1 {
+			t.Fatalf("expected 1 gift, got %d", len(gifts))
+		}
+		if gifts[0].Amount != "10" {
+			t.Errorf("amount = %q, want 10", gifts[0].Amount)
+		}
+		if gifts[0].Reason != "Thanks for testing" {
+			t.Errorf("reason = %q, want 'Thanks for testing'", gifts[0].Reason)
+		}
+	})
+
+	t.Run("multiple gift entries", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(500, 0), // $5.00
+				Note:      "First gift",
+				GiftID:    "debug_gift:abc:1",
+				CreatedAt: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				Amount:    tender.Mint(2000, 0), // $20.00
+				Note:      "Second gift",
+				GiftID:    "debug_gift:abc:2",
+				CreatedAt: time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 2 {
+			t.Fatalf("expected 2 gifts, got %d", len(gifts))
+		}
+		if gifts[0].Amount != "5" {
+			t.Errorf("first amount = %q, want 5", gifts[0].Amount)
+		}
+		if gifts[1].Amount != "20" {
+			t.Errorf("second amount = %q, want 20", gifts[1].Amount)
+		}
+	})
+
+	t.Run("empty note uses default reason", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(1000, 0),
+				Note:      "",
+				GiftID:    "debug_gift:abc:1",
+				CreatedAt: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 1 {
+			t.Fatalf("expected 1 gift, got %d", len(gifts))
+		}
+		if gifts[0].Reason != "Credit gift" {
+			t.Errorf("reason = %q, want 'Credit gift'", gifts[0].Reason)
+		}
+	})
+
+	t.Run("gift with fractional dollars", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(1050, 0), // $10.50
+				Note:      "Half gift",
+				GiftID:    "debug_gift:abc:1",
+				CreatedAt: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 1 {
+			t.Fatalf("expected 1 gift, got %d", len(gifts))
+		}
+		// $10.50 = 10 dollars, 50 cents
+		if gifts[0].Amount != "10.50" {
+			t.Errorf("amount = %q, want '10.50'", gifts[0].Amount)
+		}
+	})
+}
+
+// TestCreditBar_WithGiftCredits verifies the bar includes gift credits from ledger.
+func TestCreditBar_WithGiftCredits(t *testing.T) {
+	bar := computeCreditBar(creditBarInput{
+		shelleyCreditsAvailable: 20,
+		planMaxCredit:           20,
+		bonusRemaining:          0,
+		bonusGrantAmount:        0,
+		extraCreditsUSD:         0,
+		giftCreditsUSD:          50,
+	})
+
+	// Capacity = 20 + 0 + 0 + 50 = 70
+	if !closeTo(bar.totalCapacity, 70, 0.01) {
+		t.Fatalf("totalCapacity = %.2f, want 70", bar.totalCapacity)
+	}
+	// remaining = 20 + 0 + 0 + 50 = 70
+	if !closeTo(bar.totalRemainingPct, 100, 0.1) {
+		t.Fatalf("totalRemainingPct = %.2f, want 100", bar.totalRemainingPct)
+	}
+	if !closeTo(bar.giftCreditsUSD, 50, 0.01) {
+		t.Fatalf("giftCreditsUSD = %.2f, want 50", bar.giftCreditsUSD)
+	}
+}
+
 // TestComputeSupportGift verifies detection of manual DB credit adjustments.
 func TestComputeSupportGift(t *testing.T) {
 	cases := []struct {
@@ -692,7 +821,7 @@ func TestCreditBar_WithSupportGift(t *testing.T) {
 				bonusRemaining:          tc.bonus,
 				bonusGrantAmount:        tc.bonusGrant,
 				extraCreditsUSD:         tc.extra,
-				supportGiftUSD:          tc.supportGift,
+				giftCreditsUSD:          tc.supportGift,
 			})
 			if !closeTo(bar.totalCapacity, tc.wantCapacity, 0.01) {
 				t.Errorf("totalCapacity = %.2f, want %.2f", bar.totalCapacity, tc.wantCapacity)
@@ -703,8 +832,8 @@ func TestCreditBar_WithSupportGift(t *testing.T) {
 			if !closeTo(bar.usedCreditsUSD, tc.wantUsed, 0.01) {
 				t.Errorf("usedCreditsUSD = %.2f, want %.2f", bar.usedCreditsUSD, tc.wantUsed)
 			}
-			if !closeTo(bar.supportGiftUSD, tc.supportGift, 0.01) {
-				t.Errorf("supportGiftUSD = %.2f, want %.2f", bar.supportGiftUSD, tc.supportGift)
+			if !closeTo(bar.giftCreditsUSD, tc.supportGift, 0.01) {
+				t.Errorf("giftCreditsUSD = %.2f, want %.2f", bar.giftCreditsUSD, tc.supportGift)
 			}
 		})
 	}
@@ -766,15 +895,15 @@ func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
 					}
 				}
 			}
-			supportGiftUSD := computeSupportGift(tc.shelleyAvailable, tc.planMax, bonusGrantAmount)
+			giftCreditsUSD := computeSupportGift(tc.shelleyAvailable, tc.planMax, bonusGrantAmount)
 
 			// Verify support gift detection
-			if !closeTo(supportGiftUSD, tc.wantSupportGift, 0.01) {
-				t.Errorf("supportGiftUSD = %.2f, want %.2f", supportGiftUSD, tc.wantSupportGift)
+			if !closeTo(giftCreditsUSD, tc.wantSupportGift, 0.01) {
+				t.Errorf("giftCreditsUSD = %.2f, want %.2f", giftCreditsUSD, tc.wantSupportGift)
 			}
 
 			// Verify gifts
-			gifts := giftsForUser(bonusRemaining, supportGiftUSD)
+			gifts := giftsForUser(bonusRemaining, giftCreditsUSD)
 			if len(gifts) != tc.wantGiftCount {
 				t.Errorf("gift count = %d, want %d; gifts = %v", len(gifts), tc.wantGiftCount, gifts)
 			}
@@ -786,7 +915,7 @@ func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
 				bonusRemaining:          bonusRemaining,
 				bonusGrantAmount:        bonusGrantAmount,
 				extraCreditsUSD:         tc.extraCredits,
-				supportGiftUSD:          supportGiftUSD,
+				giftCreditsUSD:          giftCreditsUSD,
 			})
 
 			if !closeTo(bar.totalCapacity, tc.wantCapacity, 0.01) {
@@ -794,11 +923,209 @@ func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
 			}
 
 			// Verify remaining = monthly + bonus + extra + supportGift
-			gotRemaining := bar.monthlyAvailable + bar.bonusRemaining + tc.extraCredits + bar.supportGiftUSD
+			gotRemaining := bar.monthlyAvailable + bar.bonusRemaining + tc.extraCredits + bar.giftCreditsUSD
 			if !closeTo(gotRemaining, tc.wantRemaining, 0.01) {
 				t.Errorf("remaining = %.2f, want %.2f (monthly=%.2f bonus=%.2f extra=%.2f gift=%.2f)",
 					gotRemaining, tc.wantRemaining,
-					bar.monthlyAvailable, bar.bonusRemaining, tc.extraCredits, bar.supportGiftUSD)
+					bar.monthlyAvailable, bar.bonusRemaining, tc.extraCredits, bar.giftCreditsUSD)
+			}
+		})
+	}
+}
+
+// TestCreditBar_Matrix is a systematic test of all credit type combinations
+// across Free and Paid plans, with and without usage.
+//
+// Free plan:  planMax = 5, no bonus
+// Paid plan:  planMax = 20, bonus = 100
+// Paid/Gift:  $10 gift from ledger
+// Paid/Extra: $10 purchased via Stripe
+func TestCreditBar_Matrix(t *testing.T) {
+	cases := []struct {
+		name string
+		// inputs
+		shelleyAvailable float64
+		planMax          float64
+		bonusRemaining   float64
+		bonusGrant       float64
+		paid             float64
+		gift             float64
+		// expected
+		wantCapacity  float64
+		wantUsed      float64
+		wantRemaining float64 // internal remaining (feeds bar %)
+		wantHero      float64 // shelleyAvailable + paid + gift
+	}{
+		// ── Free plan ($5 monthly, no bonus) ──
+
+		{
+			name:             "Free/no usage",
+			shelleyAvailable: 5, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 0, gift: 0,
+			wantCapacity: 5, wantUsed: 0, wantRemaining: 5, wantHero: 5,
+		},
+		{
+			name:             "Free/partial usage",
+			shelleyAvailable: 3, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 0, gift: 0,
+			wantCapacity: 5, wantUsed: 2, wantRemaining: 3, wantHero: 3,
+		},
+		{
+			name:             "Free/full usage",
+			shelleyAvailable: 0, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 0, gift: 0,
+			wantCapacity: 5, wantUsed: 5, wantRemaining: 0, wantHero: 0,
+		},
+		{
+			name:             "Free+Paid/no usage",
+			shelleyAvailable: 5, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 10, gift: 0,
+			wantCapacity: 15, wantUsed: 0, wantRemaining: 15, wantHero: 15,
+		},
+		{
+			name:             "Free+Paid/partial usage",
+			shelleyAvailable: 3, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 10, gift: 0,
+			wantCapacity: 15, wantUsed: 2, wantRemaining: 13, wantHero: 13,
+		},
+		{
+			name:             "Free+Gift/no usage",
+			shelleyAvailable: 5, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 0, gift: 10,
+			wantCapacity: 15, wantUsed: 0, wantRemaining: 15, wantHero: 15,
+		},
+		{
+			name:             "Free+Gift/partial usage",
+			shelleyAvailable: 3, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 0, gift: 10,
+			wantCapacity: 15, wantUsed: 2, wantRemaining: 13, wantHero: 13,
+		},
+		{
+			name:             "Free+Paid+Gift/no usage",
+			shelleyAvailable: 5, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 10, gift: 10,
+			wantCapacity: 25, wantUsed: 0, wantRemaining: 25, wantHero: 25,
+		},
+		{
+			name:             "Free+Paid+Gift/partial usage",
+			shelleyAvailable: 3, planMax: 5,
+			bonusRemaining: 0, bonusGrant: 0, paid: 10, gift: 10,
+			wantCapacity: 25, wantUsed: 2, wantRemaining: 23, wantHero: 23,
+		},
+
+		// ── Paid plan ($20 monthly, $100 bonus) ──
+
+		{
+			name:             "Paid/no usage",
+			shelleyAvailable: 120, planMax: 20,
+			bonusRemaining: 100, bonusGrant: 100, paid: 0, gift: 0,
+			wantCapacity: 120, wantUsed: 0, wantRemaining: 120, wantHero: 120,
+		},
+		{
+			name:             "Paid/partial usage (spent 10)",
+			shelleyAvailable: 110, planMax: 20,
+			bonusRemaining: 90, bonusGrant: 100, paid: 0, gift: 0,
+			wantCapacity: 120, wantUsed: 10, wantRemaining: 110, wantHero: 110,
+		},
+		{
+			name:             "Paid/heavy usage (spent 100)",
+			shelleyAvailable: 20, planMax: 20,
+			bonusRemaining: 0, bonusGrant: 100, paid: 0, gift: 0,
+			wantCapacity: 120, wantUsed: 100, wantRemaining: 20, wantHero: 20,
+		},
+		{
+			name:             "Paid/full usage",
+			shelleyAvailable: 0, planMax: 20,
+			bonusRemaining: 0, bonusGrant: 100, paid: 0, gift: 0,
+			wantCapacity: 120, wantUsed: 120, wantRemaining: 0, wantHero: 0,
+		},
+		{
+			name:             "Paid+Purchased/no usage",
+			shelleyAvailable: 120, planMax: 20,
+			bonusRemaining: 100, bonusGrant: 100, paid: 10, gift: 0,
+			wantCapacity: 130, wantUsed: 0, wantRemaining: 130, wantHero: 130,
+		},
+		{
+			name:             "Paid+Purchased/partial usage (spent 10)",
+			shelleyAvailable: 110, planMax: 20,
+			bonusRemaining: 90, bonusGrant: 100, paid: 10, gift: 0,
+			wantCapacity: 130, wantUsed: 10, wantRemaining: 120, wantHero: 120,
+		},
+		{
+			name:             "Paid+Gift/no usage",
+			shelleyAvailable: 120, planMax: 20,
+			bonusRemaining: 100, bonusGrant: 100, paid: 0, gift: 10,
+			wantCapacity: 130, wantUsed: 0, wantRemaining: 130, wantHero: 130,
+		},
+		{
+			name:             "Paid+Gift/partial usage (spent 10)",
+			shelleyAvailable: 110, planMax: 20,
+			bonusRemaining: 90, bonusGrant: 100, paid: 0, gift: 10,
+			wantCapacity: 130, wantUsed: 10, wantRemaining: 120, wantHero: 120,
+		},
+		{
+			name:             "Paid+Purchased+Gift/no usage",
+			shelleyAvailable: 120, planMax: 20,
+			bonusRemaining: 100, bonusGrant: 100, paid: 10, gift: 10,
+			wantCapacity: 140, wantUsed: 0, wantRemaining: 140, wantHero: 140,
+		},
+		{
+			name:             "Paid+Purchased+Gift/partial usage (spent 10)",
+			shelleyAvailable: 110, planMax: 20,
+			bonusRemaining: 90, bonusGrant: 100, paid: 10, gift: 10,
+			wantCapacity: 140, wantUsed: 10, wantRemaining: 130, wantHero: 130,
+		},
+		{
+			name:             "Paid+Purchased+Gift/heavy usage (spent 100)",
+			shelleyAvailable: 20, planMax: 20,
+			bonusRemaining: 0, bonusGrant: 100, paid: 10, gift: 10,
+			wantCapacity: 140, wantUsed: 100, wantRemaining: 40, wantHero: 40,
+		},
+
+		// ── Legacy: available_credit manually inflated to $400 ──
+		// Someone (support or old gift path) bumped available_credit beyond
+		// planMax + bonus. The extra $280 is invisible to the bar.
+		// bonusRemaining = min(400 - 20, 100) = 100 (capped at grant)
+		// monthlyAvailable = min(400, 20) = 20
+		// remaining = 20 + 100 + 0 + 0 = 120
+		// capacity = 20 + 100 + 0 + 0 = 120
+		// hero = 400 + 0 + 0 = 400
+		// The hero (400) exceeds capacity (120) — this is the known gap
+		// that WORK-5 (migrating legacy gifts to ledger) will fix.
+		{
+			name:             "Paid/legacy inflated available (400)",
+			shelleyAvailable: 400, planMax: 20,
+			bonusRemaining: 100, bonusGrant: 100, paid: 0, gift: 0,
+			wantCapacity: 120, wantUsed: 0, wantRemaining: 120, wantHero: 400,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bar := computeCreditBar(creditBarInput{
+				shelleyCreditsAvailable: tc.shelleyAvailable,
+				planMaxCredit:           tc.planMax,
+				bonusRemaining:          tc.bonusRemaining,
+				bonusGrantAmount:        tc.bonusGrant,
+				extraCreditsUSD:         tc.paid,
+				giftCreditsUSD:          tc.gift,
+			})
+
+			if !closeTo(bar.totalCapacity, tc.wantCapacity, 0.01) {
+				t.Errorf("capacity = %.2f, want %.2f", bar.totalCapacity, tc.wantCapacity)
+			}
+			if !closeTo(bar.usedCreditsUSD, tc.wantUsed, 0.01) {
+				t.Errorf("used = %.2f, want %.2f", bar.usedCreditsUSD, tc.wantUsed)
+			}
+
+			remaining := bar.monthlyAvailable + bar.bonusRemaining + tc.paid + bar.giftCreditsUSD
+			if !closeTo(remaining, tc.wantRemaining, 0.01) {
+				t.Errorf("remaining = %.2f, want %.2f", remaining, tc.wantRemaining)
+			}
+
+			hero := tc.shelleyAvailable + tc.paid + tc.gift
+			if !closeTo(hero, tc.wantHero, 0.01) {
+				t.Errorf("hero = %.2f, want %.2f", hero, tc.wantHero)
 			}
 		})
 	}

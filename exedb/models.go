@@ -56,6 +56,8 @@ type BillingCredit struct {
 	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
 	HourBucket    *time.Time `db:"hour_bucket" json:"hour_bucket"`
 	CreditType    *string    `db:"credit_type" json:"credit_type"`
+	Note          *string    `db:"note" json:"note"`
+	GiftID        *string    `db:"gift_id" json:"gift_id"`
 }
 
 type BillingEvent struct {

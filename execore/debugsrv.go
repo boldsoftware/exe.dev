@@ -80,6 +80,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
+	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
@@ -2393,6 +2394,59 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
 }
 
+// handleDebugGiftCredits gifts credits to a user's billing account.
+func (s *Server) handleDebugGiftCredits(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	amountStr := r.FormValue("amount")
+	note := r.FormValue("note")
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	if amountStr == "" {
+		http.Error(w, "amount is required", http.StatusBadRequest)
+		return
+	}
+
+	amountUSD, err := strconv.ParseFloat(amountStr, 64)
+	if err != nil || amountUSD <= 0 {
+		http.Error(w, "amount must be a positive number (USD)", http.StatusBadRequest)
+		return
+	}
+
+	// Look up billing account.
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to find billing account for user %q: %v", userID, err), http.StatusBadRequest)
+		return
+	}
+
+	// Convert USD to tender.Value (amountUSD is in dollars, Mint takes cents).
+	amount := tender.Mint(int64(amountUSD*100), 0)
+	giftID := fmt.Sprintf("debug_gift:%s:%d", account.ID, time.Now().UnixNano())
+
+	if err := s.billing.GiftCredits(ctx, account.ID, &billing.GiftCreditsParams{
+		Amount: amount,
+		GiftID: giftID,
+		Note:   note,
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to gift credits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "credits gifted via debug page",
+		"user_id", userID,
+		"account_id", account.ID,
+		"amount_usd", amountUSD,
+		"gift_id", giftID,
+		"note", note)
+
+	http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
 func ptrStr(s *string) string {
 	if s == nil {
 		return ""
@@ -4446,6 +4500,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		HourBucket    string
 		StripeEventID string
 		ReceiptURL    string
+		GiftID        string
+		Note          string
 		CreatedAt     string
 	}
 	type accountInfo struct {
@@ -4532,6 +4588,12 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 					cr.ReceiptURL = receiptURLs[*c.StripeEventID]
 				}
 			}
+			if c.GiftID != nil {
+				cr.GiftID = *c.GiftID
+			}
+			if c.Note != nil {
+				cr.Note = *c.Note
+			}
 			info.Credits = append(info.Credits, cr)
 
 			if c.Amount > 0 && c.StripeEventID != nil && c.CreatedAt.After(cutoff) {
@@ -4598,7 +4660,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Compute stacked bar percentages (same as profile page).
-	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
 	var bonusRemaining float64
 	var bonusGrantAmount float64
 	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
@@ -4610,19 +4671,47 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	supportGiftUSD := computeSupportGift(shelleyCreditsAvailable, shelleyCreditsMax, bonusGrantAmount)
+	// Load gift credits from ledger.
+	var giftCreditsUSD float64
+	var giftEntries []billing.GiftEntry
+	if account.ID != "" {
+		giftEntries, err = s.billing.ListGifts(ctx, account.ID)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to list gift credits", "error", err, "account_id", account.ID)
+		}
+		giftCreditsUSD = giftCreditsUSDFromLedger(giftEntries)
+	}
+	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
+	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD
+	if extraCreditsUSD < 0 {
+		extraCreditsUSD = 0
+	}
+
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
 		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
-		supportGiftUSD:          supportGiftUSD,
+		giftCreditsUSD:          giftCreditsUSD,
 	})
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
 	usedBarPct := bar.usedBarPct
 	totalCapacity := bar.totalCapacity
+
+	// Build gift rows from ledger entries + bonus.
+	var giftRows []GiftRow
+	if bonusGrantAmount > 0 {
+		giftRows = append(giftRows, GiftRow{
+			Amount: fmt.Sprintf("%.0f", bonusGrantAmount),
+			Reason: "Welcome bonus for upgrading to a paid plan",
+		})
+	}
+	giftRows = append(giftRows, giftsFromLedger(giftEntries)...)
+	if len(giftRows) == 0 {
+		giftRows = nil
+	}
 
 	// LLM gateway credit info (same as debug user page).
 	hasCredit := creditPtr != nil
@@ -4649,7 +4738,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt         string
 		TotalRemainingPct             float64
 		BonusRemainingUSD             float64
-		SupportGiftUSD                float64
+		GiftCreditsUSD                float64
 		MonthlyAvailableUSD           float64
 		UsedCreditsUSD                float64
 		TotalCapacityUSD              float64
@@ -4680,7 +4769,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on 02 Jan"),
 		TotalRemainingPct:             totalRemainingPct,
 		BonusRemainingUSD:             bar.bonusRemaining,
-		SupportGiftUSD:                bar.supportGiftUSD,
+		GiftCreditsUSD:                bar.giftCreditsUSD,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		UsedCreditsUSD:                usedCreditsUSD,
 		TotalCapacityUSD:              totalCapacity,
@@ -4688,9 +4777,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ExtraCreditsUSD:               extraCreditsUSD,
 		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
 		ShelleyCreditsMax:             shelleyCreditsMax,
-		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD, 0),
+		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD+giftCreditsUSD, 0),
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusRemaining, supportGiftUSD),
+		Gifts:                         giftRows,
 		HasCredit:                     hasCredit,
 	}
 

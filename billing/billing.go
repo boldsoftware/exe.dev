@@ -644,6 +644,120 @@ func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (
 	}
 }
 
+// Credits defines the interface for credit operations on billing accounts.
+type Credits interface {
+	GiftCredits(ctx context.Context, billingID string, p *GiftCreditsParams) error
+	SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error)
+	GetCreditState(ctx context.Context, billingID string) (*CreditState, error)
+	ListGifts(ctx context.Context, billingID string) ([]GiftEntry, error)
+}
+
+var _ Credits = (*Manager)(nil)
+
+// GiftCreditsParams contains the parameters for gifting credits to an account.
+type GiftCreditsParams struct {
+	Amount tender.Value
+	GiftID string
+	Note   string
+}
+
+// GiftCredits inserts a gift credit for the given billing account.
+// The operation is idempotent: a duplicate gift_id is silently ignored.
+func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCreditsParams) error {
+	if p.Amount.IsWorthless() {
+		return fmt.Errorf("gift amount must be positive, got %v", p.Amount)
+	}
+	if p.GiftID == "" {
+		return errors.New("gift_id is required")
+	}
+
+	note := p.Note
+	if note == "" {
+		note = "Credit gift from support@exe.dev"
+	}
+
+	const q = `
+		INSERT OR IGNORE INTO billing_credits (account_id, amount, credit_type, gift_id, note)
+		VALUES (@accountID, @amount, 'gift', @giftID, @note)
+	`
+	return m.exec(ctx, q,
+		sql.Named("accountID", billingID),
+		sql.Named("amount", p.Amount),
+		sql.Named("giftID", p.GiftID),
+		sql.Named("note", note),
+	)
+}
+
+// CreditState holds the breakdown of credits for an account.
+type CreditState struct {
+	Paid  tender.Value
+	Gift  tender.Value
+	Used  tender.Value
+	Total tender.Value
+}
+
+// GetCreditState returns the credit breakdown for the given billing account.
+// Used is stored as an absolute (positive) value even though usage rows are negative in the DB.
+func (m *Manager) GetCreditState(ctx context.Context, billingID string) (*CreditState, error) {
+	const q = `
+		SELECT
+			CAST(COALESCE(SUM(CASE WHEN credit_type = 'gift' THEN amount ELSE 0 END), 0) AS INTEGER) AS gift,
+			CAST(COALESCE(SUM(CASE WHEN credit_type = 'usage' THEN amount ELSE 0 END), 0) AS INTEGER) AS used,
+			CAST(COALESCE(SUM(CASE WHEN credit_type IS NULL AND stripe_event_id IS NOT NULL THEN amount ELSE 0 END), 0) AS INTEGER) AS paid,
+			CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS total
+		FROM billing_credits
+		WHERE account_id = @accountID
+	`
+
+	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
+		if err != nil {
+			return nil, fmt.Errorf("get credit state: %w", err)
+		}
+		var s CreditState
+		if err := rows.Scan(&s.Gift, &s.Used, &s.Paid, &s.Total); err != nil {
+			return nil, fmt.Errorf("scan credit state: %w", err)
+		}
+		// Used is stored as negative in DB; return absolute value.
+		s.Used = tender.Mint(0, -s.Used.Microcents())
+		return &s, nil
+	}
+
+	return &CreditState{}, nil
+}
+
+// GiftEntry represents a single gift credit entry.
+type GiftEntry struct {
+	Amount    tender.Value
+	Note      string
+	GiftID    string
+	CreatedAt time.Time
+}
+
+// ListGifts returns all gift credits for the given billing account, ordered by
+// most recent first. Returns an empty (non-nil) slice if no gifts exist.
+func (m *Manager) ListGifts(ctx context.Context, billingID string) ([]GiftEntry, error) {
+	const q = `
+		SELECT amount, note, gift_id, created_at
+		FROM billing_credits
+		WHERE account_id = @accountID AND credit_type = 'gift'
+		ORDER BY created_at DESC, id DESC
+	`
+
+	gifts := []GiftEntry{} // non-nil empty slice
+	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
+		if err != nil {
+			return nil, fmt.Errorf("list gifts: %w", err)
+		}
+		var g GiftEntry
+		if err := rows.Scan(&g.Amount, &g.Note, &g.GiftID, &g.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan gift: %w", err)
+		}
+		gifts = append(gifts, g)
+	}
+	return gifts, nil
+}
+
+
 func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
 	if unitPrice.IsNegative() {
 		return tender.Zero(), fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())

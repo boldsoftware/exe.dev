@@ -482,6 +482,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 					FlagSetFunc:       setLimitsFlags,
 					Handler:           ss.handleSetLimitsCommand,
 				},
+				{
+					Name:              "add-gift",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "Gift credits to a user's billing account (support only)",
+					Usage:             "sudo-exe add-gift <userid-or-email> <amount-usd> [note]",
+					HasPositionalArgs: true,
+					Handler:           ss.handleAddGiftCommand,
+				},
 			},
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				return cc.Errorf("usage: sudo-exe <subcommand>")

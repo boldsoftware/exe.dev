@@ -32,11 +32,11 @@ table.info th { width: 200px; }
 <tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
 <tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}} total</td></tr>
 {{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
-{{if gt .SupportGiftUSD 0.0}}<tr><th>Support Gift</th><td>{{printf "%.0f" .SupportGiftUSD}} (detected from manual DB adjustment)</td></tr>{{end}}
+{{if gt .GiftCreditsUSD 0.0}}<tr><th>Gift Credits</th><td>{{printf "%.0f" .GiftCreditsUSD}} (from gifted credits)</td></tr>{{end}}
 <tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
 {{if gt .ExtraCreditsUSD 0.0}}<tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>{{end}}
 {{if .Gifts}}
-<tr><th>Gifts</th><td>
+<tr><th>Gift History</th><td>
     <table>
     <thead><tr><th>Credits</th><th>Reason</th></tr></thead>
     <tbody>
@@ -77,7 +77,7 @@ table.info th { width: 200px; }
 <tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
 {{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
 <tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
-<tr><th>Total Used</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
+<tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
 </table>
 </div>
@@ -114,7 +114,7 @@ table.info th { width: 200px; }
 <h4>Credit Ledger ({{len .Credits}})</h4>
 {{if .Credits}}
 <table>
-<thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Receipt</th><th>Created At</th></tr></thead>
+<thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Receipt</th><th>Gift ID</th><th>Note</th><th>Created At</th></tr></thead>
 <tbody>
 {{range .Credits}}
 <tr>
@@ -124,6 +124,8 @@ table.info th { width: 200px; }
 <td>{{.HourBucket}}</td>
 <td>{{.StripeEventID}}</td>
 <td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td>
+<td class="muted">{{.GiftID}}</td>
+<td class="muted">{{.Note}}</td>
 <td>{{.CreatedAt}}</td>
 </tr>
 {{end}}

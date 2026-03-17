@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"time"
 )
 
 const getCreditBalance = `-- name: GetCreditBalance :one
@@ -22,20 +23,32 @@ func (q *Queries) GetCreditBalance(ctx context.Context, accountID string) (int64
 }
 
 const listBillingCreditsForAccount = `-- name: ListBillingCreditsForAccount :many
-SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type
+SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type, gift_id, note
 FROM billing_credits WHERE account_id = ?
 ORDER BY id DESC
 `
 
-func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID string) ([]BillingCredit, error) {
+type ListBillingCreditsForAccountRow struct {
+	ID            int64      `db:"id" json:"id"`
+	AccountID     string     `db:"account_id" json:"account_id"`
+	Amount        int64      `db:"amount" json:"amount"`
+	StripeEventID *string    `db:"stripe_event_id" json:"stripe_event_id"`
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
+	HourBucket    *time.Time `db:"hour_bucket" json:"hour_bucket"`
+	CreditType    *string    `db:"credit_type" json:"credit_type"`
+	GiftID        *string    `db:"gift_id" json:"gift_id"`
+	Note          *string    `db:"note" json:"note"`
+}
+
+func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID string) ([]ListBillingCreditsForAccountRow, error) {
 	rows, err := q.query(ctx, q.listBillingCreditsForAccountStmt, listBillingCreditsForAccount, accountID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BillingCredit{}
+	items := []ListBillingCreditsForAccountRow{}
 	for rows.Next() {
-		var i BillingCredit
+		var i ListBillingCreditsForAccountRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.AccountID,
@@ -44,6 +57,8 @@ func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID st
 			&i.CreatedAt,
 			&i.HourBucket,
 			&i.CreditType,
+			&i.GiftID,
+			&i.Note,
 		); err != nil {
 			return nil, err
 		}

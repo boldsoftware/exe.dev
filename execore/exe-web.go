@@ -1644,7 +1644,6 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 	}
 
-	extraCreditsUSD := float64(creditBalance.Microcents()) / 1_000_000
 	var bonusRemaining float64
 	var bonusGrantAmount float64
 	if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
@@ -1656,14 +1655,29 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			}
 		}
 	}
-	supportGiftUSD := computeSupportGift(shelleyCreditsAvailable, shelleyCreditsMax, bonusGrantAmount)
+	// Load gift credits from ledger.
+	var giftCreditsUSD float64
+	var giftEntries []billing.GiftEntry
+	if account.ID != "" {
+		giftEntries, err = s.billing.ListGifts(r.Context(), account.ID)
+		if err != nil {
+			s.slog().WarnContext(r.Context(), "failed to list gift credits", "error", err, "user_id", userID)
+		}
+		giftCreditsUSD = giftCreditsUSDFromLedger(giftEntries)
+	}
+	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
+	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD
+	if extraCreditsUSD < 0 {
+		extraCreditsUSD = 0
+	}
+
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: shelleyCreditsAvailable,
 		planMaxCredit:           shelleyCreditsMax,
 		bonusRemaining:          bonusRemaining,
 		bonusGrantAmount:        bonusGrantAmount,
 		extraCreditsUSD:         extraCreditsUSD,
-		supportGiftUSD:          supportGiftUSD,
+		giftCreditsUSD:          giftCreditsUSD,
 	})
 	totalRemainingPct := bar.totalRemainingPct
 	usedCreditsUSD := bar.usedCreditsUSD
@@ -1746,7 +1760,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		ExtraCreditsUSD:               extraCreditsUSD,
-		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD, 0),
+		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD+giftCreditsUSD, 0),
 		TotalRemainingPct:             totalRemainingPct,
 		MonthlyAvailableUSD:           bar.monthlyAvailable,
 		UsedCreditsUSD:                usedCreditsUSD,
@@ -1755,7 +1769,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		HasShelleyFreeCreditPct:       hasShelleyFreeCreditPct,
 		MonthlyCreditsResetAt:         nextUTCMonthStart().Format("15:04 on Jan 2"),
 		Purchases:                     purchases,
-		Gifts:                         giftsForUser(bonusRemaining, supportGiftUSD),
+		Gifts:                         buildGiftRows(bonusGrantAmount, giftEntries),
 
 		IsSudoer:         isSudoer,
 		Integrations:     integrations,
