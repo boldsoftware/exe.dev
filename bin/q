@@ -44,6 +44,15 @@ def slugify(text):
     return s
 
 
+def gh_has_actions_access():
+    """Check whether gh can access the Actions API."""
+    r = subprocess.run(
+        ["gh", "run", "list", "--limit", "1"],
+        capture_output=True, text=True,
+    )
+    return r.returncode == 0
+
+
 def find_run(branch, commit, timeout=120, interval=2):
     """Poll until a workflow run appears for the given branch+commit."""
     for _ in range(timeout // interval):
@@ -65,6 +74,33 @@ def find_run(branch, commit, timeout=120, interval=2):
             pass
         time.sleep(interval)
     return None
+
+
+def watch_origin_main(ref, timeout=300, interval=15):
+    """Watch origin/main for a commit with the same subject as ref. Returns True if found."""
+    subject = git("--no-pager", "log", "--format=%s", "-n", "1", ref)
+    print(f"q: no Actions API access, watching origin/main for: {subject}", file=sys.stderr)
+
+    t0 = time.monotonic()
+    while True:
+        elapsed = int(time.monotonic() - t0)
+        m, s = divmod(elapsed, 60)
+
+        if elapsed >= timeout:
+            sys.stderr.write("\n")
+            print(f"q: not merged after {m}m{s}s", file=sys.stderr)
+            return False
+
+        git("fetch", "origin", "main", "--quiet", check=False)
+        subjects = git("--no-pager", "log", "origin/main", "--format=%s", "-20").splitlines()
+        if subject in subjects:
+            sys.stderr.write("\n")
+            print(f"q: merged to main [{m}m{s}s]", file=sys.stderr)
+            return True
+
+        sys.stderr.write(f"\rq: waiting for merge [{m}m{s:02d}s]")
+        sys.stderr.flush()
+        time.sleep(interval)
 
 
 def poll_run(run_id, interval=10):
@@ -223,7 +259,13 @@ def main():
     print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
     git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
 
-    # --- Find the CI run ---
+    # --- Find and monitor the CI run ---
+    if not gh_has_actions_access():
+        # Fallback: watch origin/main for the merge
+        if not watch_origin_main(ref, timeout=300):
+            raise SystemExit(1)
+        return
+
     print("q: waiting for run...", file=sys.stderr)
     run_id = find_run(queue_branch, commit)
     if not run_id:
