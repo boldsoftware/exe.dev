@@ -126,3 +126,52 @@
     init();
   }
 })();
+
+// Typing animation for prompt placeholder
+(function () {
+  'use strict';
+
+  var input = document.getElementById('prompt-input');
+  if (!input) return;
+
+  var lines = [
+    'Install OpenClaw \uD83E\uDD9E.',
+    '',
+    'exe.dev handles auth for us, so the final "reachable" is https://<vm-name>.exe.xyz (port 8000 has a TLS proxy in front of it with a certificate for port 443).'
+  ];
+  var fullText = lines.join('\n');
+  var i = 0;
+  var speed = 18;
+
+  function type() {
+    if (i <= fullText.length) {
+      input.setAttribute('placeholder', fullText.slice(0, i));
+      i++;
+      // Check if we're at a newline — tiny pause
+      var ch = fullText[i - 1];
+      var delay = ch === '\n' ? speed * 4 : speed;
+      setTimeout(type, delay);
+    }
+  }
+
+  // Only animate if user hasn't focused the input yet
+  var cancelled = false;
+  input.addEventListener('focus', function () {
+    cancelled = true;
+    input.setAttribute('placeholder', fullText);
+  });
+
+  function typeChecked() {
+    if (cancelled) return;
+    if (i <= fullText.length) {
+      input.setAttribute('placeholder', fullText.slice(0, i));
+      i++;
+      var ch = fullText[i - 1];
+      var delay = ch === '\n' ? speed * 4 : speed;
+      setTimeout(typeChecked, delay);
+    }
+  }
+
+  // Start after a brief delay
+  setTimeout(typeChecked, 500);
+})();

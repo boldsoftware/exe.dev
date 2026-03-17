@@ -108,7 +108,7 @@ nav {
 }
 
 .hero-title {
-  font-size: 3rem;
+  font-size: clamp(3rem, 8vw, 7rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0;
@@ -179,6 +179,7 @@ nav {
   width: 100%;
   max-width: 100%;
   text-align: left;
+  height: clamp(10.5rem, 22vh, 15rem);
 }
 
 .prompt-input:focus {
@@ -188,7 +189,7 @@ nav {
 }
 
 .prompt-input::placeholder {
-  color: #9ca3af;
+  color: #6b7280;
 }
 
 .prompt-actions {
@@ -239,25 +240,6 @@ nav {
   flex-direction: column;
   min-width: 0;
 }
-
-.ssh-command {
-  font-size: 2.75rem;
-  font-weight: 100;
-  margin: 1.25rem 0;
-  padding-left: 1rem;
-  white-space: nowrap;
-  transition: text-shadow 0.3s;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ssh-command:hover .ssh-text {
-  text-shadow:
-    0 0 20px rgba(0, 255, 0, 0.5),
-    0 0 40px rgba(0, 255, 0, 0.25),
-    0 0 60px rgba(0, 255, 0, 0.1);
-}
-
 
 
 .ssh-sub {
@@ -439,7 +421,7 @@ footer a:hover {
 /* ── Responsive: tablet ── */
 @media (max-width: 900px) {
   .hero-title {
-    font-size: 2.25rem;
+    font-size: clamp(2.25rem, 8vw, 7rem);
   }
 
   .hero-columns {
@@ -462,10 +444,6 @@ footer a:hover {
 
   .hero-right {
     padding-top: 0;
-  }
-
-  .ssh-command {
-    font-size: 2rem;
   }
 
   .features {
@@ -493,7 +471,7 @@ footer a:hover {
   }
 
   .hero-title {
-    font-size: 1.75rem;
+    font-size: clamp(1.75rem, 11vw, 2.75rem);
   }
 
   .hero-spacer {
@@ -509,11 +487,6 @@ footer a:hover {
     min-height: 5rem;
   }
 
-  .ssh-command {
-    text-align: center;
-    padding-left: 0;
-  }
-
   .hero-left h2,
   .hero-right h2 {
     font-size: 1.25rem;
@@ -521,12 +494,6 @@ footer a:hover {
 
   .hero-columns {
     gap: 3rem;
-  }
-
-  .ssh-command {
-    font-size: 1.5rem;
-    word-break: break-all;
-    white-space: normal;
   }
 
   .features {
@@ -747,7 +714,7 @@ footer a:hover {
   }
 
   .prompt-input::placeholder {
-    color: #6b7280;
+    color: #9ca3af;
   }
 
   .prompt-label {
