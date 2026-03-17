@@ -506,4 +506,3 @@ func TestListGiftsEmpty(t *testing.T) {
 		t.Fatalf("len(gifts) = %d, want 0", len(gifts))
 	}
 }
-

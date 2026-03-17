@@ -757,7 +757,6 @@ func (m *Manager) ListGifts(ctx context.Context, billingID string) ([]GiftEntry,
 	return gifts, nil
 }
 
-
 func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
 	if unitPrice.IsNegative() {
 		return tender.Zero(), fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())
