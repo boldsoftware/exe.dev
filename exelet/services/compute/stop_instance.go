@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -47,17 +46,12 @@ func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest
 }
 
 func (s *Service) stopInstance(ctx context.Context, id string) error {
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
+	vmCfg, err := s.vmm.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	vmCfg, err := vmm.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	if err := vmm.Stop(ctx, id); err != nil {
+	if err := s.vmm.Stop(ctx, id); err != nil {
 		return err
 	}
 
@@ -72,7 +66,7 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 
 	// update vm config
 	vmCfg.NetworkInterface = nil
-	if err := vmm.Update(ctx, vmCfg); err != nil {
+	if err := s.vmm.Update(ctx, vmCfg); err != nil {
 		return err
 	}
 

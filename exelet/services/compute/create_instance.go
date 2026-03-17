@@ -21,7 +21,6 @@ import (
 
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
@@ -183,14 +182,13 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	// Setup rollback to cleanup resources on error
 	// Use WithoutCancel so rollback completes even if context was cancelled (which may be why we're rolling back)
 	rb := &createInstanceRollback{
-		ctx:             context.WithoutCancel(ctx),
-		log:             s.log,
-		serviceContext:  s.context,
-		instanceID:      instanceID,
-		proxyManager:    s.proxyManager,
-		portAllocator:   s.portAllocator,
-		runtimeAddress:  s.config.RuntimeAddress,
-		enableHugepages: s.config.EnableHugepages,
+		ctx:            context.WithoutCancel(ctx),
+		log:            s.log,
+		serviceContext: s.context,
+		vmm:            s.vmm,
+		instanceID:     instanceID,
+		proxyManager:   s.proxyManager,
+		portAllocator:  s.portAllocator,
 	}
 	defer func() {
 		if err != nil {
@@ -611,9 +609,12 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	// boot args (network config is derived from NetworkInterface at runtime)
+	// boot args (network config and domain are derived at runtime by VMM)
 	bootArgs := getBootArgs()
-	bootArgs = append(bootArgs, fmt.Sprintf("domain=%s", s.config.InstanceDomain))
+	// Reject reserved boot args that are managed by the VMM
+	if err := validateBootArgs(req.BootArgs); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	// TODO: handle duplicates (e.g. init= etc.)
 	bootArgs = append(bootArgs, req.BootArgs...)
 
@@ -636,18 +637,13 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 
 	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if err := vmm.Create(ctx, vmCfg); err != nil {
+	if err := s.vmm.Create(ctx, vmCfg); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmCreated = true
 
 	// start vm
-	if err := vmm.Start(ctx, vmCfg.ID); err != nil {
+	if err := s.vmm.Start(ctx, vmCfg.ID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmStarted = true
@@ -735,6 +731,22 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	return i, nil
+}
+
+// reservedBootArgPrefixes are boot arg prefixes managed by the VMM at runtime.
+// User-supplied boot args must not use these prefixes.
+var reservedBootArgPrefixes = []string{"ip=", "domain="}
+
+// validateBootArgs checks that user-supplied boot args don't use reserved prefixes.
+func validateBootArgs(args []string) error {
+	for _, arg := range args {
+		for _, prefix := range reservedBootArgPrefixes {
+			if strings.HasPrefix(arg, prefix) {
+				return fmt.Errorf("boot arg %q is reserved and managed by the system", prefix)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) updateCreateStatus(stream api.ComputeService_CreateInstanceServer, status *api.CreateInstanceStatus) error {

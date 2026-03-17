@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"exe.dev/exelet/vmm"
+
 	"exe.dev/exelet/config"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -547,12 +549,18 @@ func TestEnhanceErrorWithBootLog(t *testing.T) {
 		t.Fatalf("failed to write boot.log: %v", err)
 	}
 
-	// Create rollback struct with runtime address pointing to temp dir
+	// Create VMM pointing to temp dir
+	v, err := vmm.NewVMM("cloudhypervisor://"+runtimeDir, nil, false, "", log)
+	if err != nil {
+		t.Fatalf("failed to create VMM: %v", err)
+	}
+
+	// Create rollback struct with VMM
 	rb := &createInstanceRollback{
-		ctx:            context.Background(),
-		log:            log,
-		instanceID:     instanceID,
-		runtimeAddress: "cloudhypervisor://" + runtimeDir,
+		ctx:        context.Background(),
+		log:        log,
+		vmm:        v,
+		instanceID: instanceID,
 	}
 
 	// Test EnhanceErrorWithBootLog
@@ -623,12 +631,18 @@ func TestEnhanceErrorWithBootLogNoLog(t *testing.T) {
 	runtimeDir := t.TempDir()
 	instanceID := "test-instance-no-bootlog"
 
-	// Create rollback struct with runtime address pointing to temp dir
+	// Create VMM pointing to temp dir
+	v, err := vmm.NewVMM("cloudhypervisor://"+runtimeDir, nil, false, "", log)
+	if err != nil {
+		t.Fatalf("failed to create VMM: %v", err)
+	}
+
+	// Create rollback struct with VMM
 	rb := &createInstanceRollback{
-		ctx:            context.Background(),
-		log:            log,
-		instanceID:     instanceID,
-		runtimeAddress: "cloudhypervisor://" + runtimeDir,
+		ctx:        context.Background(),
+		log:        log,
+		vmm:        v,
+		instanceID: instanceID,
 	}
 
 	// Test EnhanceErrorWithBootLog with missing boot log
@@ -643,6 +657,62 @@ func TestEnhanceErrorWithBootLogNoLog(t *testing.T) {
 
 // TestIsImageResolutionUserError tests the isImageResolutionUserError function
 // which identifies user-caused image errors vs system errors.
+func TestValidateBootArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "no args",
+			args:    nil,
+			wantErr: false,
+		},
+		{
+			name:    "allowed args",
+			args:    []string{"console=ttyS0", "root=/dev/vda"},
+			wantErr: false,
+		},
+		{
+			name:    "domain= rejected",
+			args:    []string{"domain=example.com"},
+			wantErr: true,
+			errMsg:  "domain=",
+		},
+		{
+			name:    "ip= rejected",
+			args:    []string{"ip=10.0.0.1::10.0.0.1:255.255.0.0:host:eth0:none"},
+			wantErr: true,
+			errMsg:  "ip=",
+		},
+		{
+			name:    "reserved arg among valid args",
+			args:    []string{"console=ttyS0", "domain=foo.bar", "root=/dev/vda"},
+			wantErr: true,
+			errMsg:  "domain=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBootArgs(tt.args)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("expected error containing %q, got: %v", tt.errMsg, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestIsImageResolutionUserError(t *testing.T) {
 	tests := []struct {
 		name     string

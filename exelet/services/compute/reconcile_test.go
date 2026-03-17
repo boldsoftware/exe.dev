@@ -9,6 +9,7 @@ import (
 
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
+	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -67,11 +68,13 @@ func newTestService(t *testing.T) (*Service, *mockNetworkManager) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	dataDir := t.TempDir()
+	runtimeDir := t.TempDir()
 	cfg := &config.ExeletConfig{
-		Name:         "test",
-		DataDir:      dataDir,
-		ProxyPortMin: 20000,
-		ProxyPortMax: 30000,
+		Name:           "test",
+		DataDir:        dataDir,
+		RuntimeAddress: "cloudhypervisor://" + runtimeDir,
+		ProxyPortMin:   20000,
+		ProxyPortMax:   30000,
 	}
 	svc, err := New(t.Context(), cfg, log)
 	if err != nil {
@@ -82,6 +85,11 @@ func newTestService(t *testing.T) (*Service, *mockNetworkManager) {
 	computeSvc.context = &services.ServiceContext{NetworkManager: nm}
 	computeSvc.reconcileCtx, computeSvc.reconcileCancel = context.WithCancel(context.Background())
 	t.Cleanup(func() { computeSvc.reconcileCancel() })
+	v, err := vmm.NewVMM(cfg.RuntimeAddress, nm, false, "", log)
+	if err != nil {
+		t.Fatalf("failed to create VMM: %v", err)
+	}
+	computeSvc.vmm = v
 	return computeSvc, nm
 }
 

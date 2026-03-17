@@ -18,7 +18,6 @@ import (
 
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -86,14 +85,13 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 
 	// Setup rollback to cleanup resources on error
 	rb := &createInstanceRollback{
-		ctx:             context.WithoutCancel(ctx),
-		log:             s.log,
-		serviceContext:  s.context,
-		instanceID:      newInstanceID,
-		proxyManager:    s.proxyManager,
-		portAllocator:   s.portAllocator,
-		runtimeAddress:  s.config.RuntimeAddress,
-		enableHugepages: s.config.EnableHugepages,
+		ctx:            context.WithoutCancel(ctx),
+		log:            s.log,
+		serviceContext: s.context,
+		vmm:            s.vmm,
+		instanceID:     newInstanceID,
+		proxyManager:   s.proxyManager,
+		portAllocator:  s.portAllocator,
 	}
 	defer func() {
 		if err != nil {
@@ -354,7 +352,6 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	}
 
 	bootArgs := getBootArgs()
-	bootArgs = append(bootArgs, fmt.Sprintf("domain=%s", s.config.InstanceDomain))
 	vmCfg := &api.VMConfig{
 		ID:               newInstanceID,
 		Name:             req.NewName,
@@ -372,18 +369,14 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	}
 
 	s.log.DebugContext(ctx, "creating VMM for clone", "config", vmCfg)
-	v, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
 
-	if err := v.Create(ctx, vmCfg); err != nil {
+	if err := s.vmm.Create(ctx, vmCfg); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmCreated = true
 
 	// Start VM
-	if err := v.Start(ctx, vmCfg.ID); err != nil {
+	if err := s.vmm.Start(ctx, vmCfg.ID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmStarted = true

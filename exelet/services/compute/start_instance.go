@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -71,13 +70,8 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 		return err
 	}
 
-	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return err
-	}
-
 	// Get or create VMM config (migrated VMs won't have a VMM config yet)
-	vmCfg, err := vmmgr.Get(ctx, id)
+	vmCfg, err := s.vmm.Get(ctx, id)
 	isMigratedVM := false
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -95,15 +89,15 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 		return err
 	}
 	// Rollback on failure to prevent IP leaks and live-but-disconnected VMs.
-	// Before vmmgr.Start, only the network interface needs cleanup.
-	// After vmmgr.Start, we must also stop the VM before releasing networking.
+	// Before s.vmm.Start, only the network interface needs cleanup.
+	// After s.vmm.Start, we must also stop the VM before releasing networking.
 	vmStarted := false
 	defer func() {
 		if retErr == nil {
 			return
 		}
 		if vmStarted {
-			if stopErr := vmmgr.Stop(ctx, id); stopErr != nil {
+			if stopErr := s.vmm.Stop(ctx, id); stopErr != nil {
 				// VM may still be running — do NOT tear down networking or
 				// we create a live-but-disconnected guest. Leave the IP
 				// allocated; the reconciler will clean up once the VM is
@@ -129,18 +123,18 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 
 	if isMigratedVM {
 		// For migrated VMs, create the VMM config with network interface already set
-		if err := vmmgr.Create(ctx, vmCfg); err != nil {
+		if err := s.vmm.Create(ctx, vmCfg); err != nil {
 			return fmt.Errorf("failed to create VMM config: %w", err)
 		}
 	} else {
 		// For existing VMs, update the config
-		if err := vmmgr.Update(ctx, vmCfg); err != nil {
+		if err := s.vmm.Update(ctx, vmCfg); err != nil {
 			return err
 		}
 	}
 
 	// start
-	if err := vmmgr.Start(ctx, id); err != nil {
+	if err := s.vmm.Start(ctx, id); err != nil {
 		return err
 	}
 	vmStarted = true

@@ -61,7 +61,7 @@ type VMM interface {
 }
 
 // NewVMM returns a new Virtual Machine Manager
-func NewVMM(addr string, nm NetworkManager, enableHugepages bool, log *slog.Logger) (VMM, error) {
+func NewVMM(addr string, nm NetworkManager, enableHugepages bool, instanceDomain string, log *slog.Logger) (VMM, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func NewVMM(addr string, nm NetworkManager, enableHugepages bool, log *slog.Logg
 
 	switch strings.ToLower(u.Scheme) {
 	case "cloudhypervisor":
-		return cloudhypervisor.NewVMM(addr, nm, enableHugepages, log)
+		return cloudhypervisor.NewVMM(addr, nm, enableHugepages, instanceDomain, log)
 	}
 
 	return nil, fmt.Errorf("unsupported VMM %q", u.Scheme)

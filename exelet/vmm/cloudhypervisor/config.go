@@ -20,16 +20,18 @@ type virtiofsInstance struct {
 // toVmConfig converts a exe VMConfig into a native CloudHypervisor client VmConfig
 func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstance) (*client.VmConfig, error) {
 	kernelPath := cfg.KernelPath
-	// Build cmdline: base args + network config derived from NetworkInterface
-	// Filter out any stored ip= args (legacy instances or custom boot args) since
-	// network config is always derived from NetworkInterface at runtime
+	// Build cmdline: base args + network/domain config derived at runtime
+	// Filter out any stored ip= and domain= args since these are always re-derived
 	var filteredArgs []string
 	for _, arg := range cfg.Args {
-		if !strings.HasPrefix(arg, "ip=") {
+		if !strings.HasPrefix(arg, "ip=") && !strings.HasPrefix(arg, "domain=") {
 			filteredArgs = append(filteredArgs, arg)
 		}
 	}
 	args := strings.Join(filteredArgs, " ")
+	if v.instanceDomain != "" {
+		args = args + " domain=" + v.instanceDomain
+	}
 	if netConf := getNetConf(cfg.Name, cfg.NetworkInterface); netConf != "" {
 		args = args + " " + netConf
 	}

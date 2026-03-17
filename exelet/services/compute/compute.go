@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"sync"
@@ -25,6 +26,7 @@ type Service struct {
 	api.UnimplementedComputeServiceServer
 	config              *config.ExeletConfig
 	context             *services.ServiceContext
+	vmm                 vmm.VMM
 	mu                  *sync.Mutex
 	log                 *slog.Logger
 	portAllocator       *PortAllocator
@@ -66,10 +68,18 @@ func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (servi
 }
 
 // Register is called from the server to register with the GRPC server.
+// VMM is created here (not in Start) because other services may call into
+// compute methods concurrently once services start, and s.vmm must be
+// non-nil before that happens.
 func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) error {
 	if ctx.ImageLoader == nil {
 		return errors.New("compute service requires ImageLoader to be set in ServiceContext")
 	}
+	v, err := vmm.NewVMM(s.config.RuntimeAddress, ctx.NetworkManager, s.config.EnableHugepages, s.config.InstanceDomain, s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create VMM: %w", err)
+	}
+	s.vmm = v
 	api.RegisterComputeServiceServer(server, s)
 	s.context = ctx
 	return nil
@@ -186,11 +196,7 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 
 	// Recover existing VMM processes (cloud-hypervisor and virtiofsd)
 	// This will adopt any still-running processes and clean up stale metadata
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return nil, err
-	}
-	if err := vmm.RecoverProcesses(ctx); err != nil {
+	if err := s.vmm.RecoverProcesses(ctx); err != nil {
 		s.log.WarnContext(ctx, "failed to recover VMM processes", "error", err)
 		// Don't fail startup, continue
 	}
@@ -208,7 +214,7 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 	if keepBytes == 0 {
 		keepBytes = config.DefaultBootLogKeepBytes
 	}
-	s.stopLogRotation = vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
+	s.stopLogRotation = s.vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
 
 	return instances, nil
 }

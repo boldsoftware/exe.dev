@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -73,21 +72,16 @@ func (s *Service) ResizeVM(ctx context.Context, req *api.ResizeVMRequest) (*api.
 	}
 
 	// Also update the VMM config so changes take effect on restart
-	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		s.log.WarnContext(ctx, "failed to create VMM for config update", "instance_id", req.ID, "error", err)
+	s.log.InfoContext(ctx, "updating VMM config",
+		"instance_id", req.ID,
+		"vmconfig_id", instance.VMConfig.ID,
+		"memory", instance.VMConfig.Memory,
+		"cpus", instance.VMConfig.CPUs,
+	)
+	if err := s.vmm.Update(ctx, instance.VMConfig); err != nil {
+		s.log.WarnContext(ctx, "failed to update VMM config", "instance_id", req.ID, "error", err)
 	} else {
-		s.log.InfoContext(ctx, "updating VMM config",
-			"instance_id", req.ID,
-			"vmconfig_id", instance.VMConfig.ID,
-			"memory", instance.VMConfig.Memory,
-			"cpus", instance.VMConfig.CPUs,
-		)
-		if err := vmmgr.Update(ctx, instance.VMConfig); err != nil {
-			s.log.WarnContext(ctx, "failed to update VMM config", "instance_id", req.ID, "error", err)
-		} else {
-			s.log.InfoContext(ctx, "VMM config updated successfully", "instance_id", req.ID)
-		}
+		s.log.InfoContext(ctx, "VMM config updated successfully", "instance_id", req.ID)
 	}
 
 	s.log.InfoContext(ctx, "VM resize config saved successfully",

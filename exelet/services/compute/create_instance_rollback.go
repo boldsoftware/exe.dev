@@ -22,6 +22,7 @@ type createInstanceRollback struct {
 	ctx                context.Context
 	serviceContext     *services.ServiceContext
 	log                *slog.Logger
+	vmm                vmm.VMM
 	instanceID         string
 	instanceDir        string
 	imageFSID          string
@@ -37,31 +38,17 @@ type createInstanceRollback struct {
 	allocatedPort      int
 	vmCreated          bool
 	vmStarted          bool
-	runtimeAddress     string
 	networkIP          string
-	enableHugepages    bool
 }
 
 // EnhanceErrorWithBootLog reads the VM boot log and appends it to the error for debugging.
 // Returns the enhanced error, or the original error if boot log cannot be read.
 func (r *createInstanceRollback) EnhanceErrorWithBootLog(err error) error {
-	if r.runtimeAddress == "" {
+	if r.vmm == nil {
 		return err
 	}
 
-	// NetworkManager can be nil for reading logs (only needed for network operations)
-	var nm vmm.NetworkManager
-	if r.serviceContext != nil {
-		nm = r.serviceContext.NetworkManager
-	}
-
-	v, vmmErr := vmm.NewVMM(r.runtimeAddress, nm, r.enableHugepages, r.log)
-	if vmmErr != nil {
-		r.log.WarnContext(r.ctx, "failed to create VMM client for boot log", "error", vmmErr)
-		return err
-	}
-
-	logReader, logErr := v.Logs(r.ctx, r.instanceID)
+	logReader, logErr := r.vmm.Logs(r.ctx, r.instanceID)
 	if logErr != nil {
 		r.log.WarnContext(r.ctx, "failed to read instance boot log", "id", r.instanceID, "error", logErr)
 		return err
@@ -133,28 +120,23 @@ func (r *createInstanceRollback) Rollback() {
 
 	// Stop and delete VM if created
 	if r.vmStarted || r.vmCreated {
-		if r.runtimeAddress != "" && r.serviceContext != nil {
-			v, err := vmm.NewVMM(r.runtimeAddress, r.serviceContext.NetworkManager, r.enableHugepages, r.log)
-			if err != nil {
-				r.log.ErrorContext(r.ctx, "rollback: failed to create VMM client", "error", err)
-			} else {
-				// Stop VM (ignore error if already stopped)
-				if r.vmStarted {
-					if err := v.Stop(r.ctx, r.instanceID); err != nil {
-						r.log.WarnContext(r.ctx, "rollback: failed to stop VM", "id", r.instanceID, "error", err)
-					} else {
-						r.log.DebugContext(r.ctx, "rollback: stopped VM", "id", r.instanceID)
-					}
+		if r.vmm != nil {
+			// Stop VM (ignore error if already stopped)
+			if r.vmStarted {
+				if err := r.vmm.Stop(r.ctx, r.instanceID); err != nil {
+					r.log.WarnContext(r.ctx, "rollback: failed to stop VM", "id", r.instanceID, "error", err)
+				} else {
+					r.log.DebugContext(r.ctx, "rollback: stopped VM", "id", r.instanceID)
 				}
+			}
 
-				// Delete VM (v.Delete also cleans up network interface)
-				if r.vmCreated {
-					if err := v.Delete(r.ctx, r.instanceID, bareIP); err != nil {
-						r.log.ErrorContext(r.ctx, "rollback: failed to delete VM", "id", r.instanceID, "error", err)
-					} else {
-						r.log.DebugContext(r.ctx, "rollback: deleted VM", "id", r.instanceID)
-						r.networkCreated = false // v.Delete already cleaned up network
-					}
+			// Delete VM (vmm.Delete also cleans up network interface)
+			if r.vmCreated {
+				if err := r.vmm.Delete(r.ctx, r.instanceID, bareIP); err != nil {
+					r.log.ErrorContext(r.ctx, "rollback: failed to delete VM", "id", r.instanceID, "error", err)
+				} else {
+					r.log.DebugContext(r.ctx, "rollback: deleted VM", "id", r.instanceID)
+					r.networkCreated = false // vmm.Delete already cleaned up network
 				}
 			}
 		}
@@ -188,7 +170,7 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
-	// Delete network interface (if not already cleaned up by v.Delete)
+	// Delete network interface (if not already cleaned up by vmm.Delete)
 	if r.networkCreated {
 		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, bareIP); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to delete network interface", "id", r.instanceID, "error", err)

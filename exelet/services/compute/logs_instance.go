@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -32,12 +31,7 @@ func (s *Service) GetInstanceLogs(req *api.GetInstanceLogsRequest, stream api.Co
 	}
 	instance := resp.Instance
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-
-	r, err := vmm.Logs(ctx, instance.ID)
+	r, err := s.vmm.Logs(ctx, instance.ID)
 	if err != nil {
 		// If log file doesn't exist, instance might be gone/crashed
 		if os.IsNotExist(err) {

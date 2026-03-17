@@ -34,11 +34,12 @@ type VMM struct {
 	dataDir         string
 	networkManager  NetworkManager
 	enableHugepages bool
+	instanceDomain  string
 	log             *slog.Logger
 }
 
 // NewVMM returns a new CloudHypervisor based VMM
-func NewVMM(addr string, nm NetworkManager, enableHugepages bool, log *slog.Logger) (*VMM, error) {
+func NewVMM(addr string, nm NetworkManager, enableHugepages bool, instanceDomain string, log *slog.Logger) (*VMM, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -53,6 +54,7 @@ func NewVMM(addr string, nm NetworkManager, enableHugepages bool, log *slog.Logg
 		dataDir:         dataDir,
 		networkManager:  nm,
 		enableHugepages: enableHugepages,
+		instanceDomain:  instanceDomain,
 		log:             log,
 	}, nil
 }
@@ -75,10 +77,10 @@ func (v *VMM) loadVMConfig(id string) (*api.VMConfig, error) {
 }
 
 func (v *VMM) saveVMConfig(req *api.VMConfig) error {
-	// Filter out ip= args - network config is derived from NetworkInterface at runtime
+	// Filter out ip= and domain= args - these are derived at runtime
 	var filteredArgs []string
 	for _, arg := range req.Args {
-		if !strings.HasPrefix(arg, "ip=") {
+		if !strings.HasPrefix(arg, "ip=") && !strings.HasPrefix(arg, "domain=") {
 			filteredArgs = append(filteredArgs, arg)
 		}
 	}

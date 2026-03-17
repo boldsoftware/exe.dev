@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -41,13 +40,8 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 
 		instance := resp.Instance
 
-		vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-
 		// stop vm (continue even if stop fails - instance might already be stopped)
-		if err := vmm.Stop(ctx, instance.ID); err != nil {
+		if err := s.vmm.Stop(ctx, instance.ID); err != nil {
 			s.log.WarnContext(ctx, "error stopping vm during delete, continuing with cleanup", "instance", instance.ID, "error", err)
 		}
 
@@ -61,7 +55,7 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 		}
 
 		// delete vm
-		if err := vmm.Delete(ctx, instance.ID, ip); err != nil {
+		if err := s.vmm.Delete(ctx, instance.ID, ip); err != nil {
 			return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
 		}
 

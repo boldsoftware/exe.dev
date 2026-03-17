@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	exeletfs "exe.dev/exelet/fs"
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -521,13 +520,8 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 	}
 
 	// Restore from snapshot (starts CH daemon, restores, resumes)
-	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return nil, false, status.Errorf(codes.Internal, "failed to create VMM: %v", err)
-	}
-
 	s.log.InfoContext(ctx, "live: restoring VM from snapshot", "instance", instanceID)
-	restoreErr := vmmgr.RestoreFromSnapshot(ctx, instanceID, snapshotDir)
+	restoreErr := s.vmm.RestoreFromSnapshot(ctx, instanceID, snapshotDir)
 
 	// Build the instance config (needed for both restore and fallback paths)
 	vmConfig := s.adaptVMConfigForTarget(sourceInstance.VMConfig, instanceID, instanceDir)
@@ -539,7 +533,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 	if restoreErr == nil {
 		rb.stopVM = func() {
 			s.log.WarnContext(ctx, "live: stopping restored VM due to rollback", "instance", instanceID)
-			if err := vmmgr.Stop(ctx, instanceID); err != nil {
+			if err := s.vmm.Stop(ctx, instanceID); err != nil {
 				s.log.WarnContext(ctx, "live: failed to stop restored VM during rollback", "instance", instanceID, "error", err)
 			}
 		}
@@ -553,7 +547,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 			"instance", instanceID, "error", restoreErr)
 
 		// Clean up the failed CH process and live migration network interface
-		if stopErr := vmmgr.Stop(ctx, instanceID); stopErr != nil {
+		if stopErr := s.vmm.Stop(ctx, instanceID); stopErr != nil {
 			s.log.WarnContext(ctx, "live: failed to stop failed CH process", "instance", instanceID, "error", stopErr)
 		}
 		os.RemoveAll(snapshotDir)
@@ -661,7 +655,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 	}
 
 	// Save VMM config (so cold boot on target works correctly later)
-	if err := vmmgr.Update(ctx, vmConfig); err != nil {
+	if err := s.vmm.Update(ctx, vmConfig); err != nil {
 		s.log.WarnContext(ctx, "live: failed to save VMM config", "instance", instanceID, "error", err)
 	}
 

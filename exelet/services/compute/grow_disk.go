@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -65,14 +64,9 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 	}
 
 	// Notify the VMM that the disk has been resized so the guest can see the new size
-	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		s.log.WarnContext(ctx, "failed to create VMM for resize notification", "instance_id", req.ID, "error", err)
-	} else {
-		// The disk ID is "root" as configured in cloudhypervisor/config.go
-		if err := vmmgr.ResizeDisk(ctx, req.ID, "root", newSize); err != nil {
-			s.log.WarnContext(ctx, "failed to notify VMM of disk resize", "instance_id", req.ID, "error", err)
-		}
+	// The disk ID is "root" as configured in cloudhypervisor/config.go
+	if err := s.vmm.ResizeDisk(ctx, req.ID, "root", newSize); err != nil {
+		s.log.WarnContext(ctx, "failed to notify VMM of disk resize", "instance_id", req.ID, "error", err)
 	}
 
 	// Update the saved VM config with the new disk size

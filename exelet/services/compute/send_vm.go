@@ -15,7 +15,6 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -447,17 +446,11 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 		return status.Errorf(codes.InvalidArgument, "unexpected control action: %v", control.Action)
 	}
 
-	// Create VMM for pause/snapshot operations
-	vmmgr, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.config.EnableHugepages, s.log)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create VMM: %v", err)
-	}
-
 	// Deflate balloon to force all memory back into the guest before snapshot.
 	// With free_page_reporting, the host may have reclaimed pages that would
 	// cause "Bad address" errors during snapshot restore.
 	s.log.InfoContext(ctx, "live: deflating balloon", "instance", instanceID)
-	if err := vmmgr.DeflateBalloon(ctx, instanceID); err != nil {
+	if err := s.vmm.DeflateBalloon(ctx, instanceID); err != nil {
 		s.log.WarnContext(ctx, "live: failed to deflate balloon (continuing)", "instance", instanceID, "error", err)
 	}
 
@@ -470,12 +463,12 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 			// when this runs (e.g., orchestrator cancelled the context on error).
 			resumeCtx := context.WithoutCancel(ctx)
 			s.log.WarnContext(resumeCtx, "live: resuming VM due to error", "instance", instanceID)
-			if err := vmmgr.Resume(resumeCtx, instanceID); err != nil {
+			if err := s.vmm.Resume(resumeCtx, instanceID); err != nil {
 				s.log.ErrorContext(resumeCtx, "live: failed to resume VM", "instance", instanceID, "error", err)
 			}
 		}
 	}()
-	if err := vmmgr.Pause(ctx, instanceID); err != nil {
+	if err := s.vmm.Pause(ctx, instanceID); err != nil {
 		return status.Errorf(codes.Internal, "failed to pause VM: %v", err)
 	}
 
@@ -510,7 +503,7 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	defer os.RemoveAll(snapshotDir)
 
 	s.log.InfoContext(ctx, "live: creating CH snapshot", "dir", snapshotDir)
-	if err := vmmgr.Snapshot(ctx, instanceID, snapshotDir); err != nil {
+	if err := s.vmm.Snapshot(ctx, instanceID, snapshotDir); err != nil {
 		return status.Errorf(codes.Internal, "failed to create CH snapshot: %v", err)
 	}
 
