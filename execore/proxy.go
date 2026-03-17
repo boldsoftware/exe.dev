@@ -282,6 +282,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		Templates:       s.templates,
 		LobbyIP:         s.LobbyIP,
 		PublicIPs:       s.PublicIPs,
+		CertRateLimiter: s.certRateLimiter,
 		LookupCNAMEFunc: s.lookupCNAMEFunc,
 		LookupAFunc:     s.lookupAFunc,
 	}

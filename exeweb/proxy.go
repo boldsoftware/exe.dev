@@ -80,6 +80,8 @@ type ProxyServer struct {
 	PublicIPs      map[netip.Addr]publicips.PublicIP
 	Transports     *TransportCache
 
+	CertRateLimiter *CertRateLimiter
+
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
 	LookupAFunc     func(context.Context, string, string) ([]netip.Addr, error)
@@ -473,6 +475,12 @@ func (ps *ProxyServer) ValidateHostForTLSCert(ctx context.Context, host string) 
 	if !exists {
 		ps.Lg.WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host, "boxName", boxName)
 		return fmt.Errorf("box not found: %s", boxName)
+	}
+	if ps.CertRateLimiter != nil {
+		if err := ps.CertRateLimiter.Allow(boxName); err != nil {
+			ps.Lg.WarnContext(ctx, "cert issuance rate limited", "host", host, "boxName", boxName, "error", err)
+			return fmt.Errorf("certificate issuance temporarily unavailable for %s", host)
+		}
 	}
 	return nil
 }
