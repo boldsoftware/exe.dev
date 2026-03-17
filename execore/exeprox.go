@@ -739,6 +739,19 @@ func proxyChangeDeletedBox(boxName string) {
 	})
 }
 
+// proxyChangeMovedBox sends a notification that a box has been migrated.
+// Unlike proxyChangeDeletedBox, this only invalidates routing,
+// not shares or other cached data.
+func proxyChangeMovedBox(boxName string) {
+	sendProxyChange(&proxyapi.ChangesResponse{
+		Action: &proxyapi.ChangesResponse_MovedBox{
+			MovedBox: &proxyapi.MovedBox{
+				BoxName: boxName,
+			},
+		},
+	})
+}
+
 // proxyChangeRenamedBox sends a notification about a renamed box.
 func proxyChangeRenamedBox(oldName, newName string) {
 	sendProxyChange(&proxyapi.ChangesResponse{

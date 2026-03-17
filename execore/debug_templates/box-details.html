@@ -35,7 +35,12 @@
 <table>
 <tr><th>Proxy Port</th><td>{{.ProxyPort}}</td></tr>
 <tr><th>Share Mode</th><td>{{.ShareMode}}</td></tr>
+{{if .ShardDNS}}<tr><th>Shard DNS</th><td>{{.ShardDNS}}</td></tr>{{end}}
 </table>
+<form method="POST" action="/debug/vms/flush-proxy-cache" style="margin-top: 8px;">
+<input type="hidden" name="box_name" value="{{.Name}}">
+<button type="submit" style="padding: 6px 12px; background: #ffc107; border: 1px solid #e0a800; cursor: pointer; border-radius: 3px; font-size: 13px;">Flush All Proxy Caches</button>
+</form>
 </div>
 
 <div class="section">

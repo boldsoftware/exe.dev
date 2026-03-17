@@ -111,6 +111,8 @@ func (p *Proxy) processChange(ctx context.Context, change *proxyapi.ChangesRespo
 		p.boxes.deleteTeamUser(ctx, action.DeletedTeamMember.UserID)
 	case *proxyapi.ChangesResponse_DeletedBoxShareTeam:
 		p.boxes.deleteBoxShareTeam(ctx, action.DeletedBoxShareTeam.BoxName)
+	case *proxyapi.ChangesResponse_MovedBox:
+		p.boxes.movedBox(ctx, action.MovedBox.BoxName)
 	default:
 		p.lg.ErrorContext(ctx, "unknown type processing proxy change", "type", fmt.Sprintf("%T", change.Action))
 	}

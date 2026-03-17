@@ -129,4 +129,22 @@ func TestProxyChanges(t *testing.T) {
 	cookieValue = addCookie()
 	deleteCookie(cookieValue)
 	t.Run("deleted-cookie-2", func(t *testing.T) { testDeleteCookie(t, cookieValue) })
+
+	// Test that MovedBox only evicts routing, not share caches.
+	const fakeBoxName = "fake-box"
+	proxyChangeMovedBox(fakeBoxName)
+	t.Run("moved-box", func(t *testing.T) {
+		select {
+		case change := <-ch:
+			mb, ok := change.Action.(*proxyapi.ChangesResponse_MovedBox)
+			if !ok {
+				t.Fatalf("got change type %T, want %T", change.Action, (*proxyapi.ChangesResponse_MovedBox)(nil))
+			}
+			if mb.MovedBox.BoxName != fakeBoxName {
+				t.Errorf("got box name %q, want %q", mb.MovedBox.BoxName, fakeBoxName)
+			}
+		case <-t.Context().Done():
+			t.Error("did not see expected moved box change")
+		}
+	})
 }

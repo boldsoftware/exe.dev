@@ -406,11 +406,19 @@ message ChangesResponse {
     UserChanged user_changed = 8;
     DeletedTeamMember deleted_team_member = 9;
     DeletedBoxShareTeam deleted_box_share_team = 10;
+    MovedBox moved_box = 11;
   }
 }
 
 // DeletedBox is sent when a box is deleted.
 message DeletedBox {
+  string box_name = 1;
+}
+
+// MovedBox is sent when a box has been migrated to a different host.
+// Unlike DeletedBox, this only invalidates routing information,
+// not shares or other cached data.
+message MovedBox {
   string box_name = 1;
 }
 

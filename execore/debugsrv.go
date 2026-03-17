@@ -60,6 +60,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/jump", s.handleDebugJump)
 	mux.HandleFunc("/debug/vms/{name}", s.handleDebugBoxDetails)
 	mux.HandleFunc("GET /debug/vms/{name}/logs", s.handleDebugBoxLogs)
+	mux.HandleFunc("POST /debug/vms/flush-proxy-cache", s.handleDebugBoxFlushProxyCache)
 	mux.HandleFunc("POST /debug/vms/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("POST /debug/vms/stop", s.handleDebugBoxStop)
 	mux.HandleFunc("POST /debug/vms/start", s.handleDebugBoxStart)
@@ -311,6 +312,21 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(boxes); err != nil {
 		s.slog().InfoContext(ctx, "Failed to encode boxes", "error", err)
 	}
+}
+
+// handleDebugBoxFlushProxyCache flushes all exeprox caches for a box
+// (routing + shares). This is a nuclear option for manual debug use.
+func (s *Server) handleDebugBoxFlushProxyCache(w http.ResponseWriter, r *http.Request) {
+	boxName := r.FormValue("box_name")
+	if boxName == "" {
+		http.Error(w, "box_name is required", http.StatusBadRequest)
+		return
+	}
+
+	proxyChangeDeletedBox(boxName)
+	s.slog().InfoContext(r.Context(), "flushed all proxy caches via debug page", "box", boxName)
+
+	http.Redirect(w, r, "/debug/vms/"+url.PathEscape(boxName), http.StatusSeeOther)
 }
 
 // handleDebugBoxDelete handles deletion of a box from the debug page.
@@ -743,6 +759,12 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProgress("Database updated.")
+
+	// Flush exeprox routing cache so all proxy nodes pick up the new ctrhost.
+	// Without this, exeprox nodes continue routing to the old exelet.
+	// Use MovedBox (not DeletedBox) to avoid unnecessarily purging share caches.
+	proxyChangeMovedBox(boxName)
+	writeProgress("Proxy caches flushed.")
 
 	// Send maintenance email if the VM was rebooted (non-live migration or
 	// live migration that fell back to cold boot).
@@ -1604,6 +1626,9 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		}
 		writeProgress("Database updated.")
 
+		proxyChangeMovedBox(boxName)
+		writeProgress("Proxy caches flushed.")
+
 		if !live || coldBooted {
 			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
 		}
@@ -1765,6 +1790,17 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		creationLog = *box.CreationLog
 	}
 
+	var shardDNS string
+	if row, err := withRxRes1(s, ctx, (*exedb.Queries).GetIPShardAndUserGLBByBoxName, box.Name); err == nil {
+		shardSub := publicips.ShardSub(int(row.IPShard))
+		if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
+			shardSub = publicips.NetActuateShardSub(int(row.IPShard))
+		} else if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
+			shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+		}
+		shardDNS = shardSub + "." + s.env.BoxHost
+	}
+
 	data := struct {
 		Name                 string
 		ID                   int64
@@ -1782,6 +1818,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		SSHPort              string
 		SSHUser              string
 		SSHHost              string
+		ShardDNS             string
 		HasServerIdentityKey bool
 		HasClientPrivateKey  bool
 		HasAuthorizedKeys    bool
@@ -1806,6 +1843,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		SSHPort:              formatInt64Ptr(box.SSHPort),
 		SSHUser:              ptrStr(box.SSHUser),
 		SSHHost:              exeweb.BoxSSHHost(s.slog(), box.Ctrhost),
+		ShardDNS:             shardDNS,
 		HasServerIdentityKey: len(box.SSHServerIdentityKey) > 0,
 		HasClientPrivateKey:  len(box.SSHClientPrivateKey) > 0,
 		HasAuthorizedKeys:    box.SSHAuthorizedKeys != nil && *box.SSHAuthorizedKeys != "",
@@ -4905,6 +4943,9 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 
+		proxyChangeMovedBox(boxName)
+		writeProgress("Proxy caches flushed.")
+
 		if !live || coldBooted {
 			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
 		}
@@ -5106,6 +5147,9 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 		writeProgress("MIGRATION_ERROR")
 		return
 	}
+
+	proxyChangeMovedBox(boxName)
+	writeProgress("Proxy caches flushed.")
 
 	if wasRunning {
 		go s.sendBoxMaintenanceEmail(context.Background(), boxName)

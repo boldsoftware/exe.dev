@@ -202,6 +202,13 @@ func (bd *boxesData) deleteBox(ctx context.Context, boxName string) {
 	}
 }
 
+// movedBox is called when a box has been migrated to a different host.
+// It only evicts routing information, unlike deleteBox which also
+// purges all share caches.
+func (bd *boxesData) movedBox(ctx context.Context, boxName string) {
+	bd.boxes.Delete(boxName)
+}
+
 // renameBox is called when we receive a notification from exed
 // about a renamed box. We just drop the information and refetch it
 // if we need it.
