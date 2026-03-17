@@ -194,6 +194,9 @@ export interface TranslationKeys {
   modelLabel: string;
   dirLabel: string;
 
+  // AGENTS.md editor
+  editUserAgentsMd: string;
+
   // Sidebar buttons
   openConversations: string;
   expandSidebar: string;

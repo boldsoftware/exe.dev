@@ -4049,6 +4049,37 @@ svg {
     page-break-inside: avoid;
   }
 }
+
+/* AGENTS.md Editor Modal */
+.agents-md-header-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-md-save-status {
+  font-size: 0.75rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.agents-md-save-saving {
+  color: var(--text-secondary);
+}
+
+.agents-md-save-saved {
+  color: var(--success-text, #16a34a);
+}
+
+.agents-md-save-error {
+  color: var(--error-text, #dc2626);
+}
+
 /* Diff Viewer Overlay */
 .diff-viewer-overlay {
   position: fixed;
@@ -6709,7 +6740,6 @@ kbd {
   justify-content: center;
   gap: 0.5rem;
 }
-
 
 /* ===== Home Feed ===== */
 

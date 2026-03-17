@@ -198,6 +198,8 @@ export const zhTW: TranslationKeys = {
   dirLabel: "目錄：",
 
   // Sidebar buttons
+  editUserAgentsMd: "編輯使用者 AGENTS.md",
+
   openConversations: "開啟對話",
   expandSidebar: "展開側邊欄",
 

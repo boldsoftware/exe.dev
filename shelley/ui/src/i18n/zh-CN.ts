@@ -198,6 +198,8 @@ export const zhCN: TranslationKeys = {
   dirLabel: "目录：",
 
   // Sidebar buttons
+  editUserAgentsMd: "编辑用户 AGENTS.md",
+
   openConversations: "打开对话",
   expandSidebar: "展开侧边栏",
 

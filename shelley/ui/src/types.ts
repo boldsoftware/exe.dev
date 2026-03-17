@@ -95,6 +95,8 @@ export interface InitData {
   hostname?: string;
   terminal_url?: string;
   links?: Link[];
+  user_agents_md_path?: string;
+  user_agents_md_content?: string;
   notification_channel_types?: import("./services/api").ChannelTypeInfo[];
 }
 

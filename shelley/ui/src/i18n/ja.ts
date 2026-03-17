@@ -199,6 +199,8 @@ export const ja: TranslationKeys = {
   dirLabel: "ディレクトリ:",
 
   // Sidebar buttons
+  editUserAgentsMd: "ユーザー AGENTS.md を編集",
+
   openConversations: "会話を開く",
   expandSidebar: "サイドバーを展開",
 

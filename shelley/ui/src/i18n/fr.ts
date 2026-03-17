@@ -200,6 +200,8 @@ export const fr: TranslationKeys = {
   dirLabel: "Rép. :",
 
   // Sidebar buttons
+  editUserAgentsMd: "Modifier AGENTS.md utilisateur",
+
   openConversations: "Ouvrir les conversations",
   expandSidebar: "Développer la barre latérale",
 

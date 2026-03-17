@@ -198,6 +198,8 @@ export const upgoer5: TranslationKeys = {
   dirLabel: "Place:",
 
   // Sidebar buttons
+  editUserAgentsMd: "Change your helper words file",
+
   openConversations: "Open talks",
   expandSidebar: "Make side bigger",
 

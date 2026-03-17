@@ -24,6 +24,7 @@ import {
 import MessageComponent from "./Message";
 import MessageInput from "./MessageInput";
 import DiffViewer from "./DiffViewer";
+import AgentsMdEditorModal from "./AgentsMdEditorModal";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
@@ -745,6 +746,7 @@ function ChatInterface({
     isChannelEnabled("browser"),
   );
   const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [showAgentsMdEditor, setShowAgentsMdEditor] = useState(false);
   const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
     undefined,
   );
@@ -2248,6 +2250,31 @@ function ChatInterface({
                   </>
                 )}
 
+                {/* Edit user AGENTS.md */}
+                <div className="overflow-menu-divider" />
+                <button
+                  onClick={() => {
+                    setShowOverflowMenu(false);
+                    setShowAgentsMdEditor(true);
+                  }}
+                  className="overflow-menu-item"
+                >
+                  <svg
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    className="chat-menu-icon"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                  {t("editUserAgentsMd")}
+                </button>
+
                 {/* Version check */}
                 <div className="overflow-menu-divider" />
                 <button
@@ -2580,6 +2607,12 @@ function ChatInterface({
         onCommentTextChange={setDiffCommentText}
         initialCommit={diffViewerInitialCommit}
         onCwdChange={setDiffViewerCwd}
+      />
+
+      {/* AGENTS.md Editor Modal */}
+      <AgentsMdEditorModal
+        isOpen={showAgentsMdEditor}
+        onClose={() => setShowAgentsMdEditor(false)}
       />
 
       {/* Version Checker Modal */}

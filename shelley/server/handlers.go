@@ -122,6 +122,15 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// userAgentsMdPath returns the path to ~/.config/shelley/AGENTS.md
+func userAgentsMdPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "shelley", "AGENTS.md"), nil
+}
+
 // handleUpload handles file uploads via POST /api/upload
 // Files are saved to the ScreenshotDir with a random filename
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -411,12 +420,20 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	// Get home directory for tilde display
 	homeDir, _ := os.UserHomeDir()
 
+	userAgentsMdPath, _ := userAgentsMdPath()
+	userAgentsMdContent := ""
+	if b, err := os.ReadFile(userAgentsMdPath); err == nil {
+		userAgentsMdContent = string(b)
+	}
+
 	initData := map[string]interface{}{
-		"models":        modelList,
-		"default_model": defaultModel,
-		"hostname":      hostname,
-		"default_cwd":   defaultCwd,
-		"home_dir":      homeDir,
+		"models":                 modelList,
+		"default_model":          defaultModel,
+		"hostname":               hostname,
+		"default_cwd":            defaultCwd,
+		"home_dir":               homeDir,
+		"user_agents_md_path":    userAgentsMdPath,
+		"user_agents_md_content": userAgentsMdContent,
 	}
 	if s.terminalURL != "" {
 		initData["terminal_url"] = s.terminalURL

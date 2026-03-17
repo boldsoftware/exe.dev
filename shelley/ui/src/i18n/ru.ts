@@ -198,6 +198,8 @@ export const ru: TranslationKeys = {
   dirLabel: "Каталог:",
 
   // Sidebar buttons
+  editUserAgentsMd: "Редактировать AGENTS.md",
+
   openConversations: "Открыть диалоги",
   expandSidebar: "Развернуть боковую панель",
 

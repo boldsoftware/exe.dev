@@ -199,6 +199,8 @@ export const es: TranslationKeys = {
   dirLabel: "Dir.:",
 
   // Sidebar buttons
+  editUserAgentsMd: "Editar AGENTS.md de usuario",
+
   openConversations: "Abrir conversaciones",
   expandSidebar: "Expandir barra lateral",
 
