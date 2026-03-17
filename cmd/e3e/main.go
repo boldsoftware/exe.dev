@@ -194,7 +194,8 @@ func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentRes
 		out = strings.TrimSpace(out[idx+len(reportHeading):])
 	}
 	out = strings.TrimSpace(out)
-	if strings.HasSuffix(out, "\nOK") {
+	firstLine, _, _ := strings.Cut(out, "\n")
+	if firstLine == "OK" {
 		out = ""
 	}
 
