@@ -46,36 +46,165 @@ go test -count=1 ./e1e -run TestIntegrationAttachmentSpecs   # attachment spec p
 
 Golden files live in `e1e/golden/TestIntegration*.txt`. Update them with `-update`.
 
-## Manual / Staging Testing
+## Manual Testing Against Local exed (with Real GitHub)
 
-For testing OAuth flows, GitHub integration, and the proxy from inside a real VM,
-use a staging account on `exe-staging.dev`.
+This tests the full OAuth flow against real GitHub using the dev GitHub App.
+Run this from an exe.dev VM.
 
-### What You Need
+### Prerequisites
 
-- **Staging account** — sign up on exe-staging.dev; needs email verification
-  (use an address that receives mail on this VM via `~/Maildir/new/`)
-- **Billing** — staging uses Stripe test mode; use card `4242 4242 4242 4242`
-  with any future expiry and any CVC
-- **GitHub test user** — a GitHub account for OAuth testing; credentials are in
-  the project's shared secrets (not inlined here)
-- **GitHub App** — must be installed for the test user on the staging GitHub App;
-  the app config is set via `EXE_GITHUB_APP_*` env vars on the staging exed
+- **GitHub dev app credentials** in `~/.envrc-github` (env vars `EXE_GITHUB_APP_*`)
+- **GitHub test account**: user `sketchdevtestuser` (password and credentials
+  in the team's shared secrets)
+- A browser logged into the test GitHub account
 
-### GitHub App Environment Variables
+### Steps
 
-The GitHub integration requires these env vars on exed:
+1. Build and start local exed with GitHub env vars:
 
-- `EXE_GITHUB_APP_CLIENT_ID` — OAuth client ID
-- `EXE_GITHUB_APP_CLIENT_SECRET` — OAuth client secret
-- `EXE_GITHUB_APP_SLUG` — app slug (for install URLs)
-- `EXE_GITHUB_APP_ID` — numeric app ID (for installation token minting)
-- `EXE_GITHUB_APP_PRIVATE_KEY` — PEM private key (for signing JWTs)
+```bash
+# Build exelet first to avoid OOM on small VMs
+make exelet
+go build -o /tmp/exed-local ./cmd/exed/
 
-Without all of these, `integrations setup github` will report that GitHub
-integration is disabled.
+# Start in tmux with GitHub env vars
+tmux new-session -d -s exed 'bash -c "source ~/.envrc-github && /tmp/exed-local -stage=local -start-exelet -db tmp"'
+sleep 5
+tmux capture-pane -t exed -p | tail -5  # verify "server started" message
+```
 
-### Testing HTTP Proxy Integrations
+2. SSH in and register (fresh DB each time):
+
+```bash
+tmux new-session -d -s sshtest 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2223 localhost'
+sleep 3
+# Enter email when prompted, then verify via the DEV-ONLY link:
+# curl -s -X POST "http://localhost:8080/verify-email" -d "token=<TOKEN>&source=exemenu"
+```
+
+3. Run the GitHub setup:
+
+```bash
+tmux send-keys -t sshtest "integrations setup github" Enter
+```
+
+The SSH session prints a URL like:
+```
+Authorize your GitHub account:
+  https://phil-exe-dev.exe.xyz:8080/r/<state>
+
+Waiting...
+```
+
+4. Resolve the redirect (the exe.dev HTTPS proxy may not reach local port 8080,
+   so get the target URL and visit it directly):
+
+```bash
+curl -s -o /dev/null -w "%{redirect_url}" "http://localhost:8080/r/<state>"
+# Returns: https://github.com/login/oauth/authorize?client_id=...&state=...
+```
+
+5. Visit that GitHub OAuth URL in the browser (already logged in as
+   `sketchdevtestuser`). GitHub will either:
+   - Show an "Install & Authorize" page (first time) — click Install & Authorize
+   - Auto-authorize and redirect (if the app is already installed)
+
+   GitHub redirects to `http://localhost:8080/github/callback?code=...&state=...`
+   which the local exed handles.
+
+6. The SSH session should unblock and show:
+```
+Connected: sketchdevtestuser
+```
+
+### What to Test
+
+After setup, run through the full command set:
+
+```bash
+# Verify the connection
+integrations setup github --list
+# Expected: "sketchdevtestuser (installed on sketchdevtestuser)"
+
+integrations setup github --verify
+# Expected: "✓ sketchdevtestuser ... — verified (API user: sketchdevtestuser)"
+
+# Add a GitHub integration
+integrations add github --name=ghtest --repository=sketchdevtestuser/test-repo
+# Expected: "Added integration ghtest"
+
+# List integrations
+integrations list
+# Expected: "ghtest  github  repos=sketchdevtestuser/test-repo  (none)"
+
+# Remove integration
+integrations remove ghtest
+# Expected: "Removed integration ghtest"
+
+# Disconnect
+integrations setup github -d
+# Expected: "Disconnected GitHub: sketchdevtestuser (sketchdevtestuser)"
+
+# Reconnect (run setup again after disconnect)
+integrations setup github
+# Follow the OAuth flow again — should reconnect
+```
+
+### Cleanup
+
+Kill tmux sessions when done:
+
+```bash
+tmux kill-session -t sshtest
+tmux kill-session -t exed
+```
+
+Optionally uninstall the dev GitHub App from the test account at
+https://github.com/settings/installations (look for "exe.dev dev").
+
+## Manual Testing Against Production
+
+Test the real prod flow with the same GitHub test account.
+
+### Steps
+
+1. SSH into prod exe.dev (use an invite code if needed for a fresh account):
+
+```bash
+ssh <invite-code>@exe.dev
+# Register with an email that delivers to this VM, e.g.:
+# phil-test@<vm-name>.exe.xyz
+# Check ~/Maildir/new/ for the verification email
+```
+
+2. Run the GitHub setup:
+
+```bash
+integrations setup github
+```
+
+3. Resolve and visit the redirect URL:
+
+```bash
+curl -s -o /dev/null -w "%{redirect_url}" "https://exe.dev/r/<state>"
+# Visit the resulting GitHub OAuth URL in the browser
+```
+
+4. Verify the same commands work as in local testing:
+
+```bash
+integrations setup github --verify
+integrations add github --name=ghtest --repository=sketchdevtestuser/test-repo
+integrations list
+integrations remove ghtest
+integrations setup github -d
+```
+
+### Cleanup
+
+Disconnect the GitHub account and remove any test integrations before exiting.
+
+## Testing HTTP Proxy Integrations
 
 ```bash
 # From your exe.dev SSH session:
@@ -96,38 +225,23 @@ Things to verify:
 - Detach propagation (after `integrations detach`, the VM loses access; note the
   ~1 minute cache TTL in exelet — `IntegrationCacheTTL` in `exelet/metadata/metadata.go`)
 
-### Testing GitHub Integrations
+## Troubleshooting
 
-```bash
-# From your exe.dev SSH session:
-integrations setup github
-# Follow the OAuth flow in the browser
+**"GitHub user lookup failed" / 401 Bad credentials**: This occurs when the
+server calls `GET https://api.github.com/user` with the access token from the
+OAuth code exchange. Possible causes:
+- Transient GitHub API issue (token propagation delay)
+- OAuth code reuse (browser retry hitting the callback twice)
+- Expired/revoked token (if testing with old credentials)
 
-integrations setup github --list    # verify connected account
-integrations setup github --verify  # check token is still valid
+If it doesn't reproduce, it's likely a transient GitHub-side issue.
 
-integrations add github --name=mygh --repository=owner/repo
-integrations attach mygh vm:<vm-name>
+**Browser stuck after clicking Install/Uninstall**: GitHub redirects to the
+callback URL configured on the app. For the dev app this is
+`http://localhost:8080`. If the browser can't reach localhost:8080 (e.g.,
+you're using a remote browser), the page will hang. Navigate away manually;
+the server-side state may have already been handled.
 
-# Then SSH into the VM and test:
-git clone http://mygh.int.exe.cloud/owner/repo.git
-git clone https://mygh.int.exe.cloud/owner/repo.git
-```
-
-Things to verify:
-- OAuth flow completes (check the "Connected" page in browser)
-- OAuth denial is handled (click "Cancel" on GitHub — should show error, not hang)
-- Clone works over both HTTP and HTTPS
-- Only `.git` paths are proxied (non-git paths should be rejected)
-- Only configured repositories are accessible
-- `--verify` detects expired/revoked tokens
-
-### Cleanup
-
-Remember to clean up staging resources after testing:
-
-```bash
-integrations detach <name> vm:<vm>
-integrations remove <name>
-# Delete test VMs
-```
+**"flag provided but not defined: -reconnect"**: The `--reconnect` flag was
+removed. Just run `integrations setup github` again; it handles both fresh
+setup and reconnection.
