@@ -68,6 +68,18 @@ All structured fields live inside `LogAttributes` as string values — access vi
 | `log_type` | string | e.g. `http_request` |
 | `uri` | string | e.g. `/v1/messages` |
 | `trace_id` | string | Distributed trace ID |
+| `proxy` | string | `true` for proxied requests (exeprox) |
+| `vm_id` | string | VM database ID |
+| `vm_owner_user_id` | string | User ID of VM owner |
+| `exelet_host` | string | e.g. `tcp://exelet-lax-prod-04:9080` |
+| `route_port` | string | Container port being proxied to |
+| `route_share` | string | `public` or `private` |
+| `local_addr` | string | Local address that received the request |
+| `grpc.service` | string | gRPC service name (e.g. `exe.proxy.v1.ProxyInfoService`) |
+| `grpc.method` | string | gRPC method (e.g. `BoxInfo`, `TopLevelCert`, `UserInfo`) |
+| `grpc.code` | string | gRPC status code (e.g. `OK`) |
+| `grpc.time_ms` | string (cast to Float64) | gRPC call duration in milliseconds |
+| `grpc.component` | string | `client` or `server` |
 
 ### Query patterns
 
@@ -124,6 +136,106 @@ FORMAT PrettyCompact
 - `Timestamp >= today()` filters to current UTC day
 - The `remaining_credit_usd` decreases over time; the latest value is the most recent balance
 - Subquery approach works well to alias the verbose `LogAttributes['...']` keys
+
+## Querying from an exe.dev VM
+
+Set `CLICKHOUSE_USER` to `readonly:<password>` (see the readonly password above),
+then query:
+
+```bash
+curl -s --user "$CLICKHOUSE_USER" \
+  --data-binary 'SELECT version()' \
+  https://mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443
+```
+
+## Services and Hosts
+
+`ServiceName` identifies the emitting binary. `ResourceAttributes['host.name']` identifies
+the specific host. `ResourceAttributes['deployment.environment']` is `production` or `staging`.
+
+| ServiceName | What | Example hosts |
+|-------------|------|---------------|
+| `exeprox` | Edge proxy (HTTP/SSH) | `edge1-LAX`, `edge1-FRA`, `edge1-LHR`, etc. |
+| `exed` | Central controller | `exed-02` |
+| `exelet` | Container host agent | `exelet-lax-prod-04`, `exelet-lax2-prod-01` |
+| `metricsd` | Metrics collector | `exed-02` |
+
+## Request Tracing
+
+All services propagate `trace_id` via context. For HTTP requests, exeprox generates
+a trace_id in `tracing.HTTPMiddleware` and propagates it to exed via gRPC metadata.
+
+To trace a request, find it by host/uri/timestamp, then use the trace_id that
+exeprox assigned to follow the full call chain.
+
+### Tracing a request end-to-end
+
+1. Find the canonical log line for the request:
+
+```sql
+SELECT
+    Timestamp,
+    LogAttributes['trace_id'] AS trace_id,
+    LogAttributes['host'] AS host,
+    LogAttributes['uri'] AS uri,
+    Body
+FROM otel_logs
+WHERE LogAttributes['host'] = 'blog.philz.dev'
+  AND LogAttributes['uri'] = '/some-path'
+  AND LogAttributes['log_type'] = 'http_request'
+  AND Timestamp >= now() - INTERVAL 10 MINUTE
+ORDER BY Timestamp DESC
+LIMIT 5
+FORMAT PrettyCompact
+```
+
+2. Fetch all events for that trace:
+
+```sql
+SELECT
+    Timestamp,
+    ServiceName,
+    SeverityText,
+    Body,
+    LogAttributes['grpc.service'] AS grpc_service,
+    LogAttributes['grpc.method'] AS grpc_method,
+    LogAttributes['grpc.code'] AS grpc_code,
+    LogAttributes['grpc.time_ms'] AS grpc_time_ms,
+    LogAttributes['grpc.component'] AS grpc_component,
+    LogAttributes['log_type'] AS log_type,
+    ResourceAttributes['host.name'] AS hostname
+FROM otel_logs
+WHERE LogAttributes['trace_id'] = 'TRACE_ID_HERE'
+ORDER BY Timestamp ASC
+FORMAT PrettyCompact
+```
+
+### What a typical HTTP proxy trace looks like
+
+For a request to a custom domain (e.g. `blog.philz.dev`), a cold trace has
+~16 events across exeprox and exed:
+
+1. exeprox: `fetching box info` → gRPC `BoxInfo` client call
+2. exed: gRPC `BoxInfo` server handling (resolves hostname → VM)
+3. exeprox: `fetching box info exists` → gRPC `TopLevelCert` client call
+4. exed: gRPC `TopLevelCert` server handling (TLS cert for custom domain)
+5. exeprox: `fetching user info` → gRPC `UserInfo` client call
+6. exed: gRPC `UserInfo` server handling (resolves VM owner)
+7. exeprox: HTTP proxy to blogd container (not instrumented)
+8. exeprox: canonical `http_request` log line with all attributes
+
+On warm requests, BoxInfo and UserInfo are cached in exeprox's in-memory
+`hashtriemap`, reducing the trace to ~5 events (only TopLevelCert gRPC call
+remains, since TLS handshakes are per-connection).
+
+### Tracing gaps
+
+- **exeprox → container**: HTTP over the SSH sshpool tunnel; not instrumented
+
+### Latency from OTEL pipeline
+
+Logs take 30-60 seconds to appear in ClickHouse after being emitted
+(batching in OTEL collector + ClickHouse ingestion).
 
 ## Clickstack API (Dashboard Management)
 

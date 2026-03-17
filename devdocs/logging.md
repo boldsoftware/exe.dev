@@ -64,6 +64,24 @@ instances of that:
 
   Commands from the web UI include source=web.
 
+* gRPC calls (exeprox → exed, and exeprox → exelet)
+
+  "body: started call" / "body: finished call"
+
+  These are emitted by gRPC logging interceptors on both client and server side.
+  Base attributes: grpc.service, grpc.method, grpc.code, grpc.time_ms,
+  grpc.component ("client" or "server"), grpc.method_type, peer.address.
+
+  Key gRPC services and methods for HTTP proxy requests:
+  - exe.proxy.v1.ProxyInfoService / BoxInfo — resolves hostname to VM
+  - exe.proxy.v1.ProxyInfoService / TopLevelCert — fetches TLS cert for custom domains
+  - exe.proxy.v1.ProxyInfoService / UserInfo — resolves VM owner
+  - exe.proxy.v1.ProxyInfoService / CookieInfo — resolves auth cookies
+
+  The client side (exeprox) logs at DEBUG; the server side (exed) logs at INFO.
+  Both sides carry the same trace_id, so filtering by trace_id shows the full
+  client→server round trip.
+
 * gRPC "finished call" (exelet)
 
   "body: finished call", "log_type: grpc_request"
@@ -78,11 +96,26 @@ instances of that:
   Use `logging.AddFields(ctx, logging.Fields{"key", val})` (from
   go-grpc-middleware/v2/interceptors/logging) inside gRPC handlers.
 
+* HTTP Requests (exeprox)
+
+  "log_type: http_request" on the exeprox dataset.
+
+  Base attributes: method, host, uri, log_type, local_addr.
+
+  Proxy requests additionally have: proxy=true, vm_name, vm_id,
+  vm_owner_user_id, exelet_host, route_port, route_share (public|private).
+
+  Note: exeprox generates a trace_id for each request via
+  tracing.HTTPMiddleware (or uses an incoming X-Trace-ID header if present).
+
 * HTTP Requests (exelet)
 
   "log_type: http_request" on the exelet dataset.
 
   Attributes: method, uri, vm_name, remote_ip, original_path, new_path.
+
+  Note: exelet only logs requests to its own HTTP endpoints (e.g. /_/gateway).
+  Proxied HTTP traffic to containers goes over the SSH sshpool tunnel.
 
 
 If you want to add some stat to a request, instead of logging it separately,
