@@ -6399,9 +6399,9 @@ function makeRummydDashboard() {
       alert: {
         threshold: 1,
         condition: "lt",
-        forDuration: "2m",
+        forDuration: "5m",
         summary: "blog.exe.dev unreachable from {{ $labels.host }}",
-        description: "{{ $labels.host }} cannot reach blog.exe.dev (rummy_blog_up=0 for 2+ minutes). rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
+        description: "{{ $labels.host }} cannot reach blog.exe.dev (rummy_blog_up=0 for 5+ minutes). rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
         labels: { channel: "buzz" },
       },
     }
