@@ -187,9 +187,6 @@ func (s *Server) setupHTTPSServer() {
 		s.certManager.Client = stone.Client()
 	}
 
-	s.certRateLimiter = exeweb.NewCertRateLimiter(10)
-	s.certRateLimiter.RegisterMetrics(s.metricsRegistry)
-
 	// Single TLS dispatcher for all domains (exe.dev and Tailscale)
 	s.httpsServer = &http.Server{
 		Addr:     s.httpsLn.addr,
