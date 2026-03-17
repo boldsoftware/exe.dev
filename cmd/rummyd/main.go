@@ -222,7 +222,7 @@ func checkHost(host string, blogUp, blogCurlLatency, blogTotalLatency, blogGitSH
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "BatchMode=yes",
 		"ubuntu@"+host,
-		`curl -sf --max-time 10 -w '\n%{time_total}' https://blog.exe.dev/debug/gitsha`,
+		`curl -sSf --max-time 10 -w '\n%{time_total}' https://blog.exe.dev/debug/gitsha`,
 	)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -243,6 +243,10 @@ func checkHost(host string, blogUp, blogCurlLatency, blogTotalLatency, blogGitSH
 				detail = " (HTTP error from blog)"
 			case 28:
 				detail = " (curl timeout)"
+			case 35:
+				detail = " (SSL connect error)"
+			case 60:
+				detail = " (SSL certificate problem)"
 			case 255:
 				detail = " (SSH connection failed)"
 			}
