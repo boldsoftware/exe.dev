@@ -71,13 +71,14 @@ table.info th { width: 200px; }
 <h3 style="margin-top:20px;">Cold Migrate Individual VMs</h3>
 <p style="font-size:13px;color:#666;">For VMs that failed live migration. Stops the VM, transfers disk, restarts on target.</p>
 <table class="info">
-<thead><tr><th>Box</th><th style="width:auto;">Action</th></tr></thead>
+<thead><tr><th>Box</th><th>Current Region</th><th style="width:auto;">Action</th></tr></thead>
 <tbody>
 {{range .BoxesOutsideRegion}}
 <tr>
-<td><a href="/debug/vms/{{.}}">{{.}}</a></td>
+<td><a href="/debug/vms/{{.Name}}">{{.Name}}</a></td>
+<td>{{.Region}}</td>
 <td>
-<button class="coldMigrateBtn" data-box="{{.}}" style="padding:4px 10px;background:#6c757d;color:white;border:none;cursor:pointer;font-size:12px;">Cold Migrate</button>
+<button class="coldMigrateBtn" data-box="{{.Name}}" style="padding:4px 10px;background:#6c757d;color:white;border:none;cursor:pointer;font-size:12px;">Cold Migrate</button>
 </td>
 </tr>
 {{end}}

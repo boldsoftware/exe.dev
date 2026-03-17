@@ -4195,7 +4195,10 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RegionDisplay              string
 		GLBDefault                 string
 		AllRegions                 []region.Region
-		BoxesOutsideRegion         []string
+		BoxesOutsideRegion         []struct {
+			Name   string
+			Region string
+		}
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -4252,7 +4255,14 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	for _, b := range boxes {
 		ec := s.getExeletClient(b.Ctrhost)
 		if ec == nil || ec.region.Code != user.Region {
-			data.BoxesOutsideRegion = append(data.BoxesOutsideRegion, b.Name)
+			r := "unknown"
+			if ec != nil {
+				r = ec.region.Code
+			}
+			data.BoxesOutsideRegion = append(data.BoxesOutsideRegion, struct {
+				Name   string
+				Region string
+			}{b.Name, r})
 		}
 	}
 
