@@ -220,15 +220,7 @@ def main():
             print(f"q: {tool} not found", file=sys.stderr)
             raise SystemExit(1)
 
-    # --- Formatters ---
-    if not args.no_format:
-        run_formatters(ref)
-
-    # --- Resolve commit (after possible formatter amend) ---
-    commit = git("rev-parse", ref)
-    short = commit[:7]
-
-    # --- Fetch + check ---
+    # --- Fetch + check (before formatters so we fail fast on rebase needed) ---
     if not args.no_check:
         print("q: fetching origin/main...", file=sys.stderr)
         git("fetch", "origin", "main")
@@ -239,6 +231,14 @@ def main():
         if dry.returncode != 0:
             print(f"q: {ref} cannot fast-forward to origin/main; rebase first", file=sys.stderr)
             raise SystemExit(1)
+
+    # --- Formatters ---
+    if not args.no_format:
+        run_formatters(ref)
+
+    # --- Resolve commit (after possible formatter amend) ---
+    commit = git("rev-parse", ref)
+    short = commit[:7]
 
     # --- Show what's being pushed ---
     log_out = git("--no-pager", "log", "--oneline", f"origin/main..{ref}")
