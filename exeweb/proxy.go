@@ -192,16 +192,27 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	// Set box name label for metrics
 	metricsbag.SetLabel(r.Context(), LabelBox, boxName)
 
-	// Find the box.
-	// Careful: we aren't checking the team or owner in this look-up,
-	// so we must do it below.
-	box, exists, err := ps.Data.BoxInfo(r.Context(), boxName)
-	if err != nil {
-		ps.Lg.ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
+	// Fetch box info and resolve auth concurrently.
+	var (
+		box        BoxData
+		boxFound   bool
+		boxErr     error
+		authResult *ProxyAuthResult
+	)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		box, boxFound, boxErr = ps.Data.BoxInfo(r.Context(), boxName)
+	})
+	wg.Go(func() {
+		authResult = ps.GetProxyAuth(r, boxName)
+	})
+	wg.Wait()
+	if boxErr != nil {
+		ps.Lg.ErrorContext(r.Context(), "Failed to look up box", "error", boxErr, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	if !exists {
+	if !boxFound {
 		// Box doesn't exist - show 401 to avoid leaking existence
 		ps.RenderAccessRequired(w, r, nil)
 		return
@@ -225,6 +236,15 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		sloghttp.AddCustomAttributes(r, slog.Bool("owner_locked_out", true))
 		ps.RenderAccessRequired(w, r, nil)
 		return
+	}
+
+	if box.Name != boxName {
+		ps.Lg.ErrorContext(r.Context(), "box name mismatch", "domain_resolved", boxName, "db_name", box.Name)
+	}
+	// Now that the box is confirmed to exist, bump the cookie atime.
+	// Deferred from GetProxyAuth to avoid DB writes for nonexistent boxes.
+	if authResult != nil && authResult.cookieValue != "" {
+		ps.touchCookieAtime(r.Context(), authResult.cookieValue)
 	}
 
 	// Determine final route:
@@ -260,12 +280,9 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		sloghttp.AddCustomAttributes(r, slog.Bool("proxy_shelley", true))
 	}
 
-	// Apply authentication based on route share setting
-	var authResult *ProxyAuthResult
+	// Apply authentication based on route share setting.
+	// authResult was resolved concurrently with BoxInfo above.
 	if route.Share == "private" {
-		// Check if user is authenticated
-		// (cookie, Bearer token, or Basic auth).
-		authResult = ps.GetProxyAuth(r, box.Name)
 		if authResult == nil {
 			// Not authenticated by any method.
 			// If the request has an Authorization header,
@@ -370,19 +387,6 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
 		}
 		return
-	}
-
-	// Resolve proxy auth once,
-	// reusing the result from the
-	// private-route check if available.
-	// On public routes this is best-effort:
-	// a valid token scoped to this VM
-	// will carry its ctx through,
-	// but a token for a different VM simply fails
-	// namespace validation and produces no auth result
-	// (no cross-container leak).
-	if authResult == nil {
-		authResult = ps.GetProxyAuth(r, box.Name)
 	}
 
 	// Strip valid share tokens to prevent leakage to containers.
@@ -511,6 +515,11 @@ type ProxyAuthResult struct {
 	// CtxRaw is non-nil if we authenticated using a token.
 	// The raw bytes are passed to the VM's HTTP server.
 	CtxRaw []byte
+
+	// cookieValue is the raw cookie that authenticated this request.
+	// Set only for cookie-based auth so the caller can defer
+	// the last-used-time update to after the box is confirmed to exist.
+	cookieValue string
 }
 
 // HandleMagicAuth handles the magic authentication URL /__exe.dev/auth.
@@ -697,8 +706,12 @@ func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthR
 	}
 
 	// 3. Fall back to cookie-based auth.
-	if userID, err := ps.ValidateProxyAuthCookie(r); err == nil {
-		return &ProxyAuthResult{UserID: userID}
+	// Uses validateNamedAuthCookie directly (skipping atime bump)
+	// so the caller can defer the bump to after confirming the box exists.
+	if port, err := GetRequestPort(r); err == nil {
+		if userID, cv, err := ps.validateNamedAuthCookie(r, ProxyAuthCookieName(port)); err == nil {
+			return &ProxyAuthResult{UserID: userID, cookieValue: cv}
+		}
 	}
 
 	// 4. Check if the proxy cookie contains an app token.
@@ -795,7 +808,12 @@ func (ps *ProxyServer) validateToken(ctx context.Context, token, namespace strin
 // ValidateAuthCookie validates the primary authentication cookie
 // and returns the user ID.
 func (ps *ProxyServer) ValidateAuthCookie(r *http.Request) (string, error) {
-	return ps.validateNamedAuthCookie(r, "exe-auth")
+	userID, cookieValue, err := ps.validateNamedAuthCookie(r, "exe-auth")
+	if err != nil {
+		return "", err
+	}
+	ps.touchCookieAtime(r.Context(), cookieValue)
+	return userID, nil
 }
 
 // ValidateProxyAuthCookie validates the proxy authentication cookie
@@ -806,18 +824,26 @@ func (ps *ProxyServer) ValidateProxyAuthCookie(r *http.Request) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("failed to get port from request: %w", err)
 	}
-	return ps.validateNamedAuthCookie(r, ProxyAuthCookieName(port))
+	userID, cookieValue, err := ps.validateNamedAuthCookie(r, ProxyAuthCookieName(port))
+	if err != nil {
+		return "", err
+	}
+	ps.touchCookieAtime(r.Context(), cookieValue)
+	return userID, nil
 }
 
-func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {
+// validateNamedAuthCookie validates the named auth cookie and returns the
+// authenticated user ID and the raw cookie value. It does not update the
+// cookie's last-used time; callers that want that should call touchCookieAtime.
+func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName string) (string, string, error) {
 	cookie, err := r.Cookie(cookieName)
 	if err != nil {
 		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
 		// so be sure to wrap the error returned from r.Cookie.
-		return "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
+		return "", "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
 	}
 	if cookie.Value == "" {
-		return "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
+		return "", "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
 	}
 
 	ctx := r.Context()
@@ -828,11 +854,11 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 	// Get auth cookie info
 	cookieData, exists, err := ps.Data.CookieInfo(ctx, cookieValue, domain)
 	if err != nil {
-		return "", fmt.Errorf("database error: %w", err)
+		return "", "", fmt.Errorf("database error: %w", err)
 	}
 	if !exists {
 		ps.CookieAtimes.Delete(cookieValue)
-		return "", fmt.Errorf("invalid cookie")
+		return "", "", fmt.Errorf("invalid cookie")
 	}
 
 	// Check if cookie has expired.
@@ -840,12 +866,16 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 		// We don't call DeleteAuthCookie here;
 		// we expect the CookieInfo method to handle that.
 		ps.CookieAtimes.Delete(cookieValue)
-		return "", fmt.Errorf("cookie expired")
+		return "", "", fmt.Errorf("cookie expired")
 	}
 
-	// Update last used time, at most once per cookie per UTC day.
-	// Runs in a goroutine to avoid blocking the request.
-	// Only caches on success so transient failures allow retries.
+	return cookieData.UserID, cookieValue, nil
+}
+
+// touchCookieAtime records that a validated auth cookie was used today.
+// The DB update runs in a background goroutine to avoid blocking the caller.
+// Deduplicates via ps.CookieAtimes so at most one write per cookie per UTC day.
+func (ps *ProxyServer) touchCookieAtime(ctx context.Context, cookieValue string) {
 	today := time.Now().UTC().Format("2006-01-02")
 	if prev, ok := ps.CookieAtimes.Load(cookieValue); !ok || prev.(string) != today {
 		go func() {
@@ -855,8 +885,6 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 			ps.CookieAtimes.Store(cookieValue, today)
 		}()
 	}
-
-	return cookieData.UserID, nil
 }
 
 // CheckShareLinkAccess reports whether the request has a share token
