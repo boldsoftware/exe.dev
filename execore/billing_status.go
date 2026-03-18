@@ -85,6 +85,7 @@ func (s *Server) UserHasEntitlement(ctx context.Context, source entitlement.Sour
 		BillingExemption:   row.BillingExemption,
 		CreatedAt:          row.CreatedAt,
 		BillingTrialEndsAt: row.BillingTrialEndsAt,
+		TeamBillingActive:  s.teamBillingCovers(ctx, userID),
 	}
 	version := entitlement.GetPlanVersion(inputs)
 	granted := entitlement.PlanGrants(version, ent)

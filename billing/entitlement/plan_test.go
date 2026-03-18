@@ -22,6 +22,16 @@ func TestPlanGrants(t *testing.T) {
 		{VersionBasic, LLMUse, true},
 		{VersionBasic, VMCreate, false},
 		{VersionTeam, ComputeDebt, true},
+		{VersionTeam, VMCreate, true},
+		{VersionTeam, VMConnect, true},
+		{VersionTeam, LLMUse, true},
+		{VersionTeam, CreditRenew, true},
+		{VersionTeam, CreditPurchase, true},
+		{VersionTeam, CreditRefresh, true},
+		{VersionTeam, ComputeSpend, true},
+		{VersionTeam, ComputePurchase, true},
+		{VersionTeam, AdminOverride, false},
+		{VersionTeam, ComputeOnDemand, false},
 	}
 	for _, tt := range tests {
 		got := PlanGrants(tt.version, tt.ent)
@@ -106,6 +116,26 @@ func TestGetPlanVersion(t *testing.T) {
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate},
 			want:   VersionBasic,
 		},
+		{
+			name:   "team member covered by billing owner",
+			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate, TeamBillingActive: true},
+			want:   VersionTeam,
+		},
+		{
+			name:   "canceled user on team still basic",
+			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", TeamBillingActive: true},
+			want:   VersionBasic,
+		},
+		{
+			name:   "individual with own billing ignores team",
+			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active", TeamBillingActive: true},
+			want:   VersionIndividual,
+		},
+		{
+			name:   "grandfathered user on team stays grandfathered",
+			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate, TeamBillingActive: true},
+			want:   VersionGrandfathered,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -114,6 +144,43 @@ func TestGetPlanVersion(t *testing.T) {
 				t.Errorf("GetPlanVersion() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestTeamMemberCanCreateVM exercises the exact bug scenario:
+// a team member with no personal billing whose team billing owner covers them
+// should resolve to VersionTeam and be granted VMCreate.
+func TestTeamMemberCanCreateVM(t *testing.T) {
+	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	inputs := UserPlanInputs{
+		Category:          "no_billing",
+		CreatedAt:         &newDate,
+		TeamBillingActive: true,
+	}
+	version := GetPlanVersion(inputs)
+	if version != VersionTeam {
+		t.Fatalf("GetPlanVersion() = %q, want %q", version, VersionTeam)
+	}
+	if !PlanGrants(version, VMCreate) {
+		t.Errorf("PlanGrants(%q, VMCreate) = false, want true", version)
+	}
+}
+
+// TestTeamMemberDeniedWithoutBillingOwner verifies that a team member
+// without billing owner coverage falls through to Basic and is denied VMCreate.
+func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
+	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	inputs := UserPlanInputs{
+		Category:          "no_billing",
+		CreatedAt:         &newDate,
+		TeamBillingActive: false,
+	}
+	version := GetPlanVersion(inputs)
+	if version != VersionBasic {
+		t.Fatalf("GetPlanVersion() = %q, want %q", version, VersionBasic)
+	}
+	if PlanGrants(version, VMCreate) {
+		t.Errorf("PlanGrants(%q, VMCreate) = true, want false", version)
 	}
 }
 

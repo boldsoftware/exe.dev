@@ -157,6 +157,9 @@ type UserPlanInputs struct {
 
 	// HasExplicitOverrides indicates VIP-style per-user overrides exist.
 	HasExplicitOverrides bool
+
+	// TeamBillingActive is true when the user's team billing owner has active billing.
+	TeamBillingActive bool
 }
 
 // GetPlanVersion maps existing billing state to a PlanVersion.
@@ -192,6 +195,11 @@ func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
 	// Grandfathered: created before the billing-required date.
 	if inputs.CreatedAt != nil && inputs.CreatedAt.Before(billingRequiredDate) {
 		return VersionGrandfathered
+	}
+
+	// Team: user has no individual plan but their team billing owner covers them.
+	if inputs.TeamBillingActive {
+		return VersionTeam
 	}
 
 	return VersionBasic
