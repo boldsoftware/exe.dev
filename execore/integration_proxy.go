@@ -94,7 +94,7 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 	sloghttp.AddCustomAttributes(r, slog.String("integration_type", integration.Type))
 	sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
 
-	resp, err := s.buildProxyConfig(ctx, integration.Type, integration.Config)
+	resp, err := s.buildProxyConfig(ctx, box.CreatedByUserID, integration.Type, integration.Config)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "integration config: failed to build proxy config", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -109,12 +109,12 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 // buildProxyConfig transforms a type-specific integration config into a
 // generic proxy configuration that the exelet can apply without knowing
 // about integration types.
-func (s *Server) buildProxyConfig(ctx context.Context, typ, configJSON string) (integrationConfigResponse, error) {
+func (s *Server) buildProxyConfig(ctx context.Context, ownerUserID, typ, configJSON string) (integrationConfigResponse, error) {
 	switch typ {
 	case "http-proxy":
 		return buildHTTPProxyConfig(configJSON)
 	case "github":
-		return s.buildGitHubProxyConfig(ctx, configJSON)
+		return s.buildGitHubProxyConfig(ctx, ownerUserID, configJSON)
 	default:
 		return integrationConfigResponse{OK: false}, errors.New("unsupported integration type: " + typ)
 	}
@@ -147,13 +147,36 @@ func buildHTTPProxyConfig(configJSON string) (integrationConfigResponse, error) 
 	return resp, nil
 }
 
-func (s *Server) buildGitHubProxyConfig(ctx context.Context, configJSON string) (integrationConfigResponse, error) {
+func (s *Server) buildGitHubProxyConfig(ctx context.Context, ownerUserID, configJSON string) (integrationConfigResponse, error) {
 	var cfg githubIntegrationConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return integrationConfigResponse{OK: false}, err
 	}
 
-	token, err := s.mintGitHubToken(ctx, configJSON)
+	// Resolve the current installation ID from github_accounts rather than
+	// using the potentially stale value baked into the integration config.
+	// When a GitHub App is reinstalled, it gets a new installation ID;
+	// the github_accounts table is updated by "integrations setup github"
+	// but existing integration configs are not.
+	if len(cfg.Repositories) > 0 {
+		repoOwner, _, _ := strings.Cut(cfg.Repositories[0], "/")
+		if repoOwner != "" {
+			ghAccount, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetGitHubAccountByTarget, exedb.GetGitHubAccountByTargetParams{
+				UserID:      ownerUserID,
+				TargetLogin: repoOwner,
+			})
+			if err == nil && ghAccount.InstallationID != cfg.InstallationID {
+				s.slog().InfoContext(ctx, "integration config: resolved updated installation ID",
+					"old_installation_id", cfg.InstallationID,
+					"new_installation_id", ghAccount.InstallationID,
+					"target", repoOwner,
+				)
+				cfg.InstallationID = ghAccount.InstallationID
+			}
+		}
+	}
+
+	token, err := s.mintGitHubToken(ctx, cfg)
 	if err != nil {
 		return integrationConfigResponse{OK: false}, err
 	}
@@ -189,12 +212,7 @@ type ghTokenCacheEntry struct {
 }
 
 // mintGitHubToken returns a cached or freshly-minted installation access token.
-func (s *Server) mintGitHubToken(ctx context.Context, configJSON string) (string, error) {
-	var cfg githubIntegrationConfig
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		return "", err
-	}
-
+func (s *Server) mintGitHubToken(ctx context.Context, cfg githubIntegrationConfig) (string, error) {
 	key := ghTokenCacheKey{InstallationID: cfg.InstallationID, Repositories: strings.Join(cfg.Repositories, ",")}
 
 	s.ghTokenCacheMu.Lock()

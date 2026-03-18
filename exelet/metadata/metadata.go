@@ -347,6 +347,7 @@ func (s *Service) fetchIntegrationCertPEM(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+	tracing.SetTraceIDHeader(ctx, req.Header)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -755,6 +756,7 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		s.log.ErrorContext(ctx, "integration config: request build failed", "error", err)
 		return negative
 	}
+	tracing.SetTraceIDHeader(ctx, req.Header)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
