@@ -46,6 +46,7 @@ type WebProxy struct {
 	exedHTTPSPort int
 
 	transportCache *exeweb.TransportCache
+	certCache      *certCache
 
 	httpLn     *listener
 	httpServer *http.Server
@@ -377,7 +378,9 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 
 	// 2) BoxHost (exe.xyz) uses wildcard certs via DNS-01
 	if domz.FirstMatch(serverName, wp.env.BoxHost) != "" {
-		cert, err := wp.exeproxData().CertForDomain(hello.Context(), serverName)
+		cert, err := wp.certCache.get(hello.Context(), serverName, func(ctx context.Context) (*tls.Certificate, error) {
+			return wp.exeproxData().CertForDomain(ctx, serverName)
+		})
 		if err != nil && strings.Contains(err.Error(), wildcardcert.ErrUnrecognizedDomain.Error()) {
 			wp.lg().DebugContext(hello.Context(), "wildcard CertForDomain rejected unrecognized domain", "serverName", serverName, "error", err)
 		} else if err != nil {
@@ -393,8 +396,29 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	}
 
 	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
-	// Pass on to exed.
-	cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)
+	// ACME challenge connections must always reach exed so it can
+	// serve the challenge-response certificate.
+	if len(hello.SupportedProtos) == 1 && hello.SupportedProtos[0] == acme.ALPNProto {
+		cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)
+		if err != nil {
+			wp.lg().ErrorContext(hello.Context(), "top level cert retrieval failed", "serverName", serverName, "error", err)
+		}
+		return cert, err
+	}
+
+	// Cache key incorporates the client's TLS capabilities so that
+	// autocert's cert-type selection (ECDSA vs RSA) is preserved.
+	// See certCacheKey for details on the strategy.
+	//
+	// The fetch closure captures hello, which intentionally outlives the
+	// TLS handshake: on a cache hit the closure runs in a background
+	// goroutine. TopLevelCert only reads value-type fields from hello
+	// to build the gRPC protobuf, so this is safe. (crypto/tls does not
+	// reuse or mutate ClientHelloInfo after GetCertificate returns.)
+	ck := certCacheKey(serverName, hello)
+	cert, err := wp.certCache.get(hello.Context(), ck, func(ctx context.Context) (*tls.Certificate, error) {
+		return wp.exeproxData().TopLevelCert(ctx, hello)
+	})
 	if err != nil {
 		wp.lg().ErrorContext(hello.Context(), "top level cert retrieval failed", "serverName", serverName, "error", err)
 	}

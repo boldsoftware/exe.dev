@@ -40,6 +40,7 @@ type ProxyConfig struct {
 	GRPCLatency     time.Duration // artificial latency on gRPC calls, 0 to disable
 	HTTPAddr        string        // address on which to serve HTTP
 	HTTPSAddr       string        // address on which to serve HTTPS
+	CertCacheDir    string        // directory for cached TLS certs, empty to disable
 	MetricsRegistry *prometheus.Registry
 }
 
@@ -111,6 +112,15 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 		Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry),
 	}
 
+	var cc *certCache
+	if cfg.CertCacheDir != "" && cfg.HTTPSAddr != "" {
+		var err error
+		cc, err = newCertCache(cfg.CertCacheDir, lg)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	p := &Proxy{
 		grpcClient:      grpcClient,
 		lg:              lg,
@@ -126,6 +136,7 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 			netHTTPLogger:  log.New(httpLogger{cfg.Logger}, "", 0),
 			templates:      tmpls,
 			transportCache: exeweb.NewTransportCache(5 * time.Minute),
+			certCache:      cc,
 		},
 	}
 	p.exeproxData = newGRPCExeproxData(grpcClient, lg, &p.boxes, &p.users)

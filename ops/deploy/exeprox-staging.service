@@ -11,7 +11,7 @@ WorkingDirectory=/home/ubuntu
 EnvironmentFile=/etc/default/exeprox
 
 # Use the latest timestamp version
-ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeprox.* | head -n1)" -exed-grpc-addr=tcp://exed-staging-01:2225 -http=:80 -https=:443 -stage staging'
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeprox.* | head -n1)" -exed-grpc-addr=tcp://exed-staging-01:2225 -http=:80 -https=:443 -stage staging -cert-cache-dir=/home/ubuntu/exeprox-cert-cache'
 
 Restart=always
 RestartSec=5

@@ -37,6 +37,7 @@ func run() error {
 	exedGRPCAddr := flag.String("exed-grpc-addr", "", "exed GRPC server address for proxies")
 	httpAddr := flag.String("http", ":8081", "HTTP server address, empty to disable")
 	httpsAddr := flag.String("https", "", "HTTPS server address, empty to disable")
+	certCacheDir := flag.String("cert-cache-dir", "exeprox-cert-cache", "directory for cached TLS certificates")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	grpcLatency := flag.Duration("grpc-latency", 0, "artificial latency on gRPC calls to exed (e.g. 500ms)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exeprox-profile-<timestamp>.prof or specified path")
@@ -112,6 +113,7 @@ func run() error {
 		GRPCLatency:     *grpcLatency,
 		HTTPAddr:        *httpAddr,
 		HTTPSAddr:       *httpsAddr,
+		CertCacheDir:    *certCacheDir,
 		MetricsRegistry: metricsRegistry,
 	}
 
