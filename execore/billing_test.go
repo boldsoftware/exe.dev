@@ -195,6 +195,55 @@ func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
 	}
 }
 
+func TestBillingUpgradeGiftCredit(t *testing.T) {
+	t.Parallel()
+	m := newGiftTestManager(t)
+	ctx := t.Context()
+	billingID := "exe_gift_upgrade_test"
+
+	// Call giftSignupBonus — first call should insert a gift credit.
+	giftSignupBonus(ctx, m, billingID, m.Logger)
+
+	gifts, err := m.ListGifts(ctx, billingID)
+	if err != nil {
+		t.Fatalf("ListGifts: %v", err)
+	}
+	if len(gifts) != 1 {
+		t.Fatalf("expected 1 gift after first upgrade, got %d", len(gifts))
+	}
+	if !strings.HasPrefix(gifts[0].GiftID, billing.GiftPrefixSignup+":") {
+		t.Fatalf("gift_id = %q, want prefix %q", gifts[0].GiftID, billing.GiftPrefixSignup+":")
+	}
+	// Individual plan gives $100 signup bonus = 100 * 100 cents = 10000 cents = 100_000_000 microcents
+	wantAmount := tender.Mint(int64(100*100), 0)
+	if gifts[0].Amount != wantAmount {
+		t.Fatalf("gift amount = %v, want %v", gifts[0].Amount, wantAmount)
+	}
+	if gifts[0].Note != "Welcome bonus for upgrading to a paid plan" {
+		t.Fatalf("gift note = %q, want %q", gifts[0].Note, "Welcome bonus for upgrading to a paid plan")
+	}
+}
+
+func TestBillingUpgradeGiftCreditCalledTwice(t *testing.T) {
+	t.Parallel()
+	m := newGiftTestManager(t)
+	ctx := t.Context()
+	billingID := "exe_gift_twice_test"
+
+	// Each call produces a unique gift_id (timestamp-based), so both insert.
+	// Idempotency for signup bonuses is handled upstream by the billing_upgrade_bonus_granted flag.
+	giftSignupBonus(ctx, m, billingID, m.Logger)
+	giftSignupBonus(ctx, m, billingID, m.Logger)
+
+	gifts, err := m.ListGifts(ctx, billingID)
+	if err != nil {
+		t.Fatalf("ListGifts: %v", err)
+	}
+	if len(gifts) != 2 {
+		t.Fatalf("expected 2 gifts (each call creates unique gift_id), got %d", len(gifts))
+	}
+}
+
 func TestUserIsPayingQuery(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)

@@ -86,6 +86,8 @@ type GrantBillingUpgradeBonusOnceParams struct {
 	LastRefreshAt   time.Time `db:"last_refresh_at" json:"last_refresh_at"`
 }
 
+// Deprecated: GrantBillingUpgradeBonusOnce is superseded by billing.GiftCredits
+// with billing.GiftPrefixSignup. Remove once the old credit path is fully migrated.
 func (q *Queries) GrantBillingUpgradeBonusOnce(ctx context.Context, arg GrantBillingUpgradeBonusOnceParams) error {
 	_, err := q.exec(ctx, q.grantBillingUpgradeBonusOnceStmt, grantBillingUpgradeBonusOnce, arg.UserID, arg.AvailableCredit, arg.LastRefreshAt)
 	return err

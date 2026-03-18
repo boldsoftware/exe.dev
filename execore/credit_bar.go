@@ -2,6 +2,7 @@ package execore
 
 import (
 	"fmt"
+	"strings"
 
 	"exe.dev/billing"
 )
@@ -179,4 +180,17 @@ func buildGiftRows(bonusGrantAmount float64, giftEntries []billing.GiftEntry) []
 		return nil
 	}
 	return rows
+}
+
+// hasSignupGiftInLedger returns true if any gift entry has a GiftID prefixed
+// with "signup:" (i.e. the signup bonus has been migrated to the billing ledger).
+// When true, callers should zero out bonusGrantAmount and bonusRemaining to
+// avoid double-counting the bonus in both the old flag path and the gift path.
+func hasSignupGiftInLedger(entries []billing.GiftEntry) bool {
+	for _, g := range entries {
+		if strings.HasPrefix(g.GiftID, billing.GiftPrefixSignup+":") {
+			return true
+		}
+	}
+	return false
 }

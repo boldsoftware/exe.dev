@@ -27,6 +27,8 @@ import (
 	sloghttp "github.com/samber/slog-http"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
+
 	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
@@ -530,6 +532,10 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			s.slog().ErrorContext(r.Context(), "failed to top up LLM credit after billing upgrade", "error", err)
 			// Don't fail the request - the account is activated, this is just a bonus
 		}
+		// Grant one-time signup bonus via the new gift credit system.
+		// This runs alongside TopUpOnBillingUpgrade during the transition period;
+		// once the old llmgateway credit path is removed, only this will remain.
+		giftSignupBonus(r.Context(), s.billing, billingID, s.slog())
 		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
 		s.slackFeed.Subscribed(r.Context(), userID)
 
@@ -2090,4 +2096,24 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 	expected := hex.EncodeToString(mac.Sum(nil))
 
 	return hmac.Equal([]byte(expected), []byte(providedHMAC))
+}
+
+// giftSignupBonus grants a one-time signup bonus via the billing credit ledger.
+// Errors are logged but not returned — the caller should not fail the request.
+//
+// TODO: This should eventually be triggered by a Stripe webhook (e.g. subscription.active)
+// instead of being called inline from the checkout callback.
+func giftSignupBonus(ctx context.Context, mgr *billing.Manager, billingID string, logger *slog.Logger) {
+	plan, ok := entitlement.GetPlan(entitlement.VersionIndividual)
+	if !ok || plan.Quotas.SignupBonusCreditUSD == 0 {
+		return
+	}
+
+	if err := mgr.GiftCredits(ctx, billingID, &billing.GiftCreditsParams{
+		AmountUSD:  plan.Quotas.SignupBonusCreditUSD,
+		GiftPrefix: billing.GiftPrefixSignup,
+		Note:       "Welcome bonus for upgrading to a paid plan",
+	}); err != nil {
+		logger.ErrorContext(ctx, "failed to gift signup bonus credits", "error", err, "billing_id", billingID)
+	}
 }

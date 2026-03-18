@@ -1677,6 +1677,13 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 		giftCreditsUSD = giftCreditsUSDFromLedger(giftEntries)
 	}
+	// If the signup bonus has been migrated to the billing ledger, zero out
+	// the old bonus fields to avoid double-counting (the bonus is now counted
+	// via giftCreditsUSD).
+	if hasSignupGiftInLedger(giftEntries) {
+		bonusGrantAmount = 0
+		bonusRemaining = 0
+	}
 	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
 	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD
 	if extraCreditsUSD < 0 {

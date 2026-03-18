@@ -261,9 +261,9 @@ func TestGiftCredits(t *testing.T) {
 	createTestAccount(t, m.DB, accountID, "user_gift_test")
 
 	err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-		Amount: tender.Mint(5000, 0), // $50
-		GiftID: "gift_001",
-		Note:   "Thanks for being awesome",
+		AmountUSD:  50.0,
+		GiftPrefix: GiftPrefixDebug,
+		Note:       "Thanks for being awesome",
 	})
 	if err != nil {
 		t.Fatalf("GiftCredits: %v", err)
@@ -279,35 +279,33 @@ func TestGiftCredits(t *testing.T) {
 	}
 }
 
-func TestGiftCreditsIdempotency(t *testing.T) {
+func TestGiftCreditsMultipleCalls(t *testing.T) {
 	m := &Manager{DB: newTestDB(t)}
 	ctx := t.Context()
 
-	accountID := "exe_gift_idempotent"
-	createTestAccount(t, m.DB, accountID, "user_gift_idempotent")
+	accountID := "exe_gift_multi"
+	createTestAccount(t, m.DB, accountID, "user_gift_multi")
 
 	p := &GiftCreditsParams{
-		Amount: tender.Mint(2500, 0),
-		GiftID: "gift_dup",
-		Note:   "Duplicate gift test",
+		AmountUSD:  25.0,
+		GiftPrefix: GiftPrefixDebug,
+		Note:       "Repeated gift",
 	}
 
 	if err := m.GiftCredits(ctx, accountID, p); err != nil {
 		t.Fatalf("GiftCredits first: %v", err)
 	}
-
-	// Second call with same gift_id should be silently ignored (INSERT OR IGNORE).
 	if err := m.GiftCredits(ctx, accountID, p); err != nil {
 		t.Fatalf("GiftCredits second: %v", err)
 	}
 
-	// Balance should only reflect one gift.
+	// Each call produces a unique gift_id (timestamp-based), so both insert.
 	balance, err := m.SpendCredits(ctx, accountID, 0, tender.Zero())
 	if err != nil {
 		t.Fatalf("SpendCredits read balance: %v", err)
 	}
-	if want := tender.Mint(2500, 0); balance != want {
-		t.Fatalf("balance = %v, want %v (double-credited?)", balance, want)
+	if want := tender.Mint(5000, 0); balance != want {
+		t.Fatalf("balance = %v, want %v (expected two gifts)", balance, want)
 	}
 }
 
@@ -319,8 +317,8 @@ func TestGiftCreditsDefaultNote(t *testing.T) {
 	createTestAccount(t, m.DB, accountID, "user_gift_default_note")
 
 	err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-		Amount: tender.Mint(100, 0),
-		GiftID: "gift_default_note",
+		AmountUSD:  1.0,
+		GiftPrefix: GiftPrefixDebug,
 		// Note intentionally empty
 	})
 	if err != nil {
@@ -349,8 +347,8 @@ func TestGiftCreditsValidation(t *testing.T) {
 
 	t.Run("zero amount", func(t *testing.T) {
 		err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-			Amount: tender.Zero(),
-			GiftID: "gift_zero",
+			AmountUSD:  0,
+			GiftPrefix: GiftPrefixDebug,
 		})
 		if err == nil {
 			t.Fatal("GiftCredits with zero amount: error = nil, want non-nil")
@@ -359,21 +357,21 @@ func TestGiftCreditsValidation(t *testing.T) {
 
 	t.Run("negative amount", func(t *testing.T) {
 		err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-			Amount: tender.Mint(-100, 0),
-			GiftID: "gift_negative",
+			AmountUSD:  -1.0,
+			GiftPrefix: GiftPrefixDebug,
 		})
 		if err == nil {
 			t.Fatal("GiftCredits with negative amount: error = nil, want non-nil")
 		}
 	})
 
-	t.Run("empty gift_id", func(t *testing.T) {
+	t.Run("empty prefix", func(t *testing.T) {
 		err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-			Amount: tender.Mint(100, 0),
-			GiftID: "",
+			AmountUSD:  1.0,
+			GiftPrefix: "",
 		})
 		if err == nil {
-			t.Fatal("GiftCredits with empty gift_id: error = nil, want non-nil")
+			t.Fatal("GiftCredits with empty prefix: error = nil, want non-nil")
 		}
 	})
 }
@@ -387,9 +385,9 @@ func TestGetCreditState(t *testing.T) {
 
 	// Add a gift.
 	err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
-		Amount: tender.Mint(5000, 0), // $50
-		GiftID: "state_gift_1",
-		Note:   "Gift 1",
+		AmountUSD:  50.0,
+		GiftPrefix: GiftPrefixDebug,
+		Note:       "Gift 1",
 	})
 	if err != nil {
 		t.Fatalf("GiftCredits: %v", err)
@@ -445,14 +443,15 @@ func TestListGifts(t *testing.T) {
 	createTestAccount(t, m.DB, accountID, "user_list_gifts")
 
 	// Add multiple gifts.
-	for _, g := range []GiftCreditsParams{
-		{Amount: tender.Mint(1000, 0), GiftID: "list_gift_1", Note: "First gift"},
-		{Amount: tender.Mint(2000, 0), GiftID: "list_gift_2", Note: "Second gift"},
-		{Amount: tender.Mint(3000, 0), GiftID: "list_gift_3", Note: "Third gift"},
-	} {
-		g := g
-		if err := m.GiftCredits(ctx, accountID, &g); err != nil {
-			t.Fatalf("GiftCredits(%s): %v", g.GiftID, err)
+	notes := []string{"First gift", "Second gift", "Third gift"}
+	amounts := []float64{10.0, 20.0, 30.0}
+	for i := range notes {
+		if err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
+			AmountUSD:  amounts[i],
+			GiftPrefix: GiftPrefixDebug,
+			Note:       notes[i],
+		}); err != nil {
+			t.Fatalf("GiftCredits(%s): %v", notes[i], err)
 		}
 	}
 
@@ -466,25 +465,52 @@ func TestListGifts(t *testing.T) {
 	}
 
 	// Ordered DESC by created_at, so most recent first.
-	if gifts[0].GiftID != "list_gift_3" {
-		t.Fatalf("gifts[0].GiftID = %q, want %q", gifts[0].GiftID, "list_gift_3")
-	}
-	if gifts[1].GiftID != "list_gift_2" {
-		t.Fatalf("gifts[1].GiftID = %q, want %q", gifts[1].GiftID, "list_gift_2")
-	}
-	if gifts[2].GiftID != "list_gift_1" {
-		t.Fatalf("gifts[2].GiftID = %q, want %q", gifts[2].GiftID, "list_gift_1")
-	}
-
-	// Verify fields on the first entry.
-	if want := tender.Mint(3000, 0); gifts[0].Amount != want {
-		t.Fatalf("gifts[0].Amount = %v, want %v", gifts[0].Amount, want)
-	}
 	if gifts[0].Note != "Third gift" {
 		t.Fatalf("gifts[0].Note = %q, want %q", gifts[0].Note, "Third gift")
 	}
+	if gifts[1].Note != "Second gift" {
+		t.Fatalf("gifts[1].Note = %q, want %q", gifts[1].Note, "Second gift")
+	}
+	if gifts[2].Note != "First gift" {
+		t.Fatalf("gifts[2].Note = %q, want %q", gifts[2].Note, "First gift")
+	}
+
+	// Verify amount on the first entry ($30 = 3000 cents).
+	if want := tender.Mint(3000, 0); gifts[0].Amount != want {
+		t.Fatalf("gifts[0].Amount = %v, want %v", gifts[0].Amount, want)
+	}
 	if gifts[0].CreatedAt.IsZero() {
 		t.Fatal("gifts[0].CreatedAt is zero")
+	}
+}
+
+func TestGiftCreditsSignupPrefix(t *testing.T) {
+	m := &Manager{DB: newTestDB(t)}
+	ctx := t.Context()
+
+	accountID := "exe_signup_gift"
+	createTestAccount(t, m.DB, accountID, "user_signup_gift")
+
+	if err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
+		AmountUSD:  100.0,
+		GiftPrefix: GiftPrefixSignup,
+		Note:       "Signup bonus",
+	}); err != nil {
+		t.Fatalf("GiftCredits: %v", err)
+	}
+
+	gifts, err := m.ListGifts(ctx, accountID)
+	if err != nil {
+		t.Fatalf("ListGifts: %v", err)
+	}
+	if len(gifts) != 1 {
+		t.Fatalf("len(gifts) = %d, want 1", len(gifts))
+	}
+	if !strings.HasPrefix(gifts[0].GiftID, GiftPrefixSignup+":") {
+		t.Fatalf("gifts[0].GiftID = %q, want prefix %q", gifts[0].GiftID, GiftPrefixSignup+":")
+	}
+	if gifts[0].Note != "Signup bonus" {
+		t.Fatalf("gifts[0].Note = %q, want %q", gifts[0].Note, "Signup bonus")
 	}
 }
 

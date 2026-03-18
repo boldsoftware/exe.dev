@@ -244,6 +244,9 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 				return err
 			}
 			initialLastRefresh := now.UTC()
+			// Deprecated: this billing_upgrade_bonus_granted path is superseded by
+			// billing.GiftCredits with billing.GiftPrefixSignup. Remove once the
+			// old credit path is fully migrated.
 			if hasBilling {
 				if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
 					UserID:          userID,
@@ -294,6 +297,9 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 		if err != nil {
 			return err
 		}
+		// Deprecated: this billing_upgrade_bonus_granted check is superseded by
+		// billing.GiftCredits with billing.GiftPrefixSignup. Remove once the
+		// old credit path is fully migrated.
 		if hasBilling && credit.BillingUpgradeBonusGranted == 0 {
 			if err := q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{
 				UserID:          userID,
@@ -337,7 +343,8 @@ func CheckAndRefreshCreditDB(ctx context.Context, db *sqlite.DB, userID string, 
 	return info, err
 }
 
-// TopUpOnBillingUpgrade applies the one-time subscription upgrade bonus.
+// Deprecated: TopUpOnBillingUpgrade is superseded by billing.GiftCredits with
+// billing.GiftPrefixSignup. Remove once the old credit path is fully migrated.
 func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string) error {
 	if m == nil || m.data == nil {
 		return nil
@@ -345,8 +352,8 @@ func (m *CreditManager) TopUpOnBillingUpgrade(ctx context.Context, userID string
 	return m.data.TopUpOnBillingUpgrade(ctx, userID, m.now())
 }
 
-// TopUpOnBillingUpgradeDB is the implementation of
-// [CreditManager.TopUpOnBillingUpgrade] when using a database.
+// Deprecated: TopUpOnBillingUpgradeDB is superseded by billing.GiftCredits with
+// billing.GiftPrefixSignup. Remove once the old credit path is fully migrated.
 func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, now time.Time) error {
 	return exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		return q.GrantBillingUpgradeBonusOnce(ctx, exedb.GrantBillingUpgradeBonusOnceParams{

@@ -29,6 +29,8 @@ SELECT * FROM user_llm_credit ORDER BY user_id;
 INSERT OR IGNORE INTO user_llm_credit (user_id, available_credit, last_refresh_at)
 VALUES (?, ?, ?);
 
+-- Deprecated: GrantBillingUpgradeBonusOnce is superseded by billing.GiftCredits
+-- with billing.GiftPrefixSignup. Remove once the old credit path is fully migrated.
 -- name: GrantBillingUpgradeBonusOnce :exec
 INSERT INTO user_llm_credit (user_id, available_credit, last_refresh_at, billing_upgrade_bonus_granted)
 VALUES (?, ?, ?, 1)

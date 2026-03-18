@@ -1130,3 +1130,235 @@ func TestCreditBar_Matrix(t *testing.T) {
 		})
 	}
 }
+
+// TestHasSignupGiftInLedger verifies the helper that detects signup gifts.
+func TestHasSignupGiftInLedger(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries []billing.GiftEntry
+		want    bool
+	}{
+		{
+			name:    "nil entries",
+			entries: nil,
+			want:    false,
+		},
+		{
+			name:    "empty entries",
+			entries: []billing.GiftEntry{},
+			want:    false,
+		},
+		{
+			name: "signup gift present",
+			entries: []billing.GiftEntry{
+				{GiftID: billing.GiftPrefixSignup + ":acct123", Amount: tender.Mint(10000, 0)},
+			},
+			want: true,
+		},
+		{
+			name: "non-signup gift only",
+			entries: []billing.GiftEntry{
+				{GiftID: "support:acct123:abc", Amount: tender.Mint(5000, 0)},
+			},
+			want: false,
+		},
+		{
+			name: "mixed gifts with signup",
+			entries: []billing.GiftEntry{
+				{GiftID: "support:acct123:abc", Amount: tender.Mint(5000, 0)},
+				{GiftID: billing.GiftPrefixSignup + ":acct456", Amount: tender.Mint(10000, 0)},
+			},
+			want: true,
+		},
+		{
+			name: "gift ID is just the prefix without colon",
+			entries: []billing.GiftEntry{
+				{GiftID: billing.GiftPrefixSignup, Amount: tender.Mint(10000, 0)},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := hasSignupGiftInLedger(tc.entries)
+			if got != tc.want {
+				t.Errorf("hasSignupGiftInLedger() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestBonusZeroedWhenSignupGiftInLedger verifies that when a signup gift exists
+// in the billing ledger AND the old BillingUpgradeBonusGranted flag is set,
+// bonusGrantAmount is zeroed to avoid double-counting.
+func TestBonusZeroedWhenSignupGiftInLedger(t *testing.T) {
+	signupEntry := billing.GiftEntry{
+		GiftID: billing.GiftPrefixSignup + ":acct123",
+		Amount: tender.Mint(10000, 0), // $100
+		Note:   "Welcome bonus for upgrading to a paid plan",
+	}
+
+	t.Run("signup gift in ledger + flag set: no double count", func(t *testing.T) {
+		// Simulate: user has BillingUpgradeBonusGranted=1 AND signup gift in ledger.
+		// The signup gift is $100, which is already in giftCreditsUSD.
+		// bonusGrantAmount should be zeroed.
+		giftEntries := []billing.GiftEntry{signupEntry}
+		giftCreditsUSD := giftCreditsUSDFromLedger(giftEntries)
+
+		// Before fix, bonusGrantAmount would be 100 and giftCreditsUSD would be 100,
+		// leading to capacity = 20 + 100 + 0 + 100 = 240 (double-counted!).
+		// After fix, bonusGrantAmount = 0, so capacity = 20 + 0 + 0 + 100 = 120 (correct).
+		bonusGrantAmount := float64(0) // zeroed because signup gift exists in ledger
+		bonusRemaining := float64(0)   // zeroed because signup gift exists in ledger
+
+		bar := computeCreditBar(creditBarInput{
+			shelleyCreditsAvailable: 120,
+			planMaxCredit:           20,
+			bonusRemaining:          bonusRemaining,
+			bonusGrantAmount:        bonusGrantAmount,
+			extraCreditsUSD:         0,
+			giftCreditsUSD:          giftCreditsUSD,
+		})
+
+		// Capacity should be 20 (plan) + 100 (gift) = 120, NOT 220
+		if !closeTo(bar.totalCapacity, 120, 0.01) {
+			t.Errorf("totalCapacity = %.2f, want 120 (no double count)", bar.totalCapacity)
+		}
+		if !closeTo(bar.giftCreditsUSD, 100, 0.01) {
+			t.Errorf("giftCreditsUSD = %.2f, want 100", bar.giftCreditsUSD)
+		}
+	})
+
+	t.Run("flag set but no signup gift in ledger: old path works", func(t *testing.T) {
+		// Transition period: user has the flag but no signup gift row yet.
+		giftEntries := []billing.GiftEntry{}
+		giftCreditsUSD := giftCreditsUSDFromLedger(giftEntries)
+
+		// hasSignupGiftInLedger returns false, so bonusGrantAmount stays.
+		if hasSignupGiftInLedger(giftEntries) {
+			t.Fatal("should not detect signup gift in empty entries")
+		}
+
+		bonusGrantAmount := float64(100)
+		bonusRemaining := float64(100)
+
+		bar := computeCreditBar(creditBarInput{
+			shelleyCreditsAvailable: 120,
+			planMaxCredit:           20,
+			bonusRemaining:          bonusRemaining,
+			bonusGrantAmount:        bonusGrantAmount,
+			extraCreditsUSD:         0,
+			giftCreditsUSD:          giftCreditsUSD,
+		})
+
+		// Old path: capacity = 20 + 100 + 0 + 0 = 120
+		if !closeTo(bar.totalCapacity, 120, 0.01) {
+			t.Errorf("totalCapacity = %.2f, want 120", bar.totalCapacity)
+		}
+		if !closeTo(bar.bonusRemaining, 100, 0.01) {
+			t.Errorf("bonusRemaining = %.2f, want 100", bar.bonusRemaining)
+		}
+	})
+
+	t.Run("neither flag nor gift: no bonus shown", func(t *testing.T) {
+		giftEntries := []billing.GiftEntry{}
+		giftCreditsUSD := giftCreditsUSDFromLedger(giftEntries)
+
+		bar := computeCreditBar(creditBarInput{
+			shelleyCreditsAvailable: 20,
+			planMaxCredit:           20,
+			bonusRemaining:          0,
+			bonusGrantAmount:        0,
+			extraCreditsUSD:         0,
+			giftCreditsUSD:          giftCreditsUSD,
+		})
+
+		if !closeTo(bar.totalCapacity, 20, 0.01) {
+			t.Errorf("totalCapacity = %.2f, want 20", bar.totalCapacity)
+		}
+		if !closeTo(bar.bonusRemaining, 0, 0.01) {
+			t.Errorf("bonusRemaining = %.2f, want 0", bar.bonusRemaining)
+		}
+		if !closeTo(bar.giftCreditsUSD, 0, 0.01) {
+			t.Errorf("giftCreditsUSD = %.2f, want 0", bar.giftCreditsUSD)
+		}
+	})
+}
+
+// TestBuildGiftRows_SignupGiftNoWelcomeBonus verifies that when bonusGrantAmount
+// is zeroed (because the signup gift is now in the ledger), buildGiftRows does
+// NOT show the old "Welcome bonus" row, but DOES show the signup gift from the ledger.
+func TestBuildGiftRows_SignupGiftNoWelcomeBonus(t *testing.T) {
+	signupEntry := billing.GiftEntry{
+		GiftID: billing.GiftPrefixSignup + ":acct123",
+		Amount: tender.Mint(10000, 0), // $100
+		Note:   "Welcome bonus for upgrading to a paid plan",
+	}
+
+	t.Run("bonusGrantAmount zeroed with signup gift in ledger", func(t *testing.T) {
+		rows := buildGiftRows(0, []billing.GiftEntry{signupEntry})
+		if len(rows) != 1 {
+			t.Fatalf("expected 1 row, got %d: %v", len(rows), rows)
+		}
+		if rows[0].Amount != "100" {
+			t.Errorf("amount = %q, want 100", rows[0].Amount)
+		}
+		if rows[0].Reason != "Welcome bonus for upgrading to a paid plan" {
+			t.Errorf("reason = %q, want welcome bonus text", rows[0].Reason)
+		}
+	})
+
+	t.Run("old path with bonus grant and no ledger gift", func(t *testing.T) {
+		rows := buildGiftRows(100, nil)
+		if len(rows) != 1 {
+			t.Fatalf("expected 1 row, got %d", len(rows))
+		}
+		if rows[0].Reason != "Welcome bonus for upgrading to a paid plan" {
+			t.Errorf("reason = %q, want welcome bonus text", rows[0].Reason)
+		}
+	})
+}
+
+// TestComputeSupportGift_AfterMigration verifies that computeSupportGift still
+// works correctly when bonusGrant is 0 (because the bonus moved to the ledger).
+func TestComputeSupportGift_AfterMigration(t *testing.T) {
+	cases := []struct {
+		name      string
+		available float64
+		planMax   float64
+		bonus     float64
+		want      float64
+	}{
+		{
+			name:      "migrated user: bonus=0, no support gift",
+			available: 20, planMax: 20, bonus: 0,
+			want: 0,
+		},
+		{
+			name:      "migrated user: bonus=0, has support gift of 50",
+			available: 70, planMax: 20, bonus: 0,
+			want: 50,
+		},
+		{
+			name:      "un-migrated user: bonus=100, no support gift",
+			available: 120, planMax: 20, bonus: 100,
+			want: 0,
+		},
+		{
+			name:      "un-migrated user: bonus=100, has support gift of 50",
+			available: 170, planMax: 20, bonus: 100,
+			want: 50,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := computeSupportGift(tc.available, tc.planMax, tc.bonus)
+			if !closeTo(got, tc.want, 0.01) {
+				t.Errorf("computeSupportGift(%.0f, %.0f, %.0f) = %.2f, want %.2f",
+					tc.available, tc.planMax, tc.bonus, got, tc.want)
+			}
+		})
+	}
+}

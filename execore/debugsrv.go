@@ -2428,14 +2428,10 @@ func (s *Server) handleDebugGiftCredits(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Convert USD to tender.Value (amountUSD is in dollars, Mint takes cents).
-	amount := tender.Mint(int64(amountUSD*100), 0)
-	giftID := fmt.Sprintf("debug_gift:%s:%d", account.ID, time.Now().UnixNano())
-
 	if err := s.billing.GiftCredits(ctx, account.ID, &billing.GiftCreditsParams{
-		Amount: amount,
-		GiftID: giftID,
-		Note:   note,
+		AmountUSD:  amountUSD,
+		GiftPrefix: billing.GiftPrefixDebug,
+		Note:       note,
 	}); err != nil {
 		http.Error(w, fmt.Sprintf("failed to gift credits: %v", err), http.StatusInternalServerError)
 		return
@@ -2445,7 +2441,7 @@ func (s *Server) handleDebugGiftCredits(w http.ResponseWriter, r *http.Request) 
 		"user_id", userID,
 		"account_id", account.ID,
 		"amount_usd", amountUSD,
-		"gift_id", giftID,
+		"gift_prefix", billing.GiftPrefixDebug,
 		"note", note)
 
 	// Post to Slack feed. Look up the user's email for the message.
@@ -4692,6 +4688,13 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			s.slog().WarnContext(ctx, "failed to list gift credits", "error", err, "account_id", account.ID)
 		}
 		giftCreditsUSD = giftCreditsUSDFromLedger(giftEntries)
+	}
+	// If the signup bonus has been migrated to the billing ledger, zero out
+	// the old bonus fields to avoid double-counting (the bonus is now counted
+	// via giftCreditsUSD).
+	if hasSignupGiftInLedger(giftEntries) {
+		bonusGrantAmount = 0
+		bonusRemaining = 0
 	}
 	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
 	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD

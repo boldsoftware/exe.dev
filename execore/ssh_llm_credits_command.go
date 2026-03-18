@@ -92,6 +92,9 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 			gateway["total_used_usd"] = credit.TotalUsed
 			gateway["last_refresh_at"] = credit.LastRefreshAt.Format(time.RFC3339)
 			gateway["billing_upgrade_bonus_granted"] = credit.BillingUpgradeBonusGranted == 1
+			if credit.BillingUpgradeBonusGranted == 1 && hasSignupGift(gifts) {
+				gateway["deprecated"] = "billing_upgrade_bonus_granted is superseded by signup gift in ledger"
+			}
 			if credit.MaxCredit != nil {
 				gateway["max_credit_override"] = *credit.MaxCredit
 			}
@@ -151,7 +154,7 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 		cc.Writeln("  Refresh/hr:      $%.2f", plan.RefreshPerHour)
 		cc.Writeln("  Total used:      $%.2f", credit.TotalUsed)
 		cc.Writeln("  Last refresh:    %s", credit.LastRefreshAt.Format(time.RFC3339))
-		cc.Writeln("  Upgrade bonus:   %v", credit.BillingUpgradeBonusGranted == 1)
+		cc.Writeln("  Upgrade bonus:   %s", upgradeBonusText(credit.BillingUpgradeBonusGranted == 1, gifts))
 		if credit.MaxCredit != nil {
 			cc.Writeln("  Override max:    $%.2f", *credit.MaxCredit)
 		}
@@ -195,6 +198,30 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	cc.Writeln("")
 
 	return nil
+}
+
+// hasSignupGift reports whether any gift in the list has a GiftID
+// starting with the signup prefix.
+func hasSignupGift(gifts []billing.GiftEntry) bool {
+	for _, g := range gifts {
+		if strings.HasPrefix(g.GiftID, billing.GiftPrefixSignup+":") {
+			return true
+		}
+	}
+	return false
+}
+
+// upgradeBonusText returns the display string for the upgrade bonus flag.
+// When the flag is set and a signup gift exists in the ledger, it appends
+// a deprecation note directing the reader to the gift ledger.
+func upgradeBonusText(flagSet bool, gifts []billing.GiftEntry) string {
+	if !flagSet {
+		return "false"
+	}
+	if hasSignupGift(gifts) {
+		return "true (deprecated flag — see gift ledger)"
+	}
+	return "true"
 }
 
 func (ss *SSHServer) resolveUserForCredits(ctx context.Context, query string) (exedb.User, error) {

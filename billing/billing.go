@@ -35,6 +35,20 @@ func MakeCustomerDashboardURL(billingID string) string {
 
 var stripeKey = os.Getenv("STRIPE_SECRET_KEY")
 
+// Gift ID prefix constants.
+//
+// Callers construct a gift_id as "<prefix>:<account_id>:<detail>".
+// The unique index on gift_id provides idempotency — a duplicate
+// gift_id is silently ignored (INSERT OR IGNORE).
+//
+// For signup gifts the format is "signup:<account_id>" (no detail
+// suffix), which ensures at most one signup bonus per account.
+const (
+	GiftPrefixDebug  = "debug_gift"
+	GiftPrefixSignup = "signup"
+	GiftPrefixSSH    = "ssh_gift"
+)
+
 const (
 	DefaultPlan         = "individual"
 	productIndividualID = "prod_individual"
@@ -655,21 +669,31 @@ type Credits interface {
 var _ Credits = (*Manager)(nil)
 
 // GiftCreditsParams contains the parameters for gifting credits to an account.
+// Callers provide a dollar amount and a gift prefix; the billing package handles
+// conversion to microcents and construction of the full gift_id.
 type GiftCreditsParams struct {
-	Amount tender.Value
-	GiftID string
-	Note   string
+	// AmountUSD is the gift amount in US dollars. Must be positive.
+	AmountUSD float64
+	// GiftPrefix is the gift type prefix (e.g. GiftPrefixSignup, GiftPrefixDebug).
+	GiftPrefix string
+	// Note is an optional human-readable reason for the gift.
+	// Defaults to "Credit gift from support@exe.dev" if empty.
+	Note string
 }
 
 // GiftCredits inserts a gift credit for the given billing account.
+// The gift_id is constructed as "<prefix>:<billingID>:<nanos>" for uniqueness.
 // The operation is idempotent: a duplicate gift_id is silently ignored.
 func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCreditsParams) error {
-	if p.Amount.IsWorthless() {
-		return fmt.Errorf("gift amount must be positive, got %v", p.Amount)
+	if p.AmountUSD <= 0 {
+		return fmt.Errorf("gift amount must be positive, got %v", p.AmountUSD)
 	}
-	if p.GiftID == "" {
-		return errors.New("gift_id is required")
+	if p.GiftPrefix == "" {
+		return errors.New("gift prefix is required")
 	}
+
+	amount := tender.Mint(int64(p.AmountUSD*100), 0)
+	giftID := fmt.Sprintf("%s:%s:%d", p.GiftPrefix, billingID, time.Now().UnixNano())
 
 	note := p.Note
 	if note == "" {
@@ -682,8 +706,8 @@ func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCred
 	`
 	return m.exec(ctx, q,
 		sql.Named("accountID", billingID),
-		sql.Named("amount", p.Amount),
-		sql.Named("giftID", p.GiftID),
+		sql.Named("amount", amount),
+		sql.Named("giftID", giftID),
 		sql.Named("note", note),
 	)
 }

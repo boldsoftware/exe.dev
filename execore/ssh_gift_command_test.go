@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"exe.dev/billing"
@@ -74,16 +75,16 @@ func TestListGifts_WithGifts(t *testing.T) {
 
 	// Insert two gifts
 	if err := m.GiftCredits(t.Context(), "acct_test2", &billing.GiftCreditsParams{
-		Amount: tender.Mint(1000, 0),
-		GiftID: "gift1",
-		Note:   "First gift",
+		AmountUSD:  10.0,
+		GiftPrefix: billing.GiftPrefixDebug,
+		Note:       "First gift",
 	}); err != nil {
 		t.Fatalf("GiftCredits: %v", err)
 	}
 	if err := m.GiftCredits(t.Context(), "acct_test2", &billing.GiftCreditsParams{
-		Amount: tender.Mint(500, 0),
-		GiftID: "gift2",
-		Note:   "Second gift",
+		AmountUSD:  5.0,
+		GiftPrefix: billing.GiftPrefixDebug,
+		Note:       "Second gift",
 	}); err != nil {
 		t.Fatalf("GiftCredits: %v", err)
 	}
@@ -96,14 +97,14 @@ func TestListGifts_WithGifts(t *testing.T) {
 		t.Fatalf("expected 2 gifts, got %d", len(gifts))
 	}
 	// Gifts are returned most recent first
-	if gifts[0].GiftID != "gift2" {
-		t.Errorf("expected first gift to be gift2, got %s", gifts[0].GiftID)
-	}
 	if gifts[0].Note != "Second gift" {
 		t.Errorf("expected note 'Second gift', got %q", gifts[0].Note)
 	}
-	if gifts[1].GiftID != "gift1" {
-		t.Errorf("expected second gift to be gift1, got %s", gifts[1].GiftID)
+	if !strings.HasPrefix(gifts[0].GiftID, billing.GiftPrefixDebug+":") {
+		t.Errorf("expected gift ID prefix %q, got %s", billing.GiftPrefixDebug+":", gifts[0].GiftID)
+	}
+	if gifts[1].Note != "First gift" {
+		t.Errorf("expected note 'First gift', got %q", gifts[1].Note)
 	}
 }
 
@@ -111,9 +112,9 @@ func TestGiftCredits_Success(t *testing.T) {
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_gift", &billing.GiftCreditsParams{
-		Amount: tender.Mint(2500, 0),
-		GiftID: "ssh_gift:acct_gift:123",
-		Note:   "Support gift",
+		AmountUSD:  25.0,
+		GiftPrefix: billing.GiftPrefixSSH,
+		Note:       "Support gift",
 	})
 	if err != nil {
 		t.Fatalf("GiftCredits: %v", err)
@@ -136,8 +137,8 @@ func TestGiftCredits_DefaultNote(t *testing.T) {
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_defnote", &billing.GiftCreditsParams{
-		Amount: tender.Mint(100, 0),
-		GiftID: "ssh_gift:acct_defnote:456",
+		AmountUSD:  1.0,
+		GiftPrefix: billing.GiftPrefixSSH,
 		// Note intentionally empty -- GiftCredits should use default note
 	})
 	if err != nil {
@@ -161,9 +162,9 @@ func TestGiftCredits_ZeroAmount(t *testing.T) {
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_zero", &billing.GiftCreditsParams{
-		Amount: tender.Zero(),
-		GiftID: "ssh_gift:acct_zero:789",
-		Note:   "Zero gift",
+		AmountUSD:  0,
+		GiftPrefix: billing.GiftPrefixSSH,
+		Note:       "Zero gift",
 	})
 	if err == nil {
 		t.Fatal("expected error for zero amount gift, got nil")
@@ -174,24 +175,23 @@ func TestGiftCredits_NegativeAmount(t *testing.T) {
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_neg", &billing.GiftCreditsParams{
-		Amount: tender.Mint(-100, 0),
-		GiftID: "ssh_gift:acct_neg:neg",
-		Note:   "Negative gift",
+		AmountUSD:  -1.0,
+		GiftPrefix: billing.GiftPrefixSSH,
+		Note:       "Negative gift",
 	})
 	if err == nil {
 		t.Fatal("expected error for negative amount gift, got nil")
 	}
 }
 
-func TestGiftCredits_MissingGiftID(t *testing.T) {
+func TestGiftCredits_MissingPrefix(t *testing.T) {
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_noid", &billing.GiftCreditsParams{
-		Amount: tender.Mint(100, 0),
-		// GiftID intentionally empty
+		AmountUSD: 1.0,
 	})
 	if err == nil {
-		t.Fatal("expected error for missing gift_id, got nil")
+		t.Fatal("expected error for missing prefix, got nil")
 	}
 }
 
@@ -221,9 +221,9 @@ func TestGetCreditState_MixedCredits(t *testing.T) {
 
 	// Add a gift
 	if err := m.GiftCredits(t.Context(), "acct_mixed", &billing.GiftCreditsParams{
-		Amount: tender.Mint(1000, 0),
-		GiftID: "gift_mixed_1",
-		Note:   "Gift",
+		AmountUSD:  10.0,
+		GiftPrefix: billing.GiftPrefixDebug,
+		Note:       "Gift",
 	}); err != nil {
 		t.Fatalf("GiftCredits: %v", err)
 	}
@@ -267,5 +267,84 @@ func TestGetCreditState_MixedCredits(t *testing.T) {
 	expectedTotal := tender.Mint(500, 0).Microcents() + tender.Mint(1000, 0).Microcents() - tender.Mint(200, 0).Microcents()
 	if state.Total.Microcents() != expectedTotal {
 		t.Errorf("expected total %d, got %d", expectedTotal, state.Total.Microcents())
+	}
+}
+
+func TestHasSignupGift(t *testing.T) {
+	tests := []struct {
+		name  string
+		gifts []billing.GiftEntry
+		want  bool
+	}{
+		{
+			name:  "no gifts",
+			gifts: nil,
+			want:  false,
+		},
+		{
+			name: "only non-signup gifts",
+			gifts: []billing.GiftEntry{
+				{GiftID: "ssh_gift:acct:123"},
+				{GiftID: "debug_gift:acct:456"},
+			},
+			want: false,
+		},
+		{
+			name: "has signup gift",
+			gifts: []billing.GiftEntry{
+				{GiftID: "ssh_gift:acct:123"},
+				{GiftID: "signup:acct_abc"},
+			},
+			want: true,
+		},
+		{
+			name: "only signup gift",
+			gifts: []billing.GiftEntry{
+				{GiftID: "signup:acct_xyz"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasSignupGift(tt.gifts)
+			if got != tt.want {
+				t.Errorf("hasSignupGift() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpgradeBonusLine_WithSignupGift(t *testing.T) {
+	// When flag is set AND signup gift exists, output should include deprecated note
+	line := upgradeBonusText(true, []billing.GiftEntry{
+		{GiftID: "signup:acct_test"},
+	})
+	if !strings.Contains(line, "(deprecated flag") {
+		t.Errorf("expected deprecated annotation, got %q", line)
+	}
+	if !strings.Contains(line, "see gift ledger") {
+		t.Errorf("expected 'see gift ledger' in output, got %q", line)
+	}
+}
+
+func TestUpgradeBonusLine_WithoutSignupGift(t *testing.T) {
+	// When flag is set but NO signup gift, output should show plain "true"
+	line := upgradeBonusText(true, []billing.GiftEntry{
+		{GiftID: "ssh_gift:acct:123"},
+	})
+	if line != "true" {
+		t.Errorf("expected plain 'true', got %q", line)
+	}
+}
+
+func TestUpgradeBonusLine_FlagNotSet(t *testing.T) {
+	// When flag is not set, output should show plain "false" regardless of gifts
+	line := upgradeBonusText(false, []billing.GiftEntry{
+		{GiftID: "signup:acct_test"},
+	})
+	if line != "false" {
+		t.Errorf("expected plain 'false', got %q", line)
 	}
 }

@@ -184,6 +184,30 @@ func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 	}
 }
 
+func TestSignupBonusCreditUSD(t *testing.T) {
+	tests := []struct {
+		version PlanVersion
+		want    float64
+	}{
+		{VersionIndividual, 100.0},
+		{VersionVIP, 0},
+		{VersionTeam, 0},
+		{VersionFriend, 0},
+		{VersionGrandfathered, 0},
+		{VersionInvite, 0},
+		{VersionBasic, 0},
+	}
+	for _, tt := range tests {
+		p, ok := plans[tt.version]
+		if !ok {
+			t.Fatalf("plan %q not found", tt.version)
+		}
+		if p.Quotas.SignupBonusCreditUSD != tt.want {
+			t.Errorf("plan %q SignupBonusCreditUSD = %v, want %v", tt.version, p.Quotas.SignupBonusCreditUSD, tt.want)
+		}
+	}
+}
+
 func TestAllPlansHaveLLMUse(t *testing.T) {
 	for version, plan := range plans {
 		if !plan.Entitlements[LLMUse] && !plan.Entitlements[All] {

@@ -26,6 +26,18 @@ type Plan struct {
 
 	// Entitlements is the set of capabilities this plan grants.
 	Entitlements map[Entitlement]bool
+
+	// Quotas contains numeric limits and amounts tied to this plan.
+	Quotas PlanQuotas
+}
+
+// PlanQuotas holds numeric limits and one-time grants for a plan.
+type PlanQuotas struct {
+	// SignupBonusCreditUSD is the one-time credit (in USD) granted when a user
+	// first signs up on this plan. Only Individual gets a bonus; VIP, Friend,
+	// and Grandfathered intentionally have 0 because they use the "friend"
+	// category and never hit the upgrade bonus code path.
+	SignupBonusCreditUSD float64
 }
 
 var plans = map[PlanVersion]Plan{
@@ -64,6 +76,9 @@ var plans = map[PlanVersion]Plan{
 			ComputeSpend:    true,
 			ComputePurchase: true,
 			ComputeDebt:     true,
+		},
+		Quotas: PlanQuotas{
+			SignupBonusCreditUSD: 100.0,
 		},
 	},
 	VersionFriend: {
@@ -108,6 +123,12 @@ var plans = map[PlanVersion]Plan{
 			VMConnect:     true,
 		},
 	},
+}
+
+// GetPlan returns the Plan for a given version and whether it exists.
+func GetPlan(version PlanVersion) (Plan, bool) {
+	p, ok := plans[version]
+	return p, ok
 }
 
 // PlanName returns the human-readable name for a plan version (e.g., "Individual").

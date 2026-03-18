@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"exe.dev/billing"
-	"exe.dev/billing/tender"
+
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
@@ -42,9 +40,6 @@ func (ss *SSHServer) handleAddGiftCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("amount must be positive, got %.2f", amountUSD)
 	}
 
-	// Convert USD to tender.Value (amountUSD is in dollars, Mint takes cents)
-	amount := tender.Mint(int64(amountUSD*100), 0)
-
 	// Look up billing account
 	account, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err != nil {
@@ -55,14 +50,11 @@ func (ss *SSHServer) handleAddGiftCommand(ctx context.Context, cc *exemenu.Comma
 		return nil
 	}
 
-	// Generate gift ID
-	giftID := fmt.Sprintf("ssh_gift:%s:%d", account.ID, time.Now().UnixNano())
-
 	// Gift credits
 	if err := ss.server.billing.GiftCredits(ctx, account.ID, &billing.GiftCreditsParams{
-		Amount: amount,
-		GiftID: giftID,
-		Note:   note,
+		AmountUSD:  amountUSD,
+		GiftPrefix: billing.GiftPrefixSSH,
+		Note:       note,
 	}); err != nil {
 		cc.WriteInternalError(ctx, "sudo-exe add-gift", err)
 		return nil
@@ -73,7 +65,7 @@ func (ss *SSHServer) handleAddGiftCommand(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("  User:      %s (%s)", user.UserID, user.Email)
 	cc.Writeln("  Account:   %s", account.ID)
 	cc.Writeln("  Amount:    $%.2f", amountUSD)
-	cc.Writeln("  Gift ID:   %s", giftID)
+	cc.Writeln("  Gift type: %s", billing.GiftPrefixSSH)
 	if note != "" {
 		cc.Writeln("  Note:      %s", note)
 	}
