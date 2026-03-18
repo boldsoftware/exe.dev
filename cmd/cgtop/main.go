@@ -13,6 +13,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"exe.dev/logging"
 )
 
 //go:embed index.html
@@ -340,6 +345,13 @@ func main() {
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			log.Printf("json encode: %v", err)
 		}
+	})
+
+	registry := prometheus.NewRegistry()
+	http.Handle("GET /debug/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	http.HandleFunc("GET /debug/gitsha", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, logging.GitCommit())
 	})
 
 	fmt.Printf("listening on %s\n", *httpAddr)
