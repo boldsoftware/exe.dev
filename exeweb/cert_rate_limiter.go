@@ -17,8 +17,7 @@ import (
 // tokens per day. It doubles as an autocert HostPolicy: it validates the
 // host, checks the cert cache, and only consumes a token on a cache miss.
 //
-// In observe-only mode (the default), exceeding the limit logs a warning
-// but does not block issuance.
+// Exceeding the limit blocks issuance.
 type CertRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*certBucket
@@ -34,7 +33,7 @@ type CertRateLimiter struct {
 	// for already-cached certs.
 	Cache autocert.Cache
 
-	// Lg is the logger for dry-run warnings.
+	// Lg is the logger for rate limit events.
 	Lg *slog.Logger
 
 	allowedTotal     *prometheus.CounterVec
@@ -90,8 +89,7 @@ func (r *CertRateLimiter) now() time.Time {
 // HostPolicy is an autocert.HostPolicy that validates the host, checks
 // the cert cache, and rate-limits only on cache misses. Rate limiting is
 // per VM (box name), so wildcard DNS attacks that generate many subdomains
-// for the same box are properly throttled. In observe-only / dry-run mode,
-// exceeding the rate limit logs a warning but does not block issuance.
+// for the same box are properly throttled.
 func (r *CertRateLimiter) HostPolicy(ctx context.Context, host string) error {
 	boxName, err := r.ValidateHost(ctx, host)
 	if err != nil {
@@ -115,12 +113,12 @@ func (r *CertRateLimiter) HostPolicy(ctx context.Context, host string) error {
 	// Cache miss — this will be a new cert issuance. Rate-limit by box
 	// name so all custom domains pointing at the same VM share one bucket.
 	if err := r.Allow(boxName); err != nil {
-		// Observe-only mode: log but do NOT block.
-		r.Lg.WarnContext(ctx, "cert rate limiter would block issuance (dry run)",
+		r.Lg.WarnContext(ctx, "cert rate limiter blocked issuance",
 			"host", host,
 			"boxName", boxName,
 			"error", err,
 		)
+		return err
 	}
 
 	return nil

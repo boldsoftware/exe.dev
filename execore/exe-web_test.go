@@ -940,10 +940,9 @@ func TestCertRateLimitHostPolicyCacheHit(t *testing.T) {
 		t.Fatalf("uncached domain (first call): unexpected error: %v", err)
 	}
 
-	// Call again for uncached domain — rate limiter is exhausted but in dry-run
-	// mode it should still return nil (just log a warning).
-	if err := rl.HostPolicy(ctx, "uncached.example.com"); err != nil {
-		t.Fatalf("uncached domain (second call, dry-run): unexpected error: %v", err)
+	// Call again for uncached domain — rate limiter is exhausted, should be rejected.
+	if err := rl.HostPolicy(ctx, "uncached.example.com"); err == nil {
+		t.Fatal("uncached domain (second call): expected rate limit error, got nil")
 	}
 }
 
@@ -998,8 +997,8 @@ func TestCertRateLimitHostPolicyCacheMissConsumesToken(t *testing.T) {
 	}
 
 	// The rate limiter bucket for "mybox" should now be exhausted.
-	// Third call: dry-run mode still returns nil.
-	if err := rl.HostPolicy(ctx, "domain3.example.com"); err != nil {
-		t.Fatalf("call 3 (dry-run): unexpected error: %v", err)
+	// Third call should be rejected.
+	if err := rl.HostPolicy(ctx, "domain3.example.com"); err == nil {
+		t.Fatal("call 3: expected rate limit error, got nil")
 	}
 }
