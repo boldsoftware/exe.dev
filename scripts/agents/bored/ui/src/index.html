@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bored</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root">loading...</div>
+  <script>
+    window.onerror = function(msg, src, line, col, err) {
+      document.getElementById("root").innerText = "JS error: " + msg + " at " + src + ":" + line;
+    };
+  </script>
+  <script type="module" src="main.js"></script>
+  <script>
+    setTimeout(function() {
+      var el = document.getElementById("root");
+      if (el && el.innerText === "loading...") {
+        fetch("/api/state").then(function(r) {
+          return r.text().then(function(t) { el.innerText = "React did not mount. /api/state " + r.status + ": " + t.slice(0, 200); });
+        }).catch(function(e) {
+          el.innerText = "React did not mount. /api/state fetch failed: " + e;
+        });
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

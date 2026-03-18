@@ -1,0 +1,17 @@
+[Unit]
+Description=Bored commit queue agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+User=exedev
+WorkingDirectory=/home/exedev/bored-code
+ExecStart=/usr/bin/python3 /home/exedev/bored-code/scripts/agents/bored/bored.py
+Environment=HOME=/home/exedev
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,299 @@
+/* --- Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #ffffff;
+  --bg-card: #f9fafb;
+  --bg-code: #f3f4f6;
+  --text: #111827;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --green: #16a34a;
+  --green-hover: #15803d;
+  --red: #dc2626;
+  --red-hover: #b91c1c;
+  --blue: #2563eb;
+  --yellow: #ca8a04;
+  --yellow-hover: #a16207;
+  --error-bg: #fef2f2;
+  --error-border: #fca5a5;
+  --label-bg: #e0e7ff;
+  --label-text: #3730a3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-code: #334155;
+    --text: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border: #334155;
+    --error-bg: #450a0a;
+    --error-border: #991b1b;
+    --label-bg: #312e81;
+    --label-text: #c7d2fe;
+  }
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* --- Layout --- */
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* --- Footer --- */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.footer-path {
+  font-style: italic;
+}
+
+.footer-lease {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+}
+
+/* --- Modal --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 400px;
+  text-align: center;
+}
+
+.modal p {
+  margin-bottom: 1rem;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* --- Commit Card --- */
+.commit-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.commit-card--failed {
+  border-color: var(--error-border);
+}
+
+
+.commit-subject {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.commit-body {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  background: var(--bg-code);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.commit-error {
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.commit-error-label {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.commit-ci-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+.commit-ci-link:hover { text-decoration: underline; }
+
+.commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.commit-github-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+.commit-github-link:hover { text-decoration: underline; }
+
+.commit-issue-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+.commit-issue-link:hover { text-decoration: underline; }
+
+.commit-fetch-instructions {
+  font-size: 0.8125rem;
+}
+
+.commit-fetch-code {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  font-size: 0.75rem;
+  background: var(--bg-code);
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.commit-diff {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: auto;
+  margin-bottom: 0.75rem;
+}
+
+/* --- Actions --- */
+.commit-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.btn {
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-approve {
+  background: var(--green);
+  color: white;
+}
+.btn-approve:hover:not(:disabled) { background: var(--green-hover); }
+
+.btn-reject {
+  background: var(--red);
+  color: white;
+}
+.btn-reject:hover:not(:disabled) { background: var(--red-hover); }
+
+.btn-skip {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.btn-skip:hover:not(:disabled) {
+  background: var(--bg-code);
+  color: var(--text);
+}
+
+.btn-reject-confirm {
+  background: var(--red);
+  color: white;
+  font-size: 0.8125rem;
+  padding: 0.375rem 1rem;
+}
+.btn-reject-confirm:hover:not(:disabled) { background: var(--red-hover); }
+
+.btn-cancel {
+  background: var(--bg-code);
+  color: var(--text);
+  font-size: 0.8125rem;
+  padding: 0.375rem 1rem;
+}
+
+.reject-form {
+  margin-bottom: 0.75rem;
+}
+
+.reject-reason {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+
+.reject-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* --- Empty State --- */
+.empty-state {
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* --- Error Banner --- */
+.error-banner {
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+  color: var(--red);
+}
