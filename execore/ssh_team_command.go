@@ -230,7 +230,6 @@ func (ss *SSHServer) isTeamBillingOwner(cc *exemenu.CommandContext) bool {
 	return isOwner
 }
 
-
 // handleTeamEnableCommand lets a user create a new team for themselves.
 func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	slog.InfoContext(ctx, "handleTeamEnableCommand called", "user_id", cc.User.ID)

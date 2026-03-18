@@ -100,7 +100,6 @@ func TestTeamEnableDisableLifecycle(t *testing.T) {
 	})
 }
 
-
 // TestTeamEnableCancel tests that declining the confirmation prompt cancels cleanly.
 func TestTeamEnableCancel(t *testing.T) {
 	t.Parallel()
