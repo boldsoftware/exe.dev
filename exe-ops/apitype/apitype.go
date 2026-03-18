@@ -135,36 +135,36 @@ type ServerSummary struct {
 // ServerDetail is returned by GET /api/v1/servers/{name}.
 type ServerDetail struct {
 	ServerSummary
-	MemFree        int64       `json:"mem_free"`
-	MemSwap        int64       `json:"mem_swap"`
-	MemSwapTotal   int64       `json:"mem_swap_total"`
-	DiskFree       int64       `json:"disk_free"`
-	ZFSUsed        *int64      `json:"zfs_used,omitempty"`
-	ZFSFree        *int64      `json:"zfs_free,omitempty"`
-	BackupZFSUsed  *int64      `json:"backup_zfs_used,omitempty"`
-	BackupZFSFree  *int64      `json:"backup_zfs_free,omitempty"`
-	UptimeSecs     int64       `json:"uptime_secs"`
-	LoadAvg1       float64     `json:"load_avg_1"`
-	LoadAvg5       float64     `json:"load_avg_5"`
-	LoadAvg15      float64     `json:"load_avg_15"`
-	ZFSPoolHealth  *string     `json:"zfs_pool_health,omitempty"`
-	ZFSArcSize     *int64      `json:"zfs_arc_size,omitempty"`
-	ZFSArcHitRate  *float64    `json:"zfs_arc_hit_rate,omitempty"`
-	NetRxErrors    int64       `json:"net_rx_errors"`
-	NetRxDropped   int64       `json:"net_rx_dropped"`
-	NetTxErrors    int64       `json:"net_tx_errors"`
-	NetTxDropped   int64       `json:"net_tx_dropped"`
-	ConntrackCount *int64      `json:"conntrack_count,omitempty"`
-	ConntrackMax   *int64      `json:"conntrack_max,omitempty"`
-	FDAllocated    int64       `json:"fd_allocated"`
-	FDMax          int64       `json:"fd_max"`
-	Components     []Component `json:"components,omitempty"`
-	Updates        []string    `json:"updates,omitempty"`
-	FailedUnits    []string    `json:"failed_units,omitempty"`
-	ZFSPools       []ZFSPool   `json:"zfs_pools,omitempty"`
-	FirstSeen              string               `json:"first_seen"`
-	History                []ReportRow          `json:"history,omitempty"`
-	ExeletCapacity  []ExeletCapacityRow `json:"exelet_capacity,omitempty"`
+	MemFree        int64               `json:"mem_free"`
+	MemSwap        int64               `json:"mem_swap"`
+	MemSwapTotal   int64               `json:"mem_swap_total"`
+	DiskFree       int64               `json:"disk_free"`
+	ZFSUsed        *int64              `json:"zfs_used,omitempty"`
+	ZFSFree        *int64              `json:"zfs_free,omitempty"`
+	BackupZFSUsed  *int64              `json:"backup_zfs_used,omitempty"`
+	BackupZFSFree  *int64              `json:"backup_zfs_free,omitempty"`
+	UptimeSecs     int64               `json:"uptime_secs"`
+	LoadAvg1       float64             `json:"load_avg_1"`
+	LoadAvg5       float64             `json:"load_avg_5"`
+	LoadAvg15      float64             `json:"load_avg_15"`
+	ZFSPoolHealth  *string             `json:"zfs_pool_health,omitempty"`
+	ZFSArcSize     *int64              `json:"zfs_arc_size,omitempty"`
+	ZFSArcHitRate  *float64            `json:"zfs_arc_hit_rate,omitempty"`
+	NetRxErrors    int64               `json:"net_rx_errors"`
+	NetRxDropped   int64               `json:"net_rx_dropped"`
+	NetTxErrors    int64               `json:"net_tx_errors"`
+	NetTxDropped   int64               `json:"net_tx_dropped"`
+	ConntrackCount *int64              `json:"conntrack_count,omitempty"`
+	ConntrackMax   *int64              `json:"conntrack_max,omitempty"`
+	FDAllocated    int64               `json:"fd_allocated"`
+	FDMax          int64               `json:"fd_max"`
+	Components     []Component         `json:"components,omitempty"`
+	Updates        []string            `json:"updates,omitempty"`
+	FailedUnits    []string            `json:"failed_units,omitempty"`
+	ZFSPools       []ZFSPool           `json:"zfs_pools,omitempty"`
+	FirstSeen      string              `json:"first_seen"`
+	History        []ReportRow         `json:"history,omitempty"`
+	ExeletCapacity []ExeletCapacityRow `json:"exelet_capacity,omitempty"`
 }
 
 // ExeletCapacityRow is a historical exelet capacity data point.

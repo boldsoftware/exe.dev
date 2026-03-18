@@ -11,17 +11,17 @@ func TestHostCollect(t *testing.T) {
 	dir := t.TempDir()
 
 	uptimePath := filepath.Join(dir, "uptime")
-	if err := os.WriteFile(uptimePath, []byte("12345.67 98765.43\n"), 0644); err != nil {
+	if err := os.WriteFile(uptimePath, []byte("12345.67 98765.43\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	loadavgPath := filepath.Join(dir, "loadavg")
-	if err := os.WriteFile(loadavgPath, []byte("1.50 2.25 3.75 2/512 12345\n"), 0644); err != nil {
+	if err := os.WriteFile(loadavgPath, []byte("1.50 2.25 3.75 2/512 12345\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	fileNRPath := filepath.Join(dir, "file-nr")
-	if err := os.WriteFile(fileNRPath, []byte("1024\t0\t65536\n"), 0644); err != nil {
+	if err := os.WriteFile(fileNRPath, []byte("1024\t0\t65536\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,7 +94,7 @@ func TestHostCollectLoadAvg(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "loadavg")
-			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			h := &Host{loadavgPath: path}
@@ -157,7 +157,7 @@ func TestHostCollectFileNR(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "file-nr")
-			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			h := &Host{fileNRPath: path}

@@ -3,12 +3,11 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"log/slog"
 
 	"exe.dev/exe-ops/apitype"
 )

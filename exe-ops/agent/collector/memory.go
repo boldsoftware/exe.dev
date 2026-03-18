@@ -11,12 +11,12 @@ import (
 
 // Memory collects memory metrics from /proc/meminfo.
 type Memory struct {
-	Total    int64
-	Used     int64
-	Free     int64
+	Total     int64
+	Used      int64
+	Free      int64
 	SwapTotal int64
 	SwapUsed  int64
-	procPath string
+	procPath  string
 }
 
 func NewMemory() *Memory { return &Memory{procPath: "/proc/meminfo"} }

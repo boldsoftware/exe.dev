@@ -10,7 +10,7 @@ func TestReadCPUStat(t *testing.T) {
 	content := "cpu  10132153 290696 3084719 46828483 16683 0 25195 0 0 0\ncpu0 1393280 32966 572056 13343292 6130 0 17875 0 0 0\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "stat")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

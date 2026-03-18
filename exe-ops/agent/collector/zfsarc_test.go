@@ -62,7 +62,7 @@ size                            4    2048
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "arcstats")
-			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 
@@ -113,5 +113,5 @@ func TestZFSArcCollectMissingFile(t *testing.T) {
 	}
 }
 
-func ptrInt64(v int64) *int64    { return &v }
+func ptrInt64(v int64) *int64       { return &v }
 func ptrFloat64(v float64) *float64 { return &v }

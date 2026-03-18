@@ -64,7 +64,7 @@ func NewClient(cfg *Config) *Client {
 
 // exeletJSON is the raw JSON shape returned by exed's /debug/exelets endpoint.
 type exeletJSON struct {
-	Address       string `json:"address"`        // "tcp://exe-ctr-03:9080"
+	Address       string `json:"address"` // "tcp://exe-ctr-03:9080"
 	InstanceCount int    `json:"instance_count"`
 	InstanceLimit int    `json:"instance_limit"`
 }

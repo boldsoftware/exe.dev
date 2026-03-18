@@ -16,7 +16,7 @@ func TestNetworkCollect(t *testing.T) {
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dev")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,7 +51,7 @@ func TestNetworkCollect(t *testing.T) {
   eth0: 5001000    5001    0    0    0     0          0         0  3000500    3001    0    0    0     0       0          0
   eth1: 2000000    2000    0    0    0     0          0         0  1000000    1000    0    0    0     0       0          0
 `
-	if err := os.WriteFile(path, []byte(content2), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content2), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,7 +75,7 @@ func TestNetworkErrorsAndDrops(t *testing.T) {
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dev")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

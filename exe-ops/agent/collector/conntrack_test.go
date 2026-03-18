@@ -12,10 +12,10 @@ func TestConntrackCollect(t *testing.T) {
 	countPath := filepath.Join(dir, "nf_conntrack_count")
 	maxPath := filepath.Join(dir, "nf_conntrack_max")
 
-	if err := os.WriteFile(countPath, []byte("1234\n"), 0644); err != nil {
+	if err := os.WriteFile(countPath, []byte("1234\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(maxPath, []byte("65536\n"), 0644); err != nil {
+	if err := os.WriteFile(maxPath, []byte("65536\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestConntrackCollectMissingFiles(t *testing.T) {
 func TestConntrackCollectCountOnlyMissing(t *testing.T) {
 	dir := t.TempDir()
 	maxPath := filepath.Join(dir, "nf_conntrack_max")
-	if err := os.WriteFile(maxPath, []byte("65536\n"), 0644); err != nil {
+	if err := os.WriteFile(maxPath, []byte("65536\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
