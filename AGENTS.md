@@ -10,6 +10,7 @@
   build exelet first to avoid OOM from concurrent Go compilations on small VMs. the exelet binary is cached at /tmp/exeletd after the first build.
 - when editing Go code, run gofumpt on changed files. do not run formatters on generated files.
 - when editing code, run the tests for the relevant code.
+- when editing OAuth, browser-facing, or multi-account flows: always manually test with real accounts and a real browser (using the browser tool) in addition to e1e tests. Mock servers cannot reproduce all real-world behaviors (account switchers, consent screens, token scoping). See `devdocs/for-agents/testing-integrations.md` for test accounts and steps.
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong

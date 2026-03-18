@@ -72,9 +72,14 @@ func (c *Client) apiURL() string {
 	return defaultAPIURL
 }
 
-// InstallURL returns the GitHub App installation URL with the given state parameter.
+// InstallURL returns the GitHub App installation URL.
+// If state is non-empty, it is included as a query parameter.
 func (c *Client) InstallURL(state string) string {
-	return fmt.Sprintf("https://github.com/apps/%s/installations/new?state=%s", c.AppSlug, url.QueryEscape(state))
+	u := fmt.Sprintf("https://github.com/apps/%s/installations/new", c.AppSlug)
+	if state != "" {
+		u += "?state=" + url.QueryEscape(state)
+	}
+	return u
 }
 
 // AuthorizeURL returns an OAuth authorization URL. Unlike InstallURL, this works

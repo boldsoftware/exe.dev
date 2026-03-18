@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -109,23 +108,45 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// Phase 1: OAuth authorize to discover existing installations.
-	authSetup, authCleanup, err := ss.registerGitHubSetup(cc.User.ID)
-	if err != nil {
-		return cc.Errorf("%v", err)
-	}
-	defer authCleanup()
+	// Retry loop: if the user picks the wrong GitHub account from the
+	// browser's account chooser, the token will be invalid. Let them retry.
+	const maxOAuthAttempts = 3
+	var authSetup *GitHubSetup
+	for attempt := range maxOAuthAttempts {
+		var authCleanup func()
+		var err error
+		authSetup, authCleanup, err = ss.registerGitHubSetup(cc.User.ID)
+		if err != nil {
+			return cc.Errorf("%v", err)
+		}
+		defer authCleanup()
 
-	authorizeURL := ss.server.githubApp.AuthorizeURL(authSetup.State)
-	if err := ss.server.createRedirectForKey(ctx, authSetup.State, authorizeURL); err != nil {
-		return cc.Errorf("failed to create redirect: %v", err)
-	}
-	cc.Writeln("Authorize your GitHub account:")
-	cc.Writeln("  %s", ss.server.redirectURL(authSetup.State))
-	cc.Writeln("")
-	cc.Writeln("Waiting...")
+		authorizeURL := ss.server.githubApp.AuthorizeURL(authSetup.State)
+		if err := ss.server.createRedirectForKey(ctx, authSetup.State, authorizeURL); err != nil {
+			return cc.Errorf("failed to create redirect: %v", err)
+		}
+		if attempt == 0 {
+			cc.Writeln("Authorize your GitHub account:")
+		} else {
+			cc.Writeln("Try again:")
+		}
+		cc.Writeln("  %s", ss.server.redirectURL(authSetup.State))
+		cc.Writeln("")
+		cc.Writeln("Waiting...")
 
-	if err := ss.waitForGitHubSetup(ctx, cc, authSetup); err != nil {
-		return err
+		waitErr := ss.waitForGitHubSetup(ctx, cc, authSetup)
+		if waitErr != nil {
+			// Check if the underlying cause is an auth error (wrong account).
+			if authSetup.Err != nil && githubapp.IsAuthError(authSetup.Err) && attempt < maxOAuthAttempts-1 {
+				cc.Writeln("")
+				cc.Writeln("Authorization failed \u2014 this can happen if you selected")
+				cc.Writeln("the wrong GitHub account. Let's try again.")
+				cc.Writeln("")
+				continue
+			}
+			return waitErr
+		}
+		break
 	}
 
 	// Discover installations accessible to this user.
@@ -141,7 +162,6 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// Upsert all discovered installations (syncs tokens, fixes stale installation_ids).
-	var targets []string
 	for _, inst := range userInstalls {
 		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
@@ -157,82 +177,109 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 			return cc.Errorf("failed to save GitHub connection: %v", err)
 		}
 		existingIDs[inst.ID] = true
-		targets = append(targets, inst.Account.Login)
 	}
-	cc.Writeln("Connected: %s", strings.Join(targets, ", "))
+
+	cc.Writeln("")
+	cc.Writeln("Connected:")
+	for _, inst := range userInstalls {
+		cc.Writeln("  %s", formatGitHubAccount(inst.Account.Login, authSetup.GitHubLogin))
+	}
+	cc.Writeln("")
 
 	// Redirect the browser to the app's install page so the user can
 	// install on additional accounts, then run setup again to sync.
-	authSetup.respond(fmt.Sprintf("https://github.com/apps/%s/installations/new", ss.server.githubApp.AppSlug))
-	cc.Writeln("To install on another account, choose one in your browser and then run \"integrations setup github\" again.")
+	authSetup.respond(ss.server.githubApp.InstallURL(""))
+	cc.Writeln("To install on another account, go to https://github.com/apps/%s/installations/new", ss.server.githubApp.AppSlug)
+	cc.Writeln("Then run \"integrations setup github\" again to sync.")
 	ss.printGitHubAppSettingsHint(cc)
 	return nil
 }
 
 // setupGitHubInstallChained chains from an authorize callback to the install
-// flow by redirecting the user's browser instead of showing a new URL.
+// flow by redirecting the user's browser to the GitHub App install page, then
+// polling the GitHub API until a new installation appears.
+//
+// We poll rather than waiting for a callback because GitHub does not reliably
+// relay the state parameter for install callbacks (e.g. when an org admin
+// approves a requested installation in a separate browser session).
 func (ss *SSHServer) setupGitHubInstallChained(ctx context.Context, cc *exemenu.CommandContext, existingIDs map[int64]bool, prevSetup *GitHubSetup) error {
-	setup, cleanup, err := ss.registerGitHubSetup(cc.User.ID)
-	if err != nil {
-		return cc.Errorf("%v", err)
-	}
-	defer cleanup()
+	prevSetup.respond(ss.server.githubApp.InstallURL(""))
 
-	// Redirect the authorize callback's browser to the install URL.
-	installURL := ss.server.githubApp.InstallURL(setup.State)
-	prevSetup.respond(installURL)
-
+	cc.Writeln("Install the app in your browser, then come back here.")
 	cc.Writeln("Waiting...")
 
-	if err := ss.waitForGitHubSetup(ctx, cc, setup); err != nil {
-		return err
+	// Poll for new installations.
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	timeout := time.After(10 * time.Minute)
+
+	var consecutiveErrors int
+	for {
+		select {
+		case <-ticker.C:
+			installs, err := ss.server.githubApp.GetUserInstallations(ctx, prevSetup.AccessToken)
+			if err != nil {
+				consecutiveErrors++
+				if githubapp.IsAuthError(err) {
+					return cc.Errorf("GitHub token is no longer valid — run integrations setup github again")
+				}
+				if consecutiveErrors >= 5 {
+					ss.server.slog().WarnContext(ctx, "GitHub polling errors", "consecutive", consecutiveErrors, "error", err)
+				}
+				continue
+			}
+			consecutiveErrors = 0
+
+			var newInstalls []githubapp.Installation
+			for _, inst := range installs {
+				if !existingIDs[inst.ID] {
+					newInstalls = append(newInstalls, inst)
+				}
+			}
+			if len(newInstalls) > 0 {
+				for _, inst := range newInstalls {
+					err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+						return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
+							UserID:         cc.User.ID,
+							GitHubLogin:    prevSetup.GitHubLogin,
+							InstallationID: inst.ID,
+							TargetLogin:    inst.Account.Login,
+							AccessToken:    prevSetup.AccessToken,
+							RefreshToken:   prevSetup.RefreshToken,
+						})
+					})
+					if err != nil {
+						return cc.Errorf("failed to save GitHub connection: %v", err)
+					}
+				}
+				cc.Writeln("")
+				cc.Writeln("Connected:")
+				for _, inst := range newInstalls {
+					cc.Writeln("  %s", formatGitHubAccount(inst.Account.Login, prevSetup.GitHubLogin))
+				}
+				cc.Writeln("")
+				ss.printGitHubAppSettingsHint(cc)
+				return nil
+			}
+		case <-ctx.Done():
+			return cc.Errorf("GitHub setup canceled")
+		case <-timeout:
+			return cc.Errorf("GitHub setup timed out — run integrations setup github to try again")
+		}
 	}
-	return ss.storeGitHubInstall(ctx, cc, setup, existingIDs)
 }
 
-// storeGitHubInstall processes the result of a GitHub App install callback.
-func (ss *SSHServer) storeGitHubInstall(ctx context.Context, cc *exemenu.CommandContext, setup *GitHubSetup, existingIDs map[int64]bool) error {
-	if setup.InstallationID == 0 {
-		return cc.Errorf("no installation ID received from GitHub")
+// formatGitHubAccount formats a GitHub account for display.
+// When target and login differ (org install), shows "target (via login)".
+// When they're the same (personal install), just shows "target".
+func formatGitHubAccount(target, login string) string {
+	if target == "" {
+		return login
 	}
-
-	if existingIDs[setup.InstallationID] {
-		cc.Writeln("Already connected (installation %d).", setup.InstallationID)
-		return nil
+	if target == login {
+		return target
 	}
-
-	var targetLogin string
-	if ss.server.githubApp.InstallationTokensEnabled() {
-		tl, err := ss.server.githubApp.GetInstallationAccount(ctx, setup.InstallationID)
-		if err != nil {
-			return cc.Errorf("failed to look up installation account: %v", err)
-		}
-		targetLogin = tl
-	} else {
-		return cc.Errorf("GitHub App is not fully configured (missing app_id or private key)")
-	}
-
-	err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-			UserID:         cc.User.ID,
-			GitHubLogin:    setup.GitHubLogin,
-			InstallationID: setup.InstallationID,
-			TargetLogin:    targetLogin,
-			AccessToken:    setup.AccessToken,
-			RefreshToken:   setup.RefreshToken,
-		})
-	})
-	if err != nil {
-		return cc.Errorf("failed to save GitHub connection: %v", err)
-	}
-
-	label := setup.GitHubLogin
-	if targetLogin != "" {
-		label = fmt.Sprintf("%s (%s)", setup.GitHubLogin, targetLogin)
-	}
-	cc.Writeln("Connected: %s", label)
-	ss.printGitHubAppSettingsHint(cc)
-	return nil
+	return fmt.Sprintf("%s (via %s)", target, login)
 }
 
 // printGitHubAppSettingsHint prints a hint about where to manage the GitHub App.
@@ -256,14 +303,8 @@ func (ss *SSHServer) handleListGitHub(ctx context.Context, cc *exemenu.CommandCo
 
 	cc.Writeln("GitHub accounts:")
 	for _, a := range existing {
-		target := a.TargetLogin
-		if target == "" {
-			target = "(unknown)"
-		}
-		cc.Writeln("  %s (installed on %s)", a.GitHubLogin, target)
+		cc.Writeln("  %s", formatGitHubAccount(a.TargetLogin, a.GitHubLogin))
 	}
-	cc.Writeln("")
-	cc.Writeln("Manage app permissions: https://github.com/apps/%s", ss.server.githubApp.AppSlug)
 	return nil
 }
 
@@ -281,42 +322,39 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 
 	allOK := true
 	for _, acct := range existing {
-		label := acct.GitHubLogin
-		if acct.TargetLogin != "" {
-			label = fmt.Sprintf("%s (installed on %s)", acct.GitHubLogin, acct.TargetLogin)
-		}
+		label := formatGitHubAccount(acct.TargetLogin, acct.GitHubLogin)
 
 		// Try the stored access token.
-		login, err := ss.server.githubApp.GetUser(ctx, acct.AccessToken)
+		_, err := ss.server.githubApp.GetUser(ctx, acct.AccessToken)
 		if err == nil {
-			cc.Writeln("✓ %s — verified (API user: %s)", label, login)
+			cc.Writeln("  %s ✓", label)
 			continue
 		}
 
 		// Only attempt refresh for auth failures (expired/revoked tokens).
 		if !githubapp.IsAuthError(err) {
-			cc.Writeln("✗ %s — API error: %v", label, err)
+			cc.Writeln("  %s ✗ %v", label, err)
 			allOK = false
 			continue
 		}
 
 		if acct.RefreshToken == "" {
-			cc.Writeln("✗ %s — token expired, no refresh token", label)
+			cc.Writeln("  %s ✗ token expired", label)
 			allOK = false
 			continue
 		}
 
 		tokenResp, refreshErr := ss.server.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
 		if refreshErr != nil {
-			cc.Writeln("✗ %s — token expired, refresh failed: %v", label, refreshErr)
+			cc.Writeln("  %s ✗ token expired, refresh failed", label)
 			allOK = false
 			continue
 		}
 
 		// Verify the new token.
-		login, err = ss.server.githubApp.GetUser(ctx, tokenResp.AccessToken)
+		_, err = ss.server.githubApp.GetUser(ctx, tokenResp.AccessToken)
 		if err != nil {
-			cc.Writeln("✗ %s — refreshed token also failed: %v", label, err)
+			cc.Writeln("  %s ✗ refresh failed", label)
 			allOK = false
 			continue
 		}
@@ -332,11 +370,11 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 				RefreshToken:   tokenResp.RefreshToken,
 			})
 		}); err != nil {
-			cc.Writeln("✗ %s — verified but failed to save refreshed token: %v", label, err)
+			cc.Writeln("  %s ✗ failed to save refreshed token", label)
 			allOK = false
 			continue
 		}
-		cc.Writeln("✓ %s — verified after token refresh (API user: %s)", label, login)
+		cc.Writeln("  %s ✓", label)
 	}
 
 	if !allOK {
@@ -407,14 +445,9 @@ func (ss *SSHServer) handleDeleteGitHub(ctx context.Context, cc *exemenu.Command
 		return err
 	}
 
-	var accounts []string
+	cc.Writeln("Disconnected:")
 	for _, a := range existing {
-		label := a.GitHubLogin
-		if a.TargetLogin != "" {
-			label = fmt.Sprintf("%s (%s)", a.GitHubLogin, a.TargetLogin)
-		}
-		accounts = append(accounts, label)
+		cc.Writeln("  %s", formatGitHubAccount(a.TargetLogin, a.GitHubLogin))
 	}
-	cc.Writeln("Disconnected GitHub: %s", strings.Join(accounts, ", "))
 	return nil
 }

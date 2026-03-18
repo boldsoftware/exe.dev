@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"exe.dev/githubapp"
 )
 
-// handleGitHubCallback handles the GitHub App installation callback.
-// GitHub redirects here after the user installs/authorizes the app.
-//
-// OAuth authorize flow sends: code, state (and optionally installation_id).
-// App install flow sends: code, installation_id, setup_action — but NOT state.
-// We handle both: state-based lookup for OAuth, fallback scan for installs.
+// handleGitHubCallback handles the GitHub OAuth/install callback.
+// OAuth authorize flow: matched by state parameter.
+// App install flow: no pending setup expected (the SSH session uses polling
+// to detect new installations); orphan install callbacks show a friendly page.
 func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -60,25 +60,23 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Look up and consume the pending setup.
-	// OAuth flow: match by state. Install flow: state is absent, so scan
-	// for a pending setup (GitHub's install redirect doesn't relay state).
+	// Look up and consume the pending setup by state.
 	s.githubSetupsMu.Lock()
 	var setup *GitHubSetup
 	if state != "" {
 		setup = s.githubSetups[state]
 		delete(s.githubSetups, state)
-	} else if installationID != 0 {
-		// Install flow without state — find the single pending setup.
-		for st, gs := range s.githubSetups {
-			setup = gs
-			delete(s.githubSetups, st)
-			break
-		}
 	}
 	s.githubSetupsMu.Unlock()
 
 	if setup == nil {
+		// Install callbacks arrive without state (GitHub doesn't reliably
+		// relay it for org-admin approvals). The SSH session detects new
+		// installations via polling, so just show a friendly page.
+		if installationID != 0 {
+			s.renderTemplate(ctx, w, "github-installed.html", nil)
+			return
+		}
 		http.Error(w, "unknown or expired setup — please try again from SSH", http.StatusBadRequest)
 		return
 	}
@@ -96,10 +94,18 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	// Look up the GitHub user.
 	login, err := s.githubApp.GetUser(ctx, tokenResp.AccessToken)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "GitHub user lookup failed", "error", err)
+		if githubapp.IsAuthError(err) {
+			s.slog().WarnContext(ctx, "GitHub user lookup auth failure (may be wrong account)", "error", err)
+		} else {
+			s.slog().ErrorContext(ctx, "GitHub user lookup failed", "error", err)
+		}
 		setup.Err = fmt.Errorf("user lookup failed: %w", err)
 		setup.Close()
-		http.Error(w, "failed to look up GitHub user", http.StatusInternalServerError)
+		if githubapp.IsAuthError(err) {
+			http.Error(w, "GitHub authorization failed \u2014 you may have selected the wrong account. Return to your terminal to try again.", http.StatusUnauthorized)
+		} else {
+			http.Error(w, "failed to look up GitHub user", http.StatusInternalServerError)
+		}
 		return
 	}
 

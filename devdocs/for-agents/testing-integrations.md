@@ -34,14 +34,19 @@ The e1e tests require a local exed+exelet stack with a real container host.
 go test -count=1 ./e1e -run "^TestIntegration"
 
 # Specific tests
-go test -count=1 ./e1e -run TestIntegrationsCommand          # CRUD, validation, golden file
-go test -count=1 ./e1e -run TestIntegrationsBearerFlag       # --bearer shorthand
-go test -count=1 ./e1e -run TestIntegrationsAttachDetach     # attach/detach lifecycle
-go test -count=1 ./e1e -run TestIntegrationsRename           # rename flow
-go test -count=1 ./e1e -run TestIntegrationsProxy            # proxy forwarding from inside a VM
-go test -count=1 ./e1e -run TestIntegrationsSetupGitHub      # GitHub OAuth flow
-go test -count=1 ./e1e -run TestIntegrationsAddGitHub        # GitHub integration add
-go test -count=1 ./e1e -run TestIntegrationAttachmentSpecs   # attachment spec parsing
+go test -count=1 ./e1e -run TestIntegrationsCommand                   # CRUD, validation, golden file
+go test -count=1 ./e1e -run TestIntegrationsBearerFlag                # --bearer shorthand
+go test -count=1 ./e1e -run TestIntegrationsAttachDetach              # attach/detach lifecycle
+go test -count=1 ./e1e -run TestIntegrationsRename                    # rename flow
+go test -count=1 ./e1e -run TestIntegrationsProxy                     # proxy forwarding from inside a VM
+go test -count=1 ./e1e -run TestIntegrationsSetupGitHub$              # GitHub OAuth flow (has installations)
+go test -count=1 ./e1e -run TestIntegrationsSetupGitHubNoInstallations # new user, no installations, polling
+go test -count=1 ./e1e -run TestIntegrationsSetupGitHubOrg            # user with personal + org installations
+go test -count=1 ./e1e -run TestIntegrationsGitHubOrphanInstallCallback # install callback with no pending setup
+go test -count=1 ./e1e -run TestIntegrationsGitHubOrphanOAuthCallback  # OAuth callback with bad state
+go test -count=1 ./e1e -run TestIntegrationsSetupGitHubWrongAccount  # wrong account retry flow
+go test -count=1 ./e1e -run TestIntegrationsAddGitHub                 # GitHub integration add
+go test -count=1 ./e1e -run TestIntegrationAttachmentSpecs            # attachment spec parsing
 ```
 
 Golden files live in `e1e/golden/TestIntegration*.txt`. Update them with `-update`.
@@ -150,6 +155,59 @@ integrations setup github
 # Follow the OAuth flow again — should reconnect
 ```
 
+### Testing with Multiple GitHub Accounts (Wrong Account Retry)
+
+**IMPORTANT**: When making changes to the OAuth flow, always manually test the
+multi-account scenario with real GitHub accounts. The e1e tests use a mock that
+cannot reproduce all of GitHub's account-switcher behaviors.
+
+Prerequisites:
+- Two GitHub accounts logged into the same browser session (use GitHub's
+  "Add another account" feature at https://github.com/login?add_account=1)
+- Test accounts: `sketchdevtestuser` (password: `e6408ce26b0e87d21ecbc1dce5a4aa041a4a9b01`)
+  and `sketchdevtestuser2` (password: `jemfo9-xipquQ-rormud`; email delivered to
+  `github2@phil-exe-dev.exe.xyz`)
+
+Steps:
+1. Start local exed (see above) and SSH in
+2. Run `integrations setup github`
+3. Open the authorize URL — GitHub should show "Select user to authorize exe.dev dev"
+   with both accounts listed
+4. **Wrong account test**: Pick the account that does NOT have the app installed.
+   Depending on GitHub's state, this may:
+   a. Show an "Install & Authorize" page (app not installed on that account) —
+      the flow will work but connect the "wrong" account
+   b. Return a 401 auth error — the SSH session should show "Authorization failed"
+      and offer a retry with a new URL
+5. **Correct account test**: On retry (or first attempt), pick the account that
+   has the app installed. It should connect successfully.
+6. Verify with `integrations setup github --list` and `--verify`
+7. Clean up with `integrations setup github -d`
+
+After testing, uninstall the app from any test accounts that shouldn't keep it:
+https://github.com/settings/installations (look for "exe.dev dev")
+
+### Testing with Organizations
+
+If `sketchdevtestuser` is part of an organization (e.g., `sketchdevtestorg`):
+
+1. **Org already has app installed**: Run `integrations setup github`. After OAuth,
+   both personal and org installations should be discovered and synced.
+   `--list` should show both entries.
+
+2. **Installing on a new org**: Run `integrations setup github` when the org does NOT
+   have the app installed yet. After OAuth, if no installations are found, the browser
+   is redirected to the GitHub App install page. Choose the org and install.
+   The SSH session polls the API and detects the new installation automatically.
+
+3. **Orphan install callback**: If the user installs on an org AFTER the SSH session
+   has already finished, the browser should show a friendly "INSTALLED" page (not
+   an error). Running `integrations setup github` again syncs the new installation.
+
+4. **Adding org repo integrations**: After connecting, `integrations add github
+   --name=test --repository=orgname/repo` should work if the org has the app
+   installed.
+
 ### Cleanup
 
 Kill tmux sessions when done:
@@ -227,9 +285,16 @@ Things to verify:
 
 ## Troubleshooting
 
-**"GitHub user lookup failed" / 401 Bad credentials**: This occurs when the
-server calls `GET https://api.github.com/user` with the access token from the
-OAuth code exchange. Possible causes:
+**"Authorization failed — wrong GitHub account"**: When the user has multiple
+GitHub accounts logged in and picks the wrong one from the browser's account
+chooser, the OAuth code exchange succeeds but the resulting token gets 401 on
+`GET /user`. The SSH session detects this and offers a retry (up to 3 attempts),
+showing a new authorization URL each time. The browser shows a 401 page telling
+the user to return to their terminal.
+
+**"GitHub user lookup failed" / 401 Bad credentials**: If the retry flow above
+is exhausted, or if the failure is not an auth error, this is the final message.
+Possible causes beyond wrong-account:
 - Transient GitHub API issue (token propagation delay)
 - OAuth code reuse (browser retry hitting the callback twice)
 - Expired/revoked token (if testing with old credentials)
@@ -241,6 +306,13 @@ callback URL configured on the app. For the dev app this is
 `http://localhost:8080`. If the browser can't reach localhost:8080 (e.g.,
 you're using a remote browser), the page will hang. Navigate away manually;
 the server-side state may have already been handled.
+
+**"unknown or expired setup" after installing on an org**: This used to happen
+when the install callback arrived after the SSH session had already completed
+(e.g., user authorized OAuth, then separately installed on an org). The fix:
+install callbacks with `installation_id` + `setup_action` but no matching
+pending setup now show a friendly "INSTALLED" page instead of an error. The
+user just needs to run `integrations setup github` again to sync.
 
 **"flag provided but not defined: -reconnect"**: The `--reconnect` flag was
 removed. Just run `integrations setup github` again; it handles both fresh
