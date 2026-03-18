@@ -184,11 +184,10 @@ func NewMockGitHubServer() *MockGitHubServer {
 
 		w.Header().Set("Content-Type", "application/json")
 		if found == nil {
+			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(map[string]any{
-				"id": 12345,
-				"account": map[string]any{
-					"login": "testghuser",
-				},
+				"message":           "Not Found",
+				"documentation_url": "https://docs.github.com/rest",
 			})
 			return
 		}

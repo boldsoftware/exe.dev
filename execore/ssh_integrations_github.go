@@ -308,7 +308,8 @@ func (ss *SSHServer) handleListGitHub(ctx context.Context, cc *exemenu.CommandCo
 	return nil
 }
 
-// handleVerifyGitHub verifies that stored GitHub tokens are valid by calling the GitHub API.
+// handleVerifyGitHub verifies that stored GitHub tokens are valid and
+// that the GitHub App is still installed on each target account.
 func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
 	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
 	if err != nil {
@@ -324,56 +325,70 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 	for _, acct := range existing {
 		label := formatGitHubAccount(acct.TargetLogin, acct.GitHubLogin)
 
-		// Try the stored access token.
-		_, err := ss.server.githubApp.GetUser(ctx, acct.AccessToken)
-		if err == nil {
-			cc.Writeln("  %s ✓", label)
-			continue
-		}
-
-		// Only attempt refresh for auth failures (expired/revoked tokens).
-		if !githubapp.IsAuthError(err) {
-			cc.Writeln("  %s ✗ %v", label, err)
-			allOK = false
-			continue
-		}
-
-		if acct.RefreshToken == "" {
-			cc.Writeln("  %s ✗ token expired", label)
-			allOK = false
-			continue
-		}
-
-		tokenResp, refreshErr := ss.server.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
-		if refreshErr != nil {
-			cc.Writeln("  %s ✗ token expired, refresh failed", label)
-			allOK = false
-			continue
-		}
-
-		// Verify the new token.
-		_, err = ss.server.githubApp.GetUser(ctx, tokenResp.AccessToken)
+		// Resolve a working access token.
+		workingToken := acct.AccessToken
+		_, err := ss.server.githubApp.GetUser(ctx, workingToken)
 		if err != nil {
-			cc.Writeln("  %s ✗ refresh failed", label)
+			if !githubapp.IsAuthError(err) {
+				cc.Writeln("  %s ✗ %v", label, err)
+				allOK = false
+				continue
+			}
+			if acct.RefreshToken == "" {
+				cc.Writeln("  %s ✗ token expired", label)
+				allOK = false
+				continue
+			}
+			tokenResp, refreshErr := ss.server.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+			if refreshErr != nil {
+				cc.Writeln("  %s ✗ token expired, refresh failed", label)
+				allOK = false
+				continue
+			}
+			_, err = ss.server.githubApp.GetUser(ctx, tokenResp.AccessToken)
+			if err != nil {
+				cc.Writeln("  %s ✗ refresh failed", label)
+				allOK = false
+				continue
+			}
+			workingToken = tokenResp.AccessToken
+			// Update stored tokens.
+			if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
+					UserID:         cc.User.ID,
+					GitHubLogin:    acct.GitHubLogin,
+					InstallationID: acct.InstallationID,
+					TargetLogin:    acct.TargetLogin,
+					AccessToken:    tokenResp.AccessToken,
+					RefreshToken:   tokenResp.RefreshToken,
+				})
+			}); err != nil {
+				cc.Writeln("  %s ✗ failed to save refreshed token", label)
+				allOK = false
+				continue
+			}
+		}
+
+		// Check that the GitHub App installation is still active.
+		installs, err := ss.server.githubApp.GetUserInstallations(ctx, workingToken)
+		if err != nil {
+			cc.Writeln("  %s ✗ failed to check installations: %v", label, err)
+			allOK = false
+			continue
+		}
+		found := false
+		for _, inst := range installs {
+			if inst.ID == acct.InstallationID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cc.Writeln("  %s ✗ app not installed", label)
 			allOK = false
 			continue
 		}
 
-		// Update stored tokens.
-		if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:         cc.User.ID,
-				GitHubLogin:    acct.GitHubLogin,
-				InstallationID: acct.InstallationID,
-				TargetLogin:    acct.TargetLogin,
-				AccessToken:    tokenResp.AccessToken,
-				RefreshToken:   tokenResp.RefreshToken,
-			})
-		}); err != nil {
-			cc.Writeln("  %s ✗ failed to save refreshed token", label)
-			allOK = false
-			continue
-		}
 		cc.Writeln("  %s ✓", label)
 	}
 

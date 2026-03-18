@@ -376,6 +376,52 @@ func TestIntegrationsSetupGitHubWrongAccount(t *testing.T) {
 	pty.WantPrompt()
 }
 
+// TestIntegrationsVerifyGitHub tests that --verify checks both OAuth token
+// validity AND whether the GitHub App installation is still active.
+func TestIntegrationsVerifyGitHub(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Pre-configure: custom code/token with one installation.
+	const code = "verify-test"
+	const token = "ghu_" + code
+	installs := Env.servers.GitHubMock.SetInstallationsForToken(token, []testinfra.MockInstallation{
+		{ID: 55555, Login: "verify-user"},
+	})
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Connect the GitHub account.
+	pty.SendLine("integrations setup github")
+	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
+	state := extractRedirectKey(t, out)
+	simulateGitHubOAuthCallback(t, code, state, 0)
+	pty.Want("Connected:")
+	pty.Want("verify-user")
+	pty.WantPrompt()
+
+	// Verify: should pass — token is valid and installation exists.
+	pty.SendLine("integrations setup github --verify")
+	pty.WantRE(`verify-user.*✓`)
+	pty.WantPrompt()
+
+	// Simulate uninstalling the GitHub App: remove the installation.
+	*installs = nil
+
+	// Verify again: token is still valid but installation is gone.
+	pty.SendLine("integrations setup github --verify")
+	pty.WantRE(`verify-user.*✗`)
+	pty.Want("app not installed")
+	pty.WantPrompt()
+
+	// Clean up.
+	pty.SendLine("integrations setup github -d")
+	pty.Want("Disconnected:")
+	pty.WantPrompt()
+}
+
 // TestIntegrationsAddGitHub tests the GitHub integration add/list/remove flow
 // and validates error cases.
 func TestIntegrationsAddGitHub(t *testing.T) {
