@@ -2444,6 +2444,14 @@ func (s *Server) handleDebugGiftCredits(w http.ResponseWriter, r *http.Request) 
 		"gift_id", giftID,
 		"note", note)
 
+	// Post to Slack feed. Look up the user's email for the message.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to look up user for slack feed", "user_id", userID, "error", err)
+	} else {
+		s.slackFeed.CreditGifted(ctx, user.Email, amountUSD, note)
+	}
+
 	http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 

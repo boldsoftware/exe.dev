@@ -68,6 +68,17 @@ func TestSlackFeed_NewSlackFeed_Disabled(t *testing.T) {
 	require.Nil(t, sf.client, "client should be nil when disabled")
 }
 
+func TestSlackFeed_CreditGifted_NoClient(t *testing.T) {
+	sf := &SlackFeed{client: nil, log: tslog.Slogger(t)}
+	ctx := context.Background()
+
+	// Without note — should not panic, should log
+	sf.CreditGifted(ctx, "user@example.com", 25.00, "")
+
+	// With note — should not panic, should log
+	sf.CreditGifted(ctx, "user@example.com", 10.50, "welcome bonus")
+}
+
 func TestSlackFeed_NewUser_WithInviter(t *testing.T) {
 	// Test that inviter email is included in the message
 	ctx := context.Background()

@@ -225,6 +225,24 @@ func (sf *SlackFeed) IdeaSubmitted(ctx context.Context, email, title, slug strin
 	}()
 }
 
+// CreditGifted notifies Slack that credits were gifted to a user.
+func (sf *SlackFeed) CreditGifted(ctx context.Context, email string, amountUSD float64, note string) {
+	message := fmt.Sprintf("🎁 gifted $%.2f credits to `%s`", amountUSD, email)
+	if note != "" {
+		message += fmt.Sprintf(" (%s)", note)
+	}
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post credit gift to feed channel", "error", err)
+		}
+	}()
+}
+
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
 func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {
