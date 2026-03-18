@@ -1790,6 +1790,14 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			IsAdmin:        team.Role != "user",
 			IsBillingOwner: team.Role == "billing_owner",
 		}
+		if boxCount, err := withRxRes1(s, r.Context(), (*exedb.Queries).CountTeamBoxes, userID); err == nil {
+			ti.BoxCount = boxCount
+		}
+		if limits, err := s.GetEffectiveLimits(r.Context(), userID); err == nil {
+			ti.MaxBoxes = GetMaxTeamBoxes(limits)
+		} else {
+			ti.MaxBoxes = stage.DefaultMaxTeamBoxes
+		}
 		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to get team members", "error", err, "team_id", team.TeamID)
 		} else {

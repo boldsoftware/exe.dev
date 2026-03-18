@@ -58,10 +58,12 @@ func (ss *SSHServer) handleSetLimitsCommand(ctx context.Context, cc *exemenu.Com
 		if team != nil && team.Limits != nil {
 			effectiveLimits = ParseUserLimitsFromJSON(*team.Limits)
 		}
-		effectiveMaxBoxes := GetMaxBoxes(effectiveLimits)
-		if team != nil && team.Limits != nil {
+		var effectiveMaxBoxes int
+		if team != nil {
+			effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits)
 			cc.Writeln("Effective max VMs: %d (team: %s)", effectiveMaxBoxes, team.TeamID)
 		} else {
+			effectiveMaxBoxes = GetMaxBoxes(effectiveLimits)
 			cc.Writeln("Effective max VMs: %d (default)", effectiveMaxBoxes)
 		}
 		return nil
@@ -153,7 +155,12 @@ func (ss *SSHServer) showUserLimits(ctx context.Context, cc *exemenu.CommandCont
 	if team != nil && team.Limits != nil {
 		effectiveLimits = ParseUserLimitsFromJSON(*team.Limits)
 	}
-	effectiveMaxBoxes := GetMaxBoxes(effectiveLimits)
+	var effectiveMaxBoxes int
+	if team != nil {
+		effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits)
+	} else {
+		effectiveMaxBoxes = GetMaxBoxes(effectiveLimits)
+	}
 	glbStatus := ss.userGLBStatus(ctx, user.UserID)
 
 	if cc.WantJSON() {

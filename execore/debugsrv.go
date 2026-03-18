@@ -5745,6 +5745,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			CreatedAt    string       `json:"created_at"`
 			MemberCount  int64        `json:"member_count"`
 			VMCount      int64        `json:"vm_count"`
+			MaxBoxes     int          `json:"max_boxes"`
 			Limits       string       `json:"limits,omitempty"`
 			AuthProvider string       `json:"auth_provider,omitempty"`
 			Members      []memberInfo `json:"members"`
@@ -5763,6 +5764,9 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, t.TeamID); err == nil {
 				ti.Limits = ptrStr(team.Limits)
 				ti.AuthProvider = ptrStr(team.AuthProvider)
+				ti.MaxBoxes = GetMaxTeamBoxes(ParseUserLimitsFromJSON(ptrStr(team.Limits)))
+			} else {
+				ti.MaxBoxes = stage.DefaultMaxTeamBoxes
 			}
 			// Fetch SSO provider if configured
 			if ssoProvider, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamSSOProvider, t.TeamID); err == nil {

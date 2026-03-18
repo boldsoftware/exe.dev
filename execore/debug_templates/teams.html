@@ -204,7 +204,7 @@ $(document).ready(function() {
             { data: 'display_name' },
             { data: 'created_at' },
             { data: 'member_count' },
-            { data: 'vm_count' },
+            { data: null, render: function(d) { return d.vm_count + ' / ' + d.max_boxes; } },
             { data: null, render: function(d) {
                 var summary = parseLimits(d.limits);
                 return summary + ' <button class="toggle-btn limits-btn" ' +

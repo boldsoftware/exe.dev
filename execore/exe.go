@@ -237,6 +237,8 @@ type TeamDisplayInfo struct {
 	IsBillingOwner bool   // true if role is billing_owner
 	OnlyMember     bool   // true if team has exactly 1 member (can disable)
 	Members        []TeamMemberDisplayInfo
+	BoxCount       int64 // total VMs across all team members
+	MaxBoxes       int   // effective VM limit for the team
 }
 
 // TeamMemberDisplayInfo represents a team member for the dashboard
@@ -2360,7 +2362,12 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 			limits = ParseUserLimits(&user)
 		}
 	}
-	maxBoxes := GetMaxBoxes(limits)
+	var maxBoxes int
+	if inTeam {
+		maxBoxes = GetMaxTeamBoxes(limits)
+	} else {
+		maxBoxes = GetMaxBoxes(limits)
+	}
 
 	var shards []int64
 	var err error

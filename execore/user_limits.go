@@ -47,6 +47,15 @@ func GetMaxBoxes(userLimits *UserLimits) int {
 	return stage.DefaultMaxBoxes
 }
 
+// GetMaxTeamBoxes returns the effective max number of VMs for a team.
+// Uses team-specific limit if set, otherwise falls back to DefaultMaxTeamBoxes.
+func GetMaxTeamBoxes(teamLimits *UserLimits) int {
+	if teamLimits != nil && teamLimits.MaxBoxes > 0 {
+		return teamLimits.MaxBoxes
+	}
+	return stage.DefaultMaxTeamBoxes
+}
+
 // GetMaxMemory returns the effective max memory for a user.
 // Uses user-specific limit if set, otherwise falls back to environment default.
 func GetMaxMemory(env stage.Env, userLimits *UserLimits) uint64 {

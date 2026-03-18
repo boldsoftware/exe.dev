@@ -880,6 +880,10 @@
                     <div class="info-label">Members</div>
                     <div class="info-value">{{len .TeamInfo.Members}}</div>
                 </div>
+                <div class="info-row">
+                    <div class="info-label">VMs</div>
+                    <div class="info-value">{{.TeamInfo.BoxCount}} / {{.TeamInfo.MaxBoxes}}</div>
+                </div>
             </div>
 
             {{if .TeamInfo.Members}}

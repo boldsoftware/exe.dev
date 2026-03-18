@@ -20,8 +20,10 @@ const (
 	SupportMaxDisk   = 128 * 1000 * 1000 * 1000 // 128GB max disk for support
 	SupportMaxCPUs   = 8                        // 8 CPUs max for support
 
-	// DefaultMaxBoxes is the default maximum number of VMs per user or team.
+	// DefaultMaxBoxes is the default maximum number of VMs per user.
 	DefaultMaxBoxes = 25
+	// DefaultMaxTeamBoxes is the default maximum number of VMs per team.
+	DefaultMaxTeamBoxes = 100
 )
 
 // An Env represents a deployment stage/environment.

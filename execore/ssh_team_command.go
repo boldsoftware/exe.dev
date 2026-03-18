@@ -400,12 +400,20 @@ func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandC
 		return err
 	}
 
+	// Get effective VM limit
+	limits, err := ss.server.GetEffectiveLimits(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	maxBoxes := GetMaxTeamBoxes(limits)
+
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
 			"display_name": team.DisplayName,
 			"role":         team.Role,
 			"member_count": len(members),
 			"box_count":    boxCount,
+			"max_boxes":    maxBoxes,
 		})
 		return nil
 	}
@@ -413,7 +421,7 @@ func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("Team: \033[1m%s\033[0m", team.DisplayName)
 	cc.Writeln("Your role: %s", team.Role)
 	cc.Writeln("Members: %d", len(members))
-	cc.Writeln("VMs: %d", boxCount)
+	cc.Writeln("VMs: %d / %d", boxCount, maxBoxes)
 	return nil
 }
 
