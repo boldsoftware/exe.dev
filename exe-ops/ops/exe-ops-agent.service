@@ -1,0 +1,13 @@
+[Unit]
+Description=exe-ops agent
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/exe-ops-agent
+ExecStart=/opt/exe-ops/bin/exe-ops-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

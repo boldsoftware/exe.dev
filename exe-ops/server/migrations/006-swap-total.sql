@@ -1,0 +1,1 @@
+ALTER TABLE reports ADD COLUMN mem_swap_total INTEGER NOT NULL DEFAULT 0;

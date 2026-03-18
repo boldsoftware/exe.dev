@@ -1,0 +1,14 @@
+[Unit]
+Description=exe-ops server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/exe-ops-server
+ExecStart=/opt/exe-ops/bin/exe-ops-server
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/opt/exe-ops
+
+[Install]
+WantedBy=multi-user.target

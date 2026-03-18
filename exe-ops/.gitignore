@@ -1,0 +1,18 @@
+# Binaries
+bin/
+/exe-ops-server
+/exe-ops-agent
+server/agentbin/binaries/*/exe-ops-agent
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# UI
+ui/node_modules/
+ui/dist/
+!ui/dist/.gitkeep
+
+# OS
+.DS_Store

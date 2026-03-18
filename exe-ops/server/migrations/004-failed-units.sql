@@ -1,0 +1,1 @@
+ALTER TABLE reports ADD COLUMN failed_units TEXT NOT NULL DEFAULT '[]';
