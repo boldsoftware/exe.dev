@@ -25,6 +25,6 @@ PROMPT ▶ team
 Team: Cancel Test Team
 Your role: billing_owner
 Members: 1
-VMs: 0
+VMs: 0 / 100
 PROMPT ▶ exit
 Goodbye!
