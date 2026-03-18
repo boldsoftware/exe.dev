@@ -602,11 +602,8 @@ func (s *Server) handleTeamInviteDecline(w http.ResponseWriter, r *http.Request,
 	http.Redirect(w, r, "/user", http.StatusSeeOther)
 }
 
-// ErrTeamSlugTaken is returned when a team slug is already in use.
-var ErrTeamSlugTaken = errors.New("team slug already taken")
-
 // EnableTeam creates a new team with the given display name and adds the user as billing_owner.
-// Returns the generated team ID on success, or ErrTeamSlugTaken if the slug collides.
+// Returns the generated team ID on success.
 func (s *Server) EnableTeam(ctx context.Context, userID, displayName string) (string, error) {
 	// Verify not already in a team
 	team, err := s.GetTeamForUser(ctx, userID)
@@ -622,12 +619,10 @@ func (s *Server) EnableTeam(ctx context.Context, userID, displayName string) (st
 		return "", fmt.Errorf("team name cannot be empty")
 	}
 
-	slug := slugifyTeamName(displayName)
-	if slug == "" {
-		return "", fmt.Errorf("team name must contain at least one letter or number")
+	teamID, err := generateID("tm_")
+	if err != nil {
+		return "", fmt.Errorf("generate team ID: %w", err)
 	}
-
-	teamID := "tm_" + slug
 
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		if err := queries.InsertTeam(ctx, exedb.InsertTeamParams{
@@ -646,9 +641,6 @@ func (s *Server) EnableTeam(ctx context.Context, userID, displayName string) (st
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") && strings.Contains(err.Error(), "teams.team_id") {
-			return "", ErrTeamSlugTaken
-		}
 		return "", err
 	}
 
@@ -746,14 +738,6 @@ func (s *Server) handleTeamEnable(w http.ResponseWriter, r *http.Request, userID
 
 	teamID, err := s.EnableTeam(r.Context(), userID, req.Name)
 	if err != nil {
-		if errors.Is(err, ErrTeamSlugTaken) {
-			slug := slugifyTeamName(strings.TrimSpace(req.Name))
-			writeJSON(w, http.StatusOK, map[string]any{
-				"success": false,
-				"error":   fmt.Sprintf("Team ID %q is already taken. Please choose a different name.", "tm_"+slug),
-			})
-			return
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": err.Error()})
 		return
 	}

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"regexp"
 	"strings"
 
 	"exe.dev/exedb"
@@ -231,16 +230,6 @@ func (ss *SSHServer) isTeamBillingOwner(cc *exemenu.CommandContext) bool {
 	return isOwner
 }
 
-// slugifyTeamName converts a display name to a valid team slug.
-// Lowercases, replaces non-alphanumeric with underscores, collapses runs, trims.
-var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
-
-func slugifyTeamName(name string) string {
-	s := strings.ToLower(name)
-	s = nonAlphanumRe.ReplaceAllString(s, "_")
-	s = strings.Trim(s, "_")
-	return s
-}
 
 // handleTeamEnableCommand lets a user create a new team for themselves.
 func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -281,7 +270,6 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 		return nil
 	}
 
-	// Prompt for team name, retry on slug collision or validation error
 	for {
 		cc.Write("Team name: ")
 		displayName, err := cc.ReadLine()
@@ -294,18 +282,8 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 			continue
 		}
 
-		slug := slugifyTeamName(displayName)
-		if slug == "" {
-			cc.Writeln("Team name must contain at least one letter or number.")
-			continue
-		}
-
 		teamID, err := ss.server.EnableTeam(ctx, cc.User.ID, displayName)
 		if err != nil {
-			if errors.Is(err, ErrTeamSlugTaken) {
-				cc.Writeln("Team ID %q is already taken. Please choose a different name.", "tm_"+slug)
-				continue
-			}
 			return cc.Errorf("Failed to create team: %v", err)
 		}
 

@@ -435,6 +435,8 @@ func canonicalizeString(s string) string {
 	s = regexp.MustCompile(`(?s)(For support and documentation, "ssh exe\.dev" or visit https://exe\.dev/\n)\n(.+?)\n(exedev@)`).ReplaceAllString(s, "$1\nMOTD HINT\n\n$3")
 	// Canonicalize shelley.backup timestamps (format: YYYYMMDD-HHMMSS).
 	s = regexp.MustCompile(`shelley\.backup\.\d{8}-\d{6}`).ReplaceAllString(s, `shelley.backup.TIMESTAMP`)
+	// Canonicalize random team IDs (e.g., tm_LQIZNYARG2SJ5).
+	s = regexp.MustCompile(`tm_[A-Z0-9]{13}\b`).ReplaceAllString(s, `TEAM_ID`)
 	// Canonicalize REPL prompt (host varies by environment).
 	s = regexp.MustCompile(`(?m)^[a-z0-9.-]+ ▶`).ReplaceAllString(s, `PROMPT ▶`)
 	return s

@@ -28,7 +28,7 @@ func TestTeamEnableDisableLifecycle(t *testing.T) {
 		repl.Want("Team name:")
 		repl.SendLine("Self Service Squad")
 		repl.Want("created")
-		repl.Want("tm_self_service_squad")
+		repl.Want("tm_")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
@@ -74,7 +74,7 @@ func TestTeamEnableDisableLifecycle(t *testing.T) {
 		repl.Disconnect()
 	})
 
-	// Re-enable after disable (same slug should now be free)
+	// Re-enable after disable
 	t.Run("ReEnable", func(t *testing.T) {
 		repl := sshToExeDev(t, ownerKeyFile)
 		repl.SendLine("team enable")
@@ -100,49 +100,6 @@ func TestTeamEnableDisableLifecycle(t *testing.T) {
 	})
 }
 
-// TestTeamEnableSlugCollision tests that enabling a team with a colliding
-// slug re-prompts the user rather than failing.
-func TestTeamEnableSlugCollision(t *testing.T) {
-	t.Parallel()
-	reserveVMs(t, 0)
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
-
-	// Register two users
-	user1PTY, _, user1KeyFile, user1Email := registerForExeDevWithEmail(t, "first@test-slug-collision.example")
-	user2PTY, _, user2KeyFile, _ := registerForExeDevWithEmail(t, "second@test-slug-collision.example")
-	user1PTY.Disconnect()
-	user2PTY.Disconnect()
-
-	// User 1 creates a team via sudo to reserve the slug "tm_takenslug"
-	enableRootSupport(t, user1Email)
-	createTeam(t, user1KeyFile, "takenslug", "TakenSlug", user1Email)
-
-	// User 2 tries to enable with the same slug — should get reprompted
-	t.Run("CollisionReprompt", func(t *testing.T) {
-		repl := sshToExeDev(t, user2KeyFile)
-		repl.SendLine("team enable")
-		repl.Want("Teams lets you:")
-		repl.SendLine("yes")
-		repl.Want("Team name:")
-		// First attempt collides (slugifies to "takenslug")
-		repl.SendLine("TakenSlug")
-		repl.Want("already taken")
-		// Second attempt with different name succeeds
-		repl.SendLine("NotTakenSlug")
-		repl.Want("created")
-		repl.Want("tm_nottakenslug")
-		repl.WantPrompt()
-
-		// Clean up
-		repl.SendLine("team disable")
-		repl.Want("Disabling team")
-		repl.SendLine("yes")
-		repl.Want("has been disabled")
-		repl.WantPrompt()
-		repl.Disconnect()
-	})
-}
 
 // TestTeamEnableCancel tests that declining the confirmation prompt cancels cleanly.
 func TestTeamEnableCancel(t *testing.T) {
@@ -387,8 +344,7 @@ func TestTeamEnableNonInteractive(t *testing.T) {
 	}
 }
 
-// TestTeamEnableEmptyName tests that empty and non-alphanumeric team names
-// are rejected with helpful messages.
+// TestTeamEnableEmptyName tests that an empty team name is rejected.
 func TestTeamEnableEmptyName(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -407,10 +363,6 @@ func TestTeamEnableEmptyName(t *testing.T) {
 	repl.Want("Team name:")
 	repl.SendLine("")
 	repl.Want("cannot be empty")
-
-	// Try all-symbols name
-	repl.SendLine("!!!")
-	repl.Want("at least one letter or number")
 
 	// Valid name to finish
 	repl.SendLine("Valid Name")
