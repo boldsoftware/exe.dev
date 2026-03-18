@@ -121,6 +121,11 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 		}
 	}
 
+	tc := exeweb.NewTransportCache(5 * time.Minute)
+	sshPool.OnConnClosed = func(host string, user string, port int, publicKey string) {
+		tc.CloseIdleConnectionsFor(host, user, port, publicKey)
+	}
+
 	p := &Proxy{
 		grpcClient:      grpcClient,
 		lg:              lg,
@@ -135,7 +140,7 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 			httpMetrics:    httpMetrics,
 			netHTTPLogger:  log.New(httpLogger{cfg.Logger}, "", 0),
 			templates:      tmpls,
-			transportCache: exeweb.NewTransportCache(5 * time.Minute),
+			transportCache: tc,
 			certCache:      cc,
 		},
 	}

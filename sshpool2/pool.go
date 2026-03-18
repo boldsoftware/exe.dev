@@ -206,6 +206,15 @@ type Pool struct {
 	Logger  *slog.Logger
 	Metrics *Metrics
 
+	// OnConnClosed is called when a pooled SSH connection dies.
+	// The callback fires asynchronously after ssh.Client.Wait returns,
+	// which means the SSH connection's channels have already been closed
+	// (pending buffers EOF'd, writes return io.EOF). Callers can use this
+	// to flush HTTP idle connections that were riding on the dead tunnel.
+	//
+	// Must be set before the first use of the Pool.
+	OnConnClosed func(host string, user string, port int, publicKey string)
+
 	sfGroup singleflight.Group[connKey, *pooledConn]
 
 	mu    sync.Mutex // guards following fields
@@ -362,6 +371,20 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	p.setConn(pc)
 	pc.disconnected()
 
+	// Watch for SSH connection death. When mux.loop() exits, all channels
+	// have already been closed (pending buffers EOF'd, writes return io.EOF).
+	// We proactively remove the dead connection from the pool and notify the
+	// caller so it can flush HTTP idle connections that rode on this tunnel.
+	go func() {
+		client.Wait()
+		if p.removeConn(pc) {
+			p.log().Info("SSH connection closed, removing from pool", "key", key.String())
+			if p.OnConnClosed != nil {
+				p.OnConnClosed(key.host, key.user, key.port, key.publicKey)
+			}
+		}
+	}()
+
 	return pc, nil
 }
 
@@ -491,19 +514,20 @@ func (p *Pool) setConn(pc *pooledConn) {
 
 // removeConn removes a connection from the pool.
 // The actual SSH client will be closed when the last active connection is released.
-func (p *Pool) removeConn(pc *pooledConn) {
+func (p *Pool) removeConn(pc *pooledConn) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.conns == nil {
-		return
+		return false
 	}
 	// It is possible (albeit unlikely) that pc was already removed and replaced with a new connection.
 	// If so, do nothing.
 	x := p.conns[pc.key]
 	if x != pc {
-		return
+		return false
 	}
 	delete(p.conns, pc.key)
+	return true
 }
 
 // dropConnectionsTo removes all pooled connections to the specified host and port.

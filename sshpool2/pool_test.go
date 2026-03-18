@@ -610,12 +610,15 @@ func TestPoolRecoversFromClosedClient(t *testing.T) {
 			t.Fatalf("failed to close underlying client: %v", err)
 		}
 
-		_, err = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
-		if err == nil {
-			t.Fatal("expected error after closing underlying client")
-		}
-
+		// The onConnClosed watcher may proactively remove the dead
+		// connection before our next dial (depending on goroutine
+		// scheduling). If so, the first dial succeeds immediately.
+		// If not, it fails and the retry succeeds. Either way, the
+		// pool must recover.
 		conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			conn2, err = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		}
 		if err != nil {
 			t.Fatalf("failed dial after retry: %v", err)
 		}
@@ -1580,6 +1583,79 @@ func TestClassifyError(t *testing.T) {
 				t.Errorf("classifyError(%v) = %q, want %q", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOnConnClosedCalledWhenSSHDies(t *testing.T) {
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	callbackDone := make(chan struct{})
+	var gotHost string
+	var gotUser string
+	var gotPort int
+	var gotPublicKey string
+
+	pool := &Pool{
+		TTL:    time.Minute,
+		Logger: tslog.Slogger(t),
+		OnConnClosed: func(host string, user string, port int, publicKey string) {
+			gotHost = host
+			gotUser = user
+			gotPort = port
+			gotPublicKey = publicKey
+			close(callbackDone)
+		},
+	}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed initial dial: %v", err)
+	}
+	conn.Close()
+
+	// Get the pooled SSH client and close it, simulating SSH death.
+	pool.mu.Lock()
+	var original *pooledConn
+	for _, candidate := range pool.conns {
+		original = candidate
+	}
+	pool.mu.Unlock()
+	if original == nil {
+		t.Fatal("no pooled connection found")
+	}
+	original.client.Close()
+
+	// The OnConnClosed callback should fire.
+	select {
+	case <-callbackDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for OnConnClosed callback")
+	}
+
+	if gotHost != server.host() {
+		t.Errorf("got host %q, want %q", gotHost, server.host())
+	}
+	if gotUser != config.User {
+		t.Errorf("got user %q, want %q", gotUser, config.User)
+	}
+	if gotPort != server.port() {
+		t.Errorf("got port %d, want %d", gotPort, server.port())
+	}
+	wantPublicKey := string(signer.PublicKey().Marshal())
+	if gotPublicKey != wantPublicKey {
+		t.Errorf("got publicKey %q, want %q", gotPublicKey, wantPublicKey)
+	}
+
+	// The dead connection should have been removed from the pool.
+	pool.mu.Lock()
+	n := len(pool.conns)
+	pool.mu.Unlock()
+	if n != 0 {
+		t.Errorf("expected 0 pooled connections after death, got %d", n)
 	}
 }
 

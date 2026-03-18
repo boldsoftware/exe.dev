@@ -1201,6 +1201,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		},
 		signupPOW: newSignupPOW(),
 	}
+	s.sshPool.OnConnClosed = func(host string, user string, port int, publicKey string) {
+		s.transportCache.CloseIdleConnectionsFor(host, user, port, publicKey)
+	}
 
 	docsHandler.SetTopbarFunc(func(r *http.Request) docspkg.TopbarData {
 		td := docspkg.TopbarData{WebHost: cfg.Env.WebHost}

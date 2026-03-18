@@ -98,6 +98,20 @@ func (tc *TransportCache) GetOrCreate(key transportKey, create func() *http.Tran
 	return t
 }
 
+// CloseIdleConnectionsFor flushes idle HTTP connections on transports whose
+// SSH endpoint matches the given parameters. This is called when an SSH
+// connection dies so that http.Transport doesn't reuse stale connections
+// that rode on the dead tunnel.
+func (tc *TransportCache) CloseIdleConnectionsFor(sshHost string, sshUser string, sshPort int, publicKey string) {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	for key, ct := range tc.transports {
+		if key.sshHost == sshHost && key.sshUser == sshUser && key.sshPort == sshPort && key.publicKey == publicKey {
+			ct.t.CloseIdleConnections()
+		}
+	}
+}
+
 // Close stops the eviction goroutine and closes all cached transports.
 // It is safe to call Close multiple times; only the first call has any effect.
 func (tc *TransportCache) Close() {
