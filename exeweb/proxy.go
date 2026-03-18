@@ -446,35 +446,42 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 // The trace_id is added by ConnContext in httpsServer,
 // so it's available in the context during TLS handshakes.
 func (ps *ProxyServer) ValidateHostForTLSCert(ctx context.Context, host string) error {
+	_, err := ps.ValidateHostForTLSCertWithBoxName(ctx, host)
+	return err
+}
+
+// ValidateHostForTLSCertWithBoxName is like ValidateHostForTLSCert but also
+// returns the resolved box name (empty for first-party domains like WebHost).
+func (ps *ProxyServer) ValidateHostForTLSCertWithBoxName(ctx context.Context, host string) (boxName string, _ error) {
 	host = domz.Canonicalize(host)
 	if domz.FirstMatch(host, ps.Env.BoxHost, ps.Env.WebHost) != "" {
-		return nil
+		return "", nil
 	}
 	if host == "exe.new" {
-		return nil
+		return "", nil
 	}
 	if host == "bold.dev" {
-		return nil
+		return "", nil
 	}
 
 	boxName, err := ps.domainResolver().ResolveCustomDomainBoxName(ctx, host)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if boxName == "" {
 		ps.Lg.WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
-		return fmt.Errorf("unable to resolve VM for %s", host)
+		return "", fmt.Errorf("unable to resolve VM for %s", host)
 	}
 	_, exists, err := ps.Data.BoxInfo(ctx, boxName)
 	if err != nil {
 		ps.Lg.WarnContext(ctx, "failed to get box info", "boxName", boxName, "error", err)
-		return fmt.Errorf("box not found: %s", boxName)
+		return "", fmt.Errorf("box not found: %s", boxName)
 	}
 	if !exists {
 		ps.Lg.WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host, "boxName", boxName)
-		return fmt.Errorf("box not found: %s", boxName)
+		return "", fmt.Errorf("box not found: %s", boxName)
 	}
-	return nil
+	return boxName, nil
 }
 
 // domainResolver returns a [DomainResolver] for ps.

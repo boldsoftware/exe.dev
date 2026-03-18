@@ -167,10 +167,22 @@ func (s *Server) setupHTTPSServer() {
 		s.slog().Info("wildcard certificate manager initialized", "domains", wildcardDomains)
 	}
 
+	certCache := autocert.DirCache("certs")
+
+	// Certificate rate limiter: token-bucket per VM, observe-only (dry run).
+	// The limiter is checked only on cache misses (new issuance), not every TLS handshake.
+	s.certRateLimiter = exeweb.NewCertRateLimiter(10)
+	s.certRateLimiter.RegisterMetrics(s.metricsRegistry)
+	s.certRateLimiter.ValidateHost = func(ctx context.Context, host string) (string, error) {
+		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+	}
+	s.certRateLimiter.Cache = certCache
+	s.certRateLimiter.Lg = s.slog()
+
 	s.certManager = &autocert.Manager{
-		Cache:      autocert.DirCache("certs"),
+		Cache:      certCache,
 		Prompt:     autocert.AcceptTOS,
-		HostPolicy: s.validateHostForTLSCert,
+		HostPolicy: s.certRateLimiter.HostPolicy,
 	}
 
 	if s.env.UseCobble {

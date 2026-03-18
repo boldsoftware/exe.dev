@@ -18,6 +18,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/tslog"
+	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -858,5 +859,147 @@ func TestCurlHomepageEasterEgg(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// fakeCache is a test autocert.Cache backed by a map.
+type fakeCache struct {
+	data map[string][]byte
+}
+
+func (c *fakeCache) Get(_ context.Context, key string) ([]byte, error) {
+	if d, ok := c.data[key]; ok {
+		return d, nil
+	}
+	return nil, autocert.ErrCacheMiss
+}
+
+func (c *fakeCache) Put(_ context.Context, key string, data []byte) error {
+	c.data[key] = data
+	return nil
+}
+
+func (c *fakeCache) Delete(_ context.Context, key string) error {
+	delete(c.data, key)
+	return nil
+}
+
+// TestCertRateLimitHostPolicyCacheHit verifies that the rate limiter is NOT
+// called when the cert is already cached (cache hit).
+func TestCertRateLimitHostPolicyCacheHit(t *testing.T) {
+	t.Parallel()
+
+	knownHostIP := netip.MustParseAddr("203.0.113.10")
+
+	s := &Server{
+		env:       stage.Prod(),
+		PublicIPs: map[netip.Addr]publicips.PublicIP{},
+		log:       tslog.Slogger(t),
+	}
+
+	s.lookupCNAMEFunc = func(_ context.Context, host string) (string, error) {
+		if host == "cached.example.com" || host == "uncached.example.com" {
+			return "mybox.exe.xyz.", nil
+		}
+		return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	s.lookupAFunc = func(_ context.Context, _, host string) ([]netip.Addr, error) {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	s.boxExistsFunc = func(_ context.Context, name string) bool {
+		return name == "mybox"
+	}
+	s.PublicIPs = map[netip.Addr]publicips.PublicIP{
+		netip.MustParseAddr("10.0.0.5"): {
+			IP:     knownHostIP,
+			Domain: "mybox.exe.xyz",
+		},
+	}
+
+	// Rate limiter with limit=1 so the second call would be blocked.
+	rl := exeweb.NewCertRateLimiter(1)
+	rl.Lg = s.slog()
+	rl.Cache = &fakeCache{data: map[string][]byte{
+		"cached.example.com": []byte("fake-cert-data"),
+	}}
+	rl.ValidateHost = func(ctx context.Context, host string) (string, error) {
+		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+	}
+
+	ctx := context.Background()
+
+	// Call for cached domain — should NOT consume a rate limiter token.
+	for range 5 {
+		if err := rl.HostPolicy(ctx, "cached.example.com"); err != nil {
+			t.Fatalf("cached domain: unexpected error: %v", err)
+		}
+	}
+
+	// Call for uncached domain — should consume the one available token.
+	if err := rl.HostPolicy(ctx, "uncached.example.com"); err != nil {
+		t.Fatalf("uncached domain (first call): unexpected error: %v", err)
+	}
+
+	// Call again for uncached domain — rate limiter is exhausted but in dry-run
+	// mode it should still return nil (just log a warning).
+	if err := rl.HostPolicy(ctx, "uncached.example.com"); err != nil {
+		t.Fatalf("uncached domain (second call, dry-run): unexpected error: %v", err)
+	}
+}
+
+// TestCertRateLimitHostPolicyCacheMissConsumesToken verifies that cache misses
+// consume rate limiter tokens, keyed by box name (not domain).
+func TestCertRateLimitHostPolicyCacheMissConsumesToken(t *testing.T) {
+	t.Parallel()
+
+	knownHostIP := netip.MustParseAddr("203.0.113.10")
+
+	s := &Server{
+		env:       stage.Prod(),
+		PublicIPs: map[netip.Addr]publicips.PublicIP{},
+		log:       tslog.Slogger(t),
+	}
+
+	s.lookupCNAMEFunc = func(_ context.Context, host string) (string, error) {
+		return "mybox.exe.xyz.", nil
+	}
+	s.lookupAFunc = func(_ context.Context, _, host string) ([]netip.Addr, error) {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	s.boxExistsFunc = func(_ context.Context, name string) bool {
+		return name == "mybox"
+	}
+	s.PublicIPs = map[netip.Addr]publicips.PublicIP{
+		netip.MustParseAddr("10.0.0.5"): {
+			IP:     knownHostIP,
+			Domain: "mybox.exe.xyz",
+		},
+	}
+
+	// Rate limiter with limit=2.
+	rl := exeweb.NewCertRateLimiter(2)
+	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	rl.SetNowFunc(func() time.Time { return now })
+	rl.Lg = s.slog()
+	rl.Cache = &fakeCache{data: map[string][]byte{}}
+	rl.ValidateHost = func(ctx context.Context, host string) (string, error) {
+		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+	}
+
+	ctx := context.Background()
+
+	// Two cache misses for different domains pointing at the same box
+	// should consume both tokens from the "mybox" bucket.
+	if err := rl.HostPolicy(ctx, "domain1.example.com"); err != nil {
+		t.Fatalf("call 1: unexpected error: %v", err)
+	}
+	if err := rl.HostPolicy(ctx, "domain2.example.com"); err != nil {
+		t.Fatalf("call 2: unexpected error: %v", err)
+	}
+
+	// The rate limiter bucket for "mybox" should now be exhausted.
+	// Third call: dry-run mode still returns nil.
+	if err := rl.HostPolicy(ctx, "domain3.example.com"); err != nil {
+		t.Fatalf("call 3 (dry-run): unexpected error: %v", err)
 	}
 }

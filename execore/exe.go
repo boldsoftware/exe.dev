@@ -376,6 +376,7 @@ type Server struct {
 	loopbackProxyData     exeweb.ProxyData
 
 	certManager         *autocert.Manager
+	certRateLimiter     *exeweb.CertRateLimiter
 	wildcardCertManager *wildcardcert.Manager
 
 	// dnsServer is the embedded DNS nameserver for BoxHost (prod/staging only)
