@@ -7,7 +7,7 @@ preview: true
 
 Integrations connect your exe.dev VM to other services securely and flexibly.
 They allow you to "inject secrets" on the network, so that those secrets cannot
-be extracted from the VM itself. Integrations are created with the `integrations new`
+be extracted from the VM itself. Integrations are created with the `integrations add`
 command and attached to VMs with the `integrations attach` command.
 
 ## HTTP Proxy Integration
@@ -50,23 +50,57 @@ exe.dev ▶ ssh my-vm-name curl -s http://mirror.int.exe-staging.xyz/anything -H
 
 The HTTP Proxy integration supports HTTP basic auth as well.
 
-## GitHub integration
+## GitHub Integration
 
-Because the GitHub personal access token [link to github pat instructions] instructions are a bit
-much, we offer a first class GitHub integration.
+Instead of [setting up a GitHub personal access token](faq/github-token),
+the GitHub integration connects your GitHub account to exe.dev so that you
+can work on private repos without managing tokens, and without having
+tokens on the VM itself.
 
-You must first connect to your GitHub account with:
-
-```
-integrations setup github
-...
-```
-
-Once you've established the link, you can create per-repo integrations as follows:
+First, link your GitHub account:
 
 ```
-integrations new github --name blog --repository ghuser/blog
-integrations attach blog myvm
-ssh myvm git init
-ssh myvm git fetch http://blog.int.exe.xyz/ghuser/blog.git
+exe.dev ▶ integrations setup github
+Authorize your GitHub account:
+  https://exe.dev/r/abc123...
+
+Waiting...
+Connected: your-github-user
+```
+
+The command prints a URL. Open it in a browser where you are logged into
+GitHub and authorize the exe.dev GitHub App. Once authorized, the
+terminal unblocks and confirms the connection.
+
+You can verify the connection at any time:
+
+```
+exe.dev ▶ integrations setup github --verify
+✓ your-github-user (installed on your-github-user) — verified (API user: your-github-user)
+```
+
+Once connected, create per-repo integrations:
+
+```
+exe.dev ▶ integrations add github --name blog --repository ghuser/blog --attach vm:my-vm
+Added integration blog
+
+Usage from a VM:
+  ssh my-vm 'cd $(mktemp -d) && git clone https://blog.int.exe.xyz/ghuser/blog.git'
+```
+
+Then from inside the VM:
+
+```
+git clone https://blog.int.exe.xyz/ghuser/blog.git
+```
+
+Only the specific repository you configured is accessible through the
+integration, and the credentials never appear inside the VM.
+
+To disconnect your GitHub account:
+
+```
+exe.dev ▶ integrations setup github -d
+Disconnected GitHub: your-github-user (your-github-user)
 ```
