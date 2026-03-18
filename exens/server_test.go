@@ -1069,9 +1069,15 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
 			Shard:    1,
 			PublicIP: "5.6.7.8",
+		}); err != nil {
+			return err
+		}
+		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
+			Shard:    1,
+			PublicIP: "161.210.92.1",
 		})
 	})
 	if err != nil {
@@ -1094,7 +1100,7 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 		}
 	})
 
-	// Enable GLB for the user
+	// Enable GLB for the user — now routes to NetActuate
 	enabled := int64(1)
 	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
@@ -1107,7 +1113,52 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("with GLB", func(t *testing.T) {
+	t.Run("with GLB routes to NetActuate", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	t.Run("A record resolves via NetActuate shard", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a := rrs[1].(*dns.A)
+		if a.A.String() != "161.210.92.1" {
+			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
+		}
+	})
+
+	// anycast-network=1 overrides GLB back to Latitude
+	network1 := int64(1)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
+			UserID:         "test-user",
+			AnycastNetwork: &network1,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("anycast-network=1 overrides to Latitude", func(t *testing.T) {
 		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
@@ -1121,23 +1172,14 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 		}
 	})
 
-	t.Run("A record resolves via latitude shard", func(t *testing.T) {
-		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 2 {
-			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "n001.exe.xyz." {
-			t.Errorf("expected CNAME target n001.exe.xyz., got %s", cname.Target)
-		}
-		a := rrs[1].(*dns.A)
-		if a.A.String() != "5.6.7.8" {
-			t.Errorf("expected 5.6.7.8, got %s", a.A.String())
-		}
+	// Delete anycast_network, should go back to NetActuate via GLB
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.DeleteUserDefaultAnycastNetwork(ctx, "test-user")
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Disable GLB
 	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -1327,7 +1369,7 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("after deleting anycast-network, GLB still works", func(t *testing.T) {
+	t.Run("after deleting anycast-network, GLB routes to NetActuate", func(t *testing.T) {
 		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
@@ -1336,8 +1378,8 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
 		}
 		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "n001.exe.xyz." {
-			t.Errorf("expected n001.exe.xyz. (latitude via GLB), got %s", cname.Target)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz. (NetActuate via GLB), got %s", cname.Target)
 		}
 	})
 }

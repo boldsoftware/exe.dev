@@ -537,14 +537,18 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 		return nil, nil
 	}
 
-	shardSub := publicips.ShardSub(int(row.IPShard))
-	if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
-		// User explicitly set to anycast network 2 (NetActuate)
+	var shardSub string
+	if row.AnycastNetwork != nil && *row.AnycastNetwork == 1 {
+		// User explicitly opted into anycast network 1 (Latitude)
+		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+	} else if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
 		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
 	} else if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
-		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
 	} else if row.GlobalLoadBalancer == nil && s.userMatchesGLBPrefix(row.CreatedByUserID) {
-		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
+	} else {
+		shardSub = publicips.ShardSub(int(row.IPShard))
 	}
 	target := shardSub + "." + domain + "."
 

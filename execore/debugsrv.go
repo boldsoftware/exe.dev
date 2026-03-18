@@ -1909,11 +1909,15 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 
 	var shardDNS string
 	if row, err := withRxRes1(s, ctx, (*exedb.Queries).GetIPShardAndUserGLBByBoxName, box.Name); err == nil {
-		shardSub := publicips.ShardSub(int(row.IPShard))
-		if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
+		var shardSub string
+		if row.AnycastNetwork != nil && *row.AnycastNetwork == 1 {
+			shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+		} else if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
 			shardSub = publicips.NetActuateShardSub(int(row.IPShard))
 		} else if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
-			shardSub = publicips.LatitudeShardSub(int(row.IPShard))
+			shardSub = publicips.NetActuateShardSub(int(row.IPShard))
+		} else {
+			shardSub = publicips.ShardSub(int(row.IPShard))
 		}
 		shardDNS = shardSub + "." + s.env.BoxHost
 	}
