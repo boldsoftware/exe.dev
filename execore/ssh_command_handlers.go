@@ -1825,8 +1825,15 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	cc.Writeln("")
-	cc.Writeln("Configuration updated. Restart the VM to apply changes:")
-	cc.Writeln("  ssh %s sudo shutdown -r now", ss.server.env.BoxDest(boxName))
+	memoryChanged := resizeResult != nil && resizeResult.OldMemory != resizeResult.NewMemory
+	if memoryChanged {
+		cc.Writeln("Configuration updated. Memory changes require a full restart via exe.dev:")
+		cc.Writeln("  ssh %s sudo poweroff", ss.server.env.BoxDest(boxName))
+		cc.Writeln("  ssh %s restart %s", ss.server.env.BoxHost, boxName)
+	} else {
+		cc.Writeln("Configuration updated. Restart the VM to apply changes:")
+		cc.Writeln("  ssh %s sudo shutdown -r now", ss.server.env.BoxDest(boxName))
+	}
 	if diskGrowResult != nil {
 		// Newer exeuntu images automatically run resize2fs on boot.
 		// Only show the manual resize2fs hint for non-exeuntu images or
