@@ -2,15 +2,29 @@
 
 Stripe integration for exe.dev. Manages subscriptions (access gating), billing credits (prepaid dollar balance), and checkout flows. Uses hand-written SQL with named parameters, NOT sqlc.
 
-# Agents Available
+# Agent Team
 
-- `exe-billing-credit` — Owns credit code paths (billing credits, LLM gateway credits, credit spending). Agent definition in `.ai/agents/exe-billing-credit.md`.
-- `exe-billing-sub` — Owns Stripe subscriptions, products, and prices. Agent definition in `.ai/agents/exe-billing-sub.md`.
-- `exe-billing-ux` — Owns the billing credit display UI on the user profile page. Agent definition in `.ai/agents/exe-billing-ux.md`.
-- `stripe-expert` skill — Stripe API and webhook expertise. Skill definition in `.ai/skills/stripe-expert/SKILL.md`.
-- `exe-billing` doc — Billing architecture overview. Doc in `.ai/docs/exe-billing.md`.
+## Lead
 
-Install all with: `bin/agent-link install --pkg billing`
+- `exe-billing-lead` — Billing architecture lead. Owns overall design, makes architecture decisions, sets direction for the team. Agent definition in `.ai/agents/exe-billing-lead.md`.
+
+## Engineers
+
+- `exe-entitlements` — Owns the entitlement system: plan catalog, plan resolution, entitlement constants. Agent definition in `.ai/agents/exe-entitlements.md`.
+- `exe-credits` — Owns the credit system: credit ledger, tender types, credit bar display, credit purchase flows. Agent definition in `.ai/agents/exe-credits.md`.
+- `exe-billing` — Owns the Stripe integration: subscriptions, checkout, webhook sync, price management. Agent definition in `.ai/agents/exe-billing.md`.
+- `exe-internal` — Owns internal/debug billing tooling: admin UI, credit adjustments, billing debug endpoints. Agent definition in `.ai/agents/exe-internal.md`.
+
+## QA
+
+- `exe-qa` — Code review and testing. Owns all billing test files, reviews PRs, writes tests. Agent definition in `.ai/agents/exe-qa.md`.
+
+## How the Team Works
+
+- Engineers ask **exe-billing-lead** for direction on architecture and design decisions.
+- Engineers request code review from **exe-qa** before merging.
+- **exe-qa** reports coverage gaps and quality issues to **exe-billing-lead**.
+- **exe-billing-lead** escalates product-level questions to the human (Bryan).
 
 # General Rules
 
