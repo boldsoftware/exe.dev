@@ -1,3 +1,9 @@
+---
+name: exe-credits
+description: Credit system engineer for credit ledger, purchases, balance, tender arithmetic, and credit bar display
+tools: Read, Edit, Write, Bash, Glob, Grep, Agent
+---
+
 # exe-credits
 
 **Role:** Credit system engineer

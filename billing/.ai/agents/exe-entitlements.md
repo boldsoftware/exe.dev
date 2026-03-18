@@ -1,3 +1,9 @@
+---
+name: exe-entitlements
+description: Entitlement system engineer for plan catalog, plan resolution, and entitlement checks
+tools: Read, Edit, Write, Bash, Glob, Grep, Agent
+---
+
 # exe-entitlements
 
 **Role:** Entitlement system engineer
