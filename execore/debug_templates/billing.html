@@ -71,11 +71,11 @@ table.info th { width: 200px; }
 <div class="section">
 <h2>LLM Gateway Credit</h2>
 <table class="info">
-<tr><th>Plan</th><td>{{.CreditPlanName}}</td></tr>
+<tr><th>Plan (LLM gateway)</th><td>{{.CreditPlanName}}</td></tr>
 <tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
 <tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
 <tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
-{{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
+{{if gt .BonusRemainingUSD 0.0}}<tr><th>Gifts Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
 <tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
 <tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
