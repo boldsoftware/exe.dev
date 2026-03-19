@@ -84,6 +84,7 @@ func (p *Proxy) processChanges(ctx context.Context, stream proxyapi.ProxyInfoSer
 func (p *Proxy) processChange(ctx context.Context, change *proxyapi.ChangesResponse) {
 	switch action := change.Action.(type) {
 	case *proxyapi.ChangesResponse_DeletedBox:
+		p.dropBoxSSHConns(action.DeletedBox.BoxName)
 		p.boxes.deleteBox(ctx, action.DeletedBox.BoxName)
 	case *proxyapi.ChangesResponse_RenamedBox:
 		p.boxes.renameBox(ctx, action.RenamedBox.OldBoxName, action.RenamedBox.NewBoxName)
@@ -112,10 +113,22 @@ func (p *Proxy) processChange(ctx context.Context, change *proxyapi.ChangesRespo
 	case *proxyapi.ChangesResponse_DeletedBoxShareTeam:
 		p.boxes.deleteBoxShareTeam(ctx, action.DeletedBoxShareTeam.BoxName)
 	case *proxyapi.ChangesResponse_MovedBox:
+		p.dropBoxSSHConns(action.MovedBox.BoxName)
 		p.boxes.movedBox(ctx, action.MovedBox.BoxName)
 	default:
 		p.lg.ErrorContext(ctx, "unknown type processing proxy change", "type", fmt.Sprintf("%T", change.Action))
 	}
+}
+
+// dropBoxSSHConns drops pooled SSH connections for a box, if its routing
+// info is cached. Must be called before deleting the box from the cache.
+func (p *Proxy) dropBoxSSHConns(boxName string) {
+	data, ok := p.boxes.boxes.Load(boxName)
+	if !ok || data.SSHPort == 0 {
+		return
+	}
+	host := exeweb.BoxSSHHost(p.lg, data.Ctrhost)
+	p.sshPool.DropConnectionsTo(host, data.SSHPort)
 }
 
 // processDeletedCookieChange handles a deleted cookie.
