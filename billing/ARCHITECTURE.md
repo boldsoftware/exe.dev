@@ -21,19 +21,12 @@ What follows is a proposed evolution of the billing system.
 
 Tracks which entitlements use `UserHasEntitlement` (new) vs `userNeedsBilling`/`GetUserBillingStatus` (old).
 
-| Entitlement | `UserHasEntitlement` | Old Logic |
-|-------------|:---:|:---:|
-| `vm:create` | ✅ | |
-| `vm:connect` | | ❌ |
-| `llm:use` | | ❌ |
-| `credit:renew` | | ❌ |
-| `credit:purchase` | | ❌ |
-| `credit:refresh` | | ❌ |
-| `compute:spend` | | ❌ |
-| `compute:purchase` | | ❌ |
-| `compute:debt` | | ❌ |
-| `compute:on_demand` | | ❌ |
-| `admin:override` | | ❌ |
+| Entitlement | `UserHasEntitlement` | Old Logic | Notes |
+|-------------|:---:|:---:|-------|
+| `vm:create` | ✅ | | Migrated |
+| `vm:connect` | | ❌ | Has old-logic code path |
+| `llm:use` | | ❌ | Has old-logic code path |
+| `credit:purchase` | | ❌ | Has old-logic code path |
 
 ## Plan Migration Status
 
