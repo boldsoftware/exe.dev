@@ -2973,7 +2973,7 @@ func (s *Server) handleDebugNewThrottlePost(w http.ResponseWriter, r *http.Reque
 
 // ipShardEntry represents a single shard's IP configuration across all tables.
 type ipShardEntry struct {
-	Shard        int    // 1-253
+	Shard        int    // 1-1016
 	ServingIP    string // current ip_shards value (what DNS returns)
 	AWSIP        string // aws_ip_shards value
 	LatitudeIP   string // latitude_ip_shards value

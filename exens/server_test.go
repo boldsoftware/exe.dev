@@ -509,10 +509,12 @@ func TestParseShardFromName(t *testing.T) {
 		{"s001.exe.xyz", 1, false},
 		{"s025.exe.xyz", 25, false},
 		{"s010.exe.dev", 10, false},
-		{"s253.exe.xyz", 253, false}, // max shard
-		{"s000.exe.xyz", 0, true},    // invalid shard (zero)
-		{"s254.exe.xyz", 0, true},    // out of range
-		{"s1.exe.xyz", 0, true},      // wrong format
+		{"s253.exe.xyz", 253, false},
+		{"s254.exe.xyz", 254, false},
+		{"s1016.exe.xyz", 1016, false}, // max shard
+		{"s000.exe.xyz", 0, true},      // invalid shard (zero)
+		{"s1017.exe.xyz", 0, true},     // out of range
+		{"s1.exe.xyz", 0, true},        // wrong format
 		{"testbox.exe.xyz", 0, true},
 		{"", 0, true},
 	}
@@ -541,10 +543,12 @@ func TestParseLatitudeShardFromName(t *testing.T) {
 		{"n025.exe.xyz", 25, false},
 		{"n043.exe.xyz", 43, false},
 		{"n253.exe.xyz", 253, false},
-		{"n000.exe.xyz", 0, true}, // invalid shard (zero)
-		{"n254.exe.xyz", 0, true}, // out of range
-		{"n1.exe.xyz", 0, true},   // wrong format
-		{"s001.exe.xyz", 0, true}, // wrong prefix
+		{"n254.exe.xyz", 254, false},
+		{"n1016.exe.xyz", 1016, false}, // max shard
+		{"n000.exe.xyz", 0, true},      // invalid shard (zero)
+		{"n1017.exe.xyz", 0, true},     // out of range
+		{"n1.exe.xyz", 0, true},        // wrong format
+		{"s001.exe.xyz", 0, true},      // wrong prefix
 		{"testbox.exe.xyz", 0, true},
 		{"", 0, true},
 	}
@@ -573,11 +577,13 @@ func TestParseNetActuateShardFromName(t *testing.T) {
 		{"na025.exe.xyz", 25, false},
 		{"na043.exe.xyz", 43, false},
 		{"na253.exe.xyz", 253, false},
-		{"na000.exe.xyz", 0, true}, // invalid shard (zero)
-		{"na254.exe.xyz", 0, true}, // out of range
-		{"na1.exe.xyz", 0, true},   // wrong format (too short)
-		{"n001.exe.xyz", 0, true},  // latitude not netactuate
-		{"s001.exe.xyz", 0, true},  // AWS shard
+		{"na254.exe.xyz", 254, false},
+		{"na1016.exe.xyz", 1016, false}, // max shard
+		{"na000.exe.xyz", 0, true},      // invalid shard (zero)
+		{"na1017.exe.xyz", 0, true},     // out of range
+		{"na1.exe.xyz", 0, true},        // wrong format (too short)
+		{"n001.exe.xyz", 0, true},       // latitude not netactuate
+		{"s001.exe.xyz", 0, true},       // AWS shard
 		{"testbox.exe.xyz", 0, true},
 		{"", 0, true},
 	}

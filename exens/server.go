@@ -664,7 +664,7 @@ func parseShardFromName(name string) (int, error) {
 		return 0, fmt.Errorf("invalid name")
 	}
 	sub := parts[0]
-	if len(sub) != 4 || sub[0] != 's' {
+	if len(sub) < 4 || sub[0] != 's' {
 		return 0, fmt.Errorf("not a shard name")
 	}
 	shard, err := strconv.Atoi(sub[1:])
@@ -682,7 +682,7 @@ func parseLatitudeShardFromName(name string) (int, error) {
 		return 0, fmt.Errorf("invalid name")
 	}
 	sub := parts[0]
-	if len(sub) != 4 || sub[0] != 'n' {
+	if len(sub) < 4 || sub[0] != 'n' || sub[1] == 'a' {
 		return 0, fmt.Errorf("not a latitude shard name")
 	}
 	shard, err := strconv.Atoi(sub[1:])
@@ -700,7 +700,7 @@ func parseNetActuateShardFromName(name string) (int, error) {
 		return 0, fmt.Errorf("invalid name")
 	}
 	sub := parts[0]
-	if len(sub) != 5 || sub[0] != 'n' || sub[1] != 'a' {
+	if len(sub) < 5 || sub[0] != 'n' || sub[1] != 'a' {
 		return 0, fmt.Errorf("not a netactuate shard name")
 	}
 	shard, err := strconv.Atoi(sub[2:])

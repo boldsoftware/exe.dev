@@ -1,5 +1,5 @@
--- Expand IP shard CHECK constraints from BETWEEN 1 AND 25 to BETWEEN 1 AND 1016
--- to support larger shard counts (multiple IP ranges).
+-- Expand IP shard CHECK constraints from BETWEEN 1 AND 253 to BETWEEN 1 AND 1016
+-- to support the full /22 anycast block (4 x 254 = 1016 usable IPs).
 
 -- Recreate box_ip_shard with wider constraint
 CREATE TABLE box_ip_shard_new (
@@ -50,3 +50,14 @@ CREATE TABLE latitude_ip_shards_new (
 INSERT INTO latitude_ip_shards_new SELECT * FROM latitude_ip_shards;
 DROP TABLE latitude_ip_shards;
 ALTER TABLE latitude_ip_shards_new RENAME TO latitude_ip_shards;
+
+-- Recreate netactuate_ip_shards with wider constraint
+CREATE TABLE netactuate_ip_shards_new (
+    shard INTEGER PRIMARY KEY CHECK (shard BETWEEN 1 AND 1016),
+    public_ip TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO netactuate_ip_shards_new SELECT * FROM netactuate_ip_shards;
+DROP TABLE netactuate_ip_shards;
+ALTER TABLE netactuate_ip_shards_new RENAME TO netactuate_ip_shards;

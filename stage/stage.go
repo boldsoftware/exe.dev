@@ -338,7 +338,7 @@ func Staging() Env {
 		ListenOnTailscaleOnly: true,
 		RedirectHTTPToHTTPS:   true,
 
-		NumShards:  253,
+		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
@@ -413,7 +413,7 @@ func Prod() Env {
 		ListenOnTailscaleOnly: true,
 		RedirectHTTPToHTTPS:   true,
 
-		NumShards:  253,
+		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB

@@ -31,7 +31,7 @@ const (
 	// Shards map to public IP addresses: sNNN.exe.dev.
 	// MaxDomainShards must match the DB CHECK constraint.
 	// IP shards are 1-based. (The zero value is intentionally invalid.)
-	MaxDomainShards = 253
+	MaxDomainShards = 1016
 )
 
 // ShardIsValid reports whether shard is within the valid range (0, MaxDomainShards].
