@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -472,11 +473,33 @@ func (d *daemon) run() error {
 		go func(c net.Conn) {
 			defer c.Close()
 
+			// Create a per-connection config copy so we can wrap
+			// CreateChallengeContext to inject socket RTT into the
+			// metadata before any gRPC calls to the plugin.
+			connConfig := d.config.PiperConfig
+			if orig := connConfig.CreateChallengeContext; orig != nil {
+				connConfig.CreateChallengeContext = func(conn ssh.ServerPreAuthConn) (ssh.ChallengeContext, error) {
+					ctx, err := orig(conn)
+					if err != nil {
+						return ctx, err
+					}
+					if rtt, rttErr := getSocketRTT(c); rttErr == nil && rtt > 0 {
+						if meta, ok := ctx.Meta().(*plugin.PluginConnMeta); ok {
+							if meta.Metadata == nil {
+								meta.Metadata = make(map[string]string)
+							}
+							meta.Metadata["socket_rtt_us"] = strconv.FormatInt(rtt.Microseconds(), 10)
+						}
+					}
+					return ctx, nil
+				}
+			}
+
 			pipec := make(chan *ssh.PiperConn)
 			errorc := make(chan error)
 
 			go func() {
-				p, err := ssh.NewSSHPiperConn(c, &d.config.PiperConfig)
+				p, err := ssh.NewSSHPiperConn(c, &connConfig)
 				if err != nil {
 					errorc <- err
 					return
