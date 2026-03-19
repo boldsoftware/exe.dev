@@ -49,6 +49,110 @@ Tracks whether each plan is a real, code-defined plan or just a label we use to 
 | Invite | ✅ | | | Trial exemption with valid expiry |
 | Basic | ✅ | | ✅ | Default fallback. Shows "Subscribe" in UI |
 
+## Credits Architecture
+
+The `billing_credits` ledger is the source of truth for all credit operations. All amounts are stored as integer microcents via `tender.Value` ($1 = 1,000,000 microcents).
+
+> **Legacy:** `user_llm_credit` in exedb (float64 `available_credit`) is deprecated and being migrated. It still controls LLM gateway access during the transition.
+
+### Crediting
+
+Credits enter the ledger through purchases (Stripe) or gifts.
+
+```
+Stripe checkout ──► handleCreditsSuccess ──► SyncCredits ──► billing_credits (stripe_event_id)
+
+Debug UI ──► handleDebugGiftCredits ──┐
+SSH cmd  ──► sudo-exe add-gift ───────┼──► billing.GiftCredits(ctx, billingID, params)
+Upgrade  ──► giftSignupBonus() ───────┘         │
+                                                 ▼
+                                        INSERT OR IGNORE INTO billing_credits
+                                        credit_type = 'gift', gift_id UNIQUE
+```
+
+`GiftCredits` takes `AmountUSD` and a `GiftPrefix` — the billing package handles tender conversion and gift ID construction (`prefix:billingID:nanos`) internally. Callers never touch `tender.Value`.
+
+Gift prefixes: `GiftPrefixDebug`, `GiftPrefixSignup`, `GiftPrefixSSH`.
+
+### Debiting
+
+VM compute usage debits from the ledger via `SpendCredits`:
+
+```
+LLM gateway request
+  │
+  ▼
+UseCredits (exeprox) ──► SpendCredits(ctx, billingID, quantity, unitPrice)
+                                │
+                                ▼
+                        INSERT INTO billing_credits
+                        ON CONFLICT(account_id, hour_bucket, credit_type) DO UPDATE
+                        amount = amount + excluded.amount  (negative)
+                        credit_type = 'usage'
+                        RETURNING new balance
+```
+
+Usage rows are bucketed by hour (`hour_bucket`). Each hour gets one row per account that accumulates debits. Accounts can go up to $2.00 negative (debt tolerance) before requests are rejected with 402.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `billing/billing.go` | `GiftCredits`, `SpendCredits`, `GetCreditState`, `ListGifts`, `Credits` interface |
+| `billing/tender/tender.go` | `Value` type (microcents), `Mint`, arithmetic |
+| `execore/credit_bar.go` | `computeCreditBar`, `giftsFromLedger` |
+| `execore/exe-web-auth.go` | `giftSignupBonus` (on Stripe checkout) |
+| `execore/debugsrv.go` | Debug gift endpoint |
+| `execore/ssh_add_gift_command.go` | `sudo-exe add-gift` |
+
+## Entitlements Architecture
+
+```
+User request (SSH/HTTP)
+         │
+         ▼
+  Resolve plan version
+  ┌────────────────────────────────────────┐
+  │  GetUserBilling()                      │  ◄── SQL: billing_exemption, billing_status,
+  │  GetPlanVersion(UserPlanInputs)        │       created_at, team_billing_active
+  │                                        │
+  │  Canceled?      ──► Basic              │
+  │  Friend + overrides? ──► VIP           │
+  │  Friend?        ──► Friend             │
+  │  Has billing?   ──► Individual         │
+  │  Team billing?  ──► Team               │
+  │  Trial + valid? ──► Invite             │
+  │  Old user?      ──► Grandfathered      │
+  │  Default        ──► Basic              │
+  └────────────────────────────────────────┘
+         │
+         ▼
+  Check entitlement
+  ┌────────────────────────────────────────┐
+  │  PlanGrants(version, entitlement)      │
+  │                                        │
+  │  Plan ──► Entitlements map             │
+  │  VIP  ──► All: true (wildcard)         │
+  │  Basic ──► LLMUse, CreditRefresh,      │
+  │            VMConnect only              │
+  └────────────────────────────────────────┘
+```
+
+Plans are defined in `billing/entitlement/plan.go` as a static map. Each plan has:
+
+- `Version` — identifier (e.g. `"individual"`)
+- `Name` — display name (e.g. `"Individual"`)
+- `Entitlements` — `map[Entitlement]bool` for boolean feature gates
+- `Quotas` — `PlanQuotas` struct for numeric values (e.g. `SignupBonusCreditUSD`)
+
+### Key files
+
+| File | Role |
+|------|------|
+| `billing/entitlement/plan.go` | Plan definitions, `GetPlanVersion`, `PlanGrants`, `PlanQuotas` |
+| `billing/entitlement/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
+| `execore/billing_status.go` | `UserHasEntitlement` — main entitlement check used by request handlers |
+
 ## Three Billing Systems
 
 ### 1. Subscriptions (Access Gating)
