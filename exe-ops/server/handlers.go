@@ -11,7 +11,9 @@ import (
 	"exe.dev/exe-ops/apitype"
 	"exe.dev/exe-ops/server/agentbin"
 	"exe.dev/exe-ops/server/aiagent"
+	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/exed"
+	"exe.dev/exe-ops/server/inventory"
 	"exe.dev/exe-ops/version"
 )
 
@@ -20,14 +22,16 @@ type Handlers struct {
 	store      *Store
 	hub        *Hub
 	log        *slog.Logger
-	aiAgent    aiagent.Provider // nil if AI not configured
-	aiConfig   *aiagent.Config  // nil if AI not configured
-	exedClient *exed.Client     // nil if exed not configured
+	aiAgent    aiagent.Provider     // nil if AI not configured
+	aiConfig   *aiagent.Config      // nil if AI not configured
+	exedClient *exed.Client         // nil if exed not configured
+	inventory  *inventory.Inventory // nil if inventory not configured
+	deployer   *deploy.Manager      // nil if deploy not configured
 }
 
 // NewHandlers creates a new Handlers.
-func NewHandlers(store *Store, hub *Hub, log *slog.Logger, ai aiagent.Provider, aiCfg *aiagent.Config, exedClient *exed.Client) *Handlers {
-	return &Handlers{store: store, hub: hub, log: log, aiAgent: ai, aiConfig: aiCfg, exedClient: exedClient}
+func NewHandlers(store *Store, hub *Hub, log *slog.Logger, ai aiagent.Provider, aiCfg *aiagent.Config, exedClient *exed.Client, inv *inventory.Inventory, deployer *deploy.Manager) *Handlers {
+	return &Handlers{store: store, hub: hub, log: log, aiAgent: ai, aiConfig: aiCfg, exedClient: exedClient, inventory: inv, deployer: deployer}
 }
 
 // HandleReport handles POST /api/v1/report.

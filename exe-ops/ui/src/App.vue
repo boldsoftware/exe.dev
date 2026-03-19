@@ -59,6 +59,12 @@
               <span class="sidebar-label">Updates</span>
             </router-link>
           </li>
+          <li>
+            <router-link to="/deploy" class="nav-item" :class="{ active: $route.name === 'deploy' }" :title="sidebarCollapsed ? 'Deploy' : undefined">
+              <i class="pi pi-upload nav-icon icon-cyan"></i>
+              <span class="sidebar-label">Deploy</span>
+            </router-link>
+          </li>
         </ul>
         <div class="nav-section-label" v-if="!sidebarCollapsed">
           <span class="section-prefix">//</span> tools

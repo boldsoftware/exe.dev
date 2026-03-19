@@ -23,7 +23,7 @@ func testServer(t *testing.T) (*httptest.Server, *Store) {
 	store := NewStore(db)
 	log := slog.Default()
 	hub := NewHub(log)
-	handler := New(store, hub, "test-token", nil, log, nil, nil, nil)
+	handler := New(store, hub, "test-token", nil, log, nil, nil, nil, nil, nil)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 	return ts, store

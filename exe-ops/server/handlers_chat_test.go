@@ -20,7 +20,7 @@ func TestChatEndpointsWithoutProvider(t *testing.T) {
 	store := NewStore(db)
 	log := slog.Default()
 	hub := NewHub(log)
-	handler := New(store, hub, "test-token", nil, log, nil, nil, nil) // no AI provider
+	handler := New(store, hub, "test-token", nil, log, nil, nil, nil, nil, nil) // no AI provider
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
@@ -45,7 +45,7 @@ func TestChatConversationCRUD(t *testing.T) {
 	store := NewStore(db)
 	log := slog.Default()
 	hub := NewHub(log)
-	handler := New(store, hub, "test-token", nil, log, nil, nil, nil)
+	handler := New(store, hub, "test-token", nil, log, nil, nil, nil, nil, nil)
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 

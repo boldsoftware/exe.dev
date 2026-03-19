@@ -16,3 +16,5 @@ ui/dist/
 
 # OS
 .DS_Store
+exe-repo.git/
+exe-ops.db

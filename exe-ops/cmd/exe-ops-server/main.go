@@ -14,7 +14,9 @@ import (
 
 	"exe.dev/exe-ops/server"
 	"exe.dev/exe-ops/server/aiagent"
+	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/exed"
+	"exe.dev/exe-ops/server/inventory"
 	"exe.dev/exe-ops/ui"
 	"exe.dev/exe-ops/version"
 	"github.com/tailscale/tscert"
@@ -32,7 +34,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "addr",
 				Usage:   "listen address",
-				Value:   ":8080",
+				Value:   ":5555",
 				EnvVars: []string{"EXE_OPS_ADDR"},
 			},
 			&cli.StringFlag{
@@ -84,6 +86,18 @@ func main() {
 				Usage:   "exed environment in env:base-url format, e.g. prod:https://exed.example.com (repeatable; comma-separated in env var); if omitted, defaults to local at http://localhost:8080",
 				EnvVars: []string{"EXE_OPS_EXED"},
 			},
+			&cli.StringFlag{
+				Name:    "git-repo-dir",
+				Usage:   "path for bare git clone of exe repo",
+				Value:   "exe-repo.git",
+				EnvVars: []string{"EXE_OPS_GIT_REPO_DIR"},
+			},
+			&cli.StringFlag{
+				Name:    "git-repo-url",
+				Usage:   "git URL of exe repo",
+				Value:   "git@github.com:boldsoftware/exe.git",
+				EnvVars: []string{"EXE_OPS_GIT_REPO_URL"},
+			},
 		},
 		Action: func(c *cli.Context) error {
 			useTLS := c.Bool("tls")
@@ -131,10 +145,18 @@ func main() {
 			exedClient := exed.NewClient(exedCfg)
 			log.Info("exed environments configured", "envs", exedClient.Envs())
 
-			handler := server.New(store, hub, c.String("token"), uiFS, log, ai, aiCfg, exedClient)
-
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
+
+			// Initialize git repo and inventory services.
+			gitRepoDir := c.String("git-repo-dir")
+			gitRepo := inventory.NewGitRepo(log, gitRepoDir, c.String("git-repo-url"))
+			inv := inventory.New(log, gitRepo)
+
+			// Initialize deploy manager (shares the bare git clone with inventory).
+			deployer := deploy.NewManager(ctx, log, gitRepoDir, "deploy-cache")
+
+			handler := server.New(store, hub, c.String("token"), uiFS, log, ai, aiCfg, exedClient, inv, deployer)
 
 			srv := &http.Server{
 				Addr:        c.String("addr"),
@@ -199,6 +221,10 @@ func main() {
 					}
 				}
 			}()
+
+			// Start git repo and inventory services.
+			go gitRepo.Run(ctx)
+			go inv.Run(ctx)
 
 			// Start server in goroutine.
 			go func() {

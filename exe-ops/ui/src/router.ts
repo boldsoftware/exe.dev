@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/storage', name: 'storage', component: () => import('./views/Storage.vue') },
     { path: '/components', name: 'components', component: () => import('./views/Components.vue') },
     { path: '/updates', name: 'updates', component: () => import('./views/Updates.vue') },
+    { path: '/deploy', name: 'deploy', component: () => import('./views/Deploy.vue') },
     { path: '/agent', name: 'agent', component: () => import('./views/Agent.vue') },
   ],
 })

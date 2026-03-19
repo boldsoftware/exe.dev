@@ -7,13 +7,15 @@ import (
 	"strings"
 
 	"exe.dev/exe-ops/server/aiagent"
+	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/exed"
+	"exe.dev/exe-ops/server/inventory"
 )
 
 // New creates a configured HTTP handler with all routes.
 // ai and aiCfg may be nil if the AI agent is not configured.
-func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai aiagent.Provider, aiCfg *aiagent.Config, exedClient *exed.Client) http.Handler {
-	h := NewHandlers(store, hub, log, ai, aiCfg, exedClient)
+func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai aiagent.Provider, aiCfg *aiagent.Config, exedClient *exed.Client, inv *inventory.Inventory, deployer *deploy.Manager) http.Handler {
+	h := NewHandlers(store, hub, log, ai, aiCfg, exedClient, inv, deployer)
 	mux := http.NewServeMux()
 
 	// Auth-protected endpoints.
@@ -72,6 +74,11 @@ func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai 
 
 	// Exelet capacity summary (aggregated).
 	mux.HandleFunc("/api/v1/exelet-capacity-summary", h.HandleExeletCapacitySummary)
+
+	// Deploy inventory and deploy management.
+	mux.HandleFunc("/api/v1/deploy/inventory", h.HandleDeployInventory)
+	mux.HandleFunc("/api/v1/deploys", h.HandleDeploys)
+	mux.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
 
 	// Server version.
 	mux.HandleFunc("/api/v1/version", h.HandleServerVersion)
