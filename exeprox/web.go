@@ -26,6 +26,7 @@ import (
 	"exe.dev/metricsbag"
 	"exe.dev/publicips"
 	"exe.dev/stage"
+	"exe.dev/tcprtt"
 	"exe.dev/tracing"
 	"exe.dev/wildcardcert"
 
@@ -175,13 +176,15 @@ func (wp *WebProxy) setupHTTPSServer() {
 			GetCertificate: wp.getCertificate,
 			NextProtos:     []string{"h2", "http/1.1", acme.ALPNProto},
 		},
-		// ConnContext adds a trace_id to the connection context,
-		// which becomes the parent context for all requests on this
-		// connection. This ensures the same trace_id is used for TLS
-		// handshake logging and subsequent HTTP request logging.
+		// ConnContext adds a trace_id and the raw net.Conn to the
+		// connection context. The trace_id ensures consistent tracing
+		// across TLS handshake and HTTP request logging. The net.Conn
+		// is used to read TCP socket RTT for latency measurement.
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			traceID := tracing.GenerateTraceID()
-			return tracing.ContextWithTraceID(ctx, traceID)
+			ctx = tracing.ContextWithTraceID(ctx, traceID)
+			ctx = tcprtt.ContextWithConn(ctx, c)
+			return ctx
 		},
 	}
 

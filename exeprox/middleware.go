@@ -1,6 +1,7 @@
 package exeprox
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	sloghttp "github.com/samber/slog-http"
 
+	"exe.dev/tcprtt"
 	"exe.dev/tracing"
 )
 
@@ -85,6 +87,13 @@ func customAttrsMiddleware(next http.Handler) http.Handler {
 		}
 		if uri := r.URL.RequestURI(); uri != "" {
 			sloghttp.AddCustomAttributes(r, slog.String("uri", uri))
+		}
+
+		// Log TCP socket RTT for the client connection.
+		if conn := tcprtt.ConnFromContext(r.Context()); conn != nil {
+			if rtt, err := tcprtt.Get(conn); err == nil && rtt > 0 {
+				sloghttp.AddCustomAttributes(r, slog.String("socket_rtt_us", fmt.Sprintf("%d", rtt.Microseconds())))
+			}
 		}
 	})
 }
