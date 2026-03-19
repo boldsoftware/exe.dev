@@ -99,7 +99,71 @@ jobs:
         id: before
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Detect flake
+        id: flake
+        timeout-minutes: 5
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SUBJECT: ${{ inputs.commit_subject }}
+        run: |
+          set -euo pipefail
+
+          RUN_ID="${{ inputs.run_id }}"
+
+          # Get CI logs and diff
+          gh run view "$RUN_ID" --log 2>&1 | tail -500 > /tmp/ci-logs.txt
+          git diff HEAD~1 HEAD > /tmp/commit-diff.txt
+
+          cat > /tmp/flake-prompt.txt <<'PROMPT_EOF'
+          You are analyzing a CI test failure. Answer ONLY with the single word YES or NO.
+
+          Question: Are the test failures related to the changes in this commit?
+
+          If the test failures look like they are caused by the commit's changes, answer YES.
+          If the test failures look unrelated to the commit (e.g. flaky tests, infrastructure issues, timeouts, network errors, pre-existing failures), answer NO.
+
+          Answer ONLY YES or NO.
+          PROMPT_EOF
+
+          echo "" >> /tmp/flake-prompt.txt
+          echo "Commit subject: $COMMIT_SUBJECT" >> /tmp/flake-prompt.txt
+          echo "" >> /tmp/flake-prompt.txt
+          echo "=== COMMIT DIFF ===" >> /tmp/flake-prompt.txt
+          cat /tmp/commit-diff.txt >> /tmp/flake-prompt.txt
+          echo "" >> /tmp/flake-prompt.txt
+          echo "=== CI LOGS (last 500 lines) ===" >> /tmp/flake-prompt.txt
+          cat /tmp/ci-logs.txt >> /tmp/flake-prompt.txt
+
+          ANSWER=$(claude --dangerously-skip-permissions -p "$(cat /tmp/flake-prompt.txt)" 2>/dev/null)
+          echo "Claude answer: $ANSWER"
+
+          # Extract just YES or NO from the response
+          if echo "$ANSWER" | grep -qi "\bNO\b"; then
+            echo "is_flake=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_flake=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Retry on flake
+        if: steps.flake.outputs.is_flake == 'true'
+        env:
+          NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
+          COMMIT_SUBJECT: ${{ inputs.commit_subject }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="${{ inputs.branch }}"
+          RETRY_BRANCH="${BRANCH}-ralphretry"
+
+          # Push to a new queue branch to re-enter the commit queue
+          git push --force origin "HEAD:${RETRY_BRANCH}"
+
+          # Notify Slack
+          python3 bin/ralph-flake-retry.py "$NTFY_SLACK_WEBHOOK_URL" "$COMMIT_SUBJECT" "$RETRY_BRANCH"
+
       - name: Run Claude
+        if: steps.flake.outputs.is_flake != 'true'
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -160,7 +224,7 @@ jobs:
           claude --dangerously-skip-permissions -p "$PROMPT"
 
       - name: Push and notify Slack
-        if: always()
+        if: always() && steps.flake.outputs.is_flake != 'true'
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
           COMMIT_SUBJECT: ${{ inputs.commit_subject }}

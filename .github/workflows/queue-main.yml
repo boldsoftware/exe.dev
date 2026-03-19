@@ -512,10 +512,9 @@ jobs:
   trigger-ralph:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test, push-to-main]
-    # Only trigger when tests/push failed, NOT when validation failed and NOT for CI ONLY runs.
-    # The ci_only guard matters when tests fail during a CI ONLY run (failure() is already
-    # false when push-to-main is merely skipped).
-    if: ${{ failure() && needs.commit-validation-and-formatting.result == 'success' && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
+    # Only trigger when tests/push failed, NOT when validation failed, NOT for CI ONLY runs,
+    # and NOT for -ralphretry branches (to avoid infinite retry loops).
+    if: ${{ failure() && needs.commit-validation-and-formatting.result == 'success' && needs.commit-validation-and-formatting.outputs.ci_only != 'true' && !endsWith(github.ref_name, '-ralphretry') }}
     steps:
       - uses: actions/checkout@v6
       - name: Trigger queue-ralph
