@@ -4695,6 +4695,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	if hasSignupGiftInLedger(giftEntries) {
 		bonusGrantAmount = 0
 		bonusRemaining = 0
+		// TODO: use plan.Quotas.SignupBonusCreditUSD instead of hardcoded 100
+		shelleyCreditsAvailable = max(shelleyCreditsAvailable-100, 0)
 	}
 	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
 	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD

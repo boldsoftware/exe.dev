@@ -1206,14 +1206,16 @@ func TestBonusZeroedWhenSignupGiftInLedger(t *testing.T) {
 		giftEntries := []billing.GiftEntry{signupEntry}
 		giftCreditsUSD := giftCreditsUSDFromLedger(giftEntries)
 
-		// Before fix, bonusGrantAmount would be 100 and giftCreditsUSD would be 100,
-		// leading to capacity = 20 + 100 + 0 + 100 = 240 (double-counted!).
-		// After fix, bonusGrantAmount = 0, so capacity = 20 + 0 + 0 + 100 = 120 (correct).
+		// Before fix, shelleyCreditsAvailable=120 included the $100 bonus AND
+		// giftCreditsUSD=100 also counted it, leading to double-counting.
+		// After fix, shelleyCreditsAvailable is reduced by 100 (the signup bonus
+		// amount) so it becomes 20, and only the gift path counts the $100.
 		bonusGrantAmount := float64(0) // zeroed because signup gift exists in ledger
 		bonusRemaining := float64(0)   // zeroed because signup gift exists in ledger
 
+		// shelleyCreditsAvailable = max(120 - 100, 0) = 20 after the fix subtracts the bonus
 		bar := computeCreditBar(creditBarInput{
-			shelleyCreditsAvailable: 120,
+			shelleyCreditsAvailable: 20,
 			planMaxCredit:           20,
 			bonusRemaining:          bonusRemaining,
 			bonusGrantAmount:        bonusGrantAmount,
