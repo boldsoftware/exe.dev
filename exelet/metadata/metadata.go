@@ -650,11 +650,20 @@ func isValidIntegrationName(name string) bool {
 	return true
 }
 
+// integrationError writes an error response that includes the trace ID for debugging.
+func integrationError(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	tid := tracing.TraceIDFromContext(r.Context())
+	if tid != "" {
+		msg += " (trace: " + tid + ")"
+	}
+	http.Error(w, msg, code)
+}
+
 // handleIntegrationProxy looks up integration config from exed (cached 1 min)
 // and proxies the request directly to the target.
 func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request, integrationName string) {
 	if !isValidIntegrationName(integrationName) {
-		http.Error(w, "invalid integration name", http.StatusBadRequest)
+		integrationError(w, r, "invalid integration name", http.StatusBadRequest)
 		return
 	}
 
@@ -662,12 +671,12 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	_, vmName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "integration proxy: failed to lookup box by IP", "ip", sourceIP, "error", err)
-		http.Error(w, "Failed to identify box", http.StatusInternalServerError)
+		integrationError(w, r, "Failed to identify box", http.StatusInternalServerError)
 		return
 	}
 	if vmName == "" {
 		s.log.ErrorContext(r.Context(), "integration proxy: no box found for IP", "ip", sourceIP)
-		http.Error(w, "No box found for this IP", http.StatusForbidden)
+		integrationError(w, r, "No box found for this IP", http.StatusForbidden)
 		return
 	}
 
@@ -676,7 +685,7 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 
 	cfg, ok := s.getIntegrationConfig(r.Context(), vmName, integrationName)
 	if !ok {
-		http.Error(w, "integration not found or not attached to this VM", http.StatusForbidden)
+		integrationError(w, r, "integration not found or not attached to this VM", http.StatusForbidden)
 		return
 	}
 
@@ -684,7 +693,7 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	// don't match. This prevents proxying arbitrary paths (e.g., "/") to
 	// upstream services like github.com.
 	if len(cfg.allowedPathPrefixes) > 0 && !pathMatchesPrefixes(r.URL.Path, cfg.allowedPathPrefixes) {
-		http.Error(w, "path does not match any configured repository", http.StatusForbidden)
+		integrationError(w, r, "path does not match any configured repository", http.StatusForbidden)
 		return
 	}
 
@@ -712,7 +721,7 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 			}
 			s.log.WarnContext(r.Context(), "integration proxy upstream error",
 				"error", err, "vm_name", vmName, "integration", integrationName)
-			http.Error(w, "integration proxy: upstream request failed", http.StatusBadGateway)
+			integrationError(w, r, "integration proxy: upstream request failed", http.StatusBadGateway)
 		},
 	}
 

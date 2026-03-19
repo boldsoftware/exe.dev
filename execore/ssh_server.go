@@ -531,7 +531,8 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	ss.server.recordUserEventBestEffort(ctx, user.UserID, userEventUsedREPL)
 
 	// Create a terminal using golang.org/x/term
-	terminal := term.NewTerminal(s, fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost))
+	replPrompt := fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost)
+	terminal := term.NewTerminal(s, replPrompt)
 
 	// Load shell history from database
 	history, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetShellHistory, user.UserID)
@@ -557,7 +558,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	ss.server.slog().InfoContext(ctx, "starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
-		line, err := ss.readLineWithCompletion(terminal, user, publicKey, s)
+		line, err := ss.readLineWithCompletion(terminal, replPrompt, user, publicKey, s)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Fprint(s, "Goodbye!\r\n")
@@ -1471,8 +1472,11 @@ func (s *Server) getInviteGiverEmail(ctx context.Context, inviteCode *exedb.Invi
 	return email
 }
 
-// readLineWithCompletion reads a line from the terminal with tab completion support
-func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, publicKey string, s exemenu.ShellSession) (string, error) {
+// readLineWithCompletion reads a line from the terminal with tab completion support.
+// It resets the terminal prompt before reading so that commands using SetPrompt
+// for interactive input don't clobber the REPL prompt.
+func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, prompt string, user *exedb.User, publicKey string, s exemenu.ShellSession) (string, error) {
+	terminal.SetPrompt(prompt)
 	// Set up tab completion using AutoCompleteCallback
 	var lastCompletionLine string
 	var lastCompletionPos int

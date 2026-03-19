@@ -30,3 +30,13 @@ ON CONFLICT(user_id) DO UPDATE SET
 
 -- name: DeleteUserDefaultAnycastNetwork :exec
 UPDATE user_defaults SET anycast_network = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;
+
+-- name: UpsertUserDefaultGitHubIntegration :exec
+INSERT INTO user_defaults (user_id, github_integration, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    github_integration = excluded.github_integration,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- name: DeleteUserDefaultGitHubIntegration :exec
+UPDATE user_defaults SET github_integration = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;

@@ -109,15 +109,27 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fill in the setup and signal the SSH session.
+	// Fill in the setup.
 	setup.GitHubLogin = login
 	setup.InstallationID = installationID
 	setup.AccessToken = tokenResp.AccessToken
 	setup.RefreshToken = tokenResp.RefreshToken
+
+	// Web-initiated flow: save account and redirect to /user#github.
+	if setup.WebFlow {
+		if err := s.saveGitHubSetupWeb(ctx, setup); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to save GitHub connection", "error", err)
+			http.Error(w, "Failed to save GitHub connection", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/user?callout=add-repo-integration#github", http.StatusFound)
+		return
+	}
+
+	// SSH-initiated flow: signal the waiting SSH session.
 	setup.Close()
 
 	// Wait for the SSH session to decide the response.
-	// It may redirect the browser (e.g., to the install URL) or show "Connected".
 	var redirectURL string
 	select {
 	case redirectURL = <-setup.RespondCh:

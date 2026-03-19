@@ -172,12 +172,17 @@ type UserPageData struct {
 	ShareEmail string
 
 	// Integrations
-	IsSudoer         bool
-	Integrations     []IntegrationDisplayInfo
-	GitHubAccounts   []GitHubAccountDisplayInfo
-	GitHubEnabled    bool   // whether the GitHub App is configured on this server
-	GitHubAppSlug    string // GitHub App slug for manage link
-	ShowIntegrations bool   // true if user has integrations/github or is sudoer
+	IsSudoer           bool
+	Integrations       []IntegrationDisplayInfo // all integrations
+	GitHubIntegrations []IntegrationDisplayInfo // github type only
+	ProxyIntegrations  []IntegrationDisplayInfo // http-proxy type only
+	GitHubAccounts     []GitHubAccountDisplayInfo
+	GitHubAccountsFull []GitHubAccountFullInfo
+	GitHubEnabled      bool   // whether the GitHub App is configured on this server
+	GitHubAppSlug      string // GitHub App slug for manage link
+	ShowIntegrations   bool   // true if user has integrations/github or is sudoer or has feature flag
+	IntegrationScheme  string // "http" or "https" for integration proxy URLs
+	Callout            string // query param to highlight a UI element (e.g. "add-repo-integration")
 }
 
 // PurchaseRow represents a credit purchase for the profile page.
@@ -208,6 +213,14 @@ type IntegrationDisplayInfo struct {
 type GitHubAccountDisplayInfo struct {
 	GitHubLogin string // the GitHub username that authorized
 	TargetLogin string // the org/user the app is installed on
+}
+
+// GitHubAccountFullInfo extends GitHubAccountDisplayInfo with the installation ID
+// for use in unlink buttons and repo listing.
+type GitHubAccountFullInfo struct {
+	GitHubLogin    string
+	TargetLogin    string
+	InstallationID int64
 }
 
 // PendingTeamInviteInfo represents a pending team invite shown on the profile page
@@ -703,6 +716,15 @@ func (s *Server) servingHTTP() bool {
 
 func (s *Server) servingHTTPS() bool {
 	return s.httpsLn != nil && s.httpsLn.tcp != nil
+}
+
+// integrationScheme returns "https" if HTTPS is configured, "http" otherwise.
+// Used for generating integration proxy clone URLs.
+func (s *Server) integrationScheme() string {
+	if s.servingHTTPS() {
+		return "https"
+	}
+	return "http"
 }
 
 // httpPort returns the HTTP listening port, or -1 if not listening.

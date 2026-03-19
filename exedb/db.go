@@ -273,6 +273,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, deleteUserDefaultAnycastNetwork); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultAnycastNetwork: %w", err)
 	}
+	if q.deleteUserDefaultGitHubIntegrationStmt, err = db.PrepareContext(ctx, deleteUserDefaultGitHubIntegration); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGitHubIntegration: %w", err)
+	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, deleteUserDefaultGlobalLoadBalancer); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGlobalLoadBalancer: %w", err)
 	}
@@ -1116,6 +1119,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, upsertUserDefaultAnycastNetwork); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultAnycastNetwork: %w", err)
 	}
+	if q.upsertUserDefaultGitHubIntegrationStmt, err = db.PrepareContext(ctx, upsertUserDefaultGitHubIntegration); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertUserDefaultGitHubIntegration: %w", err)
+	}
 	if q.upsertUserDefaultGlobalLoadBalancerStmt, err = db.PrepareContext(ctx, upsertUserDefaultGlobalLoadBalancer); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultGlobalLoadBalancer: %w", err)
 	}
@@ -1552,6 +1558,11 @@ func (q *Queries) Close() error {
 	if q.deleteUserDefaultAnycastNetworkStmt != nil {
 		if cerr := q.deleteUserDefaultAnycastNetworkStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserDefaultAnycastNetworkStmt: %w", cerr)
+		}
+	}
+	if q.deleteUserDefaultGitHubIntegrationStmt != nil {
+		if cerr := q.deleteUserDefaultGitHubIntegrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserDefaultGitHubIntegrationStmt: %w", cerr)
 		}
 	}
 	if q.deleteUserDefaultGlobalLoadBalancerStmt != nil {
@@ -2959,6 +2970,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertUserDefaultAnycastNetworkStmt: %w", cerr)
 		}
 	}
+	if q.upsertUserDefaultGitHubIntegrationStmt != nil {
+		if cerr := q.upsertUserDefaultGitHubIntegrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertUserDefaultGitHubIntegrationStmt: %w", cerr)
+		}
+	}
 	if q.upsertUserDefaultGlobalLoadBalancerStmt != nil {
 		if cerr := q.upsertUserDefaultGlobalLoadBalancerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertUserDefaultGlobalLoadBalancerStmt: %w", cerr)
@@ -3111,6 +3127,7 @@ type Queries struct {
 	deleteTemplateStmt                         *sql.Stmt
 	deleteUserStmt                             *sql.Stmt
 	deleteUserDefaultAnycastNetworkStmt        *sql.Stmt
+	deleteUserDefaultGitHubIntegrationStmt     *sql.Stmt
 	deleteUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
@@ -3392,6 +3409,7 @@ type Queries struct {
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertTemplateRatingStmt                   *sql.Stmt
 	upsertUserDefaultAnycastNetworkStmt        *sql.Stmt
+	upsertUserDefaultGitHubIntegrationStmt     *sql.Stmt
 	upsertUserDefaultGlobalLoadBalancerStmt    *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
 	upsertUserLLMCreditStmt                    *sql.Stmt
@@ -3487,6 +3505,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
 		deleteUserStmt:                             q.deleteUserStmt,
 		deleteUserDefaultAnycastNetworkStmt:        q.deleteUserDefaultAnycastNetworkStmt,
+		deleteUserDefaultGitHubIntegrationStmt:     q.deleteUserDefaultGitHubIntegrationStmt,
 		deleteUserDefaultGlobalLoadBalancerStmt:    q.deleteUserDefaultGlobalLoadBalancerStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
@@ -3768,6 +3787,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,
 		upsertUserDefaultAnycastNetworkStmt:        q.upsertUserDefaultAnycastNetworkStmt,
+		upsertUserDefaultGitHubIntegrationStmt:     q.upsertUserDefaultGitHubIntegrationStmt,
 		upsertUserDefaultGlobalLoadBalancerStmt:    q.upsertUserDefaultGlobalLoadBalancerStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,
 		upsertUserLLMCreditStmt:                    q.upsertUserLLMCreditStmt,

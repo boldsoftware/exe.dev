@@ -18,6 +18,15 @@ func (q *Queries) DeleteUserDefaultAnycastNetwork(ctx context.Context, userID st
 	return err
 }
 
+const deleteUserDefaultGitHubIntegration = `-- name: DeleteUserDefaultGitHubIntegration :exec
+UPDATE user_defaults SET github_integration = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserDefaultGitHubIntegration(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteUserDefaultGitHubIntegrationStmt, deleteUserDefaultGitHubIntegration, userID)
+	return err
+}
+
 const deleteUserDefaultGlobalLoadBalancer = `-- name: DeleteUserDefaultGlobalLoadBalancer :exec
 UPDATE user_defaults SET global_load_balancer = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
 `
@@ -37,7 +46,7 @@ func (q *Queries) DeleteUserDefaultNewVMEmail(ctx context.Context, userID string
 }
 
 const getUserDefaults = `-- name: GetUserDefaults :one
-SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network FROM user_defaults WHERE user_id = ?
+SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network, github_integration FROM user_defaults WHERE user_id = ?
 `
 
 func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefault, error) {
@@ -50,6 +59,7 @@ func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefau
 		&i.UpdatedAt,
 		&i.GlobalLoadBalancer,
 		&i.AnycastNetwork,
+		&i.GitHubIntegration,
 	)
 	return i, err
 }
@@ -69,6 +79,24 @@ type UpsertUserDefaultAnycastNetworkParams struct {
 
 func (q *Queries) UpsertUserDefaultAnycastNetwork(ctx context.Context, arg UpsertUserDefaultAnycastNetworkParams) error {
 	_, err := q.exec(ctx, q.upsertUserDefaultAnycastNetworkStmt, upsertUserDefaultAnycastNetwork, arg.UserID, arg.AnycastNetwork)
+	return err
+}
+
+const upsertUserDefaultGitHubIntegration = `-- name: UpsertUserDefaultGitHubIntegration :exec
+INSERT INTO user_defaults (user_id, github_integration, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    github_integration = excluded.github_integration,
+    updated_at = CURRENT_TIMESTAMP
+`
+
+type UpsertUserDefaultGitHubIntegrationParams struct {
+	UserID            string `db:"user_id" json:"user_id"`
+	GitHubIntegration *int64 `db:"github_integration" json:"github_integration"`
+}
+
+func (q *Queries) UpsertUserDefaultGitHubIntegration(ctx context.Context, arg UpsertUserDefaultGitHubIntegrationParams) error {
+	_, err := q.exec(ctx, q.upsertUserDefaultGitHubIntegrationStmt, upsertUserDefaultGitHubIntegration, arg.UserID, arg.GitHubIntegration)
 	return err
 }
 

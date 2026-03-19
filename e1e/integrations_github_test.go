@@ -4,24 +4,57 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"testing"
-	"time"
 
 	"exe.dev/e1e/testinfra"
 )
 
-// extractRedirectKey extracts the /r/<key> from a URL in PTY output.
-// The key is the state token used as the redirect key.
-func extractRedirectKey(t *testing.T, output string) string {
+// connectGitHubViaWeb connects a GitHub account through the web flow.
+// It hits /github/signin to initiate OAuth, extracts the state from the
+// redirect URL, then simulates the OAuth callback with the given code.
+// Returns the callback's redirect Location (or empty if 200 OK).
+func connectGitHubViaWeb(t *testing.T, cookies []*http.Cookie, code string) string {
 	t.Helper()
-	re := regexp.MustCompile(`/r/([0-9a-f]{32})`)
-	matches := re.FindStringSubmatch(output)
-	if len(matches) < 2 {
-		t.Fatalf("could not extract redirect key from output: %s", output)
+	jar, _ := cookiejar.New(nil)
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	setCookiesForJar(t, jar, base, cookies)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	return matches[1]
+
+	// Hit /github/signin — should redirect to GitHub OAuth URL with state.
+	resp, err := client.Get(base + "/github/signin")
+	if err != nil {
+		t.Fatalf("signin request failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302 from /github/signin, got %d", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("invalid redirect URL: %v", err)
+	}
+	state := u.Query().Get("state")
+	if state == "" {
+		t.Fatalf("no state in redirect URL: %s", loc)
+	}
+
+	// Simulate OAuth callback with the given code.
+	return simulateGitHubOAuthCallback(t, code, state, 0)
+}
+
+// connectGitHubViaWebDefault connects a GitHub account using the default mock code.
+func connectGitHubViaWebDefault(t *testing.T, cookies []*http.Cookie) {
+	t.Helper()
+	connectGitHubViaWeb(t, cookies, "mock-code")
 }
 
 // doGitHubOAuthCallback sends an OAuth callback and returns the HTTP status and Location header.
@@ -61,13 +94,6 @@ func simulateGitHubOAuthCallback(t *testing.T, code, state string, installationI
 	}
 }
 
-// simulateGitHubCallback is a convenience wrapper for simulateGitHubOAuthCallback
-// using the default "mock-code" code.
-func simulateGitHubCallback(t *testing.T, state string, installationID int) string {
-	t.Helper()
-	return simulateGitHubOAuthCallback(t, "mock-code", state, installationID)
-}
-
 // simulateGitHubInstallCallback sends a callback request simulating GitHub's
 // redirect after an app installation (includes installation_id but no state
 // parameter — matching GitHub's real behavior for org admin approvals).
@@ -84,36 +110,24 @@ func simulateGitHubInstallCallback(t *testing.T, installationID int) (statusCode
 	return resp.StatusCode, string(b)
 }
 
-// TestIntegrationsSetupGitHub tests the GitHub App setup flow:
-// authorize → discover installations → connect → browser redirected to install page.
-// Then: delete → verify delete-again error → re-setup → delete.
+// TestIntegrationsSetupGitHub tests the GitHub App setup flow via the web UI:
+// SSH command prints web URL → connect via web → list → delete → re-connect → delete.
 func TestIntegrationsSetupGitHub(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
-	// First setup: authorize flow discovers installation via API.
+	// SSH setup command should enable the feature flag and print a web URL.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`Authorize your GitHub account`)
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state := extractRedirectKey(t, out)
-
-	// Simulate OAuth callback (no installation_id — authorize flow).
-	// After syncing installations, the authorize callback's browser is
-	// redirected to the install page for additional accounts.
-	loc := simulateGitHubCallback(t, state, 0)
-	if loc == "" {
-		t.Fatal("expected redirect to install page after connecting existing installations")
-	}
-
-	// Server discovers installation 12345 via API and connects it.
-	pty.Want("Connected:")
-	pty.Want("testghuser")
-	pty.Want("integrations setup github")
+	pty.Want("GitHub integration enabled")
+	pty.Want("/user#github")
 	pty.WantPrompt()
+
+	// Connect a GitHub account via the web flow.
+	connectGitHubViaWebDefault(t, cookies)
 
 	// List shows the connection.
 	pty.SendLine("integrations setup github --list")
@@ -121,17 +135,16 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.Want("testghuser")
 	pty.WantPrompt()
 
-	// Setup again: authorize discovers same installation, upserts idempotently.
+	// Running setup again is idempotent — just prints the URL again.
 	pty.SendLine("integrations setup github")
-	out = pty.WantREMatch(`Authorize your GitHub account`)
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state = extractRedirectKey(t, out)
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
 
-	loc = simulateGitHubCallback(t, state, 0)
-	if loc == "" {
-		t.Fatal("expected redirect to install page")
-	}
-	pty.Want("Connected:")
+	// Connect again via web — upserts idempotently.
+	connectGitHubViaWebDefault(t, cookies)
+
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
 	pty.Want("testghuser")
 	pty.WantPrompt()
 
@@ -145,13 +158,11 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Re-setup: authorize discovers installation again.
-	pty.SendLine("integrations setup github")
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state = extractRedirectKey(t, out)
+	// Re-connect via web.
+	connectGitHubViaWebDefault(t, cookies)
 
-	simulateGitHubCallback(t, state, 0)
-	pty.Want("Connected:")
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
 	pty.Want("testghuser")
 	pty.WantPrompt()
 
@@ -165,9 +176,9 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	pty.WantPrompt()
 }
 
-// TestIntegrationsSetupGitHubNoInstallations tests the flow when a user has
-// no installations: OAuth authorize → no installations found → redirect to
-// install page → poll detects new installation → connected.
+// TestIntegrationsSetupGitHubNoInstallations tests the web flow when the user
+// has no GitHub App installations. The OAuth callback discovers no installations,
+// so no accounts are saved.
 func TestIntegrationsSetupGitHubNoInstallations(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -180,39 +191,26 @@ func TestIntegrationsSetupGitHubNoInstallations(t *testing.T) {
 	const token = "ghu_" + code
 	Env.servers.GitHubMock.SetInstallationsForToken(token, nil)
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
+	// Enable the feature flag.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`Authorize your GitHub account`)
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state := extractRedirectKey(t, out)
-
-	// OAuth callback with our custom code — returns empty installations.
-	loc := simulateGitHubOAuthCallback(t, code, state, 0)
-
-	// Server should detect no installations and redirect browser to install page.
-	pty.Want("No GitHub App installations found")
-	pty.Want("Install the app in your browser")
-
-	// The browser should be redirected to the install page.
-	if loc == "" {
-		t.Fatal("expected redirect to install page")
-	}
-	if !regexp.MustCompile(`installations/new`).MatchString(loc) {
-		t.Fatalf("expected redirect to installations/new, got: %s", loc)
-	}
-
-	// Simulate the user installing the app: add installation for this token.
-	// The polling loop should pick this up.
-	time.Sleep(1 * time.Second) // let the poller do one empty poll
-	Env.servers.GitHubMock.AddInstallationForToken(token, 99999, "new-org")
-
-	// SSH session should detect the new installation via polling.
-	pty.Want("Connected:")
-	pty.Want("new-org")
+	pty.Want("GitHub integration enabled")
 	pty.WantPrompt()
 
-	// Verify it's listed.
+	// Connect via web with the no-installs code — callback completes but
+	// no installations are discovered, so no accounts are saved.
+	connectGitHubViaWeb(t, cookies, code)
+
+	// Should show no accounts.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("No GitHub accounts connected")
+	pty.WantPrompt()
+
+	// Now add an installation and connect again — should discover it.
+	Env.servers.GitHubMock.AddInstallationForToken(token, 99999, "new-org")
+	connectGitHubViaWeb(t, cookies, code)
+
 	pty.SendLine("integrations setup github --list")
 	pty.Want("new-org")
 	pty.WantPrompt()
@@ -223,8 +221,8 @@ func TestIntegrationsSetupGitHubNoInstallations(t *testing.T) {
 	pty.WantPrompt()
 }
 
-// TestIntegrationsSetupGitHubOrg tests the flow for a user who is part of an
-// org that already has the app installed — both personal and org installations
+// TestIntegrationsSetupGitHubOrg tests the web flow for a user who is part of
+// an org that already has the app installed — both personal and org installations
 // are discovered and synced.
 func TestIntegrationsSetupGitHubOrg(t *testing.T) {
 	t.Parallel()
@@ -240,22 +238,19 @@ func TestIntegrationsSetupGitHubOrg(t *testing.T) {
 		{ID: 67890, Login: "test-org"},
 	})
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
+	// Enable the feature flag.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state := extractRedirectKey(t, out)
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
 
-	// OAuth callback discovers both installations.
-	loc := simulateGitHubOAuthCallback(t, code, state, 0)
-	if loc == "" {
-		t.Fatal("expected redirect to install page")
-	}
+	// Connect via web — discovers both installations.
+	connectGitHubViaWeb(t, cookies, code)
 
 	// Both should be synced.
-	pty.Want("Connected:")
-	// Check for test-org first since "testghuser" appears in both lines
-	// ("testghuser" and "test-org (via testghuser)").
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
 	pty.Want("test-org")
 	pty.WantPrompt()
 
@@ -321,10 +316,9 @@ func TestIntegrationsGitHubOrphanOAuthCallback(t *testing.T) {
 	}
 }
 
-// TestIntegrationsSetupGitHubWrongAccount tests the retry flow when a user
-// picks the wrong GitHub account from the browser's account chooser.
-// The first OAuth attempt returns 401 (wrong account), then the user retries
-// and picks the correct account.
+// TestIntegrationsSetupGitHubWrongAccount tests the web flow when a user
+// picks the wrong GitHub account. The OAuth callback returns 401, then the
+// user retries with the correct account.
 func TestIntegrationsSetupGitHubWrongAccount(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -336,37 +330,48 @@ func TestIntegrationsSetupGitHubWrongAccount(t *testing.T) {
 	const badToken = "ghu_" + badCode
 	Env.servers.GitHubMock.SetUserForToken(badToken, "") // empty = 401
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
+	// Enable the feature flag.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`Authorize your GitHub account`)
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state1 := extractRedirectKey(t, out)
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
+
+	// Initiate web signin flow with the bad code.
+	jar, _ := cookiejar.New(nil)
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+	setCookiesForJar(t, jar, base, cookies)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Get(base + "/github/signin")
+	if err != nil {
+		t.Fatalf("signin request failed: %v", err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("invalid redirect URL: %v", err)
+	}
+	state := u.Query().Get("state")
 
 	// Simulate OAuth callback with the bad token — server gets 401 on /user.
-	status, _ := doGitHubOAuthCallback(t, badCode, state1, 0)
+	status, _ := doGitHubOAuthCallback(t, badCode, state, 0)
 	if status != http.StatusUnauthorized {
 		t.Fatalf("expected 401 from callback with bad token, got %d", status)
 	}
 
-	// SSH session should show retry message and a new URL.
-	pty.Want("Authorization failed")
-	pty.Want("wrong GitHub account")
-	out = pty.WantREMatch(`Try again`)
-	out = pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state2 := extractRedirectKey(t, out)
+	// Retry with the correct account via a new web flow.
+	connectGitHubViaWebDefault(t, cookies)
 
-	if state1 == state2 {
-		t.Fatal("retry should generate a new state token")
-	}
-
-	// Second attempt: use the default code which returns testghuser.
-	loc := simulateGitHubCallback(t, state2, 0)
-	if loc == "" {
-		t.Fatal("expected redirect to install page after connecting")
-	}
-
-	pty.Want("Connected:")
+	// Verify the correct account is connected via SSH --list.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
 	pty.Want("testghuser")
 	pty.WantPrompt()
 
@@ -391,16 +396,14 @@ func TestIntegrationsVerifyGitHub(t *testing.T) {
 		{ID: 55555, Login: "verify-user"},
 	})
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Connect the GitHub account.
+	// Enable the feature flag and connect via web.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state := extractRedirectKey(t, out)
-	simulateGitHubOAuthCallback(t, code, state, 0)
-	pty.Want("Connected:")
-	pty.Want("verify-user")
+	pty.Want("GitHub integration enabled")
 	pty.WantPrompt()
+
+	connectGitHubViaWeb(t, cookies, code)
 
 	// Verify: should pass — token is valid and installation exists.
 	pty.SendLine("integrations setup github --verify")
@@ -430,21 +433,19 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	pty, _, _, _ := registerForExeDev(t)
+	pty, cookies, _, _ := registerForExeDev(t)
 
 	// Error: add github without a GitHub account connected.
 	pty.SendLine("integrations add github --name=ghtest --repository=testghuser/empty")
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Connect a GitHub account first (authorize flow).
+	// Enable the feature flag and connect via web.
 	pty.SendLine("integrations setup github")
-	out := pty.WantREMatch(`/r/[0-9a-f]{32}`)
-	state := extractRedirectKey(t, out)
-	simulateGitHubCallback(t, state, 0)
-	pty.Want("Connected:")
-	pty.Want("testghuser")
+	pty.Want("GitHub integration enabled")
 	pty.WantPrompt()
+
+	connectGitHubViaWebDefault(t, cookies)
 
 	// Error: missing --repository.
 	pty.SendLine("integrations add github --name=ghtest")

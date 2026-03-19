@@ -3,7 +3,9 @@ package execore
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -14,10 +16,12 @@ import (
 	"exe.dev/githubapp"
 )
 
-// GitHubSetup represents a pending GitHub App installation (in-memory).
+// GitHubSetup represents a pending GitHub App setup flow (in-memory).
+// Used by both SSH-initiated and web-initiated flows.
 type GitHubSetup struct {
 	State     string
 	UserID    string
+	WebFlow   bool // true if initiated from web UI (no SSH session)
 	CreatedAt time.Time
 
 	CompleteChan chan struct{}
@@ -36,7 +40,7 @@ type GitHubSetup struct {
 	Err            error
 }
 
-// Close signals completion to the waiting SSH session.
+// Close signals completion to the waiting session.
 func (gs *GitHubSetup) Close() {
 	gs.closeOnce.Do(func() {
 		close(gs.CompleteChan)
@@ -73,6 +77,8 @@ func (ss *SSHServer) handleIntegrationsSetup(ctx context.Context, cc *exemenu.Co
 	}
 }
 
+// handleSetupGitHub enables the GitHub integration feature flag and directs
+// the user to the web UI where they can install the app and create integrations.
 func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
 	if !ss.server.githubApp.Enabled() {
 		return cc.Errorf("GitHub integration is not configured on this server")
@@ -97,196 +103,25 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		return ss.handleVerifyGitHub(ctx, cc)
 	}
 
-	// Load existing connections.
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
-	if err != nil {
-		return err
-	}
-	existingIDs := map[int64]bool{}
-	for _, a := range existing {
-		existingIDs[a.InstallationID] = true
-	}
-
-	// Phase 1: OAuth authorize to discover existing installations.
-	// Retry loop: if the user picks the wrong GitHub account from the
-	// browser's account chooser, the token will be invalid. Let them retry.
-	const maxOAuthAttempts = 3
-	var authSetup *GitHubSetup
-	for attempt := range maxOAuthAttempts {
-		var authCleanup func()
-		var err error
-		authSetup, authCleanup, err = ss.registerGitHubSetup(cc.User.ID)
-		if err != nil {
-			return cc.Errorf("%v", err)
-		}
-		defer authCleanup()
-
-		authorizeURL := ss.server.githubApp.AuthorizeURL(authSetup.State)
-		if err := ss.server.createRedirectForKey(ctx, authSetup.State, authorizeURL); err != nil {
-			return cc.Errorf("failed to create redirect: %v", err)
-		}
-		if attempt == 0 {
-			cc.Writeln("Authorize your GitHub account:")
-		} else {
-			cc.Writeln("Try again:")
-		}
-		cc.Writeln("  %s", ss.server.redirectURL(authSetup.State))
-		cc.Writeln("")
-		cc.Writeln("Waiting...")
-
-		waitErr := ss.waitForGitHubSetup(ctx, cc, authSetup)
-		if waitErr != nil {
-			// Check if the underlying cause is an auth error (wrong account).
-			if authSetup.Err != nil && githubapp.IsAuthError(authSetup.Err) && attempt < maxOAuthAttempts-1 {
-				cc.Writeln("")
-				cc.Writeln("Authorization failed \u2014 this can happen if you selected")
-				cc.Writeln("the wrong GitHub account. Let's try again.")
-				cc.Writeln("")
-				continue
-			}
-			return waitErr
-		}
-		break
-	}
-
-	// Discover installations accessible to this user.
-	userInstalls, err := ss.server.githubApp.GetUserInstallations(ctx, authSetup.AccessToken)
-	if err != nil {
-		return cc.Errorf("failed to discover installations: %v", err)
-	}
-
-	if len(userInstalls) == 0 {
-		// No installations at all — chain to install flow via browser redirect.
-		cc.Writeln("No GitHub App installations found for %s.", authSetup.GitHubLogin)
-		return ss.setupGitHubInstallChained(ctx, cc, existingIDs, authSetup)
-	}
-
-	// Upsert all discovered installations (syncs tokens, fixes stale installation_ids).
-	for _, inst := range userInstalls {
-		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:         cc.User.ID,
-				GitHubLogin:    authSetup.GitHubLogin,
-				InstallationID: inst.ID,
-				TargetLogin:    inst.Account.Login,
-				AccessToken:    authSetup.AccessToken,
-				RefreshToken:   authSetup.RefreshToken,
-			})
+	// Enable the GitHub integration feature flag.
+	one := int64(1)
+	if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpsertUserDefaultGitHubIntegration(ctx, exedb.UpsertUserDefaultGitHubIntegrationParams{
+			UserID:            cc.User.ID,
+			GitHubIntegration: &one,
 		})
-		if err != nil {
-			return cc.Errorf("failed to save GitHub connection: %v", err)
-		}
-		existingIDs[inst.ID] = true
+	}); err != nil {
+		return cc.Errorf("failed to enable GitHub integration: %v", err)
 	}
 
+	// Show the web URL.
+	webURL := ss.server.webBaseURLNoRequest() + "/user#github"
+	cc.Writeln("GitHub integration enabled.")
 	cc.Writeln("")
-	cc.Writeln("Connected:")
-	for _, inst := range userInstalls {
-		cc.Writeln("  %s", formatGitHubAccount(inst.Account.Login, authSetup.GitHubLogin))
-	}
-	cc.Writeln("")
+	cc.Writeln("Continue setup in your browser:")
+	cc.Writeln("  %s", webURL)
 
-	// Redirect the browser to the app's install page so the user can
-	// install on additional accounts, then run setup again to sync.
-	authSetup.respond(ss.server.githubApp.InstallURL(""))
-	cc.Writeln("To install on another account, go to https://github.com/apps/%s/installations/new", ss.server.githubApp.AppSlug)
-	cc.Writeln("Then run \"integrations setup github\" again to sync.")
-	ss.printGitHubAppSettingsHint(cc)
 	return nil
-}
-
-// setupGitHubInstallChained chains from an authorize callback to the install
-// flow by redirecting the user's browser to the GitHub App install page, then
-// polling the GitHub API until a new installation appears.
-//
-// We poll rather than waiting for a callback because GitHub does not reliably
-// relay the state parameter for install callbacks (e.g. when an org admin
-// approves a requested installation in a separate browser session).
-func (ss *SSHServer) setupGitHubInstallChained(ctx context.Context, cc *exemenu.CommandContext, existingIDs map[int64]bool, prevSetup *GitHubSetup) error {
-	prevSetup.respond(ss.server.githubApp.InstallURL(""))
-
-	cc.Writeln("Install the app in your browser, then come back here.")
-	cc.Writeln("Waiting...")
-
-	// Poll for new installations.
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-	timeout := time.After(10 * time.Minute)
-
-	var consecutiveErrors int
-	for {
-		select {
-		case <-ticker.C:
-			installs, err := ss.server.githubApp.GetUserInstallations(ctx, prevSetup.AccessToken)
-			if err != nil {
-				consecutiveErrors++
-				if githubapp.IsAuthError(err) {
-					return cc.Errorf("GitHub token is no longer valid — run integrations setup github again")
-				}
-				if consecutiveErrors >= 5 {
-					ss.server.slog().WarnContext(ctx, "GitHub polling errors", "consecutive", consecutiveErrors, "error", err)
-				}
-				continue
-			}
-			consecutiveErrors = 0
-
-			var newInstalls []githubapp.Installation
-			for _, inst := range installs {
-				if !existingIDs[inst.ID] {
-					newInstalls = append(newInstalls, inst)
-				}
-			}
-			if len(newInstalls) > 0 {
-				for _, inst := range newInstalls {
-					err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-						return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-							UserID:         cc.User.ID,
-							GitHubLogin:    prevSetup.GitHubLogin,
-							InstallationID: inst.ID,
-							TargetLogin:    inst.Account.Login,
-							AccessToken:    prevSetup.AccessToken,
-							RefreshToken:   prevSetup.RefreshToken,
-						})
-					})
-					if err != nil {
-						return cc.Errorf("failed to save GitHub connection: %v", err)
-					}
-				}
-				cc.Writeln("")
-				cc.Writeln("Connected:")
-				for _, inst := range newInstalls {
-					cc.Writeln("  %s", formatGitHubAccount(inst.Account.Login, prevSetup.GitHubLogin))
-				}
-				cc.Writeln("")
-				ss.printGitHubAppSettingsHint(cc)
-				return nil
-			}
-		case <-ctx.Done():
-			return cc.Errorf("GitHub setup canceled")
-		case <-timeout:
-			return cc.Errorf("GitHub setup timed out — run integrations setup github to try again")
-		}
-	}
-}
-
-// formatGitHubAccount formats a GitHub account for display.
-// When target and login differ (org install), shows "target (via login)".
-// When they're the same (personal install), just shows "target".
-func formatGitHubAccount(target, login string) string {
-	if target == "" {
-		return login
-	}
-	if target == login {
-		return target
-	}
-	return fmt.Sprintf("%s (via %s)", target, login)
-}
-
-// printGitHubAppSettingsHint prints a hint about where to manage the GitHub App.
-func (ss *SSHServer) printGitHubAppSettingsHint(cc *exemenu.CommandContext) {
-	cc.Writeln("Manage app permissions: https://github.com/apps/%s", ss.server.githubApp.AppSlug)
-	cc.Writeln("View connections: integrations setup github --list")
-	cc.Writeln("Verify connections: integrations setup github --verify")
 }
 
 // handleListGitHub shows the current GitHub account connections.
@@ -399,53 +234,6 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 	return nil
 }
 
-// registerGitHubSetup creates and registers a pending GitHub setup.
-// The returned cleanup function ensures the callback gets a response and
-// removes the setup from the pending map.
-func (ss *SSHServer) registerGitHubSetup(userID string) (*GitHubSetup, func(), error) {
-	stateBytes := make([]byte, 16)
-	if _, err := rand.Read(stateBytes); err != nil {
-		return nil, nil, fmt.Errorf("failed to generate state token: %v", err)
-	}
-	state := hex.EncodeToString(stateBytes)
-
-	setup := &GitHubSetup{
-		State:        state,
-		UserID:       userID,
-		CreatedAt:    time.Now(),
-		CompleteChan: make(chan struct{}),
-		RespondCh:    make(chan string, 1),
-	}
-	ss.server.githubSetupsMu.Lock()
-	ss.server.githubSetups[state] = setup
-	ss.server.githubSetupsMu.Unlock()
-
-	cleanup := func() {
-		// Ensure the callback handler doesn't hang.
-		setup.respond("")
-		ss.server.githubSetupsMu.Lock()
-		delete(ss.server.githubSetups, state)
-		ss.server.githubSetupsMu.Unlock()
-	}
-	return setup, cleanup, nil
-}
-
-// waitForGitHubSetup blocks until the callback signals completion, the context
-// is canceled, or the timeout expires.
-func (ss *SSHServer) waitForGitHubSetup(ctx context.Context, cc *exemenu.CommandContext, setup *GitHubSetup) error {
-	select {
-	case <-setup.CompleteChan:
-	case <-ctx.Done():
-		return cc.Errorf("GitHub setup canceled")
-	case <-time.After(10 * time.Minute):
-		return cc.Errorf("GitHub setup timed out (10 minutes)")
-	}
-	if setup.Err != nil {
-		return cc.Errorf("GitHub authorization failed: %v", setup.Err)
-	}
-	return nil
-}
-
 func (ss *SSHServer) handleDeleteGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
 	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
 	if err != nil {
@@ -465,4 +253,57 @@ func (ss *SSHServer) handleDeleteGitHub(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("  %s", formatGitHubAccount(a.TargetLogin, a.GitHubLogin))
 	}
 	return nil
+}
+
+// formatGitHubAccount formats a GitHub account for display.
+func formatGitHubAccount(target, login string) string {
+	if target == "" {
+		return login
+	}
+	if target == login {
+		return target
+	}
+	return fmt.Sprintf("%s (via %s)", target, login)
+}
+
+// registerGitHubSetup creates and registers a pending GitHub setup on the Server.
+func (s *Server) registerGitHubSetup(userID string, webFlow bool) (*GitHubSetup, func(), error) {
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return nil, nil, fmt.Errorf("failed to generate state token: %v", err)
+	}
+	state := hex.EncodeToString(stateBytes)
+
+	setup := &GitHubSetup{
+		State:        state,
+		UserID:       userID,
+		WebFlow:      webFlow,
+		CreatedAt:    time.Now(),
+		CompleteChan: make(chan struct{}),
+		RespondCh:    make(chan string, 1),
+	}
+	s.githubSetupsMu.Lock()
+	s.githubSetups[state] = setup
+	s.githubSetupsMu.Unlock()
+
+	cleanup := func() {
+		setup.respond("")
+		s.githubSetupsMu.Lock()
+		delete(s.githubSetups, state)
+		s.githubSetupsMu.Unlock()
+	}
+	return setup, cleanup, nil
+}
+
+// userHasGitHubIntegrationFlag checks whether the user has the github-integration
+// feature flag enabled.
+func (s *Server) userHasGitHubIntegrationFlag(ctx context.Context, userID string) bool {
+	defaults, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserDefaults, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false
+		}
+		return false
+	}
+	return defaults.GitHubIntegration != nil && *defaults.GitHubIntegration != 0
 }

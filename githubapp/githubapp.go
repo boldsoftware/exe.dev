@@ -82,9 +82,10 @@ func (c *Client) InstallURL(state string) string {
 	return u
 }
 
-// AuthorizeURL returns an OAuth authorization URL. Unlike InstallURL, this works
-// even if the app is already installed — it just re-authorizes. The callback
-// will receive code and state but NOT installation_id.
+// AuthorizeURL returns an OAuth authorization URL that identifies the user.
+// Used as a fallback when the app is already installed and the user just
+// needs to link their account. The callback will receive code and state
+// but NOT installation_id.
 func (c *Client) AuthorizeURL(state string) string {
 	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&state=%s",
 		url.QueryEscape(c.ClientID), url.QueryEscape(state))
@@ -130,6 +131,55 @@ func (c *Client) GetUserInstallations(ctx context.Context, accessToken string) (
 		return nil, fmt.Errorf("parsing user installations: %w", err)
 	}
 	return result.Installations, nil
+}
+
+// Repository is a GitHub repository accessible through an installation.
+type Repository struct {
+	FullName string `json:"full_name"`
+	Private  bool   `json:"private"`
+}
+
+// GetInstallationRepositories returns the repositories accessible to the user
+// through a specific installation. Uses the user access token.
+func (c *Client) GetInstallationRepositories(ctx context.Context, accessToken string, installationID int64) ([]Repository, error) {
+	var allRepos []Repository
+	page := 1
+	for {
+		u := fmt.Sprintf("%s/user/installations/%d/repositories?per_page=100&page=%d", c.apiURL(), installationID, page)
+		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("installation repositories request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			return nil, fmt.Errorf("reading installation repositories response: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("installation repositories returned %d: %s", resp.StatusCode, body)
+		}
+
+		var result struct {
+			Repositories []Repository `json:"repositories"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("parsing installation repositories: %w", err)
+		}
+		allRepos = append(allRepos, result.Repositories...)
+		if len(result.Repositories) < 100 {
+			break
+		}
+		page++
+	}
+	return allRepos, nil
 }
 
 // TokenResponse is the result of exchanging an authorization code.

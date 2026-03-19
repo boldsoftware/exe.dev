@@ -730,6 +730,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLinkDiscord(w, r)
 	case "/github/callback":
 		s.handleGitHubCallback(w, r)
+	case "/github/install":
+		s.handleGitHubInstall(w, r)
+	case "/github/signin":
+		s.handleGitHubSignin(w, r)
+	case "/github/unlink":
+		s.handleGitHubUnlink(w, r)
+	case "/github/repos":
+		s.handleGitHubRepos(w, r)
+	case "/github/verify":
+		s.handleGitHubVerify(w, r)
 
 	case "/logout":
 		s.handleLogout(w, r)
@@ -1740,9 +1750,19 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		}
 		integrations = append(integrations, info)
 	}
+	var ghIntegrations, proxyIntegrations []IntegrationDisplayInfo
+	for _, ig := range integrations {
+		switch ig.Type {
+		case "github":
+			ghIntegrations = append(ghIntegrations, ig)
+		case "http-proxy":
+			proxyIntegrations = append(proxyIntegrations, ig)
+		}
+	}
 
 	// Fetch GitHub account connections.
 	var ghAccounts []GitHubAccountDisplayInfo
+	var ghAccountsFull []GitHubAccountFullInfo
 	dbGHAccounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to get GitHub accounts for profile", "error", err, "user_id", userID)
@@ -1752,13 +1772,29 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			GitHubLogin: a.GitHubLogin,
 			TargetLogin: a.TargetLogin,
 		})
+		ghAccountsFull = append(ghAccountsFull, GitHubAccountFullInfo{
+			GitHubLogin:    a.GitHubLogin,
+			TargetLogin:    a.TargetLogin,
+			InstallationID: a.InstallationID,
+		})
 	}
 	ghEnabled := s.githubApp.Enabled()
 	var ghAppSlug string
 	if ghEnabled {
 		ghAppSlug = s.githubApp.AppSlug
 	}
-	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0
+	hasGHFlag := s.userHasGitHubIntegrationFlag(r.Context(), userID)
+	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag
+
+	// Fetch boxes for integration wizard and attach modals.
+	var profileBoxes []BoxDisplayInfo
+	if showIntegrations {
+		if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
+			for _, b := range userBoxes {
+				profileBoxes = append(profileBoxes, BoxDisplayInfo{Box: b})
+			}
+		}
+	}
 
 	// Prepare template data
 	data := UserPageData{
@@ -1768,6 +1804,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		Passkeys:         passkeys,
 		SiteSessions:     siteSessions,
 		SharedBoxes:      sharedBoxes,
+		Boxes:            profileBoxes,
 		ActivePage:       "profile",
 		IsLoggedIn:       true,
 		BasicUser:        basicUser,
@@ -1792,12 +1829,17 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		Purchases:                     purchases,
 		Gifts:                         buildGiftRows(bonusGrantAmount, giftEntries),
 
-		IsSudoer:         isSudoer,
-		Integrations:     integrations,
-		GitHubAccounts:   ghAccounts,
-		GitHubEnabled:    ghEnabled,
-		GitHubAppSlug:    ghAppSlug,
-		ShowIntegrations: showIntegrations,
+		IsSudoer:           isSudoer,
+		Integrations:       integrations,
+		GitHubIntegrations: ghIntegrations,
+		ProxyIntegrations:  proxyIntegrations,
+		GitHubAccounts:     ghAccounts,
+		GitHubAccountsFull: ghAccountsFull,
+		GitHubEnabled:      ghEnabled,
+		GitHubAppSlug:      ghAppSlug,
+		ShowIntegrations:   showIntegrations,
+		IntegrationScheme:  s.integrationScheme(),
+		Callout:            r.URL.Query().Get("callout"),
 	}
 
 	// Fetch team data if user is in a team

@@ -530,6 +530,7 @@ type UserDefault struct {
 	UpdatedAt          *time.Time `db:"updated_at" json:"updated_at"`
 	GlobalLoadBalancer *int64     `db:"global_load_balancer" json:"global_load_balancer"`
 	AnycastNetwork     *int64     `db:"anycast_network" json:"anycast_network"`
+	GitHubIntegration  *int64     `db:"github_integration" json:"github_integration"`
 }
 
 type UserEvent struct {

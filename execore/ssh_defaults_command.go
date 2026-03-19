@@ -15,6 +15,7 @@ var knownDefaultsKeys = map[string]string{
 	"new-vm-email":         "bool",
 	"global-load-balancer": "bool",
 	"anycast-network":      "int",
+	"github-integration":   "bool",
 }
 
 // defaultsCommand returns the command definition for the hidden defaults command
@@ -109,6 +110,13 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 					GlobalLoadBalancer: &intVal,
 				})
 			})
+		case "github-integration":
+			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				return queries.UpsertUserDefaultGitHubIntegration(ctx, exedb.UpsertUserDefaultGitHubIntegrationParams{
+					UserID:            cc.User.ID,
+					GitHubIntegration: &intVal,
+				})
+			})
 		}
 	case "int":
 		intVal, err := strconv.ParseInt(value, 10, 64)
@@ -153,6 +161,7 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
 		cc.Writeln("global-load-balancer: %s", formatBoolPtr(defaults.GlobalLoadBalancer))
 		cc.Writeln("anycast-network: %s", formatIntPtr(defaults.AnycastNetwork))
+		cc.Writeln("github-integration: %s", formatBoolPtr(defaults.GitHubIntegration))
 		return nil
 	}
 
@@ -165,6 +174,8 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("%s", formatBoolPtr(defaults.GlobalLoadBalancer))
 	case "anycast-network":
 		cc.Writeln("%s", formatIntPtr(defaults.AnycastNetwork))
+	case "github-integration":
+		cc.Writeln("%s", formatBoolPtr(defaults.GitHubIntegration))
 	default:
 		return cc.Errorf("unknown key %q", key)
 	}
@@ -200,6 +211,10 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 	case "anycast-network":
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultAnycastNetwork(ctx, cc.User.ID)
+		})
+	case "github-integration":
+		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteUserDefaultGitHubIntegration(ctx, cc.User.ID)
 		})
 	}
 
