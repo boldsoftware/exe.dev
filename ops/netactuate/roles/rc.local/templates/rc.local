@@ -22,9 +22,7 @@ ip -4 route add blackhole {{ networkv4.net }}&
 {%       for networkv4 in bgp_networks['IPv4'] %}
 {%         if networkv4.bind_ranges is defined %}
 {%           for range in networkv4.bind_ranges %}
-{%             set parts = range.split('-') %}
-{%             set base = parts[0].rsplit('.', 1) %}
-for i in $(seq {{ base[1] }} {{ parts[1] }}); do ip -4 addr add local {{ base[0] }}.$i/32 dev lo 2>/dev/null & done
+ip -4 addr add local {{ range }} dev lo 2>/dev/null
 {%           endfor %}
 {%         else %}
 {%           for ipaddr in networkv4.ips %}
