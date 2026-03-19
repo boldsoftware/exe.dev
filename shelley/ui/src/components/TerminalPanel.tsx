@@ -187,6 +187,36 @@ const CloseIcon = () => (
   </svg>
 );
 
+const ChevronUpIcon = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="18 15 12 9 6 15" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
 function ActionButton({
   onClick,
   title,
@@ -219,6 +249,7 @@ export default function TerminalPanel({
 }: TerminalPanelProps) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [height, setHeight] = useState(300);
+  const [minimized, setMinimized] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [statusMap, setStatusMap] = useState<
     Map<string, { status: TermStatus; exitCode: number | null }>
@@ -246,6 +277,7 @@ export default function TerminalPanel({
     if (terminals.length > 0) {
       const lastTerminal = terminals[terminals.length - 1];
       setActiveTabId(lastTerminal.id);
+      setMinimized(false); // expand when a new terminal arrives
     } else {
       setActiveTabId(null);
     }
@@ -335,6 +367,7 @@ export default function TerminalPanel({
       const xterm = xtermRegistryRef.current.get(autoFocusId);
       if (xterm) {
         setActiveTabId(autoFocusId);
+        setMinimized(false); // expand when focusing a terminal
         // Double-rAF to ensure we're past any keyup/form events that might steal focus
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -427,6 +460,29 @@ export default function TerminalPanel({
     if (activeTabId) onClose(activeTabId);
   }, [activeTabId, onClose]);
 
+  const toggleMinimized = useCallback(() => {
+    setMinimized((prev) => !prev);
+  }, []);
+
+  // Refit terminals when un-minimizing by nudging the container to trigger ResizeObserver
+  const wasMinimizedRef = useRef(minimized);
+  useEffect(() => {
+    const wasMinimized = wasMinimizedRef.current;
+    wasMinimizedRef.current = minimized;
+    if (wasMinimized && !minimized && activeTabId) {
+      const timer = setTimeout(() => {
+        const el = document.querySelector(`[data-terminal-id="${activeTabId}"]`);
+        if (el) {
+          (el as HTMLElement).style.height = "99.9%";
+          requestAnimationFrame(() => {
+            (el as HTMLElement).style.height = "100%";
+          });
+        }
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [minimized, activeTabId]);
+
   if (terminals.length === 0) return null;
 
   // Truncate command for tab label
@@ -438,14 +494,27 @@ export default function TerminalPanel({
   };
 
   return (
-    <div className="terminal-panel" style={{ height: `${height}px`, flexShrink: 0 }}>
-      {/* Resize handle at top */}
-      <div className="terminal-panel-resize-handle" onMouseDown={handleResizeMouseDown}>
-        <div className="terminal-panel-resize-grip" />
-      </div>
+    <div
+      className={`terminal-panel${minimized ? " terminal-panel-minimized" : ""}`}
+      style={minimized ? undefined : { height: `${height}px`, flexShrink: 0 }}
+    >
+      {/* Resize handle at top — hidden when minimized */}
+      {!minimized && (
+        <div className="terminal-panel-resize-handle" onMouseDown={handleResizeMouseDown}>
+          <div className="terminal-panel-resize-grip" />
+        </div>
+      )}
 
       {/* Tab bar + actions */}
       <div className="terminal-panel-header">
+        {/* Minimize/maximize toggle */}
+        <ActionButton
+          onClick={toggleMinimized}
+          title={minimized ? "Expand terminals" : "Minimize terminals"}
+        >
+          {minimized ? <ChevronUpIcon /> : <ChevronDownIcon />}
+        </ActionButton>
+
         <div className="terminal-panel-tabs">
           {terminals.map((t) => {
             const info = statusMap.get(t.id);
@@ -454,7 +523,10 @@ export default function TerminalPanel({
               <div
                 key={t.id}
                 className={`terminal-panel-tab${isActive ? " terminal-panel-tab-active" : ""}`}
-                onClick={() => setActiveTabId(t.id)}
+                onClick={() => {
+                  setActiveTabId(t.id);
+                  if (minimized) setMinimized(false);
+                }}
                 title={t.command}
               >
                 {info?.status === "running" && (
@@ -485,49 +557,51 @@ export default function TerminalPanel({
           })}
         </div>
 
-        {/* Action buttons */}
-        <div className="terminal-panel-actions">
-          <ActionButton
-            onClick={copyScreen}
-            title="Copy visible screen"
-            feedback={copyFeedback === "copyScreen"}
-          >
-            {copyFeedback === "copyScreen" ? <CheckIcon /> : <CopyIcon />}
-          </ActionButton>
-          <ActionButton
-            onClick={copyAll}
-            title="Copy all output"
-            feedback={copyFeedback === "copyAll"}
-          >
-            {copyFeedback === "copyAll" ? <CheckIcon /> : <CopyAllIcon />}
-          </ActionButton>
-          {onInsertIntoInput && (
-            <>
-              <ActionButton
-                onClick={insertScreen}
-                title="Insert visible screen into input"
-                feedback={copyFeedback === "insertScreen"}
-              >
-                {copyFeedback === "insertScreen" ? <CheckIcon /> : <InsertIcon />}
-              </ActionButton>
-              <ActionButton
-                onClick={insertAll}
-                title="Insert all output into input"
-                feedback={copyFeedback === "insertAll"}
-              >
-                {copyFeedback === "insertAll" ? <CheckIcon /> : <InsertAllIcon />}
-              </ActionButton>
-            </>
-          )}
-          <div className="terminal-panel-actions-divider" />
-          <ActionButton onClick={handleCloseActive} title="Close active terminal">
-            <CloseIcon />
-          </ActionButton>
-        </div>
+        {/* Action buttons — hidden when minimized */}
+        {!minimized && (
+          <div className="terminal-panel-actions">
+            <ActionButton
+              onClick={copyScreen}
+              title="Copy visible screen"
+              feedback={copyFeedback === "copyScreen"}
+            >
+              {copyFeedback === "copyScreen" ? <CheckIcon /> : <CopyIcon />}
+            </ActionButton>
+            <ActionButton
+              onClick={copyAll}
+              title="Copy all output"
+              feedback={copyFeedback === "copyAll"}
+            >
+              {copyFeedback === "copyAll" ? <CheckIcon /> : <CopyAllIcon />}
+            </ActionButton>
+            {onInsertIntoInput && (
+              <>
+                <ActionButton
+                  onClick={insertScreen}
+                  title="Insert visible screen into input"
+                  feedback={copyFeedback === "insertScreen"}
+                >
+                  {copyFeedback === "insertScreen" ? <CheckIcon /> : <InsertIcon />}
+                </ActionButton>
+                <ActionButton
+                  onClick={insertAll}
+                  title="Insert all output into input"
+                  feedback={copyFeedback === "insertAll"}
+                >
+                  {copyFeedback === "insertAll" ? <CheckIcon /> : <InsertAllIcon />}
+                </ActionButton>
+              </>
+            )}
+            <div className="terminal-panel-actions-divider" />
+            <ActionButton onClick={handleCloseActive} title="Close active terminal">
+              <CloseIcon />
+            </ActionButton>
+          </div>
+        )}
       </div>
 
-      {/* Terminal content area */}
-      <div className="terminal-panel-content">
+      {/* Terminal content area — hidden (not unmounted) when minimized */}
+      <div className="terminal-panel-content" style={minimized ? { display: "none" } : undefined}>
         {terminals.map((t) => (
           <TerminalInstanceWithRegistry
             key={t.id}

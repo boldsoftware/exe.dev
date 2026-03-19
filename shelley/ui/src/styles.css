@@ -5652,6 +5652,17 @@ kbd {
   overflow: hidden;
 }
 
+.terminal-panel-minimized {
+  min-height: unset;
+  max-height: unset;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.terminal-panel-minimized .terminal-panel-header {
+  border-bottom: none;
+}
+
 .terminal-panel-resize-handle {
   height: 6px;
   cursor: ns-resize;
