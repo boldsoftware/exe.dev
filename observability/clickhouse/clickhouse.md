@@ -75,6 +75,7 @@ All structured fields live inside `LogAttributes` as string values — access vi
 | `route_port` | string | Container port being proxied to |
 | `route_share` | string | `public` or `private` |
 | `local_addr` | string | Local address that received the request |
+| `socket_rtt_us` | string (cast to UInt64) | TCP socket RTT in microseconds (TLS HTTP requests, SSH connections) |
 | `grpc.service` | string | gRPC service name (e.g. `exe.proxy.v1.ProxyInfoService`) |
 | `grpc.method` | string | gRPC method (e.g. `BoxInfo`, `TopLevelCert`, `UserInfo`) |
 | `grpc.code` | string | gRPC status code (e.g. `OK`) |
@@ -127,6 +128,61 @@ WHERE LogAttributes['cost_usd'] != ''
   AND Timestamp >= today()
 GROUP BY conversation_id
 ORDER BY cost_usd DESC
+FORMAT PrettyCompact
+```
+
+Latency leaderboard — users with highest median RTT (last 24h):
+
+```sql
+SELECT
+    LogAttributes['user_id'] AS user_id,
+    count() AS requests,
+    round(quantile(0.5)(toUInt64(LogAttributes['socket_rtt_us']))) AS p50_rtt_us,
+    round(quantile(0.95)(toUInt64(LogAttributes['socket_rtt_us']))) AS p95_rtt_us,
+    round(max(toUInt64(LogAttributes['socket_rtt_us']))) AS max_rtt_us
+FROM otel_logs
+WHERE LogAttributes['socket_rtt_us'] != ''
+  AND LogAttributes['user_id'] != ''
+  AND Timestamp >= now() - INTERVAL 24 HOUR
+GROUP BY user_id
+HAVING requests >= 5
+ORDER BY p50_rtt_us DESC
+LIMIT 50
+FORMAT PrettyCompact
+```
+
+RTT by exeprox edge (to see which regions have slow users):
+
+```sql
+SELECT
+    ResourceAttributes['host.name'] AS edge,
+    count() AS requests,
+    round(quantile(0.5)(toUInt64(LogAttributes['socket_rtt_us']))) AS p50_rtt_us,
+    round(quantile(0.95)(toUInt64(LogAttributes['socket_rtt_us']))) AS p95_rtt_us
+FROM otel_logs
+WHERE LogAttributes['socket_rtt_us'] != ''
+  AND ServiceName = 'exeprox'
+  AND Timestamp >= now() - INTERVAL 24 HOUR
+GROUP BY edge
+ORDER BY p50_rtt_us DESC
+FORMAT PrettyCompact
+```
+
+SSH connection RTT by user (from sshpiperd via exed canonical log lines):
+
+```sql
+SELECT
+    LogAttributes['user_id'] AS user_id,
+    LogAttributes['username'] AS ssh_user,
+    count() AS connections,
+    round(quantile(0.5)(toUInt64(LogAttributes['socket_rtt_us']))) AS p50_rtt_us,
+    round(quantile(0.95)(toUInt64(LogAttributes['socket_rtt_us']))) AS p95_rtt_us
+FROM otel_logs
+WHERE LogAttributes['log_type'] IN ('ssh_proxy_auth', 'vm-ssh-connection')
+  AND LogAttributes['socket_rtt_us'] != ''
+  AND Timestamp >= now() - INTERVAL 24 HOUR
+GROUP BY user_id, ssh_user
+ORDER BY p50_rtt_us DESC
 FORMAT PrettyCompact
 ```
 
