@@ -334,6 +334,11 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		slog.String("local_address", localAddress),
 	)
 
+	// Socket RTT injected by sshpiperd at connection time.
+	if rttStr := conn.GetMeta("socket_rtt_us"); rttStr != "" {
+		cl.add(slog.String("socket_rtt_us", rttStr))
+	}
+
 	// Check if key is empty or nil - this happens when client has no keys configured
 	if len(key) == 0 {
 		return nil, fmt.Errorf("no public key provided")
