@@ -136,10 +136,15 @@ jobs:
           cat /tmp/ci-logs.txt >> /tmp/flake-prompt.txt
 
           ANSWER=$(claude --dangerously-skip-permissions -p "$(cat /tmp/flake-prompt.txt)" 2>/dev/null)
-          echo "Claude answer: $ANSWER"
+          echo "Claude raw answer: $ANSWER"
 
-          # Extract just YES or NO from the response
-          if echo "$ANSWER" | grep -qi "\bNO\b"; then
+          # Claude likes to talk. Check whether the response contains NO but
+          # not YES. If it contains both or neither, assume the failures are
+          # commit-related (not a flake) so Ralph proceeds to fix.
+          HAS_YES=$(echo "$ANSWER" | grep -ci '\bYES\b' || true)
+          HAS_NO=$(echo "$ANSWER" | grep -ci '\bNO\b' || true)
+          echo "YES count: $HAS_YES, NO count: $HAS_NO"
+          if [ "$HAS_NO" -gt 0 ] && [ "$HAS_YES" -eq 0 ]; then
             echo "is_flake=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_flake=false" >> "$GITHUB_OUTPUT"
