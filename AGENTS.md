@@ -61,12 +61,15 @@ bin/agent-link install --pkg <pkg>     # symlink everything from a package
 bin/agent-link uninstall <name>        # remove symlink
 bin/agent-link uninstall --all         # remove all symlinks from this repo
 bin/agent-link status                  # show installed items and symlink health
+bin/agent-link init <pkg> <name>       # create a new empty agent in <pkg>/.ai/agents/
 ```
 
 When working in a package, check if it has a `.ai/` directory containing agents, skills,
 or docs. If any exist that are not currently installed (i.e., not symlinked into ~/.claude/),
-tell the user what's available and suggest they run `bin/agent-link install --pkg <package>`
-to install them. The user may decline — that's fine.
+**always prompt the user** about the available resources and suggest they run
+`bin/agent-link install --pkg <package>` to install them. Offer to run the command on their
+behalf if they approve. The user may decline — that's fine, but always surface the suggestion
+so they're aware of what's available.
 
 ### Package AGENTS.md Format
 

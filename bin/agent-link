@@ -243,6 +243,65 @@ cmd_uninstall() {
 	exit 1
 }
 
+cmd_init() {
+	local pkg="$1" name="$2"
+	[[ -z "$pkg" || -z "$name" ]] && { echo "usage: agent-link init <package> <agent-name>"; exit 1; }
+
+	# Require exe- prefix per AGENTS.md convention
+	if [[ "$name" != exe-* ]]; then
+		echo "agent names must start with exe- (e.g., exe-$name)"
+		exit 1
+	fi
+
+	# Find the package directory
+	local pkg_dir=""
+	while IFS= read -r d; do
+		if [[ "$(basename "$d")" == "$pkg" ]]; then
+			pkg_dir="$d"
+			break
+		fi
+	done < <(find "$REPO_ROOT" -maxdepth 3 -type d -name "$pkg" ! -path '*/.git/*' ! -path '*/.ai/*' | sort)
+
+	[[ -z "$pkg_dir" ]] && { echo "package not found: $pkg"; exit 1; }
+
+	local agents_dir="$pkg_dir/.ai/agents"
+	local agent_file="$agents_dir/$name.md"
+
+	[[ -f "$agent_file" ]] && { echo "agent already exists: $agent_file"; exit 1; }
+
+	mkdir -p "$agents_dir"
+	cat > "$agent_file" <<AGENT
+---
+name: $name
+description: TODO
+tools: Read, Edit, Write, Bash, Glob, Grep, Agent
+---
+
+# $name
+
+**Role:** TODO
+
+**Status:** Active
+
+## Ownership
+
+- TODO
+
+## Responsibilities
+
+- TODO
+
+## Rules
+
+- Follow all general rules from \`$pkg/AGENTS.md\`
+
+## Interactions
+
+- TODO
+AGENT
+	echo "created $agent_file"
+}
+
 cmd_status() {
 	discover
 	local has_any=false
@@ -291,6 +350,7 @@ Usage:
   agent-link uninstall <name>        remove symlink
   agent-link uninstall --all         remove all symlinks from this repo
   agent-link status                  show what's installed and symlink health
+  agent-link init <pkg> <name>       create a new empty agent in <pkg>/.ai/agents/
 USAGE
 }
 
@@ -299,5 +359,6 @@ case "${1:-}" in
 	install)   shift; cmd_install "$@" ;;
 	uninstall) shift; cmd_uninstall "$@" ;;
 	status)    cmd_status ;;
+	init)      shift; cmd_init "$@" ;;
 	*)         usage ;;
 esac
