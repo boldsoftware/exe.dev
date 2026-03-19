@@ -3,6 +3,7 @@ package execore
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -81,6 +82,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
+	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
@@ -2453,6 +2455,71 @@ func (s *Server) handleDebugGiftCredits(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
+// handleDebugAddBilling creates a billing account for a user in test mode.
+// This simulates a user completing the Stripe checkout flow by inserting an
+// accounts row, activating it, and granting the signup bonus.
+func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user already has a billing account.
+	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err == nil {
+		// Account already exists, nothing to do.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("failed to check existing account: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Create account, activate it, and insert a billing event.
+	accountID := "exe_" + crand.Text()[:16]
+	now := time.Now().UTC().Round(0)
+
+	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: userID,
+		}); err != nil {
+			return fmt.Errorf("insert account: %w", err)
+		}
+		if err := q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+			CreatedBy: userID,
+			EventAt:   now,
+		}); err != nil {
+			return fmt.Errorf("activate account: %w", err)
+		}
+		if _, err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			AccountID: accountID,
+			EventType: "active",
+			EventAt:   now,
+		}); err != nil {
+			return fmt.Errorf("insert billing event: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create billing account: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Grant signup bonus (same as checkout flow).
+	giftSignupBonus(ctx, s.billing, accountID, s.slog())
+
+	s.slog().InfoContext(ctx, "billing account created via debug endpoint",
+		"user_id", userID,
+		"account_id", accountID)
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func ptrStr(s *string) string {
