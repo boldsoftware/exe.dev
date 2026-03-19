@@ -491,19 +491,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		switch {
 		case isSSHConnError(err):
 			p.log().InfoContext(ctx, "dropping dead ssh connection", "key", pc.key.String(), "err", err)
-			p.removeConn(pc)
-			// Eager close: for transport-dead errors (EOF, ECONNRESET), sibling
-			// channels are already doomed. For ResourceShortage the transport
-			// may be alive, but the connection is low-value under resource
-			// pressure — retry backoff absorbs the churn. Prior code only
-			// called removeConn here; the explicit Close frees resources
-			// immediately instead of waiting for the TTL timer. release()
-			// will harmlessly re-close.
-			// No lock needed: pc.client is immutable and Close is goroutine-safe.
-			// Background: Close can block on a stale TCP connection (retransmit
-			// timeout). The pooledConn is already evicted, so there's no reason
-			// to make the caller wait.
-			go pc.client.Close()
+			p.evictConn(pc)
 			// Falls through: eviction occurred but ErrStaleConnection is intentionally
 			// not wrapped — transport errors are self-describing. See ErrStaleConnection doc.
 		case shortCtx.Err() != nil && shortTimeoutIsOurs && ctx.Err() != context.Canceled:
@@ -518,15 +506,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 			// (over-eviction), so we accept it rather than gating on error type — the
 			// underlying error is not guaranteed to be DeadlineExceeded.
 			p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", err)
-			p.removeConn(pc)
-			// Eager close: tears down the SSH transport immediately, including
-			// any other multiplexed channels on this connection. This is a
-			// deliberate choice — for co-located backends where staleTimeout
-			// false positives are rare, fast failover outweighs the risk of
-			// collateral failures from a misdiagnosis. See staleTimeout doc.
-			// Background: Close can block on a stale TCP retransmit timeout;
-			// the pooledConn is already evicted so the caller need not wait.
-			go pc.client.Close()
+			p.evictConn(pc)
 			err = fmt.Errorf("channel open did not complete within %s: %w: %w", staleTimeout, ErrStaleConnection, err)
 		case shortCtx.Err() != nil && shortTimeoutIsOurs && ctx.Err() == context.Canceled:
 			p.log().DebugContext(ctx, "stale detection suppressed: concurrent caller cancellation", "key", pc.key.String(), "err", err)
@@ -608,17 +588,12 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 			switch {
 			case isSSHConnError(res.err):
 				p.log().InfoContext(ctx, "dropping dead ssh connection", "key", pc.key.String(), "err", res.err)
-				p.removeConn(pc)
-				// Eager close: see dialThroughClient comment. For ResourceShortage
-				// the transport may be alive, but low-value under resource pressure.
-				// Background: see dialThroughClient comment re: stale TCP blocking.
-				go pc.client.Close()
+				p.evictConn(pc)
 				// Falls through: eviction occurred but ErrStaleConnection is intentionally
 				// not wrapped — transport errors are self-describing. See ErrStaleConnection doc.
 			case shortCtx.Err() != nil && shortTimeoutIsOurs && ctx.Err() != context.Canceled:
 				p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", res.err)
-				p.removeConn(pc)
-				go pc.client.Close() // eager close, see dialThroughClient stale-eviction comment
+				p.evictConn(pc)
 				// Returns directly (unlike dialThroughClient which reassigns err
 				// and falls through to the common wrapper). The early return is
 				// intentional: this branch is practically unreachable (see comment
@@ -671,11 +646,7 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 		}
 		// Our staleTimeout fired — the SSH connection is unresponsive, evict it.
 		p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", shortCtx.Err())
-		p.removeConn(pc)
-		// Eager close: see dialThroughClient comment. Background to avoid
-		// blocking the caller on a stale TCP retransmit timeout. This also
-		// unblocks the hung NewSession goroutine (drain below).
-		go pc.client.Close()
+		p.evictConn(pc)
 		// Clean up the in-flight NewSession goroutine: if it eventually
 		// returns a session, close it to avoid resource leaks.
 		go func() {
@@ -696,19 +667,54 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 	if stdin != nil {
 		session.Stdin = stdin
 	}
-	output, err := session.CombinedOutput(command) // TODO(#84): wrap in goroutine+select for ctx cancellation
-	if err != nil {
-		if isSSHConnError(err) {
-			p.log().InfoContext(ctx, "dropping dead ssh connection after command", "key", pc.key.String(), "err", err)
-			p.removeConn(pc)
-			// Eager close: see dialThroughClient comment. For ResourceShortage
-			// the transport may be alive, but low-value under resource pressure.
-			// Background: see dialThroughClient comment re: stale TCP blocking.
-			go pc.client.Close()
-		}
-		return output, fmt.Errorf("command failed: %w", err)
+
+	// CombinedOutput has no context parameter and blocks until the command
+	// completes or the connection dies. Run it in a goroutine so we can
+	// bail on ctx.Done() without blocking the caller.
+	type cmdResult struct {
+		output []byte
+		err    error
 	}
-	return output, nil
+	cmdCh := make(chan cmdResult, 1)
+	go func() {
+		out, err := session.CombinedOutput(command)
+		cmdCh <- cmdResult{out, err}
+	}()
+
+	select {
+	case r := <-cmdCh:
+		if r.err != nil {
+			// SAFETY: Do NOT wrap this error with ErrStaleConnection.
+			// Callers may retry on ErrStaleConnection, which is only safe
+			// when the command never started (session creation failed).
+			// Wrapping a post-command error would cause unsafe retries
+			// of potentially non-idempotent commands.
+			if isSSHConnError(r.err) && ctx.Err() == nil {
+				p.log().InfoContext(ctx, "dropping dead ssh connection after command", "key", pc.key.String(), "err", r.err)
+				p.evictConn(pc)
+			}
+			return r.output, fmt.Errorf("command failed: %w", r.err)
+		}
+		return r.output, nil
+	case <-ctx.Done():
+		// Close session to unblock CombinedOutput, then wait for the
+		// goroutine to exit. If the connection is zombie (half-open TCP),
+		// session.Close can also hang; evict to force the SSH mux closed.
+		//
+		// Note: session.Close() is synchronous and may block on a zombie
+		// transport before we reach the eviction fallback. Likewise, after
+		// evictConn the final <-cmdCh may block if the async client.Close
+		// also stalls. Both are bounded by the OS TCP retransmit timeout
+		// (typically ~15-30s), not by this code.
+		session.Close() // intentionally redundant with defer — needed to unblock CombinedOutput
+		select {
+		case <-cmdCh:
+		case <-time.After(staleTimeout):
+			p.evictConn(pc)
+			<-cmdCh
+		}
+		return nil, fmt.Errorf("command cancelled: %w", ctx.Err())
+	}
 }
 
 // shortTimeoutOwnership reports whether shortCtx's deadline came from
@@ -816,6 +822,22 @@ func (p *Pool) removeConn(pc *pooledConn) bool {
 	}
 	delete(p.conns, pc.key)
 	return true
+}
+
+// evictConn removes a connection from the pool, stops its TTL timer (adjusting
+// the refcount), and closes the SSH client asynchronously. Idempotent via
+// removeConn's identity check. Close is backgrounded because it can block on
+// a stale TCP retransmit timeout.
+func (p *Pool) evictConn(pc *pooledConn) {
+	p.removeConn(pc)
+	pc.mu.Lock()
+	if pc.timer != nil {
+		if pc.timer.Stop() {
+			pc.active--
+		}
+	}
+	pc.mu.Unlock()
+	go pc.client.Close()
 }
 
 // dropConnectionsTo removes all pooled connections to the specified host and port.
