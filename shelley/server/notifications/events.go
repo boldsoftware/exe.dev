@@ -1,6 +1,23 @@
 package notifications
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+// Title formats a notification title as "hostname: slug".
+func Title(hostname, slug string) string {
+	if hostname != "" && slug != "" {
+		return fmt.Sprintf("%s: %s", hostname, slug)
+	}
+	if hostname != "" {
+		return hostname
+	}
+	if slug != "" {
+		return slug
+	}
+	return "Shelley"
+}
 
 // EventType identifies the kind of notification event.
 type EventType string
@@ -20,12 +37,16 @@ type Event struct {
 
 // AgentDonePayload is the payload for EventAgentDone.
 type AgentDonePayload struct {
+	Hostname          string `json:"hostname,omitempty"`
 	Model             string `json:"model,omitempty"`
 	ConversationTitle string `json:"conversation_title,omitempty"`
+	ConversationURL   string `json:"conversation_url,omitempty"`
 	FinalResponse     string `json:"final_response,omitempty"`
 }
 
 // AgentErrorPayload is the payload for EventAgentError.
 type AgentErrorPayload struct {
-	ErrorMessage string `json:"error_message"`
+	Hostname        string `json:"hostname,omitempty"`
+	ErrorMessage    string `json:"error_message"`
+	ConversationURL string `json:"conversation_url,omitempty"`
 }

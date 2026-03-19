@@ -1014,6 +1014,30 @@ func (s *Server) publishConversationListUpdate(update ConversationListUpdate) {
 	}
 }
 
+// publicHostname returns the server's public hostname.
+func publicHostname() string {
+	if h, err := os.Hostname(); err == nil {
+		if !strings.Contains(h, ".") {
+			return h + ".exe.xyz"
+		}
+		return h
+	}
+	return "localhost"
+}
+
+// conversationURL returns the full URL for a conversation, using slug if available.
+func (s *Server) conversationURL(slug string) string {
+	hostname := publicHostname()
+	path := "/"
+	if slug != "" {
+		path = "/c/" + slug
+	}
+	if s.listenPort == 443 || s.listenPort == 0 {
+		return fmt.Sprintf("https://%s%s", hostname, path)
+	}
+	return fmt.Sprintf("https://%s:%d%s", hostname, s.listenPort, path)
+}
+
 // publishConversationState broadcasts a conversation state update to ALL active
 // conversation streams. This allows clients to see the working state of other conversations.
 func (s *Server) publishConversationState(state ConversationState) {
@@ -1025,11 +1049,15 @@ func (s *Server) publishConversationState(state ConversationState) {
 		conv, convErr := s.db.GetConversationByID(context.Background(), state.ConversationID)
 		isSubagent := convErr == nil && conv.ParentConversationID != nil
 
-		payload := notifications.AgentDonePayload{
-			Model: state.Model,
-		}
+		var slug string
 		if convErr == nil && conv.Slug != nil {
-			payload.ConversationTitle = *conv.Slug
+			slug = *conv.Slug
+		}
+		payload := notifications.AgentDonePayload{
+			Hostname:          publicHostname(),
+			Model:             state.Model,
+			ConversationTitle: slug,
+			ConversationURL:   s.conversationURL(slug),
 		}
 		if msg, err := s.db.GetLatestMessage(context.Background(), state.ConversationID); err == nil && msg.Type == string(db.MessageTypeAgent) && msg.LlmData != nil {
 			var llmMsg llm.Message
@@ -1040,8 +1068,8 @@ func (s *Server) publishConversationState(state ConversationState) {
 						text = c.Text
 					}
 				}
-				if len(text) > 255 {
-					text = text[:255] + "..."
+				if len(text) > 10000 {
+					text = text[:10000] + "..."
 				}
 				payload.FinalResponse = text
 			}

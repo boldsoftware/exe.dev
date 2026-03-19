@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"shelley.exe.dev/server/notifications"
@@ -90,26 +91,34 @@ func (e *email) Send(ctx context.Context, event notifications.Event) error {
 func formatEmailMessage(event notifications.Event) (subject, body string) {
 	switch event.Type {
 	case notifications.EventAgentDone:
-		subject = "Agent finished"
 		if p, ok := event.Payload.(notifications.AgentDonePayload); ok {
-			if p.ConversationTitle != "" {
-				subject = fmt.Sprintf("Agent finished: %s", p.ConversationTitle)
-			}
-			if p.Model != "" {
-				body = fmt.Sprintf("Model: %s\nTime: %s", p.Model, event.Timestamp.Format(time.RFC822))
-			} else {
-				body = fmt.Sprintf("Time: %s", event.Timestamp.Format(time.RFC822))
+			subject = notifications.Title(p.Hostname, p.ConversationTitle)
+			var parts []string
+			if p.ConversationURL != "" {
+				parts = append(parts, p.ConversationURL)
 			}
 			if p.FinalResponse != "" {
-				body += "\n\n" + p.FinalResponse
+				parts = append(parts, "", p.FinalResponse)
 			}
+			body = strings.Join(parts, "\n")
+		} else {
+			subject = "Agent finished"
 		}
 		return subject, body
 
 	case notifications.EventAgentError:
-		subject = "Agent error"
-		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok && p.ErrorMessage != "" {
-			body = p.ErrorMessage
+		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok {
+			subject = notifications.Title(p.Hostname, "error")
+			var parts []string
+			if p.ConversationURL != "" {
+				parts = append(parts, p.ConversationURL)
+			}
+			if p.ErrorMessage != "" {
+				parts = append(parts, p.ErrorMessage)
+			}
+			body = strings.Join(parts, "\n")
+		} else {
+			subject = "Agent error"
 		}
 		return subject, body
 

@@ -89,6 +89,7 @@ type ntfyMessage struct {
 	Message  string   `json:"message"`
 	Priority int      `json:"priority"`
 	Tags     []string `json:"tags"`
+	Click    string   `json:"click,omitempty"`
 }
 
 func (n *ntfy) Send(ctx context.Context, event notifications.Event) error {
@@ -132,6 +133,9 @@ func (n *ntfy) Send(ctx context.Context, event notifications.Event) error {
 	return nil
 }
 
+// ntfyMaxMessage is ntfy's default message size limit.
+const ntfyMaxMessage = 4096
+
 func (n *ntfy) formatMessage(event notifications.Event) *ntfyMessage {
 	switch event.Type {
 	case notifications.EventAgentDone:
@@ -141,22 +145,15 @@ func (n *ntfy) formatMessage(event notifications.Event) *ntfyMessage {
 			Tags:     []string{"white_check_mark"},
 		}
 		if p, ok := event.Payload.(notifications.AgentDonePayload); ok {
-			if p.ConversationTitle != "" {
-				msg.Title = fmt.Sprintf("Agent finished: %s", p.ConversationTitle)
-			} else {
-				msg.Title = "Agent finished"
-			}
-			var body string
-			if p.Model != "" {
-				body = fmt.Sprintf("Model: %s", p.Model)
-			}
+			msg.Title = notifications.Title(p.Hostname, p.ConversationTitle)
+			msg.Click = p.ConversationURL
 			if p.FinalResponse != "" {
-				if body != "" {
-					body += "\n"
+				body := p.FinalResponse
+				if len(body) > ntfyMaxMessage {
+					body = body[:ntfyMaxMessage-3] + "..."
 				}
-				body += p.FinalResponse
+				msg.Message = body
 			}
-			msg.Message = body
 		} else {
 			msg.Title = "Agent finished"
 		}
@@ -165,12 +162,17 @@ func (n *ntfy) formatMessage(event notifications.Event) *ntfyMessage {
 	case notifications.EventAgentError:
 		msg := &ntfyMessage{
 			Topic:    n.topic,
-			Title:    "Agent error",
 			Priority: n.errorPriority,
 			Tags:     []string{"x"},
 		}
-		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok && p.ErrorMessage != "" {
-			msg.Message = p.ErrorMessage
+		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok {
+			msg.Title = notifications.Title(p.Hostname, "error")
+			msg.Click = p.ConversationURL
+			if p.ErrorMessage != "" {
+				msg.Message = p.ErrorMessage
+			}
+		} else {
+			msg.Title = "Agent error"
 		}
 		return msg
 

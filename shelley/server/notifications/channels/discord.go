@@ -75,10 +75,14 @@ type discordMessage struct {
 
 type discordEmbed struct {
 	Title       string `json:"title"`
+	URL         string `json:"url,omitempty"`
 	Description string `json:"description,omitempty"`
 	Color       int    `json:"color"`
 	Timestamp   string `json:"timestamp,omitempty"`
 }
+
+// discordMaxDescription is Discord's embed description limit.
+const discordMaxDescription = 4096
 
 func formatDiscordMessage(event notifications.Event) *discordMessage {
 	switch event.Type {
@@ -88,19 +92,13 @@ func formatDiscordMessage(event notifications.Event) *discordMessage {
 			Timestamp: event.Timestamp.Format(time.RFC3339),
 		}
 		if p, ok := event.Payload.(notifications.AgentDonePayload); ok {
-			if p.ConversationTitle != "" {
-				embed.Title = fmt.Sprintf("Agent finished: %s", p.ConversationTitle)
-			} else {
-				embed.Title = "Agent finished"
-			}
-			if p.Model != "" {
-				embed.Description = fmt.Sprintf("Model: `%s`", p.Model)
-			}
+			embed.Title = notifications.Title(p.Hostname, p.ConversationTitle)
+			embed.URL = p.ConversationURL
 			if p.FinalResponse != "" {
-				if embed.Description != "" {
-					embed.Description += "\n"
+				embed.Description = p.FinalResponse
+				if len(embed.Description) > discordMaxDescription {
+					embed.Description = embed.Description[:discordMaxDescription-3] + "..."
 				}
-				embed.Description += p.FinalResponse
 			}
 		} else {
 			embed.Title = "Agent finished"
@@ -109,12 +107,17 @@ func formatDiscordMessage(event notifications.Event) *discordMessage {
 
 	case notifications.EventAgentError:
 		embed := discordEmbed{
-			Title:     "Agent error",
 			Color:     0xef4444, // red
 			Timestamp: event.Timestamp.Format(time.RFC3339),
 		}
-		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok && p.ErrorMessage != "" {
-			embed.Description = p.ErrorMessage
+		if p, ok := event.Payload.(notifications.AgentErrorPayload); ok {
+			embed.Title = notifications.Title(p.Hostname, "error")
+			embed.URL = p.ConversationURL
+			if p.ErrorMessage != "" {
+				embed.Description = p.ErrorMessage
+			}
+		} else {
+			embed.Title = "Agent error"
 		}
 		return &discordMessage{Embeds: []discordEmbed{embed}}
 
