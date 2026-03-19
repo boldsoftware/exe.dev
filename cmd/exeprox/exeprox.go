@@ -38,6 +38,7 @@ func run() error {
 	httpAddr := flag.String("http", ":8081", "HTTP server address, empty to disable")
 	httpsAddr := flag.String("https", "", "HTTPS server address, empty to disable")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
+	grpcLatency := flag.Duration("grpc-latency", 0, "artificial latency on gRPC calls to exed (e.g. 500ms)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exeprox-profile-<timestamp>.prof or specified path")
 
 	flag.Parse()
@@ -108,6 +109,7 @@ func run() error {
 		ExedHTTPPort:    *exedHTTPPort,
 		ExedHTTPSPort:   *exedHTTPSPort,
 		ExedGRPCAddr:    *exedGRPCAddr,
+		GRPCLatency:     *grpcLatency,
 		HTTPAddr:        *httpAddr,
 		HTTPSAddr:       *httpsAddr,
 		MetricsRegistry: metricsRegistry,

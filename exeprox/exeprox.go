@@ -34,11 +34,12 @@ import (
 type ProxyConfig struct {
 	Env             *stage.Env
 	Logger          *slog.Logger
-	ExedHTTPPort    int    // exed HTTP port, 0 if none
-	ExedHTTPSPort   int    // exed HTTPS port, 0 if none
-	ExedGRPCAddr    string // exed GRPC address, empty to disable
-	HTTPAddr        string // address on which to serve HTTP
-	HTTPSAddr       string // address on which to serve HTTPS
+	ExedHTTPPort    int           // exed HTTP port, 0 if none
+	ExedHTTPSPort   int           // exed HTTPS port, 0 if none
+	ExedGRPCAddr    string        // exed GRPC address, empty to disable
+	GRPCLatency     time.Duration // artificial latency on gRPC calls, 0 to disable
+	HTTPAddr        string        // address on which to serve HTTP
+	HTTPSAddr       string        // address on which to serve HTTPS
 	MetricsRegistry *prometheus.Registry
 }
 
@@ -87,7 +88,7 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 
 	var grpcClient proxyapi.ProxyInfoServiceClient
 	if cfg.ExedGRPCAddr != "" {
-		grpcClient, err = startGRPCClient(cfg.Logger, cfg.ExedGRPCAddr, cfg.MetricsRegistry)
+		grpcClient, err = startGRPCClient(cfg.Logger, cfg.ExedGRPCAddr, cfg.MetricsRegistry, cfg.GRPCLatency)
 		if err != nil {
 			return nil, err
 		}
@@ -239,7 +240,7 @@ func (ln *listener) addr() string {
 }
 
 // startGRPCClient starts a grpc client to contact exed.
-func startGRPCClient(lg *slog.Logger, addr string, metricsRegistry *prometheus.Registry) (proxyapi.ProxyInfoServiceClient, error) {
+func startGRPCClient(lg *slog.Logger, addr string, metricsRegistry *prometheus.Registry, latency time.Duration) (proxyapi.ProxyInfoServiceClient, error) {
 	loggerFunc := func(ctx context.Context, lvl grpclogging.Level, msg string, fields ...any) {
 		level := slog.Level(lvl)
 
@@ -275,6 +276,18 @@ func startGRPCClient(lg *slog.Logger, addr string, metricsRegistry *prometheus.R
 		tracing.StreamClientInterceptor(),
 		clientMetrics.StreamClientInterceptor(),
 		grpclogging.StreamClientInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+	}
+
+	if latency > 0 {
+		lg.Info("artificial gRPC latency enabled", "latency", latency)
+		unaryInterceptors = append(unaryInterceptors, func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			time.Sleep(latency)
+			return invoker(ctx, method, req, reply, cc, opts...)
+		})
+		streamInterceptors = append(streamInterceptors, func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+			time.Sleep(latency)
+			return streamer(ctx, desc, cc, method, opts...)
+		})
 	}
 
 	opts := []grpc.DialOption{
