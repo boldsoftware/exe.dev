@@ -1,0 +1,74 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["dspy"]
+# ///
+
+import os
+import subprocess
+import sys
+
+import dspy
+
+deno_bin = os.path.expanduser("~/.deno/bin")
+if os.path.isdir(deno_bin):
+    os.environ["PATH"] = deno_bin + ":" + os.environ.get("PATH", "")
+
+MODEL = os.environ.get("GIT_RLM_MODEL", "anthropic/claude-opus-4-6")
+
+# Opus 4.6 pricing per 1M tokens
+INPUT_COST_PER_M = 5.0
+OUTPUT_COST_PER_M = 25.0
+
+
+def build_file_contents() -> dict[str, str]:
+    root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+    all_files = subprocess.check_output(["git", "ls-files"], text=True, cwd=root).strip().split("\n")
+
+    file_contents = {}
+    for f in all_files:
+        try:
+            with open(os.path.join(root, f), "r") as fh:
+                file_contents[f] = fh.read()
+        except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+            continue
+
+    return file_contents
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: git rlm <question>", file=sys.stderr)
+        sys.exit(1)
+
+    question = " ".join(sys.argv[1:])
+    context = build_file_contents()
+
+    lm = dspy.LM(MODEL, api_key=os.environ["ANTHROPIC_API_KEY"], max_tokens=16000, cache=False)
+    dspy.configure(lm=lm)
+
+    rlm = dspy.RLM("context, question -> answer", max_iterations=30, verbose=True)
+    result = rlm(context=context, question=question)
+
+    print("\n" + "=" * 60)
+    print(result.answer)
+    print("=" * 60)
+
+    total_input = total_output = 0
+    total_cost = 0.0
+    for entry in lm.history:
+        u = entry.get("usage", {})
+        total_input += u.get("prompt_tokens", 0)
+        total_output += u.get("completion_tokens", 0)
+        c = entry.get("cost")
+        if c:
+            total_cost += c
+
+    if total_cost == 0:
+        total_cost = (total_input / 1e6 * INPUT_COST_PER_M) + (total_output / 1e6 * OUTPUT_COST_PER_M)
+
+    print(f"\ntokens: {total_input:,} in / {total_output:,} out | cost: ${total_cost:.4f}")
+
+
+if __name__ == "__main__":
+    main()
