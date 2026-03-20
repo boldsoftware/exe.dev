@@ -20,6 +20,8 @@ All plans are defined in `billing/entitlement/plan.go`. Each plan grants a set o
 
 ## Credits Architecture
 
+Credits are the currency users spend on LLM API requests. They are purchased via Stripe or granted as gifts, and debited automatically when LLM requests flow through the gateway.
+
 The `billing_credits` ledger is the source of truth for all credit operations. All amounts are stored as integer microcents via `tender.Value` ($1 = 1,000,000 microcents).
 
 > **Legacy:** `user_llm_credit` in exedb (float64 `available_credit`) is deprecated and being migrated. It still controls LLM gateway access and automatic refreshes during the transition.
@@ -152,6 +154,8 @@ This entire refresh system lives in `llmgateway/credit.go` and is a candidate fo
 
 ## Entitlements Architecture
 
+Entitlements are boolean feature gates that control what features an account has access to (e.g. VM creation, credit purchases, LLM gateway). This is not an authorization system — it determines feature availability per plan, not user permissions. Each plan grants a fixed set of entitlements, checked at request time via `UserHasEntitlement`.
+
 ```
 User request (SSH/HTTP)
          │
@@ -206,8 +210,8 @@ The subscription poller (`execore/subscription_poller.go`) syncs status from Str
 Subscriptions can be created via Stripe Checkout or directly in the Stripe dashboard.
 
 ### 2. Billing Credits (Prepaid Balance)
-Prepaid balance for VM compute usage, denominated in microcents (1 USD = 100,000,000 microcents).
-Purchased via Stripe Checkout, consumed per-minute by VM usage.
+Prepaid balance for LLM usage, denominated in microcents (1 USD = 100,000,000 microcents).
+Purchased via Stripe Checkout, consumed by LLM requests via the spending waterfall.
 Accounts can go up to $2.00 negative (debt tolerance).
 
 ### 3. LLM Gateway Credits (Per-User Quota)
