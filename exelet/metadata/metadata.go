@@ -866,10 +866,13 @@ func (s *Service) integrationTransport() *http.Transport {
 }
 
 // checkLocalAddr validates the local (source) address of an outbound integration
-// connection. In production the local address must be a global unicast, non-private,
-// non-Tailscale IP — i.e. the connection must leave through a real internet-facing
-// interface. In dev mode (GatewayDev) we only reject loopback, since dev machines
-// legitimately route through private IPs like 192.168.x.x or 10.x.x.
+// connection. The main SSRF defense is the remote-IP check in integrationTransport
+// (which rejects connections *to* private IPs). This local-address check is a
+// targeted guard against traffic being routed through the Tailscale interface to
+// reach internal services that have public-looking Tailscale IPs.
+//
+// Private local IPs are allowed because hosts behind NAT (e.g., AWS VPC) use
+// private IPs for all outbound connections, including legitimate internet traffic.
 func (s *Service) checkLocalAddr(conn net.Conn) error {
 	tcpAddr, ok := conn.LocalAddr().(*net.TCPAddr)
 	if !ok {
@@ -888,13 +891,6 @@ func (s *Service) checkLocalAddr(conn net.Conn) error {
 		return nil
 	}
 
-	// Production: must be global unicast and not private/tailscale.
-	if !localIP.IsGlobalUnicast() {
-		return fmt.Errorf("integration target routed through non-global-unicast interface (%s)", localIP)
-	}
-	if localIP.IsPrivate() {
-		return fmt.Errorf("integration target routed through private interface (%s)", localIP)
-	}
 	if tsaddr.IsTailscaleIP(localIP) {
 		return fmt.Errorf("integration target routed through tailscale interface")
 	}

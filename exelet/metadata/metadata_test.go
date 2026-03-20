@@ -645,12 +645,12 @@ func TestCheckLocalAddr(t *testing.T) {
 		wantProd bool // true = error expected in production
 		wantDev  bool // true = error expected in dev
 	}{
-		{"loopback", "127.0.0.1", true, true},
-		{"private-192", "192.168.1.50", true, false},
-		{"private-10", "10.0.0.5", true, false},
-		{"private-172", "172.16.0.1", true, false},
+		{"loopback", "127.0.0.1", false, true},
+		{"private-192", "192.168.1.50", false, false},
+		{"private-10", "10.0.0.5", false, false},
+		{"private-172", "172.16.0.1", false, false},
 		{"tailscale", "100.100.100.100", true, false},
-		{"link-local", "169.254.1.1", true, false},
+		{"link-local", "169.254.1.1", false, false},
 		{"public", "8.8.8.8", false, false},
 		{"public-other", "52.1.2.3", false, false},
 	}
