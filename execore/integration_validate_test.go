@@ -15,6 +15,7 @@ func TestValidateIntegrationName(t *testing.T) {
 	bad := []string{
 		"", "-start", "end-", "UPPER", "has space", "has.dot",
 		"has_underscore", "a/b", "a:b",
+		"notify",                 // reserved for built-in integration
 		string(make([]byte, 64)), // 64 chars, too long
 	}
 	for _, name := range bad {

@@ -28,6 +28,11 @@ type integrationConfigResponse struct {
 	Headers             map[string]string `json:"headers,omitempty"`
 	BasicAuth           *basicAuthConfig  `json:"basic_auth,omitempty"`
 	AllowedPathPrefixes []string          `json:"allowed_path_prefixes,omitempty"`
+
+	// GatewayPath, when set, tells the exelet to forward the request to
+	// exed at this path (with X-Exedev-Box) instead of proxying to an
+	// external target.
+	GatewayPath string `json:"gateway_path,omitempty"`
 }
 
 type basicAuthConfig struct {
@@ -68,6 +73,21 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 		}
 		s.slog().ErrorContext(ctx, "integration config: box lookup failed", "error", err, "vm_name", vmName)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// "notify" is a synthetic integration that exists for every user,
+	// attached to all VMs. It forwards push notifications to exed.
+	if integrationName == "notify" {
+		sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
+		sloghttp.AddCustomAttributes(r, slog.String("integration_type", "notify"))
+		sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(integrationConfigResponse{
+			OK:          true,
+			GatewayPath: "/_/gateway/push/send",
+		})
 		return
 	}
 

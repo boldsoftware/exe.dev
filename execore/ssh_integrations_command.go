@@ -106,8 +106,22 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 	if err != nil {
 		return err
 	}
+
+	// Only show the synthetic "notify" integration if the user has push tokens.
+	hasPush, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).HasPushTokens, cc.User.ID)
+	showNotify := hasPush != 0
+
 	if cc.WantJSON() {
 		var items []map[string]any
+		if showNotify {
+			items = append(items, map[string]any{
+				"name":        "notify",
+				"type":        "notify",
+				"config":      json.RawMessage("{}"),
+				"attachments": []string{"auto:all"},
+				"builtin":     true,
+			})
+		}
 		for _, ig := range integrations {
 			item := map[string]any{
 				"name":        ig.Name,
@@ -120,9 +134,12 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 		cc.WriteJSON(items)
 		return nil
 	}
-	if len(integrations) == 0 {
+	if !showNotify && len(integrations) == 0 {
 		cc.Writeln("No integrations configured.")
 		return nil
+	}
+	if showNotify {
+		cc.Writeln("%s  %s  %s  %s", "notify", "notify", "push notifications to device", "auto:all")
 	}
 	for _, ig := range integrations {
 		attachments := ig.GetAttachments()
@@ -455,9 +472,18 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	return nil
 }
 
+// isBuiltinIntegration reports whether name is a built-in synthetic integration
+// that cannot be modified by the user.
+func isBuiltinIntegration(name string) bool {
+	return name == "notify"
+}
+
 func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: integrations remove <name>")
+	}
+	if isBuiltinIntegration(cc.Args[0]) {
+		return cc.Errorf("%s is a built-in integration and cannot be removed", cc.Args[0])
 	}
 	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, cc.Args[0])
 	if err != nil {
@@ -518,6 +544,9 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
 	name := cc.Args[0]
+	if isBuiltinIntegration(name) {
+		return cc.Errorf("%s is a built-in integration and is already attached to all VMs", name)
+	}
 	rawSpec := cc.Args[1]
 
 	spec, err := parseAttachmentSpec(rawSpec)
@@ -563,6 +592,9 @@ func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("usage: integrations detach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
 	name := cc.Args[0]
+	if isBuiltinIntegration(name) {
+		return cc.Errorf("%s is a built-in integration and cannot be detached", name)
+	}
 	rawSpec := cc.Args[1]
 
 	spec, err := parseAttachmentSpec(rawSpec)
@@ -610,6 +642,9 @@ func (ss *SSHServer) handleIntegrationsRename(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("usage: integrations rename <name> <new-name>")
 	}
 	oldName := cc.Args[0]
+	if isBuiltinIntegration(oldName) {
+		return cc.Errorf("%s is a built-in integration and cannot be renamed", oldName)
+	}
 	newName := cc.Args[1]
 
 	if err := validateIntegrationName(newName); err != nil {

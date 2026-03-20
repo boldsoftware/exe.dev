@@ -184,7 +184,8 @@ type UserPageData struct {
 	GitHubAccountsFull []GitHubAccountFullInfo
 	GitHubEnabled      bool   // whether the GitHub App is configured on this server
 	GitHubAppSlug      string // GitHub App slug for manage link
-	ShowIntegrations   bool   // true if user has integrations/github or is sudoer or has feature flag
+	ShowIntegrations   bool   // true if user has integrations, github accounts, or push tokens
+	HasPushTokens      bool   // true if user has registered push tokens (iOS app)
 	IntegrationScheme  string // "http" or "https" for integration proxy URLs
 	Callout            string // query param to highlight a UI element (e.g. "add-repo-integration")
 }

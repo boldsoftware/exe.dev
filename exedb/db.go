@@ -705,6 +705,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.grantBillingUpgradeBonusOnceStmt, err = db.PrepareContext(ctx, grantBillingUpgradeBonusOnce); err != nil {
 		return nil, fmt.Errorf("error preparing query GrantBillingUpgradeBonusOnce: %w", err)
 	}
+	if q.hasPushTokensStmt, err = db.PrepareContext(ctx, hasPushTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query HasPushTokens: %w", err)
+	}
 	if q.hasUserAccessToBoxStmt, err = db.PrepareContext(ctx, hasUserAccessToBox); err != nil {
 		return nil, fmt.Errorf("error preparing query HasUserAccessToBox: %w", err)
 	}
@@ -2313,6 +2316,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing grantBillingUpgradeBonusOnceStmt: %w", cerr)
 		}
 	}
+	if q.hasPushTokensStmt != nil {
+		if cerr := q.hasPushTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasPushTokensStmt: %w", cerr)
+		}
+	}
 	if q.hasUserAccessToBoxStmt != nil {
 		if cerr := q.hasUserAccessToBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasUserAccessToBoxStmt: %w", cerr)
@@ -3359,6 +3367,7 @@ type Queries struct {
 	getUserWithSSHKeyStmt                      *sql.Stmt
 	getUsersWithOutOfRegionBoxesStmt           *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
+	hasPushTokensStmt                          *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
 	incrementEmailVerificationCodeAttemptsStmt *sql.Stmt
 	incrementSeenOnHostsStmt                   *sql.Stmt
@@ -3748,6 +3757,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
 		getUsersWithOutOfRegionBoxesStmt:           q.getUsersWithOutOfRegionBoxesStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
+		hasPushTokensStmt:                          q.hasPushTokensStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
 		incrementEmailVerificationCodeAttemptsStmt: q.incrementEmailVerificationCodeAttemptsStmt,
 		incrementSeenOnHostsStmt:                   q.incrementSeenOnHostsStmt,

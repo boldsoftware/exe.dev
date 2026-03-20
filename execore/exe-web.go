@@ -1779,8 +1779,13 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if ghEnabled {
 		ghAppSlug = s.githubApp.AppSlug
 	}
+	// Check if user has push tokens (iOS app connected).
+	var hasPushTokens bool
+	if n, err := withRxRes1(s, r.Context(), (*exedb.Queries).HasPushTokens, userID); err == nil {
+		hasPushTokens = n != 0
+	}
 	hasGHFlag := s.userHasGitHubIntegrationFlag(r.Context(), userID)
-	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag
+	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag || hasPushTokens
 
 	// Fetch boxes for integration wizard and attach modals.
 	var profileBoxes []BoxDisplayInfo
@@ -1837,6 +1842,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		GitHubEnabled:      ghEnabled,
 		GitHubAppSlug:      ghAppSlug,
 		ShowIntegrations:   showIntegrations,
+		HasPushTokens:      hasPushTokens,
 		IntegrationScheme:  s.integrationScheme(),
 		Callout:            r.URL.Query().Get("callout"),
 	}

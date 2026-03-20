@@ -122,6 +122,7 @@ type integrationCacheEntry struct {
 	headers             map[string]string
 	basicAuth           *basicAuthConfig
 	allowedPathPrefixes []string
+	gatewayPath         string // if set, forward to exed at this path instead of proxying externally
 	fetchedAt           time.Time
 }
 
@@ -734,6 +735,12 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Gateway integration: forward to exed instead of proxying externally.
+	if cfg.gatewayPath != "" {
+		s.handleGatewayIntegration(w, r, vmName, integrationName, cfg.gatewayPath)
+		return
+	}
+
 	// If the config specifies allowed path prefixes, reject requests that
 	// don't match. This prevents proxying arbitrary paths (e.g., "/") to
 	// upstream services like github.com.
@@ -770,6 +777,30 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 		},
 	}
 
+	proxy.ServeHTTP(w, r)
+}
+
+// handleGatewayIntegration forwards an integration request to exed at the
+// given gateway path, adding the X-Exedev-Box header for authentication.
+func (s *Service) handleGatewayIntegration(w http.ResponseWriter, r *http.Request, vmName, integrationName, gatewayPath string) {
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(s.exedTargetURL)
+			pr.Out.URL.Path = gatewayPath
+			pr.Out.Host = s.exedTargetURL.Host
+			pr.Out.Header.Set("X-Exedev-Box", vmName)
+			tracing.SetTraceIDHeader(pr.In.Context(), pr.Out.Header)
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return
+			}
+			s.log.WarnContext(r.Context(), "gateway integration proxy error",
+				"error", err, "vm_name", vmName, "integration", integrationName)
+			integrationError(w, r, "gateway proxy: upstream request failed", http.StatusBadGateway)
+		},
+	}
 	proxy.ServeHTTP(w, r)
 }
 
@@ -825,6 +856,7 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		Headers             map[string]string `json:"headers"`
 		BasicAuth           *basicAuthConfig  `json:"basic_auth"`
 		AllowedPathPrefixes []string          `json:"allowed_path_prefixes"`
+		GatewayPath         string            `json:"gateway_path"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.log.ErrorContext(ctx, "integration config: decode failed", "error", err)
@@ -832,6 +864,15 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 	}
 	if !result.OK {
 		return negative
+	}
+
+	// Gateway integrations forward to exed — no external target needed.
+	if result.GatewayPath != "" {
+		return &integrationCacheEntry{
+			ok:          true,
+			gatewayPath: result.GatewayPath,
+			fetchedAt:   time.Now(),
+		}
 	}
 
 	targetURL, err := url.Parse(result.Target)

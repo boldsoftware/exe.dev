@@ -16,6 +16,9 @@ func validateIntegrationName(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
 	}
+	if name == "notify" {
+		return fmt.Errorf("name %q is reserved for the built-in notification integration", name)
+	}
 	if len(name) > 63 {
 		return fmt.Errorf("name must be 63 characters or fewer")
 	}

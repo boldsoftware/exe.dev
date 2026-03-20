@@ -233,3 +233,56 @@ func TestVMPushSend_NotConfigured(t *testing.T) {
 		t.Fatalf("Expected 503, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestNotifyIntegrationConfig(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	_, boxName := createPushTestBox(t, s)
+
+	// Request the integration config for "notify".
+	req := httptest.NewRequest("GET", "/_/integration-config?vm_name="+boxName+"&integration=notify", nil)
+	w := httptest.NewRecorder()
+
+	// Enable GatewayDev so we don't need a Tailscale IP.
+	s.env.GatewayDev = true
+	s.handleIntegrationConfig(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp integrationConfigResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatal("Expected OK=true")
+	}
+	if resp.GatewayPath != "/_/gateway/push/send" {
+		t.Fatalf("Expected GatewayPath=/_/gateway/push/send, got %q", resp.GatewayPath)
+	}
+	if resp.Target != "" {
+		t.Fatalf("Expected empty Target for gateway integration, got %q", resp.Target)
+	}
+}
+
+func TestNotifyIntegrationConfig_NonexistentBox(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/_/integration-config?vm_name=nonexistent&integration=notify", nil)
+	w := httptest.NewRecorder()
+
+	s.env.GatewayDev = true
+	s.handleIntegrationConfig(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp integrationConfigResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.OK {
+		t.Fatal("Expected OK=false for nonexistent box")
+	}
+}

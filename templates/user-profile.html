@@ -1261,6 +1261,23 @@
                 </div>
             </div>
 
+            {{if .HasPushTokens}}
+            <div class="integration-subsection">
+                <div class="integration-subsection-title">Notifications</div>
+                <div class="integration-hint" style="margin-bottom: 12px;">The <strong>notify</strong> integration is built-in and attached to all your VMs. It sends push notifications to your devices.</div>
+                <div class="ssh-keys-list">
+                    <div class="ssh-key-item">
+                        <div class="ssh-key-info">
+                            <div class="ssh-key-comment">notify</div>
+                            <div class="ssh-key-fingerprint">push notifications to device</div>
+                            <div class="ssh-key-meta">attached to auto:all · built-in</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="integration-hint" style="margin-top: 8px;">Usage from a VM: <code>curl -X POST {{.IntegrationScheme}}://notify.int.{{.BoxHost}}/ -H 'Content-Type: application/json' -d '{"title":"Done","body":"Task finished"}'</code></div>
+            </div>
+            {{end}}
+
             <div class="integration-hint">Add integrations via SSH: <code>integrations add &lt;type&gt; --name=&lt;name&gt; ...</code> · <a href="/docs/integrations" target="_blank">Docs</a></div>
         </div>
         {{end}}

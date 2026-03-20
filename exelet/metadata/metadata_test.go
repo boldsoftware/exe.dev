@@ -682,3 +682,68 @@ type fakeConn struct {
 func (f *fakeConn) LocalAddr() net.Addr {
 	return &net.TCPAddr{IP: f.localIP.AsSlice(), Port: 12345}
 }
+
+func TestMetadataServiceGatewayIntegration(t *testing.T) {
+	// Fake exed that serves /_/integration-config with a gateway_path response,
+	// and handles the forwarded gateway request.
+	var gotBoxHeader string
+	var gotPath string
+	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_/integration-config":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"ok":           true,
+				"gateway_path": "/_/gateway/push/send",
+			})
+		case "/_/gateway/push/send":
+			gotBoxHeader = r.Header.Get("X-Exedev-Box")
+			gotPath = r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"success": true, "sent": 1})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fakeExed.Close()
+
+	log := slog.Default()
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", true, nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	// Send a POST to notify.int.exe.cloud/ which should be forwarded to exed.
+	reqBody := `{"title":"Test","body":"Hello"}`
+	req := httptest.NewRequest("POST", "http://notify.int.exe.cloud/", strings.NewReader(reqBody))
+	req.Host = "notify.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the request was forwarded with the correct box header.
+	if gotBoxHeader != "test-box" {
+		t.Errorf("expected X-Exedev-Box=test-box, got %q", gotBoxHeader)
+	}
+	if gotPath != "/_/gateway/push/send" {
+		t.Errorf("expected path /_/gateway/push/send, got %q", gotPath)
+	}
+
+	// Verify the response was forwarded back.
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["success"] != true {
+		t.Errorf("expected success=true, got %v", resp["success"])
+	}
+}

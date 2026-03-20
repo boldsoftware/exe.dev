@@ -66,6 +66,17 @@ func (q *Queries) GetPushTokensByUserID(ctx context.Context, userID string) ([]P
 	return items, nil
 }
 
+const hasPushTokens = `-- name: HasPushTokens :one
+SELECT EXISTS(SELECT 1 FROM push_tokens WHERE user_id = ?) AS has_tokens
+`
+
+func (q *Queries) HasPushTokens(ctx context.Context, userID string) (int64, error) {
+	row := q.queryRow(ctx, q.hasPushTokensStmt, hasPushTokens, userID)
+	var has_tokens int64
+	err := row.Scan(&has_tokens)
+	return has_tokens, err
+}
+
 const updatePushTokenLastUsed = `-- name: UpdatePushTokenLastUsed :exec
 UPDATE push_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?
 `
