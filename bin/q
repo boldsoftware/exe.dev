@@ -124,6 +124,37 @@ def poll_run(run_id, interval=10):
         time.sleep(interval)
 
 
+def can_rebase_cleanly(ref, onto="origin/main"):
+    """Simulate rebasing ref onto 'onto' using git merge-tree --write-tree (Git 2.38+).
+    Returns True if all commits can be cherry-picked without conflicts."""
+    commits = git("rev-list", "--reverse", f"{onto}..{ref}").splitlines()
+    if not commits:
+        return True
+
+    current_base = git("rev-parse", onto)
+
+    for commit in commits:
+        parent = git("rev-parse", f"{commit}^")
+        r = subprocess.run(
+            ["git", "merge-tree", "--write-tree", "--merge-base", parent, current_base, commit],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            return False
+
+        result_tree = r.stdout.strip().splitlines()[0]
+
+        # Skip commits that would be empty after rebase (already applied)
+        base_tree = git("rev-parse", f"{current_base}^{{tree}}")
+        if result_tree == base_tree:
+            continue
+
+        # Chain: create temp commit as base for next iteration
+        current_base = git("commit-tree", result_tree, "-p", current_base, "-m", "tmp")
+
+    return True
+
+
 def run_linters():
     """Run custom linters (go vet + exelint). Raises SystemExit on failure."""
     print("q: running linters...", file=sys.stderr)
@@ -207,6 +238,10 @@ def main():
                     help="name queue branch from commit message instead of branch name")
     p.add_argument("--no-slug", "-S", action="store_true",
                     help="name queue branch from git branch name")
+    p.add_argument("--rebase", "-R", action="store_true", default=True,
+                    help="auto-rebase onto origin/main if needed (only if conflict-free)")
+    p.add_argument("--no-rebase", action="store_true",
+                    help="don't auto-rebase; fail if not fast-forwardable")
     p.add_argument("--no-fetch", action="store_true",
                     help="skip fetching origin/main on success")
 
@@ -220,6 +255,10 @@ def main():
     elif args.slug is None:
         args.slug = False
     del args.no_slug
+
+    if args.no_rebase:
+        args.rebase = False
+    del args.no_rebase
 
     ref = args.ref
 
@@ -247,8 +286,18 @@ def main():
             capture_output=True,
         )
         if dry.returncode != 0:
-            print(f"q: {ref} cannot fast-forward to origin/main; rebase first", file=sys.stderr)
-            raise SystemExit(1)
+            if not args.rebase:
+                print(f"q: {ref} cannot fast-forward to origin/main; rebase first", file=sys.stderr)
+                raise SystemExit(1)
+            if ref != "HEAD":
+                print(f"q: --rebase only works with HEAD (got {ref})", file=sys.stderr)
+                raise SystemExit(1)
+            print("q: needs rebase, simulating...", file=sys.stderr)
+            if not can_rebase_cleanly(ref):
+                print("q: rebase would conflict; resolve manually", file=sys.stderr)
+                raise SystemExit(1)
+            print("q: rebase looks clean, rebasing...", file=sys.stderr)
+            git("rebase", "origin/main")
 
     # --- Formatters ---
     if not args.no_format:
