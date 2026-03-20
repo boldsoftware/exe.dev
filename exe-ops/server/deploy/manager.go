@@ -168,6 +168,15 @@ func (m *Manager) execute(ctx context.Context, d *deploy) {
 		return
 	}
 
+	// Run pre-restart commands (e.g. database backup).
+	if len(recipe.PreRestartCmds) > 0 {
+		d.beginStep("backup")
+		err = m.preRestart(ctx, d, recipe)
+		if d.stepDone(err) {
+			return
+		}
+	}
+
 	// Restart the systemd service.
 	d.beginStep("restart")
 	err = m.restart(ctx, d, recipe)
@@ -418,6 +427,18 @@ func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remoteP
 	symlink := recipe.RemoteDir + "/" + name
 	d.setStepOutput(fmt.Sprintf("%s → %s", symlink, remotePath))
 	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "ln", "-sf", remotePath, symlink)
+}
+
+func (m *Manager) preRestart(ctx context.Context, d *deploy, recipe Recipe) error {
+	user := recipe.remoteUser()
+	for i, cmd := range recipe.PreRestartCmds {
+		d.setStepOutput(fmt.Sprintf("running command %d/%d", i+1, len(recipe.PreRestartCmds)))
+		if err := m.ssh(ctx, user, d.dnsName, "bash", "-c", cmd); err != nil {
+			return fmt.Errorf("pre-restart cmd %d: %w", i+1, err)
+		}
+	}
+	d.setStepOutput(fmt.Sprintf("%d command(s) completed", len(recipe.PreRestartCmds)))
+	return nil
 }
 
 func (m *Manager) restart(ctx context.Context, d *deploy, recipe Recipe) error {

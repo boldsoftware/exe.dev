@@ -41,6 +41,12 @@ type Recipe struct {
 	// go build (e.g. building embedded assets). Each entry is passed
 	// to "bash -c". GOOS/GOARCH/CGO_ENABLED are set to the target.
 	PreBuildCmds []string
+
+	// PreRestartCmds are shell commands to run on the remote host
+	// (via SSH) after install but before restarting the service.
+	// Commonly used for database backups. Each entry is passed to
+	// "bash -c" on the remote host.
+	PreRestartCmds []string
 }
 
 func (r Recipe) symlinkName() string {
@@ -97,6 +103,9 @@ var Recipes = map[string]Recipe{
 		HealthPort:  443,
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
+		PreRestartCmds: []string{
+			`sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$(date +%Y%m%d-%H%M%S).sql.zst`,
+		},
 	},
 	"metricsd": {
 		BuildTarget: "./cmd/metricsd",

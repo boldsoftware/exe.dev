@@ -53,12 +53,21 @@ type deploy struct {
 	err       string
 }
 
-// Standard deploy steps in execution order.
-var stepNames = []string{"build", "upload", "install", "restart", "verify"}
+// StepNames returns the deploy steps for a given process, accounting for
+// optional steps like "backup" when PreRestartCmds are configured.
+func StepNames(process string) []string {
+	steps := []string{"build", "upload", "install"}
+	if r, ok := Recipes[process]; ok && len(r.PreRestartCmds) > 0 {
+		steps = append(steps, "backup")
+	}
+	steps = append(steps, "restart", "verify")
+	return steps
+}
 
 func newDeploy(id, stage, role, process, host, dnsName, sha, initiatedBy string) *deploy {
-	steps := make([]Step, len(stepNames))
-	for i, name := range stepNames {
+	names := StepNames(process)
+	steps := make([]Step, len(names))
+	for i, name := range names {
 		steps[i] = Step{Name: name, Status: "pending"}
 	}
 	return &deploy{
