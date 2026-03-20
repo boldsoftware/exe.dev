@@ -259,7 +259,8 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
     curl -fsSL "https://github.com/badlogic/pi-mono/releases/download/${PI_VERSION}/pi-linux-${ARCH}.tar.gz" | \
     tar xz -C /home/exedev/.local/ && \
     ln -s /home/exedev/.local/pi/pi /home/exedev/.local/bin/pi && \
-    chown -R exedev:exedev /home/exedev/.local/pi
+    chown -R exedev:exedev /home/exedev/.local/pi && \
+    ln -s /home/exedev/.local/bin/pi /usr/local/bin/pi
 
 # Install pi exe.dev extension (LLM gateway + environment context)
 COPY pi-extension/ /home/exedev/.pi/agent/extensions/exe-dev/
