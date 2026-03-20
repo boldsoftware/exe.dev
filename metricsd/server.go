@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/logging"
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -181,6 +182,12 @@ func (s *Server) Handler() http.Handler {
 
 	// Prometheus metrics endpoint
 	mux.Handle("GET /metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
+
+	// Git SHA for deploy verification
+	mux.HandleFunc("GET /debug/gitsha", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, logging.GitCommit())
+	})
 
 	// pprof debug endpoints
 	mux.HandleFunc("GET /debug/pprof/", pprof.Index)

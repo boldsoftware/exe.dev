@@ -117,6 +117,8 @@ var Recipes = map[string]Recipe{
 		CGO:         true,
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "metricsd.service",
+		HealthPort:  21090,
+		HealthPath:  "/debug/gitsha",
 	},
 	"exe-ops": {
 		BuildTarget: "./cmd/exe-ops-server",
