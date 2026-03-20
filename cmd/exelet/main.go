@@ -105,6 +105,17 @@ func main() {
 			Value:   "zfs:///var/tmp/exelet/storage?dataset=tank",
 			EnvVars: []string{"EXELET_STORAGE_MANAGER_ADDRESS"},
 		},
+		&cli.StringSliceFlag{
+			Name:    "storage-tier",
+			Usage:   "additional storage tier address (can be specified multiple times)",
+			EnvVars: []string{"EXELET_STORAGE_TIERS"},
+		},
+		&cli.IntFlag{
+			Name:    "storage-tier-migration-workers",
+			Usage:   "maximum number of concurrent tier migrations",
+			Value:   config.DefaultStorageTierMigrationWorkers,
+			EnvVars: []string{"EXELET_STORAGE_TIER_MIGRATION_WORKERS"},
+		},
 		&cli.BoolFlag{
 			Name:    "enable-instance-boot-on-startup",
 			Usage:   "enable starting local instances on server start",
@@ -370,6 +381,9 @@ func serveAction(clix *cli.Context) error {
 	pktflowSampleRate := clix.Uint("pktflow-sample-rate")
 	pktflowMaxFlows := clix.Int("pktflow-max-flows")
 
+	storageTiers := clix.StringSlice("storage-tier")
+	storageTierMigrationWorkers := clix.Int("storage-tier-migration-workers")
+
 	reservedCPUs := clix.Int("reserved-cpus")
 
 	// Validate replication config
@@ -397,6 +411,8 @@ func serveAction(clix *cli.Context) error {
 		RuntimeAddress:              runtimeAddress,
 		NetworkManagerAddress:       networkManagerAddress,
 		StorageManagerAddress:       storageManagerAddress,
+		StorageTiers:                storageTiers,
+		StorageTierMigrationWorkers: storageTierMigrationWorkers,
 		EnableInstanceBootOnStartup: enableInstanceBootOnStartup,
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
@@ -467,10 +483,31 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	// storage manager
-	storageManager, err := storage.NewStorageManager(cfg.StorageManagerAddress, log)
+	primaryStorageManager, err := storage.NewStorageManager(cfg.StorageManagerAddress, log)
 	if err != nil {
 		return err
 	}
+
+	// Parse primary pool name from address
+	primaryPoolName := storage.PoolNameFromAddress(cfg.StorageManagerAddress)
+
+	// Build tiered storage manager (wraps primary even with zero tiers for uniform API)
+	tierManagers := make(map[string]storage.StorageManager, len(cfg.StorageTiers))
+	for _, tierAddr := range cfg.StorageTiers {
+		tierName := storage.PoolNameFromAddress(tierAddr)
+		if tierName == primaryPoolName {
+			return fmt.Errorf("storage tier %q has the same pool name %q as the primary", tierAddr, tierName)
+		}
+		if _, exists := tierManagers[tierName]; exists {
+			return fmt.Errorf("duplicate storage tier pool name %q", tierName)
+		}
+		tm, err := storage.NewStorageManager(tierAddr, log)
+		if err != nil {
+			return fmt.Errorf("failed to create storage tier %q: %w", tierAddr, err)
+		}
+		tierManagers[tierName] = tm
+	}
+	storageManager := storage.NewTieredStorageManager(primaryPoolName, primaryStorageManager, tierManagers)
 
 	// Create compute service
 	computeSvc, err := computeservice.New(ctx, cfg, log)

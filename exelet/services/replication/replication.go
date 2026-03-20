@@ -237,11 +237,53 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 
 	storageManager := s.context.StorageManager
 
-	// Get all datasets from storage (excludes base images)
-	datasetIDs, err := storageManager.ListDatasets(ctx)
-	if err != nil {
-		s.log.ErrorContext(ctx, "failed to list datasets", "error", err)
-		return
+	// Collect datasets from all storage tiers (or just primary if not tiered).
+	// Each dataset is paired with the StorageManager that owns it so we use
+	// the correct pool for snapshot operations later.
+	type datasetEntry struct {
+		id string
+		sm storage.StorageManager
+	}
+
+	var allDatasets []datasetEntry
+
+	// Determine the replication target pool name (if using zpool target) so we
+	// can skip self-replication for datasets that live on the backup pool.
+	replicationTargetPool := ""
+	if strings.HasPrefix(s.config.ReplicationTarget, "zpool:///") {
+		// Parse pool name from "zpool:///poolname"
+		replicationTargetPool = strings.TrimPrefix(s.config.ReplicationTarget, "zpool:///")
+		if idx := strings.IndexByte(replicationTargetPool, '?'); idx >= 0 {
+			replicationTargetPool = replicationTargetPool[:idx]
+		}
+	}
+
+	if tiered, ok := storageManager.(*storage.TieredStorageManager); ok {
+		for _, poolName := range tiered.PoolNames() {
+			// Skip the replication target pool (no self-replication)
+			if poolName == replicationTargetPool {
+				s.log.DebugContext(ctx, "skipping replication target pool", "pool", poolName)
+				continue
+			}
+			poolSM, _ := tiered.Pool(poolName)
+			ids, err := poolSM.ListDatasets(ctx)
+			if err != nil {
+				s.log.ErrorContext(ctx, "failed to list datasets for pool", "pool", poolName, "error", err)
+				continue
+			}
+			for _, id := range ids {
+				allDatasets = append(allDatasets, datasetEntry{id: id, sm: poolSM})
+			}
+		}
+	} else {
+		ids, err := storageManager.ListDatasets(ctx)
+		if err != nil {
+			s.log.ErrorContext(ctx, "failed to list datasets", "error", err)
+			return
+		}
+		for _, id := range ids {
+			allDatasets = append(allDatasets, datasetEntry{id: id, sm: storageManager})
+		}
 	}
 
 	// Build instance name lookup (best-effort, for logging only).
@@ -259,16 +301,19 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 	}
 
 	// Build volume list from all datasets
-	volumes := make([]VolumeInfo, 0, len(datasetIDs))
+	volumes := make([]VolumeInfo, 0, len(allDatasets))
 	localVolumeIDs := make(map[string]struct{})
 
-	for _, id := range datasetIDs {
+	for _, entry := range allDatasets {
+		id := entry.id
+		poolSM := entry.sm
+
 		// Skip temporary image extraction datasets
 		if strings.HasPrefix(id, "tmp-sha256:") {
 			continue
 		}
 
-		dataset := storageManager.GetDatasetName(id)
+		dataset := poolSM.GetDatasetName(id)
 		if dataset == "" {
 			s.log.WarnContext(ctx, "skipping dataset with no dataset name", "id", id)
 			continue
@@ -300,14 +345,32 @@ func (s *Service) runReplicationCycle(ctx context.Context) {
 		s.log.ErrorContext(ctx, "pruning failed", "error", err)
 	}
 
-	// Prune orphaned base images (sha256: datasets with no dependent clones)
+	// Prune orphaned base images (sha256: datasets with no dependent clones) on all pools
 	if s.config.ReplicationPrune {
-		pruned, err := storageManager.PruneOrphanedBaseImages(ctx)
-		if err != nil {
-			s.log.ErrorContext(ctx, "base image pruning failed", "error", err)
-		} else if pruned > 0 {
-			s.log.InfoContext(ctx, "pruned orphaned base images", "count", pruned)
+		if tiered, ok := storageManager.(*storage.TieredStorageManager); ok {
+			for _, poolName := range tiered.PoolNames() {
+				poolSM, _ := tiered.Pool(poolName)
+				pruned, err := poolSM.PruneOrphanedBaseImages(ctx)
+				if err != nil {
+					s.log.ErrorContext(ctx, "base image pruning failed", "pool", poolName, "error", err)
+				} else if pruned > 0 {
+					s.log.InfoContext(ctx, "pruned orphaned base images", "pool", poolName, "count", pruned)
+				}
+			}
+		} else {
+			pruned, err := storageManager.PruneOrphanedBaseImages(ctx)
+			if err != nil {
+				s.log.ErrorContext(ctx, "base image pruning failed", "error", err)
+			} else if pruned > 0 {
+				s.log.InfoContext(ctx, "pruned orphaned base images", "count", pruned)
+			}
 		}
+	}
+
+	// Build flat datasetIDs slice for orphaned dataset cleanup
+	datasetIDs := make([]string, 0, len(allDatasets))
+	for _, entry := range allDatasets {
+		datasetIDs = append(datasetIDs, entry.id)
 	}
 
 	// Clean up orphaned VM datasets (requires two-cycle confirmation + point check).
@@ -363,7 +426,8 @@ func (s *Service) cleanOrphanedVMDatasets(ctx context.Context, datasetIDs []stri
 			continue
 		}
 		s.log.InfoContext(ctx, "deleting orphaned VM dataset", "id", id)
-		if err := s.context.StorageManager.Delete(ctx, id); err != nil {
+		sm := storage.ResolveForID(ctx, s.context.StorageManager, id)
+		if err := sm.Delete(ctx, id); err != nil {
 			s.log.ErrorContext(ctx, "failed to delete orphaned VM dataset", "id", id, "error", err)
 		}
 	}
@@ -427,12 +491,13 @@ func (s *Service) GetStatus(ctx context.Context, req *api.GetStatusRequest) (*ap
 // TriggerReplication implements ReplicationService.TriggerReplication
 func (s *Service) TriggerReplication(ctx context.Context, req *api.TriggerReplicationRequest) (*api.TriggerReplicationResponse, error) {
 	if req.VolumeID != "" {
-		// Replicate specific volume - verify dataset exists
-		dataset := s.context.StorageManager.GetDatasetName(req.VolumeID)
+		// Replicate specific volume - verify dataset exists (resolve correct pool)
+		sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+		dataset := sm.GetDatasetName(req.VolumeID)
 		if dataset == "" {
 			return nil, fmt.Errorf("volume %s has no dataset", req.VolumeID)
 		}
-		if _, err := s.context.StorageManager.Get(ctx, req.VolumeID); err != nil {
+		if _, err := sm.Get(ctx, req.VolumeID); err != nil {
 			return nil, fmt.Errorf("volume not found: %s", req.VolumeID)
 		}
 
@@ -520,7 +585,8 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 		return nil, fmt.Errorf("volume_id is required")
 	}
 
-	dataset := s.context.StorageManager.GetDatasetName(req.VolumeID)
+	sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset == "" {
 		return nil, fmt.Errorf("volume %s has no dataset configured", req.VolumeID)
 	}
@@ -592,7 +658,7 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 	}
 
 	// Snapshot doesn't exist locally - need to receive from remote
-	_, err = s.context.StorageManager.Get(ctx, req.VolumeID)
+	_, err = sm.Get(ctx, req.VolumeID)
 	volumeExists := err == nil
 
 	// Validate force flag before doing anything destructive
@@ -727,8 +793,9 @@ func (s *Service) ListSnapshots(ctx context.Context, req *api.ListSnapshotsReque
 		VolumeID: req.VolumeID,
 	}
 
-	// Get local snapshots
-	dataset := s.context.StorageManager.GetDatasetName(req.VolumeID)
+	// Get local snapshots (resolve correct pool for tiered storage)
+	sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset != "" {
 		localSnapshots, err := s.listLocalSnapshots(ctx, dataset)
 		if err != nil {

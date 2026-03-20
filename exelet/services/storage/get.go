@@ -7,11 +7,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	exeletstorage "exe.dev/exelet/storage"
 	api "exe.dev/pkg/api/exe/storage/v1"
 )
 
 func (s *Service) GetFilesystem(ctx context.Context, req *api.GetFilesystemRequest) (*api.GetFilesystemResponse, error) {
-	i, err := s.context.StorageManager.Get(ctx, req.ID)
+	// Resolve correct pool for tiered storage
+	sm := exeletstorage.ResolveForID(ctx, s.context.StorageManager, req.ID)
+	i, err := sm.Get(ctx, req.ID)
 	if errors.Is(err, api.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "filesystem %s", req.ID)
 	}

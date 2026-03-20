@@ -15,6 +15,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"exe.dev/exelet/storage"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -72,17 +73,23 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		return status.Errorf(codes.Internal, "failed to get instance: %v", err)
 	}
 
+	// Resolve the correct storage manager for this instance (may be on a non-primary pool)
+	sm, err := s.resolveStorageForInstance(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to resolve storage pool: %v", err)
+	}
+
 	if startReq.Live {
-		return s.sendVMLive(ctx, stream, startReq, instance)
+		return s.sendVMLive(ctx, stream, startReq, instance, sm)
 	}
 	if startReq.TwoPhase {
-		return s.sendVMTwoPhase(ctx, stream, startReq, instance)
+		return s.sendVMTwoPhase(ctx, stream, startReq, instance, sm)
 	}
-	return s.sendVMCold(ctx, stream, startReq, instance)
+	return s.sendVMCold(ctx, stream, startReq, instance, sm)
 }
 
 // sendVMCold performs a single-phase (cold) migration: VM must be stopped.
-func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance, sm storage.StorageManager) error {
 	instanceID := startReq.InstanceID
 
 	// Verify VM is stopped
@@ -92,11 +99,11 @@ func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Get base image ID from ZFS origin
-	origin := s.context.StorageManager.GetOrigin(instanceID)
+	origin := sm.GetOrigin(instanceID)
 	baseImageID := extractBaseImageID(origin)
 
 	// Get encryption key if exists
-	encryptionKey, err := s.context.StorageManager.GetEncryptionKey(instanceID)
+	encryptionKey, err := sm.GetEncryptionKey(instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get encryption key: %v", err)
 	}
@@ -108,7 +115,7 @@ func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Create migration snapshot
-	snapName, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
+	snapName, cleanup, err := sm.CreateMigrationSnapshot(ctx, instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
 	}
@@ -119,7 +126,7 @@ func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_Send
 	buf := make([]byte, sendVMChunkSize)
 	var totalBytes uint64
 
-	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes, sm)
 
 	// If target doesn't have base image and this is a clone, send base image first
 	if !startReq.TargetHasBaseImage && origin != "" {
@@ -144,13 +151,13 @@ func (s *Service) sendVMCold(ctx context.Context, stream api.ComputeService_Send
 
 // sendVMTwoPhase performs a two-phase migration: snapshot while running (phase 1),
 // stop VM and send incremental diff (phase 2).
-func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance, sm storage.StorageManager) error {
 	instanceID := startReq.InstanceID
 
 	// If VM is already stopped, fall back to cold migration
 	if instance.State == api.VMState_STOPPED {
 		s.log.InfoContext(ctx, "two-phase: VM already stopped, falling back to cold migration", "instance", instanceID)
-		return s.sendVMCold(ctx, stream, startReq, instance)
+		return s.sendVMCold(ctx, stream, startReq, instance, sm)
 	}
 	if instance.State != api.VMState_RUNNING {
 		return status.Errorf(codes.FailedPrecondition,
@@ -158,7 +165,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	}
 
 	// Get encryption key if exists
-	encryptionKey, err := s.context.StorageManager.GetEncryptionKey(instanceID)
+	encryptionKey, err := sm.GetEncryptionKey(instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get encryption key: %v", err)
 	}
@@ -170,14 +177,14 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	}
 
 	// Phase 1: Snapshot while VM is running, send full stream
-	dsName := s.context.StorageManager.GetDatasetName(instanceID)
+	dsName := sm.GetDatasetName(instanceID)
 	preSnapName := dsName + "@migration-pre"
 
 	// Clean up any leftover pre-snapshot from a previous failed attempt
-	s.context.StorageManager.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
+	sm.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
 
 	s.log.InfoContext(ctx, "two-phase: creating pre-copy snapshot", "snapshot", preSnapName)
-	if err := s.context.StorageManager.CreateSnapshot(ctx, preSnapName); err != nil {
+	if err := sm.CreateSnapshot(ctx, preSnapName); err != nil {
 		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
 	}
 
@@ -185,7 +192,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	preSnapCleaned := false
 	defer func() {
 		if !preSnapCleaned {
-			if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+			if err := sm.DestroySnapshot(ctx, preSnapName); err != nil {
 				s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
 			}
 		}
@@ -194,7 +201,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	hasher := sha256.New()
 	buf := make([]byte, sendVMChunkSize)
 	var totalBytes uint64
-	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes, sm)
 
 	s.log.InfoContext(ctx, "two-phase: streaming phase 1 (full pre-copy)")
 	if err := streamSnapshot(preSnapName, false, "", false); err != nil {
@@ -231,7 +238,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	s.log.InfoContext(ctx, "two-phase: VM stopped, creating final snapshot")
 
 	// Create final migration snapshot
-	migrationSnap, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
+	migrationSnap, cleanup, err := sm.CreateMigrationSnapshot(ctx, instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
 	}
@@ -249,7 +256,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 		"phase1_bytes", phase1Bytes, "phase2_bytes", phase2Bytes)
 
 	// Clean up pre-snapshot now (before final snapshot cleanup)
-	if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+	if err := sm.DestroySnapshot(ctx, preSnapName); err != nil {
 		s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
 	}
 	preSnapCleaned = true
@@ -296,7 +303,7 @@ func (s *Service) sendVMComplete(stream api.ComputeService_SendVMServer, instanc
 }
 
 // makeStreamFunc returns a helper that streams ZFS send data through the gRPC stream.
-func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_SendVMServer, instanceID string, hasher hash.Hash, buf []byte, totalBytes *uint64) func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
+func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_SendVMServer, instanceID string, hasher hash.Hash, buf []byte, totalBytes *uint64, sm storage.StorageManager) func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
 	return func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
 		s.log.DebugContext(ctx, "starting zfs send",
 			"instance", instanceID,
@@ -305,7 +312,7 @@ func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_
 			"base_snap", baseSnap,
 			"is_base_image", isBaseImage)
 
-		reader, err := s.context.StorageManager.SendSnapshot(ctx, snapshot, incremental, baseSnap)
+		reader, err := sm.SendSnapshot(ctx, snapshot, incremental, baseSnap)
 		if err != nil {
 			return fmt.Errorf("failed to start zfs send: %w", err)
 		}
@@ -347,7 +354,7 @@ func (s *Service) makeStreamFunc(ctx context.Context, stream api.ComputeService_
 
 // sendVMLive performs a live migration: two-phase ZFS transfer, then CH snapshot/restore.
 // The VM's process state is preserved across the migration.
-func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance) error {
+func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest, instance *api.Instance, sm storage.StorageManager) error {
 	instanceID := startReq.InstanceID
 
 	// Verify VM is running
@@ -363,7 +370,7 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Get encryption key if exists
-	encryptionKey, err := s.context.StorageManager.GetEncryptionKey(instanceID)
+	encryptionKey, err := sm.GetEncryptionKey(instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get encryption key: %v", err)
 	}
@@ -375,21 +382,21 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Phase 1: Snapshot while VM is running, send full ZFS stream
-	dsName := s.context.StorageManager.GetDatasetName(instanceID)
+	dsName := sm.GetDatasetName(instanceID)
 	preSnapName := dsName + "@migration-pre"
 
 	// Clean up any leftover pre-snapshot from a previous failed attempt
-	s.context.StorageManager.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
+	sm.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
 
 	s.log.InfoContext(ctx, "live: creating pre-copy snapshot", "snapshot", preSnapName)
-	if err := s.context.StorageManager.CreateSnapshot(ctx, preSnapName); err != nil {
+	if err := sm.CreateSnapshot(ctx, preSnapName); err != nil {
 		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
 	}
 
 	preSnapCleaned := false
 	defer func() {
 		if !preSnapCleaned {
-			if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+			if err := sm.DestroySnapshot(ctx, preSnapName); err != nil {
 				s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
 			}
 		}
@@ -398,7 +405,7 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	hasher := sha256.New()
 	buf := make([]byte, sendVMChunkSize)
 	var totalBytes uint64
-	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes)
+	streamSnapshot := s.makeStreamFunc(ctx, stream, instanceID, hasher, buf, &totalBytes, sm)
 
 	s.log.InfoContext(ctx, "live: streaming phase 1 (full pre-copy)")
 	if err := streamSnapshot(preSnapName, false, "", false); err != nil {
@@ -473,7 +480,7 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Phase 2: Incremental ZFS diff from pre-copy to final
-	migrationSnap, cleanup, err := s.context.StorageManager.CreateMigrationSnapshot(ctx, instanceID)
+	migrationSnap, cleanup, err := sm.CreateMigrationSnapshot(ctx, instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
 	}
@@ -522,7 +529,7 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Clean up pre-snapshot
-	if err := s.context.StorageManager.DestroySnapshot(ctx, preSnapName); err != nil {
+	if err := sm.DestroySnapshot(ctx, preSnapName); err != nil {
 		s.log.WarnContext(ctx, "failed to destroy pre-copy snapshot", "snapshot", preSnapName, "error", err)
 	}
 	preSnapCleaned = true

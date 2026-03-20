@@ -19,22 +19,26 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ComputeService_CreateInstance_FullMethodName   = "/exe.compute.v1.ComputeService/CreateInstance"
-	ComputeService_ListInstances_FullMethodName    = "/exe.compute.v1.ComputeService/ListInstances"
-	ComputeService_GetInstance_FullMethodName      = "/exe.compute.v1.ComputeService/GetInstance"
-	ComputeService_GetInstanceLogs_FullMethodName  = "/exe.compute.v1.ComputeService/GetInstanceLogs"
-	ComputeService_StartInstance_FullMethodName    = "/exe.compute.v1.ComputeService/StartInstance"
-	ComputeService_StopInstance_FullMethodName     = "/exe.compute.v1.ComputeService/StopInstance"
-	ComputeService_UpdateInstance_FullMethodName   = "/exe.compute.v1.ComputeService/UpdateInstance"
-	ComputeService_DeleteInstance_FullMethodName   = "/exe.compute.v1.ComputeService/DeleteInstance"
-	ComputeService_SetInstanceGroup_FullMethodName = "/exe.compute.v1.ComputeService/SetInstanceGroup"
-	ComputeService_RenameInstance_FullMethodName   = "/exe.compute.v1.ComputeService/RenameInstance"
-	ComputeService_GetSystemInfo_FullMethodName    = "/exe.compute.v1.ComputeService/GetSystemInfo"
-	ComputeService_SendVM_FullMethodName           = "/exe.compute.v1.ComputeService/SendVM"
-	ComputeService_ReceiveVM_FullMethodName        = "/exe.compute.v1.ComputeService/ReceiveVM"
-	ComputeService_GrowDisk_FullMethodName         = "/exe.compute.v1.ComputeService/GrowDisk"
-	ComputeService_ResizeVM_FullMethodName         = "/exe.compute.v1.ComputeService/ResizeVM"
-	ComputeService_CloneInstance_FullMethodName    = "/exe.compute.v1.ComputeService/CloneInstance"
+	ComputeService_CreateInstance_FullMethodName         = "/exe.compute.v1.ComputeService/CreateInstance"
+	ComputeService_ListInstances_FullMethodName          = "/exe.compute.v1.ComputeService/ListInstances"
+	ComputeService_GetInstance_FullMethodName            = "/exe.compute.v1.ComputeService/GetInstance"
+	ComputeService_GetInstanceLogs_FullMethodName        = "/exe.compute.v1.ComputeService/GetInstanceLogs"
+	ComputeService_StartInstance_FullMethodName          = "/exe.compute.v1.ComputeService/StartInstance"
+	ComputeService_StopInstance_FullMethodName           = "/exe.compute.v1.ComputeService/StopInstance"
+	ComputeService_UpdateInstance_FullMethodName         = "/exe.compute.v1.ComputeService/UpdateInstance"
+	ComputeService_DeleteInstance_FullMethodName         = "/exe.compute.v1.ComputeService/DeleteInstance"
+	ComputeService_SetInstanceGroup_FullMethodName       = "/exe.compute.v1.ComputeService/SetInstanceGroup"
+	ComputeService_RenameInstance_FullMethodName         = "/exe.compute.v1.ComputeService/RenameInstance"
+	ComputeService_GetSystemInfo_FullMethodName          = "/exe.compute.v1.ComputeService/GetSystemInfo"
+	ComputeService_SendVM_FullMethodName                 = "/exe.compute.v1.ComputeService/SendVM"
+	ComputeService_ReceiveVM_FullMethodName              = "/exe.compute.v1.ComputeService/ReceiveVM"
+	ComputeService_GrowDisk_FullMethodName               = "/exe.compute.v1.ComputeService/GrowDisk"
+	ComputeService_ResizeVM_FullMethodName               = "/exe.compute.v1.ComputeService/ResizeVM"
+	ComputeService_CloneInstance_FullMethodName          = "/exe.compute.v1.ComputeService/CloneInstance"
+	ComputeService_MigrateStorageTier_FullMethodName     = "/exe.compute.v1.ComputeService/MigrateStorageTier"
+	ComputeService_GetTierMigrationStatus_FullMethodName = "/exe.compute.v1.ComputeService/GetTierMigrationStatus"
+	ComputeService_ListStorageTiers_FullMethodName       = "/exe.compute.v1.ComputeService/ListStorageTiers"
+	ComputeService_ClearTierMigrations_FullMethodName    = "/exe.compute.v1.ComputeService/ClearTierMigrations"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -62,6 +66,14 @@ type ComputeServiceClient interface {
 	ResizeVM(ctx context.Context, in *ResizeVMRequest, opts ...grpc.CallOption) (*ResizeVMResponse, error)
 	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
 	CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CloneInstanceResponse], error)
+	// MigrateStorageTier migrates a VM's storage between local ZFS pools (async)
+	MigrateStorageTier(ctx context.Context, in *MigrateStorageTierRequest, opts ...grpc.CallOption) (*MigrateStorageTierResponse, error)
+	// GetTierMigrationStatus returns in-progress tier migration operations
+	GetTierMigrationStatus(ctx context.Context, in *GetTierMigrationStatusRequest, opts ...grpc.CallOption) (*GetTierMigrationStatusResponse, error)
+	// ListStorageTiers returns all configured storage tiers and their capacity
+	ListStorageTiers(ctx context.Context, in *ListStorageTiersRequest, opts ...grpc.CallOption) (*ListStorageTiersResponse, error)
+	// ClearTierMigrations removes completed and failed tier migration operations
+	ClearTierMigrations(ctx context.Context, in *ClearTierMigrationsRequest, opts ...grpc.CallOption) (*ClearTierMigrationsResponse, error)
 }
 
 type computeServiceClient struct {
@@ -274,6 +286,46 @@ func (c *computeServiceClient) CloneInstance(ctx context.Context, in *CloneInsta
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_CloneInstanceClient = grpc.ServerStreamingClient[CloneInstanceResponse]
 
+func (c *computeServiceClient) MigrateStorageTier(ctx context.Context, in *MigrateStorageTierRequest, opts ...grpc.CallOption) (*MigrateStorageTierResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MigrateStorageTierResponse)
+	err := c.cc.Invoke(ctx, ComputeService_MigrateStorageTier_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) GetTierMigrationStatus(ctx context.Context, in *GetTierMigrationStatusRequest, opts ...grpc.CallOption) (*GetTierMigrationStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTierMigrationStatusResponse)
+	err := c.cc.Invoke(ctx, ComputeService_GetTierMigrationStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) ListStorageTiers(ctx context.Context, in *ListStorageTiersRequest, opts ...grpc.CallOption) (*ListStorageTiersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListStorageTiersResponse)
+	err := c.cc.Invoke(ctx, ComputeService_ListStorageTiers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) ClearTierMigrations(ctx context.Context, in *ClearTierMigrationsRequest, opts ...grpc.CallOption) (*ClearTierMigrationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClearTierMigrationsResponse)
+	err := c.cc.Invoke(ctx, ComputeService_ClearTierMigrations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility.
@@ -299,6 +351,14 @@ type ComputeServiceServer interface {
 	ResizeVM(context.Context, *ResizeVMRequest) (*ResizeVMResponse, error)
 	// CloneInstance clones an existing VM using ZFS copy-on-write snapshots
 	CloneInstance(*CloneInstanceRequest, grpc.ServerStreamingServer[CloneInstanceResponse]) error
+	// MigrateStorageTier migrates a VM's storage between local ZFS pools (async)
+	MigrateStorageTier(context.Context, *MigrateStorageTierRequest) (*MigrateStorageTierResponse, error)
+	// GetTierMigrationStatus returns in-progress tier migration operations
+	GetTierMigrationStatus(context.Context, *GetTierMigrationStatusRequest) (*GetTierMigrationStatusResponse, error)
+	// ListStorageTiers returns all configured storage tiers and their capacity
+	ListStorageTiers(context.Context, *ListStorageTiersRequest) (*ListStorageTiersResponse, error)
+	// ClearTierMigrations removes completed and failed tier migration operations
+	ClearTierMigrations(context.Context, *ClearTierMigrationsRequest) (*ClearTierMigrationsResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -356,6 +416,18 @@ func (UnimplementedComputeServiceServer) ResizeVM(context.Context, *ResizeVMRequ
 }
 func (UnimplementedComputeServiceServer) CloneInstance(*CloneInstanceRequest, grpc.ServerStreamingServer[CloneInstanceResponse]) error {
 	return status.Error(codes.Unimplemented, "method CloneInstance not implemented")
+}
+func (UnimplementedComputeServiceServer) MigrateStorageTier(context.Context, *MigrateStorageTierRequest) (*MigrateStorageTierResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MigrateStorageTier not implemented")
+}
+func (UnimplementedComputeServiceServer) GetTierMigrationStatus(context.Context, *GetTierMigrationStatusRequest) (*GetTierMigrationStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTierMigrationStatus not implemented")
+}
+func (UnimplementedComputeServiceServer) ListStorageTiers(context.Context, *ListStorageTiersRequest) (*ListStorageTiersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListStorageTiers not implemented")
+}
+func (UnimplementedComputeServiceServer) ClearTierMigrations(context.Context, *ClearTierMigrationsRequest) (*ClearTierMigrationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClearTierMigrations not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 func (UnimplementedComputeServiceServer) testEmbeddedByValue()                        {}
@@ -616,6 +688,78 @@ func _ComputeService_CloneInstance_Handler(srv interface{}, stream grpc.ServerSt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_CloneInstanceServer = grpc.ServerStreamingServer[CloneInstanceResponse]
 
+func _ComputeService_MigrateStorageTier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MigrateStorageTierRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).MigrateStorageTier(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_MigrateStorageTier_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).MigrateStorageTier(ctx, req.(*MigrateStorageTierRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_GetTierMigrationStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTierMigrationStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).GetTierMigrationStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_GetTierMigrationStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).GetTierMigrationStatus(ctx, req.(*GetTierMigrationStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_ListStorageTiers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListStorageTiersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).ListStorageTiers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_ListStorageTiers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).ListStorageTiers(ctx, req.(*ListStorageTiersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_ClearTierMigrations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClearTierMigrationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).ClearTierMigrations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_ClearTierMigrations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).ClearTierMigrations(ctx, req.(*ClearTierMigrationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -662,6 +806,22 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResizeVM",
 			Handler:    _ComputeService_ResizeVM_Handler,
+		},
+		{
+			MethodName: "MigrateStorageTier",
+			Handler:    _ComputeService_MigrateStorageTier_Handler,
+		},
+		{
+			MethodName: "GetTierMigrationStatus",
+			Handler:    _ComputeService_GetTierMigrationStatus_Handler,
+		},
+		{
+			MethodName: "ListStorageTiers",
+			Handler:    _ComputeService_ListStorageTiers_Handler,
+		},
+		{
+			MethodName: "ClearTierMigrations",
+			Handler:    _ComputeService_ClearTierMigrations_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

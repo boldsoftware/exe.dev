@@ -5,6 +5,7 @@ import (
 
 	"exe.dev/cmd/exelet-ctl/storage/filesystems"
 	"exe.dev/cmd/exelet-ctl/storage/replication"
+	"exe.dev/cmd/exelet-ctl/storage/tiers"
 )
 
 var Command = &cli.Command{
@@ -13,5 +14,6 @@ var Command = &cli.Command{
 	Subcommands: []*cli.Command{
 		filesystems.Command,
 		replication.Command,
+		tiers.Command,
 	},
 }

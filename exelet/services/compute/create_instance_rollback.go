@@ -14,6 +14,7 @@ import (
 
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/sshproxy"
+	"exe.dev/exelet/storage"
 	"exe.dev/exelet/vmm"
 )
 
@@ -39,6 +40,10 @@ type createInstanceRollback struct {
 	vmCreated          bool
 	vmStarted          bool
 	networkIP          string
+	// storageOverride, if set, is used for Unmount/Delete instead of
+	// serviceContext.StorageManager. This is needed when the clone was
+	// created on a non-primary pool via a resolved StorageManager.
+	storageOverride    storage.StorageManager
 }
 
 // EnhanceErrorWithBootLog reads the VM boot log and appends it to the error for debugging.
@@ -142,16 +147,22 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
+	// Resolve the storage manager — use override if set (e.g., clone on non-primary pool)
+	sm := r.serviceContext.StorageManager
+	if r.storageOverride != nil {
+		sm = r.storageOverride
+	}
+
 	// Unmount instance filesystem if mounted
 	if r.instanceMounted {
-		if err := r.serviceContext.StorageManager.Unmount(r.ctx, r.instanceID); err != nil {
+		if err := sm.Unmount(r.ctx, r.instanceID); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to unmount instance", "id", r.instanceID, "error", err)
 		}
 	}
 
 	// Delete cloned instance storage if created
 	if r.instanceCloned {
-		if err := r.serviceContext.StorageManager.Delete(r.ctx, r.instanceID); err != nil {
+		if err := sm.Delete(r.ctx, r.instanceID); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to delete instance storage", "id", r.instanceID, "error", err)
 		}
 	}

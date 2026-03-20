@@ -43,6 +43,7 @@ type Service struct {
 	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
 	reconcileCtx    context.Context
 	reconcileCancel context.CancelFunc
+	tierMigrationSem chan struct{} // semaphore limiting concurrent tier migrations
 }
 
 // New returns a new service.
@@ -57,13 +58,19 @@ func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (servi
 		portAllocator = NewPortAllocator()
 	}
 
+	migrationWorkers := cfg.StorageTierMigrationWorkers
+	if migrationWorkers <= 0 {
+		migrationWorkers = config.DefaultStorageTierMigrationWorkers
+	}
+
 	return &Service{
-		config:          cfg,
-		mu:              &sync.Mutex{},
-		log:             log,
-		portAllocator:   portAllocator,
-		proxyManager:    sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log),
-		instanceOpLocks: make(map[string]*instanceLock),
+		config:           cfg,
+		mu:               &sync.Mutex{},
+		log:              log,
+		portAllocator:    portAllocator,
+		proxyManager:     sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log),
+		instanceOpLocks:  make(map[string]*instanceLock),
+		tierMigrationSem: make(chan struct{}, migrationWorkers),
 	}, nil
 }
 

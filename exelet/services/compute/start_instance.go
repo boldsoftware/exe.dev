@@ -52,8 +52,12 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 	if err != nil {
 		return err
 	}
-	// ensure disk is loaded
-	instanceFS, err := s.context.StorageManager.Load(ctx, id)
+	// ensure disk is loaded (resolve correct pool for tiered storage)
+	sm, err := s.resolveStorageForInstance(ctx, id)
+	if err != nil {
+		return err
+	}
+	instanceFS, err := sm.Load(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -118,6 +122,8 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 			s.log.WarnContext(ctx, "failed to clean up network interface after start failure", "id", id, "error", delErr)
 		}
 	}()
+	// update disk path from storage (may have changed due to tier migration or DR)
+	vmCfg.RootDiskPath = instanceFS.Path
 	// update network interface (ip= boot arg is derived from this at runtime)
 	vmCfg.NetworkInterface = networkInterface
 

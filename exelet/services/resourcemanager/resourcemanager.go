@@ -32,6 +32,7 @@ type ResourceManager struct {
 	// Capacity detection
 	capacity     *Capacity
 	zfsPool      string
+	zfsPools     []string // all pool names (primary + tiers)
 	capacityOnce sync.Once
 
 	// VM usage tracking
@@ -102,8 +103,9 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		return nil, fmt.Errorf("config is required")
 	}
 
-	// Parse ZFS pool from storage address
+	// Parse ZFS pools from storage address and tiers
 	var zfsPool string
+	var zfsPools []string
 	if cfg.StorageManagerAddress != "" {
 		storageURL, err := url.Parse(cfg.StorageManagerAddress)
 		if err != nil {
@@ -120,6 +122,26 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 						break
 					}
 				}
+				zfsPools = append(zfsPools, zfsPool)
+			}
+		}
+	}
+	// Add tier pools
+	for _, tierAddr := range cfg.StorageTiers {
+		tierURL, err := url.Parse(tierAddr)
+		if err != nil {
+			continue
+		}
+		if tierURL.Scheme == "zfs" {
+			if dataset := tierURL.Query().Get("dataset"); dataset != "" {
+				pool := dataset
+				for i, c := range dataset {
+					if c == '/' {
+						pool = dataset[:i]
+						break
+					}
+				}
+				zfsPools = append(zfsPools, pool)
 			}
 		}
 	}
@@ -134,6 +156,7 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		log:              log,
 		machineAvailable: true,
 		zfsPool:          zfsPool,
+		zfsPools:         zfsPools,
 		usageState:       make(map[string]*vmUsageState),
 		priorityOverride: make(map[string]api.VMPriority),
 		cgroupRoot:       "/sys/fs/cgroup",
@@ -194,9 +217,13 @@ func (m *ResourceManager) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Initialize capacity detection
+	// Initialize capacity detection (with all pools if tiers are configured)
 	m.capacityOnce.Do(func() {
-		m.capacity = NewCapacity(m.zfsPool, m.log)
+		if len(m.zfsPools) > 1 {
+			m.capacity = NewCapacityWithPools(m.zfsPools, m.log)
+		} else {
+			m.capacity = NewCapacity(m.zfsPool, m.log)
+		}
 	})
 
 	// Initialize cgroup controllers at root and slice level

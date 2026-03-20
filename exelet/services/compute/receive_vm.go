@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"exe.dev/exelet/atomicfile"
 	exeletfs "exe.dev/exelet/fs"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -694,9 +695,12 @@ func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *a
 	}
 	payload["kernel"] = kernelPath
 
-	// Update cmdline: replace ip= boot arg with target IP
-	if cmdline, ok := payload["cmdline"].(string); ok {
-		payload["cmdline"] = replaceIPBootArg(cmdline, srcVMConfig.Name, targetNetwork)
+	// Update cmdline: replace ip= boot arg with target IP (skip when targetNetwork is nil,
+	// e.g., during local tier migration where the IP doesn't change)
+	if targetNetwork != nil {
+		if cmdline, ok := payload["cmdline"].(string); ok {
+			payload["cmdline"] = replaceIPBootArg(cmdline, srcVMConfig.Name, targetNetwork)
+		}
 	}
 
 	updated, err := json.MarshalIndent(config, "", "  ")
@@ -704,7 +708,7 @@ func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *a
 		return fmt.Errorf("failed to marshal snapshot config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, updated, 0o600); err != nil {
+	if err := atomicfile.WriteFile(configPath, updated, 0o600); err != nil {
 		return fmt.Errorf("failed to write snapshot config: %w", err)
 	}
 

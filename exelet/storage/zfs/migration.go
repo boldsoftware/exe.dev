@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"exe.dev/exelet/atomicfile"
 )
 
 // GetDatasetName returns the full dataset name for an ID
@@ -210,8 +212,8 @@ func (s *ZFS) SetEncryptionKey(id string, key []byte) error {
 		return fmt.Errorf("failed to create encryption key directory: %w", err)
 	}
 
-	// Write the key with secure permissions
-	if err := os.WriteFile(ekPath, key, 0o600); err != nil {
+	// Write the key with secure permissions (atomic write for crash safety)
+	if err := atomicfile.WriteFile(ekPath, key, 0o600); err != nil {
 		return fmt.Errorf("failed to write encryption key: %w", err)
 	}
 

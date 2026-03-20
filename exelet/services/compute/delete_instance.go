@@ -80,8 +80,13 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			rs.WaitVolumeIdle(ctx, instance.ID)
 		}
 
-		// remove instance filesystem
-		if err := s.context.StorageManager.Delete(ctx, instance.ID); err != nil {
+		// remove instance filesystem (resolve correct pool for tiered storage)
+		storageMgr, err := s.resolveStorageForInstance(ctx, instance.ID)
+		if err != nil {
+			// Fallback to primary if instance not found on any pool (may already be deleted)
+			storageMgr = s.context.StorageManager
+		}
+		if err := storageMgr.Delete(ctx, instance.ID); err != nil {
 			return nil, status.Errorf(codes.Internal, "error removing instance fs: %s", err)
 		}
 

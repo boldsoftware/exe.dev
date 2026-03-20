@@ -34,8 +34,8 @@ func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest
 	switch i.State {
 	case api.VMState_STOPPED:
 		// nothing; already stopped
-	case api.VMState_RUNNING, api.VMState_PAUSED:
-		// stop (works for both running and paused VMs)
+	case api.VMState_RUNNING, api.VMState_PAUSED, api.VMState_STARTING:
+		// stop (works for running, paused, and stuck-starting VMs)
 		if err := s.stopInstance(ctx, req.ID); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}

@@ -14,8 +14,8 @@ import (
 
 // Capacity handles node capacity detection.
 type Capacity struct {
-	zfsPool string
-	log     *slog.Logger
+	zfsPools []string // all pool names (primary + tiers)
+	log      *slog.Logger
 
 	mu           sync.RWMutex
 	cpus         uint64
@@ -30,12 +30,25 @@ type Capacity struct {
 
 // NewCapacity creates a new Capacity detector.
 func NewCapacity(zfsPool string, log *slog.Logger) *Capacity {
+	var pools []string
+	if zfsPool != "" {
+		pools = []string{zfsPool}
+	}
 	c := &Capacity{
-		zfsPool:     zfsPool,
+		zfsPools:    pools,
 		log:         log,
 		procMeminfo: "/proc/meminfo",
 	}
 	return c
+}
+
+// NewCapacityWithPools creates a Capacity detector for multiple ZFS pools.
+func NewCapacityWithPools(pools []string, log *slog.Logger) *Capacity {
+	return &Capacity{
+		zfsPools:    pools,
+		log:         log,
+		procMeminfo: "/proc/meminfo",
+	}
 }
 
 // Get returns the current node capacity, refreshing if needed.
@@ -65,7 +78,7 @@ func (c *Capacity) Get(ctx context.Context) (cpus, memoryBytes, diskBytes uint64
 		return 0, 0, 0, c.refreshError
 	}
 
-	if c.zfsPool != "" {
+	if len(c.zfsPools) > 0 {
 		c.diskBytes, err = c.detectZFSPoolSize(ctx)
 		if err != nil {
 			c.refreshError = fmt.Errorf("failed to detect ZFS pool size: %w", err)
@@ -93,30 +106,50 @@ func (c *Capacity) detectMemory(ctx context.Context) (uint64, error) {
 	return uint64(info.memTotal) * 1024, nil
 }
 
-// detectZFSPoolSize returns the total size of the ZFS pool in bytes.
+// detectZFSPoolSize returns the aggregate size of all ZFS pools in bytes.
 func (c *Capacity) detectZFSPoolSize(ctx context.Context) (uint64, error) {
-	if c.zfsPool == "" {
+	if len(c.zfsPools) == 0 {
 		return 0, nil
 	}
 
+	var totalSize uint64
+	seen := make(map[string]struct{})
+	for _, pool := range c.zfsPools {
+		if _, ok := seen[pool]; ok {
+			continue // skip duplicate pool names
+		}
+		seen[pool] = struct{}{}
+
+		size, err := c.getPoolSize(ctx, pool)
+		if err != nil {
+			return 0, err
+		}
+		totalSize += size
+	}
+
+	return totalSize, nil
+}
+
+// getPoolSize returns the size of a single ZFS pool in bytes.
+func (c *Capacity) getPoolSize(ctx context.Context, pool string) (uint64, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	// zpool get -Hp size <pool> returns: <pool>\tsize\t<bytes>\t-
-	cmd := exec.CommandContext(ctx, "zpool", "get", "-Hp", "size", c.zfsPool)
+	cmd := exec.CommandContext(ctx, "zpool", "get", "-Hp", "size", pool)
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("zpool get size failed: %w", err)
+		return 0, fmt.Errorf("zpool get size failed for %s: %w", pool, err)
 	}
 
 	fields := strings.Fields(string(output))
 	if len(fields) < 3 {
-		return 0, fmt.Errorf("unexpected zpool output: %s", string(output))
+		return 0, fmt.Errorf("unexpected zpool output for %s: %s", pool, string(output))
 	}
 
 	size, err := strconv.ParseUint(fields[2], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse pool size: %w", err)
+		return 0, fmt.Errorf("failed to parse pool size for %s: %w", pool, err)
 	}
 
 	return size, nil

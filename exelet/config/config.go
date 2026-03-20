@@ -34,6 +34,9 @@ const (
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 
+	// DefaultStorageTierMigrationWorkers is the default number of concurrent tier migrations
+	DefaultStorageTierMigrationWorkers = 1
+
 	// EnvVarExeletServerAddress is the environment variable to resolve the exelet address
 	EnvVarExeletServerAddress = "EXELET_ADDR"
 
@@ -97,6 +100,12 @@ type ExeletConfig struct {
 	NetworkManagerAddress string
 	// StorageManagerAddress is the address for the storage manager
 	StorageManagerAddress string
+	// StorageTiers is a list of additional storage pool addresses
+	// (same URL format as StorageManagerAddress, e.g., "zfs:///var/tmp/exelet/storage?dataset=nvme").
+	// The pool specified by StorageManagerAddress is always the primary tier.
+	StorageTiers []string
+	// StorageTierMigrationWorkers is the maximum number of concurrent tier migrations (default 1)
+	StorageTierMigrationWorkers int
 	// TLSCertificate is the certificate used for grpc communication
 	TLSServerCertificate string
 	// TLSKey is the key used for grpc communication

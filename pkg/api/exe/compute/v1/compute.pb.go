@@ -4446,6 +4446,568 @@ func (x *ResizeVMResponse) GetNewCPUs() uint64 {
 	return 0
 }
 
+// Storage tier migration messages
+type MigrateStorageTierRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstanceID    string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"` // Instance to migrate
+	TargetPool    string                 `protobuf:"bytes,2,opt,name=target_pool,json=targetPool,proto3" json:"target_pool,omitempty"` // Target storage pool name
+	Live          bool                   `protobuf:"varint,3,opt,name=live,proto3" json:"live,omitempty"`                              // Live migration (near-zero downtime for running VMs)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MigrateStorageTierRequest) Reset() {
+	*x = MigrateStorageTierRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrateStorageTierRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrateStorageTierRequest) ProtoMessage() {}
+
+func (x *MigrateStorageTierRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrateStorageTierRequest.ProtoReflect.Descriptor instead.
+func (*MigrateStorageTierRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *MigrateStorageTierRequest) GetInstanceID() string {
+	if x != nil {
+		return x.InstanceID
+	}
+	return ""
+}
+
+func (x *MigrateStorageTierRequest) GetTargetPool() string {
+	if x != nil {
+		return x.TargetPool
+	}
+	return ""
+}
+
+func (x *MigrateStorageTierRequest) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+type MigrateStorageTierResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationID   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"` // Unique ID for tracking the async operation
+	InstanceID    string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	SourcePool    string                 `protobuf:"bytes,3,opt,name=source_pool,json=sourcePool,proto3" json:"source_pool,omitempty"`
+	TargetPool    string                 `protobuf:"bytes,4,opt,name=target_pool,json=targetPool,proto3" json:"target_pool,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MigrateStorageTierResponse) Reset() {
+	*x = MigrateStorageTierResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrateStorageTierResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrateStorageTierResponse) ProtoMessage() {}
+
+func (x *MigrateStorageTierResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrateStorageTierResponse.ProtoReflect.Descriptor instead.
+func (*MigrateStorageTierResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *MigrateStorageTierResponse) GetOperationID() string {
+	if x != nil {
+		return x.OperationID
+	}
+	return ""
+}
+
+func (x *MigrateStorageTierResponse) GetInstanceID() string {
+	if x != nil {
+		return x.InstanceID
+	}
+	return ""
+}
+
+func (x *MigrateStorageTierResponse) GetSourcePool() string {
+	if x != nil {
+		return x.SourcePool
+	}
+	return ""
+}
+
+func (x *MigrateStorageTierResponse) GetTargetPool() string {
+	if x != nil {
+		return x.TargetPool
+	}
+	return ""
+}
+
+type GetTierMigrationStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTierMigrationStatusRequest) Reset() {
+	*x = GetTierMigrationStatusRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTierMigrationStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTierMigrationStatusRequest) ProtoMessage() {}
+
+func (x *GetTierMigrationStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTierMigrationStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetTierMigrationStatusRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{65}
+}
+
+type TierMigrationOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationID   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	InstanceID    string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	SourcePool    string                 `protobuf:"bytes,3,opt,name=source_pool,json=sourcePool,proto3" json:"source_pool,omitempty"`
+	TargetPool    string                 `protobuf:"bytes,4,opt,name=target_pool,json=targetPool,proto3" json:"target_pool,omitempty"`
+	State         string                 `protobuf:"bytes,5,opt,name=state,proto3" json:"state,omitempty"`                                 // "pending", "migrating", "completed", "failed"
+	Progress      float32                `protobuf:"fixed32,6,opt,name=progress,proto3" json:"progress,omitempty"`                         // 0.0 to 1.0
+	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`                                 // Empty if no error
+	StartedAt     int64                  `protobuf:"varint,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`       // Unix timestamp
+	CompletedAt   int64                  `protobuf:"varint,9,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"` // Unix timestamp (0 if not completed)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TierMigrationOperation) Reset() {
+	*x = TierMigrationOperation{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TierMigrationOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TierMigrationOperation) ProtoMessage() {}
+
+func (x *TierMigrationOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TierMigrationOperation.ProtoReflect.Descriptor instead.
+func (*TierMigrationOperation) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *TierMigrationOperation) GetOperationID() string {
+	if x != nil {
+		return x.OperationID
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetInstanceID() string {
+	if x != nil {
+		return x.InstanceID
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetSourcePool() string {
+	if x != nil {
+		return x.SourcePool
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetTargetPool() string {
+	if x != nil {
+		return x.TargetPool
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetProgress() float32 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *TierMigrationOperation) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *TierMigrationOperation) GetStartedAt() int64 {
+	if x != nil {
+		return x.StartedAt
+	}
+	return 0
+}
+
+func (x *TierMigrationOperation) GetCompletedAt() int64 {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return 0
+}
+
+type GetTierMigrationStatusResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Operations    []*TierMigrationOperation `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTierMigrationStatusResponse) Reset() {
+	*x = GetTierMigrationStatusResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTierMigrationStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTierMigrationStatusResponse) ProtoMessage() {}
+
+func (x *GetTierMigrationStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTierMigrationStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetTierMigrationStatusResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{67}
+}
+
+func (x *GetTierMigrationStatusResponse) GetOperations() []*TierMigrationOperation {
+	if x != nil {
+		return x.Operations
+	}
+	return nil
+}
+
+// Storage tiers listing
+type ListStorageTiersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListStorageTiersRequest) Reset() {
+	*x = ListStorageTiersRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListStorageTiersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListStorageTiersRequest) ProtoMessage() {}
+
+func (x *ListStorageTiersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListStorageTiersRequest.ProtoReflect.Descriptor instead.
+func (*ListStorageTiersRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{68}
+}
+
+type StorageTier struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                            // Pool name (e.g., "tank", "nvme")
+	Primary        bool                   `protobuf:"varint,2,opt,name=primary,proto3" json:"primary,omitempty"`                                     // True if this is the primary pool
+	SizeBytes      uint64                 `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`                // Total pool size in bytes
+	UsedBytes      uint64                 `protobuf:"varint,4,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`                // Used bytes
+	AvailableBytes uint64                 `protobuf:"varint,5,opt,name=available_bytes,json=availableBytes,proto3" json:"available_bytes,omitempty"` // Available bytes
+	InstanceCount  uint32                 `protobuf:"varint,6,opt,name=instance_count,json=instanceCount,proto3" json:"instance_count,omitempty"`    // Number of instances on this pool
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *StorageTier) Reset() {
+	*x = StorageTier{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StorageTier) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StorageTier) ProtoMessage() {}
+
+func (x *StorageTier) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StorageTier.ProtoReflect.Descriptor instead.
+func (*StorageTier) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *StorageTier) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *StorageTier) GetPrimary() bool {
+	if x != nil {
+		return x.Primary
+	}
+	return false
+}
+
+func (x *StorageTier) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *StorageTier) GetUsedBytes() uint64 {
+	if x != nil {
+		return x.UsedBytes
+	}
+	return 0
+}
+
+func (x *StorageTier) GetAvailableBytes() uint64 {
+	if x != nil {
+		return x.AvailableBytes
+	}
+	return 0
+}
+
+func (x *StorageTier) GetInstanceCount() uint32 {
+	if x != nil {
+		return x.InstanceCount
+	}
+	return 0
+}
+
+type ListStorageTiersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tiers         []*StorageTier         `protobuf:"bytes,1,rep,name=tiers,proto3" json:"tiers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListStorageTiersResponse) Reset() {
+	*x = ListStorageTiersResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListStorageTiersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListStorageTiersResponse) ProtoMessage() {}
+
+func (x *ListStorageTiersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListStorageTiersResponse.ProtoReflect.Descriptor instead.
+func (*ListStorageTiersResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *ListStorageTiersResponse) GetTiers() []*StorageTier {
+	if x != nil {
+		return x.Tiers
+	}
+	return nil
+}
+
+type ClearTierMigrationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClearTierMigrationsRequest) Reset() {
+	*x = ClearTierMigrationsRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearTierMigrationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearTierMigrationsRequest) ProtoMessage() {}
+
+func (x *ClearTierMigrationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearTierMigrationsRequest.ProtoReflect.Descriptor instead.
+func (*ClearTierMigrationsRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{71}
+}
+
+type ClearTierMigrationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cleared       uint32                 `protobuf:"varint,1,opt,name=cleared,proto3" json:"cleared,omitempty"` // Number of operations cleared
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClearTierMigrationsResponse) Reset() {
+	*x = ClearTierMigrationsResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClearTierMigrationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClearTierMigrationsResponse) ProtoMessage() {}
+
+func (x *ClearTierMigrationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClearTierMigrationsResponse.ProtoReflect.Descriptor instead.
+func (*ClearTierMigrationsResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *ClearTierMigrationsResponse) GetCleared() uint32 {
+	if x != nil {
+		return x.Cleared
+	}
+	return 0
+}
+
 var File_exe_compute_v1_compute_proto protoreflect.FileDescriptor
 
 const file_exe_compute_v1_compute_proto_rawDesc = "" +
@@ -4771,7 +5333,55 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\n" +
 	"new_memory\x18\x02 \x01(\x04R\tnewMemory\x12\x19\n" +
 	"\bold_cpus\x18\x03 \x01(\x04R\aoldCpus\x12\x19\n" +
-	"\bnew_cpus\x18\x04 \x01(\x04R\anewCpus*\x99\x01\n" +
+	"\bnew_cpus\x18\x04 \x01(\x04R\anewCpus\"q\n" +
+	"\x19MigrateStorageTierRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12\x1f\n" +
+	"\vtarget_pool\x18\x02 \x01(\tR\n" +
+	"targetPool\x12\x12\n" +
+	"\x04live\x18\x03 \x01(\bR\x04live\"\xa2\x01\n" +
+	"\x1aMigrateStorageTierResponse\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
+	"\vinstance_id\x18\x02 \x01(\tR\n" +
+	"instanceId\x12\x1f\n" +
+	"\vsource_pool\x18\x03 \x01(\tR\n" +
+	"sourcePool\x12\x1f\n" +
+	"\vtarget_pool\x18\x04 \x01(\tR\n" +
+	"targetPool\"\x1f\n" +
+	"\x1dGetTierMigrationStatusRequest\"\xa8\x02\n" +
+	"\x16TierMigrationOperation\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
+	"\vinstance_id\x18\x02 \x01(\tR\n" +
+	"instanceId\x12\x1f\n" +
+	"\vsource_pool\x18\x03 \x01(\tR\n" +
+	"sourcePool\x12\x1f\n" +
+	"\vtarget_pool\x18\x04 \x01(\tR\n" +
+	"targetPool\x12\x14\n" +
+	"\x05state\x18\x05 \x01(\tR\x05state\x12\x1a\n" +
+	"\bprogress\x18\x06 \x01(\x02R\bprogress\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"started_at\x18\b \x01(\x03R\tstartedAt\x12!\n" +
+	"\fcompleted_at\x18\t \x01(\x03R\vcompletedAt\"h\n" +
+	"\x1eGetTierMigrationStatusResponse\x12F\n" +
+	"\n" +
+	"operations\x18\x01 \x03(\v2&.exe.compute.v1.TierMigrationOperationR\n" +
+	"operations\"\x19\n" +
+	"\x17ListStorageTiersRequest\"\xc9\x01\n" +
+	"\vStorageTier\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aprimary\x18\x02 \x01(\bR\aprimary\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x04R\tsizeBytes\x12\x1d\n" +
+	"\n" +
+	"used_bytes\x18\x04 \x01(\x04R\tusedBytes\x12'\n" +
+	"\x0favailable_bytes\x18\x05 \x01(\x04R\x0eavailableBytes\x12%\n" +
+	"\x0einstance_count\x18\x06 \x01(\rR\rinstanceCount\"M\n" +
+	"\x18ListStorageTiersResponse\x121\n" +
+	"\x05tiers\x18\x01 \x03(\v2\x1b.exe.compute.v1.StorageTierR\x05tiers\"\x1c\n" +
+	"\x1aClearTierMigrationsRequest\"7\n" +
+	"\x1bClearTierMigrationsResponse\x12\x18\n" +
+	"\acleared\x18\x01 \x01(\rR\acleared*\x99\x01\n" +
 	"\aVMState\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aCREATED\x10\x01\x12\f\n" +
@@ -4785,7 +5395,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\bUPDATING\x10\b\x12\t\n" +
 	"\x05ERROR\x10\t\x12\f\n" +
 	"\bCREATING\x10\n" +
-	"2\xd3\v\n" +
+	"2\x90\x0f\n" +
 	"\x0eComputeService\x12a\n" +
 	"\x0eCreateInstance\x12%.exe.compute.v1.CreateInstanceRequest\x1a&.exe.compute.v1.CreateInstanceResponse0\x01\x12^\n" +
 	"\rListInstances\x12$.exe.compute.v1.ListInstancesRequest\x1a%.exe.compute.v1.ListInstancesResponse0\x01\x12V\n" +
@@ -4802,7 +5412,11 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\tReceiveVM\x12 .exe.compute.v1.ReceiveVMRequest\x1a!.exe.compute.v1.ReceiveVMResponse(\x010\x01\x12M\n" +
 	"\bGrowDisk\x12\x1f.exe.compute.v1.GrowDiskRequest\x1a .exe.compute.v1.GrowDiskResponse\x12M\n" +
 	"\bResizeVM\x12\x1f.exe.compute.v1.ResizeVMRequest\x1a .exe.compute.v1.ResizeVMResponse\x12^\n" +
-	"\rCloneInstance\x12$.exe.compute.v1.CloneInstanceRequest\x1a%.exe.compute.v1.CloneInstanceResponse0\x01B\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
+	"\rCloneInstance\x12$.exe.compute.v1.CloneInstanceRequest\x1a%.exe.compute.v1.CloneInstanceResponse0\x01\x12k\n" +
+	"\x12MigrateStorageTier\x12).exe.compute.v1.MigrateStorageTierRequest\x1a*.exe.compute.v1.MigrateStorageTierResponse\x12w\n" +
+	"\x16GetTierMigrationStatus\x12-.exe.compute.v1.GetTierMigrationStatusRequest\x1a..exe.compute.v1.GetTierMigrationStatusResponse\x12e\n" +
+	"\x10ListStorageTiers\x12'.exe.compute.v1.ListStorageTiersRequest\x1a(.exe.compute.v1.ListStorageTiersResponse\x12n\n" +
+	"\x13ClearTierMigrations\x12*.exe.compute.v1.ClearTierMigrationsRequest\x1a+.exe.compute.v1.ClearTierMigrationsResponseB\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
 
 var (
 	file_exe_compute_v1_compute_proto_rawDescOnce sync.Once
@@ -4817,79 +5431,89 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 }
 
 var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
 var file_exe_compute_v1_compute_proto_goTypes = []any{
-	(VMState)(0),                     // 0: exe.compute.v1.VMState
-	(Log_Type)(0),                    // 1: exe.compute.v1.Log.Type
-	(CreateInstanceStatus_State)(0),  // 2: exe.compute.v1.CreateInstanceStatus.State
-	(NetworkInterface_Type)(0),       // 3: exe.compute.v1.NetworkInterface.Type
-	(Server_ServerState)(0),          // 4: exe.compute.v1.Server.ServerState
-	(SendVMControl_Action)(0),        // 5: exe.compute.v1.SendVMControl.Action
-	(SendVMAwaitControl_Reason)(0),   // 6: exe.compute.v1.SendVMAwaitControl.Reason
-	(CloneInstanceStatus_State)(0),   // 7: exe.compute.v1.CloneInstanceStatus.State
-	(*CreateInstanceRequest)(nil),    // 8: exe.compute.v1.CreateInstanceRequest
-	(*Config)(nil),                   // 9: exe.compute.v1.Config
-	(*FileConfig)(nil),               // 10: exe.compute.v1.FileConfig
-	(*Volume)(nil),                   // 11: exe.compute.v1.Volume
-	(*ExposedPort)(nil),              // 12: exe.compute.v1.ExposedPort
-	(*Placement)(nil),                // 13: exe.compute.v1.Placement
-	(*Log)(nil),                      // 14: exe.compute.v1.Log
-	(*CreateInstanceStatus)(nil),     // 15: exe.compute.v1.CreateInstanceStatus
-	(*CreateInstanceResponse)(nil),   // 16: exe.compute.v1.CreateInstanceResponse
-	(*ListInstancesRequest)(nil),     // 17: exe.compute.v1.ListInstancesRequest
-	(*ListInstancesResponse)(nil),    // 18: exe.compute.v1.ListInstancesResponse
-	(*GetInstanceRequest)(nil),       // 19: exe.compute.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),      // 20: exe.compute.v1.GetInstanceResponse
-	(*GetInstanceLogsRequest)(nil),   // 21: exe.compute.v1.GetInstanceLogsRequest
-	(*GetInstanceLogsResponse)(nil),  // 22: exe.compute.v1.GetInstanceLogsResponse
-	(*StartInstanceRequest)(nil),     // 23: exe.compute.v1.StartInstanceRequest
-	(*StartInstanceResponse)(nil),    // 24: exe.compute.v1.StartInstanceResponse
-	(*StopInstanceRequest)(nil),      // 25: exe.compute.v1.StopInstanceRequest
-	(*StopInstanceResponse)(nil),     // 26: exe.compute.v1.StopInstanceResponse
-	(*DeleteInstanceRequest)(nil),    // 27: exe.compute.v1.DeleteInstanceRequest
-	(*DeleteInstanceResponse)(nil),   // 28: exe.compute.v1.DeleteInstanceResponse
-	(*SetInstanceGroupRequest)(nil),  // 29: exe.compute.v1.SetInstanceGroupRequest
-	(*SetInstanceGroupResponse)(nil), // 30: exe.compute.v1.SetInstanceGroupResponse
-	(*RenameInstanceRequest)(nil),    // 31: exe.compute.v1.RenameInstanceRequest
-	(*RenameInstanceResponse)(nil),   // 32: exe.compute.v1.RenameInstanceResponse
-	(*UpdateInstanceRequest)(nil),    // 33: exe.compute.v1.UpdateInstanceRequest
-	(*UpdateInstanceResponse)(nil),   // 34: exe.compute.v1.UpdateInstanceResponse
-	(*GetSystemInfoRequest)(nil),     // 35: exe.compute.v1.GetSystemInfoRequest
-	(*GetSystemInfoResponse)(nil),    // 36: exe.compute.v1.GetSystemInfoResponse
-	(*Instance)(nil),                 // 37: exe.compute.v1.Instance
-	(*VMConfig)(nil),                 // 38: exe.compute.v1.VMConfig
-	(*DirectoryShare)(nil),           // 39: exe.compute.v1.DirectoryShare
-	(*IPAddress)(nil),                // 40: exe.compute.v1.IPAddress
-	(*NetworkInterface)(nil),         // 41: exe.compute.v1.NetworkInterface
-	(*Server)(nil),                   // 42: exe.compute.v1.Server
-	(*ServerLocality)(nil),           // 43: exe.compute.v1.ServerLocality
-	(*SendVMRequest)(nil),            // 44: exe.compute.v1.SendVMRequest
-	(*SendVMStartRequest)(nil),       // 45: exe.compute.v1.SendVMStartRequest
-	(*SendVMControl)(nil),            // 46: exe.compute.v1.SendVMControl
-	(*SendVMResponse)(nil),           // 47: exe.compute.v1.SendVMResponse
-	(*SendVMStatus)(nil),             // 48: exe.compute.v1.SendVMStatus
-	(*SendVMSnapshotChunk)(nil),      // 49: exe.compute.v1.SendVMSnapshotChunk
-	(*SendVMAwaitControl)(nil),       // 50: exe.compute.v1.SendVMAwaitControl
-	(*SendVMPhaseComplete)(nil),      // 51: exe.compute.v1.SendVMPhaseComplete
-	(*SendVMMetadata)(nil),           // 52: exe.compute.v1.SendVMMetadata
-	(*SendVMDataChunk)(nil),          // 53: exe.compute.v1.SendVMDataChunk
-	(*SendVMComplete)(nil),           // 54: exe.compute.v1.SendVMComplete
-	(*ReceiveVMRequest)(nil),         // 55: exe.compute.v1.ReceiveVMRequest
-	(*ReceiveVMPhaseComplete)(nil),   // 56: exe.compute.v1.ReceiveVMPhaseComplete
-	(*ReceiveVMStartRequest)(nil),    // 57: exe.compute.v1.ReceiveVMStartRequest
-	(*ReceiveVMSnapshotChunk)(nil),   // 58: exe.compute.v1.ReceiveVMSnapshotChunk
-	(*ReceiveVMDataChunk)(nil),       // 59: exe.compute.v1.ReceiveVMDataChunk
-	(*ReceiveVMComplete)(nil),        // 60: exe.compute.v1.ReceiveVMComplete
-	(*ReceiveVMResponse)(nil),        // 61: exe.compute.v1.ReceiveVMResponse
-	(*ReceiveVMReady)(nil),           // 62: exe.compute.v1.ReceiveVMReady
-	(*ReceiveVMResult)(nil),          // 63: exe.compute.v1.ReceiveVMResult
-	(*GrowDiskRequest)(nil),          // 64: exe.compute.v1.GrowDiskRequest
-	(*GrowDiskResponse)(nil),         // 65: exe.compute.v1.GrowDiskResponse
-	(*CloneInstanceRequest)(nil),     // 66: exe.compute.v1.CloneInstanceRequest
-	(*CloneInstanceStatus)(nil),      // 67: exe.compute.v1.CloneInstanceStatus
-	(*CloneInstanceResponse)(nil),    // 68: exe.compute.v1.CloneInstanceResponse
-	(*ResizeVMRequest)(nil),          // 69: exe.compute.v1.ResizeVMRequest
-	(*ResizeVMResponse)(nil),         // 70: exe.compute.v1.ResizeVMResponse
+	(VMState)(0),                           // 0: exe.compute.v1.VMState
+	(Log_Type)(0),                          // 1: exe.compute.v1.Log.Type
+	(CreateInstanceStatus_State)(0),        // 2: exe.compute.v1.CreateInstanceStatus.State
+	(NetworkInterface_Type)(0),             // 3: exe.compute.v1.NetworkInterface.Type
+	(Server_ServerState)(0),                // 4: exe.compute.v1.Server.ServerState
+	(SendVMControl_Action)(0),              // 5: exe.compute.v1.SendVMControl.Action
+	(SendVMAwaitControl_Reason)(0),         // 6: exe.compute.v1.SendVMAwaitControl.Reason
+	(CloneInstanceStatus_State)(0),         // 7: exe.compute.v1.CloneInstanceStatus.State
+	(*CreateInstanceRequest)(nil),          // 8: exe.compute.v1.CreateInstanceRequest
+	(*Config)(nil),                         // 9: exe.compute.v1.Config
+	(*FileConfig)(nil),                     // 10: exe.compute.v1.FileConfig
+	(*Volume)(nil),                         // 11: exe.compute.v1.Volume
+	(*ExposedPort)(nil),                    // 12: exe.compute.v1.ExposedPort
+	(*Placement)(nil),                      // 13: exe.compute.v1.Placement
+	(*Log)(nil),                            // 14: exe.compute.v1.Log
+	(*CreateInstanceStatus)(nil),           // 15: exe.compute.v1.CreateInstanceStatus
+	(*CreateInstanceResponse)(nil),         // 16: exe.compute.v1.CreateInstanceResponse
+	(*ListInstancesRequest)(nil),           // 17: exe.compute.v1.ListInstancesRequest
+	(*ListInstancesResponse)(nil),          // 18: exe.compute.v1.ListInstancesResponse
+	(*GetInstanceRequest)(nil),             // 19: exe.compute.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),            // 20: exe.compute.v1.GetInstanceResponse
+	(*GetInstanceLogsRequest)(nil),         // 21: exe.compute.v1.GetInstanceLogsRequest
+	(*GetInstanceLogsResponse)(nil),        // 22: exe.compute.v1.GetInstanceLogsResponse
+	(*StartInstanceRequest)(nil),           // 23: exe.compute.v1.StartInstanceRequest
+	(*StartInstanceResponse)(nil),          // 24: exe.compute.v1.StartInstanceResponse
+	(*StopInstanceRequest)(nil),            // 25: exe.compute.v1.StopInstanceRequest
+	(*StopInstanceResponse)(nil),           // 26: exe.compute.v1.StopInstanceResponse
+	(*DeleteInstanceRequest)(nil),          // 27: exe.compute.v1.DeleteInstanceRequest
+	(*DeleteInstanceResponse)(nil),         // 28: exe.compute.v1.DeleteInstanceResponse
+	(*SetInstanceGroupRequest)(nil),        // 29: exe.compute.v1.SetInstanceGroupRequest
+	(*SetInstanceGroupResponse)(nil),       // 30: exe.compute.v1.SetInstanceGroupResponse
+	(*RenameInstanceRequest)(nil),          // 31: exe.compute.v1.RenameInstanceRequest
+	(*RenameInstanceResponse)(nil),         // 32: exe.compute.v1.RenameInstanceResponse
+	(*UpdateInstanceRequest)(nil),          // 33: exe.compute.v1.UpdateInstanceRequest
+	(*UpdateInstanceResponse)(nil),         // 34: exe.compute.v1.UpdateInstanceResponse
+	(*GetSystemInfoRequest)(nil),           // 35: exe.compute.v1.GetSystemInfoRequest
+	(*GetSystemInfoResponse)(nil),          // 36: exe.compute.v1.GetSystemInfoResponse
+	(*Instance)(nil),                       // 37: exe.compute.v1.Instance
+	(*VMConfig)(nil),                       // 38: exe.compute.v1.VMConfig
+	(*DirectoryShare)(nil),                 // 39: exe.compute.v1.DirectoryShare
+	(*IPAddress)(nil),                      // 40: exe.compute.v1.IPAddress
+	(*NetworkInterface)(nil),               // 41: exe.compute.v1.NetworkInterface
+	(*Server)(nil),                         // 42: exe.compute.v1.Server
+	(*ServerLocality)(nil),                 // 43: exe.compute.v1.ServerLocality
+	(*SendVMRequest)(nil),                  // 44: exe.compute.v1.SendVMRequest
+	(*SendVMStartRequest)(nil),             // 45: exe.compute.v1.SendVMStartRequest
+	(*SendVMControl)(nil),                  // 46: exe.compute.v1.SendVMControl
+	(*SendVMResponse)(nil),                 // 47: exe.compute.v1.SendVMResponse
+	(*SendVMStatus)(nil),                   // 48: exe.compute.v1.SendVMStatus
+	(*SendVMSnapshotChunk)(nil),            // 49: exe.compute.v1.SendVMSnapshotChunk
+	(*SendVMAwaitControl)(nil),             // 50: exe.compute.v1.SendVMAwaitControl
+	(*SendVMPhaseComplete)(nil),            // 51: exe.compute.v1.SendVMPhaseComplete
+	(*SendVMMetadata)(nil),                 // 52: exe.compute.v1.SendVMMetadata
+	(*SendVMDataChunk)(nil),                // 53: exe.compute.v1.SendVMDataChunk
+	(*SendVMComplete)(nil),                 // 54: exe.compute.v1.SendVMComplete
+	(*ReceiveVMRequest)(nil),               // 55: exe.compute.v1.ReceiveVMRequest
+	(*ReceiveVMPhaseComplete)(nil),         // 56: exe.compute.v1.ReceiveVMPhaseComplete
+	(*ReceiveVMStartRequest)(nil),          // 57: exe.compute.v1.ReceiveVMStartRequest
+	(*ReceiveVMSnapshotChunk)(nil),         // 58: exe.compute.v1.ReceiveVMSnapshotChunk
+	(*ReceiveVMDataChunk)(nil),             // 59: exe.compute.v1.ReceiveVMDataChunk
+	(*ReceiveVMComplete)(nil),              // 60: exe.compute.v1.ReceiveVMComplete
+	(*ReceiveVMResponse)(nil),              // 61: exe.compute.v1.ReceiveVMResponse
+	(*ReceiveVMReady)(nil),                 // 62: exe.compute.v1.ReceiveVMReady
+	(*ReceiveVMResult)(nil),                // 63: exe.compute.v1.ReceiveVMResult
+	(*GrowDiskRequest)(nil),                // 64: exe.compute.v1.GrowDiskRequest
+	(*GrowDiskResponse)(nil),               // 65: exe.compute.v1.GrowDiskResponse
+	(*CloneInstanceRequest)(nil),           // 66: exe.compute.v1.CloneInstanceRequest
+	(*CloneInstanceStatus)(nil),            // 67: exe.compute.v1.CloneInstanceStatus
+	(*CloneInstanceResponse)(nil),          // 68: exe.compute.v1.CloneInstanceResponse
+	(*ResizeVMRequest)(nil),                // 69: exe.compute.v1.ResizeVMRequest
+	(*ResizeVMResponse)(nil),               // 70: exe.compute.v1.ResizeVMResponse
+	(*MigrateStorageTierRequest)(nil),      // 71: exe.compute.v1.MigrateStorageTierRequest
+	(*MigrateStorageTierResponse)(nil),     // 72: exe.compute.v1.MigrateStorageTierResponse
+	(*GetTierMigrationStatusRequest)(nil),  // 73: exe.compute.v1.GetTierMigrationStatusRequest
+	(*TierMigrationOperation)(nil),         // 74: exe.compute.v1.TierMigrationOperation
+	(*GetTierMigrationStatusResponse)(nil), // 75: exe.compute.v1.GetTierMigrationStatusResponse
+	(*ListStorageTiersRequest)(nil),        // 76: exe.compute.v1.ListStorageTiersRequest
+	(*StorageTier)(nil),                    // 77: exe.compute.v1.StorageTier
+	(*ListStorageTiersResponse)(nil),       // 78: exe.compute.v1.ListStorageTiersResponse
+	(*ClearTierMigrationsRequest)(nil),     // 79: exe.compute.v1.ClearTierMigrationsRequest
+	(*ClearTierMigrationsResponse)(nil),    // 80: exe.compute.v1.ClearTierMigrationsResponse
 }
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	13, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
@@ -4940,43 +5564,53 @@ var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	7,  // 45: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
 	67, // 46: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
 	37, // 47: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	8,  // 48: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
-	17, // 49: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
-	19, // 50: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
-	21, // 51: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
-	23, // 52: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
-	25, // 53: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
-	33, // 54: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
-	27, // 55: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
-	29, // 56: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
-	31, // 57: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
-	35, // 58: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
-	44, // 59: exe.compute.v1.ComputeService.SendVM:input_type -> exe.compute.v1.SendVMRequest
-	55, // 60: exe.compute.v1.ComputeService.ReceiveVM:input_type -> exe.compute.v1.ReceiveVMRequest
-	64, // 61: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
-	69, // 62: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
-	66, // 63: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
-	16, // 64: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
-	18, // 65: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
-	20, // 66: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
-	22, // 67: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
-	24, // 68: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
-	26, // 69: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
-	34, // 70: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
-	28, // 71: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
-	30, // 72: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
-	32, // 73: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
-	36, // 74: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
-	47, // 75: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
-	61, // 76: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
-	65, // 77: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
-	70, // 78: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
-	68, // 79: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
-	64, // [64:80] is the sub-list for method output_type
-	48, // [48:64] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	74, // 48: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
+	77, // 49: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
+	8,  // 50: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
+	17, // 51: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
+	19, // 52: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
+	21, // 53: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
+	23, // 54: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
+	25, // 55: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
+	33, // 56: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
+	27, // 57: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
+	29, // 58: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
+	31, // 59: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
+	35, // 60: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
+	44, // 61: exe.compute.v1.ComputeService.SendVM:input_type -> exe.compute.v1.SendVMRequest
+	55, // 62: exe.compute.v1.ComputeService.ReceiveVM:input_type -> exe.compute.v1.ReceiveVMRequest
+	64, // 63: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
+	69, // 64: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
+	66, // 65: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
+	71, // 66: exe.compute.v1.ComputeService.MigrateStorageTier:input_type -> exe.compute.v1.MigrateStorageTierRequest
+	73, // 67: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
+	76, // 68: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
+	79, // 69: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
+	16, // 70: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
+	18, // 71: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
+	20, // 72: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
+	22, // 73: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
+	24, // 74: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
+	26, // 75: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
+	34, // 76: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
+	28, // 77: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
+	30, // 78: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
+	32, // 79: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
+	36, // 80: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
+	47, // 81: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
+	61, // 82: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
+	65, // 83: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
+	70, // 84: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
+	68, // 85: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
+	72, // 86: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
+	75, // 87: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
+	78, // 88: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
+	80, // 89: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
+	70, // [70:90] is the sub-list for method output_type
+	50, // [50:70] is the sub-list for method input_type
+	50, // [50:50] is the sub-list for extension type_name
+	50, // [50:50] is the sub-list for extension extendee
+	0,  // [0:50] is the sub-list for field type_name
 }
 
 func init() { file_exe_compute_v1_compute_proto_init() }
@@ -5027,7 +5661,7 @@ func file_exe_compute_v1_compute_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   63,
+			NumMessages:   73,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

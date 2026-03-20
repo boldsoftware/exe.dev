@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"exe.dev/exelet/atomicfile"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -20,7 +21,8 @@ func (s *Service) getInstanceConfigPath(id string) string {
 	return filepath.Join(s.getInstanceDir(id), "config.json")
 }
 
-// saveInstanceConfig persists the instance configuration in the local configuration store
+// saveInstanceConfig persists the instance configuration in the local configuration store.
+// Uses atomic write (write-to-tmp + rename) to prevent data loss on crash.
 func (s *Service) saveInstanceConfig(i *api.Instance) error {
 	data, err := i.Marshal()
 	if err != nil {
@@ -28,20 +30,10 @@ func (s *Service) saveInstanceConfig(i *api.Instance) error {
 	}
 
 	configPath := s.getInstanceConfigPath(i.ID)
-	if err := os.RemoveAll(configPath); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-	}
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return err
 	}
-	// update
-	if err := os.WriteFile(configPath, data, 0o660); err != nil {
-		return err
-	}
-
-	return nil
+	return atomicfile.WriteFile(configPath, data, 0o660)
 }
 
 // loadInstanceConfig loads the instance config for the id from the local config store

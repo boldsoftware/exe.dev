@@ -178,8 +178,16 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Resolve storage for source instance (may be on a non-primary pool)
+	srcStorageMgr, err := s.resolveStorageForInstance(ctx, req.SourceInstanceID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to resolve storage pool: %v", err)
+	}
+	// Set storage override so rollback uses the correct pool for cleanup
+	rb.storageOverride = srcStorageMgr
+
 	s.log.DebugContext(ctx, "cloning ZFS volume", "source", req.SourceInstanceID, "dest", newInstanceID)
-	if err := s.context.StorageManager.Clone(ctx, req.SourceInstanceID, newInstanceID); err != nil {
+	if err := srcStorageMgr.Clone(ctx, req.SourceInstanceID, newInstanceID); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to clone disk: %v", err)
 	}
 	rb.instanceCloned = true
@@ -188,7 +196,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 	if req.Disk != nil && *req.Disk > sourceInstance.VMConfig.Disk {
 		s.log.DebugContext(ctx, "expanding cloned disk", "id", newInstanceID, "from", sourceInstance.VMConfig.Disk, "to", *req.Disk)
 		// resizeFilesystem=false because VM hasn't booted yet and fstab has x-systemd.growfs
-		if err := s.context.StorageManager.Expand(ctx, newInstanceID, *req.Disk, false); err != nil {
+		if err := srcStorageMgr.Expand(ctx, newInstanceID, *req.Disk, false); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to expand disk: %v", err)
 		}
 	}
@@ -202,7 +210,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	mountConfig, err := s.context.StorageManager.Mount(ctx, newInstanceID)
+	mountConfig, err := srcStorageMgr.Mount(ctx, newInstanceID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error mounting cloned filesystem: %v", err)
 	}
@@ -311,13 +319,13 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 
 	// Unmount
 	s.log.DebugContext(ctx, "unmounting clone storage", "id", newInstanceID)
-	if err := s.context.StorageManager.Unmount(ctx, newInstanceID); err != nil {
+	if err := srcStorageMgr.Unmount(ctx, newInstanceID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.instanceMounted = false
 
 	// Get instance filesystem info
-	instanceFS, err := s.context.StorageManager.Get(ctx, newInstanceID)
+	instanceFS, err := srcStorageMgr.Get(ctx, newInstanceID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error getting cloned instance fs: %v", err)
 	}

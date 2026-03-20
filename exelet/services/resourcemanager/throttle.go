@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"exe.dev/exelet/storage"
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
@@ -111,7 +112,8 @@ func (m *ResourceManager) applyThrottling(ctx context.Context, req *api.Throttle
 			return nil, status.Error(codes.FailedPrecondition, "storage manager not available for IO throttling")
 		}
 
-		fs, err := m.context.StorageManager.Get(ctx, req.VmID)
+		sm := storage.ResolveForID(ctx, m.context.StorageManager, req.VmID)
+		fs, err := sm.Get(ctx, req.VmID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get filesystem for IO throttle: %v", err)
 		}
@@ -157,7 +159,8 @@ func (m *ResourceManager) clearThrottling(ctx context.Context, vmID, cgroupPath 
 
 	// Clear IO throttle if storage manager is available
 	if m.context != nil && m.context.StorageManager != nil {
-		fs, err := m.context.StorageManager.Get(ctx, vmID)
+		sm := storage.ResolveForID(ctx, m.context.StorageManager, vmID)
+		fs, err := sm.Get(ctx, vmID)
 		if err != nil {
 			m.log.WarnContext(ctx, "failed to get filesystem for IO throttle clear", "vm_id", vmID, "error", err)
 			errs = append(errs, fmt.Sprintf("io (get filesystem): %v", err))

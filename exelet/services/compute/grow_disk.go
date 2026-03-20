@@ -56,10 +56,16 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 		"additional", humanize.Bytes(req.AdditionalBytes),
 	)
 
+	// Resolve correct pool for tiered storage
+	storageMgr, err := s.resolveStorageForInstance(ctx, req.ID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to resolve storage pool: %v", err))
+	}
+
 	// Expand the ZFS volume (this works while the VM is running)
 	// Pass resizeFilesystem=false since the filesystem is mounted inside the running VM
 	// The user must run resize2fs /dev/vda from inside the VM after restarting
-	if err := s.context.StorageManager.Expand(ctx, req.ID, newSize, false); err != nil {
+	if err := storageMgr.Expand(ctx, req.ID, newSize, false); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to expand disk: %v", err))
 	}
 

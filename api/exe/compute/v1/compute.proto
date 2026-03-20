@@ -26,6 +26,14 @@ service ComputeService {
   rpc ResizeVM(ResizeVMRequest) returns (ResizeVMResponse);
   // CloneInstance clones an existing VM using ZFS copy-on-write snapshots
   rpc CloneInstance(CloneInstanceRequest) returns (stream CloneInstanceResponse);
+  // MigrateStorageTier migrates a VM's storage between local ZFS pools (async)
+  rpc MigrateStorageTier(MigrateStorageTierRequest) returns (MigrateStorageTierResponse);
+  // GetTierMigrationStatus returns in-progress tier migration operations
+  rpc GetTierMigrationStatus(GetTierMigrationStatusRequest) returns (GetTierMigrationStatusResponse);
+  // ListStorageTiers returns all configured storage tiers and their capacity
+  rpc ListStorageTiers(ListStorageTiersRequest) returns (ListStorageTiersResponse);
+  // ClearTierMigrations removes completed and failed tier migration operations
+  rpc ClearTierMigrations(ClearTierMigrationsRequest) returns (ClearTierMigrationsResponse);
 }
 
 message CreateInstanceRequest {
@@ -473,4 +481,58 @@ message ResizeVMResponse {
   uint64 new_memory = 2;            // New memory size in bytes
   uint64 old_cpus = 3;              // Previous CPU count
   uint64 new_cpus = 4;              // New CPU count
+}
+
+// Storage tier migration messages
+message MigrateStorageTierRequest {
+  string instance_id = 1;           // Instance to migrate
+  string target_pool = 2;           // Target storage pool name
+  bool live = 3;                    // Live migration (near-zero downtime for running VMs)
+}
+
+message MigrateStorageTierResponse {
+  string operation_id = 1;          // Unique ID for tracking the async operation
+  string instance_id = 2;
+  string source_pool = 3;
+  string target_pool = 4;
+}
+
+message GetTierMigrationStatusRequest {}
+
+message TierMigrationOperation {
+  string operation_id = 1;
+  string instance_id = 2;
+  string source_pool = 3;
+  string target_pool = 4;
+  string state = 5;                 // "pending", "migrating", "completed", "failed"
+  float progress = 6;               // 0.0 to 1.0
+  string error = 7;                 // Empty if no error
+  int64 started_at = 8;             // Unix timestamp
+  int64 completed_at = 9;           // Unix timestamp (0 if not completed)
+}
+
+message GetTierMigrationStatusResponse {
+  repeated TierMigrationOperation operations = 1;
+}
+
+// Storage tiers listing
+message ListStorageTiersRequest {}
+
+message StorageTier {
+  string name = 1;                  // Pool name (e.g., "tank", "nvme")
+  bool primary = 2;                 // True if this is the primary pool
+  uint64 size_bytes = 3;            // Total pool size in bytes
+  uint64 used_bytes = 4;            // Used bytes
+  uint64 available_bytes = 5;       // Available bytes
+  uint32 instance_count = 6;        // Number of instances on this pool
+}
+
+message ListStorageTiersResponse {
+  repeated StorageTier tiers = 1;
+}
+
+message ClearTierMigrationsRequest {}
+
+message ClearTierMigrationsResponse {
+  uint32 cleared = 1;              // Number of operations cleared
 }
