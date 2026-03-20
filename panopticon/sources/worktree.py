@@ -23,8 +23,6 @@ log = logging.getLogger(__name__)
 # Client layer (host-side only)
 # ---------------------------------------------------------------------------
 
-_MAX_FILE = 200_000  # Truncate file reads beyond 200KB
-_MAX_DIFF = 200_000  # Truncate diffs beyond 200KB
 
 # Commits to hide from newsletter output (full or prefix SHAs).
 _IGNORE_COMMITS = frozenset({
@@ -80,12 +78,7 @@ class WorktreeClient:
             raise FileNotFoundError(f"File not found: {path}")
 
         with open(resolved, "r", errors="replace") as f:
-            content = f.read(_MAX_FILE + 1)
-
-        if len(content) > _MAX_FILE:
-            content = content[:_MAX_FILE] + "\n[truncated at 200KB]"
-
-        return content
+            return f.read()
 
     def ls_files(self) -> list[str]:
         """Return all tracked file paths."""
@@ -148,10 +141,7 @@ class WorktreeClient:
         )
         if result.returncode != 0:
             raise RuntimeError(f"git diff-tree failed: {result.stderr.strip()}")
-        output = result.stdout
-        if len(output) > _MAX_DIFF:
-            output = output[:_MAX_DIFF] + "\n[truncated at 200KB]"
-        return output
+        return result.stdout
 
 
 # ---------------------------------------------------------------------------
