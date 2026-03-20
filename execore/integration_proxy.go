@@ -243,6 +243,16 @@ func (s *Server) mintGitHubToken(ctx context.Context, cfg githubIntegrationConfi
 // handleIntegrationCert serves GET /_/integration-cert.
 // Exelets call this to fetch the wildcard TLS certificate for *.int.{BoxHost}.
 func (s *Server) handleIntegrationCert(w http.ResponseWriter, r *http.Request) {
+	s.serveIntegrationCert(w, r, "int")
+}
+
+// handleTeamIntegrationCert serves GET /_/team-integration-cert.
+// Exelets call this to fetch the wildcard TLS certificate for *.team-int.{BoxHost}.
+func (s *Server) handleTeamIntegrationCert(w http.ResponseWriter, r *http.Request) {
+	s.serveIntegrationCert(w, r, "team-int")
+}
+
+func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, domain string) {
 	// Security: only accept from Tailscale IPs or in GatewayDev mode.
 	host := domz.StripPort(r.RemoteAddr)
 	remoteIP, err := netip.ParseAddr(host)
@@ -256,19 +266,19 @@ func (s *Server) handleIntegrationCert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Request a cert for any name under int.{BoxHost}; the wildcard cert
-	// covers all of *.int.{BoxHost}.
-	serverName := "integration-cert." + s.env.BoxSub("int")
+	// Request a cert for a name under {domain}.{BoxHost}; the wildcard cert
+	// covers all of *.{domain}.{BoxHost}.
+	serverName := "integration-cert." + s.env.BoxSub(domain)
 	cert, err := s.wildcardCertManager.GetCertificate(serverName)
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "integration cert: GetCertificate failed", "error", err)
+		s.slog().ErrorContext(r.Context(), "integration cert: GetCertificate failed", "domain", domain, "error", err)
 		http.Error(w, "failed to get certificate", http.StatusInternalServerError)
 		return
 	}
 
 	pem, err := wildcardcert.EncodeCertificate(cert)
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "integration cert: EncodeCertificate failed", "error", err)
+		s.slog().ErrorContext(r.Context(), "integration cert: EncodeCertificate failed", "domain", domain, "error", err)
 		http.Error(w, "failed to encode certificate", http.StatusInternalServerError)
 		return
 	}

@@ -72,6 +72,7 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux.HandleFunc("POST /_/gateway/push/send", s.handleVMPushSend)
 	servMux.HandleFunc("GET /_/integration-config", s.handleIntegrationConfig)
 	servMux.HandleFunc("GET /_/integration-cert", s.handleIntegrationCert)
+	servMux.HandleFunc("GET /_/team-integration-cert", s.handleTeamIntegrationCert)
 	servMux.Handle("/", cop.Handler(s))
 
 	h := s.httpMetrics.Wrap(servMux)
@@ -156,7 +157,7 @@ func (s *Server) setupHTTPSServer() {
 	// Set up wildcard certificate manager for BoxHost (exe.xyz) using DNS-01 challenges
 	// This requires the embedded DNS server (exens) to be running
 	if s.dnsServer != nil {
-		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley"), s.env.BoxSub("int")}
+		wildcardDomains := []string{s.env.BoxHost, s.env.BoxSub("xterm"), s.env.BoxSub("shelley"), s.env.BoxSub("int"), s.env.BoxSub("team-int")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = wildcardcert.NewManager(

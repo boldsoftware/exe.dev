@@ -525,7 +525,8 @@ func serveAction(clix *cli.Context) error {
 	// Build the list of integration host suffixes. The primary suffix is derived
 	// from BoxHost (e.g., ".int.exe.xyz"). For backward compatibility, we also
 	// accept the legacy ".int.exe.cloud" suffix.
-	integrationSuffixes := []string{env.IntegrationHostSuffix()}
+	// Team integrations use *.team-int.{BoxHost}.
+	integrationSuffixes := []string{env.IntegrationHostSuffix(), env.TeamIntHostSuffix()}
 	if env.IntegrationHostSuffix() != ".int.exe.cloud" {
 		integrationSuffixes = append(integrationSuffixes, ".int.exe.cloud")
 	}

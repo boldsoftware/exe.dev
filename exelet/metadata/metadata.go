@@ -98,9 +98,9 @@ type Service struct {
 
 	gatewayRequests *prometheus.CounterVec
 
-	// tlsCertMu protects tlsCert.
+	// tlsCertMu protects tlsCerts.
 	tlsCertMu sync.RWMutex
-	tlsCert   *tls.Certificate
+	tlsCerts  map[string]*tls.Certificate // keyed by integration domain suffix (e.g. ".int.exe.xyz")
 
 	// tlsServer is the HTTPS listener (port 443), started only when a
 	// certificate is available.
@@ -255,12 +255,14 @@ func (s *Service) startTLSServer(ctx context.Context, handler http.Handler) {
 		TLSConfig: &tls.Config{
 			GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				s.tlsCertMu.RLock()
-				cert := s.tlsCert
-				s.tlsCertMu.RUnlock()
-				if cert == nil {
-					return nil, fmt.Errorf("no TLS certificate available")
+				defer s.tlsCertMu.RUnlock()
+				// Match the SNI against our integration host suffixes.
+				for suffix, cert := range s.tlsCerts {
+					if strings.HasSuffix(hello.ServerName, suffix) {
+						return cert, nil
+					}
 				}
-				return cert, nil
+				return nil, fmt.Errorf("no TLS certificate available for %s", hello.ServerName)
 			},
 		},
 	}
@@ -303,46 +305,85 @@ func (s *Service) refreshCertLoop(ctx context.Context) {
 	}
 }
 
-// fetchAndStoreIntegrationCert fetches the PEM-encoded wildcard certificate
-// from exed's /_/integration-cert endpoint and stores it for TLS serving.
-// On success the PEM is cached to disk so that a subsequent startup can use
+// fetchAndStoreIntegrationCerts fetches PEM-encoded wildcard certificates
+// from exed's /_/integration-cert endpoint for each configured integration
+// host suffix and stores them for TLS serving.
+// On success each PEM is cached to disk so that a subsequent startup can use
 // the cached cert if exed is unreachable.
 // If the fetch fails, the method tries to load a previously cached cert.
 func (s *Service) fetchAndStoreIntegrationCert(ctx context.Context) error {
-	pemBytes, fetchErr := s.fetchIntegrationCertPEM(ctx)
-	if fetchErr != nil {
-		// Try loading a cached cert from disk.
-		cached, diskErr := s.loadCachedCert()
-		if diskErr != nil {
-			return fmt.Errorf("fetch failed (%w) and no cached cert available (%v)", fetchErr, diskErr)
+	certs := make(map[string]*tls.Certificate)
+	var firstErr error
+	for _, suffix := range s.integrationHostSuffixes {
+		domain := integrationDomainFromSuffix(suffix)
+		pemBytes, fetchErr := s.fetchIntegrationCertPEM(ctx, domain)
+		if fetchErr != nil {
+			// Try loading a cached cert from disk.
+			cached, diskErr := s.loadCachedCert(domain)
+			if diskErr != nil {
+				s.log.WarnContext(ctx, "integration cert unavailable", "domain", domain, "fetch_error", fetchErr, "cache_error", diskErr)
+				if firstErr == nil {
+					firstErr = fmt.Errorf("fetch failed for %s (%w) and no cached cert available (%v)", domain, fetchErr, diskErr)
+				}
+				continue
+			}
+			certs[suffix] = cached
+			s.log.WarnContext(ctx, "using cached integration cert from disk", "domain", domain, "fetch_error", fetchErr)
+			continue
 		}
+
+		cert, err := wildcardcert.DecodeCertificate(pemBytes)
+		if err != nil {
+			s.log.WarnContext(ctx, "failed to decode integration cert", "domain", domain, "error", err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("decode cert for %s: %w", domain, err)
+			}
+			continue
+		}
+		certs[suffix] = cert
+
+		// Best-effort write to disk cache.
+		if err := s.writeCachedCert(domain, pemBytes); err != nil {
+			s.log.WarnContext(ctx, "failed to cache integration cert to disk", "domain", domain, "error", err)
+		}
+	}
+
+	if len(certs) > 0 {
 		s.tlsCertMu.Lock()
-		s.tlsCert = cached
+		s.tlsCerts = certs
 		s.tlsCertMu.Unlock()
-		s.log.WarnContext(ctx, "using cached integration cert from disk", "fetch_error", fetchErr)
 		return nil
 	}
-
-	cert, err := wildcardcert.DecodeCertificate(pemBytes)
-	if err != nil {
-		return fmt.Errorf("decode cert: %w", err)
-	}
-
-	s.tlsCertMu.Lock()
-	s.tlsCert = cert
-	s.tlsCertMu.Unlock()
-
-	// Best-effort write to disk cache.
-	if err := s.writeCachedCert(pemBytes); err != nil {
-		s.log.WarnContext(ctx, "failed to cache integration cert to disk", "error", err)
-	}
-
-	return nil
+	return firstErr
 }
 
-// fetchIntegrationCertPEM does the HTTP request to exed's /_/integration-cert.
-func (s *Service) fetchIntegrationCertPEM(ctx context.Context) ([]byte, error) {
-	u := strings.TrimRight(s.exedURL, "/") + "/_/integration-cert"
+// integrationDomainFromSuffix extracts the domain label from a suffix like ".int.exe.xyz".
+// Returns "int" for ".int.exe.xyz", "team-int" for ".team-int.exe.xyz", etc.
+// For the legacy backward-compat suffix ".int.exe.cloud", also returns "int".
+func integrationDomainFromSuffix(suffix string) string {
+	// suffix is like ".int.exe.xyz" or ".team-int.exe.cloud"
+	// Trim leading dot, split on first dot.
+	s := strings.TrimPrefix(suffix, ".")
+	if i := strings.Index(s, "."); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// integrationCertEndpoints maps domain labels to their exed cert endpoints.
+var integrationCertEndpoints = map[string]string{
+	"int":      "/_/integration-cert",
+	"team-int": "/_/team-integration-cert",
+}
+
+// fetchIntegrationCertPEM does the HTTP request to exed's cert endpoint
+// for the given integration domain (e.g., "int" or "team-int").
+func (s *Service) fetchIntegrationCertPEM(ctx context.Context, domain string) ([]byte, error) {
+	endpoint, ok := integrationCertEndpoints[domain]
+	if !ok {
+		return nil, fmt.Errorf("unknown integration domain %q", domain)
+	}
+	u := strings.TrimRight(s.exedURL, "/") + endpoint
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
@@ -363,30 +404,34 @@ func (s *Service) fetchIntegrationCertPEM(ctx context.Context) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-const certCacheFile = "integration-cert.pem"
+// certCacheFileName returns the disk cache filename for a given integration domain.
+func certCacheFileName(domain string) string {
+	return "integration-cert-" + domain + ".pem"
+}
 
 // writeCachedCert writes the PEM cert to the disk cache directory.
-func (s *Service) writeCachedCert(pem []byte) error {
+func (s *Service) writeCachedCert(domain string, pem []byte) error {
 	if s.certCachePath == "" {
 		return nil
 	}
 	if err := os.MkdirAll(s.certCachePath, 0o700); err != nil {
 		return err
 	}
+	fileName := certCacheFileName(domain)
 	// Write atomically via temp file + rename to avoid partial reads.
-	tmp := filepath.Join(s.certCachePath, certCacheFile+".tmp")
+	tmp := filepath.Join(s.certCachePath, fileName+".tmp")
 	if err := os.WriteFile(tmp, pem, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(s.certCachePath, certCacheFile))
+	return os.Rename(tmp, filepath.Join(s.certCachePath, fileName))
 }
 
 // loadCachedCert reads and decodes a previously cached cert from disk.
-func (s *Service) loadCachedCert() (*tls.Certificate, error) {
+func (s *Service) loadCachedCert(domain string) (*tls.Certificate, error) {
 	if s.certCachePath == "" {
 		return nil, fmt.Errorf("no cert cache path configured")
 	}
-	data, err := os.ReadFile(filepath.Join(s.certCachePath, certCacheFile))
+	data, err := os.ReadFile(filepath.Join(s.certCachePath, certCacheFileName(domain)))
 	if err != nil {
 		return nil, err
 	}
