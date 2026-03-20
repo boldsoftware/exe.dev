@@ -97,6 +97,22 @@ func computeCreditBar(in creditBarInput) creditBarResult {
 	}
 }
 
+// monthlyUsedPct computes the percentage of monthly allowance used.
+func monthlyUsedPct(available, max float64) float64 {
+	if max <= 0 {
+		return 0
+	}
+	used := max - available
+	if used < 0 {
+		used = 0
+	}
+	pct := (used / max) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
 // giftsFromLedger converts billing gift entries to display rows for the profile page.
 func giftsFromLedger(gifts []billing.GiftEntry) []GiftRow {
 	if len(gifts) == 0 {

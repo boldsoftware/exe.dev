@@ -156,9 +156,12 @@ type UserPageData struct {
 	ShelleyCreditsAvailable       float64 // USD remaining
 	ShelleyCreditsMax             float64 // USD ceiling
 	ExtraCreditsUSD               float64 // purchased billing credits in dollars
+	LedgerBalanceUSD              float64 // total billing ledger balance (gifts + purchases - usage)
 	TotalCreditsUSD               float64 // monthly available + extra credits
 	TotalRemainingPct             float64 // remaining / capacity * 100
 	MonthlyAvailableUSD           float64 // monthly portion of available credit (capped at plan max)
+	MonthlyUsedUSD                float64 // monthly used = max - available
+	MonthlyUsedPct                float64 // (used / max) * 100 for monthly allowance bar
 	UsedCreditsUSD                float64 // total used across all pools
 	TotalCapacityUSD              float64 // planMax + bonusGrant + extra
 	UsedBarPct                    float64 // (used / capacity) * 100

@@ -29,37 +29,31 @@ table.info th { width: 200px; }
 <h2>Shelley Credits (same as profile page)</h2>
 {{if .HasShelleyFreeCreditPct}}
 <table class="info">
-<tr><th>Total</th><td>{{printf "%.0f" .TotalCreditsUSD}} remaining of {{printf "%.0f" .TotalCapacityUSD}} capacity</td></tr>
-<tr><th>Used</th><td>{{printf "%.0f" .UsedCreditsUSD}} of {{printf "%.0f" .TotalCapacityUSD}} total</td></tr>
-{{if gt .BonusRemainingUSD 0.0}}<tr><th>Bonus</th><td>{{printf "%.0f" .BonusRemainingUSD}} remaining</td></tr>{{end}}
-{{if gt .GiftCreditsUSD 0.0}}<tr><th>Gift Credits</th><td>{{printf "%.0f" .GiftCreditsUSD}} (from gifted credits)</td></tr>{{end}}
-<tr><th>Monthly</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
-{{if gt .ExtraCreditsUSD 0.0}}<tr><th>Extra</th><td>{{printf "%.0f" .ExtraCreditsUSD}} remaining</td></tr>{{end}}
+<tr><th>Monthly Allowance</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Extra Credits</th><td>{{printf "%.0f" .LedgerBalanceUSD}} remaining</td></tr>
+</table>
 {{if .Gifts}}
-<tr><th>Gift History</th><td>
-    <table>
-    <thead><tr><th>Credits</th><th>Reason</th></tr></thead>
-    <tbody>
-    {{range .Gifts}}
-    <tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
-    {{end}}
-    </tbody>
-    </table>
-</td></tr>
+<h4>Gift History</h4>
+<table>
+<thead><tr><th>Credits</th><th>Reason</th></tr></thead>
+<tbody>
+{{range .Gifts}}
+<tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
+{{end}}
+</tbody>
+</table>
 {{end}}
 {{if .Purchases}}
-<tr><th>Purchases (Last 30D)</th><td>
-    <table>
-    <thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
-    <tbody>
-    {{range .Purchases}}
-    <tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
-    {{end}}
-    </tbody>
-    </table>
-</td></tr>
+<h4>Purchases (Last 30D)</h4>
+<table>
+<thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
+<tbody>
+{{range .Purchases}}
+<tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
 {{end}}
+</tbody>
 </table>
+{{end}}
 {{else}}
 <table class="info">
 <tr><th>Credits</th><td>-</td></tr>

@@ -84,8 +84,7 @@
 
         /* ---- Purchases ---- */
         .purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
-        .credit-section-divider { border: none; border-top: 2px solid #d0d0d0; margin: 20px 0; }
-        .credit-section-divider + .purchases { border-top: none; margin-top: 0; padding-top: 0; }
+        .purchases:first-child { border-top: none; margin-top: 0; padding-top: 0; }
         .purchases-label { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .purchases-table { width: 100%; border-collapse: collapse; }
         .purchases-table th, .purchases-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
@@ -1016,30 +1015,29 @@
             <div class="section-title">Shelley Credits</div>
             <div class="info-card">
                 {{if .HasShelleyFreeCreditPct}}
-                <div class="credit-hero">
-                    <div class="credit-hero-left">
-                        <span class="credit-hero-number {{if ge .UsedBarPct 90.0}}style-red{{end}}">{{printf "%.0f" .TotalCreditsUSD}}</span>
-                        <span class="credit-hero-label">credits remaining</span>
-                    </div>
-                </div>
-                <div class="credit-bar-wrap">
-                    <div class="credit-bar-track">
-                        <div class="credit-bar-fill {{if ge .UsedBarPct 90.0}}red{{else if ge .UsedBarPct 75.0}}orange{{else if ge .UsedBarPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .UsedBarPct}}%;"></div>
-                    </div>
-                    <div class="credit-bar-annotation">
-                        <span>{{printf "%.0f" .UsedCreditsUSD}} used</span>
-                        <span>{{printf "%.0f" .TotalCapacityUSD}} total</span>
-                    </div>
-                </div>
-                <hr class="credit-section-divider">
                 <div class="purchases">
-                    <div class="purchases-label">Plan (Monthly)</div>
-                    <table class="purchases-table">
-                    <thead><tr><th>Credits Remaining</th><th>Resets</th></tr></thead>
-                    <tbody>
-                    <tr><td>{{printf "%.0f" .MonthlyAvailableUSD}}</td><td>{{.MonthlyCreditsResetAt}}</td></tr>
-                    </tbody>
-                    </table>
+                    <div class="purchases-label">Monthly Allowance</div>
+                    <div class="credit-bar-wrap">
+                        <div class="credit-bar-track">
+                            <div class="credit-bar-fill {{if ge .MonthlyUsedPct 90.0}}red{{else if ge .MonthlyUsedPct 75.0}}orange{{else if ge .MonthlyUsedPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .MonthlyUsedPct}}%;"></div>
+                        </div>
+                        <div class="credit-bar-annotation">
+                            <span>{{printf "%.0f" .MonthlyUsedUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} used</span>
+                            <span>Resets {{.MonthlyCreditsResetAt}}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="purchases">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="purchases-label">Extra Credits</div>
+                            <div style="font-size: 14px;">{{if gt .LedgerBalanceUSD 0.0}}{{printf "%.0f" .LedgerBalanceUSD}} remaining{{else}}No extra credits{{end}} · <a href="/docs/pricing#shelley-tokens" style="font-size: 12px;">Learn more</a></div>
+                        </div>
+                        <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
+                            <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5" required class="buy-input">
+                            <button type="submit" class="btn">Buy more</button>
+                        </form>
+                    </div>
                 </div>
                 {{if .Gifts}}
                 <div class="purchases">
@@ -1067,13 +1065,6 @@
                     </table>
                 </div>
                 {{end}}
-                <div class="buy-row">
-                    <a href="/docs/pricing#shelley-tokens">Buy Extra Credits</a>
-                    <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
-                        <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5 credits" required class="buy-input">
-                        <button type="submit" class="btn">Buy</button>
-                    </form>
-                </div>
                 {{else}}
                 <div class="credit-hero">
                     <div class="credit-hero-left">

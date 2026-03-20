@@ -2314,8 +2314,8 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "Shelley Credits") {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
-	if !strings.Contains(body, "Plan (Monthly)") {
-		t.Error("Expected 'Plan (Monthly)' section on profile page")
+	if !strings.Contains(body, "Monthly Allowance") {
+		t.Error("Expected 'Monthly Allowance' section on profile page")
 	}
 	expectedReset := nextUTCMonthStart().Format("15:04 on Jan 2")
 	if !strings.Contains(body, expectedReset) {
@@ -2324,8 +2324,9 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
 	}
-	if !strings.Contains(body, ">9<") {
-		t.Fatalf("Expected hero number '9' in body")
+	// 1 of 10 used (9 available)
+	if !strings.Contains(body, "1 of 10 used") {
+		t.Fatalf("Expected '1 of 10 used' in body")
 	}
 
 	previousMonth := now.AddDate(0, -1, 0)
@@ -2350,8 +2351,9 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 		t.Fatalf("Expected 200 after previous-month refresh scenario, got %d", w.Code)
 	}
 	body = w.Body.String()
-	if !strings.Contains(body, ">10<") {
-		t.Fatalf("Expected hero number '10' after month rollover, got body: %s", body[:min(1200, len(body))])
+	// After month rollover, credits refresh to max (10) so 0 used
+	if !strings.Contains(body, "0 of 10 used") {
+		t.Fatalf("Expected '0 of 10 used' after month rollover")
 	}
 	expectedReset = nextUTCMonthStart().Format("15:04 on Jan 2")
 	if !strings.Contains(body, expectedReset) {
@@ -2486,85 +2488,63 @@ func TestCreditPurchase_ProfileCreditDisplay(t *testing.T) {
 		}
 	}
 
-	// Test credit display and progress bar presence
+	// Test monthly allowance bar and "X of Y used" display
 	upsertCredit(t, 9.0)
 	body := renderUserPage(t)
 
-	// Hero shows total credits remaining (integer)
-	if !strings.Contains(body, ">9<") {
-		t.Errorf("Expected hero number '9' in body")
+	if !strings.Contains(body, "Monthly Allowance") {
+		t.Error("Expected 'Monthly Allowance' section")
 	}
-	if !strings.Contains(body, "credits remaining") {
-		t.Error("Expected 'credits remaining' label")
+	// 1 of 10 used (10% used = green bar)
+	if !strings.Contains(body, "1 of 10 used") {
+		t.Error("Expected '1 of 10 used' in monthly allowance")
 	}
-	if !strings.Contains(body, `background: #e0e0e0`) {
-		t.Error("Expected progress bar background element")
-	}
-	// 9/10 = 90% remaining = green
 	if !strings.Contains(body, "#22a55b") {
-		t.Error("Expected green progress bar color for 90% remaining")
-	}
-	// Plan credits table
-	if !strings.Contains(body, "Plan (Monthly)") {
-		t.Error("Expected 'Plan (Monthly)' section")
-	}
-	if !strings.Contains(body, "Credits Remaining") {
-		t.Error("Expected 'Credits Remaining' column header")
+		t.Error("Expected green bar color for 10% used")
 	}
 
-	// Test full credits (100%) = green
+	// Test full credits (0% used) = green
 	upsertCredit(t, 10.0)
 	body = renderUserPage(t)
-
-	if !strings.Contains(body, ">10<") {
-		t.Errorf("Expected hero number '10' in body")
-	}
-	if !strings.Contains(body, "#22a55b") {
-		t.Error("Expected green progress bar color for 100% remaining")
+	if !strings.Contains(body, "0 of 10 used") {
+		t.Error("Expected '0 of 10 used'")
 	}
 
-	// Test yellow (25-50%): 4.0/10.0 = 40%
+	// Test 60% used: 4.0 remaining of 10 = 6 used
 	upsertCredit(t, 4.0)
 	body = renderUserPage(t)
-
-	if !strings.Contains(body, ">4<") {
-		t.Errorf("Expected hero number '4' in body")
+	if !strings.Contains(body, "6 of 10 used") {
+		t.Error("Expected '6 of 10 used'")
 	}
 	if !strings.Contains(body, "#eab308") {
-		t.Error("Expected yellow progress bar color for 40% remaining")
+		t.Error("Expected yellow bar color for 60% used")
 	}
 
-	// Test orange (10-25%): 2.0/10.0 = 20%
+	// Test 80% used: 2.0 remaining of 10 = 8 used
 	upsertCredit(t, 2.0)
 	body = renderUserPage(t)
-
-	if !strings.Contains(body, ">2<") {
-		t.Errorf("Expected hero number '2' in body")
+	if !strings.Contains(body, "8 of 10 used") {
+		t.Error("Expected '8 of 10 used'")
 	}
 	if !strings.Contains(body, "#dd6b20") {
-		t.Error("Expected orange progress bar color for 20% remaining")
+		t.Error("Expected orange bar color for 80% used")
 	}
 
-	// Test red (<10%): 0.5/10.0 = 5%
+	// Test 95% used: 0.5 remaining of 10 = 9.5 used (rounds to 10)
 	upsertCredit(t, 0.5)
 	body = renderUserPage(t)
-
-	if !strings.Contains(body, ">0<") {
-		t.Errorf("Expected hero number '0' (rounded) in body")
-	}
 	if !strings.Contains(body, "#e53e3e") {
-		t.Error("Expected red progress bar color for 5% remaining")
+		t.Error("Expected red bar color for 95% used")
 	}
 
-	// Test zero credits = red
+	// Test 100% used
 	upsertCredit(t, 0.0)
 	body = renderUserPage(t)
-
-	if !strings.Contains(body, ">0<") {
-		t.Errorf("Expected hero number '0' in body")
+	if !strings.Contains(body, "10 of 10 used") {
+		t.Error("Expected '10 of 10 used'")
 	}
 	if !strings.Contains(body, "#e53e3e") {
-		t.Error("Expected red progress bar color for 0% remaining")
+		t.Error("Expected red bar color for 100% used")
 	}
 }
 

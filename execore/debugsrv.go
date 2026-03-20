@@ -4827,6 +4827,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		TotalCapacityUSD              float64
 		UsedBarPct                    float64
 		ExtraCreditsUSD               float64
+		LedgerBalanceUSD              float64
 		ShelleyCreditsAvailable       float64
 		ShelleyCreditsMax             float64
 		TotalCreditsUSD               float64
@@ -4864,6 +4865,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		TotalCapacityUSD:              totalCapacity,
 		UsedBarPct:                    usedBarPct,
 		ExtraCreditsUSD:               extraCreditsUSD,
+		LedgerBalanceUSD:              max(float64(creditBalance.Microcents())/1_000_000, 0),
 		ShelleyCreditsAvailable:       shelleyCreditsAvailable,
 		ShelleyCreditsMax:             shelleyCreditsMax,
 		TotalCreditsUSD:               max(shelleyCreditsAvailable+extraCreditsUSD+giftCreditsUSD, 0),
