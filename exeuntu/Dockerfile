@@ -229,15 +229,16 @@ RUN ARCH=$(uname -m) && \
     chmod +x /usr/local/bin/codex
 
 # Create config directories for LLM agents
-RUN mkdir -p /home/exedev/.claude /home/exedev/.codex && \
-    chown -R exedev:exedev /home/exedev/.claude /home/exedev/.codex
+RUN mkdir -p /home/exedev/.claude /home/exedev/.codex /home/exedev/.pi && \
+    chown -R exedev:exedev /home/exedev/.claude /home/exedev/.codex /home/exedev/.pi
 
 # Copy LLM agent instructions to Claude, Codex, and Shelley config directories
 # Shelley uses ~/.config/shelley/ (XDG convention, directory already created above)
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
-RUN cp /home/exedev/.config/shelley/AGENTS.md /home/exedev/.claude/CLAUDE.md && \
-    cp /home/exedev/.config/shelley/AGENTS.md /home/exedev/.codex/AGENTS.md && \
-    chown exedev:exedev /home/exedev/.claude/CLAUDE.md /home/exedev/.codex/AGENTS.md /home/exedev/.config/shelley/AGENTS.md
+RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md && \
+    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.claude/CLAUDE.md && \
+    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.codex/AGENTS.md && \
+    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.pi/AGENTS.md
 
 # Install Claude to the native location (~/.local/bin) so auto-upgrades work correctly.
 # Symlink to /usr/local/bin for system-wide PATH access.
@@ -251,6 +252,14 @@ RUN mkdir -p /home/exedev/.local/bin && \
     chmod +x /home/exedev/.local/bin/claude && \
     chown -R exedev:exedev /home/exedev/.local && \
     ln -s /home/exedev/.local/bin/claude /usr/local/bin/claude
+
+# Install pi (pi-coding-agent) standalone binary
+RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
+    PI_VERSION=$(curl -fsSL https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name') && \
+    curl -fsSL "https://github.com/badlogic/pi-mono/releases/download/${PI_VERSION}/pi-linux-${ARCH}.tar.gz" | \
+    tar xz -C /home/exedev/.local/ && \
+    ln -s /home/exedev/.local/pi/pi /home/exedev/.local/bin/pi && \
+    chown -R exedev:exedev /home/exedev/.local/pi
 
 # Custom nginx config and index page (nginx is installed but disabled by default)
 COPY nginx.conf /etc/nginx/sites-available/default
