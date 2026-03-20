@@ -1132,10 +1132,13 @@
                         <div class="ssh-key-info">
                             <div class="ssh-key-comment">{{$ig.Name}} · {{range $i, $r := $ig.Repositories}}{{if $i}}, {{end}}{{$r}}{{end}}</div>
                             {{if $ig.Attachments}}
-                            <div class="ssh-key-meta">attached to {{range $i, $a := $ig.Attachments}}{{if $i}}, {{end}}{{$a}}{{end}}</div>
-                            {{else}}
-                            <div class="ssh-key-meta">not attached{{if $.Boxes}} · attach to {{range $i, $b := $.Boxes}}{{if $i}}, {{end}}<a href="#" onclick="cmdModal.open({title: 'Attach Integration', command: 'integrations attach ' + shellQuote({{$ig.Name}}) + ' vm:' + shellQuote({{$b.Name}})}); return false;">{{$b.Name}}</a>{{end}}{{end}}</div>
+                            <div class="ssh-key-meta">attached to {{range $i, $a := $ig.Attachments}}{{if $i}}, {{end}}<span style="display: inline-flex; align-items: center; gap: 2px;">{{$a}}<button style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #888; font-size: 14px; line-height: 1;" onclick="integrationDetach({{$ig.Name}}, '{{$a}}')" title="Detach from {{$a}}">×</button></span>{{end}}</div>
                             {{end}}
+                            <div class="ssh-key-meta"><select style="font-family: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 3px; color: #555;" onchange="if(this.value) integrationAttach({{$ig.Name}}, this.value); this.selectedIndex=0;">
+                                <option value="">{{if $ig.Attachments}}attach to another…{{else}}not attached · attach to…{{end}}</option>
+                                <option value="auto:all">auto:all</option>
+                                {{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
+                                {{end}}</select></div>
                             {{if $ig.Repositories}}<div class="ssh-key-meta" style="margin-top: 2px;">git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git <button style="border: none; background: none; cursor: pointer; padding: 0; vertical-align: middle; color: #888;" onclick="copyToClipboard(this, 'git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git')" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>{{end}}
                         </div>
                         <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{$ig.Name}}), danger: true})">Remove</button>
@@ -1186,24 +1189,72 @@
                 <div class="integration-hint" style="margin-bottom: 12px;">Proxy integrations let your VMs access authenticated HTTP services.</div>
                 {{if .ProxyIntegrations}}
                 <div class="ssh-keys-list">
-                    {{range .ProxyIntegrations}}
+                    {{range $hp := .ProxyIntegrations}}
                     <div class="ssh-key-item">
                         <div class="ssh-key-info">
-                            <div class="ssh-key-comment">{{.Name}}</div>
-                            <div class="ssh-key-fingerprint">http-proxy → {{.Target}}{{if .HasHeader}} · custom header{{end}}{{if .HasBasicAuth}} · basic auth{{end}}</div>
-                            {{if .Attachments}}
-                            <div class="ssh-key-meta">attached to {{range $i, $a := .Attachments}}{{if $i}}, {{end}}{{$a}}{{end}}</div>
-                            {{else}}
-                            <div class="ssh-key-meta">not attached</div>
+                            <div class="ssh-key-comment">{{$hp.Name}}</div>
+                            <div class="ssh-key-fingerprint">http-proxy → {{$hp.Target}}{{if $hp.HasHeader}} · custom header{{end}}{{if $hp.HasBasicAuth}} · basic auth{{end}}</div>
+                            {{if $hp.Attachments}}
+                            <div class="ssh-key-meta">attached to {{range $i, $a := $hp.Attachments}}{{if $i}}, {{end}}<span style="display: inline-flex; align-items: center; gap: 2px;">{{$a}}<button style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #888; font-size: 14px; line-height: 1;" onclick="integrationDetach({{$hp.Name}}, '{{$a}}')" title="Detach from {{$a}}">×</button></span>{{end}}</div>
                             {{end}}
+                            <div class="ssh-key-meta"><select style="font-family: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 3px; color: #555;" onchange="if(this.value) integrationAttach({{$hp.Name}}, this.value); this.selectedIndex=0;">
+                                <option value="">{{if $hp.Attachments}}attach to another…{{else}}not attached · attach to…{{end}}</option>
+                                <option value="auto:all">auto:all</option>
+                                {{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
+                                {{end}}</select></div>
                         </div>
-                        <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{.Name}}), danger: true})">Remove</button>
+                        <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{$hp.Name}}), danger: true})">Remove</button>
                     </div>
                     {{end}}
                 </div>
                 {{else}}
                 <div class="no-keys">No HTTP proxy integrations created yet.</div>
                 {{end}}
+
+                <div style="margin-top: 16px;">
+                    <button class="btn" id="http-add-integration-btn" onclick="httpWizardToggle()">Add an HTTP proxy integration</button>
+                    <div id="http-wizard" style="display: none; margin-top: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                        <div class="ssh-key-error" id="http-wizard-error" style="display: none;"></div>
+
+                        <label style="display: block; margin-bottom: 8px;">Name:
+                            <input type="text" id="http-wizard-name" placeholder="my-api" style="font-family: inherit; font-size: 13px; padding: 2px 4px; width: 200px;">
+                        </label>
+
+                        <label style="display: block; margin-bottom: 8px;">Target URL:
+                            <input type="text" id="http-wizard-target" placeholder="https://api.example.com" style="font-family: inherit; font-size: 13px; padding: 2px 4px; width: 300px;">
+                        </label>
+
+                        <label style="display: block; margin-bottom: 8px;">Auth method:
+                            <select id="http-wizard-auth" style="font-family: inherit; font-size: 13px; padding: 2px 4px;">
+                                <option value="bearer">Bearer Token</option>
+                                <option value="header">Custom Header</option>
+                            </select>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 8px;" id="http-wizard-bearer-label">Token:
+                            <input type="text" id="http-wizard-bearer" placeholder="" style="font-family: inherit; font-size: 13px; padding: 2px 4px; width: 300px;">
+                        </label>
+
+                        <label style="display: block; margin-bottom: 8px; display: none;" id="http-wizard-header-label">Header <span style="color: #888; font-weight: normal;">(Key:Value)</span>:
+                            <input type="text" id="http-wizard-header" placeholder="Authorization: Token abc123" style="font-family: inherit; font-size: 13px; padding: 2px 4px; width: 300px;">
+                        </label>
+
+                        <label style="display: block; margin-bottom: 8px;">Attach to:
+                            <select id="http-wizard-vm" style="font-family: inherit; font-size: 13px; padding: 2px 4px;">
+                                <option value="">None</option>
+                                <option value="auto:all">auto:all</option>
+                                {{range .Boxes}}
+                                <option value="vm:{{.Name}}">vm:{{.Name}} ({{.Status}})</option>
+                                {{end}}
+                            </select>
+                        </label>
+
+                        <div id="http-wizard-command" style="margin: 8px 0; padding: 4px 8px; background: #f5f5f5; border-radius: 2px; font-size: 12px; display: none;"></div>
+
+                        <button class="btn" id="http-wizard-submit" onclick="httpWizardSubmit()">Create HTTP proxy integration</button>
+                        <button class="btn" onclick="httpWizardToggle()" style="margin-left: 4px;">Cancel</button>
+                    </div>
+                </div>
             </div>
 
             <div class="integration-hint">Add integrations via SSH: <code>integrations add &lt;type&gt; --name=&lt;name&gt; ...</code> · <a href="/docs/integrations" target="_blank">Docs</a></div>
@@ -1676,6 +1727,168 @@
             }
             if (nameEl) nameEl.addEventListener('input', ghWizardUpdateCommand);
             if (vmEl) vmEl.addEventListener('change', ghWizardUpdateCommand);
+        });
+
+        // Integration attach/detach helpers (shared by GitHub + HTTP proxy)
+        async function integrationAttach(name, spec) {
+            var cmd = 'integrations attach ' + shellQuote(name) + ' ' + shellQuote(spec);
+            try {
+                var resp = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert('Attach failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
+            }
+        }
+
+        async function integrationDetach(name, spec) {
+            var cmd = 'integrations detach ' + shellQuote(name) + ' ' + shellQuote(spec);
+            try {
+                var resp = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert('Detach failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
+            }
+        }
+
+        // HTTP Proxy integration wizard
+        var httpWizardOpen = false;
+
+        function httpWizardToggle() {
+            var wizard = document.getElementById('http-wizard');
+            if (!wizard) return;
+            httpWizardOpen = !httpWizardOpen;
+            wizard.style.display = httpWizardOpen ? 'block' : 'none';
+        }
+
+        function httpWizardBuildCommand() {
+            var name = (document.getElementById('http-wizard-name').value || '').trim();
+            var target = (document.getElementById('http-wizard-target').value || '').trim();
+            var authType = document.getElementById('http-wizard-auth').value;
+            var bearer = (document.getElementById('http-wizard-bearer').value || '').trim();
+            var header = (document.getElementById('http-wizard-header').value || '').trim();
+            var vm = document.getElementById('http-wizard-vm').value;
+
+            if (!name || !target) return '';
+
+            var cmd = 'integrations add http-proxy --name=' + shellQuote(name) + ' --target=' + shellQuote(target);
+            if (authType === 'bearer' && bearer) {
+                cmd += ' --bearer=' + shellQuote(bearer);
+            } else if (authType === 'header' && header) {
+                cmd += ' --header=' + shellQuote(header);
+            }
+            if (vm) cmd += ' --attach=' + shellQuote(vm);
+            return cmd;
+        }
+
+        function httpWizardUpdateCommand() {
+            var cmdEl = document.getElementById('http-wizard-command');
+            if (!cmdEl) return;
+            var cmd = httpWizardBuildCommand();
+            if (cmd) {
+                cmdEl.textContent = cmd;
+                cmdEl.style.display = 'block';
+            } else {
+                cmdEl.style.display = 'none';
+            }
+        }
+
+        function httpWizardUpdateAuthFields() {
+            var authType = document.getElementById('http-wizard-auth').value;
+            var bearerLabel = document.getElementById('http-wizard-bearer-label');
+            var headerLabel = document.getElementById('http-wizard-header-label');
+            if (authType === 'bearer') {
+                bearerLabel.style.display = 'block';
+                headerLabel.style.display = 'none';
+            } else {
+                bearerLabel.style.display = 'none';
+                headerLabel.style.display = 'block';
+            }
+            httpWizardUpdateCommand();
+        }
+
+        async function httpWizardSubmit() {
+            var errEl = document.getElementById('http-wizard-error');
+            var btn = document.getElementById('http-wizard-submit');
+            var name = (document.getElementById('http-wizard-name').value || '').trim();
+            var target = (document.getElementById('http-wizard-target').value || '').trim();
+
+            if (!name) {
+                errEl.textContent = 'Please enter a name';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!target) {
+                errEl.textContent = 'Please enter a target URL';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            var cmd = httpWizardBuildCommand();
+            if (!cmd) {
+                errEl.textContent = 'Please fill in the required fields';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            errEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
+            try {
+                var resp = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    errEl.textContent = data.error || 'Failed to create integration';
+                    errEl.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Create HTTP proxy integration';
+                }
+            } catch (e) {
+                errEl.textContent = 'Network error: ' + e.message;
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Create HTTP proxy integration';
+            }
+        }
+
+        // Wire up HTTP wizard events
+        document.addEventListener('DOMContentLoaded', function() {
+            var authEl = document.getElementById('http-wizard-auth');
+            var nameEl = document.getElementById('http-wizard-name');
+            var targetEl = document.getElementById('http-wizard-target');
+            var bearerEl = document.getElementById('http-wizard-bearer');
+            var headerEl = document.getElementById('http-wizard-header');
+            var vmEl = document.getElementById('http-wizard-vm');
+            if (authEl) authEl.addEventListener('change', httpWizardUpdateAuthFields);
+            if (nameEl) nameEl.addEventListener('input', httpWizardUpdateCommand);
+            if (targetEl) targetEl.addEventListener('input', httpWizardUpdateCommand);
+            if (bearerEl) bearerEl.addEventListener('input', httpWizardUpdateCommand);
+            if (headerEl) headerEl.addEventListener('input', httpWizardUpdateCommand);
+            if (vmEl) vmEl.addEventListener('change', httpWizardUpdateCommand);
         });
 
         // Check passkey support on page load

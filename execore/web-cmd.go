@@ -41,6 +41,7 @@ var allowedCommands = map[string]bool{
 	"integrations add":    true,
 	"integrations remove": true,
 	"integrations attach": true,
+	"integrations detach": true,
 	"integrations setup":  true,
 }
 
