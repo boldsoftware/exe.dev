@@ -26,6 +26,11 @@ log = logging.getLogger(__name__)
 _MAX_FILE = 200_000  # Truncate file reads beyond 200KB
 _MAX_DIFF = 200_000  # Truncate diffs beyond 200KB
 
+# Commits to hide from newsletter output (full or prefix SHAs).
+_IGNORE_COMMITS = frozenset({
+    "71852544c8cea3bcdc785c885b165ade631c5928",  # execore: improve lobby ergonomics
+})
+
 
 class WorktreeClient:
     """Local git worktree client using subprocess.
@@ -116,8 +121,11 @@ class WorktreeClient:
                 continue
             parts = entry.split("\x00", 5)
             if len(parts) >= 6:
+                sha = parts[0]
+                if sha in _IGNORE_COMMITS:
+                    continue
                 commits.append({
-                    "sha": parts[0],
+                    "sha": sha,
                     "short": parts[1],
                     "subject": parts[2],
                     "author": parts[3],
@@ -129,6 +137,8 @@ class WorktreeClient:
 
     def commit_diff(self, sha: str) -> str:
         """Return the patch for a single commit."""
+        if sha in _IGNORE_COMMITS:
+            raise ValueError(f"commit {sha[:12]} not found")
         result = subprocess.run(
             ["git", "diff-tree", "-p", "--stat", "-r", sha],
             cwd=self._root,
