@@ -35,7 +35,6 @@ type SystemPromptData struct {
 	IsExeDev         bool
 	IsSudoAvailable  bool
 	Hostname         string // For exe.dev, the public hostname (e.g., "vmname.exe.xyz")
-	ShelleyDBPath    string // Path to the shelley database
 	SkillsXML        string // XML block for available skills
 	UserEmail        string // The exe.dev auth email of the user, if known
 }
@@ -161,20 +160,6 @@ func collectSystemData(workingDir string) (*SystemPromptData, error) {
 				hostname = hostname + ".exe.xyz"
 			}
 			data.Hostname = hostname
-		}
-	}
-
-	// Set shelley database path if it was configured
-	if DBPath != "" {
-		// Convert to absolute path if relative
-		if !filepath.IsAbs(DBPath) {
-			if absPath, err := filepath.Abs(DBPath); err == nil {
-				data.ShelleyDBPath = absPath
-			} else {
-				data.ShelleyDBPath = DBPath
-			}
-		} else {
-			data.ShelleyDBPath = DBPath
 		}
 	}
 

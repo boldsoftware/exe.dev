@@ -569,30 +569,31 @@ func TestSkillsFoundRegardlessOfWorkingDir(t *testing.T) {
 
 func TestBuiltinSkills(t *testing.T) {
 	builtins := BuiltinSkills()
-	if len(builtins) != 1 {
-		t.Fatalf("expected exactly 1 built-in skill, got %d: %v", len(builtins), skillNames(builtins))
+	if len(builtins) != 3 {
+		t.Fatalf("expected exactly 3 built-in skills, got %d: %v", len(builtins), skillNames(builtins))
 	}
 
-	// Find the schedule skill
-	var schedule *Skill
-	for i := range builtins {
-		if builtins[i].Name == "schedule" {
-			schedule = &builtins[i]
-			break
+	wantSkills := []string{"install-node", "previous-conversations", "schedule"}
+	for _, wantName := range wantSkills {
+		var found *Skill
+		for i := range builtins {
+			if builtins[i].Name == wantName {
+				found = &builtins[i]
+				break
+			}
 		}
-	}
-	if schedule == nil {
-		t.Fatal("expected built-in 'schedule' skill")
-	}
-
-	if schedule.Description == "" {
-		t.Error("schedule skill has empty description")
-	}
-	if schedule.Body == "" {
-		t.Error("schedule skill has empty body")
-	}
-	if schedule.Path != "" {
-		t.Errorf("built-in skill should have empty Path, got %q", schedule.Path)
+		if found == nil {
+			t.Fatalf("expected built-in %q skill", wantName)
+		}
+		if found.Description == "" {
+			t.Errorf("%s skill has empty description", wantName)
+		}
+		if found.Body == "" {
+			t.Errorf("%s skill has empty body", wantName)
+		}
+		if found.Path != "" {
+			t.Errorf("%s: built-in skill should have empty Path, got %q", wantName, found.Path)
+		}
 	}
 }
 
