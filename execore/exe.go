@@ -1201,7 +1201,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		},
 		signupPOW: newSignupPOW(),
 	}
-	s.sshPool.OnConnClosed = func(host string, user string, port int, publicKey string) {
+	s.sshPool.OnConnClosed = func(host, user string, port int, publicKey string) {
 		s.transportCache.CloseIdleConnectionsFor(host, user, port, publicKey)
 	}
 

@@ -213,7 +213,7 @@ type Pool struct {
 	// to flush HTTP idle connections that were riding on the dead tunnel.
 	//
 	// Must be set before the first use of the Pool.
-	OnConnClosed func(host string, user string, port int, publicKey string)
+	OnConnClosed func(host, user string, port int, publicKey string)
 
 	sfGroup singleflight.Group[connKey, *pooledConn]
 

@@ -102,7 +102,7 @@ func (tc *TransportCache) GetOrCreate(key transportKey, create func() *http.Tran
 // SSH endpoint matches the given parameters. This is called when an SSH
 // connection dies so that http.Transport doesn't reuse stale connections
 // that rode on the dead tunnel.
-func (tc *TransportCache) CloseIdleConnectionsFor(sshHost string, sshUser string, sshPort int, publicKey string) {
+func (tc *TransportCache) CloseIdleConnectionsFor(sshHost, sshUser string, sshPort int, publicKey string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	for key, ct := range tc.transports {

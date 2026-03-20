@@ -122,7 +122,7 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 	}
 
 	tc := exeweb.NewTransportCache(5 * time.Minute)
-	sshPool.OnConnClosed = func(host string, user string, port int, publicKey string) {
+	sshPool.OnConnClosed = func(host, user string, port int, publicKey string) {
 		tc.CloseIdleConnectionsFor(host, user, port, publicKey)
 	}
 

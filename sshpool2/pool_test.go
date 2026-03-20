@@ -1599,7 +1599,7 @@ func TestOnConnClosedCalledWhenSSHDies(t *testing.T) {
 	pool := &Pool{
 		TTL:    time.Minute,
 		Logger: tslog.Slogger(t),
-		OnConnClosed: func(host string, user string, port int, publicKey string) {
+		OnConnClosed: func(host, user string, port int, publicKey string) {
 			gotHost = host
 			gotUser = user
 			gotPort = port
