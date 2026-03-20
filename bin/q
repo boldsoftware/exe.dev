@@ -124,6 +124,18 @@ def poll_run(run_id, interval=10):
         time.sleep(interval)
 
 
+def run_linters():
+    """Run custom linters (go vet + exelint). Raises SystemExit on failure."""
+    print("q: running linters...", file=sys.stderr)
+    git_root = git("rev-parse", "--show-toplevel")
+    exelint = os.path.join(git_root, "cmd", "exelint")
+
+    run(["go", "vet", "./..."], capture=False)
+    run(["go", "build", "-o", "/tmp/exelint", f"./{os.path.relpath(exelint, git_root)}"], capture=False)
+    run(["go", "vet", "-vettool=/tmp/exelint", "./..."], capture=False)
+    print("q: linters passed", file=sys.stderr)
+
+
 def run_formatters(ref):
     """Run formatters if available and ref is HEAD. Returns True if commit was amended."""
     if ref != "HEAD":
@@ -187,6 +199,8 @@ def main():
     p.add_argument("ref", nargs="?", default="HEAD", help="ref to push (default: HEAD)")
     p.add_argument("--no-format", "-F", action="store_true",
                     help="skip running formatters")
+    p.add_argument("--no-lint", "-L", action="store_true",
+                    help="skip running linters (go vet + exelint)")
     p.add_argument("--no-check", "-C", action="store_true",
                     help="skip fast-forward dry-run check against origin/main")
     p.add_argument("--slug", "-s", action="store_true", default=None,
@@ -235,6 +249,10 @@ def main():
     # --- Formatters ---
     if not args.no_format:
         run_formatters(ref)
+
+    # --- Linters ---
+    if not args.no_lint:
+        run_linters()
 
     # --- Resolve commit (after possible formatter amend) ---
     commit = git("rev-parse", ref)
