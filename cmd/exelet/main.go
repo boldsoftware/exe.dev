@@ -526,12 +526,13 @@ func serveAction(clix *cli.Context) error {
 	// from BoxHost (e.g., ".int.exe.xyz"). For backward compatibility, we also
 	// accept the legacy ".int.exe.cloud" suffix.
 	// Team integrations use *.team-int.{BoxHost}.
-	integrationSuffixes := []string{env.IntegrationHostSuffix(), env.TeamIntHostSuffix()}
+	teamIntSuffix := env.TeamIntHostSuffix()
+	integrationSuffixes := []string{env.IntegrationHostSuffix(), teamIntSuffix}
 	if env.IntegrationHostSuffix() != ".int.exe.cloud" {
 		integrationSuffixes = append(integrationSuffixes, ".int.exe.cloud")
 	}
 	certCachePath := filepath.Join(cfg.DataDir, "certs")
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, integrationSuffixes, certCachePath, env.GatewayDev, serviceContext.MetricsRegistry)
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.MetadataURL, metadataListenAddr, integrationSuffixes, teamIntSuffix, certCachePath, env.GatewayDev, serviceContext.MetricsRegistry)
 	if err != nil {
 		return err
 	}

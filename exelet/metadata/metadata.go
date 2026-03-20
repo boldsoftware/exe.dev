@@ -96,6 +96,11 @@ type Service struct {
 	// primary suffix; additional entries provide backward compatibility.
 	integrationHostSuffixes []string
 
+	// teamIntHostSuffix is the domain suffix for team integration proxy
+	// requests (e.g., ".team-int.exe.xyz"). Team integrations are not yet
+	// implemented; requests matching this suffix are rejected with 501.
+	teamIntHostSuffix string
+
 	gatewayRequests *prometheus.CounterVec
 
 	// tlsCertMu protects tlsCerts.
@@ -143,7 +148,7 @@ var IntegrationCacheTTL = 1 * time.Minute
 // on disk (e.g., "/data/exelet/certs"). Empty disables disk caching.
 // gatewayDev relaxes outbound local-address checks for dev environments
 // where connections legitimately route through private interfaces.
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, integrationHostSuffixes []string, certCachePath string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string, integrationHostSuffixes []string, teamIntHostSuffix, certCachePath string, gatewayDev bool, registry *prometheus.Registry) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}
@@ -177,6 +182,7 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr
 		listenAddr:              listenAddr,
 		certCachePath:           certCachePath,
 		integrationHostSuffixes: integrationHostSuffixes,
+		teamIntHostSuffix:       teamIntHostSuffix,
 		gatewayDev:              gatewayDev,
 		gatewayRequests:         gatewayRequests,
 		integrationCache:        make(map[integrationCacheKey]*integrationCacheEntry),
@@ -202,7 +208,11 @@ func (s *Service) Start(ctx context.Context) error {
 	// are routed to the integration proxy handler; everything else goes
 	// to the normal mux.
 	var mainHandler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if name, ok := s.integrationHostName(r.Host); ok {
+		if name, suffix, ok := s.integrationHostName(r.Host); ok {
+			if suffix == s.teamIntHostSuffix {
+				integrationError(w, r, "team integrations are not yet available", http.StatusNotImplemented)
+				return
+			}
 			s.handleIntegrationProxy(w, r, name)
 			return
 		}
@@ -630,9 +640,9 @@ func (s *Service) handleEmailProxy(w http.ResponseWriter, r *http.Request) {
 
 // integrationHostName extracts the integration name from a Host header like
 // "myproxy.int.exe.xyz" or "myproxy.int.exe.cloud:80".
-// Returns the name and true if the host matches any configured suffix,
-// or ("", false) otherwise.
-func (s *Service) integrationHostName(host string) (string, bool) {
+// Returns the name, the matched suffix, and true if the host matches any
+// configured suffix, or ("", "", false) otherwise.
+func (s *Service) integrationHostName(host string) (string, string, bool) {
 	// Strip port if present.
 	h := host
 	if i := strings.LastIndex(h, ":"); i != -1 {
@@ -653,11 +663,11 @@ func (s *Service) integrationHostName(host string) (string, bool) {
 		if strings.HasSuffix(h, suffix) {
 			name := strings.TrimSuffix(h, suffix)
 			if name != "" {
-				return name, true
+				return name, suffix, true
 			}
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // pathMatchesPrefixes reports whether the request path matches one of the
