@@ -41,7 +41,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          uv run scripts/e4e_rlm.py 2>&1 | tee "$E4E_OUTPUT_PATH"
+          uv run scripts/e4e_rlm.py > "$E4E_OUTPUT_PATH"
 
       - name: Post failure to Slack #oops
         if: steps.run-e4e.outcome == 'failure'

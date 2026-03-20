@@ -46,9 +46,6 @@ def read_message(args: argparse.Namespace) -> str:
     return content
 
 
-THREAD_THRESHOLD = 3000
-
-
 def main() -> None:
     args = parse_args()
     token = ensure_token()
@@ -56,21 +53,8 @@ def main() -> None:
     channel_id = slack.find_channel_id(args.channel)
     message = read_message(args)
 
-    if len(message) <= THREAD_THRESHOLD:
-        slack.post_message(channel_id, message, mrkdwn=args.markdown)
-        print(f"posted message to #{args.channel}")
-    else:
-        # Long message: post summary with 🧵, then full content in thread
-        lines = message.rstrip().split("\n")
-        # Extract the CI logs link (last line) if present
-        last_line = lines[-1] if lines else ""
-        if last_line.startswith("<") and "|" in last_line and last_line.endswith(">"):
-            summary = f"🧵 CI failure - see thread for details\n{last_line}"
-        else:
-            summary = "🧵 CI failure - see thread for details"
-        parent_ts = slack.post_message(channel_id, summary, mrkdwn=args.markdown)
-        slack.post_message(channel_id, message, mrkdwn=args.markdown, thread_ts=parent_ts)
-        print(f"posted message with thread to #{args.channel}")
+    slack.post_message(channel_id, message, mrkdwn=args.markdown)
+    print(f"posted message to #{args.channel}")
 
 
 if __name__ == "__main__":
