@@ -73,6 +73,31 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 	}
 
+	// Parse integration names to attach after creation.
+	var integrationNames []string
+	if intFlag := cc.FlagSet.Lookup("integration"); intFlag != nil {
+		if repeated, ok := intFlag.Value.(*repeatedStringFlag); ok && repeated != nil {
+			for _, raw := range *repeated {
+				for _, name := range strings.Split(raw, ",") {
+					name = strings.TrimSpace(name)
+					if name != "" {
+						integrationNames = append(integrationNames, name)
+					}
+				}
+			}
+		}
+	}
+
+	// Validate that all named integrations exist before creating the VM.
+	var integrations []exedb.Integration
+	for _, name := range integrationNames {
+		ig, err := ss.getIntegrationByName(ctx, cc, user.ID, name)
+		if err != nil {
+			return err
+		}
+		integrations = append(integrations, ig)
+	}
+
 	image = strings.TrimSpace(image)
 	if err := container.ValidateImageName(image); err != nil {
 		return cc.Errorf("invalid image: %s", err)
@@ -613,6 +638,34 @@ done:
 			slog.WarnContext(ctx, "failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
 		}
 		proxyPort = bestPort
+	}
+
+	// Attach integrations to the new VM.
+	for _, ig := range integrations {
+		spec := "vm:" + boxName
+		attachments := ig.GetAttachments()
+		// Skip if already attached (shouldn't happen for a new VM, but be safe).
+		alreadyAttached := false
+		for _, a := range attachments {
+			if a == spec {
+				alreadyAttached = true
+				break
+			}
+		}
+		if alreadyAttached {
+			continue
+		}
+		attachments = append(attachments, spec)
+		if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+				Attachments:   exedb.AttachmentsJSON(attachments),
+				IntegrationID: ig.IntegrationID,
+				OwnerUserID:   user.ID,
+			})
+		}); err != nil {
+			slog.WarnContext(ctx, "failed to attach integration to new VM",
+				"integration", ig.Name, "vm", boxName, "error", err)
+		}
 	}
 
 	totalTime := time.Since(startTime)

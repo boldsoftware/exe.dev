@@ -1633,3 +1633,71 @@ func truncate(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
+
+// TestNewWithIntegration tests the --integration flag on the new command.
+func TestNewWithIntegration(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create an integration first.
+	pty.SendLine("integrations add http-proxy --name=testint --target=https://example.com --header=X-Auth:secret")
+	pty.Want("Added integration testint")
+	pty.WantPrompt()
+
+	// Create a second integration.
+	pty.SendLine("integrations add http-proxy --name=testint2 --target=https://example2.com --header=X-Auth:secret2")
+	pty.Want("Added integration testint2")
+	pty.WantPrompt()
+
+	// Create a VM with --integration (single).
+	bn := boxName(t)
+	pty.SendLine(fmt.Sprintf("new --name=%s --integration=testint", bn))
+	pty.WantRE("Creating .*" + bn)
+	pty.Want("Ready")
+	pty.WantPrompt()
+
+	// Verify the integration got attached.
+	pty.SendLine("integrations list")
+	pty.Want("vm:" + bn)
+	pty.WantPrompt()
+
+	// Detach so the next test is clean.
+	pty.SendLine(fmt.Sprintf("integrations detach testint vm:%s", bn))
+	pty.Want("Detached")
+	pty.WantPrompt()
+
+	cleanupBox(t, keyFile, bn)
+
+	// Create a VM with comma-separated --int flag (alias).
+	bn2 := boxName(t)
+	pty.SendLine(fmt.Sprintf("new --name=%s --int=testint,testint2", bn2))
+	pty.WantRE("Creating .*" + bn2)
+	pty.Want("Ready")
+	pty.WantPrompt()
+
+	// Verify both integrations got attached.
+	pty.SendLine("integrations list")
+	pty.Want("vm:" + bn2)
+	pty.Want("vm:" + bn2)
+	pty.WantPrompt()
+
+	cleanupBox(t, keyFile, bn2)
+}
+
+// TestNewWithIntegrationNotFound tests that --integration fails if the integration doesn't exist.
+func TestNewWithIntegrationNotFound(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	bn := boxName(t)
+	pty.SendLine(fmt.Sprintf("new --name=%s --integration=nonexistent", bn))
+	pty.Want("not found")
+	pty.WantPrompt()
+}

@@ -190,6 +190,10 @@ func newCommandFlags() *flag.FlagSet {
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
+	// Integrations to attach (can be specified multiple times, comma-separated)
+	var integrations repeatedStringFlag
+	fs.Var(&integrations, "integration", "integration name to attach (can be specified multiple times or comma-separated)")
+	fs.Var(&integrations, "int", "[hidden] alias for --integration")
 	return fs
 }
 
@@ -252,6 +256,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				"new                                     # just give me a computer",
 				"new --name=b --image=ubuntu:22.04       # custom image and name",
 				"new --env FOO=bar --env BAZ=qux         # with environment variables",
+				"new --integration=myproxy               # attach an integration",
 				"echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin",
 			},
 		},
