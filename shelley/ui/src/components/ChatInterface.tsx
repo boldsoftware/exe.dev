@@ -843,6 +843,8 @@ function ChatInterface({
   // Pending scroll target from loadMessages: undefined = none, null = bottom, number = saved position
   const pendingScrollRef = useRef<number | null | undefined>(undefined);
   const loadingProgressDelayRef = useRef<number | null>(null);
+  // Track the current conversation ID to detect if user navigated away during async operations
+  const currentConversationIdRef = useRef<string | null>(conversationId);
 
   const handleOpenDiffViewer = useCallback((commit: string, cwd?: string) => {
     setDiffViewerInitialCommit(commit);
@@ -920,6 +922,11 @@ function ChatInterface({
       }
     };
   }, [navigateUserMessageTrigger]);
+
+  // Update the ref whenever conversationId changes
+  useEffect(() => {
+    currentConversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -1135,9 +1142,16 @@ function ChatInterface({
   const loadMessages = async () => {
     if (!conversationId) return;
 
+    // Capture the conversation ID at the start of the async operation
+    // so we can check if it's still current when the load completes
+    const loadingConversationId = conversationId;
+
     // Check cache first — if we have this conversation cached, restore instantly
     const cached = conversationCache.get(conversationId);
     if (cached) {
+      if (loadingConversationId !== currentConversationIdRef.current) {
+        return;
+      }
       pendingScrollRef.current = scrollStore.load();
       setMessages(cached.messages);
       setLastKnownMessageCount(cached.messages.length);
@@ -1170,6 +1184,12 @@ function ChatInterface({
       const response = await api.getConversationWithProgress(conversationId, (progress) => {
         setLoadingProgress(progress);
       });
+
+      // Check if the user navigated away during the load (issue #155)
+      if (loadingConversationId !== currentConversationIdRef.current) {
+        return;
+      }
+
       // Set pending scroll target before state updates so useLayoutEffect can handle it.
       pendingScrollRef.current = scrollStore.load();
       const loadedMessages = response.messages ?? [];
@@ -1229,6 +1249,9 @@ function ChatInterface({
 
     if (!conversationId) return;
 
+    // Capture the conversation ID for this stream so we can detect stale messages
+    const streamConversationId = conversationId;
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -1247,6 +1270,11 @@ function ChatInterface({
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
+      // Ignore messages if the user has navigated to a different conversation (issue #155)
+      if (streamConversationId !== currentConversationIdRef.current) {
+        return;
+      }
+
       // Reset heartbeat timeout on every message
       resetHeartbeatTimeout();
 
