@@ -7,9 +7,12 @@ type Recipe struct {
 	BuildTarget string
 
 	// BinaryName is the output binary name on the target machine.
-	// Versioned copies use "<BinaryName>.<timestamp>-<sha>" naming
-	// with a "<BinaryName>.latest" symlink.
+	// Versioned copies use "<BinaryName>.<timestamp>-<sha>" naming.
 	BinaryName string
+
+	// SymlinkName is the symlink to update after upload.
+	// Defaults to BinaryName if empty. Set to "-" to skip symlinking.
+	SymlinkName string
 
 	// BuildDir is the subdirectory within the repo checkout to use as the
 	// working directory for go build. Empty means the repo root.
@@ -40,6 +43,13 @@ type Recipe struct {
 	PreBuildCmds []string
 }
 
+func (r Recipe) symlinkName() string {
+	if r.SymlinkName != "" {
+		return r.SymlinkName
+	}
+	return r.BinaryName
+}
+
 func (r Recipe) remoteUser() string {
 	if r.RemoteUser != "" {
 		return r.RemoteUser
@@ -52,6 +62,7 @@ var Recipes = map[string]Recipe{
 	"exeletd": {
 		BuildTarget: "./cmd/exelet",
 		BinaryName:  "exeletd",
+		SymlinkName: "exeletd.latest",
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "exelet.service",
 		HealthPort:  9081,
@@ -71,6 +82,7 @@ var Recipes = map[string]Recipe{
 	"exeprox": {
 		BuildTarget: "./cmd/exeprox",
 		BinaryName:  "exeprox",
+		SymlinkName: "-", // service uses ls -t to find newest binary
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "exeprox.service",
 		HealthPort:  443,

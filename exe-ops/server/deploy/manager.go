@@ -299,7 +299,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 	// Run pre-build commands (e.g. building embedded assets).
 	for _, cmd := range recipe.PreBuildCmds {
 		m.log.Info("pre-build", "process", process, "cmd", cmd)
-		pre := exec.CommandContext(ctx, "bash", "-c", cmd)
+		pre := exec.CommandContext(ctx, "bash", "-l", "-c", cmd)
 		pre.Dir = buildRoot
 		pre.Env = buildEnv()
 		if out, err := pre.CombinedOutput(); err != nil {
@@ -369,7 +369,12 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 }
 
 func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remotePath string) error {
-	symlink := recipe.RemoteDir + "/" + recipe.BinaryName
+	name := recipe.symlinkName()
+	if name == "-" {
+		d.setStepOutput("skipped (no symlink)")
+		return nil
+	}
+	symlink := recipe.RemoteDir + "/" + name
 	d.setStepOutput(fmt.Sprintf("%s → %s", symlink, remotePath))
 	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "ln", "-sf", remotePath, symlink)
 }
