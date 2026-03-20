@@ -48,7 +48,10 @@ func (s *ZFS) CreateMigrationSnapshot(ctx context.Context, id string) (string, f
 		s.log.DebugContext(ctx, "destroying migration snapshot", "snapshot", snapName)
 		cmd := exec.Command("zfs", "destroy", snapName)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			s.log.WarnContext(ctx, "failed to destroy migration snapshot", "snapshot", snapName, "error", err, "output", string(out))
+			// Dataset may already be destroyed as part of migration
+			if !zfsNotExist(fmt.Errorf("%s", string(out))) {
+				s.log.WarnContext(ctx, "failed to destroy migration snapshot", "snapshot", snapName, "error", err, "output", string(out))
+			}
 		}
 	}
 

@@ -423,29 +423,28 @@ func (s *ZFS) destroyDataset(dsName string) error {
 
 func (s *ZFS) waitForZvol(id string) error {
 	s.log.Debug("waiting on zvol", "id", id)
-	t := time.NewTicker(time.Millisecond * 200)
-	defer t.Stop()
 
 	diskPath, err := s.getDSDiskPath(id)
 	if err != nil {
 		return err
 	}
 
-	readyCh := make(chan struct{})
-
-	go func() {
-		for range t.C {
-			if _, err := os.Stat(diskPath); err == nil {
-				readyCh <- struct{}{}
-				return
-			}
+	deadline := time.After(time.Second * 5)
+	delay := 5 * time.Millisecond
+	maxDelay := 500 * time.Millisecond
+	for {
+		if _, err := os.Stat(diskPath); err == nil {
+			break
 		}
-	}()
-
-	select {
-	case <-readyCh:
-	case <-time.After(time.Second * 5):
-		return fmt.Errorf("timeout waiting on zvol %s on %s", id, s.hostname)
+		select {
+		case <-deadline:
+			return fmt.Errorf("timeout waiting on zvol %s on %s", id, s.hostname)
+		case <-time.After(delay):
+		}
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
 	}
 
 	// Wait for udev to finish processing the device

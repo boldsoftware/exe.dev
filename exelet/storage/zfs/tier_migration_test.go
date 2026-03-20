@@ -112,6 +112,7 @@ const (
 
 func TestTierMigration_StoppedDataset(t *testing.T) {
 	skipTierMigration(t)
+	t.Parallel()
 
 	ctx := context.Background()
 
@@ -209,6 +210,7 @@ func TestTierMigration_StoppedDataset(t *testing.T) {
 
 func TestTierMigration_EncryptionKeyPreserved(t *testing.T) {
 	skipTierMigration(t)
+	t.Parallel()
 
 	ctx := context.Background()
 
@@ -303,6 +305,7 @@ func TestTierMigration_EncryptionKeyPreserved(t *testing.T) {
 
 func TestTierMigration_IncrementalSend(t *testing.T) {
 	skipTierMigration(t)
+	t.Parallel()
 
 	ctx := context.Background()
 
@@ -423,6 +426,7 @@ func TestTierMigration_IncrementalSend(t *testing.T) {
 
 func TestTierMigration_PoolForInstance(t *testing.T) {
 	skipTierMigration(t)
+	t.Parallel()
 
 	ctx := context.Background()
 
@@ -490,6 +494,7 @@ func TestTierMigration_PoolForInstance(t *testing.T) {
 
 func TestTierMigration_ListDatasets(t *testing.T) {
 	skipTierMigration(t)
+	t.Parallel()
 
 	ctx := context.Background()
 
