@@ -79,6 +79,7 @@ const gp = (pos: { w: number; h: number }): { x: number; y: number; w: number; h
 
 const TOKEN = process.env.GRAFANA_BEARER_TOKEN;
 const GRAFANA_URL = process.env.GRAFANA_URL;
+const DEFAULT_STAGE = process.env.DEFAULT_STAGE || "production";
 
 // Interface for alert configuration
 interface AlertConfig {
@@ -126,7 +127,7 @@ function addStageVariable(dash: DashboardBuilder) {
       .label("Stage")
       .includeAll(true)
       .query('label_values(up, stage)')
-      .current({ text: "production", value: "production" })
+      .current({ text: DEFAULT_STAGE, value: DEFAULT_STAGE })
       .multi(true)
       .sort(1)
   );
@@ -4431,7 +4432,7 @@ function makeZFSDashboard() {
       .label("Stage")
       .includeAll(true)
       .query('label_values(node_zfs_arc_size, stage)')
-      .current({ text: "production", value: "production" })
+      .current({ text: DEFAULT_STAGE, value: DEFAULT_STAGE })
       .multi(true)
       .sort(1)
   );
@@ -4462,6 +4463,109 @@ function makeZFSDashboard() {
   const addTimeseriesChart = makeAddTimeseriesChart(dash, "zfs-metrics-dashboard");
 
   addReadmePanel(dash);
+
+  // ========== CLUSTER OVERVIEW ==========
+  dash.withRow(new RowBuilder("Cluster Overview"));
+
+  // Total Pool Size
+  dash.withPanel(
+    new StatBuilder()
+      .title("Total Pool Size")
+      .unit("bytes")
+      .gridPos(gp({ w: 6, h: 6 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(node_filesystem_size_bytes{fstype="zfs",${HOST_FILTER}})`)
+          .legendFormat("Total")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Total Available
+  dash.withPanel(
+    new StatBuilder()
+      .title("Available")
+      .unit("bytes")
+      .gridPos(gp({ w: 6, h: 6 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(node_filesystem_avail_bytes{fstype="zfs",${HOST_FILTER}})`)
+          .legendFormat("Available")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // ARC Cache Hit Rate
+  dash.withPanel(
+    new StatBuilder()
+      .title("ARC Cache Hit Rate")
+      .unit("percentunit")
+      .gridPos(gp({ w: 6, h: 6 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(increase(node_zfs_arc_hits{${HOST_FILTER}}[5m])) / (sum(increase(node_zfs_arc_hits{${HOST_FILTER}}[5m])) + sum(increase(node_zfs_arc_misses{${HOST_FILTER}}[5m])))`)
+          .legendFormat("Hit Rate")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "red" } as Threshold,
+            { value: 0.8, color: "yellow" } as Threshold,
+            { value: 0.95, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Average Fragmentation
+  dash.withPanel(
+    new StatBuilder()
+      .title("Avg Fragmentation")
+      .unit("percent")
+      .gridPos(gp({ w: 6, h: 6 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`avg(zpool_fragmentation_percent{pool="tank",${HOST_FILTER}})`)
+          .legendFormat("Fragmentation")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 30, color: "yellow" } as Threshold,
+            { value: 60, color: "red" } as Threshold,
+          ])
+      )
+  );
 
   // ========== ZFS POOL STATUS ==========
   dash.withRow(new RowBuilder("ZFS Pool Status"));
@@ -6683,6 +6787,857 @@ function makeSshpoolDashboard() {
   return dash;
 }
 
+function makeOpsOverviewDashboard() {
+  resetLayout();
+  const dash = new DashboardBuilder("exe Ops");
+  dash
+    .uid("exe-ops-dashboard")
+    .tags(["generated", "ops"])
+    .refresh("1m")
+    .time({ from: "now-30m", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  const STORAGE_FILTER = 'role="exelet",stage=~"$stage"';
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-ops-dashboard");
+
+  addReadmePanel(dash);
+
+  // ========== OVERVIEW ==========
+  dash.withRow(new RowBuilder("Overview").gridPos(gp({ w: 24, h: 1 })));
+
+  // Exed Servers
+  dash.withPanel(
+    new StatBuilder()
+      .title("Exed Servers")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(up{job="exed",stage=~"$stage"}) or vector(0)')
+          .legendFormat("Exed")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Exeprox Servers
+  dash.withPanel(
+    new StatBuilder()
+      .title("Exeprox Servers")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(up{job="exeprox",stage=~"$stage"}) or vector(0)')
+          .legendFormat("Exeprox")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Exelet Servers
+  dash.withPanel(
+    new StatBuilder()
+      .title("Exelet Servers")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(up{job="exelet",stage=~"$stage"}) or vector(0)')
+          .legendFormat("Exelet")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Servers Online
+  dash.withPanel(
+    new StatBuilder()
+      .title("Servers Online")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(up{job=~"exed|exeprox|exelet",stage=~"$stage"} == 1) or vector(0)')
+          .legendFormat("Online")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "red" } as Threshold,
+            { value: 1, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Servers Offline
+  dash.withPanel(
+    new StatBuilder()
+      .title("Servers Offline")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(up{job=~"exed|exeprox|exelet",stage=~"$stage"} == 0) or vector(0)')
+          .legendFormat("Offline")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Avg CPU %
+  dash.withPanel(
+    new StatBuilder()
+      .title("Avg CPU %")
+      .unit("percent")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('avg(100 - (avg by (instance) (irate(node_cpu_seconds_total{stage=~"$stage",mode="idle"}[5m])) * 100))')
+          .legendFormat("CPU")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 70, color: "yellow" } as Threshold,
+            { value: 90, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Avg Memory %
+  dash.withPanel(
+    new StatBuilder()
+      .title("Avg Memory %")
+      .unit("percent")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('avg((1 - node_memory_MemAvailable_bytes{stage=~"$stage"} / node_memory_MemTotal_bytes{stage=~"$stage"}) * 100)')
+          .legendFormat("Memory")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 70, color: "yellow" } as Threshold,
+            { value: 90, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Avg Disk %
+  dash.withPanel(
+    new StatBuilder()
+      .title("Avg Disk %")
+      .unit("percent")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('avg((1 - node_filesystem_avail_bytes{stage=~"$stage",fstype!~"tmpfs|overlay",mountpoint="/"} / node_filesystem_size_bytes{stage=~"$stage",fstype!~"tmpfs|overlay",mountpoint="/"}) * 100)')
+          .legendFormat("Disk")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 70, color: "yellow" } as Threshold,
+            { value: 90, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // ========== STORAGE ==========
+  dash.withRow(new RowBuilder("Storage").gridPos(gp({ w: 24, h: 1 })));
+
+  // Total Pools
+  dash.withPanel(
+    new StatBuilder()
+      .title("Total Pools")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`count(zpool_state{state="online",${STORAGE_FILTER}} == 1) + (count(zpool_state{state=~"degraded|faulted|suspended|unavail|removed|offline",${STORAGE_FILTER}} == 1) or vector(0))`)
+          .legendFormat("Total")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Healthy Pools
+  dash.withPanel(
+    new StatBuilder()
+      .title("Healthy Pools")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`count(zpool_state{state="online",${STORAGE_FILTER}} == 1) or vector(0)`)
+          .legendFormat("Healthy")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Unhealthy Pools
+  dash.withPanel(
+    new StatBuilder()
+      .title("Unhealthy Pools")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`count(zpool_state{state=~"degraded|faulted|suspended|unavail|removed|offline",${STORAGE_FILTER}} == 1) or vector(0)`)
+          .legendFormat("Unhealthy")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Total Size
+  dash.withPanel(
+    new StatBuilder()
+      .title("Total Size")
+      .unit("bytes")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(node_filesystem_size_bytes{fstype="zfs",${STORAGE_FILTER}})`)
+          .legendFormat("Total")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Used
+  dash.withPanel(
+    new StatBuilder()
+      .title("Used")
+      .unit("bytes")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(node_filesystem_size_bytes{fstype="zfs",${STORAGE_FILTER}} - node_filesystem_avail_bytes{fstype="zfs",${STORAGE_FILTER}})`)
+          .legendFormat("Used")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "blue" } as Threshold,
+          ])
+      )
+  );
+
+  // Available
+  dash.withPanel(
+    new StatBuilder()
+      .title("Available")
+      .unit("bytes")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(node_filesystem_avail_bytes{fstype="zfs",${STORAGE_FILTER}})`)
+          .legendFormat("Available")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // ARC Cache Rate
+  dash.withPanel(
+    new StatBuilder()
+      .title("ARC Cache Rate")
+      .unit("percentunit")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m])) / (sum(increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m])) + sum(increase(node_zfs_arc_misses{${STORAGE_FILTER}}[5m])))`)
+          .legendFormat("Hit Rate")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "red" } as Threshold,
+            { value: 0.8, color: "yellow" } as Threshold,
+            { value: 0.95, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Avg Fragmentation
+  dash.withPanel(
+    new StatBuilder()
+      .title("Avg Fragmentation")
+      .unit("percent")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`avg(zpool_fragmentation_percent{pool="tank",${STORAGE_FILTER}})`)
+          .legendFormat("Fragmentation")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 30, color: "yellow" } as Threshold,
+            { value: 60, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // ========== STORAGE GRAPHS ==========
+  dash.withRow(new RowBuilder("Storage Graphs").gridPos(gp({ w: 24, h: 1 })));
+
+  addTimeseriesChart(
+    "ARC Cache Hit Rate",
+    `increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m]) / (increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m]) + increase(node_zfs_arc_misses{${STORAGE_FILTER}}[5m]))`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Fragmentation %",
+    `zpool_fragmentation_percent{pool="tank",${STORAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Pool Capacity %",
+    `zpool_capacity_percent{pool="tank",${STORAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      gridPos: { w: 8, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  // ========== COMPONENTS ==========
+  dash.withRow(new RowBuilder("Components").gridPos(gp({ w: 24, h: 1 })));
+
+  const COMPONENT_FILTER = 'stage=~"$stage"';
+
+  // Fleet Consistency — 100% means exactly 1 version per component type
+  dash.withPanel(
+    new StatBuilder()
+      .title("Fleet Consistency")
+      .unit("percentunit")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`1 - (((count(count by (job, commit) (git_build_info{${COMPONENT_FILTER}})) or vector(0)) - (count(count by (job) (git_build_info{${COMPONENT_FILTER}})) or vector(0))) / (count(git_build_info{${COMPONENT_FILTER}}) or vector(1)))`)
+          .legendFormat("Consistency")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "red" } as Threshold,
+            { value: 0.8, color: "yellow" } as Threshold,
+            { value: 1, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Outdated — percentage of instances not on the majority version for their component
+  dash.withPanel(
+    new StatBuilder()
+      .title("Outdated")
+      .unit("percentunit")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`((count(count by (job, commit) (git_build_info{${COMPONENT_FILTER}})) or vector(0)) - (count(count by (job) (git_build_info{${COMPONENT_FILTER}})) or vector(0))) / (count(git_build_info{${COMPONENT_FILTER}}) or vector(1))`)
+          .legendFormat("Outdated")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 0.01, color: "yellow" } as Threshold,
+            { value: 0.2, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Deployed Versions table
+  dash.withPanel(
+    new TableBuilder()
+      .title("Deployed Versions")
+      .gridPos(gp({ w: 12, h: 12 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`count by (job, commit) (git_build_info{${COMPONENT_FILTER}})`)
+          .instant()
+          .format(PromQueryFormat.Table)
+      )
+  );
+
+  // Version timeline per component
+  addTimeseriesChart(
+    "exed Version",
+    `git_build_info{job="exed",${COMPONENT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} — {{commit}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "exelet Versions",
+    `git_build_info{job="exelet",${COMPONENT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} — {{commit}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "exeprox Versions",
+    `git_build_info{job="exeprox",${COMPONENT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} — {{commit}}"),
+    }
+  );
+
+  // ========== UPDATES ==========
+  dash.withRow(new RowBuilder("Updates").gridPos(gp({ w: 24, h: 1 })));
+
+  // Servers with Updates
+  dash.withPanel(
+    new StatBuilder()
+      .title("Servers with Updates")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(os_updates_pending{stage=~"$stage"} > 0) or vector(0)')
+          .legendFormat("Need Updates")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "yellow" } as Threshold,
+          ])
+      )
+  );
+
+  // Servers Up-to-Date
+  dash.withPanel(
+    new StatBuilder()
+      .title("Servers Up-to-Date")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('count(os_updates_pending{stage=~"$stage"} == 0) or vector(0)')
+          .legendFormat("Up-to-Date")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Patch Rate
+  dash.withPanel(
+    new StatBuilder()
+      .title("Patch Rate")
+      .unit("percentunit")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('(count(os_updates_pending{stage=~"$stage"} == 0) or vector(0)) / count(os_updates_pending{stage=~"$stage"})')
+          .legendFormat("Patch Rate")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "red" } as Threshold,
+            { value: 0.8, color: "yellow" } as Threshold,
+            { value: 1, color: "green" } as Threshold,
+          ])
+      )
+  );
+
+  // Total Packages
+  dash.withPanel(
+    new StatBuilder()
+      .title("Total Packages")
+      .unit("short")
+      .gridPos(gp({ w: 6, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr('sum(os_updates_pending{stage=~"$stage"}) or vector(0)')
+          .legendFormat("Packages")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "yellow" } as Threshold,
+            { value: 50, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // ========== ALERTS ==========
+  const ALERT_FILTER = 'stage=~"$stage"';
+  dash.withRow(new RowBuilder("Alerts").gridPos(gp({ w: 24, h: 1 })));
+
+  // Failed Systemd Units
+  dash.withPanel(
+    new StatBuilder()
+      .title("Failed Units")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_failed_units{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("Failed")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Stuck Systemd Units
+  dash.withPanel(
+    new StatBuilder()
+      .title("Stuck Units")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_stuck_units{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("Stuck")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "yellow" } as Threshold,
+          ])
+      )
+  );
+
+  // OOM Kills
+  dash.withPanel(
+    new StatBuilder()
+      .title("OOM Kills")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_oom_kills_total{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("OOM")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Disk I/O Errors
+  dash.withPanel(
+    new StatBuilder()
+      .title("Disk I/O Errors")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_disk_io_errors_total{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("I/O Errors")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Memory Errors
+  dash.withPanel(
+    new StatBuilder()
+      .title("Memory Errors")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_memory_errors_total{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("MCE")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Zombie Processes
+  dash.withPanel(
+    new StatBuilder()
+      .title("Zombie Processes")
+      .unit("short")
+      .gridPos(gp({ w: 4, h: 4 }))
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(system_zombie_processes{${ALERT_FILTER}}) or vector(0)`)
+          .legendFormat("Zombies")
+          .instant()
+      )
+      .colorMode(BigValueColorMode.Background)
+      .graphMode(BigValueGraphMode.Area)
+      .textMode(BigValueTextMode.Value)
+      .thresholds(
+        new ThresholdsConfigBuilder()
+          .mode(ThresholdsMode.Absolute)
+          .steps([
+            { value: null, color: "green" } as Threshold,
+            { value: 1, color: "yellow" } as Threshold,
+            { value: 10, color: "red" } as Threshold,
+          ])
+      )
+  );
+
+  // Per-host timeseries graphs
+  addTimeseriesChart(
+    "Failed Units by Host",
+    `system_failed_units{${ALERT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "OOM Kills by Host",
+    `system_oom_kills_total{${ALERT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Disk I/O Errors by Host",
+    `system_disk_io_errors_total{${ALERT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Zombie Processes by Host",
+    `system_zombie_processes{${ALERT_FILTER}}`,
+    {
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+    }
+  );
+
+  return dash;
+}
+
 async function main() {
   if (TOKEN === undefined) {
     console.error(
@@ -6715,6 +7670,7 @@ async function main() {
   await createDashboard(makeRummydDashboard());
   await createDashboard(makeRollcalldDashboard());
   await createDashboard(makeSshpoolDashboard());
+  await createDashboard(makeOpsOverviewDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();

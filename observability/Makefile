@@ -1,4 +1,4 @@
-.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-zpool-metrics deploy-notifications typecheck
+.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-node-scripts deploy-notifications typecheck
 
 # Hosts to deploy node-exporter to
 HOSTS := mon exed-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 ci.crocodile-vector.ts.net exed-staging-01 exelet-lax2-staging-01 exelet-nyc-staging-01
@@ -88,17 +88,43 @@ deploy-node-exporter:
 # Exelet hosts (hosts with ZFS pools)
 EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01
 
-# Deploy zpool metrics script to exelet hosts
-deploy-zpool-metrics:
-	@for host in $(EXELET_HOSTS); do \
+# Deploy node textfile collector scripts to hosts
+# - zpool-metrics: exelet hosts only (have ZFS pools)
+# - os-updates, system-health: all hosts
+deploy-node-scripts:
+	@trap 'echo "\nInterrupted"; exit 1' INT; \
+	for host in $(HOSTS); do \
+		echo "Deploying os-updates and system-health to $$host..."; \
+		if [ "$$host" = "ci.crocodile-vector.ts.net" ]; then \
+			user=root; \
+		else \
+			user=ubuntu; \
+		fi; \
+		scp scripts/os-updates.sh scripts/system-health.sh $$user@$$host:/tmp/ && \
+		ssh $$user@$$host "bash -c \" \
+			sudo mkdir -p /var/lib/prometheus/node-exporter && \
+			sudo mv /tmp/os-updates.sh /usr/local/bin/os-updates.sh && \
+			sudo chmod +x /usr/local/bin/os-updates.sh && \
+			sudo /usr/local/bin/os-updates.sh && \
+			sudo mv /tmp/system-health.sh /usr/local/bin/system-health.sh && \
+			sudo chmod +x /usr/local/bin/system-health.sh && \
+			sudo /usr/local/bin/system-health.sh && \
+			(sudo crontab -l 2>/dev/null | grep -v os-updates | grep -v system-health; \
+			 echo '*/15 * * * * /usr/local/bin/os-updates.sh'; \
+			 echo '* * * * * /usr/local/bin/system-health.sh') | sudo crontab - && \
+			echo 'Cron jobs installed:' && sudo crontab -l | grep -E 'os-updates|system-health'\""; \
+		echo ""; \
+	done; \
+	for host in $(EXELET_HOSTS); do \
 		echo "Deploying zpool-metrics to $$host..."; \
-		scp zpool-metrics.sh ubuntu@$$host:/tmp/zpool-metrics.sh && \
+		scp scripts/zpool-metrics.sh ubuntu@$$host:/tmp/zpool-metrics.sh && \
 		ssh ubuntu@$$host "bash -c \" \
 			sudo mkdir -p /var/lib/prometheus/node-exporter && \
 			sudo mv /tmp/zpool-metrics.sh /usr/local/bin/zpool-metrics.sh && \
 			sudo chmod +x /usr/local/bin/zpool-metrics.sh && \
 			sudo /usr/local/bin/zpool-metrics.sh && \
-			(sudo crontab -l 2>/dev/null | grep -v zpool-metrics; echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab - && \
+			(sudo crontab -l 2>/dev/null | grep -v zpool-metrics; \
+			 echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab - && \
 			echo 'Cron job installed:' && sudo crontab -l | grep zpool-metrics\""; \
 		echo ""; \
 	done

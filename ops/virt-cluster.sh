@@ -29,6 +29,8 @@ EXEPROX_VCPUS="${EXEPROX_VCPUS:-1}"
 EXEPROX_RAM="${EXEPROX_RAM:-2048}"
 EXELET_VCPUS="${EXELET_VCPUS:-4}"
 EXELET_RAM="${EXELET_RAM:-8192}"
+MON_VCPUS="${MON_VCPUS:-1}"
+MON_RAM="${MON_RAM:-2048}"
 DISK_GB="${DISK_GB:-40}"
 EXELET_DATA_DISK_GB="${EXELET_DATA_DISK_GB:-50}"
 EXELET_BACKUP_DISK_GB="${EXELET_BACKUP_DISK_GB:-50}"
@@ -46,12 +48,18 @@ CLOUD_HYPERVISOR_VERSION="${CLOUD_HYPERVISOR_VERSION:-48.0}"
 VIRTIOFSD_VERSION="${VIRTIOFSD_VERSION:-1.13.2}"
 
 CACHE_DIR="$HOME/.cache/exedops"
+APT_CACHE_ENABLED="${APT_CACHE_ENABLED:-false}"
+APT_CACHE_CONTAINER="${CLUSTER_PREFIX}-apt-cache"
+APT_CACHE_PORT="3142"
+# The host IP on the virbr0 bridge — reachable from all VMs
+APT_CACHE_HOST="192.168.122.1"
 
 # ── VM Names ─────────────────────────────────────────────────────────────────
 
 vm_name_exed() { echo "${CLUSTER_PREFIX}-exed"; }
 vm_name_exeprox() { printf 'exeprox-local-dev-%02d\n' "$1"; }
 vm_name_exelet() { printf 'exelet-local-dev-%02d\n' "$1"; }
+vm_name_mon() { echo "${CLUSTER_PREFIX}-mon"; }
 
 all_vm_names() {
     vm_name_exed
@@ -61,6 +69,7 @@ all_vm_names() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         vm_name_exelet "$i"
     done
+    vm_name_mon
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -155,6 +164,14 @@ XML
     fi
     sudo virsh net-autostart default >/dev/null 2>&1 || true
     sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+
+    # Ensure iptables FORWARD chain allows virbr0 traffic.
+    # Docker sets the FORWARD policy to DROP which blocks libvirt NAT.
+    if ! sudo iptables -C FORWARD -o virbr0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+        log "Adding iptables FORWARD rules for virbr0 (Docker compat)..."
+        sudo iptables -I FORWARD -o virbr0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+        sudo iptables -I FORWARD -i virbr0 -j ACCEPT
+    fi
 }
 
 ensure_base_image() {
@@ -162,6 +179,80 @@ ensure_base_image() {
     if [[ ! -f "${BASE_IMG}" ]]; then
         log "Downloading Ubuntu 24.04 cloud image..."
         sudo curl -L "${BASE_IMG_URL}" -o "${BASE_IMG}"
+    fi
+}
+
+# ── Apt cache (Docker, optional) ──────────────────────────────────────────
+
+ensure_apt_cache() {
+    [[ "${APT_CACHE_ENABLED}" == "true" ]] || return 0
+
+    # Already running?
+    if docker inspect -f '{{.State.Running}}' "${APT_CACHE_CONTAINER}" 2>/dev/null | grep -q true; then
+        log "Apt cache container already running"
+        return 0
+    fi
+
+    # Exists but stopped — remove and recreate (cache volume survives)
+    docker rm -f "${APT_CACHE_CONTAINER}" 2>/dev/null || true
+
+    log "Starting apt-cacher-ng container (${APT_CACHE_HOST}:${APT_CACHE_PORT})..."
+    docker run -d \
+        --name "${APT_CACHE_CONTAINER}" \
+        --restart unless-stopped \
+        -p "${APT_CACHE_PORT}:3142" \
+        -v "${CLUSTER_PREFIX}-apt-cache:/var/cache/apt-cacher-ng" \
+        sameersbn/apt-cacher-ng:latest >/dev/null
+
+    # Wait for the proxy to be ready
+    for i in $(seq 1 30); do
+        if curl -sf "http://${APT_CACHE_HOST}:${APT_CACHE_PORT}/acng-report.html" >/dev/null 2>&1; then
+            log "Apt cache ready"
+            return 0
+        fi
+        sleep 1
+    done
+    warn "Apt cache may not be ready yet, continuing anyway"
+}
+
+stop_apt_cache() {
+    [[ "${APT_CACHE_ENABLED}" == "true" ]] || return 0
+    if docker inspect "${APT_CACHE_CONTAINER}" >/dev/null 2>&1; then
+        log "Stopping apt cache container..."
+        docker stop "${APT_CACHE_CONTAINER}" 2>/dev/null || true
+        docker rm "${APT_CACHE_CONTAINER}" 2>/dev/null || true
+    fi
+}
+
+destroy_apt_cache() {
+    # Leave the apt cache container and volume intact so cached packages
+    # survive cluster destroy/recreate cycles. Manage separately with:
+    #   docker stop/rm ${CLUSTER_PREFIX}-apt-cache
+    #   docker volume rm ${CLUSTER_PREFIX}-apt-cache
+    :
+}
+
+# Returns bootcmd cloud-init snippet that:
+#   1. Kills apt-daily/unattended-upgrades before cloud-init's package module
+#      grabs the dpkg lock (the #1 cause of cloud-init hangs on Ubuntu).
+#   2. Optionally configures the apt-cacher-ng proxy.
+bootcmd_yaml() {
+    cat <<'BOOTCMD'
+bootcmd:
+  - |
+    # Mask apt timers/services so they cannot start, even if systemd hasn't
+    # fully initialised yet (bootcmd runs very early).  Masking is a symlink
+    # to /dev/null and works whether the unit is already loaded or not.
+    systemctl mask --now apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service unattended-upgrades.service 2>/dev/null || true
+    # Kill anything that already started before we could mask it.
+    killall -q apt-get dpkg unattended-upgr 2>/dev/null || true
+    # Wait for any lingering dpkg lock holder to exit.
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 1; done
+BOOTCMD
+    if [[ "${APT_CACHE_ENABLED}" == "true" ]]; then
+        cat <<APTPROXY
+  - echo 'Acquire::http::Proxy "http://${APT_CACHE_HOST}:${APT_CACHE_PORT}";' > /etc/apt/apt.conf.d/00apt-cacher-proxy
+APTPROXY
     fi
 }
 
@@ -270,7 +361,17 @@ wait_for_vm_ready() {
     fi
     echo "cloud-init..." >"$sf"
 
-    ssh ${SSH_OPTS} "${USER_NAME}@${ip}" 'sudo cloud-init status --wait' >/dev/null 2>&1
+    local ci_rc=0
+    timeout 300 ssh ${SSH_OPTS} "${USER_NAME}@${ip}" 'sudo cloud-init status --wait' >/dev/null 2>&1 || ci_rc=$?
+    if [[ "$ci_rc" -eq 124 ]]; then
+        echo "FAILED (cloud-init timed out after 300s)" >"$sf"
+        return 1
+    elif [[ "$ci_rc" -ne 0 ]]; then
+        local ci_status
+        ci_status="$(ssh ${SSH_OPTS} "${USER_NAME}@${ip}" 'sudo cloud-init status --long' 2>/dev/null || echo 'unknown')"
+        echo "FAILED (cloud-init error: ${ci_status})" >"$sf"
+        return 1
+    fi
 
     echo "READY (${ip})" >"$sf"
 
@@ -354,16 +455,17 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
-package_update: false
+$(bootcmd_yaml)
+package_update: true
 packages:
   - curl
   - jq
   - sqlite3
   - net-tools
+  - socat
+  - prometheus-node-exporter
 runcmd:
   - systemctl enable --now qemu-guest-agent || true
-  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
-  - systemctl mask apt-daily.service apt-daily-upgrade.service || true
 EOF
     cat >"${tmpdir}/meta-data" <<EOF
 instance-id: ${name}
@@ -383,14 +485,15 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
-package_update: false
+$(bootcmd_yaml)
+package_update: true
 packages:
   - curl
   - jq
+  - socat
+  - prometheus-node-exporter
 runcmd:
   - systemctl enable --now qemu-guest-agent || true
-  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
-  - systemctl mask apt-daily.service apt-daily-upgrade.service || true
 EOF
     cat >"${tmpdir}/meta-data" <<EOF
 instance-id: ${name}
@@ -410,19 +513,19 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
-package_update: false
+$(bootcmd_yaml)
+package_update: true
 packages:
   - qemu-guest-agent
   - zfsutils-linux
   - socat
   - net-tools
-  - isal
+  - libisal2
   - curl
   - jq
+  - prometheus-node-exporter
 runcmd:
   - systemctl enable --now qemu-guest-agent || true
-  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
-  - systemctl mask apt-daily.service apt-daily-upgrade.service || true
   # Hugepages (50% of RAM)
   - |
     HUGEPAGE_TARGET=\$(awk '/MemTotal/ { print int(\$2/4096); exit(0); }' /proc/meminfo)
@@ -447,6 +550,43 @@ runcmd:
 swap:
   filename: /swapfile
   size: ${EXELET_SWAP_SIZE}
+EOF
+    cat >"${tmpdir}/meta-data" <<EOF
+instance-id: ${name}
+local-hostname: ${name}
+EOF
+    generate_network_config "$tmpdir"
+}
+
+generate_cloud_init_mon() {
+    local tmpdir="$1" name="$2"
+    cat >"${tmpdir}/user-data" <<EOF
+#cloud-config
+hostname: ${name}
+users:
+  - name: ${USER_NAME}
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+$(ssh_authorized_keys_yaml)
+$(bootcmd_yaml)
+package_update: true
+packages:
+  - prometheus
+  - prometheus-node-exporter
+runcmd:
+  - systemctl enable --now qemu-guest-agent || true
+  # Add Grafana APT repo and install
+  - |
+    apt-get install -y apt-transport-https software-properties-common
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" > /etc/apt/sources.list.d/grafana.list
+    apt-get update
+    apt-get install -y grafana
+  - systemctl enable --now prometheus
+  - systemctl enable --now prometheus-node-exporter
+  - systemctl enable --now grafana-server
 EOF
     cat >"${tmpdir}/meta-data" <<EOF
 instance-id: ${name}
@@ -635,6 +775,7 @@ Wants=network-online.target
 Type=simple
 CPUWeight=1024
 IOWeight=1024
+KillMode=process
 LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 
@@ -731,6 +872,7 @@ WantedBy=multi-user.target
 EOF
 
     ssh_run "$ip" 'sudo systemctl daemon-reload && sudo systemctl enable --now exed'
+
     log "exed provisioned and started on ${ip}"
 }
 
@@ -769,7 +911,187 @@ WantedBy=multi-user.target
 EOF
 
     ssh_run "$ip" 'sudo systemctl daemon-reload && sudo systemctl enable --now exeprox'
+
     log "exeprox provisioned and started on ${ip}"
+}
+
+provision_mon() {
+    local mon_ip="$1" exed_ip="$2" exeprox_1_ip="$3"
+    shift 3
+    local exelet_ips=("$@")
+    local name
+    name="$(vm_name_mon)"
+    log "Provisioning mon VM ${name} (${mon_ip})..."
+
+    # a) Generate and deploy prometheus.yml with actual cluster IPs
+    local prom_config
+    prom_config="global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: \"prometheus\"
+    static_configs:
+      - targets: [\"localhost:9090\"]
+  - job_name: \"node\"
+    static_configs:
+      - targets: [\"localhost:9100\"]
+        labels:
+          role: \"mon\"
+          stage: \"local\"
+      - targets: [\"${exed_ip}:9100\"]
+        labels:
+          role: \"exed\"
+          stage: \"local\""
+    for eip in "${exelet_ips[@]}"; do
+        prom_config+="
+      - targets: [\"${eip}:9100\"]
+        labels:
+          role: \"exelet\"
+          stage: \"local\""
+    done
+    prom_config+="
+      - targets: [\"${exeprox_1_ip}:9100\"]
+        labels:
+          role: \"exeprox\"
+          stage: \"local\"
+  - job_name: \"grafana\"
+    static_configs:
+      - targets: [\"localhost:3000\"]
+  - job_name: \"exed\"
+    scheme: http
+    metrics_path: \"/metrics\"
+    static_configs:
+      - targets: [\"${exed_ip}:9091\"]
+        labels:
+          stage: \"local\"
+  - job_name: \"exelet\"
+    scheme: http
+    metrics_path: \"/metrics\"
+    static_configs:"
+    for eip in "${exelet_ips[@]}"; do
+        prom_config+="
+      - targets: [\"${eip}:9081\"]
+        labels:
+          stage: \"local\""
+    done
+    prom_config+="
+  - job_name: \"exeprox\"
+    scheme: http
+    metrics_path: \"/metrics\"
+    static_configs:
+      - targets: [\"${exeprox_1_ip}:9091\"]
+        labels:
+          stage: \"local\""
+
+    ssh_run "$mon_ip" "sudo tee /etc/prometheus/prometheus.yml >/dev/null" <<< "$prom_config"
+    ssh_run "$mon_ip" 'sudo systemctl restart prometheus'
+
+    # d) Deploy metrics proxy to exed/exeprox VMs
+    # exed and exeprox restrict /metrics to localhost via RequireLocalAccess
+    # (checks RemoteAddr is loopback) and isRequestOnMainPort (checks Host
+    # header port matches 8080). A Python proxy on each VM listens on 9091,
+    # forwards to localhost:8080 with the correct Host header, satisfying both.
+    for target_ip in "$exed_ip" "$exeprox_1_ip"; do
+        ssh_run "$target_ip" "sudo tee /usr/local/bin/metrics-proxy.py >/dev/null" <<'PYEOF'
+#!/usr/bin/env python3
+"""Reverse proxy that rewrites Host header for metrics scraping."""
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.request import Request, urlopen
+
+LISTEN_PORT = int(sys.argv[1])
+TARGET_PORT = int(sys.argv[2])
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        url = f"http://localhost:{TARGET_PORT}{self.path}"
+        req = Request(url, headers={"Host": f"localhost:{TARGET_PORT}", "User-Agent": "Prometheus/metrics-proxy"})
+        try:
+            resp = urlopen(req, timeout=10)
+            body = resp.read()
+            self.send_response(resp.status)
+            for k, v in resp.getheaders():
+                if k.lower() not in ("transfer-encoding", "connection"):
+                    self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as e:
+            self.send_error(502, str(e))
+    def log_message(self, format, *args):
+        pass
+
+HTTPServer(("0.0.0.0", LISTEN_PORT), Handler).serve_forever()
+PYEOF
+        ssh_run "$target_ip" 'sudo chmod +x /usr/local/bin/metrics-proxy.py'
+        ssh_run "$target_ip" "sudo tee /etc/systemd/system/metrics-proxy.service >/dev/null" <<'MPEOF'
+[Unit]
+Description=Metrics proxy (Host-header rewrite for remote /metrics scraping)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/metrics-proxy.py 9091 8080
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+MPEOF
+        ssh_run "$target_ip" 'sudo systemctl daemon-reload && sudo systemctl enable --now metrics-proxy'
+    done
+
+    # b) Provision Grafana datasource (idempotent — only restart if changed)
+    ssh_run "$mon_ip" "sudo mkdir -p /etc/grafana/provisioning/datasources"
+    local ds_yaml
+    ds_yaml="$(cat <<'DSEOF'
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+DSEOF
+)"
+    local existing_ds
+    existing_ds="$(ssh_run "$mon_ip" 'cat /etc/grafana/provisioning/datasources/prometheus.yaml 2>/dev/null' || true)"
+    if [[ "$existing_ds" != "$ds_yaml" ]]; then
+        ssh_run "$mon_ip" "sudo tee /etc/grafana/provisioning/datasources/prometheus.yaml >/dev/null" <<< "$ds_yaml"
+        ssh_run "$mon_ip" 'sudo systemctl restart grafana-server'
+    fi
+
+    # c) Create Grafana service account + API token (skip if token already exists)
+    if ssh_run "$mon_ip" 'test -s /home/ubuntu/grafana-token' 2>/dev/null; then
+        log "Grafana token already exists, skipping service account setup"
+    else
+        log "Waiting for Grafana to become ready..."
+        for i in $(seq 1 60); do
+            if ssh_run "$mon_ip" 'curl -sf http://localhost:3000/api/health' >/dev/null 2>&1; then
+                break
+            fi
+            sleep 2
+        done
+
+        local sa_response sa_id token_response token
+        sa_response="$(ssh_run "$mon_ip" "curl -s -X POST http://admin:admin@localhost:3000/api/serviceaccounts -H 'Content-Type: application/json' -d '{\"name\":\"virt-cluster\",\"role\":\"Admin\"}'" 2>/dev/null || true)"
+        sa_id="$(echo "$sa_response" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)"
+
+        if [[ -n "$sa_id" ]]; then
+            token_response="$(ssh_run "$mon_ip" "curl -sf -X POST http://admin:admin@localhost:3000/api/serviceaccounts/${sa_id}/tokens -H 'Content-Type: application/json' -d '{\"name\":\"virt-cluster-token\"}'" 2>/dev/null || true)"
+            token="$(echo "$token_response" | grep -o '"key":"[^"]*"' | cut -d'"' -f4)"
+            if [[ -n "$token" ]]; then
+                ssh_run "$mon_ip" "echo '${token}' > /home/ubuntu/grafana-token"
+                log "Grafana service account token saved to /home/ubuntu/grafana-token"
+            else
+                warn "Failed to create Grafana API token"
+            fi
+        else
+            warn "Failed to create Grafana service account"
+        fi
+    fi
+
+    log "mon VM provisioned"
 }
 
 # ── Port forwarding (socat-based) ────────────────────────────────────────────
@@ -778,6 +1100,7 @@ SOCAT_PID_DIR="/tmp/${CLUSTER_PREFIX}-socat"
 
 setup_port_forwarding() {
     local exed_ip="$1"
+    local mon_ip="${2:-}"
     log "Setting up port forwarding to exed VM (${exed_ip})..."
 
     # Kill existing socat forwarders for this cluster
@@ -786,7 +1109,10 @@ setup_port_forwarding() {
     mkdir -p "${SOCAT_PID_DIR}"
 
     # Host :2222 → exed :2222 (SSH via sshpiper)
-    sudo sh -c "socat TCP-LISTEN:2222,fork,reuseaddr TCP:${exed_ip}:2222 & echo \$! > '${SOCAT_PID_DIR}/ssh.pid'"
+    # Port 2222 is unprivileged — no sudo needed
+    socat TCP-LISTEN:2222,fork,reuseaddr "TCP:${exed_ip}:2222" &
+    echo $! >"${SOCAT_PID_DIR}/ssh.pid"
+    disown
 
     # Host :8080 → exed :8080 (HTTP) via SSH tunnel so exed sees localhost origin
     # (requireLocalAccess gates /debug and other endpoints on loopback)
@@ -796,6 +1122,20 @@ setup_port_forwarding() {
     log "Port forwarding active:"
     log "  SSH:   localhost:2222 -> ${exed_ip}:2222"
     log "  HTTP:  localhost:8080 -> ${exed_ip}:8080"
+
+    # Mon VM port forwarding (Grafana + Prometheus)
+    if [[ -n "$mon_ip" ]]; then
+        socat TCP-LISTEN:3000,fork,reuseaddr "TCP:${mon_ip}:3000" &
+        echo $! >"${SOCAT_PID_DIR}/grafana.pid"
+        disown
+
+        socat TCP-LISTEN:9090,fork,reuseaddr "TCP:${mon_ip}:9090" &
+        echo $! >"${SOCAT_PID_DIR}/prometheus.pid"
+        disown
+
+        log "  Grafana:    localhost:3000 -> ${mon_ip}:3000"
+        log "  Prometheus: localhost:9090 -> ${mon_ip}:9090"
+    fi
 }
 
 teardown_port_forwarding() {
@@ -803,13 +1143,20 @@ teardown_port_forwarding() {
         for pidfile in "${SOCAT_PID_DIR}"/*.pid; do
             [[ -f "$pidfile" ]] || continue
             local pid
-            pid=$(sudo cat "$pidfile" 2>/dev/null || true)
+            pid=$(cat "$pidfile" 2>/dev/null || true)
             if [[ -n "$pid" ]]; then
-                sudo kill "$pid" 2>/dev/null || true
+                kill "$pid" 2>/dev/null || true
             fi
         done
-        sudo rm -rf "${SOCAT_PID_DIR}"
+        rm -rf "${SOCAT_PID_DIR}"
     fi
+    # Kill any orphaned socat/ssh forwarders on our ports
+    pkill -f 'socat TCP-LISTEN:2222,' 2>/dev/null || true
+    pkill -f 'socat TCP-LISTEN:3000,' 2>/dev/null || true
+    pkill -f 'socat TCP-LISTEN:9090,' 2>/dev/null || true
+    # Kill SSH tunnel for HTTP port forwarding
+    pkill -f 'ssh.*-L 8080:localhost:8080' 2>/dev/null || true
+    pkill -f 'ssh.*-L 8080:localhost:8080' 2>/dev/null || true
 }
 
 # ── Envfile ──────────────────────────────────────────────────────────────────
@@ -847,9 +1194,23 @@ write_envfile() {
             echo "EXELET_${i}_IP=${eip}"
         done
         echo ""
+
+        local mon_ip
+        mon_ip="$(get_vm_ip "$(vm_name_mon)")"
+        echo "MON_VM=$(vm_name_mon)"
+        echo "MON_IP=${mon_ip}"
+        if [[ -n "$mon_ip" ]]; then
+            local grafana_token
+            grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
+            echo "GRAFANA_URL=http://localhost:3000/"
+            echo "GRAFANA_BEARER_TOKEN=${grafana_token}"
+        fi
+        echo ""
         echo "# Access:"
-        echo "# HTTP:  http://localhost:8080"
-        echo "# SSH:   ssh -p 2222 <box>@localhost"
+        echo "# HTTP:       http://localhost:8080"
+        echo "# SSH:        ssh -p 2222 <box>@localhost"
+        echo "# Grafana:    http://localhost:3000 (admin/admin)"
+        echo "# Prometheus: http://localhost:9090"
     } >"${envfile}"
     echo "${envfile}"
 }
@@ -860,6 +1221,7 @@ cmd_start() {
     check_prerequisites
     ensure_base_image
     ensure_libvirt_default_net
+    ensure_apt_cache
     ensure_cloud_hypervisor_artifacts
 
     # Build all binaries
@@ -880,6 +1242,9 @@ cmd_start() {
         create_vm "$(vm_name_exelet "$i")" "${EXELET_VCPUS}" "${EXELET_RAM}" generate_cloud_init_exelet true
     done
 
+    # Create mon VM
+    create_vm "$(vm_name_mon)" "${MON_VCPUS}" "${MON_RAM}" generate_cloud_init_mon false
+
     # ── Wait for all VMs (IP + SSH + cloud-init) ────────────────────────
 
     log "Waiting for VMs to become ready..."
@@ -899,6 +1264,7 @@ cmd_start() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         all_names+=("$(vm_name_exelet "$i")")
     done
+    all_names+=("$(vm_name_mon)")
 
     wait_for_vm_ready "$(vm_name_exed)" "$status_dir" >"${wait_dir}/exed" &
     local pid_exed=$!
@@ -914,6 +1280,9 @@ cmd_start() {
         exelet_pids[$i]=$!
     done
 
+    wait_for_vm_ready "$(vm_name_mon)" "$status_dir" >"${wait_dir}/mon" &
+    local pid_mon=$!
+
     # Redraw status lines in-place until all VMs are done
     display_vm_status "$status_dir" "${all_names[@]}"
 
@@ -925,6 +1294,7 @@ cmd_start() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         wait "${exelet_pids[$i]}" || die "exelet-${i} VM failed to become ready"
     done
+    wait "$pid_mon" || die "mon VM failed to become ready"
 
     # Read IPs from temp files
     local exed_ip
@@ -939,6 +1309,9 @@ cmd_start() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         exelet_ips[$i]="$(cat "${wait_dir}/exelet-${i}")"
     done
+
+    local mon_ip
+    mon_ip="$(cat "${wait_dir}/mon")"
 
     log "All VMs ready"
 
@@ -996,6 +1369,13 @@ cmd_start() {
         for i in $(seq 1 "${NUM_EXEPROXES}"); do
             provision_exeprox "${exeprox_ips[$i]}" "$exed_ip" "$(vm_name_exeprox "$i")"
         done
+
+        # ── Provision mon VM ─────────────────────────────────────────
+        local mon_exelet_ip_list=()
+        for i in $(seq 1 "${NUM_EXELETS}"); do
+            mon_exelet_ip_list+=("${exelet_ips[$i]}")
+        done
+        provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
     else
         # ── Refresh IPs in systemd units (DHCP may have reassigned) ──────
         log "Refreshing service configs with current IPs..."
@@ -1016,10 +1396,17 @@ cmd_start() {
             ssh_run "${exeprox_ips[$i]}" "sudo sed -i 's|-exed-grpc-addr=tcp://[^:]*:2225|-exed-grpc-addr=tcp://${exed_ip}:2225|' /etc/systemd/system/exeprox.service"
             ssh_run "${exeprox_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl restart exeprox'
         done
+
+        # Refresh mon prometheus config with current IPs
+        local mon_exelet_ip_list=()
+        for i in $(seq 1 "${NUM_EXELETS}"); do
+            mon_exelet_ip_list+=("${exelet_ips[$i]}")
+        done
+        provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
     fi
 
     # ── Port forwarding ──────────────────────────────────────────────────
-    setup_port_forwarding "$exed_ip"
+    setup_port_forwarding "$exed_ip" "$mon_ip"
 
     # ── Write envfile ────────────────────────────────────────────────────
     write_envfile
@@ -1028,8 +1415,10 @@ cmd_start() {
 
     log ""
     log "Cluster is ready!"
-    log "  HTTP:  http://localhost:8080"
-    log "  SSH:   ssh -p 2222 <box>@localhost"
+    log "  HTTP:       http://localhost:8080"
+    log "  SSH:        ssh -p 2222 <box>@localhost"
+    log "  Grafana:    http://localhost:3000 (admin/admin)"
+    log "  Prometheus: http://localhost:9090"
 }
 
 cmd_deploy() {
@@ -1090,15 +1479,114 @@ cmd_deploy() {
         log "  ${pname}: exeprox restarted"
     done
 
+    # ── Refresh mon prometheus config ────────────────────────────────────
+    local mon_ip
+    mon_ip="$(get_vm_ip "$(vm_name_mon)")"
+    if [[ -n "$mon_ip" ]]; then
+        log "Refreshing prometheus config on mon VM..."
+        local mon_exelet_ip_list=()
+        for i in $(seq 1 "${NUM_EXELETS}"); do
+            local ename eip
+            ename="$(vm_name_exelet "$i")"
+            eip="$(get_vm_ip "$ename")"
+            [[ -n "$eip" ]] && mon_exelet_ip_list+=("$eip")
+        done
+        local exeprox_1_ip
+        exeprox_1_ip="$(get_vm_ip "$(vm_name_exeprox 1)")"
+        provision_mon "$mon_ip" "$exed_ip" "${exeprox_1_ip}" "${mon_exelet_ip_list[@]}"
+    fi
+
     # Refresh port forwarding (IPs may have changed after reboot, though unlikely)
-    setup_port_forwarding "$exed_ip"
+    setup_port_forwarding "$exed_ip" "$mon_ip"
 
     log "Deploy complete!"
+}
+
+cmd_deploy_metrics() {
+    local mon_ip
+    mon_ip="$(get_vm_ip "$(vm_name_mon)")"
+    if [[ -z "$mon_ip" ]]; then
+        die "mon VM not running. Run 'start' first."
+    fi
+
+    # ── Regenerate prometheus config with current IPs ─────────────────
+    local exed_ip
+    exed_ip="$(get_vm_ip "$(vm_name_exed)")"
+    if [[ -z "$exed_ip" ]]; then
+        die "exed VM not running. Run 'start' first."
+    fi
+
+    local mon_exelet_ip_list=()
+    for i in $(seq 1 "${NUM_EXELETS}"); do
+        local eip
+        eip="$(get_vm_ip "$(vm_name_exelet "$i")")"
+        [[ -n "$eip" ]] && mon_exelet_ip_list+=("$eip")
+    done
+    local exeprox_1_ip
+    exeprox_1_ip="$(get_vm_ip "$(vm_name_exeprox 1)")"
+
+    provision_mon "$mon_ip" "$exed_ip" "${exeprox_1_ip}" "${mon_exelet_ip_list[@]}"
+
+    # ── Deploy node scripts to all VMs ───────────────────────────────
+    # os-updates and system-health go to every VM; zpool-metrics only to exelets.
+    for name in $(all_vm_names); do
+        local vip
+        vip="$(get_vm_ip "$name")"
+        if [[ -z "$vip" ]]; then
+            warn "VM ${name} not running, skipping node scripts"
+            continue
+        fi
+        log "Deploying node scripts to ${name} (${vip})..."
+        scp_to "$vip" "${REPO_ROOT}/observability/scripts/os-updates.sh"
+        scp_to "$vip" "${REPO_ROOT}/observability/scripts/system-health.sh"
+        ssh_run "$vip" "sudo mkdir -p /var/lib/prometheus/node-exporter && \
+            sudo mv ~/os-updates.sh /usr/local/bin/os-updates.sh && \
+            sudo chmod +x /usr/local/bin/os-updates.sh && \
+            sudo /usr/local/bin/os-updates.sh && \
+            sudo mv ~/system-health.sh /usr/local/bin/system-health.sh && \
+            sudo chmod +x /usr/local/bin/system-health.sh && \
+            sudo /usr/local/bin/system-health.sh"
+        local cron_entries="'*/15 * * * * /usr/local/bin/os-updates.sh'; echo '* * * * * /usr/local/bin/system-health.sh'"
+        local cron_filter="grep -v os-updates | grep -v system-health"
+        # Exelet-specific: zpool-metrics script
+        if [[ "$name" == exelet-* ]]; then
+            scp_to "$vip" "${REPO_ROOT}/observability/scripts/zpool-metrics.sh"
+            ssh_run "$vip" "sudo mv ~/zpool-metrics.sh /usr/local/bin/zpool-metrics.sh && \
+                sudo chmod +x /usr/local/bin/zpool-metrics.sh && \
+                sudo /usr/local/bin/zpool-metrics.sh"
+            cron_entries="'* * * * * /usr/local/bin/zpool-metrics.sh'; echo ${cron_entries}"
+            cron_filter="grep -v zpool-metrics | ${cron_filter}"
+        fi
+        # Install cron jobs
+        ssh_run "$vip" "(sudo crontab -l 2>/dev/null | ${cron_filter}; echo ${cron_entries}) | sudo crontab -"
+        # Enable textfile collector on node-exporter if not already configured
+        if ! ssh_run "$vip" 'grep -q textfile /etc/default/prometheus-node-exporter' 2>/dev/null; then
+            ssh_run "$vip" "sudo sed -i 's|^ARGS=.*|ARGS=\"--collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter\"|' /etc/default/prometheus-node-exporter"
+            ssh_run "$vip" 'sudo systemctl restart prometheus-node-exporter'
+        fi
+    done
+
+    # ── Ensure port forwarding is active ─────────────────────────────
+    setup_port_forwarding "$exed_ip" "$mon_ip"
+
+    # ── Deploy Grafana dashboards ─────────────────────────────────────
+    local grafana_token
+    grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
+    if [[ -z "$grafana_token" ]]; then
+        die "No Grafana token found on mon VM. Was the cluster provisioned?"
+    fi
+
+    log "Deploying Grafana dashboards to local Grafana (http://localhost:3000)..."
+    (cd "${REPO_ROOT}/observability" && \
+        DEFAULT_STAGE=local make deploy-grafana \
+            GRAFANA_URL="http://localhost:3000/" \
+            GRAFANA_BEARER_TOKEN="${grafana_token}")
 }
 
 cmd_stop() {
     log "Stopping cluster VMs..."
     teardown_port_forwarding
+    stop_apt_cache
 
     for name in $(all_vm_names); do
         if vm_running "$name"; then
@@ -1175,6 +1663,11 @@ cmd_status() {
                         else
                             service="exeletd (inactive)"
                         fi
+                    elif [[ "$name" == *-mon ]]; then
+                        local prom_status graf_status
+                        prom_status="$(ssh_run "$ip" 'systemctl is-active prometheus' 2>/dev/null || echo "inactive")"
+                        graf_status="$(ssh_run "$ip" 'systemctl is-active grafana-server' 2>/dev/null || echo "inactive")"
+                        service="prometheus (${prom_status}), grafana (${graf_status})"
                     fi
                 fi
             fi
@@ -1192,8 +1685,8 @@ cmd_status() {
             [[ -f "$pidfile" ]] || continue
             local label pid
             label="$(basename "$pidfile" .pid)"
-            pid=$(sudo cat "$pidfile" 2>/dev/null || true)
-            if [[ -n "$pid" ]] && sudo kill -0 "$pid" 2>/dev/null; then
+            pid=$(cat "$pidfile" 2>/dev/null || true)
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
                 echo "  ${label}: active (pid ${pid})"
             else
                 echo "  ${label}: dead"
@@ -1202,26 +1695,40 @@ cmd_status() {
     else
         echo "  none"
     fi
+
+    # Grafana access info
+    local mon_ip
+    mon_ip="$(get_vm_ip "$(vm_name_mon)" || true)"
+    if [[ -n "$mon_ip" ]]; then
+        echo ""
+        echo "Grafana: http://localhost:3000 (admin/admin)"
+        local grafana_token
+        grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
+        if [[ -n "$grafana_token" ]]; then
+            echo "Grafana Bearer Token: ${grafana_token}"
+        fi
+    fi
 }
 
 cmd_destroy() {
     log "Destroying cluster..."
     teardown_port_forwarding
+    destroy_apt_cache
 
     local names
     names="$(all_vm_names)"
     for name in $names; do
         if vm_exists "$name"; then
             log "Destroying ${name}..."
-            sudo virsh destroy "$name" 2>/dev/null || true
-            sudo virsh undefine "$name" --remove-all-storage 2>/dev/null || true
+            sudo virsh destroy "$name" >/dev/null 2>&1 || true
+            sudo virsh undefine "$name" --remove-all-storage >/dev/null 2>&1 || true
         else
             log "VM ${name} not found, skipping"
         fi
 
-        # Clean up any leftover disk images and seed ISOs
-        for f in "${WORKDIR}/${name}.qcow2" "${WORKDIR}/${name}-data.qcow2" "${WORKDIR}/${name}-backup.qcow2" "${WORKDIR}/${name}-seed.iso"; do
-            sudo rm -f "$f" 2>/dev/null || true
+        # Clean up any leftover disk images and seed ISOs via virsh
+        for f in "${name}.qcow2" "${name}-data.qcow2" "${name}-backup.qcow2" "${name}-seed.iso"; do
+            sudo virsh vol-delete --pool default "${f}" >/dev/null 2>&1 || true
         done
     done
 
@@ -1239,20 +1746,24 @@ stop) cmd_stop ;;
 status) cmd_status ;;
 destroy) cmd_destroy ;;
 deploy) cmd_deploy ;;
+deploy-metrics) cmd_deploy_metrics ;;
 *)
-    echo "Usage: $0 {start|stop|status|destroy|deploy}"
+    echo "Usage: $0 {start|stop|status|destroy|deploy|deploy-metrics}"
     echo ""
     echo "Subcommands:"
-    echo "  start    Create and provision the VM cluster (idempotent)"
-    echo "  stop     Gracefully stop all VMs (preserves disks)"
-    echo "  status   Show cluster status, IPs, and services"
-    echo "  destroy  Tear down all VMs and remove disks"
-    echo "  deploy   Rebuild binaries, push to VMs, restart services"
+    echo "  start           Create and provision the VM cluster (idempotent)"
+    echo "  stop            Gracefully stop all VMs (preserves disks)"
+    echo "  status          Show cluster status, IPs, and services"
+    echo "  destroy         Tear down all VMs and remove disks"
+    echo "  deploy          Rebuild binaries, push to VMs, restart services"
+    echo "  deploy-metrics  Update prometheus config and deploy Grafana dashboards"
     echo ""
     echo "Environment variables:"
     echo "  NUM_EXELETS=${NUM_EXELETS}  NUM_EXEPROXES=${NUM_EXEPROXES}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
-    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
+    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
+    echo "  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
+    echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
     exit 1
     ;;
 esac
