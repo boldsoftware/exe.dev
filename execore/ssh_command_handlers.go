@@ -506,6 +506,12 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleExe0ToExe1Command,
 		},
 		{
+			Name:        "tetris",
+			Hidden:      true,
+			Description: "Play Tetris",
+			Handler:     ss.handleTetrisCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
