@@ -229,24 +229,19 @@ func (m *Manager) getBuildLock(key string) *sync.Mutex {
 }
 
 // buildEnv returns os.Environ() with GOOS/GOARCH/CGO_ENABLED for cross-compilation,
-// plus GOPATH/HOME defaults so `go build` works even when running as root under systemd.
+// plus sensible defaults for PATH/GOPATH/HOME so builds work under systemd.
 func buildEnv() []string {
 	env := os.Environ()
-	hasGOPATH := false
-	hasHOME := false
+	has := map[string]bool{}
 	for _, e := range env {
-		if strings.HasPrefix(e, "GOPATH=") {
-			hasGOPATH = true
-		}
-		if strings.HasPrefix(e, "HOME=") {
-			hasHOME = true
+		if i := strings.IndexByte(e, '='); i > 0 {
+			has[e[:i]] = true
 		}
 	}
-	if !hasHOME {
+	if !has["HOME"] {
 		env = append(env, "HOME=/root")
 	}
-	if !hasGOPATH {
-		// Default to /root/go which is Go's default for root.
+	if !has["GOPATH"] {
 		home := "/root"
 		for _, e := range env {
 			if strings.HasPrefix(e, "HOME=") {
@@ -255,6 +250,23 @@ func buildEnv() []string {
 			}
 		}
 		env = append(env, "GOPATH="+home+"/go")
+	}
+	if !has["PATH"] {
+		env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	} else {
+		// Ensure common dirs are present even if systemd set a minimal PATH.
+		for i, e := range env {
+			if strings.HasPrefix(e, "PATH=") {
+				p := e[5:]
+				for _, d := range []string{"/usr/local/bin", "/usr/bin", "/usr/local/sbin"} {
+					if !strings.Contains(p, d) {
+						p = p + ":" + d
+					}
+				}
+				env[i] = "PATH=" + p
+				break
+			}
+		}
 	}
 	return append(env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 }
