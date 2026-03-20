@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/textproto"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -12,12 +13,17 @@ import (
 // use as a subdomain (e.g. "myproxy" in "myproxy.int.exe.cloud").
 // Rules: 1–63 chars, lowercase ASCII letters, digits, and hyphens,
 // must start and end with a letter or digit.
+var reservedIntegrationNameRe = regexp.MustCompile(`^exe-`)
+
 func validateIntegrationName(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
 	}
 	if name == "notify" {
 		return fmt.Errorf("name %q is reserved for the built-in notification integration", name)
+	}
+	if reservedIntegrationNameRe.MatchString(name) {
+		return fmt.Errorf("names starting with %q are reserved", "exe-")
 	}
 	if len(name) > 63 {
 		return fmt.Errorf("name must be 63 characters or fewer")

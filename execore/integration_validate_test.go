@@ -17,6 +17,8 @@ func TestValidateIntegrationName(t *testing.T) {
 		"has_underscore", "a/b", "a:b",
 		"notify",                 // reserved for built-in integration
 		string(make([]byte, 64)), // 64 chars, too long
+		"exe-foo",                // reserved prefix
+		"exe-",                   // reserved prefix (bare)
 	}
 	for _, name := range bad {
 		if err := validateIntegrationName(name); err == nil {
