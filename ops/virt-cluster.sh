@@ -984,7 +984,7 @@ scrape_configs:
         labels:
           stage: \"local\""
 
-    ssh_run "$mon_ip" "sudo tee /etc/prometheus/prometheus.yml >/dev/null" <<< "$prom_config"
+    ssh_run "$mon_ip" "sudo tee /etc/prometheus/prometheus.yml >/dev/null" <<<"$prom_config"
     ssh_run "$mon_ip" 'sudo systemctl restart prometheus'
 
     # d) Deploy metrics proxy to exed/exeprox VMs
@@ -1044,7 +1044,8 @@ MPEOF
     # b) Provision Grafana datasource (idempotent — only restart if changed)
     ssh_run "$mon_ip" "sudo mkdir -p /etc/grafana/provisioning/datasources"
     local ds_yaml
-    ds_yaml="$(cat <<'DSEOF'
+    ds_yaml="$(
+        cat <<'DSEOF'
 apiVersion: 1
 datasources:
   - name: Prometheus
@@ -1053,11 +1054,11 @@ datasources:
     url: http://localhost:9090
     isDefault: true
 DSEOF
-)"
+    )"
     local existing_ds
     existing_ds="$(ssh_run "$mon_ip" 'cat /etc/grafana/provisioning/datasources/prometheus.yaml 2>/dev/null' || true)"
     if [[ "$existing_ds" != "$ds_yaml" ]]; then
-        ssh_run "$mon_ip" "sudo tee /etc/grafana/provisioning/datasources/prometheus.yaml >/dev/null" <<< "$ds_yaml"
+        ssh_run "$mon_ip" "sudo tee /etc/grafana/provisioning/datasources/prometheus.yaml >/dev/null" <<<"$ds_yaml"
         ssh_run "$mon_ip" 'sudo systemctl restart grafana-server'
     fi
 
@@ -1577,7 +1578,7 @@ cmd_deploy_metrics() {
     fi
 
     log "Deploying Grafana dashboards to local Grafana (http://localhost:3000)..."
-    (cd "${REPO_ROOT}/observability" && \
+    (cd "${REPO_ROOT}/observability" &&
         DEFAULT_STAGE=local make deploy-grafana \
             GRAFANA_URL="http://localhost:3000/" \
             GRAFANA_BEARER_TOKEN="${grafana_token}")
