@@ -170,6 +170,12 @@ func newUnstartedServer(t testing.TB) *Server {
 				"data":     []map[string]any{},
 				"has_more": false,
 			})
+		case r.Method == "GET" && r.URL.Path == "/v1/charges":
+			// List charges (used by ReceiptURLs for credit purchase receipts)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{},
+				"has_more": false,
+			})
 		default:
 			t.Errorf("unhandled fake Stripe request: %s %s", r.Method, r.URL)
 			w.WriteHeader(http.StatusNotFound)

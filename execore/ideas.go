@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/idea"
 	"exe.dev/stage"
@@ -54,12 +55,9 @@ func (s *Server) handleTemplateRateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check billing status
-	if !s.env.SkipBilling {
-		status, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-		if err != nil || !userIsPaying(&status) {
-			http.Error(w, "Active billing required to rate templates", http.StatusForbidden)
-			return
-		}
+	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.LLMUse, userID) {
+		http.Error(w, "Active billing required to rate templates", http.StatusForbidden)
+		return
 	}
 
 	var req struct {
@@ -234,12 +232,8 @@ func (s *Server) handleIdeaPage(w http.ResponseWriter, r *http.Request) {
 	isLoggedIn := err == nil
 
 	canRate := false
-	if isLoggedIn && !s.env.SkipBilling {
-		if status, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID); err == nil && userIsPaying(&status) {
-			canRate = true
-		}
-	} else if isLoggedIn && s.env.SkipBilling {
-		canRate = true
+	if isLoggedIn {
+		canRate = s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.LLMUse, userID)
 	}
 
 	data := struct {

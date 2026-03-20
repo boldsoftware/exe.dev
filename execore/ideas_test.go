@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/exedb"
 	"exe.dev/idea"
@@ -449,5 +450,159 @@ func TestIdeaSubmitDuplicateSlug(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("submit with duplicate slug: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// activateUserBilling sets up a billing account and active billing event for the given user.
+func activateUserBilling(t *testing.T, server *Server, userID, billingID string) {
+	t.Helper()
+	err := withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        billingID,
+		CreatedBy: userID,
+	})
+	if err != nil {
+		t.Fatalf("InsertAccount: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
+		CreatedBy: userID,
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("ActivateAccount: %v", err)
+	}
+	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: billingID,
+		EventType: "active",
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("InsertBillingEvent: %v", err)
+	}
+}
+
+func TestIdeaRateAllowedForBasicUserWithLLMUseEntitlement(t *testing.T) {
+	// Basic plan grants LLMUse, so even a non-paying user can rate templates.
+	// This is an intentional expansion from the old userIsPaying check.
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	// Create a user without billing — they'll be on the Basic plan which grants LLMUse
+	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-basic@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("createAuthCookie: %v", err)
+	}
+	cookie := &http.Cookie{Name: "exe-auth", Value: cookieValue}
+
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+
+	body := strings.NewReader(fmt.Sprintf(`{"template_id":%d,"rating":4}`, tmpl.ID))
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/rate", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/api/ideas/rate for Basic user: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestIdeaRateAllowedWithLLMUseEntitlement(t *testing.T) {
+	// A user with active billing (Individual plan) should have LLMUse
+	// and get 200 from the rate API.
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-allowed@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	activateUserBilling(t, server, user.UserID, "exe_rate_allowed_test")
+
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("createAuthCookie: %v", err)
+	}
+	cookie := &http.Cookie{Name: "exe-auth", Value: cookieValue}
+
+	tmpl, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetTemplateBySlugAny, "openclaw")
+	if err != nil {
+		t.Fatalf("GetTemplateBySlugAny failed: %v", err)
+	}
+
+	body := strings.NewReader(fmt.Sprintf(`{"template_id":%d,"rating":5}`, tmpl.ID))
+	req := httptest.NewRequest(http.MethodPost, "/api/ideas/rate", body)
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/api/ideas/rate with billing: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestIdeaPageCanRateRequiresLLMUseEntitlement(t *testing.T) {
+	// canRate should be false for a user without billing and true for a user with billing.
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+	if err := server.seedDefaultTemplates(t.Context()); err != nil {
+		t.Fatalf("seedDefaultTemplates failed: %v", err)
+	}
+
+	// Create a user without billing
+	user, err := server.createUser(t.Context(), testSSHPubKey, "canrate-test@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("createAuthCookie: %v", err)
+	}
+	cookie := &http.Cookie{Name: "exe-auth", Value: cookieValue}
+
+	// Request idea page as non-paying user — canRate should be false
+	req := httptest.NewRequest(http.MethodGet, "/idea", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/idea: expected 200, got %d", w.Code)
+	}
+	// The template renders CanRate into a JS variable; check for the false case.
+	// When CanRate is false, the rating UI is hidden. We check that "canRate: true" is NOT present.
+	bodyStr := w.Body.String()
+	if strings.Contains(bodyStr, "canRate: true") || strings.Contains(bodyStr, `"canRate":true`) {
+		t.Fatal("/idea: expected canRate to be false for non-paying user")
+	}
+
+	// Now activate billing and check again
+	activateUserBilling(t, server, user.UserID, "exe_canrate_test")
+
+	req = httptest.NewRequest(http.MethodGet, "/idea", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("/idea (paying): expected 200, got %d", w.Code)
 	}
 }

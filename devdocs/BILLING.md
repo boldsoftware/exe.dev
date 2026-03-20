@@ -4,7 +4,7 @@ exe.dev uses Stripe for subscriptions. Access is granted based on subscription s
 
 ## Access Control
 
-Authorization happens in `execore/exe-web-auth.go:userNeedsBilling()`.
+Authorization happens via `execore/billing_status.go:UserHasEntitlement()` and the plan/entitlement system in `billing/entitlement/`.
 
 **Access granted when:**
 - `billing_status = 'active'` (has active subscription)

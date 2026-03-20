@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 )
 
 func TestNewThrottleConfig(t *testing.T) {
@@ -284,5 +285,93 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	throttled, msg := s.CheckNewThrottle(t.Context(), user.UserID, email)
 	if throttled {
 		t.Errorf("user with activated billing is incorrectly throttled (msg %q)", msg)
+	}
+}
+
+// TestCheckNewThrottleGrandfathered verifies that a grandfathered user (created before
+// billing-required date, no active subscription) bypasses the disposable email throttle
+// because their plan grants vm:create.
+func TestCheckNewThrottleGrandfathered(t *testing.T) {
+	s := newTestServer(t)
+	s.env.SkipBilling = false
+
+	email := "user@mailinator.com" // disposable — normally throttled
+	publicKey := testSSHPubKey
+	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set created_at to before the billing-required date so the user is grandfathered.
+	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2025-01-01 00:00:00' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update created_at: %v", err)
+	}
+
+	// Grandfathered user should NOT be throttled — plan grants vm:create.
+	throttled, msg := s.CheckNewThrottle(t.Context(), user.UserID, email)
+	if throttled {
+		t.Errorf("grandfathered user incorrectly throttled (msg %q)", msg)
+	}
+}
+
+// TestCheckNewThrottleFreeExemption verifies that a user with billing_exemption='free'
+// (friend plan) bypasses the disposable email throttle because their plan grants vm:create.
+func TestCheckNewThrottleFreeExemption(t *testing.T) {
+	s := newTestServer(t)
+	s.env.SkipBilling = false
+
+	email := "user@guerrillamail.com" // disposable — normally throttled
+	publicKey := testSSHPubKey
+	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set billing_exemption to 'free' (friend plan).
+	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET billing_exemption = 'free' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update billing_exemption: %v", err)
+	}
+
+	// Friend user should NOT be throttled — plan grants vm:create.
+	throttled, msg := s.CheckNewThrottle(t.Context(), user.UserID, email)
+	if throttled {
+		t.Errorf("friend user incorrectly throttled (msg %q)", msg)
+	}
+}
+
+// TestCheckNewThrottleBasicUser verifies that a Basic plan user (no billing, created
+// after cutoff) IS still throttled by disposable email check.
+func TestCheckNewThrottleBasicUser(t *testing.T) {
+	s := newTestServer(t)
+	s.env.SkipBilling = false
+
+	email := "user@yopmail.com" // disposable
+	publicKey := testSSHPubKey
+	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set created_at to after billing-required date so user is Basic plan.
+	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-02-01 00:00:00' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update created_at: %v", err)
+	}
+
+	// Basic user with disposable email should still be throttled.
+	throttled, _ := s.CheckNewThrottle(t.Context(), user.UserID, email)
+	if !throttled {
+		t.Error("expected Basic user with disposable email to be throttled")
 	}
 }

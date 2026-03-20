@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
@@ -247,6 +248,7 @@ func TestBillingUpgradeGiftCreditCalledTwice(t *testing.T) {
 func TestUserIsPayingQuery(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 
 	// Create a user without billing info
 	email := "ispaying-test@example.com"
@@ -256,13 +258,9 @@ func TestUserIsPayingQuery(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Check that user is not paying initially
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if userIsPaying(&billingStatus) {
-		t.Error("Expected user without account record to not be paying")
+	// Check that user does not have entitlement initially
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected user without account record to not have VMCreate entitlement")
 	}
 
 	// Add an account record and activate it (simulates completing Stripe checkout)
@@ -290,19 +288,16 @@ func TestUserIsPayingQuery(t *testing.T) {
 		t.Fatalf("Failed to insert billing event: %v", err)
 	}
 
-	// Check that user is now paying
-	billingStatus, err = withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if !userIsPaying(&billingStatus) {
-		t.Error("Expected user with active billing event to be paying")
+	// Check that user now has entitlement
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected user with active billing event to have VMCreate entitlement")
 	}
 }
 
 func TestUserNeedsBillingQuery(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 
 	// Create a user
 	email := "needsbilling-test@example.com"
@@ -321,13 +316,9 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
-	// New user (created after billing requirement date) without account record should need billing
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if !userNeedsBilling(&billingStatus) {
-		t.Error("Expected new user without account record to need billing")
+	// New user (created after billing requirement date) without account record should not have VMCreate
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected new user without account record to not have VMCreate entitlement")
 	}
 
 	// Add an account record and activate it (simulate completing Stripe checkout)
@@ -355,19 +346,16 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Fatalf("Failed to insert billing event: %v", err)
 	}
 
-	// User with active billing event should NOT need billing
-	billingStatus, err = withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if userNeedsBilling(&billingStatus) {
-		t.Error("Expected user with active billing event to NOT need billing")
+	// User with active billing event should have VMCreate
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected user with active billing event to have VMCreate entitlement")
 	}
 }
 
 func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 
 	// Create a user
 	email := "legacy-user@example.com"
@@ -386,13 +374,9 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatalf("Failed to update user created_at: %v", err)
 	}
 
-	// Legacy user (created before 2026-01-06 23:10 UTC) should NOT need billing even without an account
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if userNeedsBilling(&billingStatus) {
-		t.Error("Expected legacy user (created before 2026-01-06 23:10 UTC) to NOT need billing")
+	// Legacy user (created before 2026-01-06 23:10 UTC) should have VMCreate even without an account
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected legacy user (created before 2026-01-06 23:10 UTC) to have VMCreate entitlement")
 	}
 }
 
@@ -433,13 +417,9 @@ func TestBillingBypassBug(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// Step 1: Verify user needs billing initially
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if !userNeedsBilling(&billingStatus) {
-		t.Fatal("Expected new user to need billing initially")
+	// Step 1: Verify user does not have VMCreate initially
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Fatal("Expected new user to not have VMCreate entitlement initially")
 	}
 
 	// Step 2: Visit /billing/update (this creates account and redirects to Stripe)
@@ -461,15 +441,11 @@ func TestBillingBypassBug(t *testing.T) {
 	// Step 3: User hits back button - they never completed Stripe checkout!
 	// At this point, the account record exists but checkout was NOT completed.
 
-	// Step 4: Check if user still needs billing - they SHOULD still need it!
-	// This is where the bug manifests: without billing events, the user should still need billing
+	// Step 4: Check if user still lacks VMCreate - they SHOULD still lack it!
+	// This is where the bug manifests: without billing events, the user should still lack VMCreate
 	// because no 'active' event was recorded.
-	billingStatus, err = withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if !userNeedsBilling(&billingStatus) {
-		t.Error("BUG: User should still need billing after starting but not completing Stripe checkout")
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("BUG: User should still lack VMCreate after starting but not completing Stripe checkout")
 	}
 
 	// Step 5: Try to create a VM via /create-vm - should redirect to billing
@@ -544,22 +520,14 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	// Should fail - cannot verify fake session with Stripe
 	if w.Code == http.StatusOK || w.Code == http.StatusSeeOther {
 		// Check if billing was bypassed
-		billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-		if err != nil {
-			t.Fatalf("GetUserBillingStatus query failed: %v", err)
-		}
-		if !userNeedsBilling(&billingStatus) {
+		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
 			t.Error("SECURITY BUG: User bypassed billing with fake session_id!")
 		}
 	}
 
-	// User should still need billing since checkout was never completed
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-	if !userNeedsBilling(&billingStatus) {
-		t.Error("SECURITY BUG: User should still need billing after visiting success with fake session_id")
+	// User should still lack VMCreate since checkout was never completed
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("SECURITY BUG: User should still lack VMCreate after visiting success with fake session_id")
 	}
 }
 
@@ -624,20 +592,10 @@ func TestBillingEventRaceCondition(t *testing.T) {
 	}
 
 	// Even though the cancellation event was inserted after activation,
-	// T2 > T1 so activation should win
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-
-	// User should be paying (T2 activation wins over T1 cancellation)
-	if !userIsPaying(&billingStatus) {
-		t.Error("Expected user to be paying: activation at T2 should win over cancellation at T1")
-	}
-
-	// User should NOT need billing
-	if userNeedsBilling(&billingStatus) {
-		t.Error("Expected user to NOT need billing: activation at T2 should win over cancellation at T1")
+	// T2 > T1 so activation should win — user should have VMCreate
+	server.env.SkipBilling = false
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Expected user to have VMCreate: activation at T2 should win over cancellation at T1")
 	}
 }
 
@@ -1671,20 +1629,9 @@ func TestUserWithMultipleAccounts_OnlyOneActive(t *testing.T) {
 		t.Fatalf("Failed to insert billing event: %v", err)
 	}
 
-	// Check billing status - should be "active" since one account is active
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-
-	// User should be paying (at least one account is active)
-	if !userIsPaying(&billingStatus) {
-		t.Errorf("BUG: User with active billing on one of multiple accounts should be paying. Got billing_status=%v", billingStatus.BillingStatus)
-	}
-
-	// User should NOT need billing
-	if userNeedsBilling(&billingStatus) {
-		t.Errorf("BUG: User with active billing on one account should NOT need billing. Got billing_status=%v", billingStatus.BillingStatus)
+	// User should have VMCreate (at least one account is active)
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("BUG: User with active billing on one of multiple accounts should have VMCreate entitlement")
 	}
 
 	// Try to create VM - should succeed (not redirect to billing)
@@ -1787,20 +1734,9 @@ func TestUserWithMultipleAccounts_OneActiveOneCanceled(t *testing.T) {
 		t.Fatalf("Failed to insert active event: %v", err)
 	}
 
-	// Check billing status - should be "active" since one account is active
-	billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-	if err != nil {
-		t.Fatalf("GetUserBillingStatus query failed: %v", err)
-	}
-
-	// User should be paying (one account is active, even though another is canceled)
-	if !userIsPaying(&billingStatus) {
-		t.Errorf("User with one active and one canceled account should be paying. Got billing_status=%v", billingStatus.BillingStatus)
-	}
-
-	// User should NOT need billing
-	if userNeedsBilling(&billingStatus) {
-		t.Errorf("User with one active account should NOT need billing. Got billing_status=%v", billingStatus.BillingStatus)
+	// User should have VMCreate (one account is active, even though another is canceled)
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("User with one active and one canceled account should have VMCreate entitlement")
 	}
 }
 
@@ -1860,18 +1796,9 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to insert canceled event: %v", err)
 		}
 
-		// Verify user is canceled
-		billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-		if err != nil {
-			t.Fatalf("GetUserBillingStatus query failed: %v", err)
-		}
-		if billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
-		}
-
-		// CRITICAL: Canceled legacy user MUST need billing (regression test)
-		if !userNeedsBilling(&billingStatus) {
-			t.Error("BUG: Canceled legacy user should need billing - they cannot bypass by being grandfathered!")
+		// CRITICAL: Canceled legacy user MUST NOT have VMCreate (regression test)
+		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Error("BUG: Canceled legacy user should not have VMCreate - they cannot bypass by being grandfathered!")
 		}
 
 		// Try to create VM - should redirect to billing
@@ -1947,18 +1874,9 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to insert canceled event: %v", err)
 		}
 
-		// Verify user is canceled
-		billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-		if err != nil {
-			t.Fatalf("GetUserBillingStatus query failed: %v", err)
-		}
-		if billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
-		}
-
-		// CRITICAL: Canceled free tier user MUST need billing
-		if !userNeedsBilling(&billingStatus) {
-			t.Error("BUG: Canceled free tier user should need billing - they cannot bypass with free exemption!")
+		// CRITICAL: Canceled free tier user MUST NOT have VMCreate
+		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Error("BUG: Canceled free tier user should not have VMCreate - they cannot bypass with free exemption!")
 		}
 	})
 
@@ -2011,18 +1929,9 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to insert canceled event: %v", err)
 		}
 
-		// Verify user is canceled
-		billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-		if err != nil {
-			t.Fatalf("GetUserBillingStatus query failed: %v", err)
-		}
-		if billingStatus.BillingStatus != "canceled" {
-			t.Fatalf("Expected user to be canceled, got %q", billingStatus.BillingStatus)
-		}
-
-		// CRITICAL: Canceled trial user MUST need billing, even with active trial
-		if !userNeedsBilling(&billingStatus) {
-			t.Error("BUG: Canceled trial user should need billing - they cannot bypass with trial exemption!")
+		// CRITICAL: Canceled trial user MUST NOT have VMCreate, even with active trial
+		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Error("BUG: Canceled trial user should not have VMCreate - they cannot bypass with trial exemption!")
 		}
 	})
 
@@ -2091,18 +2000,9 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to insert reactivation event: %v", err)
 		}
 
-		// Verify user is active (reactivated)
-		billingStatus, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserBillingStatus, user.UserID)
-		if err != nil {
-			t.Fatalf("GetUserBillingStatus query failed: %v", err)
-		}
-		if billingStatus.BillingStatus != "active" {
-			t.Fatalf("Expected user to be active (reactivated), got %q", billingStatus.BillingStatus)
-		}
-
-		// Reactivated user should NOT need billing
-		if userNeedsBilling(&billingStatus) {
-			t.Error("Reactivated user should NOT need billing")
+		// Reactivated user should have VMCreate
+		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Error("Reactivated user should have VMCreate entitlement")
 		}
 
 		// Try to create VM - should succeed
@@ -2485,6 +2385,8 @@ func TestCreditPurchase_BuyRedirectsToStripe(t *testing.T) {
 func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
+	// Entitlement check requires SkipBilling=false so UserHasEntitlement actually evaluates
+	server.env.SkipBilling = false
 	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "exe_renew_credits")
 
 	_, err := withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
@@ -2815,4 +2717,210 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 		}
 	}
 	_ = user
+}
+
+// TestCreditPurchase_BuyEntitlementDeniedForNonPayingUser verifies that
+// handleCreditsBuy uses UserHasEntitlement(CreditPurchase) to gate purchases.
+// A user who has never activated billing should be redirected to /billing/update.
+func TestCreditPurchase_BuyEntitlementDeniedForNonPayingUser(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create a user without any billing account -- they will lack CreditPurchase entitlement
+	user, err := server.createUser(t.Context(), testSSHPubKey, "no-billing-entitlement@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("dollars", "50")
+	req := httptest.NewRequest("POST", "/credits/buy", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	if !strings.HasPrefix(location, "/billing/update") {
+		t.Errorf("Expected redirect to /billing/update, got %q", location)
+	}
+}
+
+// TestDashboard_HasBillingUsesEntitlement verifies that the user dashboard
+// determines HasBilling via UserHasEntitlement(CreditPurchase).
+func TestDashboard_HasBillingUsesEntitlement(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create user with active billing (manual setup to avoid Stripe calls)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "dash-billing@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        "exe_dash_billing",
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
+		CreatedBy: user.UserID,
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// GET / with auth cookie renders the dashboard (not /user which is the profile)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Request More") {
+		t.Error("Expected 'Request More' invite button for user with active billing")
+	}
+}
+
+// TestDashboard_NoBillingHidesInviteButton verifies that users without
+// CreditPurchase entitlement do not see the invite request button.
+func TestDashboard_NoBillingHidesInviteButton(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	// User without billing should not see the invite request button
+	user, err := server.createUser(t.Context(), testSSHPubKey, "dash-nobilling@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	// Set created_at after billing requirement date so they're not grandfathered
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 00:00:00' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update created_at: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// GET / with auth cookie renders the dashboard (not /user which is the profile)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Request More") {
+		t.Error("Expected no 'Request More' invite button for user without billing")
+	}
+}
+
+// TestInviteRequest_EntitlementDeniedRedirects verifies that handleInviteRequest
+// uses UserHasEntitlement(CreditPurchase) and redirects denied users.
+func TestInviteRequest_EntitlementDeniedRedirects(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	// User without billing should be redirected
+	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-nobilling@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	// Set created_at after billing requirement date
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-07 00:00:00' WHERE user_id = ?`, user.UserID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to update created_at: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/invite/request", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	if location != "/" {
+		t.Errorf("Expected redirect to /, got %q", location)
+	}
+}
+
+// TestInviteRequest_EntitlementGrantedShowsConfirmation verifies that
+// users with CreditPurchase entitlement can request more invites.
+func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	// Create user with active billing (manual setup to avoid Stripe calls)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-billing@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        "exe_invite_billing",
+		CreatedBy: user.UserID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert account: %v", err)
+	}
+	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
+		CreatedBy: user.UserID,
+		EventAt:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to activate account: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/invite/request", nil)
+	req.Host = server.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
 }

@@ -205,34 +205,24 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// Clean up the pending record
 			_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteMobilePendingVMByToken, token)
 
-			// Check if user needs billing before starting creation
-			if !s.env.SkipBilling {
-				billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, verifiedUserID)
-				if err != nil {
-					s.slog().WarnContext(r.Context(), "billing status lookup failed during email verification",
-						"user_id", verifiedUserID,
-						"email", verifiedEmail,
-						"error", err,
-					)
-				} else if userNeedsBilling(&billingStatus) && !s.teamBillingCovers(r.Context(), verifiedUserID) {
-					// Preserve hostname/prompt/image through billing flow
-					s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
-						"user_id", verifiedUserID,
-						"email", verifiedEmail,
-						"source", "email_verification",
-						"hostname", hostname,
-						"billing_status", billingStatus.BillingStatus,
-					)
-					billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
-					if prompt != "" {
-						billingURL += "&prompt=" + url.QueryEscape(prompt)
-					}
-					if image != "" {
-						billingURL += "&image=" + url.QueryEscape(image)
-					}
-					http.Redirect(w, r, billingURL, http.StatusSeeOther)
-					return
+			// Check if user's plan grants VM creation before starting
+			if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.VMCreate, verifiedUserID) {
+				// Preserve hostname/prompt/image through billing flow
+				s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
+					"user_id", verifiedUserID,
+					"email", verifiedEmail,
+					"source", "email_verification",
+					"hostname", hostname,
+				)
+				billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
+				if prompt != "" {
+					billingURL += "&prompt=" + url.QueryEscape(prompt)
 				}
+				if image != "" {
+					billingURL += "&image=" + url.QueryEscape(image)
+				}
+				http.Redirect(w, r, billingURL, http.StatusSeeOther)
+				return
 			}
 
 			// Start box creation in background and redirect to dashboard

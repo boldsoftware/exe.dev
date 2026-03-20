@@ -17,26 +17,36 @@ var (
 	LLMUse = Entitlement{"llm:use", "Use LLM Gateway"}
 
 	// Credit operations.
-	CreditRenew    = Entitlement{"credit:renew", "Renew Credits"}
 	CreditPurchase = Entitlement{"credit:purchase", "Purchase Credits"}
-	CreditRefresh  = Entitlement{"credit:refresh", "Refresh Credits"}
+
+	// Invite operations.
+	InviteRequest = Entitlement{"invite:request", "Request Invites"}
+
+	// Team operations.
+	TeamCreate = Entitlement{"team:create", "Create Teams"}
 
 	// VM operations.
 	VMCreate  = Entitlement{"vm:create", "Create VMs"}
 	VMConnect = Entitlement{"vm:connect", "Connect to VMs"}
-
-	// Compute operations.
-	ComputeSpend    = Entitlement{"compute:spend", "Spend Compute Credits"}
-	ComputePurchase = Entitlement{"compute:purchase", "Purchase Compute"}
-	ComputeDebt     = Entitlement{"compute:debt", "Accrue Compute Debt"}
-	ComputeOnDemand = Entitlement{"compute:on_demand", "On-Demand Compute"}
-
-	// Admin operations.
-	AdminOverride = Entitlement{"admin:override", "Admin Override"}
+	VMRun     = Entitlement{"vm:run", "Run VMs"}
 
 	// All is a wildcard that grants every entitlement.
 	All = Entitlement{"*", "All Entitlements"}
 )
+
+// AllEntitlements returns all concrete entitlements in a stable order.
+// The All wildcard is excluded since it is not a real entitlement.
+func AllEntitlements() []Entitlement {
+	return []Entitlement{
+		LLMUse,
+		CreditPurchase,
+		InviteRequest,
+		TeamCreate,
+		VMCreate,
+		VMConnect,
+		VMRun,
+	}
+}
 
 // Source identifies the surface that triggered an entitlement check.
 // It is not part of the entitlement decision — a user either has an

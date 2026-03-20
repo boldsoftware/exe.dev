@@ -143,7 +143,7 @@ type UserPageData struct {
 	InviteCount int64
 
 	// Billing information
-	HasBilling       bool   // User has active billing (completed checkout)
+	CanRequestInvites bool  // User's plan grants invite:request
 	BillingStatus    string // Billing status: "active", "canceled", "pending", or "" if no account
 	PlanName         string // Human-readable plan name (e.g., "Individual", "Friend")
 	SelfServeBilling bool   // User manages their own Stripe subscription

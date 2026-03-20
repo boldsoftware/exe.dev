@@ -2846,10 +2846,8 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 
 	// userID == "" for tests.
 	if userID != "" {
-		// Check whether billing is enabled--don't throttle people
-		// who have valid billing information.
-		billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
-		if err == nil && userIsPaying(&billingStatus) {
+		// Don't throttle users whose plan grants vm:create.
+		if s.UserHasEntitlement(ctx, entitlement.SourceWeb, entitlement.VMCreate, userID) {
 			return false, ""
 		}
 	}
@@ -4440,7 +4438,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RegionDisplay              string
 		GLBDefault                 string
 		AllRegions                 []region.Region
-		BoxesOutsideRegion         []struct {
+		BoxesOutsideRegion []struct {
 			Name   string
 			Region string
 		}
@@ -4478,6 +4476,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		version := entitlement.GetPlanVersion(inputs)
 		data.PlanVersion = string(version)
 		data.PlanName = entitlement.PlanName(version)
+
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {
@@ -4843,6 +4842,12 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		CreditRefreshPerHrOverride    *float64
 		CreditTotalUsedUSD            float64
 		CreditLastRefreshAt           string
+		IsOnTeam                      bool
+		Entitlements                  []struct {
+			Name    string
+			ID      string
+			Granted bool
+		}
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -4877,6 +4882,35 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.CreditRefreshPerHrOverride = creditState.RefreshPerHour
 		data.CreditTotalUsedUSD = creditState.TotalUsed
 		data.CreditLastRefreshAt = creditState.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	// Check if user is on a team — if so, entitlements are misleading since
+	// plan resolves as Individual but they're effectively on the Team plan.
+	if team, _ := s.GetTeamForUser(ctx, userID); team != nil {
+		data.IsOnTeam = true
+	}
+
+	// Resolve entitlements for this user's plan.
+	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
+		inputs := entitlement.UserPlanInputs{
+			Category:           billingRow.Category,
+			BillingStatus:      billingRow.BillingStatus,
+			BillingExemption:   billingRow.BillingExemption,
+			CreatedAt:          billingRow.CreatedAt,
+			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
+		}
+		version := entitlement.GetPlanVersion(inputs)
+		for _, ent := range entitlement.AllEntitlements() {
+			data.Entitlements = append(data.Entitlements, struct {
+				Name    string
+				ID      string
+				Granted bool
+			}{
+				Name:    ent.DisplayName,
+				ID:      ent.ID,
+				Granted: entitlement.PlanGrants(version, ent),
+			})
+		}
 	}
 
 	tmpl, err := debug_templates.Parse(s.env)

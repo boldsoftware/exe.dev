@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
@@ -32,7 +33,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Description: "Create a new team",
 				Usage:       "team enable",
 				Handler:     ss.handleTeamEnableCommand,
-				Available:   ss.isNotInTeamWithBilling,
+				Available:   ss.canCreateTeam,
 			},
 			{
 				Name:        "disable",
@@ -178,7 +179,7 @@ func (ss *SSHServer) isInTeamOrSudo(cc *exemenu.CommandContext) bool {
 // isInTeamOrSudoOrCanEnable makes the team command visible to team members, sudo users,
 // and users who are eligible to enable teams (not in a team + active billing).
 func (ss *SSHServer) isInTeamOrSudoOrCanEnable(cc *exemenu.CommandContext) bool {
-	return ss.isInTeam(cc) || ss.isSudoUser(cc) || ss.isNotInTeamWithBilling(cc)
+	return ss.isInTeam(cc) || ss.isSudoUser(cc) || ss.canCreateTeam(cc)
 }
 
 // isTeamAdmin checks if the user is a team admin — billing_owner or admin (for command availability)
@@ -197,8 +198,8 @@ func (ss *SSHServer) isSudoUser(cc *exemenu.CommandContext) bool {
 	return ss.server.UserHasExeSudo(context.Background(), cc.User.ID)
 }
 
-// isNotInTeamWithBilling checks if user is NOT in a team and HAS active billing (for team enable)
-func (ss *SSHServer) isNotInTeamWithBilling(cc *exemenu.CommandContext) bool {
+// canCreateTeam checks if user is NOT in a team and HAS team:create entitlement (for team enable)
+func (ss *SSHServer) canCreateTeam(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
 		return false
 	}
@@ -207,15 +208,7 @@ func (ss *SSHServer) isNotInTeamWithBilling(cc *exemenu.CommandContext) bool {
 	if team != nil {
 		return false
 	}
-	// Must have active billing
-	if ss.server.env.SkipBilling {
-		return true
-	}
-	billingStatus, err := withRxRes1(ss.server, context.Background(), (*exedb.Queries).GetUserBillingStatus, cc.User.ID)
-	if err != nil {
-		return false
-	}
-	return !userNeedsBilling(&billingStatus)
+	return ss.server.UserHasEntitlement(context.Background(), entitlement.SourceSSH, entitlement.TeamCreate, cc.User.ID)
 }
 
 // isTeamBillingOwner checks if the user is a team billing owner (for team disable)

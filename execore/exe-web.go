@@ -1437,16 +1437,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		teamBoxes = append(teamBoxes, teamBoxInfo)
 	}
 
-	// Check billing status for invite request button
-	var hasBilling bool
-	if s.env.SkipBilling {
-		hasBilling = true
-	} else {
-		userBilling, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-		if err == nil && userBilling.BillingStatus == "active" {
-			hasBilling = true
-		}
-	}
+	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 
 	// Prepare template data
 	data := UserPageData{
@@ -1460,7 +1451,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		ActivePage:  "boxes",
 		IsLoggedIn:  true,
 		InviteCount: inviteCount,
-		HasBilling:  hasBilling,
+		CanRequestInvites: canRequestInvites,
 		ShareVM:     r.URL.Query().Get("share_vm"),
 		ShareEmail:  r.URL.Query().Get("share_email"),
 	}
@@ -1569,20 +1560,20 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	basicUser := s.isBasicUser(r.Context(), user, len(sshKeys))
 
 	// Check billing status and resolve plan
-	var hasBilling bool
+	canRequestInvitesProfile := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 	var billingStatus string
 	var planName string
 	var selfServeBilling bool
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {
 		billingStatus = billingRow.BillingStatus
-		hasBilling = billingStatus == "active"
 		inputs := entitlement.UserPlanInputs{
 			Category:           billingRow.Category,
 			BillingStatus:      billingRow.BillingStatus,
 			BillingExemption:   billingRow.BillingExemption,
 			CreatedAt:          billingRow.CreatedAt,
 			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
+			TeamBillingActive:  s.teamBillingCovers(r.Context(), userID),
 		}
 		version := entitlement.GetPlanVersion(inputs)
 		planName = entitlement.PlanName(version)
@@ -1808,7 +1799,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		ActivePage:       "profile",
 		IsLoggedIn:       true,
 		BasicUser:        basicUser,
-		HasBilling:       hasBilling,
+		CanRequestInvites: canRequestInvitesProfile,
 		BillingStatus:    billingStatus,
 		PlanName:         planName,
 		SelfServeBilling: selfServeBilling,
@@ -1896,8 +1887,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 				})
 			}
 		}
-		// Show "Create Team" option for eligible users (match SSH isNotInTeamWithBilling logic)
-		if !basicUser && hasBilling {
+		// Show "Create Team" option for eligible users
+		if !basicUser && s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.TeamCreate, userID) {
 			data.CanEnableTeam = true
 		}
 	}
@@ -1948,13 +1939,7 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to load billing status for credit purchase", "error", err, "user_id", userID)
-		http.Error(w, "Failed to load billing status", http.StatusInternalServerError)
-		return
-	}
-	if !userIsPaying(&billingStatus) {
+	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.CreditPurchase, userID) {
 		http.Redirect(w, r, "/billing/update?source=credits", http.StatusSeeOther)
 		return
 	}
@@ -2206,24 +2191,13 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	// Check if user has billing set up — only users with active billing can request more invites
-	hasBilling := s.env.SkipBilling
-	if !hasBilling {
-		billingStatus, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, userID)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "Failed to check billing status for invite request", "error", err, "user_id", userID)
-		} else {
-			hasBilling = !userNeedsBilling(&billingStatus)
-		}
-	}
-
-	if !hasBilling {
+	if !s.UserHasEntitlement(ctx, entitlement.SourceWeb, entitlement.InviteRequest, userID) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
 	// Send Slack notification
-	s.slackFeed.InviteRequest(ctx, user.Email, hasBilling)
+	s.slackFeed.InviteRequest(ctx, user.Email, true)
 
 	// Render confirmation page
 	data := struct {

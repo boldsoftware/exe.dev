@@ -14,6 +14,7 @@ const (
 	VersionGrandfathered PlanVersion = "grandfathered"
 	VersionInvite        PlanVersion = "invite"
 	VersionBasic         PlanVersion = "basic"
+	VersionRestricted    PlanVersion = "restricted"
 )
 
 // Plan describes a billing plan and the entitlements it grants.
@@ -52,30 +53,25 @@ var plans = map[PlanVersion]Plan{
 		Version: VersionTeam,
 		Name:    "Team",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:          true,
-			CreditRenew:     true,
-			CreditPurchase:  true,
-			CreditRefresh:   true,
-			VMCreate:        true,
-			VMConnect:       true,
-			ComputeSpend:    true,
-			ComputePurchase: true,
-			ComputeDebt:     true,
+			LLMUse:         true,
+			CreditPurchase: true,
+			InviteRequest:  true,
+			VMCreate:       true,
+			VMConnect:      true,
+			VMRun:          true,
 		},
 	},
 	VersionIndividual: {
 		Version: VersionIndividual,
 		Name:    "Individual",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:          true,
-			CreditRenew:     true,
-			CreditPurchase:  true,
-			CreditRefresh:   true,
-			VMCreate:        true,
-			VMConnect:       true,
-			ComputeSpend:    true,
-			ComputePurchase: true,
-			ComputeDebt:     true,
+			LLMUse:         true,
+			CreditPurchase: true,
+			InviteRequest:  true,
+			TeamCreate:     true,
+			VMCreate:       true,
+			VMConnect:      true,
+			VMRun:          true,
 		},
 		Quotas: PlanQuotas{
 			SignupBonusCreditUSD: 100.0,
@@ -85,43 +81,44 @@ var plans = map[PlanVersion]Plan{
 		Version: VersionFriend,
 		Name:    "Friend",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:        true,
-			CreditRefresh: true,
-			VMCreate:      true,
-			VMConnect:     true,
-			ComputeSpend:  true,
+			LLMUse:    true,
+			VMCreate:  true,
+			VMConnect: true,
+			VMRun:     true,
 		},
 	},
 	VersionGrandfathered: {
 		Version: VersionGrandfathered,
 		Name:    "Grandfathered",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:        true,
-			CreditRefresh: true,
-			VMCreate:      true,
-			VMConnect:     true,
-			ComputeSpend:  true,
+			LLMUse:    true,
+			VMCreate:  true,
+			VMConnect: true,
+			VMRun:     true,
 		},
 	},
 	VersionInvite: {
 		Version: VersionInvite,
 		Name:    "Invite",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:        true,
-			CreditRefresh: true,
-			VMCreate:      true,
-			VMConnect:     true,
-			ComputeSpend:  true,
+			LLMUse:    true,
+			VMCreate:  true,
+			VMConnect: true,
+			VMRun:     true,
 		},
 	},
 	VersionBasic: {
 		Version: VersionBasic,
 		Name:    "Basic",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:        true,
-			CreditRefresh: true,
-			VMConnect:     true,
+			LLMUse:    true,
+			VMConnect: true,
 		},
+	},
+	VersionRestricted: {
+		Version:      VersionRestricted,
+		Name:         "Restricted",
+		Entitlements: map[Entitlement]bool{},
 	},
 }
 
@@ -201,7 +198,12 @@ func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
 		return VersionFriend
 	}
 
-	// Individual: has active billing.
+	// Team: user is on a team whose billing owner has active billing.
+	if inputs.TeamBillingActive {
+		return VersionTeam
+	}
+
+	// Individual: has active billing (not on a team).
 	if inputs.Category == "has_billing" {
 		return VersionIndividual
 	}
@@ -216,11 +218,6 @@ func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
 	// Grandfathered: created before the billing-required date.
 	if inputs.CreatedAt != nil && inputs.CreatedAt.Before(billingRequiredDate) {
 		return VersionGrandfathered
-	}
-
-	// Team: user has no individual plan but their team billing owner covers them.
-	if inputs.TeamBillingActive {
-		return VersionTeam
 	}
 
 	return VersionBasic

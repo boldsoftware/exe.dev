@@ -11,27 +11,49 @@ func TestPlanGrants(t *testing.T) {
 		ent     Entitlement
 		want    bool
 	}{
+		// Individual
 		{VersionIndividual, CreditPurchase, true},
-		{VersionIndividual, AdminOverride, false},
-		{VersionFriend, CreditRefresh, true},
+		{VersionIndividual, VMRun, true},
+		{VersionIndividual, VMCreate, true},
+		{VersionIndividual, VMConnect, true},
+		{VersionIndividual, LLMUse, true},
+
+		// Friend
+		{VersionFriend, VMRun, true},
+		{VersionFriend, VMCreate, true},
+		{VersionFriend, VMConnect, true},
+		{VersionFriend, LLMUse, true},
 		{VersionFriend, CreditPurchase, false},
+
+		// Grandfathered
 		{VersionGrandfathered, VMCreate, true},
-		{VersionGrandfathered, ComputePurchase, false},
-		{VersionInvite, ComputeSpend, true},
-		{VersionInvite, ComputeDebt, false},
+		{VersionGrandfathered, VMRun, true},
+		{VersionGrandfathered, CreditPurchase, false},
+
+		// Invite
+		{VersionInvite, VMCreate, true},
+		{VersionInvite, VMRun, true},
+		{VersionInvite, CreditPurchase, false},
+
+		// Basic
 		{VersionBasic, LLMUse, true},
 		{VersionBasic, VMCreate, false},
-		{VersionTeam, ComputeDebt, true},
+		{VersionBasic, VMRun, false},
+		{VersionBasic, CreditPurchase, false},
+
+		// Team
 		{VersionTeam, VMCreate, true},
 		{VersionTeam, VMConnect, true},
+		{VersionTeam, VMRun, true},
 		{VersionTeam, LLMUse, true},
-		{VersionTeam, CreditRenew, true},
 		{VersionTeam, CreditPurchase, true},
-		{VersionTeam, CreditRefresh, true},
-		{VersionTeam, ComputeSpend, true},
-		{VersionTeam, ComputePurchase, true},
-		{VersionTeam, AdminOverride, false},
-		{VersionTeam, ComputeOnDemand, false},
+
+		// VersionRestricted — grants nothing
+		{VersionRestricted, LLMUse, false},
+		{VersionRestricted, VMCreate, false},
+		{VersionRestricted, VMRun, false},
+		{VersionRestricted, VMConnect, false},
+		{VersionRestricted, CreditPurchase, false},
 	}
 	for _, tt := range tests {
 		got := PlanGrants(tt.version, tt.ent)
@@ -43,8 +65,7 @@ func TestPlanGrants(t *testing.T) {
 
 func TestPlanGrantsWildcard(t *testing.T) {
 	for _, ent := range []Entitlement{
-		LLMUse, CreditPurchase, VMCreate,
-		ComputeSpend, AdminOverride,
+		LLMUse, CreditPurchase, VMCreate, VMRun, VMConnect,
 		{"anything:else", "Made Up"},
 	} {
 		if !PlanGrants(VersionVIP, ent) {
@@ -127,14 +148,14 @@ func TestGetPlanVersion(t *testing.T) {
 			want:   VersionBasic,
 		},
 		{
-			name:   "individual with own billing ignores team",
+			name:   "individual with own billing on team resolves to team",
 			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active", TeamBillingActive: true},
-			want:   VersionIndividual,
+			want:   VersionTeam,
 		},
 		{
-			name:   "grandfathered user on team stays grandfathered",
+			name:   "grandfathered user on team resolves to team",
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate, TeamBillingActive: true},
-			want:   VersionGrandfathered,
+			want:   VersionTeam,
 		},
 	}
 	for _, tt := range tests {
@@ -196,6 +217,7 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 		{VersionGrandfathered, 0},
 		{VersionInvite, 0},
 		{VersionBasic, 0},
+		{VersionRestricted, 0},
 	}
 	for _, tt := range tests {
 		p, ok := plans[tt.version]
@@ -208,10 +230,89 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 	}
 }
 
+// TestAllPlansHaveLLMUse verifies all plans except Restricted grant llm:use.
 func TestAllPlansHaveLLMUse(t *testing.T) {
 	for version, plan := range plans {
+		if version == VersionRestricted {
+			// Restricted grants nothing — explicitly should NOT have LLMUse.
+			if plan.Entitlements[LLMUse] || plan.Entitlements[All] {
+				t.Errorf("plan %q should not grant llm:use", version)
+			}
+			continue
+		}
 		if !plan.Entitlements[LLMUse] && !plan.Entitlements[All] {
 			t.Errorf("plan %q does not grant llm:use", version)
+		}
+	}
+}
+
+// TestRestrictedPlanGrantsNothing verifies the Restricted plan has an empty entitlements map.
+func TestRestrictedPlanGrantsNothing(t *testing.T) {
+	p, ok := plans[VersionRestricted]
+	if !ok {
+		t.Fatal("VersionRestricted not found in plans")
+	}
+	for ent, granted := range p.Entitlements {
+		if granted {
+			t.Errorf("VersionRestricted grants %q, want nothing", ent.ID)
+		}
+	}
+}
+
+// TestVMRunGranted verifies VMRun is granted to the right plans.
+func TestVMRunGranted(t *testing.T) {
+	shouldGrant := []PlanVersion{VersionVIP, VersionTeam, VersionIndividual, VersionFriend, VersionGrandfathered, VersionInvite}
+	shouldDeny := []PlanVersion{VersionBasic, VersionRestricted}
+
+	for _, v := range shouldGrant {
+		if !PlanGrants(v, VMRun) {
+			t.Errorf("PlanGrants(%q, VMRun) = false, want true", v)
+		}
+	}
+	for _, v := range shouldDeny {
+		if PlanGrants(v, VMRun) {
+			t.Errorf("PlanGrants(%q, VMRun) = true, want false", v)
+		}
+	}
+}
+
+// TestAllEntitlements verifies AllEntitlements returns all concrete entitlements
+// (excluding the All wildcard) and that the list is stable.
+func TestAllEntitlements(t *testing.T) {
+	all := AllEntitlements()
+	if len(all) == 0 {
+		t.Fatal("AllEntitlements() returned empty slice")
+	}
+
+	// Should not contain the wildcard.
+	for _, e := range all {
+		if e.ID == "*" {
+			t.Error("AllEntitlements() should not contain the All wildcard")
+		}
+	}
+
+	// Should contain all known concrete entitlements.
+	want := map[string]bool{
+		"llm:use":         true,
+		"credit:purchase": true,
+		"invite:request":  true,
+		"team:create":     true,
+		"vm:create":       true,
+		"vm:connect":      true,
+		"vm:run":          true,
+	}
+	got := make(map[string]bool)
+	for _, e := range all {
+		got[e.ID] = true
+	}
+	for id := range want {
+		if !got[id] {
+			t.Errorf("AllEntitlements() missing %q", id)
+		}
+	}
+	for id := range got {
+		if !want[id] {
+			t.Errorf("AllEntitlements() has unexpected %q", id)
 		}
 	}
 }

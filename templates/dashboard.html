@@ -1670,16 +1670,18 @@
                 <button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>
             </div>
         </div>
+        {{if or (gt .InviteCount 0) .CanRequestInvites}}
         <div class="invite-info" style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
             You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
             {{if gt .InviteCount 0}}
             <form method="POST" action="/invite" style="display: inline;">
                 <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
             </form>
-            {{else if .HasBilling}}
+            {{else if .CanRequestInvites}}
             <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
             {{end}}
         </div>
+        {{end}}
 
         <div class="boxes-list" style="margin-bottom: 24px;">
             {{range .Boxes}}
@@ -1901,16 +1903,18 @@
                     <button class="new-box-btn" onclick="promptModal.open()">✨ Prompt</button>
                 </div>
             </div>
+            {{if or (gt .InviteCount 0) .CanRequestInvites}}
             <div class="invite-info" style="font-size: 13px; color: #d97706; margin-bottom: 16px;">
                 You have {{.InviteCount}} invite{{if ne .InviteCount 1}}s{{end}}.
                 {{if gt .InviteCount 0}}
                 <form method="POST" action="/invite" style="display: inline;">
                     <button type="submit" style="background: none; border: none; color: #d97706; text-decoration: underline; margin-left: 8px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0;">Allocate</button>
                 </form>
-                {{else if .HasBilling}}
+                {{else if .CanRequestInvites}}
                 <a href="/invite/request" style="color: #d97706; text-decoration: underline; margin-left: 8px;">Request More</a>
                 {{end}}
             </div>
+            {{end}}
             <div class="no-boxes">
                 <div class="no-boxes-message">No VMs yet. Create one with:</div>
                 <code>{{.SSHCommand}} new --name=myname</code>

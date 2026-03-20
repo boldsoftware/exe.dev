@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/boxname"
 	"exe.dev/domz"
 	"exe.dev/email"
@@ -719,13 +720,10 @@ func (s *Server) DisableTeam(ctx context.Context, userID string) error {
 
 // handleTeamEnable handles POST /team/enable from the web UI.
 func (s *Server) handleTeamEnable(w http.ResponseWriter, r *http.Request, userID string) {
-	// Re-check billing eligibility at POST time (page may have been open for hours)
-	if !s.env.SkipBilling {
-		billingStatus, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBillingStatus, userID)
-		if err != nil || userNeedsBilling(&billingStatus) {
-			writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "Active billing is required to create a team."})
-			return
-		}
+	// Re-check entitlement at POST time (page may have been open for hours)
+	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.TeamCreate, userID) {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "Your plan does not allow creating teams."})
+		return
 	}
 
 	var req struct {

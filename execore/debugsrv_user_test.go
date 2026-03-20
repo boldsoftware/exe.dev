@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 )
 
 func TestDebugUserBillingAccountsNoAccounts(t *testing.T) {
@@ -127,6 +130,115 @@ func TestDebugUserBillingAccountsManyMixedStatuses(t *testing.T) {
 	}
 }
 
+// TestDebugBillingEntitlementTablePresent verifies the entitlement table section
+// appears on the debug billing page with one row per entitlement.
+func TestDebugBillingEntitlementTablePresent(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-entitlements@example.com")
+
+	body := debugBillingPageBody(t, s, userID)
+
+	if !strings.Contains(body, "<h2>Entitlements</h2>") {
+		t.Fatal("expected Entitlements section header")
+	}
+
+	// Every concrete entitlement should appear in the table.
+	for _, ent := range entitlement.AllEntitlements() {
+		if !strings.Contains(body, ent.DisplayName) {
+			t.Errorf("entitlement table missing %q", ent.DisplayName)
+		}
+		if !strings.Contains(body, ent.ID) {
+			t.Errorf("entitlement table missing ID %q", ent.ID)
+		}
+	}
+}
+
+// TestDebugBillingEntitlementTableBasicUser verifies a Basic plan user has most
+// entitlements denied. Basic grants only llm:use and vm:connect.
+func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-basic-ent@example.com")
+
+	body := debugBillingPageBody(t, s, userID)
+
+	requireEntitlementRow(t, body, "Use LLM Gateway", true)
+	requireEntitlementRow(t, body, "Connect to VMs", true)
+	requireEntitlementRow(t, body, "Create VMs", false)
+	requireEntitlementRow(t, body, "Purchase Credits", false)
+	requireEntitlementRow(t, body, "Run VMs", false)
+}
+
+// TestDebugBillingEntitlementTableFriendUser verifies a Friend plan user
+// (billing_exemption='free') has most entitlements granted.
+func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-friend-ent@example.com")
+
+	err := s.db.Tx(context.Background(), func(_ context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`UPDATE users SET billing_exemption = 'free' WHERE user_id = ?`, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to set billing_exemption: %v", err)
+	}
+
+	body := debugBillingPageBody(t, s, userID)
+
+	requireEntitlementRow(t, body, "Use LLM Gateway", true)
+	requireEntitlementRow(t, body, "Create VMs", true)
+	requireEntitlementRow(t, body, "Connect to VMs", true)
+	requireEntitlementRow(t, body, "Run VMs", true)
+	requireEntitlementRow(t, body, "Purchase Credits", false)
+}
+
+// TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user
+// (active billing) has all entitlements granted on the billing page.
+// The user has an account + active billing event, which makes GetUserBilling
+// return has_billing → Individual plan → all entitlements granted.
+func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-individual-ent@example.com")
+	accountID := "exe_debug_individual_ent"
+
+	err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        accountID,
+		CreatedBy: userID,
+	})
+	if err != nil {
+		t.Fatalf("InsertAccount: %v", err)
+	}
+	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		AccountID: accountID,
+		EventType: "active",
+		EventAt:   time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("InsertBillingEvent: %v", err)
+	}
+
+	body := debugBillingPageBody(t, s, userID)
+
+	for _, ent := range entitlement.AllEntitlements() {
+		requireEntitlementRow(t, body, ent.DisplayName, true)
+	}
+}
+
+// requireEntitlementRow checks the entitlement table contains a row with the
+// given display name and granted/denied status.
+func requireEntitlementRow(t *testing.T, body, displayName string, granted bool) {
+	t.Helper()
+	status := "Denied"
+	if granted {
+		status = "Granted"
+	}
+	// Match: <td>DisplayName</td><td><code>id</code></td><td>Status</td> within the same row.
+	pattern := `<td>` + regexp.QuoteMeta(displayName) + `</td>\s*<td><code>[^<]+</code></td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`
+	re := regexp.MustCompile(pattern)
+	if !re.MatchString(body) {
+		t.Errorf("entitlement row %q: expected %s, pattern not found", displayName, status)
+	}
+}
+
 func debugUserPageBody(t *testing.T, s *Server, userID string) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/debug/user?userId="+url.QueryEscape(userID), nil)
@@ -134,6 +246,17 @@ func debugUserPageBody(t *testing.T, s *Server, userID string) string {
 	s.handleDebugUser(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("handleDebugUser status=%d body=%q", w.Code, w.Body.String())
+	}
+	return w.Body.String()
+}
+
+func debugBillingPageBody(t *testing.T, s *Server, userID string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/debug/billing?userId="+url.QueryEscape(userID), nil)
+	w := httptest.NewRecorder()
+	s.handleDebugBilling(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleDebugBilling status=%d body=%q", w.Code, w.Body.String())
 	}
 	return w.Body.String()
 }

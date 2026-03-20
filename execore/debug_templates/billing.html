@@ -67,6 +67,27 @@ table.info th { width: 200px; }
 {{end}}
 </div>
 
+{{if .IsOnTeam}}
+<div class="section">
+<h2>Entitlements</h2>
+<p>This user is on a team. Entitlements are resolved from the team's billing owner.</p>
+</div>
+{{else if .Entitlements}}
+<div class="section">
+<h2>Entitlements</h2>
+<table class="info">
+<thead>
+<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
+</thead>
+<tbody>
+{{range .Entitlements}}
+<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
 {{if .HasCredit}}
 <div class="section">
 <h2>LLM Gateway Credit</h2>

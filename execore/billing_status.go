@@ -2,62 +2,24 @@ package execore
 
 import (
 	"context"
-	"time"
 
 	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
 
-// billingRequiredDate is when billing became required for new users.
-// Users created before this date are grandfathered and don't need billing.
-var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
-
-// userIsPaying reports whether status indicates an active billing subscription.
-func userIsPaying(status *exedb.GetUserBillingStatusRow) bool {
-	return status.BillingStatus == "active"
-}
-
-// userNeedsBilling reports whether the user must add billing before creating VMs.
-func userNeedsBilling(status *exedb.GetUserBillingStatusRow) bool {
-	// Active users don't need billing
-	if status.BillingStatus == "active" {
-		return false
-	}
-	// CANCELED users ALWAYS need billing (check BEFORE exemptions)
-	// This prevents canceled users from bypassing billing even if they have
-	// legacy status, free tier, or trial exemptions.
-	if status.BillingStatus == "canceled" {
-		return true
-	}
-	// Users created before billing requirement date are grandfathered
-	if status.CreatedAt != nil && status.CreatedAt.Before(billingRequiredDate) {
-		return false
-	}
-	// Free exemptions never need billing
-	if status.BillingExemption != nil && *status.BillingExemption == "free" {
-		return false
-	}
-	// Trial exemptions with future end date don't need billing yet
-	if status.BillingExemption != nil && *status.BillingExemption == "trial" &&
-		status.BillingTrialEndsAt != nil && status.BillingTrialEndsAt.After(time.Now()) {
-		return false
-	}
-	return true
-}
-
 // teamBillingCovers checks if the user's team billing_owner has active billing.
-// Returns true if user is in a team and the billing_owner's subscription covers them.
+// Returns true if user is in a team and the billing_owner has a paying subscription.
 func (s *Server) teamBillingCovers(ctx context.Context, userID string) bool {
 	billingOwnerID, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamBillingOwnerUserID, userID)
 	if err != nil {
 		return false
 	}
-	status, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBillingStatus, billingOwnerID)
+	row, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, billingOwnerID)
 	if err != nil {
 		return false
 	}
-	return !userNeedsBilling(&status)
+	return row.Category == "has_billing"
 }
 
 // UserHasEntitlement reports whether the user's plan grants the given entitlement.
