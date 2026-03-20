@@ -71,6 +71,8 @@ type Request struct {
 	Host    string `json:"host"`     // display hostname
 	DNSName string `json:"dns_name"` // tailscale DNS for SSH
 	SHA     string `json:"sha"`      // 40-char hex
+
+	InitiatedBy string `json:"-"` // set by handler from Tailscale headers
 }
 
 // Start begins a new deploy. Returns an error if a deploy is already
@@ -87,7 +89,7 @@ func (m *Manager) Start(req Request) (Status, error) {
 	}
 
 	id := generateID()
-	d := newDeploy(id, req.Stage, req.Role, req.Process, req.Host, req.DNSName, req.SHA)
+	d := newDeploy(id, req.Stage, req.Role, req.Process, req.Host, req.DNSName, req.SHA, req.InitiatedBy)
 
 	m.mu.Lock()
 	key := d.activeKey()
@@ -415,7 +417,7 @@ func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remoteP
 	}
 	symlink := recipe.RemoteDir + "/" + name
 	d.setStepOutput(fmt.Sprintf("%s → %s", symlink, remotePath))
-	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "ln", "-sf", remotePath, symlink)
+	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "ln", "-sf", remotePath, symlink)
 }
 
 func (m *Manager) restart(ctx context.Context, d *deploy, recipe Recipe) error {

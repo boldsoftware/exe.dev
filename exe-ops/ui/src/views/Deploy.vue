@@ -20,10 +20,23 @@
     <template v-else>
       <!-- Active / recent deploys -->
       <div v-if="deploys.length > 0" class="deploys-section">
-        <h2 class="section-title">Deploys</h2>
-        <div class="deploys-list">
+        <div class="section-header" @click="deploysCollapsed = !deploysCollapsed">
+          <i class="pi collapse-icon" :class="deploysCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"></i>
+          <h2 class="section-title">Deploys</h2>
+          <span class="section-count">{{ filteredDeploys.length }}</span>
+          <div class="deploy-time-filters" @click.stop>
+            <button
+              v-for="f in deployTimeFilters"
+              :key="f.value"
+              class="filter-btn"
+              :class="{ active: deployTimeFilter === f.value }"
+              @click="deployTimeFilter = f.value"
+            >{{ f.label }}</button>
+          </div>
+        </div>
+        <div v-show="!deploysCollapsed" class="deploys-list">
           <div
-            v-for="d in deploys"
+            v-for="d in filteredDeploys"
             :key="d.id"
             class="deploy-card"
             :class="'deploy-state-' + d.state"
@@ -35,6 +48,7 @@
                 <span class="deploy-card-host">{{ d.host }}</span>
               </span>
               <span class="deploy-card-sha">{{ d.sha.slice(0, 7) }}</span>
+              <span v-if="d.initiated_by" class="deploy-card-user">{{ d.initiated_by }}</span>
               <span class="deploy-card-state" :class="'state-' + d.state">{{ d.state }}</span>
             </div>
             <div class="deploy-steps">
@@ -63,9 +77,11 @@
         </div>
       </div>
 
-      <!-- origin/main -->
-      <div v-if="headSHA" class="head-sha-badge">
-        <span class="head-sha-label">origin/main</span>
+      <!-- Current git HEAD -->
+      <div v-if="headSHA" class="head-sha-section">
+        <h2 class="section-title">Current git origin/main</h2>
+        <div class="head-sha-badge">
+        <span class="head-sha-label">HEAD</span>
         <a
           :href="'https://github.com/boldsoftware/exe/commit/' + headSHA"
           target="_blank"
@@ -74,10 +90,16 @@
         >{{ headSHA.slice(0, 7) }}</a>
         <span v-if="headSubject" class="head-sha-subject">{{ headSubject }}</span>
         <span v-if="headDate" class="head-sha-date">{{ formatDate(headDate) }}</span>
+        </div>
       </div>
 
       <!-- Summary: COUNT(*) GROUP BY stage, process, version -->
-      <div v-if="summaryRows.length > 0" class="table-wrapper summary-table-wrapper">
+      <div v-if="summaryRows.length > 0" class="summary-section">
+        <div class="section-header" @click="summaryCollapsed = !summaryCollapsed">
+          <i class="pi collapse-icon" :class="summaryCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"></i>
+          <h2 class="section-title">Version Summary</h2>
+        </div>
+        <div v-show="!summaryCollapsed" class="table-wrapper summary-table-wrapper">
         <table class="summary-table">
           <thead>
             <tr>
@@ -112,6 +134,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       <!-- Toolbar: filters + search on one line -->
@@ -173,16 +196,6 @@
       <template v-else>
         <div class="table-wrapper">
           <table class="deploy-table">
-            <colgroup>
-              <col style="width: 200px">
-              <col style="width: 70px">
-              <col style="width: 70px">
-              <col style="width: 60px">
-              <col style="width: 100px">
-              <col>
-              <col style="width: 80px">
-              <col style="width: 90px">
-            </colgroup>
             <thead>
               <tr>
                 <th class="sortable" @click="toggleSort('hostname')">
@@ -210,7 +223,12 @@
                 :key="p.hostname + ':' + p.process"
                 class="deploy-row"
               >
-                <td class="col-hostname">{{ p.hostname }}</td>
+                <td class="col-hostname">
+                  {{ p.hostname }}
+                  <button class="copy-btn" title="Copy full domain name" @click.stop="copyDnsName(p.dns_name)">
+                    <i class="pi" :class="justCopied === p.dns_name ? 'pi-check' : 'pi-copy'"></i>
+                  </button>
+                </td>
                 <td class="col-role">{{ p.role }}</td>
                 <td class="col-stage">{{ p.stage }}</td>
                 <td class="col-region">{{ p.region || '\u2014' }}</td>
@@ -349,8 +367,38 @@ const search = ref('')
 const activeStages = reactive(new Set<string>())
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
+const deploysCollapsed = ref(false)
+const summaryCollapsed = ref(false)
+const deployTimeFilter = ref<'10m' | '24h' | 'all'>('all')
+const justCopied = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let deployPollTimer: ReturnType<typeof setInterval> | null = null
+
+const deployTimeFilters = [
+  { label: '10m', value: '10m' as const },
+  { label: '24h', value: '24h' as const },
+  { label: 'All', value: 'all' as const },
+]
+
+const filteredDeploys = computed(() => {
+  if (deployTimeFilter.value === 'all') return deploys.value
+  const now = Date.now()
+  const cutoff = deployTimeFilter.value === '10m' ? 10 * 60 * 1000 : 24 * 60 * 60 * 1000
+  return deploys.value.filter(d => {
+    // Always show active deploys
+    if (d.state === 'running' || d.state === 'pending') return true
+    const t = new Date(d.started_at).getTime()
+    return now - t < cutoff
+  })
+})
+
+async function copyDnsName(dnsName: string) {
+  try {
+    await navigator.clipboard.writeText(dnsName)
+    justCopied.value = dnsName
+    setTimeout(() => { if (justCopied.value === dnsName) justCopied.value = '' }, 1500)
+  } catch {}
+}
 
 try {
   const savedStages = sessionStorage.getItem('exe-ops-deploy-stage-filter')
@@ -751,6 +799,48 @@ onUnmounted(() => {
   opacity: 0.7;
 }
 
+/* -- Section headers (collapsible) -- */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0.5rem;
+}
+
+.section-header:hover .section-title {
+  color: var(--text-color);
+}
+
+.collapse-icon {
+  font-size: 0.55rem;
+  color: var(--text-color-muted);
+}
+
+.section-count {
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
+  background: var(--surface-border);
+  padding: 0.05rem 0.35rem;
+  border-radius: 8px;
+  margin-left: 0.125rem;
+}
+
+.deploy-time-filters {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.head-sha-section {
+  margin-bottom: 1rem;
+}
+
+.summary-section {
+  margin-bottom: 1.5rem;
+}
+
 /* -- Deploys section -- */
 .deploys-section {
   margin-bottom: 1.5rem;
@@ -762,7 +852,7 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-color-muted);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 .deploys-list {
@@ -828,6 +918,11 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.7rem;
   color: var(--primary-color);
+}
+
+.deploy-card-user {
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
 }
 
 .deploy-card-state {
@@ -1096,7 +1191,6 @@ onUnmounted(() => {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
-  table-layout: fixed;
 }
 
 .deploy-table th {
@@ -1155,6 +1249,27 @@ onUnmounted(() => {
 .col-hostname {
   font-weight: 600;
   color: var(--text-color);
+  white-space: nowrap;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  font-size: 0.55rem;
+  vertical-align: middle;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.deploy-row:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  color: var(--primary-color);
 }
 
 .debug-link {

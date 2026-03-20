@@ -432,6 +432,7 @@ export interface DeployStatus {
   host: string
   dns_name: string
   sha: string
+  initiated_by?: string
   state: string // pending, running, done, failed
   steps: DeployStep[]
   started_at: string

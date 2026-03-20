@@ -79,6 +79,12 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "process, host, and sha are required", http.StatusBadRequest)
 			return
 		}
+		// Record who initiated the deploy from Tailscale identity headers.
+		if login := r.Header.Get("Tailscale-User-Login"); login != "" {
+			req.InitiatedBy = login
+		} else if name := r.Header.Get("Tailscale-User-Name"); name != "" {
+			req.InitiatedBy = name
+		}
 		status, err := h.deployer.Start(req)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)

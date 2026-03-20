@@ -137,6 +137,7 @@ type tailscalePeer struct {
 // Hostname patterns.
 var (
 	reExelet      = regexp.MustCompile(`^exelet-([a-z0-9]+)-([a-z]+)-\d+$`)
+	reExeCtr      = regexp.MustCompile(`^exe-ctr-(\d+)$`)
 	reExeprox     = regexp.MustCompile(`^exeprox-([a-z0-9]+)-([a-z]+)-\d+$`)
 	reExeproxNA1  = regexp.MustCompile(`^exeprox-na-([a-z0-9]+)-\d+$`)
 	reExeproxNA2  = regexp.MustCompile(`^exeprox-([a-z0-9]+)-na-\d+$`)
@@ -151,6 +152,9 @@ func classifyHost(hostname string) (role, stage, region string, ok bool) {
 	}
 	if m := reExelet.FindStringSubmatch(hostname); m != nil {
 		return "exelet", m[2], m[1], true
+	}
+	if reExeCtr.MatchString(hostname) {
+		return "exelet", "prod", "", true
 	}
 	if m := reExeproxNA1.FindStringSubmatch(hostname); m != nil {
 		return "exeprox", "prod", m[1], true

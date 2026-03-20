@@ -15,6 +15,8 @@ type Status struct {
 	DNSName string `json:"dns_name"`
 	SHA     string `json:"sha"`
 
+	InitiatedBy string `json:"initiated_by,omitempty"` // Tailscale user login, if known
+
 	State     string    `json:"state"` // pending, running, done, failed
 	Steps     []Step    `json:"steps"`
 	StartedAt time.Time `json:"started_at"`
@@ -35,13 +37,14 @@ type Step struct {
 type deploy struct {
 	mu sync.Mutex
 
-	id      string
-	stage   string
-	role    string
-	process string
-	host    string
-	dnsName string
-	sha     string
+	id          string
+	stage       string
+	role        string
+	process     string
+	host        string
+	dnsName     string
+	sha         string
+	initiatedBy string
 
 	state     string
 	steps     []Step
@@ -53,22 +56,23 @@ type deploy struct {
 // Standard deploy steps in execution order.
 var stepNames = []string{"build", "upload", "install", "restart", "verify"}
 
-func newDeploy(id, stage, role, process, host, dnsName, sha string) *deploy {
+func newDeploy(id, stage, role, process, host, dnsName, sha, initiatedBy string) *deploy {
 	steps := make([]Step, len(stepNames))
 	for i, name := range stepNames {
 		steps[i] = Step{Name: name, Status: "pending"}
 	}
 	return &deploy{
-		id:        id,
-		stage:     stage,
-		role:      role,
-		process:   process,
-		host:      host,
-		dnsName:   dnsName,
-		sha:       sha,
-		state:     "pending",
-		steps:     steps,
-		startedAt: time.Now(),
+		id:          id,
+		stage:       stage,
+		role:        role,
+		process:     process,
+		host:        host,
+		dnsName:     dnsName,
+		sha:         sha,
+		initiatedBy: initiatedBy,
+		state:       "pending",
+		steps:       steps,
+		startedAt:   time.Now(),
 	}
 }
 
@@ -77,18 +81,19 @@ func (d *deploy) snapshot() Status {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	s := Status{
-		ID:        d.id,
-		Stage:     d.stage,
-		Role:      d.role,
-		Process:   d.process,
-		Host:      d.host,
-		DNSName:   d.dnsName,
-		SHA:       d.sha,
-		State:     d.state,
-		Steps:     make([]Step, len(d.steps)),
-		StartedAt: d.startedAt,
-		DoneAt:    d.doneAt,
-		Error:     d.err,
+		ID:          d.id,
+		Stage:       d.stage,
+		Role:        d.role,
+		Process:     d.process,
+		Host:        d.host,
+		DNSName:     d.dnsName,
+		SHA:         d.sha,
+		InitiatedBy: d.initiatedBy,
+		State:       d.state,
+		Steps:       make([]Step, len(d.steps)),
+		StartedAt:   d.startedAt,
+		DoneAt:      d.doneAt,
+		Error:       d.err,
 	}
 	copy(s.Steps, d.steps)
 	return s
