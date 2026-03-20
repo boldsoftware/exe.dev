@@ -10,15 +10,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// tetrisSessionInput adapts an SSH session for use as Bubble Tea input.
+// gameSessionInput adapts an SSH session for use as Bubble Tea input.
 // It reads full buffers from the session so that multi-byte escape sequences
 // (e.g. arrow keys: ESC [ A) arrive intact for Bubble Tea to parse.
-// Ctrl+C (byte 3) is treated as EOF to quit the game.
-type tetrisSessionInput struct {
+// Ctrl+C (byte 3) is treated as EOF to quit.
+type gameSessionInput struct {
 	session io.Reader
 }
 
-func (t *tetrisSessionInput) Read(p []byte) (int, error) {
+func (t *gameSessionInput) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -33,9 +33,9 @@ func (t *tetrisSessionInput) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (ss *SSHServer) handleTetrisCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) handleGameCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if cc.SSHSession == nil {
-		return fmt.Errorf("tetris requires a terminal session")
+		return fmt.Errorf("game requires a terminal session")
 	}
 
 	width, height := 80, 24
@@ -48,9 +48,9 @@ func (ss *SSHServer) handleTetrisCommand(ctx context.Context, cc *exemenu.Comman
 		}
 	}
 
-	model := newTetrisModel(width, height)
+	model := newGameModel(width, height)
 
-	input := &tetrisSessionInput{session: cc.SSHSession}
+	input := &gameSessionInput{session: cc.SSHSession}
 
 	program := tea.NewProgram(model,
 		tea.WithContext(ctx),

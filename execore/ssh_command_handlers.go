@@ -511,10 +511,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleExe0ToExe1Command,
 		},
 		{
-			Name:        "tetris",
+			Name:        "game",
 			Hidden:      true,
-			Description: "Play Tetris",
-			Handler:     ss.handleTetrisCommand,
+			Description: "Play a game",
+			Handler:     ss.handleGameCommand,
 		},
 		{
 			Name:        "exit",

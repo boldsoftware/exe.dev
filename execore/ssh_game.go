@@ -181,8 +181,8 @@ func (p *activePiece) cells() [4]point {
 // tickMsg is sent on each gravity tick.
 type tickMsg time.Time
 
-// tetrisModel is the Bubble Tea model for the Tetris game.
-type tetrisModel struct {
+// gameModel is the Bubble Tea model for the block-stacking game.
+type gameModel struct {
 	board     [boardHeight][boardWidth]int // 0 = empty, 1-7 = piece color
 	current   activePiece
 	nextPiece int // index into tetrominoes
@@ -202,9 +202,9 @@ type tetrisModel struct {
 	height int // terminal height
 }
 
-// newTetrisModel creates and returns an initialized Tetris model.
-func newTetrisModel(width, height int) *tetrisModel {
-	m := &tetrisModel{
+// newGameModel creates and returns an initialized game model.
+func newGameModel(width, height int) *gameModel {
+	m := &gameModel{
 		holdPiece: -1,
 		level:     1,
 		width:     width,
@@ -218,7 +218,7 @@ func newTetrisModel(width, height int) *tetrisModel {
 }
 
 // fillBag generates a new shuffled bag of all 7 piece types.
-func (m *tetrisModel) fillBag() {
+func (m *gameModel) fillBag() {
 	m.bag = []int{0, 1, 2, 3, 4, 5, 6}
 	for i := len(m.bag) - 1; i > 0; i-- {
 		j := m.rng.Intn(i + 1)
@@ -228,7 +228,7 @@ func (m *tetrisModel) fillBag() {
 }
 
 // drawFromBag returns the next piece type from the bag, refilling if needed.
-func (m *tetrisModel) drawFromBag() int {
+func (m *gameModel) drawFromBag() int {
 	if m.bagPos >= len(m.bag) {
 		m.fillBag()
 	}
@@ -238,7 +238,7 @@ func (m *tetrisModel) drawFromBag() int {
 }
 
 // spawnPiece spawns a new piece at the top of the board.
-func (m *tetrisModel) spawnPiece() {
+func (m *gameModel) spawnPiece() {
 	m.current = activePiece{
 		typ:      m.nextPiece,
 		rotation: 0,
@@ -255,7 +255,7 @@ func (m *tetrisModel) spawnPiece() {
 }
 
 // isValid checks if a piece position is legal (in bounds and no overlap).
-func (m *tetrisModel) isValid(p activePiece) bool {
+func (m *gameModel) isValid(p activePiece) bool {
 	cells := p.cells()
 	for _, c := range cells {
 		if c.x < 0 || c.x >= boardWidth || c.y < 0 || c.y >= boardHeight {
@@ -269,7 +269,7 @@ func (m *tetrisModel) isValid(p activePiece) bool {
 }
 
 // lockPiece locks the current piece onto the board.
-func (m *tetrisModel) lockPiece() {
+func (m *gameModel) lockPiece() {
 	color := tetrominoes[m.current.typ].color
 	cells := m.current.cells()
 	for _, c := range cells {
@@ -280,7 +280,7 @@ func (m *tetrisModel) lockPiece() {
 }
 
 // clearLines checks and clears completed lines, returning the count.
-func (m *tetrisModel) clearLines() int {
+func (m *gameModel) clearLines() int {
 	cleared := 0
 	for y := boardHeight - 1; y >= 0; y-- {
 		full := true
@@ -307,7 +307,7 @@ func (m *tetrisModel) clearLines() int {
 }
 
 // addScore updates score based on lines cleared.
-func (m *tetrisModel) addScore(linesCleared int) {
+func (m *gameModel) addScore(linesCleared int) {
 	points := 0
 	switch linesCleared {
 	case 1:
@@ -325,7 +325,7 @@ func (m *tetrisModel) addScore(linesCleared int) {
 }
 
 // gravityInterval returns the tick duration based on the current level.
-func (m *tetrisModel) gravityInterval() time.Duration {
+func (m *gameModel) gravityInterval() time.Duration {
 	// Start at 1000ms, decrease by ~60ms per level, minimum 50ms
 	ms := 1000 - (m.level-1)*60
 	if ms < 50 {
@@ -335,7 +335,7 @@ func (m *tetrisModel) gravityInterval() time.Duration {
 }
 
 // moveLeft moves the piece left if possible.
-func (m *tetrisModel) moveLeft() {
+func (m *gameModel) moveLeft() {
 	try := m.current
 	try.x--
 	if m.isValid(try) {
@@ -344,7 +344,7 @@ func (m *tetrisModel) moveLeft() {
 }
 
 // moveRight moves the piece right if possible.
-func (m *tetrisModel) moveRight() {
+func (m *gameModel) moveRight() {
 	try := m.current
 	try.x++
 	if m.isValid(try) {
@@ -353,7 +353,7 @@ func (m *tetrisModel) moveRight() {
 }
 
 // moveDown moves the piece down. Returns true if it moved, false if locked.
-func (m *tetrisModel) moveDown() bool {
+func (m *gameModel) moveDown() bool {
 	try := m.current
 	try.y++
 	if m.isValid(try) {
@@ -364,7 +364,7 @@ func (m *tetrisModel) moveDown() bool {
 }
 
 // rotateCW rotates the piece clockwise with SRS wall kicks.
-func (m *tetrisModel) rotateCW() {
+func (m *gameModel) rotateCW() {
 	try := m.current
 	newRot := (try.rotation + 1) % 4
 	try.rotation = newRot
@@ -389,7 +389,7 @@ func (m *tetrisModel) rotateCW() {
 }
 
 // hardDrop drops the piece to the lowest valid position and locks it.
-func (m *tetrisModel) hardDrop() {
+func (m *gameModel) hardDrop() {
 	dropDist := 0
 	for {
 		try := m.current
@@ -410,7 +410,7 @@ func (m *tetrisModel) hardDrop() {
 }
 
 // ghostY returns the Y position where the ghost piece would land.
-func (m *tetrisModel) ghostY() int {
+func (m *gameModel) ghostY() int {
 	ghost := m.current
 	for {
 		try := ghost
@@ -425,7 +425,7 @@ func (m *tetrisModel) ghostY() int {
 }
 
 // holdSwap swaps the current piece with the hold piece.
-func (m *tetrisModel) holdSwap() {
+func (m *gameModel) holdSwap() {
 	if m.holdUsed {
 		return
 	}
@@ -450,7 +450,7 @@ func (m *tetrisModel) holdSwap() {
 }
 
 // restart resets the game state.
-func (m *tetrisModel) restart() {
+func (m *gameModel) restart() {
 	for y := 0; y < boardHeight; y++ {
 		for x := 0; x < boardWidth; x++ {
 			m.board[y][x] = 0
@@ -512,14 +512,14 @@ func bgColorForPiece(pieceType int) string {
 }
 
 // Init implements tea.Model.
-func (m *tetrisModel) Init() tea.Cmd {
+func (m *gameModel) Init() tea.Cmd {
 	return tea.Tick(m.gravityInterval(), func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
 
 // Update implements tea.Model.
-func (m *tetrisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *gameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -588,7 +588,7 @@ func (m *tetrisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
-func (m *tetrisModel) View() string {
+func (m *gameModel) View() string {
 	var b strings.Builder
 
 	// Build a composite board with the current piece and ghost overlaid
@@ -666,11 +666,8 @@ func (m *tetrisModel) View() string {
 	panel = append(panel, fmt.Sprintf("%s c    Hold%s", colorGray, colorReset))
 	panel = append(panel, fmt.Sprintf("%s q    Quit%s", colorGray, colorReset))
 
-	// Title
-	b.WriteString("\r\n")
-	b.WriteString(fmt.Sprintf("  %s%s ╔══ T E T R I S ══╗ %s\r\n", colorBold, colorCyan, colorReset))
-
 	// Top border of board
+	b.WriteString("\r\n")
 	b.WriteString(fmt.Sprintf("  %s╔════════════════════╗%s", colorBold, colorReset))
 	if len(panel) > 0 {
 		b.WriteString("  ")
