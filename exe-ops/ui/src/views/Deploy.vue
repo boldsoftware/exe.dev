@@ -272,7 +272,6 @@
                     <i v-if="isDeploying(p)" class="pi pi-spin pi-spinner"></i>
                     <i v-else class="pi pi-upload"></i>
                     Deploy
-                    <span v-if="canDeploy(p) && headSHA" class="deploy-btn-sha">{{ headSHA.slice(0, 7) }}</span>
                   </button>
                 </td>
               </tr>
@@ -347,7 +346,7 @@
             @click="doDeploy(confirmProc!)"
           >
             <i class="pi pi-upload"></i>
-            Deploy {{ deploySHA.slice(0, 7) }}
+            Deploy
           </button>
         </div>
       </div>
@@ -634,6 +633,12 @@ const activeDeployKeys = computed(() => {
 
 const hasActiveDeploys = computed(() => activeDeployKeys.value.size > 0)
 
+const isExeOpsDeploying = computed(() => {
+  return deploys.value.some(d =>
+    d.process === 'exe-ops' && (d.state === 'running' || d.state === 'pending')
+  )
+})
+
 function deployKey(stage: string, role: string, process: string, host: string): string {
   return `${stage}/${role}/${process}/${host}`
 }
@@ -652,6 +657,10 @@ function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false
   if (isDeploying(p)) return false
   if (!headSHA.value) return false
+  // exe-ops deploys the deploy server itself; don't allow while other deploys are active
+  if (p.process === 'exe-ops' && hasActiveDeploys.value) return false
+  // don't allow any deploys while exe-ops is deploying
+  if (isExeOpsDeploying.value) return false
   return true
 }
 
@@ -659,6 +668,8 @@ function deployTitle(p: DeployProcess): string {
   if (!deployableStages.has(p.stage)) return 'Only staging and global deploys are allowed'
   if (isDeploying(p)) return 'Deploy in progress'
   if (!headSHA.value) return 'HEAD SHA unknown'
+  if (p.process === 'exe-ops' && hasActiveDeploys.value) return 'Wait for active deploys to finish before deploying exe-ops'
+  if (isExeOpsDeploying.value) return 'Wait for exe-ops deploy to finish'
   if (p.version === headSHA.value) return `Already at HEAD (${headSHA.value.slice(0, 7)})`
   let title = `Deploy ${headSHA.value.slice(0, 7)} to ${p.hostname}`
   if (headSubject.value) title += `\n${headSubject.value}`
@@ -1429,12 +1440,6 @@ a.version-sha:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
   opacity: 0.8;
-}
-
-.deploy-btn-sha {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.6rem;
-  opacity: 0.7;
 }
 
 .deploy-btn-confirm {
