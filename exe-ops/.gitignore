@@ -18,3 +18,4 @@ ui/dist/
 .DS_Store
 exe-repo.git/
 exe-ops.db
+.node/

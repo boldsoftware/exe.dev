@@ -102,8 +102,7 @@ var Recipes = map[string]Recipe{
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
 		PreBuildCmds: []string{
-			"cd ui && npm ci && npm run build",
-			"mkdir -p server/agentbin/binaries/linux-amd64 && go build -o server/agentbin/binaries/linux-amd64/exe-ops-agent ./cmd/exe-ops-agent",
+			"make build-ui build-agent-embed",
 		},
 	},
 }
