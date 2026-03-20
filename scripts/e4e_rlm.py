@@ -82,26 +82,25 @@ def load_docs(repo_root: str) -> dict[str, str]:
 
 
 def load_source(repo_root: str) -> dict[str, str]:
-    """Load all non-test Go source files."""
+    """Load all tracked files as {path: content}."""
+    r = subprocess.run(
+        ["git", "ls-files"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"git ls-files failed: {r.stderr.strip()}")
+
     source = {}
-    for root, dirs, files in os.walk(repo_root):
-        # Skip irrelevant directories.
-        base = os.path.basename(root)
-        if base in (".git", "vendor", "node_modules", "deps", "__pycache__"):
-            dirs.clear()
+    for rel in r.stdout.strip().split("\n"):
+        if not rel:
             continue
-        for f in files:
-            if not f.endswith(".go"):
-                continue
-            if f.endswith("_test.go"):
-                continue
-            full_path = os.path.join(root, f)
-            rel = os.path.relpath(full_path, repo_root)
-            try:
-                with open(full_path) as fh:
-                    source[rel] = fh.read()
-            except Exception:
-                pass
+        try:
+            with open(os.path.join(repo_root, rel)) as fh:
+                source[rel] = fh.read()
+        except (OSError, UnicodeDecodeError):
+            pass
     return source
 
 
