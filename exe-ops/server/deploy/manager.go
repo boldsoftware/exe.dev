@@ -75,8 +75,8 @@ type Request struct {
 // Start begins a new deploy. Returns an error if a deploy is already
 // active for the same target or the process type is unknown.
 func (m *Manager) Start(req Request) (Status, error) {
-	if req.Stage != "staging" {
-		return Status{}, fmt.Errorf("only staging deploys are currently allowed")
+	if req.Stage != "staging" && req.Stage != "global" {
+		return Status{}, fmt.Errorf("only staging and global deploys are currently allowed")
 	}
 	if _, ok := Recipes[req.Process]; !ok {
 		return Status{}, fmt.Errorf("unknown process %q", req.Process)
@@ -247,11 +247,17 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 		return "", "", fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 
+	// If recipe specifies a subdirectory, use it as the build root.
+	buildRoot := workdir
+	if recipe.BuildDir != "" {
+		buildRoot = filepath.Join(workdir, recipe.BuildDir)
+	}
+
 	// Run pre-build commands (e.g. building embedded assets).
 	for _, cmd := range recipe.PreBuildCmds {
 		m.log.Info("pre-build", "process", process, "cmd", cmd)
 		pre := exec.CommandContext(ctx, "bash", "-c", cmd)
-		pre.Dir = workdir
+		pre.Dir = buildRoot
 		pre.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 		if out, err := pre.CombinedOutput(); err != nil {
 			return "", "", fmt.Errorf("pre-build %q: %w\n%s", cmd, err, out)
@@ -266,7 +272,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 	m.log.Info("building", "process", process, "sha", sha[:12], "target", recipe.BuildTarget)
 	buildStart := time.Now()
 	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", outputPath, recipe.BuildTarget)
-	buildCmd.Dir = workdir
+	buildCmd.Dir = buildRoot
 	buildCmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return "", "", fmt.Errorf("go build: %w\n%s", err, out)
@@ -290,21 +296,17 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 	}
 	size := info.Size()
 
-	var remotePath string
-	if recipe.DirectInstall {
-		remotePath = recipe.RemoteDir + "/" + recipe.BinaryName
-	} else {
-		ts := time.Now().Format("20060102-150405")
-		remotePath = fmt.Sprintf("%s/%s.%s-%s", recipe.RemoteDir, recipe.BinaryName, ts, d.sha[:12])
-	}
+	ts := time.Now().Format("20060102-150405")
+	remotePath := fmt.Sprintf("%s/%s.%s-%s", recipe.RemoteDir, recipe.BinaryName, ts, d.sha[:12])
 	tmpName := fmt.Sprintf("deploy-%s-%s", recipe.BinaryName, d.sha[:12])
 	tmpPath := "/tmp/" + tmpName
 
 	// SCP to /tmp first (avoids permission issues), then sudo mv into place.
+	user := recipe.remoteUser()
 	scpStart := time.Now()
 	scp := exec.CommandContext(ctx, "scp",
 		"-o", "StrictHostKeyChecking=no",
-		localPath, d.dnsName+":"+tmpPath)
+		localPath, user+"@"+d.dnsName+":"+tmpPath)
 	if out, err := scp.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("scp: %w\n%s", err, out)
 	}
@@ -313,10 +315,10 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 	mbps := float64(size) / 1024 / 1024 / scpDur.Seconds()
 	d.setStepOutput(fmt.Sprintf("%s in %s (%.1f MB/s) → %s", formatBytes(size), scpDur.Round(time.Millisecond), mbps, remotePath))
 
-	if err := m.ssh(ctx, d.dnsName, "sudo", "mv", tmpPath, remotePath); err != nil {
+	if err := m.ssh(ctx, user, d.dnsName, "sudo", "mv", tmpPath, remotePath); err != nil {
 		return "", fmt.Errorf("mv: %w", err)
 	}
-	if err := m.ssh(ctx, d.dnsName, "sudo", "chmod", "+x", remotePath); err != nil {
+	if err := m.ssh(ctx, user, d.dnsName, "sudo", "chmod", "+x", remotePath); err != nil {
 		return "", fmt.Errorf("chmod: %w", err)
 	}
 
@@ -324,18 +326,14 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 }
 
 func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remotePath string) error {
-	if recipe.DirectInstall {
-		d.setStepOutput("direct install (no symlink)")
-		return nil
-	}
-	symlink := recipe.RemoteDir + "/" + recipe.BinaryName + ".latest"
+	symlink := recipe.RemoteDir + "/" + recipe.BinaryName
 	d.setStepOutput(fmt.Sprintf("%s → %s", symlink, remotePath))
-	return m.ssh(ctx, d.dnsName, "ln", "-sf", remotePath, symlink)
+	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "ln", "-sf", remotePath, symlink)
 }
 
 func (m *Manager) restart(ctx context.Context, d *deploy, recipe Recipe) error {
 	d.setStepOutput(recipe.ServiceUnit)
-	return m.ssh(ctx, d.dnsName, "sudo", "systemctl", "restart", recipe.ServiceUnit)
+	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "systemctl", "restart", recipe.ServiceUnit)
 }
 
 func (m *Manager) verify(ctx context.Context, d *deploy, recipe Recipe) error {
@@ -378,8 +376,8 @@ func (m *Manager) verify(ctx context.Context, d *deploy, recipe Recipe) error {
 	return fmt.Errorf("health check timed out after %d attempts: %v", attempts, lastErr)
 }
 
-func (m *Manager) ssh(ctx context.Context, host string, args ...string) error {
-	sshArgs := append([]string{"-o", "StrictHostKeyChecking=no", host}, args...)
+func (m *Manager) ssh(ctx context.Context, user, host string, args ...string) error {
+	sshArgs := append([]string{"-o", "StrictHostKeyChecking=no", user + "@" + host}, args...)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

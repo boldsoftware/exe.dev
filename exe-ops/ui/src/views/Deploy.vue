@@ -5,16 +5,6 @@
         <h1>Deploy</h1>
         <p class="page-subtitle">Fleet deployment inventory and version status</p>
       </div>
-      <div v-if="headSHA" class="head-sha-badge">
-        <span class="head-sha-label">origin/main</span>
-        <a
-          :href="'https://github.com/boldsoftware/exe/commit/' + headSHA"
-          target="_blank"
-          rel="noopener"
-          class="head-sha-value"
-        >{{ headSHA.slice(0, 7) }}</a>
-        <span v-if="headSubject" class="head-sha-subject">{{ headSubject }}</span>
-      </div>
     </div>
 
     <div v-if="error" class="message-banner message-error">
@@ -71,6 +61,19 @@
             <div v-if="d.error" class="deploy-card-error">{{ d.error }}</div>
           </div>
         </div>
+      </div>
+
+      <!-- origin/main -->
+      <div v-if="headSHA" class="head-sha-badge">
+        <span class="head-sha-label">origin/main</span>
+        <a
+          :href="'https://github.com/boldsoftware/exe/commit/' + headSHA"
+          target="_blank"
+          rel="noopener"
+          class="head-sha-value"
+        >{{ headSHA.slice(0, 7) }}</a>
+        <span v-if="headSubject" class="head-sha-subject">{{ headSubject }}</span>
+        <span v-if="headDate" class="head-sha-date">{{ formatDate(headDate) }}</span>
       </div>
 
       <!-- Summary: COUNT(*) GROUP BY stage, process, version -->
@@ -198,13 +201,14 @@
                 class="deploy-row"
               >
                 <td class="col-hostname">{{ p.hostname }}</td>
-                <td class="col-role">
-                  <span class="role-tag" :class="'role-' + p.role">{{ p.role }}</span>
-                </td>
+                <td class="col-role">{{ p.role }}</td>
                 <td class="col-stage">{{ p.stage }}</td>
                 <td class="col-region">{{ p.region || '\u2014' }}</td>
                 <td class="col-process">
-                  <a :href="p.debug_url" target="_blank" rel="noopener" class="process-link" @click.stop>{{ p.process }}</a>
+                  {{ p.process }}
+                  <a :href="p.debug_url" target="_blank" rel="noopener" class="debug-link" @click.stop>
+                    <i class="pi pi-external-link"></i>
+                  </a>
                 </td>
                 <td class="col-version">
                   <span v-if="p.version" class="version-cell">
@@ -230,18 +234,28 @@
                 </td>
                 <td class="col-actions">
                   <button
-                    v-if="isDeployable(p)"
+                    v-if="isDeployable(p) && confirmTarget !== deployKey(p.stage, p.role, p.process, p.hostname)"
                     class="deploy-btn"
                     :class="{ deploying: isDeploying(p) }"
                     :disabled="!canDeploy(p)"
                     :title="deployTitle(p)"
-                    @click="doDeploy(p)"
+                    @click="confirmDeploy(p)"
                   >
                     <i v-if="isDeploying(p)" class="pi pi-spin pi-spinner"></i>
                     <i v-else class="pi pi-upload"></i>
                     Deploy
                     <span v-if="canDeploy(p) && headSHA" class="deploy-btn-sha">{{ headSHA.slice(0, 7) }}</span>
                   </button>
+                  <span v-if="isDeployable(p) && confirmTarget === deployKey(p.stage, p.role, p.process, p.hostname)" class="deploy-confirm">
+                    <button class="deploy-btn deploy-btn-confirm" :title="deployTitle(p)" @click="doDeploy(p)">
+                      <i class="pi pi-check"></i>
+                      {{ headSHA ? headSHA.slice(0, 7) : 'Confirm' }}
+                      <span v-if="headSubject" class="deploy-confirm-subject">{{ headSubject }}</span>
+                    </button>
+                    <button class="deploy-btn deploy-btn-cancel" @click="confirmTarget = ''">
+                      <i class="pi pi-times"></i>
+                    </button>
+                  </span>
                 </td>
               </tr>
             </tbody>
@@ -262,11 +276,13 @@ import {
   type DeployStatus,
 } from '../api/client'
 
-const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop'])
+const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops'])
 
 const procs = ref<DeployProcess[]>([])
 const headSHA = ref('')
 const headSubject = ref('')
+const headDate = ref('')
+const confirmTarget = ref('')
 const deploys = ref<DeployStatus[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -497,23 +513,34 @@ function isDeploying(p: DeployProcess): boolean {
   return activeDeployKeys.value.has(deployKey(p.stage, p.role, p.process, p.hostname))
 }
 
+const deployableStages = new Set(['staging', 'global'])
+
 function canDeploy(p: DeployProcess): boolean {
-  if (p.stage !== 'staging') return false
+  if (!deployableStages.has(p.stage)) return false
   if (isDeploying(p)) return false
   if (!headSHA.value) return false
   return true
 }
 
 function deployTitle(p: DeployProcess): string {
-  if (p.stage !== 'staging') return 'Only staging deploys are allowed'
+  if (!deployableStages.has(p.stage)) return 'Only staging and global deploys are allowed'
   if (isDeploying(p)) return 'Deploy in progress'
   if (!headSHA.value) return 'HEAD SHA unknown'
   if (p.version === headSHA.value) return `Already at HEAD (${headSHA.value.slice(0, 7)})`
-  return `Deploy ${headSHA.value.slice(0, 7)} to ${p.hostname}`
+  let title = `Deploy ${headSHA.value.slice(0, 7)} to ${p.hostname}`
+  if (headSubject.value) title += `\n${headSubject.value}`
+  if (headDate.value) title += `\n${formatDate(headDate.value)}`
+  return title
+}
+
+function confirmDeploy(p: DeployProcess) {
+  if (!canDeploy(p)) return
+  confirmTarget.value = deployKey(p.stage, p.role, p.process, p.hostname)
 }
 
 async function doDeploy(p: DeployProcess) {
   if (!canDeploy(p)) return
+  confirmTarget.value = ''
   try {
     await startDeploy({
       stage: p.stage,
@@ -535,6 +562,7 @@ async function load() {
     procs.value = inv.processes
     headSHA.value = inv.head_sha
     headSubject.value = inv.head_subject
+    headDate.value = inv.head_date
     error.value = ''
   } catch (e: any) {
     error.value = e.message || 'Failed to load deploy inventory'
@@ -612,7 +640,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.375rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
   background: var(--surface-card);
   border: 1px solid var(--surface-border);
   border-radius: 4px;
@@ -642,6 +671,12 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.head-sha-date {
+  color: var(--text-color-muted);
+  font-size: 0.65rem;
+  opacity: 0.7;
 }
 
 /* -- Deploys section -- */
@@ -1050,40 +1085,15 @@ onUnmounted(() => {
   color: var(--text-color);
 }
 
-.role-tag {
-  display: inline-flex;
-  padding: 0.15rem 0.4rem;
-  border-radius: 3px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
+.debug-link {
+  color: var(--text-color-muted);
+  font-size: 0.6rem;
+  margin-left: 0.25rem;
+  vertical-align: middle;
 }
 
-.role-exelet {
-  background: var(--green-subtle);
-  color: var(--green-400);
-}
-
-.role-exeprox {
-  background: var(--primary-50);
+.debug-link:hover {
   color: var(--primary-color);
-}
-
-.role-exed {
-  background: var(--yellow-subtle);
-  color: var(--yellow-400);
-}
-
-.process-link {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--primary-color);
-}
-
-.process-link:hover {
-  color: var(--primary-hover);
-  text-decoration: underline;
 }
 
 .version-cell {
@@ -1198,6 +1208,36 @@ a.version-sha:hover {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.6rem;
   opacity: 0.7;
+}
+
+.deploy-confirm {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.deploy-btn-confirm {
+  border-color: var(--red-400);
+  color: var(--red-400);
+  background: var(--red-subtle);
+}
+
+.deploy-btn-confirm:hover:not(:disabled) {
+  background: var(--red-400);
+  color: #fff;
+  border-color: var(--red-400);
+}
+
+.deploy-btn-cancel {
+  color: var(--text-color-muted);
+}
+
+.deploy-confirm-subject {
+  font-weight: 400;
+  font-size: 0.65rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metric-blank {

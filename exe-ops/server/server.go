@@ -84,6 +84,7 @@ func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai 
 	mux.HandleFunc("/api/v1/version", h.HandleServerVersion)
 
 	mux.HandleFunc("/health", h.HandleHealth)
+	mux.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
 
 	// SPA fallback: serve static files, fall back to index.html.
 	if uiFS != nil {

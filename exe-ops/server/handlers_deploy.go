@@ -18,10 +18,11 @@ func (h *Handlers) HandleDeployInventory(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "inventory not configured", http.StatusNotFound)
 		return
 	}
-	headSHA, headSubject := h.inventory.HeadCommit()
+	headSHA, headSubject, headDate := h.inventory.HeadCommit()
 	writeJSON(w, map[string]any{
 		"head_sha":     headSHA,
 		"head_subject": headSubject,
+		"head_date":    headDate,
 		"processes":    h.inventory.Processes(),
 	})
 }

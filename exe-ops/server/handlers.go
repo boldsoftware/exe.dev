@@ -290,6 +290,12 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
+// HandleDebugGitSHA handles GET /debug/gitsha — returns the raw commit SHA.
+func (h *Handlers) HandleDebugGitSHA(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, version.Commit)
+}
+
 // HandleAgentStream handles GET /api/v1/stream — SSE connection for agent presence.
 func (h *Handlers) HandleAgentStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

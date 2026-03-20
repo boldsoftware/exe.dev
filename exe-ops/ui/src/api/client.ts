@@ -406,6 +406,7 @@ export interface DeployProcess {
 export interface DeployInventory {
   head_sha: string
   head_subject: string
+  head_date: string
   processes: DeployProcess[]
 }
 

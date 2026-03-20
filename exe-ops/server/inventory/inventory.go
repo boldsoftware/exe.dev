@@ -94,24 +94,28 @@ func (inv *Inventory) HeadSHA() string {
 	return inv.gitRepo.HeadSHA()
 }
 
-// HeadCommit returns the SHA and subject of refs/heads/main.
-func (inv *Inventory) HeadCommit() (sha, subject string) {
+// HeadCommit returns the SHA, subject, and date of refs/heads/main.
+func (inv *Inventory) HeadCommit() (sha, subject, date string) {
 	if inv.gitRepo == nil {
-		return "", ""
+		return "", "", ""
 	}
 	sha = inv.gitRepo.HeadSHA()
 	if sha == "" {
-		return "", ""
+		return "", "", ""
 	}
 	info, err := inv.gitRepo.ResolveCommit(sha)
 	if err != nil {
-		return sha, ""
+		return sha, "", ""
 	}
-	return sha, info.Subject
+	if !info.Date.IsZero() {
+		date = info.Date.Format(time.RFC3339)
+	}
+	return sha, info.Subject, date
 }
 
 // tailscaleStatus is the subset of `tailscale status --json` we care about.
 type tailscaleStatus struct {
+	Self *tailscalePeer           `json:"Self"`
 	Peer map[string]tailscalePeer `json:"Peer"`
 }
 
@@ -130,6 +134,7 @@ var (
 	reExeproxNA2  = regexp.MustCompile(`^exeprox-([a-z0-9]+)-na-\d+$`)
 	reExed        = regexp.MustCompile(`^exed-\d+$`)
 	reExedStaging = regexp.MustCompile(`^exed-staging-\d+$`)
+	reExeOps      = regexp.MustCompile(`^exe-ops$`)
 )
 
 func classifyHost(hostname string) (role, stage, region string, ok bool) {
@@ -153,6 +158,9 @@ func classifyHost(hostname string) (role, stage, region string, ok bool) {
 	}
 	if reExed.MatchString(hostname) {
 		return "exed", "prod", "", true
+	}
+	if reExeOps.MatchString(hostname) {
+		return "exe-ops", "global", "", true
 	}
 	return "", "", "", false
 }
@@ -194,6 +202,17 @@ var processesByRole = map[string][]processSpec{
 			debugURL:   func(d string) string { return "https://" + d + "/debug/" },
 			versionURL: func(d string) string { return "https://" + d + "/debug/gitsha" },
 			metricsURL: func(d string) string { return "https://" + d + "/metrics" },
+		},
+		{
+			name:     "metricsd",
+			debugURL: func(d string) string { return "http://" + d + ":21090/debug/pprof/" },
+		},
+	},
+	"exe-ops": {
+		{
+			name:       "exe-ops",
+			debugURL:   func(d string) string { return "https://" + d + "/" },
+			versionURL: func(d string) string { return "https://" + d + "/debug/gitsha" },
 		},
 	},
 }
@@ -255,7 +274,12 @@ func (inv *Inventory) getTailscalePeers(ctx context.Context) ([]tailscalePeer, e
 		return nil, fmt.Errorf("parse tailscale status: %w", err)
 	}
 
-	peers := make([]tailscalePeer, 0, len(status.Peer))
+	peers := make([]tailscalePeer, 0, len(status.Peer)+1)
+	if status.Self != nil {
+		self := *status.Self
+		self.Online = true // self is always online
+		peers = append(peers, self)
+	}
 	for _, p := range status.Peer {
 		peers = append(peers, p)
 	}

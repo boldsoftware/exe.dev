@@ -8,12 +8,18 @@ type Recipe struct {
 
 	// BinaryName is the output binary name on the target machine.
 	// Versioned copies use "<BinaryName>.<timestamp>-<sha>" naming
-	// with a "<BinaryName>.latest" symlink, except for cgtop which
-	// uses a direct overwrite at its install path.
+	// with a "<BinaryName>.latest" symlink.
 	BinaryName string
+
+	// BuildDir is the subdirectory within the repo checkout to use as the
+	// working directory for go build. Empty means the repo root.
+	BuildDir string
 
 	// RemoteDir is the directory on target machines where binaries live.
 	RemoteDir string
+
+	// RemoteUser is the SSH user for the target machine (default "ubuntu").
+	RemoteUser string
 
 	// ServiceUnit is the systemd unit to restart after deploy.
 	ServiceUnit string
@@ -28,14 +34,17 @@ type Recipe struct {
 	// HealthTLS uses HTTPS for the health check when true.
 	HealthTLS bool
 
-	// DirectInstall means overwrite the binary in place instead of using
-	// versioned copies + symlink (used for cgtop).
-	DirectInstall bool
-
 	// PreBuildCmds are shell commands to run in the workdir before
 	// go build (e.g. building embedded assets). Each entry is passed
 	// to "bash -c". GOOS/GOARCH/CGO_ENABLED are set to the target.
 	PreBuildCmds []string
+}
+
+func (r Recipe) remoteUser() string {
+	if r.RemoteUser != "" {
+		return r.RemoteUser
+	}
+	return "ubuntu"
 }
 
 // Recipes maps process name to its deploy recipe.
@@ -52,13 +61,12 @@ var Recipes = map[string]Recipe{
 		},
 	},
 	"cgtop": {
-		BuildTarget:   "./cmd/cgtop",
-		BinaryName:    "cgtop",
-		RemoteDir:     "/usr/local/bin",
-		ServiceUnit:   "cgtop.service",
-		HealthPort:    9090,
-		HealthPath:    "/debug/gitsha",
-		DirectInstall: true,
+		BuildTarget: "./cmd/cgtop",
+		BinaryName:  "cgtop",
+		RemoteDir:   "/usr/local/bin",
+		ServiceUnit: "cgtop.service",
+		HealthPort:  9090,
+		HealthPath:  "/debug/gitsha",
 	},
 	"exeprox": {
 		BuildTarget: "./cmd/exeprox",
@@ -77,5 +85,25 @@ var Recipes = map[string]Recipe{
 		HealthPort:  443,
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
+	},
+	"metricsd": {
+		BuildTarget: "./cmd/metricsd",
+		BinaryName:  "metricsd",
+		RemoteDir:   "/home/ubuntu",
+		ServiceUnit: "metricsd.service",
+	},
+	"exe-ops": {
+		BuildTarget: "./cmd/exe-ops-server",
+		BuildDir:    "exe-ops",
+		BinaryName:  "exe-ops-server",
+		RemoteDir:   "/opt/exe-ops/bin",
+		ServiceUnit: "exe-ops-server.service",
+		HealthPort:  443,
+		HealthPath:  "/debug/gitsha",
+		HealthTLS:   true,
+		PreBuildCmds: []string{
+			"cd ui && npm ci && npm run build",
+			"mkdir -p server/agentbin/binaries/linux-amd64 && go build -o server/agentbin/binaries/linux-amd64/exe-ops-agent ./cmd/exe-ops-agent",
+		},
 	},
 }
