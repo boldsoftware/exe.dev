@@ -111,8 +111,15 @@ jobs:
 
           RUN_ID="${{ inputs.run_id }}"
 
-          # Get CI logs and diff
-          gh run view "$RUN_ID" --log 2>&1 | tail -500 > /tmp/ci-logs.txt
+          # Get CI logs and diff.
+          # gh run view --log can fail if logs aren't ready yet; don't
+          # let that kill the whole step.
+          if ! gh run view "$RUN_ID" --log 2>/tmp/ci-logs-err.txt | tail -500 > /tmp/ci-logs.txt; then
+            echo "Warning: gh run view --log failed:"
+            cat /tmp/ci-logs-err.txt
+            # Fall back to the failed-only logs
+            gh run view "$RUN_ID" --log-failed 2>&1 | tail -500 > /tmp/ci-logs.txt || true
+          fi
           git diff HEAD~1 HEAD > /tmp/commit-diff.txt
 
           cat > /tmp/flake-prompt.txt <<'PROMPT_EOF'
