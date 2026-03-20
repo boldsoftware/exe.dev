@@ -228,6 +228,37 @@ func (m *Manager) getBuildLock(key string) *sync.Mutex {
 	return mu
 }
 
+// buildEnv returns os.Environ() with GOOS/GOARCH/CGO_ENABLED for cross-compilation,
+// plus GOPATH/HOME defaults so `go build` works even when running as root under systemd.
+func buildEnv() []string {
+	env := os.Environ()
+	hasGOPATH := false
+	hasHOME := false
+	for _, e := range env {
+		if strings.HasPrefix(e, "GOPATH=") {
+			hasGOPATH = true
+		}
+		if strings.HasPrefix(e, "HOME=") {
+			hasHOME = true
+		}
+	}
+	if !hasHOME {
+		env = append(env, "HOME=/root")
+	}
+	if !hasGOPATH {
+		// Default to /root/go which is Go's default for root.
+		home := "/root"
+		for _, e := range env {
+			if strings.HasPrefix(e, "HOME=") {
+				home = e[5:]
+				break
+			}
+		}
+		env = append(env, "GOPATH="+home+"/go")
+	}
+	return append(env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+}
+
 func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe Recipe, outputPath string) (string, string, error) {
 	// Clone from the bare repo with --shared (uses hardlinks, fast)
 	// so Go's VCS detection embeds vcs.revision in the binary.
@@ -258,7 +289,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 		m.log.Info("pre-build", "process", process, "cmd", cmd)
 		pre := exec.CommandContext(ctx, "bash", "-c", cmd)
 		pre.Dir = buildRoot
-		pre.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+		pre.Env = buildEnv()
 		if out, err := pre.CombinedOutput(); err != nil {
 			return "", "", fmt.Errorf("pre-build %q: %w\n%s", cmd, err, out)
 		}
@@ -273,7 +304,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 	buildStart := time.Now()
 	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", outputPath, recipe.BuildTarget)
 	buildCmd.Dir = buildRoot
-	buildCmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+	buildCmd.Env = buildEnv()
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return "", "", fmt.Errorf("go build: %w\n%s", err, out)
 	}
