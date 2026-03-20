@@ -750,8 +750,12 @@ function stopDeployPolling() {
   }
 }
 
-watch(hasActiveDeploys, () => {
+watch(hasActiveDeploys, (active, wasActive) => {
   startDeployPolling()
+  // Refresh inventory immediately when deploys finish
+  if (!active && wasActive) {
+    load()
+  }
 })
 
 onMounted(async () => {
