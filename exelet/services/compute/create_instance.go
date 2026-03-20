@@ -23,6 +23,7 @@ import (
 	exeletfs "exe.dev/exelet/fs"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
+	"exe.dev/xshelley"
 )
 
 const (
@@ -592,6 +593,26 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		}
 		if err := os.WriteFile(imageConfPath, imageConfData, 0o644); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+
+	// install shelley binary (override image copy if a newer version is available)
+	if info, shelleyErr := xshelley.GetShelleyInfo(ctx, runtime.GOARCH); shelleyErr != nil {
+		s.log.WarnContext(ctx, "failed to get shelley binary, skipping", "id", instanceID, "error", shelleyErr)
+	} else {
+		destShelley := filepath.Join(mountpoint, "usr", "local", "bin", "shelley")
+		if err := os.MkdirAll(filepath.Dir(destShelley), 0o755); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shelley directory: %s", err)
+		}
+		copyStart := time.Now()
+		copied, err := copyFileIfChanged(info.Path, destShelley)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to install shelley: %s", err)
+		}
+		if copied {
+			s.log.InfoContext(ctx, "installed shelley", "id", instanceID, "version", info.Version, "duration", time.Since(copyStart))
+		} else {
+			s.log.DebugContext(ctx, "shelley already up to date", "id", instanceID, "version", info.Version)
 		}
 	}
 

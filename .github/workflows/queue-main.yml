@@ -465,18 +465,19 @@ jobs:
             echo 'GHEOF'
           } >> "$GITHUB_OUTPUT"
 
-          # Check if exeuntu/, shelley/, or the build workflow were modified
-          if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^(exeuntu|shelley)/|^scripts/(find-shelley-release\.py|download-shelley\.sh)$|^\.github/workflows/build-exeuntu\.yml$'; then
-            echo "exeuntu_or_shelley_changed=true" >> $GITHUB_OUTPUT
+          # Check if exeuntu/ or the build workflow were modified
+          # (shelley/ changes no longer trigger exeuntu rebuilds; shelley is installed at VM creation time)
+          if git diff --name-only "$ORIGIN_MAIN_BEFORE" HEAD | grep -qE '^exeuntu/|^\.github/workflows/build-exeuntu\.yml$'; then
+            echo "exeuntu_changed=true" >> $GITHUB_OUTPUT
           else
-            echo "exeuntu_or_shelley_changed=false" >> $GITHUB_OUTPUT
+            echo "exeuntu_changed=false" >> $GITHUB_OUTPUT
           fi
 
         env:
           GITHUB_TOKEN: ${{ github.token }}
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Ensure GitHub CLI installed
-        if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
+        if: steps.push.outputs.exeuntu_changed == 'true'
         run: |
           set -euo pipefail
           if ! command -v gh >/dev/null 2>&1; then
@@ -487,7 +488,7 @@ jobs:
             sudo install "${GH_INSTALL_DIR}/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
           fi
       - name: Trigger exeuntu build
-        if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
+        if: steps.push.outputs.exeuntu_changed == 'true'
         run: |
           COMMIT_SUBJECT=$(git log -1 --pretty=%s)
           # Not wrapped in retry.sh: gh workflow run is not idempotent.

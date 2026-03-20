@@ -2,7 +2,9 @@ package compute
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,4 +161,58 @@ func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, strin
 	}
 
 	return "", "", fmt.Errorf("no instance found with IP %s", ip)
+}
+
+// copyFileIfChanged copies src to dest (mode 0755) only if dest does not exist
+// or its SHA-256 digest differs from src. Returns true if a copy was performed.
+func copyFileIfChanged(src, dest string) (bool, error) {
+	srcHash, err := sha256File(src)
+	if err != nil {
+		return false, fmt.Errorf("hash src: %w", err)
+	}
+	dstHash, err := sha256File(dest)
+	if err == nil && srcHash == dstHash {
+		return false, nil
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return false, err
+	}
+	defer in.Close()
+
+	tmp := dest + ".tmp"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return false, err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return false, err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return false, err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		os.Remove(tmp)
+		return false, err
+	}
+	return true, nil
+}
+
+func sha256File(path string) ([sha256.Size]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	var sum [sha256.Size]byte
+	copy(sum[:], h.Sum(nil))
+	return sum, nil
 }

@@ -102,6 +102,37 @@ func getCacheDir() (string, error) {
 	return cacheDir, nil
 }
 
+// ShelleyInfo contains the path and version of a cached shelley binary.
+type ShelleyInfo struct {
+	Path    string // filesystem path to the binary
+	Version string // release tag (e.g. "v0.89.914374232")
+}
+
+// GetShelleyInfo returns the path and version of the shelley binary for the
+// specified architecture. It behaves like GetShelley but also reads the cached
+// release tag so callers can log or compare versions.
+func GetShelleyInfo(ctx context.Context, goarch string) (ShelleyInfo, error) {
+	path, err := GetShelley(ctx, goarch)
+	if err != nil {
+		return ShelleyInfo{}, err
+	}
+
+	cacheDirPath, err := getCacheDir()
+	if err != nil {
+		return ShelleyInfo{Path: path}, nil
+	}
+	metadataPath := filepath.Join(cacheDirPath, fmt.Sprintf("linux-%s", goarch), metadataFileName)
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return ShelleyInfo{Path: path}, nil
+	}
+	var meta cacheMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return ShelleyInfo{Path: path}, nil
+	}
+	return ShelleyInfo{Path: path, Version: meta.ReleaseTag}, nil
+}
+
 // GetShelley returns the path to the shelley binary for the specified architecture.
 // It downloads the binary from the latest GitHub release if not cached, or if the
 // cache is stale (older than refreshInterval).

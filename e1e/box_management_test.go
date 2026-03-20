@@ -290,6 +290,25 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("shelley_present_at_creation", func(t *testing.T) {
+		noGolden(t)
+		// The exelet installs shelley into the VM filesystem during creation.
+		// Verify the binary exists, is executable, and reports a version.
+		out, err := boxSSHCommand(t, boxName, keyFile, "test", "-x", "/usr/local/bin/shelley", "&&", "echo", "ok").CombinedOutput()
+		if err != nil {
+			t.Fatalf("shelley binary missing or not executable: %v\n%s", err, out)
+		}
+		out, err = boxSSHCommand(t, boxName, keyFile, "/usr/local/bin/shelley", "version").CombinedOutput()
+		if err != nil {
+			t.Fatalf("shelley version failed: %v\n%s", err, out)
+		}
+		version := strings.TrimSpace(string(out))
+		if version == "" {
+			t.Fatal("shelley version returned empty string")
+		}
+		t.Logf("shelley version at creation: %s", version)
+	})
+
 	t.Run("shelley_install", func(t *testing.T) {
 		// Test the shelley install command
 		pty := sshToExeDev(t, keyFile)
