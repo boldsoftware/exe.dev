@@ -2624,7 +2624,9 @@ type SendEmailRequest struct {
 	UserID    string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	// from_name overrides the display name in the "From" header.
 	// When empty, the default (WebHost) is used.
-	FromName      string `protobuf:"bytes,6,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	FromName string `protobuf:"bytes,6,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	// reply_to, when non-empty, sets the Reply-To header.
+	ReplyTo       string `protobuf:"bytes,7,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2697,6 +2699,13 @@ func (x *SendEmailRequest) GetUserID() string {
 func (x *SendEmailRequest) GetFromName() string {
 	if x != nil {
 		return x.FromName
+	}
+	return ""
+}
+
+func (x *SendEmailRequest) GetReplyTo() string {
+	if x != nil {
+		return x.ReplyTo
 	}
 	return ""
 }
@@ -4016,7 +4025,7 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x15HLLNoteEventsResponse\"=\n" +
 	"\"CheckAndIncrementEmailQuotaRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"%\n" +
-	"#CheckAndIncrementEmailQuotaResponse\"\xa5\x01\n" +
+	"#CheckAndIncrementEmailQuotaResponse\"\xc0\x01\n" +
 	"\x10SendEmailRequest\x12\x1d\n" +
 	"\n" +
 	"email_type\x18\x01 \x01(\tR\temailType\x12\x0e\n" +
@@ -4024,7 +4033,8 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12\x12\n" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x17\n" +
 	"\auser_id\x18\x05 \x01(\tR\x06userId\x12\x1b\n" +
-	"\tfrom_name\x18\x06 \x01(\tR\bfromName\"\x13\n" +
+	"\tfrom_name\x18\x06 \x01(\tR\bfromName\x12\x19\n" +
+	"\breply_to\x18\a \x01(\tR\areplyTo\"\x13\n" +
 	"\x11SendEmailResponse\":\n" +
 	"!CheckAndDebitVMEmailCreditRequest\x12\x15\n" +
 	"\x06box_id\x18\x01 \x01(\x03R\x05boxId\"d\n" +

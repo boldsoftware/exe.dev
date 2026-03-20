@@ -376,6 +376,8 @@ message SendEmailRequest {
   // from_name overrides the display name in the "From" header.
   // When empty, the default (WebHost) is used.
   string from_name = 6;
+  // reply_to, when non-empty, sets the Reply-To header.
+  string reply_to = 7;
 }
 
 message SendEmailResponse {}

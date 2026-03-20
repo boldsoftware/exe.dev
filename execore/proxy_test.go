@@ -422,6 +422,9 @@ func TestRequestAccess(t *testing.T) {
 		if !strings.Contains(sentEmail["body"], "share_email="+url.QueryEscape(requesterEmail)) {
 			t.Errorf("expected share_email param in email body, got: %q", sentEmail["body"])
 		}
+		if sentEmail["reply_to"] != requesterEmail {
+			t.Errorf("expected reply_to %q, got %q", requesterEmail, sentEmail["reply_to"])
+		}
 	})
 
 	// --- Test 3: Unauthenticated user sees 401 login page (not request-access) ---

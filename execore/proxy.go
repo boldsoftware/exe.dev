@@ -496,7 +496,7 @@ func (pd *proxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID str
 }
 
 // SendEmail implements [exeweb.ProxyData.SendEmail].
-func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error {
+func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName, replyTo string) error {
 	var attrs []slog.Attr
 	if userID != "" {
 		attrs = append(attrs, slog.String("user_id", userID))
@@ -507,7 +507,7 @@ func (pd *proxyData) SendEmail(ctx context.Context, emailType email.Type, to, su
 		subject:   subject,
 		body:      body,
 		fromName:  fromName,
-		replyTo:   "",
+		replyTo:   replyTo,
 		attrs:     attrs,
 	})
 }

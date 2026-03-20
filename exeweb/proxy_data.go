@@ -83,7 +83,8 @@ type ProxyData interface {
 	// SendEmail sends an email message.
 	// userID is included in the "email sent" log line when non-empty.
 	// fromName, when non-empty, overrides the display name in the From header.
-	SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error
+	// replyTo, when non-empty, sets the Reply-To header.
+	SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName, replyTo string) error
 
 	// CheckAndDebitVMEMailCredit checks if a box has email
 	// credit available, and debits 1 email.

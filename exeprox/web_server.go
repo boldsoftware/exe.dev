@@ -383,8 +383,8 @@ func (epd *exewebProxyData) CheckAndIncrementEmailQuota(ctx context.Context, use
 }
 
 // SendEmail implements [exeweb.ProxyData.SendEmail].
-func (epd *exewebProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName string) error {
-	return epd.exeproxData().SendEmail(ctx, emailType, to, subject, body, userID, fromName)
+func (epd *exewebProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName, replyTo string) error {
+	return epd.exeproxData().SendEmail(ctx, emailType, to, subject, body, userID, fromName, replyTo)
 }
 
 // CheckAndDebitVMEmailCredit implements [exeweb.ProxyData.CheckAndDebitVMEmailCredit].
