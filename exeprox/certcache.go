@@ -73,7 +73,7 @@ type certCache struct {
 }
 
 func newCertCache(dir string, lg *slog.Logger) (*certCache, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("certcache: create dir: %w", err)
 	}
 	absDir, err := filepath.Abs(dir)
@@ -163,7 +163,7 @@ func (cc *certCache) storeToDisk(cacheKey string, cert *tls.Certificate) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := os.Chmod(tmpName, 0600); err != nil {
+	if err := os.Chmod(tmpName, 0o600); err != nil {
 		os.Remove(tmpName)
 		return err
 	}

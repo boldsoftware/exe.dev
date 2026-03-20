@@ -177,7 +177,7 @@ func TestCertCache_CorruptFile_Removed(t *testing.T) {
 
 	// Write garbage to the cache file.
 	path := cc.certPath("corrupt.com")
-	if err := os.WriteFile(path, []byte("not a cert"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("not a cert"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,7 +202,7 @@ func TestCertCache_UnparseableLeaf_Removed(t *testing.T) {
 	// that won't decode. loadFromDisk handles both decode errors and
 	// nil Leaf by returning an error.
 	path := cc.certPath("badleaf.com")
-	if err := os.WriteFile(path, []byte("not valid PEM"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("not valid PEM"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,7 +298,7 @@ func TestCertCache_DiskRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0600 {
+	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("file perm = %o, want 0600", perm)
 	}
 }
