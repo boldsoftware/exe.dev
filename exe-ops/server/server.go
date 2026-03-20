@@ -10,6 +10,8 @@ import (
 	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/exed"
 	"exe.dev/exe-ops/server/inventory"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // New creates a configured HTTP handler with all routes.
@@ -86,6 +88,11 @@ func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai 
 
 	mux.HandleFunc("/health", h.HandleHealth)
 	mux.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
+
+	// Prometheus metrics for process uptime discovery.
+	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	mux.Handle("/metrics", promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{}))
 
 	// SPA fallback: serve static files, fall back to index.html.
 	if uiFS != nil {

@@ -82,6 +82,7 @@ func NewServer(connector *duckdb.Connector, db *sql.DB, requireTailscale bool) *
 		Buckets: prometheus.DefBuckets,
 	})
 
+	reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	reg.MustRegister(uptimeGauge, rowsInsertedTotal, insertBatchSeconds, insertRowSeconds)
 
 	s := &Server{

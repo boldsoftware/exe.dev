@@ -227,6 +227,7 @@ var processesByRole = map[string][]processSpec{
 			name:       "exe-ops",
 			debugURL:   func(d string) string { return "https://" + d + "/" },
 			versionURL: func(d string) string { return "https://" + d + "/debug/gitsha" },
+			metricsURL: func(d string) string { return "https://" + d + "/metrics" },
 		},
 	},
 }
