@@ -261,6 +261,10 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
     ln -s /home/exedev/.local/pi/pi /home/exedev/.local/bin/pi && \
     chown -R exedev:exedev /home/exedev/.local/pi
 
+# Install pi exe.dev extension (LLM gateway + environment context)
+COPY pi-extension/ /home/exedev/.pi/agent/extensions/exe-dev/
+RUN chown -R exedev:exedev /home/exedev/.pi/agent/extensions
+
 # Custom nginx config and index page (nginx is installed but disabled by default)
 COPY nginx.conf /etc/nginx/sites-available/default
 COPY index.html /var/www/html/index.html
