@@ -223,6 +223,10 @@ def main():
 
     ref = args.ref
 
+    # Always run from repo root so linters/formatters/go vet work from subdirs.
+    git_root = git("rev-parse", "--show-toplevel")
+    os.chdir(git_root)
+
     # --- Validation ---
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
     if branch == "HEAD":
