@@ -173,6 +173,16 @@
       <template v-else>
         <div class="table-wrapper">
           <table class="deploy-table">
+            <colgroup>
+              <col style="width: 200px">
+              <col style="width: 70px">
+              <col style="width: 70px">
+              <col style="width: 60px">
+              <col style="width: 100px">
+              <col>
+              <col style="width: 80px">
+              <col style="width: 90px">
+            </colgroup>
             <thead>
               <tr>
                 <th class="sortable" @click="toggleSort('hostname')">
@@ -234,7 +244,7 @@
                 </td>
                 <td class="col-actions">
                   <button
-                    v-if="isDeployable(p) && confirmTarget !== deployKey(p.stage, p.role, p.process, p.hostname)"
+                    v-if="isDeployable(p)"
                     class="deploy-btn"
                     :class="{ deploying: isDeploying(p) }"
                     :disabled="!canDeploy(p)"
@@ -246,16 +256,6 @@
                     Deploy
                     <span v-if="canDeploy(p) && headSHA" class="deploy-btn-sha">{{ headSHA.slice(0, 7) }}</span>
                   </button>
-                  <span v-if="isDeployable(p) && confirmTarget === deployKey(p.stage, p.role, p.process, p.hostname)" class="deploy-confirm">
-                    <button class="deploy-btn deploy-btn-confirm" :title="deployTitle(p)" @click="doDeploy(p)">
-                      <i class="pi pi-check"></i>
-                      {{ headSHA ? headSHA.slice(0, 7) : 'Confirm' }}
-                      <span v-if="headSubject" class="deploy-confirm-subject">{{ headSubject }}</span>
-                    </button>
-                    <button class="deploy-btn deploy-btn-cancel" @click="confirmTarget = ''">
-                      <i class="pi pi-times"></i>
-                    </button>
-                  </span>
                 </td>
               </tr>
             </tbody>
@@ -263,6 +263,59 @@
         </div>
       </template>
     </template>
+
+    <!-- Deploy confirmation modal -->
+    <div v-if="confirmProc" class="modal-overlay" @click.self="closeConfirm">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <span class="modal-title">
+            Deploy <span class="modal-mono">{{ confirmProc.process }}</span>
+            to <span class="modal-mono">{{ confirmProc.hostname }}</span>
+          </span>
+          <button class="modal-close" @click="closeConfirm"><i class="pi pi-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-sha-row">
+            <span class="modal-sha-label">Deploying</span>
+            <span class="modal-sha-value">{{ headSHA.slice(0, 7) }}</span>
+            <span v-if="headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+          </div>
+          <div v-if="confirmProc.version" class="modal-sha-row">
+            <span class="modal-sha-label">Currently</span>
+            <span class="modal-sha-value">{{ confirmProc.version.slice(0, 7) }}</span>
+            <span v-if="confirmProc.version_subject" class="modal-sha-subject">{{ confirmProc.version_subject }}</span>
+          </div>
+          <div v-if="confirmLoading" class="modal-loading">
+            <i class="pi pi-spin pi-spinner"></i> Loading commits...
+          </div>
+          <div v-else-if="confirmCommits.length > 0" class="modal-commits">
+            <div class="modal-commits-header">{{ confirmCommits.length }} commit{{ confirmCommits.length !== 1 ? 's' : '' }}</div>
+            <div class="modal-commit-list">
+              <div v-for="c in confirmCommits" :key="c.sha" class="modal-commit">
+                <a
+                  :href="'https://github.com/boldsoftware/exe/commit/' + c.sha"
+                  target="_blank"
+                  rel="noopener"
+                  class="modal-commit-sha"
+                >{{ c.sha.slice(0, 7) }}</a>
+                <span class="modal-commit-subject">{{ c.subject }}</span>
+                <span v-if="c.date" class="modal-commit-date">{{ formatDate(c.date) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="!confirmLoading" class="modal-no-commits">
+            No commit history available
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="deploy-btn deploy-btn-cancel" @click="closeConfirm">Cancel</button>
+          <button class="deploy-btn deploy-btn-confirm" @click="doDeploy(confirmProc!)">
+            <i class="pi pi-upload"></i>
+            Deploy {{ headSHA.slice(0, 7) }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -270,10 +323,12 @@
 import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
 import {
   fetchDeployInventory,
+  fetchDeployCommits,
   fetchDeploys,
   startDeploy,
   type DeployProcess,
   type DeployStatus,
+  type DeployCommit,
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops'])
@@ -282,7 +337,9 @@ const procs = ref<DeployProcess[]>([])
 const headSHA = ref('')
 const headSubject = ref('')
 const headDate = ref('')
-const confirmTarget = ref('')
+const confirmProc = ref<DeployProcess | null>(null)
+const confirmCommits = ref<DeployCommit[]>([])
+const confirmLoading = ref(false)
 const deploys = ref<DeployStatus[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -533,14 +590,29 @@ function deployTitle(p: DeployProcess): string {
   return title
 }
 
-function confirmDeploy(p: DeployProcess) {
+async function confirmDeploy(p: DeployProcess) {
   if (!canDeploy(p)) return
-  confirmTarget.value = deployKey(p.stage, p.role, p.process, p.hostname)
+  confirmProc.value = p
+  confirmCommits.value = []
+  confirmLoading.value = true
+  try {
+    const commits = await fetchDeployCommits(p.version || '', headSHA.value)
+    confirmCommits.value = commits || []
+  } catch {
+    // If we can't load commits, still show the modal
+  } finally {
+    confirmLoading.value = false
+  }
+}
+
+function closeConfirm() {
+  confirmProc.value = null
+  confirmCommits.value = []
 }
 
 async function doDeploy(p: DeployProcess) {
   if (!canDeploy(p)) return
-  confirmTarget.value = ''
+  closeConfirm()
   try {
     await startDeploy({
       stage: p.stage,
@@ -1024,6 +1096,7 @@ onUnmounted(() => {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
+  table-layout: fixed;
 }
 
 .deploy-table th {
@@ -1063,7 +1136,6 @@ onUnmounted(() => {
 }
 
 .deploy-table .col-version {
-  max-width: 500px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1097,9 +1169,10 @@ onUnmounted(() => {
 }
 
 .version-cell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .version-indicator {
@@ -1119,6 +1192,7 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   color: var(--primary-color);
+  flex-shrink: 0;
 }
 
 a.version-sha:hover {
@@ -1131,12 +1205,16 @@ a.version-sha:hover {
   color: var(--text-color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .version-date {
   font-size: 0.65rem;
   color: var(--text-color-muted);
   opacity: 0.7;
+  flex-shrink: 0;
 }
 
 .behind-badge {
@@ -1210,34 +1288,19 @@ a.version-sha:hover {
   opacity: 0.7;
 }
 
-.deploy-confirm {
-  display: inline-flex;
-  gap: 0.25rem;
-}
-
 .deploy-btn-confirm {
-  border-color: var(--red-400);
-  color: var(--red-400);
-  background: var(--red-subtle);
+  border-color: var(--primary-color);
+  color: #fff;
+  background: var(--primary-color);
+  font-weight: 600;
 }
 
 .deploy-btn-confirm:hover:not(:disabled) {
-  background: var(--red-400);
-  color: #fff;
-  border-color: var(--red-400);
+  opacity: 0.9;
 }
 
 .deploy-btn-cancel {
   color: var(--text-color-muted);
-}
-
-.deploy-confirm-subject {
-  font-weight: 400;
-  font-size: 0.65rem;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .metric-blank {
@@ -1298,5 +1361,179 @@ a.version-sha:hover {
     flex-wrap: wrap;
     gap: 0.5rem;
   }
+}
+
+/* -- Deploy confirmation modal -- */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-dialog {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  width: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.modal-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.modal-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.modal-close:hover {
+  color: var(--text-color);
+}
+
+.modal-body {
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-sha-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.375rem;
+}
+
+.modal-sha-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color-muted);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.modal-sha-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.modal-sha-subject {
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-loading {
+  padding: 1rem 0;
+  color: var(--text-color-muted);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-commits {
+  margin-top: 0.75rem;
+}
+
+.modal-commits-header {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-color-muted);
+  margin-bottom: 0.375rem;
+}
+
+.modal-commit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.modal-commit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+}
+
+.modal-commit-sha {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.modal-commit-sha:hover {
+  text-decoration: underline;
+}
+
+.modal-commit-subject {
+  color: var(--text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-commit-date {
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
+  flex-shrink: 0;
+}
+
+.modal-no-commits {
+  padding: 1rem 0;
+  color: var(--text-color-muted);
+  font-size: 0.8rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--surface-border);
 }
 </style>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -293,7 +294,18 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 // HandleDebugGitSHA handles GET /debug/gitsha — returns the raw commit SHA.
 func (h *Handlers) HandleDebugGitSHA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprint(w, version.Commit)
+	sha := version.Commit
+	if sha == "unknown" || sha == "" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range info.Settings {
+				if s.Key == "vcs.revision" {
+					sha = s.Value
+					break
+				}
+			}
+		}
+	}
+	fmt.Fprint(w, sha)
 }
 
 // HandleAgentStream handles GET /api/v1/stream — SSE connection for agent presence.

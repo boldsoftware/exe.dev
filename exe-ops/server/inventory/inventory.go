@@ -113,6 +113,14 @@ func (inv *Inventory) HeadCommit() (sha, subject, date string) {
 	return sha, info.Subject, date
 }
 
+// CommitLog returns commits from (fromSHA, toSHA], up to maxN.
+func (inv *Inventory) CommitLog(fromSHA, toSHA string, maxN int) ([]LogEntry, error) {
+	if inv.gitRepo == nil {
+		return nil, nil
+	}
+	return inv.gitRepo.CommitLog(fromSHA, toSHA, maxN)
+}
+
 // tailscaleStatus is the subset of `tailscale status --json` we care about.
 type tailscaleStatus struct {
 	Self *tailscalePeer           `json:"Self"`

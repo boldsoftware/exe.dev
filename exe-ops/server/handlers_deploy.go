@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
@@ -25,6 +26,36 @@ func (h *Handlers) HandleDeployInventory(w http.ResponseWriter, r *http.Request)
 		"head_date":    headDate,
 		"processes":    h.inventory.Processes(),
 	})
+}
+
+// HandleDeployCommits handles GET /api/v1/deploy/commits?from=SHA&to=SHA&limit=N.
+func (h *Handlers) HandleDeployCommits(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.inventory == nil {
+		http.Error(w, "inventory not configured", http.StatusNotFound)
+		return
+	}
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if to == "" {
+		http.Error(w, "to parameter required", http.StatusBadRequest)
+		return
+	}
+	limit := 50
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	commits, err := h.inventory.CommitLog(from, to, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, commits)
 }
 
 // HandleDeploys handles GET /api/v1/deploys (list) and POST /api/v1/deploys (start).

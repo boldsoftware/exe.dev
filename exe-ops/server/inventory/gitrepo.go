@@ -112,6 +112,58 @@ type CommitInfo struct {
 	CommitsBehind int // -1 if unknown
 }
 
+// LogEntry is a single commit in a log range.
+type LogEntry struct {
+	SHA     string    `json:"sha"`
+	Subject string    `json:"subject"`
+	Date    time.Time `json:"date"`
+}
+
+// CommitLog returns up to maxN commits from (fromSHA, toSHA].
+// If fromSHA is empty, returns the last maxN commits up to toSHA.
+func (g *GitRepo) CommitLog(fromSHA, toSHA string, maxN int) ([]LogEntry, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var revRange string
+	if fromSHA != "" {
+		revRange = fromSHA + ".." + toSHA
+	} else {
+		revRange = toSHA
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", g.dir, "log",
+		"--format=%H%x00%s%x00%aI", fmt.Sprintf("-%d", maxN), revRange)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log %s: %w", revRange, err)
+	}
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return nil, nil
+	}
+	var entries []LogEntry
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		parts := bytes.SplitN(line, []byte{0}, 3)
+		if len(parts) < 2 {
+			continue
+		}
+		e := LogEntry{
+			SHA:     string(parts[0]),
+			Subject: string(parts[1]),
+		}
+		if len(parts) == 3 {
+			if t, err := time.Parse(time.RFC3339, string(parts[2])); err == nil {
+				e.Date = t
+			}
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
 // ResolveCommit returns metadata for the given SHA: subject, date, and
 // how many commits it is behind refs/heads/main.
 func (g *GitRepo) ResolveCommit(sha string) (CommitInfo, error) {

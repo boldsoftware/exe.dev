@@ -77,6 +77,7 @@ func New(store *Store, hub *Hub, token string, uiFS fs.FS, log *slog.Logger, ai 
 
 	// Deploy inventory and deploy management.
 	mux.HandleFunc("/api/v1/deploy/inventory", h.HandleDeployInventory)
+	mux.HandleFunc("/api/v1/deploy/commits", h.HandleDeployCommits)
 	mux.HandleFunc("/api/v1/deploys", h.HandleDeploys)
 	mux.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
 
