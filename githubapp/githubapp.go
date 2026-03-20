@@ -184,9 +184,29 @@ func (c *Client) GetInstallationRepositories(ctx context.Context, accessToken st
 
 // TokenResponse is the result of exchanging an authorization code.
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	TokenType    string `json:"token_type"`
+	AccessToken           string `json:"access_token"`
+	RefreshToken          string `json:"refresh_token"`
+	TokenType             string `json:"token_type"`
+	ExpiresIn             int64  `json:"expires_in"`               // seconds until access token expires
+	RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"` // seconds until refresh token expires
+}
+
+// AccessTokenExpiresAt returns the access token expiry time, or nil if not provided.
+func (tr *TokenResponse) AccessTokenExpiresAt() *time.Time {
+	if tr.ExpiresIn <= 0 {
+		return nil
+	}
+	t := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+	return &t
+}
+
+// RefreshTokenExpiresAt returns the refresh token expiry time, or nil if not provided.
+func (tr *TokenResponse) RefreshTokenExpiresAt() *time.Time {
+	if tr.RefreshTokenExpiresIn <= 0 {
+		return nil
+	}
+	t := time.Now().Add(time.Duration(tr.RefreshTokenExpiresIn) * time.Second)
+	return &t
 }
 
 // ExchangeCode exchanges an authorization code for a user access token.

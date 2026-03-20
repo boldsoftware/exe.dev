@@ -909,6 +909,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listGitHubAccountsStmt, err = db.PrepareContext(ctx, listGitHubAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListGitHubAccounts: %w", err)
 	}
+	if q.listGitHubAccountsNeedingRenewalStmt, err = db.PrepareContext(ctx, listGitHubAccountsNeedingRenewal); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGitHubAccountsNeedingRenewal: %w", err)
+	}
 	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
 	}
@@ -1076,6 +1079,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateEmailVerificationCodeStmt, err = db.PrepareContext(ctx, updateEmailVerificationCode); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateEmailVerificationCode: %w", err)
+	}
+	if q.updateGitHubAccountTokensStmt, err = db.PrepareContext(ctx, updateGitHubAccountTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGitHubAccountTokens: %w", err)
 	}
 	if q.updateIntegrationAttachmentsStmt, err = db.PrepareContext(ctx, updateIntegrationAttachments); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateIntegrationAttachments: %w", err)
@@ -2656,6 +2662,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listGitHubAccountsStmt: %w", cerr)
 		}
 	}
+	if q.listGitHubAccountsNeedingRenewalStmt != nil {
+		if cerr := q.listGitHubAccountsNeedingRenewalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGitHubAccountsNeedingRenewalStmt: %w", cerr)
+		}
+	}
 	if q.listIPShardsStmt != nil {
 		if cerr := q.listIPShardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsStmt: %w", cerr)
@@ -2934,6 +2945,11 @@ func (q *Queries) Close() error {
 	if q.updateEmailVerificationCodeStmt != nil {
 		if cerr := q.updateEmailVerificationCodeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateEmailVerificationCodeStmt: %w", cerr)
+		}
+	}
+	if q.updateGitHubAccountTokensStmt != nil {
+		if cerr := q.updateGitHubAccountTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGitHubAccountTokensStmt: %w", cerr)
 		}
 	}
 	if q.updateIntegrationAttachmentsStmt != nil {
@@ -3435,6 +3451,7 @@ type Queries struct {
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
 	listGitHubAccountsStmt                     *sql.Stmt
+	listGitHubAccountsNeedingRenewalStmt       *sql.Stmt
 	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForTeamStmt                    *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
@@ -3491,6 +3508,7 @@ type Queries struct {
 	updateBoxStatusStmt                        *sql.Stmt
 	updateBoxTagsStmt                          *sql.Stmt
 	updateEmailVerificationCodeStmt            *sql.Stmt
+	updateGitHubAccountTokensStmt              *sql.Stmt
 	updateIntegrationAttachmentsStmt           *sql.Stmt
 	updateIntegrationNameStmt                  *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
@@ -3825,6 +3843,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
 		listGitHubAccountsStmt:                     q.listGitHubAccountsStmt,
+		listGitHubAccountsNeedingRenewalStmt:       q.listGitHubAccountsNeedingRenewalStmt,
 		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForTeamStmt:                    q.listIPShardsForTeamStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
@@ -3881,6 +3900,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updateBoxTagsStmt:                          q.updateBoxTagsStmt,
 		updateEmailVerificationCodeStmt:            q.updateEmailVerificationCodeStmt,
+		updateGitHubAccountTokensStmt:              q.updateGitHubAccountTokensStmt,
 		updateIntegrationAttachmentsStmt:           q.updateIntegrationAttachmentsStmt,
 		updateIntegrationNameStmt:                  q.updateIntegrationNameStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,

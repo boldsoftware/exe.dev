@@ -114,6 +114,8 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	setup.InstallationID = installationID
 	setup.AccessToken = tokenResp.AccessToken
 	setup.RefreshToken = tokenResp.RefreshToken
+	setup.AccessTokenExpiresAt = tokenResp.AccessTokenExpiresAt()
+	setup.RefreshTokenExpiresAt = tokenResp.RefreshTokenExpiresAt()
 
 	// Web-initiated flow: save account and redirect to /user#github.
 	if setup.WebFlow {

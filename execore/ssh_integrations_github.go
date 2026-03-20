@@ -33,11 +33,13 @@ type GitHubSetup struct {
 	RespondCh chan string
 
 	// Filled by web callback:
-	GitHubLogin    string
-	InstallationID int64
-	AccessToken    string
-	RefreshToken   string
-	Err            error
+	GitHubLogin           string
+	InstallationID        int64
+	AccessToken           string
+	RefreshToken          string
+	AccessTokenExpiresAt  *time.Time
+	RefreshTokenExpiresAt *time.Time
+	Err                   error
 }
 
 // Close signals completion to the waiting session.
@@ -189,13 +191,13 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 			workingToken = tokenResp.AccessToken
 			// Update stored tokens.
 			if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-					UserID:         cc.User.ID,
-					GitHubLogin:    acct.GitHubLogin,
-					InstallationID: acct.InstallationID,
-					TargetLogin:    acct.TargetLogin,
-					AccessToken:    tokenResp.AccessToken,
-					RefreshToken:   tokenResp.RefreshToken,
+				return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+					AccessToken:           tokenResp.AccessToken,
+					RefreshToken:          tokenResp.RefreshToken,
+					AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
+					RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
+					UserID:                cc.User.ID,
+					InstallationID:        acct.InstallationID,
 				})
 			}); err != nil {
 				cc.Writeln("  %s ✗ failed to save refreshed token", label)

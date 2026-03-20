@@ -158,15 +158,15 @@ func (s *Server) resolveGitHubTokenWeb(ctx context.Context, acct exedb.GithubAcc
 	if err != nil {
 		return "", fmt.Errorf("refresh failed: %w", err)
 	}
-	// Update stored tokens.
+	// Update stored tokens and renewal timestamp.
 	s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-			UserID:         acct.UserID,
-			GitHubLogin:    acct.GitHubLogin,
-			InstallationID: acct.InstallationID,
-			TargetLogin:    acct.TargetLogin,
-			AccessToken:    tokenResp.AccessToken,
-			RefreshToken:   tokenResp.RefreshToken,
+		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+			AccessToken:           tokenResp.AccessToken,
+			RefreshToken:          tokenResp.RefreshToken,
+			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
+			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
+			UserID:                acct.UserID,
+			InstallationID:        acct.InstallationID,
 		})
 	})
 	return tokenResp.AccessToken, nil
@@ -183,12 +183,14 @@ func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) err
 		}
 		return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:         setup.UserID,
-				GitHubLogin:    setup.GitHubLogin,
-				InstallationID: setup.InstallationID,
-				TargetLogin:    targetLogin,
-				AccessToken:    setup.AccessToken,
-				RefreshToken:   setup.RefreshToken,
+				UserID:                setup.UserID,
+				GitHubLogin:           setup.GitHubLogin,
+				InstallationID:        setup.InstallationID,
+				TargetLogin:           targetLogin,
+				AccessToken:           setup.AccessToken,
+				RefreshToken:          setup.RefreshToken,
+				AccessTokenExpiresAt:  setup.AccessTokenExpiresAt,
+				RefreshTokenExpiresAt: setup.RefreshTokenExpiresAt,
 			})
 		})
 	}
@@ -201,12 +203,14 @@ func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) err
 	for _, inst := range installs {
 		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:         setup.UserID,
-				GitHubLogin:    setup.GitHubLogin,
-				InstallationID: inst.ID,
-				TargetLogin:    inst.Account.Login,
-				AccessToken:    setup.AccessToken,
-				RefreshToken:   setup.RefreshToken,
+				UserID:                setup.UserID,
+				GitHubLogin:           setup.GitHubLogin,
+				InstallationID:        inst.ID,
+				TargetLogin:           inst.Account.Login,
+				AccessToken:           setup.AccessToken,
+				RefreshToken:          setup.RefreshToken,
+				AccessTokenExpiresAt:  setup.AccessTokenExpiresAt,
+				RefreshTokenExpiresAt: setup.RefreshTokenExpiresAt,
 			})
 		}); err != nil {
 			return fmt.Errorf("failed to save connection: %w", err)

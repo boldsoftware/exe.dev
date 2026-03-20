@@ -85,15 +85,32 @@ func NewMockGitHubServer() *MockGitHubServer {
 
 	// Token exchange: access_token is "ghu_<code>" so tests can predict it
 	// and configure per-token installations before the callback.
+	// Also handles refresh_token grant type for token renewal.
 	mux.HandleFunc("POST /login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.FormValue("grant_type") == "refresh_token" {
+			// Token refresh: return a new access token and rotated refresh token.
+			oldRefresh := r.FormValue("refresh_token")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token":             "ghu_refreshed_" + oldRefresh,
+				"refresh_token":            "ghr_refreshed_" + oldRefresh,
+				"token_type":               "bearer",
+				"expires_in":               28800,
+				"refresh_token_expires_in": 15552000,
+			})
+			return
+		}
+
 		code := r.FormValue("code")
 		token := "ghu_" + code
 
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"access_token":  token,
-			"refresh_token": "ghr_mock_refresh",
-			"token_type":    "bearer",
+			"access_token":             token,
+			"refresh_token":            "ghr_mock_refresh",
+			"token_type":               "bearer",
+			"expires_in":               28800,
+			"refresh_token_expires_in": 15552000,
 		})
 	})
 

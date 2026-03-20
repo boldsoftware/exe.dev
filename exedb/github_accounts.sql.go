@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"time"
 )
 
 const deleteAllGitHubAccounts = `-- name: DeleteAllGitHubAccounts :exec
@@ -33,7 +34,7 @@ func (q *Queries) DeleteGitHubAccount(ctx context.Context, arg DeleteGitHubAccou
 }
 
 const getGitHubAccount = `-- name: GetGitHubAccount :one
-SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? AND installation_id = ?
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at, token_renewed_at, access_token_expires_at, refresh_token_expires_at FROM github_accounts WHERE user_id = ? AND installation_id = ?
 `
 
 type GetGitHubAccountParams struct {
@@ -52,12 +53,15 @@ func (q *Queries) GetGitHubAccount(ctx context.Context, arg GetGitHubAccountPara
 		&i.AccessToken,
 		&i.RefreshToken,
 		&i.CreatedAt,
+		&i.TokenRenewedAt,
+		&i.AccessTokenExpiresAt,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
 }
 
 const getGitHubAccountByTarget = `-- name: GetGitHubAccountByTarget :one
-SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? AND target_login = ?
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at, token_renewed_at, access_token_expires_at, refresh_token_expires_at FROM github_accounts WHERE user_id = ? AND target_login = ?
 `
 
 type GetGitHubAccountByTargetParams struct {
@@ -76,12 +80,15 @@ func (q *Queries) GetGitHubAccountByTarget(ctx context.Context, arg GetGitHubAcc
 		&i.AccessToken,
 		&i.RefreshToken,
 		&i.CreatedAt,
+		&i.TokenRenewedAt,
+		&i.AccessTokenExpiresAt,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
 }
 
 const listGitHubAccounts = `-- name: ListGitHubAccounts :many
-SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at FROM github_accounts WHERE user_id = ? ORDER BY created_at
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at, token_renewed_at, access_token_expires_at, refresh_token_expires_at FROM github_accounts WHERE user_id = ? ORDER BY created_at
 `
 
 func (q *Queries) ListGitHubAccounts(ctx context.Context, userID string) ([]GithubAccount, error) {
@@ -101,6 +108,9 @@ func (q *Queries) ListGitHubAccounts(ctx context.Context, userID string) ([]Gith
 			&i.AccessToken,
 			&i.RefreshToken,
 			&i.CreatedAt,
+			&i.TokenRenewedAt,
+			&i.AccessTokenExpiresAt,
+			&i.RefreshTokenExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -115,23 +125,108 @@ func (q *Queries) ListGitHubAccounts(ctx context.Context, userID string) ([]Gith
 	return items, nil
 }
 
+const listGitHubAccountsNeedingRenewal = `-- name: ListGitHubAccountsNeedingRenewal :many
+SELECT user_id, github_login, installation_id, target_login, access_token, refresh_token, created_at, token_renewed_at, access_token_expires_at, refresh_token_expires_at FROM github_accounts
+WHERE refresh_token != ''
+  AND (
+    -- Never renewed: needs renewal.
+    token_renewed_at IS NULL
+    -- Has a known expiry: renew when less than 30 days remain on the refresh token.
+    OR (refresh_token_expires_at IS NOT NULL AND refresh_token_expires_at < datetime('now', '+30 days'))
+    -- No known expiry (legacy rows): renew every 30 days to keep the refresh token alive.
+    OR (refresh_token_expires_at IS NULL AND token_renewed_at < datetime('now', '-30 days'))
+  )
+ORDER BY refresh_token_expires_at ASC NULLS FIRST
+LIMIT ?
+`
+
+func (q *Queries) ListGitHubAccountsNeedingRenewal(ctx context.Context, limit int64) ([]GithubAccount, error) {
+	rows, err := q.query(ctx, q.listGitHubAccountsNeedingRenewalStmt, listGitHubAccountsNeedingRenewal, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GithubAccount{}
+	for rows.Next() {
+		var i GithubAccount
+		if err := rows.Scan(
+			&i.UserID,
+			&i.GitHubLogin,
+			&i.InstallationID,
+			&i.TargetLogin,
+			&i.AccessToken,
+			&i.RefreshToken,
+			&i.CreatedAt,
+			&i.TokenRenewedAt,
+			&i.AccessTokenExpiresAt,
+			&i.RefreshTokenExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateGitHubAccountTokens = `-- name: UpdateGitHubAccountTokens :exec
+UPDATE github_accounts
+SET access_token = ?,
+    refresh_token = ?,
+    token_renewed_at = CURRENT_TIMESTAMP,
+    access_token_expires_at = ?,
+    refresh_token_expires_at = ?
+WHERE user_id = ? AND installation_id = ?
+`
+
+type UpdateGitHubAccountTokensParams struct {
+	AccessToken           string     `db:"access_token" json:"access_token"`
+	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	InstallationID        int64      `db:"installation_id" json:"installation_id"`
+}
+
+func (q *Queries) UpdateGitHubAccountTokens(ctx context.Context, arg UpdateGitHubAccountTokensParams) error {
+	_, err := q.exec(ctx, q.updateGitHubAccountTokensStmt, updateGitHubAccountTokens,
+		arg.AccessToken,
+		arg.RefreshToken,
+		arg.AccessTokenExpiresAt,
+		arg.RefreshTokenExpiresAt,
+		arg.UserID,
+		arg.InstallationID,
+	)
+	return err
+}
+
 const upsertGitHubAccount = `-- name: UpsertGitHubAccount :exec
-INSERT INTO github_accounts (user_id, github_login, installation_id, target_login, access_token, refresh_token)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO github_accounts (user_id, github_login, installation_id, target_login, access_token, refresh_token, token_renewed_at, access_token_expires_at, refresh_token_expires_at)
+VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
 ON CONFLICT (user_id, target_login) DO UPDATE SET
     github_login = excluded.github_login,
     installation_id = excluded.installation_id,
     access_token = excluded.access_token,
-    refresh_token = excluded.refresh_token
+    refresh_token = excluded.refresh_token,
+    token_renewed_at = CURRENT_TIMESTAMP,
+    access_token_expires_at = excluded.access_token_expires_at,
+    refresh_token_expires_at = excluded.refresh_token_expires_at
 `
 
 type UpsertGitHubAccountParams struct {
-	UserID         string `db:"user_id" json:"user_id"`
-	GitHubLogin    string `db:"github_login" json:"github_login"`
-	InstallationID int64  `db:"installation_id" json:"installation_id"`
-	TargetLogin    string `db:"target_login" json:"target_login"`
-	AccessToken    string `db:"access_token" json:"access_token"`
-	RefreshToken   string `db:"refresh_token" json:"refresh_token"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	GitHubLogin           string     `db:"github_login" json:"github_login"`
+	InstallationID        int64      `db:"installation_id" json:"installation_id"`
+	TargetLogin           string     `db:"target_login" json:"target_login"`
+	AccessToken           string     `db:"access_token" json:"access_token"`
+	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 }
 
 func (q *Queries) UpsertGitHubAccount(ctx context.Context, arg UpsertGitHubAccountParams) error {
@@ -142,6 +237,8 @@ func (q *Queries) UpsertGitHubAccount(ctx context.Context, arg UpsertGitHubAccou
 		arg.TargetLogin,
 		arg.AccessToken,
 		arg.RefreshToken,
+		arg.AccessTokenExpiresAt,
+		arg.RefreshTokenExpiresAt,
 	)
 	return err
 }

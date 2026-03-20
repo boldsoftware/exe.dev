@@ -209,13 +209,16 @@ type Exe1Token struct {
 }
 
 type GithubAccount struct {
-	UserID         string     `db:"user_id" json:"user_id"`
-	GitHubLogin    string     `db:"github_login" json:"github_login"`
-	InstallationID int64      `db:"installation_id" json:"installation_id"`
-	TargetLogin    string     `db:"target_login" json:"target_login"`
-	AccessToken    string     `db:"access_token" json:"access_token"`
-	RefreshToken   string     `db:"refresh_token" json:"refresh_token"`
-	CreatedAt      *time.Time `db:"created_at" json:"created_at"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	GitHubLogin           string     `db:"github_login" json:"github_login"`
+	InstallationID        int64      `db:"installation_id" json:"installation_id"`
+	TargetLogin           string     `db:"target_login" json:"target_login"`
+	AccessToken           string     `db:"access_token" json:"access_token"`
+	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
+	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
+	TokenRenewedAt        *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 }
 
 type HllSketch struct {

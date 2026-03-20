@@ -3119,6 +3119,9 @@ func (s *Server) start() error {
 
 	s.updateExeletUsageHeartbeat(ctx)
 
+	// Start background GitHub token renewal
+	go s.startGitHubTokenRenewal(ctx)
+
 	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

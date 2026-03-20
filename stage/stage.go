@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Resource limits for VM creation
@@ -90,6 +91,8 @@ type Env struct {
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 	RedirectHTTPToHTTPS   bool // whether the HTTP server should redirect all requests to HTTPS (port 80 → 443)
 
+	GitHubTokenRenewalStartupDelay time.Duration // base delay before first GitHub token renewal check; jitter of equal magnitude is added
+
 	ProdLockEnv string // prodlock environment to lock during mass VM migrations; empty means no locking
 
 	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
@@ -150,6 +153,8 @@ func Invalid() Env {
 
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
+
+		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "",
 
@@ -221,6 +226,8 @@ func Local() Env {
 		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
 		DefaultCPUs:   2,
 
+		GitHubTokenRenewalStartupDelay: 5 * time.Second,
+
 		ProdLockEnv: "",
 
 		DebugLabel:   "dev",
@@ -284,6 +291,8 @@ func Test() Env {
 		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
 		DefaultCPUs:   2,
 
+		GitHubTokenRenewalStartupDelay: 5 * time.Second,
+
 		ProdLockEnv: "",
 
 		DebugLabel:   "test",
@@ -344,6 +353,8 @@ func Staging() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
+
+		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "staging",
 
@@ -419,6 +430,8 @@ func Prod() Env {
 		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
 		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
 		DefaultCPUs:   2,
+
+		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "prod",
 
