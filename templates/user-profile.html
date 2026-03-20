@@ -1133,9 +1133,11 @@
                             <div class="ssh-key-comment">{{$ig.Name}} · {{range $i, $r := $ig.Repositories}}{{if $i}}, {{end}}{{$r}}{{end}}</div>
                             {{if $ig.Attachments}}
                             <div class="ssh-key-meta">attached to {{range $i, $a := $ig.Attachments}}{{if $i}}, {{end}}<span style="display: inline-flex; align-items: center; gap: 2px;">{{$a}}<button style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #888; font-size: 14px; line-height: 1;" onclick="integrationDetach({{$ig.Name}}, '{{$a}}')" title="Detach from {{$a}}">×</button></span>{{end}}</div>
+                            {{else}}
+                            <div class="ssh-key-meta">not attached</div>
                             {{end}}
                             <div class="ssh-key-meta"><select style="font-family: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 3px; color: #555;" onchange="if(this.value) integrationAttach({{$ig.Name}}, this.value); this.selectedIndex=0;">
-                                <option value="">{{if $ig.Attachments}}attach to another…{{else}}not attached · attach to…{{end}}</option>
+                                <option value="">attach to…</option>
                                 <option value="auto:all">auto:all</option>
                                 {{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
                                 {{end}}</select></div>
@@ -1196,9 +1198,11 @@
                             <div class="ssh-key-fingerprint">http-proxy → {{$hp.Target}}{{if $hp.HasHeader}} · custom header{{end}}{{if $hp.HasBasicAuth}} · basic auth{{end}}</div>
                             {{if $hp.Attachments}}
                             <div class="ssh-key-meta">attached to {{range $i, $a := $hp.Attachments}}{{if $i}}, {{end}}<span style="display: inline-flex; align-items: center; gap: 2px;">{{$a}}<button style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #888; font-size: 14px; line-height: 1;" onclick="integrationDetach({{$hp.Name}}, '{{$a}}')" title="Detach from {{$a}}">×</button></span>{{end}}</div>
+                            {{else}}
+                            <div class="ssh-key-meta">not attached</div>
                             {{end}}
                             <div class="ssh-key-meta"><select style="font-family: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #ddd; border-radius: 3px; color: #555;" onchange="if(this.value) integrationAttach({{$hp.Name}}, this.value); this.selectedIndex=0;">
-                                <option value="">{{if $hp.Attachments}}attach to another…{{else}}not attached · attach to…{{end}}</option>
+                                <option value="">attach to…</option>
                                 <option value="auto:all">auto:all</option>
                                 {{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
                                 {{end}}</select></div>
