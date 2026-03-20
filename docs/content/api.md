@@ -12,7 +12,9 @@ For example:
 ```
 $ ssh exe.dev ls --json | jq '.vms[0]'
 {
-  "image": "boldsoftware/exeuntu",
+  "https_url": "https://bloggy.exe.xyz",
+  "region": "sjc",
+  "region_display": "San Jose, CA",
   "ssh_dest": "bloggy.exe.xyz",
   "status": "running",
   "vm_name": "bloggy"
