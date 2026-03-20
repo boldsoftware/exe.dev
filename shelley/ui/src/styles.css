@@ -5837,8 +5837,7 @@ kbd {
 
 .terminal-panel-content > div {
   position: absolute;
-  inset: 0;
-  padding: 8px 12px;
+  inset: 4px;
 }
 
 /* Highlight animation for navigated user messages */
