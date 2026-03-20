@@ -28,8 +28,10 @@ final class PushManager {
     }
 
     func uploadTokenIfNeeded(apiClient: APIClient) async {
-        guard let deviceToken, deviceToken != uploadedToken else { return }
+        guard let deviceToken else { return }
 
+        // Always re-upload: the server may have removed the token
+        // (e.g. after an APNs error) and we have no way to know.
         do {
             try await apiClient.registerPushToken(deviceToken)
             uploadedToken = deviceToken
