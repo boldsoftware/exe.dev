@@ -4438,7 +4438,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RegionDisplay              string
 		GLBDefault                 string
 		AllRegions                 []region.Region
-		BoxesOutsideRegion []struct {
+		BoxesOutsideRegion         []struct {
 			Name   string
 			Region string
 		}

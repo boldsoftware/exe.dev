@@ -143,10 +143,10 @@ type UserPageData struct {
 	InviteCount int64
 
 	// Billing information
-	CanRequestInvites bool  // User's plan grants invite:request
-	BillingStatus    string // Billing status: "active", "canceled", "pending", or "" if no account
-	PlanName         string // Human-readable plan name (e.g., "Individual", "Friend")
-	SelfServeBilling bool   // User manages their own Stripe subscription
+	CanRequestInvites bool   // User's plan grants invite:request
+	BillingStatus     string // Billing status: "active", "canceled", "pending", or "" if no account
+	PlanName          string // Human-readable plan name (e.g., "Individual", "Friend")
+	SelfServeBilling  bool   // User manages their own Stripe subscription
 
 	// Credits (staging only)
 	CreditBalance tender.Value
