@@ -1340,7 +1340,15 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	}
 	fmt.Fprintf(&body, "To grant access, visit:\n%s\n", shareURL)
 
-	if err := ps.Data.SendEmail(ctx, email.TypeAccessRequest, ownerEmail, subject, body.String(), box.CreatedByUserID, "", requesterEmail); err != nil {
+	if err := ps.Data.SendEmail(ctx, email.SendRequest{
+		Type:     email.TypeAccessRequest,
+		To:       ownerEmail,
+		Subject:  subject,
+		Body:     body.String(),
+		UserID:   box.CreatedByUserID,
+		FromName: "",
+		ReplyTo:  requesterEmail,
+	}); err != nil {
 		ps.Lg.ErrorContext(ctx, "request-access: failed to send email", "error", err, "to", ownerEmail)
 		http.Error(w, "Failed to send request. Try again later.", http.StatusInternalServerError)
 		return

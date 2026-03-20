@@ -277,15 +277,15 @@ func (lb *loopbackProxyData) CheckAndIncrementEmailQuota(ctx context.Context, us
 	return err
 }
 
-func (lb *loopbackProxyData) SendEmail(ctx context.Context, emailType email.Type, to, subject, body, userID, fromName, replyTo string) error {
+func (lb *loopbackProxyData) SendEmail(ctx context.Context, req email.SendRequest) error {
 	_, err := lb.client.SendEmail(ctx, &proxyapi.SendEmailRequest{
-		EmailType: string(emailType),
-		To:        to,
-		Subject:   subject,
-		Body:      body,
-		UserID:    userID,
-		FromName:  fromName,
-		ReplyTo:   replyTo,
+		EmailType: string(req.Type),
+		To:        req.To,
+		Subject:   req.Subject,
+		Body:      req.Body,
+		UserID:    req.UserID,
+		FromName:  req.FromName,
+		ReplyTo:   req.ReplyTo,
 	})
 	return err
 }

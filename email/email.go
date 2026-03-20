@@ -72,6 +72,21 @@ func RegisterMetrics(registry *prometheus.Registry, postmarkCollector *PostmarkS
 	}
 }
 
+// SendRequest holds the parameters for requesting that an email be sent.
+// Callers populate these fields; the server resolves FromName into a full
+// From address and converts UserID into log attributes.
+//
+//exe:completeinit
+type SendRequest struct {
+	Type     Type
+	To       string
+	Subject  string
+	Body     string
+	UserID   string // included in the "email sent" log line when non-empty
+	FromName string // when non-empty, overrides the display name in the From header
+	ReplyTo  string // when non-empty, sets the Reply-To header
+}
+
 // Message holds the parameters for sending an email.
 //
 //exe:completeinit
