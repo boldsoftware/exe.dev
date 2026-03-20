@@ -240,9 +240,10 @@ func (m *Manager) getBuildLock(key string) *sync.Mutex {
 	return mu
 }
 
-// buildEnv returns os.Environ() with GOOS/GOARCH/CGO_ENABLED for cross-compilation,
+// buildEnv returns os.Environ() with GOOS/GOARCH/CGO_ENABLED for compilation,
 // plus sensible defaults for PATH/GOPATH/HOME so builds work under systemd.
-func buildEnv() []string {
+// When cgo is true, CGO_ENABLED=1 is set (for packages that need C linkage).
+func buildEnv(cgo bool) []string {
 	env := os.Environ()
 	has := map[string]bool{}
 	for _, e := range env {
@@ -280,7 +281,11 @@ func buildEnv() []string {
 			}
 		}
 	}
-	return append(env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+	cgoVal := "0"
+	if cgo {
+		cgoVal = "1"
+	}
+	return append(env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED="+cgoVal)
 }
 
 // liveWriter is an io.Writer that tracks the last non-empty line of output
@@ -351,7 +356,7 @@ func (m *Manager) buildArtifact(ctx context.Context, d *deploy, process, sha str
 		m.log.Info("pre-build", "process", process, "cmd", cmd)
 		pre := exec.CommandContext(ctx, "bash", "-l", "-c", cmd)
 		pre.Dir = buildRoot
-		pre.Env = buildEnv()
+		pre.Env = buildEnv(recipe.CGO)
 		if out, err := m.runCmd(pre, d, "pre-build: "); err != nil {
 			return "", "", fmt.Errorf("pre-build %q: %w\n%s", cmd, err, out)
 		}
@@ -366,7 +371,7 @@ func (m *Manager) buildArtifact(ctx context.Context, d *deploy, process, sha str
 	buildStart := time.Now()
 	buildCmd := exec.CommandContext(ctx, "go", "build", "-v", "-o", outputPath, recipe.BuildTarget)
 	buildCmd.Dir = buildRoot
-	buildCmd.Env = buildEnv()
+	buildCmd.Env = buildEnv(recipe.CGO)
 	if out, err := m.runCmd(buildCmd, d, "compiling: "); err != nil {
 		return "", "", fmt.Errorf("go build: %w\n%s", err, out)
 	}

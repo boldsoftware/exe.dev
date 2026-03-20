@@ -37,6 +37,10 @@ type Recipe struct {
 	// HealthTLS uses HTTPS for the health check when true.
 	HealthTLS bool
 
+	// CGO enables CGo for the build (CGO_ENABLED=1). When false
+	// (the default), builds use CGO_ENABLED=0 for static binaries.
+	CGO bool
+
 	// PreBuildCmds are shell commands to run in the workdir before
 	// go build (e.g. building embedded assets). Each entry is passed
 	// to "bash -c". GOOS/GOARCH/CGO_ENABLED are set to the target.
@@ -110,6 +114,7 @@ var Recipes = map[string]Recipe{
 	"metricsd": {
 		BuildTarget: "./cmd/metricsd",
 		BinaryName:  "metricsd",
+		CGO:         true,
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "metricsd.service",
 	},
