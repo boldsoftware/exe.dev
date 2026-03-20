@@ -91,7 +91,8 @@
         .purchases-table th { color: #666; font-weight: 500; }
         .purchases-table td { color: #111; }
         .purchases-table tr:last-child td { border-bottom: none; }
-        .purchases-table a { color: #0066cc; }
+        .extra-credits-balance { font-size: 14px; color: #111; }
+        .purchases-table a, .purchases-link { color: #0066cc; }
 
         .info-row:last-child {
             border-bottom: none;
@@ -798,6 +799,10 @@
                 color: #9ca3af;
             }
 
+            .extra-credits-balance {
+                color: #f3f4f6;
+            }
+
             .purchases-table td {
                 color: #f3f4f6;
                 border-bottom-color: #333;
@@ -808,7 +813,7 @@
                 border-bottom-color: #333;
             }
 
-            .purchases-table a {
+            .purchases-table a, .purchases-link {
                 color: #60a5fa;
             }
         }
@@ -1022,7 +1027,7 @@
                             <div class="credit-bar-fill {{if ge .MonthlyUsedPct 90.0}}red{{else if ge .MonthlyUsedPct 75.0}}orange{{else if ge .MonthlyUsedPct 50.0}}yellow{{else}}green{{end}}" style="width: {{printf "%.1f" .MonthlyUsedPct}}%;"></div>
                         </div>
                         <div class="credit-bar-annotation">
-                            <span>{{printf "%.0f" .MonthlyUsedUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} used</span>
+                            <span>{{printf "%.0f" .MonthlyUsedUSD}} of {{printf "%.0f" .ShelleyCreditsMax}} used{{if ge .MonthlyUsedPct 100.0}}{{if gt .LedgerBalanceUSD 0.0}} · Using extra credits{{end}}{{end}}</span>
                             <span>Resets {{.MonthlyCreditsResetAt}}</span>
                         </div>
                     </div>
@@ -1031,7 +1036,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div class="purchases-label">Extra Credits</div>
-                            <div style="font-size: 14px;">{{if gt .LedgerBalanceUSD 0.0}}{{printf "%.0f" .LedgerBalanceUSD}} remaining{{else}}No extra credits{{end}} · <a href="/docs/pricing#shelley-tokens" style="font-size: 12px;">Learn more</a></div>
+                            <div class="extra-credits-balance">{{if gt .LedgerBalanceUSD 0.0}}{{printf "%.0f" .LedgerBalanceUSD}} remaining{{else}}No extra credits{{end}} · <a href="/docs/pricing#shelley-tokens" class="purchases-link" style="font-size: 12px;">Learn more</a></div>
                         </div>
                         <form method="POST" action="/credits/buy" style="display: flex; gap: 8px; align-items: center;">
                             <input type="number" name="dollars" min="5" step="1" inputmode="numeric" placeholder="5" required class="buy-input">
