@@ -59,7 +59,7 @@ var statusCommand = &cli.Command{
 			}
 			progress := fmt.Sprintf("%.0f%%", op.Progress*100)
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s ago\n",
-				truncateID(op.OperationID), truncateID(op.InstanceID),
+				truncateID(op.OperationID), truncateName(op.InstanceID),
 				op.SourcePool, op.TargetPool,
 				op.State, progress, elapsed)
 		}
@@ -74,4 +74,11 @@ func truncateID(id string) string {
 		return id[:12]
 	}
 	return id
+}
+
+func truncateName(name string) string {
+	if len(name) > 36 {
+		return name[:36]
+	}
+	return name
 }

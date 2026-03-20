@@ -304,6 +304,47 @@ func TestTieredStorageManager_DeleteScansAllPools(t *testing.T) {
 	}
 }
 
+func TestTieredStorageManager_PoolForInstance_BackupPoolLastResort(t *testing.T) {
+	// Scenario: VM exists on both "backup" and "block" pools.
+	// With backup pool set, "block" should be preferred.
+	primary := newMockSM("tank")
+	block := newMockSM("block", "vm-1")
+	backup := newMockSM("backup", "vm-1")
+
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"backup": backup,
+		"block":  block,
+	})
+	tiered.SetBackupPool("backup")
+
+	ctx := context.Background()
+
+	// Should resolve to "block", not "backup"
+	name, sm, err := tiered.PoolForInstance(ctx, "vm-1")
+	if err != nil {
+		t.Fatalf("PoolForInstance(vm-1) error: %v", err)
+	}
+	if name != "block" {
+		t.Errorf("PoolForInstance(vm-1) pool = %q, want %q", name, "block")
+	}
+	if sm != block {
+		t.Error("PoolForInstance(vm-1) returned wrong manager")
+	}
+
+	// Remove from block to test fallback — VM only on backup
+	delete(block.datasets, "vm-1")
+	name, sm, err = tiered.PoolForInstance(ctx, "vm-1")
+	if err != nil {
+		t.Fatalf("PoolForInstance(vm-1) fallback error: %v", err)
+	}
+	if name != "backup" {
+		t.Errorf("PoolForInstance(vm-1) fallback pool = %q, want %q", name, "backup")
+	}
+	if sm != backup {
+		t.Error("PoolForInstance(vm-1) fallback returned wrong manager")
+	}
+}
+
 func TestTieredStorageManager_SinglePool(t *testing.T) {
 	// With no tiers, should still work as a single-pool wrapper
 	primary := newMockSM("tank", "vm-1")

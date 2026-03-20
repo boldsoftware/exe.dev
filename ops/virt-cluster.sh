@@ -547,6 +547,11 @@ runcmd:
     if ! zpool list backup >/dev/null 2>&1; then
       zpool create -f -m none backup /dev/vdc
     fi
+  # Dozer ZFS pool on /dev/vdd
+  - |
+    if ! zpool list dozer >/dev/null 2>&1; then
+      zpool create -f -m none dozer /dev/vdd
+    fi
 swap:
   filename: /swapfile
   size: ${EXELET_SWAP_SIZE}
@@ -630,6 +635,10 @@ create_vm() {
         local backup_disk="${WORKDIR}/${name}-backup.qcow2"
         sudo qemu-img create -f qcow2 "${backup_disk}" "${EXELET_BACKUP_DISK_GB}G"
         data_disk_args+=(--disk "path=${backup_disk},format=qcow2,cache=none,discard=unmap")
+
+        local dozer_disk="${WORKDIR}/${name}-dozer.qcow2"
+        sudo qemu-img create -f qcow2 "${dozer_disk}" "${EXELET_DATA_DISK_GB}G"
+        data_disk_args+=(--disk "path=${dozer_disk},format=qcow2,cache=none,discard=unmap")
     fi
 
     # Cloud-init seed ISO

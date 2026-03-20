@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -508,6 +509,19 @@ func serveAction(clix *cli.Context) error {
 		tierManagers[tierName] = tm
 	}
 	storageManager := storage.NewTieredStorageManager(primaryPoolName, primaryStorageManager, tierManagers)
+
+	// If replication targets a local zpool that is also a storage tier,
+	// mark it as the backup pool so PoolForInstance resolves it last.
+	if strings.HasPrefix(cfg.ReplicationTarget, "zpool:///") {
+		backupPoolName := strings.TrimPrefix(cfg.ReplicationTarget, "zpool:///")
+		if idx := strings.IndexByte(backupPoolName, '?'); idx >= 0 {
+			backupPoolName = backupPoolName[:idx]
+		}
+		if _, exists := tierManagers[backupPoolName]; exists {
+			storageManager.SetBackupPool(backupPoolName)
+			log.Info("backup pool set as last-resort for instance resolution", "pool", backupPoolName)
+		}
+	}
 
 	// Create compute service
 	computeSvc, err := computeservice.New(ctx, cfg, log)

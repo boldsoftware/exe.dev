@@ -12,9 +12,10 @@ import (
 // It implements StorageManager by delegating to the primary pool,
 // making it a drop-in replacement for single-pool configurations.
 type TieredStorageManager struct {
-	primary   StorageManager
-	pools     map[string]StorageManager // pool name -> StorageManager
-	poolNames []string                  // ordered list (primary first)
+	primary    StorageManager
+	pools      map[string]StorageManager // pool name -> StorageManager
+	poolNames  []string                  // ordered list (primary first)
+	backupPool string                    // pool name to use as last resort in resolution
 }
 
 // NewTieredStorageManager creates a TieredStorageManager with a primary pool
@@ -38,6 +39,12 @@ func NewTieredStorageManager(primaryName string, primary StorageManager, tiers m
 	}
 }
 
+// SetBackupPool marks a pool as the backup tier, causing PoolForInstance
+// to resolve it only as a last resort after all other pools are checked.
+func (t *TieredStorageManager) SetBackupPool(name string) {
+	t.backupPool = name
+}
+
 // Primary returns the primary pool's StorageManager.
 func (t *TieredStorageManager) Primary() StorageManager {
 	return t.primary
@@ -59,11 +66,24 @@ func (t *TieredStorageManager) PoolNames() []string {
 
 // PoolForInstance finds which pool holds an instance by trying Get() on each pool.
 // Returns the pool name, its StorageManager, and any error.
+// If a backup pool is configured, it is checked last so that other durable
+// storage tiers are preferred over the backup copy.
 func (t *TieredStorageManager) PoolForInstance(ctx context.Context, id string) (string, StorageManager, error) {
 	for _, name := range t.poolNames {
+		if name == t.backupPool {
+			continue // defer backup pool to last resort
+		}
 		sm := t.pools[name]
 		if _, err := sm.Get(ctx, id); err == nil {
 			return name, sm, nil
+		}
+	}
+	// Fall back to backup pool if configured and instance exists there.
+	if t.backupPool != "" {
+		if sm, ok := t.pools[t.backupPool]; ok {
+			if _, err := sm.Get(ctx, id); err == nil {
+				return t.backupPool, sm, nil
+			}
 		}
 	}
 	return "", nil, fmt.Errorf("instance %s not found on any storage pool", id)
