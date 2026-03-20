@@ -10,8 +10,9 @@ import (
 )
 
 type pushTokenRequest struct {
-	Token    string `json:"token"`
-	Platform string `json:"platform"`
+	Token       string `json:"token"`
+	Platform    string `json:"platform"`
+	Environment string `json:"environment"`
 }
 
 type pushTokenResponse struct {
@@ -61,6 +62,15 @@ func (s *Server) handleRegisterPushToken(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	switch req.Environment {
+	case "production", "sandbox":
+	case "":
+		req.Environment = "production"
+	default:
+		writePushTokenError(w, "environment must be 'production' or 'sandbox'", http.StatusBadRequest)
+		return
+	}
+
 	// Validate token is valid hex.
 	if _, err := hex.DecodeString(req.Token); err != nil {
 		writePushTokenError(w, "token must be hex-encoded", http.StatusBadRequest)
@@ -69,16 +79,17 @@ func (s *Server) handleRegisterPushToken(w http.ResponseWriter, r *http.Request,
 
 	ctx := r.Context()
 	if err := withTx1(s, ctx, (*exedb.Queries).UpsertPushToken, exedb.UpsertPushTokenParams{
-		UserID:   userID,
-		Token:    req.Token,
-		Platform: req.Platform,
+		UserID:      userID,
+		Token:       req.Token,
+		Platform:    req.Platform,
+		Environment: req.Environment,
 	}); err != nil {
 		s.slog().ErrorContext(ctx, "failed to upsert push token", "error", err, "user_id", userID)
 		writePushTokenError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	s.slog().InfoContext(ctx, "push token registered", "user_id", userID, "platform", req.Platform)
+	s.slog().InfoContext(ctx, "push token registered", "user_id", userID, "platform", req.Platform, "environment", req.Environment)
 	json.NewEncoder(w).Encode(pushTokenResponse{Success: true})
 }
 

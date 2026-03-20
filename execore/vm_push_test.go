@@ -22,19 +22,20 @@ type fakePushSender struct {
 }
 
 type fakePush struct {
+	Environment string
 	DeviceToken string
 	Title       string
 	Body        string
 	Data        map[string]string
 }
 
-func (f *fakePushSender) Send(ctx context.Context, deviceToken, title, body string, data map[string]string) error {
+func (f *fakePushSender) Send(ctx context.Context, environment, deviceToken, title, body string, data map[string]string) error {
 	if f.failWith != nil {
 		return f.failWith
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.sent = append(f.sent, fakePush{deviceToken, title, body, data})
+	f.sent = append(f.sent, fakePush{environment, deviceToken, title, body, data})
 	return nil
 }
 
@@ -63,9 +64,10 @@ func createPushTestBox(t *testing.T, s *Server) (userID, boxName string) {
 
 	// Register a push token for this user.
 	if err := withTx1(s, t.Context(), (*exedb.Queries).UpsertPushToken, exedb.UpsertPushTokenParams{
-		UserID:   user.UserID,
-		Token:    "aabbccdd",
-		Platform: "apns",
+		UserID:      user.UserID,
+		Token:       "aabbccdd",
+		Platform:    "apns",
+		Environment: "production",
 	}); err != nil {
 		t.Fatalf("Failed to insert push token: %v", err)
 	}
@@ -223,6 +225,66 @@ func TestVMPushSend_InvalidTokenNotDeleted(t *testing.T) {
 	}
 	if len(tokens) != 1 {
 		t.Fatalf("Expected token to be preserved, got %d tokens", len(tokens))
+	}
+}
+
+func TestVMPushSend_SandboxToken(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+
+	user, err := s.createUser(t.Context(), testSSHPubKey, "sbxpush@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boxName := "test-sbx-box"
+	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		_, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-host",
+			Name:            boxName,
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: user.UserID,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register a sandbox push token.
+	if err := withTx1(s, t.Context(), (*exedb.Queries).UpsertPushToken, exedb.UpsertPushTokenParams{
+		UserID:      user.UserID,
+		Token:       "deadbeef",
+		Platform:    "apns",
+		Environment: "sandbox",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &fakePushSender{}
+
+	body, _ := json.Marshal(exeweb.VMPushRequest{Title: "Test"})
+	req := httptest.NewRequest("POST", "/_/gateway/push/send", bytes.NewReader(body))
+	req.Header.Set("X-Exedev-Box", boxName)
+	w := httptest.NewRecorder()
+
+	ps := s.proxyServer()
+	ps.PushSender = fake
+	ps.HandleVMPushSend(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if len(fake.sent) != 1 {
+		t.Fatalf("Expected 1 push sent, got %d", len(fake.sent))
+	}
+	if fake.sent[0].Environment != "sandbox" {
+		t.Fatalf("Expected sandbox environment, got %q", fake.sent[0].Environment)
+	}
+	if fake.sent[0].DeviceToken != "deadbeef" {
+		t.Fatalf("Expected device token 'deadbeef', got %q", fake.sent[0].DeviceToken)
 	}
 }
 

@@ -166,13 +166,13 @@ final class APIClient: Sendable {
 
     // MARK: - Push Tokens
 
-    func registerPushToken(_ token: String, platform: String = "apns") async throws {
+    func registerPushToken(_ token: String, platform: String = "apns", environment: String = "production") async throws {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/push-tokens")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         addAuth(&request)
 
-        let body = ["token": token, "platform": platform]
+        let body = ["token": token, "platform": platform, "environment": environment]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await URLSession.shared.data(for: request)

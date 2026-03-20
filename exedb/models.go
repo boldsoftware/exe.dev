@@ -372,12 +372,13 @@ type PendingTeamInvite struct {
 }
 
 type PushToken struct {
-	ID         int64      `db:"id" json:"id"`
-	UserID     string     `db:"user_id" json:"user_id"`
-	Token      string     `db:"token" json:"token"`
-	Platform   string     `db:"platform" json:"platform"`
-	CreatedAt  time.Time  `db:"created_at" json:"created_at"`
-	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+	ID          int64      `db:"id" json:"id"`
+	UserID      string     `db:"user_id" json:"user_id"`
+	Token       string     `db:"token" json:"token"`
+	Platform    string     `db:"platform" json:"platform"`
+	CreatedAt   time.Time  `db:"created_at" json:"created_at"`
+	LastUsedAt  *time.Time `db:"last_used_at" json:"last_used_at"`
+	Environment string     `db:"environment" json:"environment"`
 }
 
 type Redirect struct {

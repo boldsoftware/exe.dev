@@ -33,7 +33,7 @@ func (q *Queries) DeletePushTokensByUserID(ctx context.Context, userID string) e
 }
 
 const getPushTokensByUserID = `-- name: GetPushTokensByUserID :many
-SELECT id, user_id, token, platform, created_at, last_used_at FROM push_tokens WHERE user_id = ? ORDER BY created_at DESC
+SELECT id, user_id, token, platform, created_at, last_used_at, environment FROM push_tokens WHERE user_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) GetPushTokensByUserID(ctx context.Context, userID string) ([]PushToken, error) {
@@ -52,6 +52,7 @@ func (q *Queries) GetPushTokensByUserID(ctx context.Context, userID string) ([]P
 			&i.Platform,
 			&i.CreatedAt,
 			&i.LastUsedAt,
+			&i.Environment,
 		); err != nil {
 			return nil, err
 		}
@@ -87,20 +88,27 @@ func (q *Queries) UpdatePushTokenLastUsed(ctx context.Context, token string) err
 }
 
 const upsertPushToken = `-- name: UpsertPushToken :exec
-INSERT INTO push_tokens (user_id, token, platform)
-VALUES (?, ?, ?)
+INSERT INTO push_tokens (user_id, token, platform, environment)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(token) DO UPDATE SET
     user_id = excluded.user_id,
+    environment = excluded.environment,
     last_used_at = CURRENT_TIMESTAMP
 `
 
 type UpsertPushTokenParams struct {
-	UserID   string `db:"user_id" json:"user_id"`
-	Token    string `db:"token" json:"token"`
-	Platform string `db:"platform" json:"platform"`
+	UserID      string `db:"user_id" json:"user_id"`
+	Token       string `db:"token" json:"token"`
+	Platform    string `db:"platform" json:"platform"`
+	Environment string `db:"environment" json:"environment"`
 }
 
 func (q *Queries) UpsertPushToken(ctx context.Context, arg UpsertPushTokenParams) error {
-	_, err := q.exec(ctx, q.upsertPushTokenStmt, upsertPushToken, arg.UserID, arg.Token, arg.Platform)
+	_, err := q.exec(ctx, q.upsertPushTokenStmt, upsertPushToken,
+		arg.UserID,
+		arg.Token,
+		arg.Platform,
+		arg.Environment,
+	)
 	return err
 }

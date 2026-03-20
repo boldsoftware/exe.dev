@@ -272,8 +272,8 @@ func (s *Server) proxyData() exeweb.ProxyData {
 // proxyServer returns an exeweb.ProxyServer that refers to s.
 func (s *Server) proxyServer() *exeweb.ProxyServer {
 	var pushSender exeweb.PushSender
-	if s.apnsClient != nil {
-		pushSender = &apnsPushSender{client: s.apnsClient}
+	if s.apnsProduction != nil || s.apnsSandbox != nil {
+		pushSender = &apnsPushSender{production: s.apnsProduction, sandbox: s.apnsSandbox}
 	}
 
 	ps := &exeweb.ProxyServer{
@@ -531,8 +531,9 @@ func (pd *proxyData) GetPushTokensByUserID(ctx context.Context, userID string) (
 	result := make([]exeweb.PushTokenData, len(tokens))
 	for i, t := range tokens {
 		result[i] = exeweb.PushTokenData{
-			Token:    t.Token,
-			Platform: t.Platform,
+			Token:       t.Token,
+			Platform:    t.Platform,
+			Environment: t.Environment,
 		}
 	}
 	return result, nil

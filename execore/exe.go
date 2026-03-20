@@ -514,8 +514,11 @@ type Server struct {
 	// Google OAuth credentials
 	googleOAuth *googleoauth.Client
 
-	// APNs push notification client (nil if not configured)
-	apnsClient *apns.Client
+	// APNs push notification clients (nil if not configured).
+	// Both use the same signing key; production talks to api.push.apple.com,
+	// sandbox talks to api.sandbox.push.apple.com.
+	apnsProduction *apns.Client
+	apnsSandbox    *apns.Client
 
 	// GitHub App for installation flow
 	githubApp      *githubapp.Client
@@ -916,18 +919,28 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize Discord link secret for account linking
 	discordLinkSecret := os.Getenv("EXE_LINK_SECRET")
 
-	// Initialize APNs push notification client
-	var apnsClient *apns.Client
+	// Initialize APNs push notification clients.
+	// The same .p8 signing key works for both environments.
+	var apnsProduction, apnsSandbox *apns.Client
 	if apnsKeyID := os.Getenv("APNS_KEY_ID"); apnsKeyID != "" {
 		apnsTeamID := os.Getenv("APNS_TEAM_ID")
 		apnsKey := os.Getenv("APNS_KEY")
-		apnsSandbox := os.Getenv("APNS_SANDBOX") == "true"
-		client, err := apns.NewClient(apnsKeyID, apnsTeamID, apnsKey, apnsSandbox)
+		prodClient, err := apns.NewClient(apnsKeyID, apnsTeamID, apnsKey, false)
 		if err != nil {
-			slog.Error("failed to create APNs client", "error", err)
+			slog.Error("failed to create APNs production client", "error", err)
 		} else {
-			apnsClient = client
-			slog.Info("APNs push notifications enabled", "sandbox", apnsSandbox)
+			apnsProduction = prodClient
+		}
+		sbxClient, err := apns.NewClient(apnsKeyID, apnsTeamID, apnsKey, true)
+		if err != nil {
+			slog.Error("failed to create APNs sandbox client", "error", err)
+		} else {
+			apnsSandbox = sbxClient
+		}
+		if apnsProduction != nil || apnsSandbox != nil {
+			slog.Info("APNs push notifications enabled",
+				"production", apnsProduction != nil,
+				"sandbox", apnsSandbox != nil)
 		}
 	}
 
@@ -1184,7 +1197,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		bouncePoller:           bouncePoller,
 		ipqsAPIKey:             ipqsAPIKey,
 		discordLinkSecret:      discordLinkSecret,
-		apnsClient:             apnsClient,
+		apnsProduction:         apnsProduction,
+		apnsSandbox:            apnsSandbox,
 		googleOAuth: &googleoauth.Client{
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,

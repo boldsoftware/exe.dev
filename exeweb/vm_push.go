@@ -34,14 +34,15 @@ type VMPushResponse struct {
 
 // PushTokenData contains push token data needed by the handler.
 type PushTokenData struct {
-	Token    string
-	Platform string
+	Token       string
+	Platform    string
+	Environment string // "production" or "sandbox"
 }
 
 // PushSender is an interface for sending push notifications.
 // This allows the APNs client to be injected/mocked.
 type PushSender interface {
-	Send(ctx context.Context, deviceToken, title, body string, data map[string]string) error
+	Send(ctx context.Context, environment, deviceToken, title, body string, data map[string]string) error
 }
 
 // HandleVMPushSend handles POST /_/gateway/push/send from the metadata proxy.
@@ -141,7 +142,7 @@ func (ps *ProxyServer) HandleVMPushSend(w http.ResponseWriter, r *http.Request) 
 	// Send push notification to each token.
 	sentCount := 0
 	for _, tok := range tokens {
-		if err := ps.PushSender.Send(ctx, tok.Token, req.Title, req.Body, req.Data); err != nil {
+		if err := ps.PushSender.Send(ctx, tok.Environment, tok.Token, req.Title, req.Body, req.Data); err != nil {
 			ps.Lg.ErrorContext(ctx, "failed to send push notification", "error", err, "userID", ud.UserID, "box", boxName)
 			continue
 		}

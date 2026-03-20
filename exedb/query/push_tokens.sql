@@ -1,8 +1,9 @@
 -- name: UpsertPushToken :exec
-INSERT INTO push_tokens (user_id, token, platform)
-VALUES (?, ?, ?)
+INSERT INTO push_tokens (user_id, token, platform, environment)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(token) DO UPDATE SET
     user_id = excluded.user_id,
+    environment = excluded.environment,
     last_used_at = CURRENT_TIMESTAMP;
 
 -- name: DeletePushToken :exec
