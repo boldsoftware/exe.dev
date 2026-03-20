@@ -543,7 +543,7 @@ func ListAll(workingDir, gitRoot string) []Skill {
 // for the given name it is returned, even if a built-in skill with the
 // same name exists. An empty filesystem SKILL.md suppresses the built-in
 // skill — this lets users delete built-in skills they don't want.
-func FindByName(name string, workingDir string) (string, error) {
+func FindByName(name, workingDir string) (string, error) {
 	gitRoot := findGitRoot(workingDir)
 	dirs := DefaultDirs()
 	dirs = append(dirs, ProjectSkillsDirs(workingDir, gitRoot)...)
