@@ -295,13 +295,27 @@
         <div class="modal-body">
           <div class="modal-sha-row">
             <span class="modal-sha-label">Deploying</span>
-            <span class="modal-sha-value">{{ headSHA.slice(0, 7) }}</span>
-            <span v-if="headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+            <span class="modal-sha-value">{{ deploySHA.slice(0, 7) }}</span>
+            <span v-if="!customSHA && headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+            <span v-if="customSHA" class="modal-sha-custom-badge">custom</span>
           </div>
           <div v-if="confirmProc.version" class="modal-sha-row">
             <span class="modal-sha-label">Currently</span>
             <span class="modal-sha-value">{{ confirmProc.version.slice(0, 7) }}</span>
             <span v-if="confirmProc.version_subject" class="modal-sha-subject">{{ confirmProc.version_subject }}</span>
+          </div>
+          <div class="modal-custom-sha">
+            <label class="modal-custom-sha-label" for="custom-sha">Custom SHA</label>
+            <input
+              id="custom-sha"
+              v-model="customSHA"
+              type="text"
+              class="modal-custom-sha-input"
+              placeholder="paste full 40-char SHA to override"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <span v-if="customSHA && !isValidSHA(customSHA)" class="modal-custom-sha-error">must be 40 hex characters</span>
           </div>
           <div v-if="confirmLoading" class="modal-loading">
             <i class="pi pi-spin pi-spinner"></i> Loading commits...
@@ -327,9 +341,13 @@
         </div>
         <div class="modal-footer">
           <button class="deploy-btn deploy-btn-cancel" @click="closeConfirm">Cancel</button>
-          <button class="deploy-btn deploy-btn-confirm" @click="doDeploy(confirmProc!)">
+          <button
+            class="deploy-btn deploy-btn-confirm"
+            :disabled="customSHA !== '' && !isValidSHA(customSHA)"
+            @click="doDeploy(confirmProc!)"
+          >
             <i class="pi pi-upload"></i>
-            Deploy {{ headSHA.slice(0, 7) }}
+            Deploy {{ deploySHA.slice(0, 7) }}
           </button>
         </div>
       </div>
@@ -358,6 +376,16 @@ const headDate = ref('')
 const confirmProc = ref<DeployProcess | null>(null)
 const confirmCommits = ref<DeployCommit[]>([])
 const confirmLoading = ref(false)
+const customSHA = ref('')
+
+const deploySHA = computed(() => {
+  if (customSHA.value && isValidSHA(customSHA.value)) return customSHA.value
+  return headSHA.value
+})
+
+function isValidSHA(s: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(s)
+}
 const deploys = ref<DeployStatus[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -656,10 +684,12 @@ async function confirmDeploy(p: DeployProcess) {
 function closeConfirm() {
   confirmProc.value = null
   confirmCommits.value = []
+  customSHA.value = ''
 }
 
 async function doDeploy(p: DeployProcess) {
   if (!canDeploy(p)) return
+  const sha = deploySHA.value
   closeConfirm()
   try {
     await startDeploy({
@@ -668,7 +698,7 @@ async function doDeploy(p: DeployProcess) {
       process: p.process,
       host: p.hostname,
       dns_name: p.dns_name,
-      sha: headSHA.value,
+      sha,
     })
     await loadDeploys()
   } catch (e: any) {
@@ -1574,6 +1604,66 @@ a.version-sha:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.modal-custom-sha {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--surface-border);
+}
+
+.modal-custom-sha-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.modal-custom-sha-input {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface-ground);
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+  color: var(--text-color);
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-custom-sha-input:focus {
+  border-color: var(--primary-color);
+}
+
+.modal-custom-sha-input::placeholder {
+  color: var(--text-color-muted);
+  font-family: inherit;
+  font-size: 0.65rem;
+}
+
+.modal-custom-sha-error {
+  font-size: 0.6rem;
+  color: var(--red-400);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.modal-sha-custom-badge {
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: var(--yellow-subtle, rgba(255, 200, 0, 0.15));
+  color: var(--yellow-400, #d4a017);
 }
 
 .modal-loading {
