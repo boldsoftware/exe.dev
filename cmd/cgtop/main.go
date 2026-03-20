@@ -320,7 +320,8 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		data, err := staticFS.ReadFile("index.html")
 		if err != nil {
 			http.Error(w, "internal error", 500)
@@ -330,7 +331,7 @@ func main() {
 		w.Write(data)
 	})
 
-	http.HandleFunc("GET /api/data", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/data", func(w http.ResponseWriter, r *http.Request) {
 		rootParam := r.URL.Query().Get("root")
 		if rootParam != "" {
 			cleaned := filepath.Clean(rootParam)
@@ -348,12 +349,12 @@ func main() {
 	})
 
 	registry := prometheus.NewRegistry()
-	http.Handle("GET /debug/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-	http.HandleFunc("GET /debug/gitsha", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /debug/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	mux.HandleFunc("GET /debug/gitsha", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprint(w, logging.GitCommit())
 	})
 
 	fmt.Printf("listening on %s\n", *httpAddr)
-	log.Fatal(http.ListenAndServe(*httpAddr, nil))
+	log.Fatal(http.ListenAndServe(*httpAddr, mux))
 }
