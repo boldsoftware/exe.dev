@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -143,7 +144,7 @@ func (m *Manager) execute(ctx context.Context, d *deploy) {
 
 	// Build (checkout + compile, cached and deduplicated).
 	d.beginStep("build")
-	artifact, buildOutput, err := m.ensureArtifact(ctx, d.process, d.sha, recipe)
+	artifact, buildOutput, err := m.ensureArtifact(ctx, d, d.process, d.sha, recipe)
 	if buildOutput != "" {
 		d.setStepOutput(buildOutput)
 	}
@@ -195,7 +196,7 @@ func (m *Manager) finish(d *deploy) {
 
 // ensureArtifact returns the path to a built binary and a human summary,
 // using the cache and serializing concurrent builds for the same (process, sha).
-func (m *Manager) ensureArtifact(ctx context.Context, process, sha string, recipe Recipe) (string, string, error) {
+func (m *Manager) ensureArtifact(ctx context.Context, d *deploy, process, sha string, recipe Recipe) (string, string, error) {
 	artifactPath := filepath.Join(m.cacheDir, process, sha, recipe.BinaryName)
 
 	// Fast path: already cached.
@@ -214,7 +215,7 @@ func (m *Manager) ensureArtifact(ctx context.Context, process, sha string, recip
 		return artifactPath, fmt.Sprintf("cached (%s)", formatBytes(info.Size())), nil
 	}
 
-	return m.buildArtifact(ctx, process, sha, recipe, artifactPath)
+	return m.buildArtifact(ctx, d, process, sha, recipe, artifactPath)
 }
 
 func (m *Manager) getBuildLock(key string) *sync.Mutex {
@@ -271,7 +272,44 @@ func buildEnv() []string {
 	return append(env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 }
 
-func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe Recipe, outputPath string) (string, string, error) {
+// liveWriter is an io.Writer that tracks the last non-empty line of output
+// and forwards it to a deploy step via setStepOutput.
+type liveWriter struct {
+	d      *deploy
+	prefix string // prepended to output, e.g. "building: "
+	buf    []byte
+	all    bytes.Buffer // full output for error reporting
+}
+
+func (w *liveWriter) Write(p []byte) (int, error) {
+	w.all.Write(p)
+	w.buf = append(w.buf, p...)
+	// Find the last complete line and update the step output.
+	for {
+		i := bytes.IndexByte(w.buf, '\n')
+		if i < 0 {
+			break
+		}
+		line := strings.TrimSpace(string(w.buf[:i]))
+		w.buf = w.buf[i+1:]
+		if line != "" {
+			w.d.setStepOutput(w.prefix + line)
+		}
+	}
+	return len(p), nil
+}
+
+// runCmd runs a command, streaming its output to the deploy step as live status.
+// Returns the full combined output and any error.
+func (m *Manager) runCmd(cmd *exec.Cmd, d *deploy, prefix string) (string, error) {
+	w := &liveWriter{d: d, prefix: prefix}
+	cmd.Stdout = w
+	cmd.Stderr = w
+	err := cmd.Run()
+	return w.all.String(), err
+}
+
+func (m *Manager) buildArtifact(ctx context.Context, d *deploy, process, sha string, recipe Recipe, outputPath string) (string, string, error) {
 	// Clone from the bare repo with --shared (uses hardlinks, fast)
 	// so Go's VCS detection embeds vcs.revision in the binary.
 	workdir, err := os.MkdirTemp("", "deploy-"+process+"-"+sha[:12]+"-*")
@@ -280,6 +318,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 	}
 	defer os.RemoveAll(workdir)
 
+	d.setStepOutput("checking out " + sha[:12])
 	m.log.Info("checking out", "sha", sha[:12], "dir", workdir)
 	cmd := exec.CommandContext(ctx, "git", "clone", "--shared", "--no-checkout", m.repoDir, workdir)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -302,7 +341,7 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 		pre := exec.CommandContext(ctx, "bash", "-l", "-c", cmd)
 		pre.Dir = buildRoot
 		pre.Env = buildEnv()
-		if out, err := pre.CombinedOutput(); err != nil {
+		if out, err := m.runCmd(pre, d, "pre-build: "); err != nil {
 			return "", "", fmt.Errorf("pre-build %q: %w\n%s", cmd, err, out)
 		}
 	}
@@ -314,10 +353,10 @@ func (m *Manager) buildArtifact(ctx context.Context, process, sha string, recipe
 
 	m.log.Info("building", "process", process, "sha", sha[:12], "target", recipe.BuildTarget)
 	buildStart := time.Now()
-	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", outputPath, recipe.BuildTarget)
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-v", "-o", outputPath, recipe.BuildTarget)
 	buildCmd.Dir = buildRoot
 	buildCmd.Env = buildEnv()
-	if out, err := buildCmd.CombinedOutput(); err != nil {
+	if out, err := m.runCmd(buildCmd, d, "compiling: "); err != nil {
 		return "", "", fmt.Errorf("go build: %w\n%s", err, out)
 	}
 	buildDur := time.Since(buildStart)
