@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -186,12 +187,12 @@ func TestVMPushSend_NoTokens(t *testing.T) {
 	}
 }
 
-func TestVMPushSend_InvalidTokenCleanup(t *testing.T) {
+func TestVMPushSend_InvalidTokenNotDeleted(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 	userID, boxName := createPushTestBox(t, s)
 
-	fake := &fakePushSender{failWith: exeweb.ErrPushTokenInvalid}
+	fake := &fakePushSender{failWith: fmt.Errorf("APNs error: status=410 reason=Unregistered")}
 
 	body, _ := json.Marshal(exeweb.VMPushRequest{Title: "Test"})
 	req := httptest.NewRequest("POST", "/_/gateway/push/send", bytes.NewReader(body))
@@ -206,13 +207,22 @@ func TestVMPushSend_InvalidTokenCleanup(t *testing.T) {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// The invalid token should have been deleted.
+	var resp exeweb.VMPushResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !resp.Success {
+		t.Fatalf("Expected success, got error: %s", resp.Error)
+	}
+	if resp.Sent != 0 {
+		t.Fatalf("Expected 0 sent, got %d", resp.Sent)
+	}
+
+	// Token must NOT be deleted — send failures should not destroy tokens.
 	tokens, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetPushTokensByUserID, userID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tokens) != 0 {
-		t.Fatalf("Expected 0 tokens after cleanup, got %d", len(tokens))
+	if len(tokens) != 1 {
+		t.Fatalf("Expected token to be preserved, got %d tokens", len(tokens))
 	}
 }
 

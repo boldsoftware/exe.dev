@@ -142,14 +142,6 @@ func (ps *ProxyServer) HandleVMPushSend(w http.ResponseWriter, r *http.Request) 
 	sentCount := 0
 	for _, tok := range tokens {
 		if err := ps.PushSender.Send(ctx, tok.Token, req.Title, req.Body, req.Data); err != nil {
-			if errors.Is(err, ErrPushTokenInvalid) {
-				// Token is invalid — clean it up.
-				ps.Lg.InfoContext(ctx, "removing invalid push token", "userID", ud.UserID, "box", boxName)
-				if delErr := ps.Data.DeletePushToken(ctx, tok.Token, ud.UserID); delErr != nil {
-					ps.Lg.ErrorContext(ctx, "failed to delete invalid push token", "error", delErr, "userID", ud.UserID)
-				}
-				continue
-			}
 			ps.Lg.ErrorContext(ctx, "failed to send push notification", "error", err, "userID", ud.UserID, "box", boxName)
 			continue
 		}
@@ -160,9 +152,6 @@ func (ps *ProxyServer) HandleVMPushSend(w http.ResponseWriter, r *http.Request) 
 
 	json.NewEncoder(w).Encode(VMPushResponse{Success: true, Sent: sentCount})
 }
-
-// ErrPushTokenInvalid is returned by PushSender when a device token is no longer valid.
-var ErrPushTokenInvalid = errors.New("push token is no longer valid")
 
 // writeVMPushError writes a JSON error response.
 func writeVMPushError(w http.ResponseWriter, msg string, code int) {
