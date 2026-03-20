@@ -19,6 +19,18 @@ type Account struct {
 	ID        string    `db:"id" json:"id"`
 	CreatedBy string    `db:"created_by" json:"created_by"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	ParentID  *string   `db:"parent_id" json:"parent_id"`
+	Status    string    `db:"status" json:"status"`
+}
+
+type AccountPlan struct {
+	AccountID      string     `db:"account_id" json:"account_id"`
+	PlanID         string     `db:"plan_id" json:"plan_id"`
+	StartedAt      time.Time  `db:"started_at" json:"started_at"`
+	EndedAt        *time.Time `db:"ended_at" json:"ended_at"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	ChangedBy      *string    `db:"changed_by" json:"changed_by"`
+	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
 }
 
 type AppToken struct {

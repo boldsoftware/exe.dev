@@ -66,6 +66,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
 	}
+	if q.closeAccountPlanStmt, err = db.PrepareContext(ctx, closeAccountPlan); err != nil {
+		return nil, fmt.Errorf("error preparing query CloseAccountPlan: %w", err)
+	}
 	if q.consumeCheckoutParamsStmt, err = db.PrepareContext(ctx, consumeCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query ConsumeCheckoutParams: %w", err)
 	}
@@ -299,6 +302,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAccountWithBillingStatusStmt, err = db.PrepareContext(ctx, getAccountWithBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAccountWithBillingStatus: %w", err)
+	}
+	if q.getActiveAccountPlanStmt, err = db.PrepareContext(ctx, getActiveAccountPlan); err != nil {
+		return nil, fmt.Errorf("error preparing query GetActiveAccountPlan: %w", err)
+	}
+	if q.getActivePlanForUserStmt, err = db.PrepareContext(ctx, getActivePlanForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetActivePlanForUser: %w", err)
 	}
 	if q.getAllBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getAllBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllBoxShareLinksByBoxID: %w", err)
@@ -717,6 +726,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertAccountStmt, err = db.PrepareContext(ctx, insertAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAccount: %w", err)
 	}
+	if q.insertAccountPlanStmt, err = db.PrepareContext(ctx, insertAccountPlan); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAccountPlan: %w", err)
+	}
 	if q.insertAppTokenStmt, err = db.PrepareContext(ctx, insertAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAppToken: %w", err)
 	}
@@ -843,8 +855,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAWSIPShardsStmt, err = db.PrepareContext(ctx, listAWSIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAWSIPShards: %w", err)
 	}
+	if q.listAccountPlanHistoryStmt, err = db.PrepareContext(ctx, listAccountPlanHistory); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAccountPlanHistory: %w", err)
+	}
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
+	}
+	if q.listAllActiveAccountPlansStmt, err = db.PrepareContext(ctx, listAllActiveAccountPlans); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllActiveAccountPlans: %w", err)
 	}
 	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
@@ -1228,6 +1246,11 @@ func (q *Queries) Close() error {
 	if q.clearPreferredExeletStmt != nil {
 		if cerr := q.clearPreferredExeletStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearPreferredExeletStmt: %w", cerr)
+		}
+	}
+	if q.closeAccountPlanStmt != nil {
+		if cerr := q.closeAccountPlanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing closeAccountPlanStmt: %w", cerr)
 		}
 	}
 	if q.consumeCheckoutParamsStmt != nil {
@@ -1618,6 +1641,16 @@ func (q *Queries) Close() error {
 	if q.getAccountWithBillingStatusStmt != nil {
 		if cerr := q.getAccountWithBillingStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAccountWithBillingStatusStmt: %w", cerr)
+		}
+	}
+	if q.getActiveAccountPlanStmt != nil {
+		if cerr := q.getActiveAccountPlanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getActiveAccountPlanStmt: %w", cerr)
+		}
+	}
+	if q.getActivePlanForUserStmt != nil {
+		if cerr := q.getActivePlanForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getActivePlanForUserStmt: %w", cerr)
 		}
 	}
 	if q.getAllBoxShareLinksByBoxIDStmt != nil {
@@ -2315,6 +2348,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertAccountStmt: %w", cerr)
 		}
 	}
+	if q.insertAccountPlanStmt != nil {
+		if cerr := q.insertAccountPlanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAccountPlanStmt: %w", cerr)
+		}
+	}
 	if q.insertAppTokenStmt != nil {
 		if cerr := q.insertAppTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAppTokenStmt: %w", cerr)
@@ -2525,9 +2563,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAWSIPShardsStmt: %w", cerr)
 		}
 	}
+	if q.listAccountPlanHistoryStmt != nil {
+		if cerr := q.listAccountPlanHistoryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAccountPlanHistoryStmt: %w", cerr)
+		}
+	}
 	if q.listAllAccountsStmt != nil {
 		if cerr := q.listAllAccountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
+		}
+	}
+	if q.listAllActiveAccountPlansStmt != nil {
+		if cerr := q.listAllActiveAccountPlansStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllActiveAccountPlansStmt: %w", cerr)
 		}
 	}
 	if q.listAllBoxesWithOwnerStmt != nil {
@@ -3098,6 +3146,7 @@ type Queries struct {
 	cleanupExpiredRedirectsStmt                *sql.Stmt
 	cleanupExpiredReleasedBoxNamesStmt         *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
+	closeAccountPlanStmt                       *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
 	consumeOAuthStateStmt                      *sql.Stmt
 	countAccountsByBillingStatusStmt           *sql.Stmt
@@ -3176,6 +3225,8 @@ type Queries struct {
 	getAccountStmt                             *sql.Stmt
 	getAccountByUserIDStmt                     *sql.Stmt
 	getAccountWithBillingStatusStmt            *sql.Stmt
+	getActiveAccountPlanStmt                   *sql.Stmt
+	getActivePlanForUserStmt                   *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
 	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
@@ -3315,6 +3366,7 @@ type Queries struct {
 	incrementTemplateDeployCountStmt           *sql.Stmt
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
+	insertAccountPlanStmt                      *sql.Stmt
 	insertAppTokenStmt                         *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
 	insertBillingEventStmt                     *sql.Stmt
@@ -3357,7 +3409,9 @@ type Queries struct {
 	isUserTeamAdminStmt                        *sql.Stmt
 	isUserTeamBillingOwnerStmt                 *sql.Stmt
 	listAWSIPShardsStmt                        *sql.Stmt
+	listAccountPlanHistoryStmt                 *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
+	listAllActiveAccountPlansStmt              *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllIntegrationsStmt                    *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
@@ -3481,6 +3535,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
 		cleanupExpiredReleasedBoxNamesStmt:         q.cleanupExpiredReleasedBoxNamesStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
+		closeAccountPlanStmt:                       q.closeAccountPlanStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
 		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
@@ -3559,6 +3614,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAccountStmt:                             q.getAccountStmt,
 		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
 		getAccountWithBillingStatusStmt:            q.getAccountWithBillingStatusStmt,
+		getActiveAccountPlanStmt:                   q.getActiveAccountPlanStmt,
+		getActivePlanForUserStmt:                   q.getActivePlanForUserStmt,
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
 		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
@@ -3698,6 +3755,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementTemplateDeployCountStmt:           q.incrementTemplateDeployCountStmt,
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
+		insertAccountPlanStmt:                      q.insertAccountPlanStmt,
 		insertAppTokenStmt:                         q.insertAppTokenStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
@@ -3740,7 +3798,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		isUserTeamAdminStmt:                        q.isUserTeamAdminStmt,
 		isUserTeamBillingOwnerStmt:                 q.isUserTeamBillingOwnerStmt,
 		listAWSIPShardsStmt:                        q.listAWSIPShardsStmt,
+		listAccountPlanHistoryStmt:                 q.listAccountPlanHistoryStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
+		listAllActiveAccountPlansStmt:              q.listAllActiveAccountPlansStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllIntegrationsStmt:                    q.listAllIntegrationsStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,

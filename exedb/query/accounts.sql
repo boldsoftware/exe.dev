@@ -1,6 +1,41 @@
 -- name: InsertAccount :exec
 INSERT INTO accounts (id, created_by) VALUES (?, ?);
 
+-- name: ListAllActiveAccountPlans :many
+SELECT a.created_by AS user_id, ap.plan_id
+FROM accounts a
+JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL;
+
+-- name: InsertAccountPlan :exec
+INSERT INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: GetActiveAccountPlan :one
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE account_id = ? AND ended_at IS NULL;
+
+-- name: CloseAccountPlan :exec
+UPDATE account_plans SET ended_at = ?2 WHERE account_id = ?1 AND ended_at IS NULL;
+
+-- name: ListAccountPlanHistory :many
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE account_id = ?
+ORDER BY started_at DESC;
+
+-- name: GetActivePlanForUser :one
+SELECT
+    COALESCE(parent_ap.plan_id, own_ap.plan_id) AS plan_id,
+    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id,
+    COALESCE(parent_ap.trial_expires_at, own_ap.trial_expires_at) AS trial_expires_at
+FROM users u
+JOIN accounts a ON a.created_by = u.user_id
+JOIN account_plans own_ap ON own_ap.account_id = a.id AND own_ap.ended_at IS NULL
+LEFT JOIN accounts parent_acct ON parent_acct.id = a.parent_id
+LEFT JOIN account_plans parent_ap ON parent_ap.account_id = parent_acct.id AND parent_ap.ended_at IS NULL
+WHERE u.user_id = ?;
+
 -- name: ActivateAccount :exec
 -- ActivateAccount marks an account as active after Stripe checkout completes.
 -- Inserts an 'active' billing event for the account owned by the given user.
@@ -9,10 +44,10 @@ INSERT INTO billing_events (account_id, event_type, event_at)
 SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1;
 
 -- name: GetAccount :one
-SELECT id, created_by, created_at FROM accounts WHERE id = ?;
+SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE id = ?;
 
 -- name: GetAccountByUserID :one
-SELECT id, created_by, created_at FROM accounts WHERE created_by = ?;
+SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE created_by = ?;
 
 -- name: GetAccountWithBillingStatus :one
 -- Returns account info with billing status derived from billing_events.
@@ -27,7 +62,7 @@ SELECT a.id, a.created_by, a.created_at,
 FROM accounts a WHERE a.created_by = ?;
 
 -- name: ListAllAccounts :many
-SELECT id, created_by, created_at FROM accounts;
+SELECT id, created_by, created_at, parent_id, status FROM accounts;
 
 -- name: GetUserBillingStatus :one
 -- Returns the user's billing information for determining payment status.

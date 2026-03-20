@@ -28,6 +28,20 @@ func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams
 	return err
 }
 
+const closeAccountPlan = `-- name: CloseAccountPlan :exec
+UPDATE account_plans SET ended_at = ?2 WHERE account_id = ?1 AND ended_at IS NULL
+`
+
+type CloseAccountPlanParams struct {
+	AccountID string     `db:"account_id" json:"account_id"`
+	EndedAt   *time.Time `db:"ended_at" json:"ended_at"`
+}
+
+func (q *Queries) CloseAccountPlan(ctx context.Context, arg CloseAccountPlanParams) error {
+	_, err := q.exec(ctx, q.closeAccountPlanStmt, closeAccountPlan, arg.AccountID, arg.EndedAt)
+	return err
+}
+
 const countAccountsByBillingStatus = `-- name: CountAccountsByBillingStatus :one
 SELECT COUNT(*) FROM accounts a
 WHERE (
@@ -67,24 +81,36 @@ func (q *Queries) DeleteAccountsByUserID(ctx context.Context, createdBy string) 
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, created_by, created_at FROM accounts WHERE id = ?
+SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountStmt, getAccount, id)
 	var i Account
-	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ParentID,
+		&i.Status,
+	)
 	return i, err
 }
 
 const getAccountByUserID = `-- name: GetAccountByUserID :one
-SELECT id, created_by, created_at FROM accounts WHERE created_by = ?
+SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE created_by = ?
 `
 
 func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Account, error) {
 	row := q.queryRow(ctx, q.getAccountByUserIDStmt, getAccountByUserID, createdBy)
 	var i Account
-	err := row.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ParentID,
+		&i.Status,
+	)
 	return i, err
 }
 
@@ -117,6 +143,53 @@ func (q *Queries) GetAccountWithBillingStatus(ctx context.Context, createdBy str
 		&i.CreatedAt,
 		&i.BillingStatus,
 	)
+	return i, err
+}
+
+const getActiveAccountPlan = `-- name: GetActiveAccountPlan :one
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE account_id = ? AND ended_at IS NULL
+`
+
+func (q *Queries) GetActiveAccountPlan(ctx context.Context, accountID string) (AccountPlan, error) {
+	row := q.queryRow(ctx, q.getActiveAccountPlanStmt, getActiveAccountPlan, accountID)
+	var i AccountPlan
+	err := row.Scan(
+		&i.AccountID,
+		&i.PlanID,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.TrialExpiresAt,
+		&i.ChangedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getActivePlanForUser = `-- name: GetActivePlanForUser :one
+SELECT
+    COALESCE(parent_ap.plan_id, own_ap.plan_id) AS plan_id,
+    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id,
+    COALESCE(parent_ap.trial_expires_at, own_ap.trial_expires_at) AS trial_expires_at
+FROM users u
+JOIN accounts a ON a.created_by = u.user_id
+JOIN account_plans own_ap ON own_ap.account_id = a.id AND own_ap.ended_at IS NULL
+LEFT JOIN accounts parent_acct ON parent_acct.id = a.parent_id
+LEFT JOIN account_plans parent_ap ON parent_ap.account_id = parent_acct.id AND parent_ap.ended_at IS NULL
+WHERE u.user_id = ?
+`
+
+type GetActivePlanForUserRow struct {
+	PlanID         string     `db:"plan_id" json:"plan_id"`
+	AccountID      string     `db:"account_id" json:"account_id"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+}
+
+func (q *Queries) GetActivePlanForUser(ctx context.Context, userID string) (GetActivePlanForUserRow, error) {
+	row := q.queryRow(ctx, q.getActivePlanForUserStmt, getActivePlanForUser, userID)
+	var i GetActivePlanForUserRow
+	err := row.Scan(&i.PlanID, &i.AccountID, &i.TrialExpiresAt)
 	return i, err
 }
 
@@ -357,8 +430,70 @@ func (q *Queries) InsertAccount(ctx context.Context, arg InsertAccountParams) er
 	return err
 }
 
+const insertAccountPlan = `-- name: InsertAccountPlan :exec
+INSERT INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type InsertAccountPlanParams struct {
+	AccountID      string     `db:"account_id" json:"account_id"`
+	PlanID         string     `db:"plan_id" json:"plan_id"`
+	StartedAt      time.Time  `db:"started_at" json:"started_at"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	ChangedBy      *string    `db:"changed_by" json:"changed_by"`
+}
+
+func (q *Queries) InsertAccountPlan(ctx context.Context, arg InsertAccountPlanParams) error {
+	_, err := q.exec(ctx, q.insertAccountPlanStmt, insertAccountPlan,
+		arg.AccountID,
+		arg.PlanID,
+		arg.StartedAt,
+		arg.TrialExpiresAt,
+		arg.ChangedBy,
+	)
+	return err
+}
+
+const listAccountPlanHistory = `-- name: ListAccountPlanHistory :many
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE account_id = ?
+ORDER BY started_at DESC
+`
+
+func (q *Queries) ListAccountPlanHistory(ctx context.Context, accountID string) ([]AccountPlan, error) {
+	rows, err := q.query(ctx, q.listAccountPlanHistoryStmt, listAccountPlanHistory, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccountPlan{}
+	for rows.Next() {
+		var i AccountPlan
+		if err := rows.Scan(
+			&i.AccountID,
+			&i.PlanID,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.TrialExpiresAt,
+			&i.ChangedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllAccounts = `-- name: ListAllAccounts :many
-SELECT id, created_by, created_at FROM accounts
+SELECT id, created_by, created_at, parent_id, status FROM accounts
 `
 
 func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
@@ -370,7 +505,47 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 	items := []Account{}
 	for rows.Next() {
 		var i Account
-		if err := rows.Scan(&i.ID, &i.CreatedBy, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.ParentID,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllActiveAccountPlans = `-- name: ListAllActiveAccountPlans :many
+SELECT a.created_by AS user_id, ap.plan_id
+FROM accounts a
+JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL
+`
+
+type ListAllActiveAccountPlansRow struct {
+	UserID string `db:"user_id" json:"user_id"`
+	PlanID string `db:"plan_id" json:"plan_id"`
+}
+
+func (q *Queries) ListAllActiveAccountPlans(ctx context.Context) ([]ListAllActiveAccountPlansRow, error) {
+	rows, err := q.query(ctx, q.listAllActiveAccountPlansStmt, listAllActiveAccountPlans)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllActiveAccountPlansRow{}
+	for rows.Next() {
+		var i ListAllActiveAccountPlansRow
+		if err := rows.Scan(&i.UserID, &i.PlanID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
