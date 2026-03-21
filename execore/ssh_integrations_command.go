@@ -213,12 +213,13 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 		}
 	}
 
+	hasAttachments := len(specList) > 0
+
 	cc.Writeln("")
-	if vmName == "" {
+	if !hasAttachments {
 		cc.Writeln("To use this integration, attach it to a VM first:")
 		cc.Writeln("  integrations attach %s vm:<vm-name>", name)
 		cc.Writeln("")
-		vmName = "<vm>"
 	}
 
 	scheme := "http"
@@ -229,11 +230,19 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 	switch typ {
 	case "http-proxy":
 		cc.Writeln("Usage from a VM:")
-		cc.Writeln("  ssh %s curl %s://%s/", vmName, scheme, intHost)
+		if vmName != "" {
+			cc.Writeln("  ssh %s curl %s://%s/", vmName, scheme, intHost)
+		} else {
+			cc.Writeln("  curl %s://%s/", scheme, intHost)
+		}
 	case "github":
 		repo := repositories[0]
 		cc.Writeln("Usage from a VM:")
-		cc.Writeln("  ssh %s 'cd $(mktemp -d) && git clone %s://%s/%s.git'", vmName, scheme, intHost, repo)
+		if vmName != "" {
+			cc.Writeln("  ssh %s git clone %s://%s/%s.git", vmName, scheme, intHost, repo)
+		} else {
+			cc.Writeln("  git clone %s://%s/%s.git", scheme, intHost, repo)
+		}
 	}
 }
 

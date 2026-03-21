@@ -73,10 +73,11 @@ func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
 
 	// Serve the shell HTML page
 	data := UserPageData{
-		Env:        s.env,
-		User:       user,
-		ActivePage: "shell",
-		IsLoggedIn: true,
+		Env:              s.env,
+		User:             user,
+		ActivePage:       "shell",
+		IsLoggedIn:       true,
+		ShowIntegrations: s.showIntegrationsNav(r.Context(), userID),
 	}
 	s.renderTemplate(r.Context(), w, "shell.html", data)
 }

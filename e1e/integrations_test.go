@@ -23,7 +23,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.Want("Added integration myproxy")
 	pty.Want("attach it to a VM first")
 	pty.Want("integrations attach myproxy vm:<vm-name>")
-	pty.Want("ssh <vm> curl http://myproxy.int.exe.cloud/")
+	pty.Want("curl http://myproxy.int.exe.cloud/")
 	pty.WantPrompt()
 
 	// List should now show the integration by name.

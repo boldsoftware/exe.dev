@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - Integrations</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #fafafa;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            min-height: 100vh;
+        }
+
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            padding-bottom: 50vh;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .subsection-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #888;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .int-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: #e0e0e0;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .int-row {
+            background: #fff;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .int-row-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .int-row-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #000;
+        }
+
+        .int-row-detail {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .int-row-meta {
+            font-size: 12px;
+            color: #999;
+            margin-top: 2px;
+        }
+
+        .int-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .int-empty {
+            background: #fff;
+            padding: 16px;
+            color: #999;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .section-help {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .section-help a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .section-help a:hover {
+            text-decoration: underline;
+        }
+
+        .integration-hint {
+            font-size: 12px;
+            color: #888;
+            line-height: 1.5;
+        }
+
+        .integration-hint code {
+            background: #f0f0f0;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .integration-hint a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .integration-hint a:hover {
+            text-decoration: underline;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+            color: #333;
+        }
+
+        .btn-danger {
+            color: #dc2626;
+            border-color: #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .btn-callout {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: white;
+            font-weight: 600;
+        }
+
+        .btn-callout:hover {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+            color: white;
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #000;
+            margin-bottom: 8px;
+        }
+
+        .int-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 2px 1px 6px;
+            background: #ecfdf5;
+            color: #065f46;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+            gap: 2px;
+        }
+
+        .int-tag-remove {
+            background: none;
+            border: none;
+            color: #065f46;
+            cursor: pointer;
+            padding: 0 2px;
+            font-size: 13px;
+            line-height: 1;
+            opacity: 0.5;
+        }
+
+        .int-tag-remove:hover {
+            opacity: 1;
+            color: #dc2626;
+        }
+
+        .int-tag-add-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 6px;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 1px dashed #d1d5db;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .int-tag-add-btn:hover {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .int-attach-dropdown {
+            display: none;
+            font-family: inherit;
+            font-size: 12px;
+            padding: 1px 4px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            color: #555;
+            background: #fff;
+        }
+
+        .int-attach-dropdown.visible {
+            display: inline;
+        }
+
+        /* Command Modal Styles */
+        .cmd-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 1000;
+        }
+
+        .cmd-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .cmd-modal {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .cmd-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+        }
+
+        .cmd-display {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 16px;
+            word-break: break-all;
+        }
+
+        .cmd-output {
+            font-size: 13px;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            display: none;
+            white-space: pre-wrap;
+        }
+
+        .cmd-output.visible {
+            display: block;
+        }
+
+        .cmd-output.success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+
+        .cmd-output.error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .cmd-modal-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .modal-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .modal-form .form-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .modal-form .form-label {
+            flex: 0 0 110px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #555;
+            text-align: right;
+        }
+
+        .modal-form .form-input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .modal-form .form-input input,
+        .modal-form .form-input select {
+            width: 100%;
+            font-family: inherit;
+            font-size: 13px;
+            padding: 6px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: #fff;
+            box-sizing: border-box;
+        }
+
+        .modal-form .form-input input:focus,
+        .modal-form .form-input select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+        }
+
+        .modal-form .form-error {
+            color: #dc2626;
+            font-size: 13px;
+            padding-left: 122px;
+        }
+
+        .cmd-modal-buttons .btn.danger {
+            background: #dc2626;
+            border-color: #dc2626;
+            color: white;
+        }
+
+        .cmd-modal-buttons .btn.danger:hover {
+            background: #b91c1c;
+            border-color: #b91c1c;
+        }
+
+        .cmd-modal-buttons .btn.danger:disabled {
+            background: #f87171;
+            border-color: #f87171;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 20px 12px;
+            }
+        }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #111;
+            }
+
+            .section-title {
+                color: #9ca3af;
+            }
+
+            .subsection-title {
+                color: #9ca3af;
+            }
+
+            .section-help {
+                color: #9ca3af;
+            }
+
+            .section-help a {
+                color: #60a5fa;
+            }
+
+            .int-list {
+                background: #333;
+                border-color: #333;
+            }
+
+            .int-row {
+                background: #1f1f1f;
+            }
+
+            .int-row-name {
+                color: #f3f4f6;
+            }
+
+            .int-row-detail {
+                color: #9ca3af;
+            }
+
+            .int-row-meta {
+                color: #6b7280;
+            }
+
+            .int-empty {
+                background: #1f1f1f;
+                color: #6b7280;
+            }
+
+            .btn {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #9ca3af;
+            }
+
+            .btn:hover {
+                background: #333;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .btn-danger {
+                color: #f87171;
+                border-color: #dc2626;
+            }
+
+            .btn-danger:hover {
+                background: #dc2626;
+                color: white;
+            }
+
+            .integration-hint {
+                color: #9ca3af;
+            }
+
+            .integration-hint code {
+                background: #2a2a2a;
+                color: #f3f4f6;
+            }
+
+            .integration-hint a {
+                color: #60a5fa;
+            }
+
+            .page-title {
+                color: #f3f4f6;
+            }
+
+            .int-tag {
+                background: #052e16;
+                color: #86efac;
+            }
+
+            .int-tag-remove {
+                color: #86efac;
+            }
+
+            .int-tag-remove:hover {
+                color: #f87171;
+            }
+
+            .int-tag-add-btn {
+                background: #2a2a2a;
+                color: #9ca3af;
+                border-color: #444;
+            }
+
+            .int-tag-add-btn:hover {
+                background: #333;
+                color: #f3f4f6;
+            }
+
+            .int-attach-dropdown {
+                background: #2a2a2a;
+                border-color: #444;
+                color: #9ca3af;
+            }
+
+            /* Command Modal */
+            .cmd-modal {
+                background: #1f1f1f;
+            }
+
+            .cmd-modal-title {
+                color: #f3f4f6;
+            }
+
+            .cmd-display {
+                background: #2a2a2a;
+                border-color: #333;
+                color: #f3f4f6;
+            }
+
+            .cmd-output.success {
+                background: #052e16;
+                border-color: #166534;
+                color: #86efac;
+            }
+
+            .cmd-output.error {
+                background: #450a0a;
+                border-color: #991b1b;
+                color: #fca5a5;
+            }
+
+            .cmd-modal-buttons .btn.danger {
+                background: #dc2626;
+                border-color: #dc2626;
+            }
+
+            .cmd-modal-buttons .btn.danger:hover {
+                background: #b91c1c;
+                border-color: #b91c1c;
+            }
+
+            .cmd-modal-buttons .btn.danger:disabled {
+                background: #7f1d1d;
+                border-color: #7f1d1d;
+            }
+
+            .modal-form .form-label {
+                color: #9ca3af;
+            }
+
+            .modal-form .form-input input,
+            .modal-form .form-input select {
+                background: #2a2a2a;
+                border-color: #444;
+                color: #f3f4f6;
+            }
+
+            .modal-form .form-input input:focus,
+            .modal-form .form-input select:focus {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+            }
+        }
+    </style>
+</head>
+<body>
+    {{template "topbar" .}}
+
+    <div class="main-container">
+        <div class="section" id="integrations">
+            <div class="page-title">Integrations</div>
+            <div class="section-help">Connect your VMs to external services. <a href="/docs/integrations" target="_blank">Learn more →</a></div>
+
+            {{if .GitHubEnabled}}
+            <div class="section" id="github">
+                <div class="section-title">GitHub</div>
+                <div class="integration-hint" style="margin-bottom: 16px;">Linking to the exe.dev GitHub app allows you to connect VMs to git repos.</div>
+
+                <!-- GitHub Accounts -->
+                <div class="subsection-title">GitHub Accounts</div>
+                {{if .GitHubAccountsFull}}
+                <div class="int-list">
+                    {{range .GitHubAccountsFull}}
+                    <div class="int-row" id="gh-acct-{{.InstallationID}}">
+                        <div class="int-row-info">
+                            <div class="int-row-name">{{.GitHubLogin}}{{if ne .GitHubLogin .TargetLogin}} <span class="int-row-detail" style="display: inline; margin: 0;">installed on <strong>{{.TargetLogin}}</strong></span>{{end}}</div>
+                            <div class="int-row-meta gh-verify-result" data-iid="{{.InstallationID}}" style="display: none;"></div>
+                        </div>
+                        <div class="int-row-actions">
+                            <button class="btn btn-small gh-verify-btn" data-iid="{{.InstallationID}}">Verify</button>
+                            <button class="btn btn-danger btn-small gh-unlink-btn" data-iid="{{.InstallationID}}">Unlink</button>
+                            <button class="btn btn-small gh-unlink-confirm" data-iid="{{.InstallationID}}" style="display: none; background: #dc2626; color: white; border-color: #dc2626;">Confirm</button>
+                            <button class="btn btn-small gh-unlink-cancel" data-iid="{{.InstallationID}}" style="display: none;">Cancel</button>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; margin-top: 8px;">
+                    <a class="btn btn-small" href="/github/install">Install on another account</a>
+                    <a class="btn btn-small" href="/github/signin">Sign into another account</a>
+                    {{if .GitHubAppSlug}}<a class="btn btn-small" href="https://github.com/apps/{{.GitHubAppSlug}}" target="_blank">Manage permissions</a>{{end}}
+                </div>
+                {{else}}
+                <div class="int-list">
+                    <div class="int-empty">
+                        No GitHub account connected.
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 20px;">
+                    <a class="btn btn-small" href="/github/install"><svg style="vertical-align: middle; margin-right: 4px; margin-top: -1px;" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Install the exe.dev GitHub App</a>
+                    <a class="btn btn-small" href="/github/signin">Sign into existing account</a>
+                </div>
+                {{end}}
+
+                <!-- Repository Integrations -->
+                {{if .GitHubIntegrations}}
+                <div class="subsection-title">Repository Integrations</div>
+                <div class="int-list">
+                    {{range $ig := .GitHubIntegrations}}
+                    <div class="int-row" style="align-items: flex-start;">
+                        <div class="int-row-info">
+                            <div class="int-row-name">{{$ig.Name}}</div>
+                            <div class="int-row-detail">{{range $i, $r := $ig.Repositories}}{{if $i}}, {{end}}{{$r}}{{end}}</div>
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $ig.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$ig.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="showAttachDropdown(this)" title="Attach">+</button><select class="int-attach-dropdown" onchange="if(this.value){integrationAttach({{$ig.Name}}, this.value); this.selectedIndex=0;} hideAttachDropdown(this);">
+                                <option value="">attach to…</option>
+                                <option value="auto:all">auto:all</option>
+                                {{range $.AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
+                                {{end}}{{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
+                                {{end}}</select></div>
+                            {{if $ig.Repositories}}<div class="int-row-meta">git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git <button style="border: none; background: none; cursor: pointer; padding: 0; vertical-align: middle; color: #888;" onclick="copyToClipboard(this, 'git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git')" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>{{end}}
+                        </div>
+                        <div class="int-row-actions">
+                            <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{$ig.Name}}), danger: true})">Remove</button>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
+
+                {{if .GitHubAccountsFull}}
+                <div style="margin-top: 12px;">
+                    <button class="btn btn-small{{if eq .Callout "add-repo-integration"}} btn-callout{{end}}" onclick="ghAddModal.open()">Add a repo integration</button>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+
+            <div class="section">
+                <div class="section-title">HTTP Proxy</div>
+                <div class="integration-hint" style="margin-bottom: 12px;">Proxy integrations let your VMs access authenticated HTTP services.</div>
+                {{if .ProxyIntegrations}}
+                <div class="int-list">
+                    {{range $hp := .ProxyIntegrations}}
+                    <div class="int-row" style="align-items: flex-start;">
+                        <div class="int-row-info">
+                            <div class="int-row-name">{{$hp.Name}}</div>
+                            <div class="int-row-detail">{{$hp.Target}}{{if $hp.HasHeader}} · custom header{{end}}{{if $hp.HasBasicAuth}} · basic auth{{end}}</div>
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $hp.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$hp.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="showAttachDropdown(this)" title="Attach">+</button><select class="int-attach-dropdown" onchange="if(this.value){integrationAttach({{$hp.Name}}, this.value); this.selectedIndex=0;} hideAttachDropdown(this);">
+                                <option value="">attach to…</option>
+                                <option value="auto:all">auto:all</option>
+                                {{range $.AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
+                                {{end}}{{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
+                                {{end}}</select></div>
+                        </div>
+                        <div class="int-row-actions">
+                            <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{$hp.Name}}), danger: true})">Remove</button>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <div class="int-list">
+                    <div class="int-empty">No HTTP proxy integrations created yet.</div>
+                </div>
+                {{end}}
+
+                <div style="margin-top: 12px;">
+                    <button class="btn btn-small" onclick="httpAddModal.open()">Add an HTTP proxy integration</button>
+                </div>
+            </div>
+
+            {{if .HasPushTokens}}
+            <div class="section">
+                <div class="section-title">Notifications</div>
+                <div class="integration-hint" style="margin-bottom: 12px;">The <strong>notify</strong> integration is built-in and attached to all your VMs. It sends push notifications to your devices.</div>
+                <div class="int-list">
+                    <div class="int-row">
+                        <div class="int-row-info">
+                            <div class="int-row-name">notify</div>
+                            <div class="int-row-detail">push notifications to device</div>
+                            <div class="int-row-meta">attached to auto:all · built-in</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="integration-hint" style="margin-top: 8px;">Usage from a VM: <code>curl -X POST {{.IntegrationScheme}}://notify.int.{{.BoxHost}}/ -H 'Content-Type: application/json' -d '{"title":"Done","body":"Task finished"}'</code></div>
+            </div>
+            {{end}}
+
+        </div>
+    </div>
+
+    <!-- Command Modal -->
+    <div class="cmd-modal-overlay" id="cmd-modal-overlay" onclick="if(event.target===this) cmdModal.close()">
+        <div class="cmd-modal">
+            <div class="cmd-modal-title" id="cmd-modal-title">Run Command</div>
+            <div class="cmd-display" id="cmd-display"></div>
+            <div class="cmd-output" id="cmd-output"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" id="cmd-cancel-btn" onclick="cmdModal.close()">Cancel</button>
+                <button class="btn" id="cmd-run-btn" onclick="cmdModal.run()">Run</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Add Repo Modal -->
+    <div class="cmd-modal-overlay" id="gh-add-overlay" onclick="if(event.target===this) ghAddModal.close()">
+        <div class="cmd-modal">
+            <div class="cmd-modal-title">Add GitHub Repo Integration</div>
+            <div class="modal-form">
+                <div id="gh-add-error" class="form-error" style="display: none;"></div>
+                <div class="form-row">
+                    <label class="form-label" for="gh-add-repo">Repository</label>
+                    <div class="form-input">
+                        <select id="gh-add-repo"><option value="">Loading...</option></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="gh-add-name">Name</label>
+                    <div class="form-input">
+                        <input type="text" id="gh-add-name" placeholder="">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="gh-add-attach">Attach to</label>
+                    <div class="form-input">
+                        <select id="gh-add-attach">
+                            <option value="">None</option>
+                            <option value="auto:all">auto:all</option>
+                            {{range .AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
+                            {{end}}{{range .Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}} ({{.Status}})</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="cmd-display" id="gh-add-cmd"></div>
+            <div class="cmd-output" id="gh-add-output"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" onclick="ghAddModal.close()">Cancel</button>
+                <button class="btn" id="gh-add-run" onclick="ghAddModal.run()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HTTP Proxy Add Modal -->
+    <div class="cmd-modal-overlay" id="http-add-overlay" onclick="if(event.target===this) httpAddModal.close()">
+        <div class="cmd-modal">
+            <div class="cmd-modal-title">Add HTTP Proxy Integration</div>
+            <div class="modal-form">
+                <div id="http-add-error" class="form-error" style="display: none;"></div>
+                <div class="form-row">
+                    <label class="form-label" for="http-add-name">Name</label>
+                    <div class="form-input">
+                        <input type="text" id="http-add-name" placeholder="my-api">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="http-add-target">Target URL</label>
+                    <div class="form-input">
+                        <input type="text" id="http-add-target" placeholder="https://api.example.com">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="http-add-auth">Auth method</label>
+                    <div class="form-input">
+                        <select id="http-add-auth">
+                            <option value="bearer">Bearer Token</option>
+                            <option value="header">Custom Header</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row" id="http-add-bearer-row">
+                    <label class="form-label" for="http-add-bearer">Token</label>
+                    <div class="form-input">
+                        <input type="text" id="http-add-bearer" placeholder="">
+                    </div>
+                </div>
+                <div class="form-row" id="http-add-header-row" style="display: none;">
+                    <label class="form-label" for="http-add-header">Header</label>
+                    <div class="form-input">
+                        <input type="text" id="http-add-header" placeholder="Key:Value">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="http-add-attach">Attach to</label>
+                    <div class="form-input">
+                        <select id="http-add-attach">
+                            <option value="">None</option>
+                            <option value="auto:all">auto:all</option>
+                            {{range .AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
+                            {{end}}{{range .Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}} ({{.Status}})</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="cmd-display" id="http-add-cmd"></div>
+            <div class="cmd-output" id="http-add-output"></div>
+            <div class="cmd-modal-buttons">
+                <button class="btn" onclick="httpAddModal.close()">Cancel</button>
+                <button class="btn" id="http-add-run" onclick="httpAddModal.run()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/clipboard.js"></script>
+    <script>
+        function shellQuote(s) {
+            if (s.length > 0 && !/[^a-zA-Z0-9_./:@=-]/.test(s)) {
+                return s;
+            }
+            return "'" + s.replace(/'/g, "'\\''" ) + "'";
+        }
+
+        // Attach dropdown: show on + click, hide after selection
+        function showAttachDropdown(btn) {
+            var sel = btn.nextElementSibling;
+            btn.style.display = 'none';
+            sel.classList.add('visible');
+            sel.focus();
+            sel.addEventListener('blur', function onBlur() {
+                sel.removeEventListener('blur', onBlur);
+                setTimeout(function() {
+                    sel.classList.remove('visible');
+                    btn.style.display = '';
+                }, 150);
+            });
+        }
+
+        function hideAttachDropdown(sel) {
+            sel.classList.remove('visible');
+            var btn = sel.previousElementSibling;
+            if (btn) btn.style.display = '';
+        }
+
+        // Integration attach/detach helpers
+        async function integrationAttach(name, spec) {
+            var cmd = 'integrations attach ' + shellQuote(name) + ' ' + shellQuote(spec);
+            try {
+                var resp = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                // silently fail
+            }
+        }
+
+        async function integrationDetach(name, spec) {
+            var cmd = 'integrations detach ' + shellQuote(name) + ' ' + shellQuote(spec);
+            try {
+                var resp = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd}),
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                // silently fail
+            }
+        }
+
+        // GitHub add repo integration modal
+        var ghAllRepos = null;
+        var ghAddModal = {
+            overlay: null,
+            repoEl: null,
+            nameEl: null,
+            attachEl: null,
+            cmdEl: null,
+            outputEl: null,
+            errorEl: null,
+            runBtn: null,
+            succeeded: false,
+            needsReload: false,
+
+            init: function() {
+                this.overlay = document.getElementById('gh-add-overlay');
+                this.repoEl = document.getElementById('gh-add-repo');
+                this.nameEl = document.getElementById('gh-add-name');
+                this.attachEl = document.getElementById('gh-add-attach');
+                this.cmdEl = document.getElementById('gh-add-cmd');
+                this.outputEl = document.getElementById('gh-add-output');
+                this.errorEl = document.getElementById('gh-add-error');
+                this.runBtn = document.getElementById('gh-add-run');
+                var self = this;
+                this.repoEl.addEventListener('change', function() { self.updateName(); self.updateCmd(); });
+                this.nameEl.addEventListener('input', function() { self.updateCmd(); });
+                this.attachEl.addEventListener('change', function() { self.updateCmd(); });
+            },
+
+            open: async function() {
+                if (!this.overlay) this.init();
+                this.errorEl.style.display = 'none';
+                this.outputEl.classList.remove('visible', 'success', 'error');
+                this.runBtn.disabled = false;
+                this.runBtn.textContent = 'Create';
+                this.succeeded = false;
+                this.needsReload = false;
+                this.nameEl.value = '';
+                this.attachEl.selectedIndex = 0;
+                this.overlay.classList.add('visible');
+                document.addEventListener('keydown', this.handleEscape);
+
+                if (!ghAllRepos) {
+                    this.repoEl.innerHTML = '<option value="">Loading...</option>';
+                    try {
+                        var resp = await fetch('/github/repos');
+                        var data = await resp.json();
+                        if (data.success) {
+                            ghAllRepos = data.repos || [];
+                        } else {
+                            this.errorEl.textContent = data.error || 'Failed to load repos';
+                            this.errorEl.style.display = 'block';
+                            this.repoEl.innerHTML = '<option value="">Error</option>';
+                            return;
+                        }
+                    } catch (e) {
+                        this.errorEl.textContent = 'Network error: ' + e.message;
+                        this.errorEl.style.display = 'block';
+                        this.repoEl.innerHTML = '<option value="">Error</option>';
+                        return;
+                    }
+                }
+                this.populateRepos();
+            },
+
+            populateRepos: function() {
+                this.repoEl.innerHTML = '';
+                if (!ghAllRepos || ghAllRepos.length === 0) {
+                    this.repoEl.innerHTML = '<option value="">No repositories found</option>';
+                    return;
+                }
+                for (var i = 0; i < ghAllRepos.length; i++) {
+                    var opt = document.createElement('option');
+                    opt.value = ghAllRepos[i].full_name;
+                    opt.textContent = ghAllRepos[i].full_name + (ghAllRepos[i].private ? ' (private)' : '');
+                    this.repoEl.appendChild(opt);
+                }
+                this.updateName();
+                this.updateCmd();
+            },
+
+            updateName: function() {
+                var repo = this.repoEl.value;
+                if (repo) this.nameEl.placeholder = repo.replace(/\//g, '-');
+            },
+
+            updateCmd: function() {
+                var repo = this.repoEl.value;
+                var name = this.nameEl.value || this.nameEl.placeholder || 'github';
+                var attach = this.attachEl.value;
+                if (!repo) { this.cmdEl.textContent = ''; return; }
+                var cmd = 'integrations add github --name=' + shellQuote(name) + ' --repository=' + shellQuote(repo);
+                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                this.cmdEl.textContent = cmd;
+            },
+
+            buildCommand: function() {
+                var repo = this.repoEl.value;
+                var name = this.nameEl.value || this.nameEl.placeholder || 'github';
+                var attach = this.attachEl.value;
+                if (!repo) return null;
+                var cmd = 'integrations add github --name=' + shellQuote(name) + ' --repository=' + shellQuote(repo);
+                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                return cmd;
+            },
+
+            run: async function() {
+                if (this.succeeded) return;
+                var cmd = this.buildCommand();
+                if (!cmd) {
+                    this.errorEl.textContent = 'Please select a repository';
+                    this.errorEl.style.display = 'block';
+                    return;
+                }
+                this.errorEl.style.display = 'none';
+                this.runBtn.disabled = true;
+                this.runBtn.textContent = 'Creating...';
+                try {
+                    var resp = await fetch('/cmd', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({command: cmd}),
+                    });
+                    var data = await resp.json();
+                    if (data.success) {
+                        this.outputEl.classList.add('visible', 'success');
+                        this.outputEl.textContent = data.output || 'Done';
+                        this.runBtn.style.display = 'none';
+                        this.succeeded = true;
+                        this.needsReload = true;
+                    } else {
+                        this.outputEl.classList.add('visible', 'error');
+                        this.outputEl.textContent = data.output || data.error || 'Failed';
+                        this.runBtn.disabled = false;
+                        this.runBtn.textContent = 'Create';
+                    }
+                } catch (e) {
+                    this.outputEl.classList.add('visible', 'error');
+                    this.outputEl.textContent = 'Network error: ' + e.message;
+                    this.runBtn.disabled = false;
+                    this.runBtn.textContent = 'Create';
+                }
+            },
+
+            close: function() {
+                if (this.overlay) this.overlay.classList.remove('visible');
+                document.removeEventListener('keydown', this.handleEscape);
+                if (this.needsReload) window.location.reload();
+            },
+
+            handleEscape: function(e) {
+                if (e.key === 'Escape') ghAddModal.close();
+            }
+        };
+
+        // HTTP Proxy add integration modal
+        var httpAddModal = {
+            overlay: null,
+            nameEl: null,
+            targetEl: null,
+            authEl: null,
+            bearerEl: null,
+            headerEl: null,
+            bearerRow: null,
+            headerRow: null,
+            attachEl: null,
+            cmdEl: null,
+            outputEl: null,
+            errorEl: null,
+            runBtn: null,
+            succeeded: false,
+            needsReload: false,
+
+            init: function() {
+                this.overlay = document.getElementById('http-add-overlay');
+                this.nameEl = document.getElementById('http-add-name');
+                this.targetEl = document.getElementById('http-add-target');
+                this.authEl = document.getElementById('http-add-auth');
+                this.bearerEl = document.getElementById('http-add-bearer');
+                this.headerEl = document.getElementById('http-add-header');
+                this.bearerRow = document.getElementById('http-add-bearer-row');
+                this.headerRow = document.getElementById('http-add-header-row');
+                this.attachEl = document.getElementById('http-add-attach');
+                this.cmdEl = document.getElementById('http-add-cmd');
+                this.outputEl = document.getElementById('http-add-output');
+                this.errorEl = document.getElementById('http-add-error');
+                this.runBtn = document.getElementById('http-add-run');
+                var self = this;
+                this.nameEl.addEventListener('input', function() { self.updateCmd(); });
+                this.targetEl.addEventListener('input', function() { self.updateCmd(); });
+                this.authEl.addEventListener('change', function() { self.updateAuthFields(); self.updateCmd(); });
+                this.bearerEl.addEventListener('input', function() { self.updateCmd(); });
+                this.headerEl.addEventListener('input', function() { self.updateCmd(); });
+                this.attachEl.addEventListener('change', function() { self.updateCmd(); });
+            },
+
+            open: function() {
+                if (!this.overlay) this.init();
+                this.errorEl.style.display = 'none';
+                this.outputEl.classList.remove('visible', 'success', 'error');
+                this.runBtn.disabled = false;
+                this.runBtn.textContent = 'Create';
+                this.runBtn.style.display = '';
+                this.succeeded = false;
+                this.needsReload = false;
+                this.nameEl.value = '';
+                this.targetEl.value = '';
+                this.authEl.selectedIndex = 0;
+                this.bearerEl.value = '';
+                this.headerEl.value = '';
+                this.attachEl.selectedIndex = 0;
+                this.updateAuthFields();
+                this.cmdEl.textContent = '';
+                this.overlay.classList.add('visible');
+                document.addEventListener('keydown', this.handleEscape);
+                this.nameEl.focus();
+            },
+
+            updateAuthFields: function() {
+                var authType = this.authEl.value;
+                this.bearerRow.style.display = authType === 'bearer' ? 'flex' : 'none';
+                this.headerRow.style.display = authType === 'header' ? 'flex' : 'none';
+            },
+
+            updateCmd: function() {
+                var cmd = this.buildCommand();
+                this.cmdEl.textContent = cmd || '';
+            },
+
+            buildCommand: function() {
+                var name = this.nameEl.value.trim();
+                var target = this.targetEl.value.trim();
+                if (!name || !target) return null;
+                var cmd = 'integrations add http-proxy --name=' + shellQuote(name) + ' --target=' + shellQuote(target);
+                var authType = this.authEl.value;
+                var bearer = this.bearerEl.value.trim();
+                var header = this.headerEl.value.trim();
+                if (authType === 'bearer' && bearer) cmd += ' --bearer=' + shellQuote(bearer);
+                else if (authType === 'header' && header) cmd += ' --header=' + shellQuote(header);
+                var attach = this.attachEl.value;
+                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                return cmd;
+            },
+
+            run: async function() {
+                if (this.succeeded) return;
+                var name = this.nameEl.value.trim();
+                var target = this.targetEl.value.trim();
+                if (!name) { this.errorEl.textContent = 'Please enter a name'; this.errorEl.style.display = 'block'; return; }
+                if (!target) { this.errorEl.textContent = 'Please enter a target URL'; this.errorEl.style.display = 'block'; return; }
+                var cmd = this.buildCommand();
+                if (!cmd) return;
+                this.errorEl.style.display = 'none';
+                this.runBtn.disabled = true;
+                this.runBtn.textContent = 'Creating...';
+                try {
+                    var resp = await fetch('/cmd', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({command: cmd}),
+                    });
+                    var data = await resp.json();
+                    if (data.success) {
+                        this.outputEl.classList.add('visible', 'success');
+                        this.outputEl.textContent = data.output || 'Done';
+                        this.runBtn.style.display = 'none';
+                        this.succeeded = true;
+                        this.needsReload = true;
+                    } else {
+                        this.outputEl.classList.add('visible', 'error');
+                        this.outputEl.textContent = data.output || data.error || 'Failed';
+                        this.runBtn.disabled = false;
+                        this.runBtn.textContent = 'Create';
+                    }
+                } catch (e) {
+                    this.outputEl.classList.add('visible', 'error');
+                    this.outputEl.textContent = 'Network error: ' + e.message;
+                    this.runBtn.disabled = false;
+                    this.runBtn.textContent = 'Create';
+                }
+            },
+
+            close: function() {
+                if (this.overlay) this.overlay.classList.remove('visible');
+                document.removeEventListener('keydown', this.handleEscape);
+                if (this.needsReload) window.location.reload();
+            },
+
+            handleEscape: function(e) {
+                if (e.key === 'Escape') httpAddModal.close();
+            }
+        };
+
+        // GitHub verify
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.gh-verify-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var iid = btn.dataset.iid;
+                    var resultEl = document.querySelector('.gh-verify-result[data-iid="' + iid + '"]');
+                    btn.disabled = true;
+                    btn.textContent = 'Verifying...';
+                    resultEl.style.display = 'none';
+                    fetch('/github/verify?installation_id=' + iid)
+                    .then(function(resp) { return resp.json(); })
+                    .then(function(data) {
+                        btn.disabled = false;
+                        btn.textContent = 'Verify';
+                        resultEl.style.display = 'block';
+                        if (data.success) {
+                            resultEl.style.color = '#16a34a';
+                            resultEl.textContent = 'Connection OK — ' + data.repo_count + ' repo' + (data.repo_count === 1 ? '' : 's') + ' accessible';
+                        } else {
+                            resultEl.style.color = '#dc2626';
+                            resultEl.textContent = data.error || 'Verification failed';
+                        }
+                    }).catch(function(e) {
+                        btn.disabled = false;
+                        btn.textContent = 'Verify';
+                        resultEl.style.display = 'block';
+                        resultEl.style.color = '#dc2626';
+                        resultEl.textContent = 'Network error: ' + e.message;
+                    });
+                });
+            });
+        });
+
+        // GitHub unlink: inline confirm/cancel (no window popups)
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.gh-unlink-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var iid = btn.dataset.iid;
+                    btn.style.display = 'none';
+                    document.querySelector('.gh-unlink-confirm[data-iid="' + iid + '"]').style.display = '';
+                    document.querySelector('.gh-unlink-cancel[data-iid="' + iid + '"]').style.display = '';
+                });
+            });
+            document.querySelectorAll('.gh-unlink-cancel').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var iid = btn.dataset.iid;
+                    btn.style.display = 'none';
+                    document.querySelector('.gh-unlink-confirm[data-iid="' + iid + '"]').style.display = 'none';
+                    document.querySelector('.gh-unlink-btn[data-iid="' + iid + '"]').style.display = '';
+                });
+            });
+            document.querySelectorAll('.gh-unlink-confirm').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var iid = parseInt(btn.dataset.iid, 10);
+                    btn.disabled = true;
+                    btn.textContent = 'Unlinking...';
+                    fetch('/github/unlink', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({installation_id: iid}),
+                    }).then(function(resp) { return resp.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            var row = document.getElementById('gh-acct-' + iid);
+                            var errDiv = row.querySelector('.gh-unlink-error');
+                            if (!errDiv) {
+                                errDiv = document.createElement('div');
+                                errDiv.className = 'gh-unlink-error';
+                                errDiv.style.cssText = 'color: #dc2626; font-size: 12px; margin-top: 4px;';
+                                row.querySelector('.int-row-info').appendChild(errDiv);
+                            }
+                            errDiv.textContent = data.error || 'Failed to unlink';
+                            btn.disabled = false;
+                            btn.textContent = 'Confirm';
+                        }
+                    }).catch(function(e) {
+                        btn.disabled = false;
+                        btn.textContent = 'Confirm';
+                    });
+                });
+            });
+        });
+
+        // Command modal (global scope so onclick handlers can access it)
+        var cmdModal = {
+            overlay: null,
+            title: null,
+            display: null,
+            output: null,
+            runBtn: null,
+            inputEl: null,
+            currentCommand: '',
+            isDanger: false,
+            commandSucceeded: false,
+            needsReload: false,
+
+            init: function() {
+                this.overlay = document.getElementById('cmd-modal-overlay');
+                this.title = document.getElementById('cmd-modal-title');
+                this.display = document.getElementById('cmd-display');
+                this.output = document.getElementById('cmd-output');
+                this.runBtn = document.getElementById('cmd-run-btn');
+                this.cancelBtn = document.getElementById('cmd-cancel-btn');
+            },
+
+            escapeHtml: function(text) {
+                var div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            },
+
+            getFullCommand: function() {
+                if (this.inputEl) {
+                    var input = this.inputEl.value.trim();
+                    if (!input) return null;
+                    return this.currentCommand + ' ' + shellQuote(input);
+                }
+                return this.currentCommand;
+            },
+
+            resetInputState: function() {
+                if (this.commandSucceeded) {
+                    this.commandSucceeded = false;
+                    this.runBtn.disabled = false;
+                    this.runBtn.textContent = 'Run';
+                    this.runBtn.style.display = '';
+                    this.cancelBtn.textContent = 'Cancel';
+                    this.output.classList.remove('visible', 'success', 'error');
+                }
+            },
+
+            open: function(options) {
+                if (!this.overlay) this.init();
+
+                this.title.textContent = options.title || 'Run Command';
+                this.isDanger = options.danger || false;
+
+                // Remove stale input from a previous commandPrefix open.
+                if (this.inputEl) {
+                    this.inputEl.remove();
+                    this.inputEl = null;
+                }
+
+                // Reset state
+                this.output.classList.remove('visible', 'success', 'error');
+                this.output.textContent = '';
+                this.runBtn.disabled = false;
+                this.runBtn.textContent = 'Run';
+                this.runBtn.style.display = '';
+                this.cancelBtn.textContent = 'Cancel';
+                this.commandSucceeded = false;
+                this.needsReload = false;
+
+                // Set button style
+                this.runBtn.classList.toggle('danger', this.isDanger);
+
+                if (options.command) {
+                    this.currentCommand = options.command;
+                    this.display.innerHTML = this.escapeHtml(options.command);
+                } else if (options.commandPrefix) {
+                    this.currentCommand = options.commandPrefix;
+                    this.display.textContent = options.commandPrefix;
+
+                    // Create input element after the command display.
+                    var inputEl = document.createElement('input');
+                    inputEl.type = 'text';
+                    inputEl.placeholder = options.inputPlaceholder || '';
+                    inputEl.autocomplete = 'off';
+                    inputEl.style.cssText = 'display:block; width:100%; margin-top:8px; padding:8px 12px; box-sizing:border-box; border:1px solid #e0e0e0; border-radius:4px; font-family:inherit; font-size:13px;';
+                    this.display.parentNode.insertBefore(inputEl, this.display.nextSibling);
+
+                    this.inputEl = inputEl;
+                    var prefix = options.commandPrefix;
+                    var self = this;
+                    var updatePreview = function() {
+                        var val = inputEl.value.trim();
+                        self.display.textContent = val
+                            ? prefix + ' ' + shellQuote(val)
+                            : prefix;
+                    };
+                    inputEl.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') cmdModal.run();
+                    });
+                    inputEl.addEventListener('input', function() {
+                        self.resetInputState();
+                        updatePreview();
+                    });
+                    if (options.defaultValue) {
+                        inputEl.value = options.defaultValue;
+                        updatePreview();
+                    }
+                    setTimeout(function() { inputEl.focus(); }, 50);
+                }
+
+                this.overlay.classList.add('visible');
+                document.addEventListener('keydown', this.handleEscape);
+            },
+
+            close: function() {
+                if (this.overlay) this.overlay.classList.remove('visible');
+                document.removeEventListener('keydown', this.handleEscape);
+                if (this.needsReload) {
+                    window.location.reload();
+                }
+            },
+
+            handleEscape: function(e) {
+                if (e.key === 'Escape') {
+                    cmdModal.close();
+                }
+            },
+
+            run: async function() {
+                if (this.commandSucceeded) return;
+
+                var command = this.getFullCommand();
+                if (!command) {
+                    if (this.inputEl) this.inputEl.focus();
+                    return;
+                }
+
+                this.runBtn.disabled = true;
+                this.runBtn.textContent = 'Running...';
+                this.output.classList.remove('success', 'error');
+
+                try {
+                    var response = await fetch('/cmd', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: command }),
+                    });
+
+                    var result = await response.json();
+
+                    if (result.success) {
+                        this.output.classList.add('visible', 'success');
+                        this.output.textContent = result.output || 'Done';
+                        this.runBtn.style.display = 'none';
+                        this.cancelBtn.textContent = 'Done';
+                        this.commandSucceeded = true;
+                        this.needsReload = true;
+                    } else {
+                        this.output.classList.add('visible', 'error');
+                        this.output.textContent = result.output || result.error || 'Command failed';
+                        this.runBtn.textContent = 'Run';
+                        this.runBtn.disabled = false;
+                    }
+                } catch (err) {
+                    this.output.classList.add('visible', 'error');
+                    this.output.textContent = 'Network error: ' + err.message;
+                    this.runBtn.textContent = 'Run';
+                    this.runBtn.disabled = false;
+                }
+            }
+        };
+    </script>
+</body>
+</html>

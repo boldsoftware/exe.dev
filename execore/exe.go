@@ -182,12 +182,13 @@ type UserPageData struct {
 	ProxyIntegrations  []IntegrationDisplayInfo // http-proxy type only
 	GitHubAccounts     []GitHubAccountDisplayInfo
 	GitHubAccountsFull []GitHubAccountFullInfo
-	GitHubEnabled      bool   // whether the GitHub App is configured on this server
-	GitHubAppSlug      string // GitHub App slug for manage link
-	ShowIntegrations   bool   // true if user has integrations, github accounts, or push tokens
-	HasPushTokens      bool   // true if user has registered push tokens (iOS app)
-	IntegrationScheme  string // "http" or "https" for integration proxy URLs
-	Callout            string // query param to highlight a UI element (e.g. "add-repo-integration")
+	GitHubEnabled      bool     // whether the GitHub App is configured on this server
+	GitHubAppSlug      string   // GitHub App slug for manage link
+	ShowIntegrations   bool     // true if user has integrations, github accounts, or push tokens
+	HasPushTokens      bool     // true if user has registered push tokens (iOS app)
+	IntegrationScheme  string   // "http" or "https" for integration proxy URLs
+	Callout            string   // query param to highlight a UI element (e.g. "add-repo-integration")
+	AllTags            []string // sorted unique tags across all user's VMs
 }
 
 // PurchaseRow represents a credit purchase for the profile page.
@@ -736,6 +737,23 @@ func (s *Server) integrationScheme() string {
 		return "https"
 	}
 	return "http"
+}
+
+// showIntegrationsNav reports whether the Integrations nav link should be shown for a user.
+func (s *Server) showIntegrationsNav(ctx context.Context, userID string) bool {
+	if s.UserHasExeSudo(ctx, userID) {
+		return true
+	}
+	if ints, err := withRxRes1(s, ctx, (*exedb.Queries).ListIntegrationsByUser, userID); err == nil && len(ints) > 0 {
+		return true
+	}
+	if gha, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubAccounts, userID); err == nil && len(gha) > 0 {
+		return true
+	}
+	if n, err := withRxRes1(s, ctx, (*exedb.Queries).HasPushTokens, userID); err == nil && n != 0 {
+		return true
+	}
+	return s.userHasGitHubIntegrationFlag(ctx, userID)
 }
 
 // httpPort returns the HTTP listening port, or -1 if not listening.

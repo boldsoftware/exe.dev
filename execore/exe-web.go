@@ -594,6 +594,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleUserProfile(w, r, userID)
 		return
+	case "/integrations":
+		// Integrations page - require authentication
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleIntegrationsPage(w, r, userID)
+		return
 	case "/invite":
 		// Invite allocation page - require authentication, POST to allocate
 		userID, err := s.validateAuthCookie(r)
@@ -1444,6 +1454,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 
+	// Check whether to show the Integrations nav link.
+	showIntegrationsDash := s.showIntegrationsNav(r.Context(), userID)
+
 	// Prepare template data
 	data := UserPageData{
 		Env:               s.env,
@@ -1457,6 +1470,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		IsLoggedIn:        true,
 		InviteCount:       inviteCount,
 		CanRequestInvites: canRequestInvites,
+		ShowIntegrations:  showIntegrationsDash,
 		ShareVM:           r.URL.Query().Get("share_vm"),
 		ShareEmail:        r.URL.Query().Get("share_email"),
 	}
@@ -1911,6 +1925,155 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	s.renderTemplate(r.Context(), w, "user-profile.html", data)
 }
 
+// handleIntegrationsPage renders the standalone integrations management page.
+func (s *Server) handleIntegrationsPage(w http.ResponseWriter, r *http.Request, userID string) {
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get user info for integrations page", "error", err, "user_id", userID)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		return
+	}
+	if user.IsLockedOut {
+		s.renderLockedOutPage(w, r, userID)
+		return
+	}
+
+	isSudoer := s.UserHasExeSudo(r.Context(), userID)
+	var integrations []IntegrationDisplayInfo
+	dbIntegrations, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListIntegrationsByUser, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get integrations", "error", err, "user_id", userID)
+	}
+	for _, ig := range dbIntegrations {
+		info := IntegrationDisplayInfo{
+			Name:        ig.Name,
+			Type:        ig.Type,
+			Attachments: ig.GetAttachments(),
+		}
+		switch ig.Type {
+		case "http-proxy":
+			var cfg httpProxyConfig
+			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+				info.HasHeader = cfg.Header != ""
+				parsedURL, _ := url.Parse(cfg.Target)
+				if parsedURL != nil && parsedURL.User != nil {
+					info.HasBasicAuth = true
+					parsedURL.User = nil
+					info.Target = parsedURL.String()
+				} else {
+					info.Target = cfg.Target
+				}
+			}
+		case "github":
+			var cfg githubIntegrationConfig
+			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+				info.Repositories = cfg.Repositories
+			}
+		}
+		integrations = append(integrations, info)
+	}
+	var ghIntegrations, proxyIntegrations []IntegrationDisplayInfo
+	for _, ig := range integrations {
+		// Sort attachments: auto < tag < vm (lexicographic works).
+		slices.Sort(ig.Attachments)
+		switch ig.Type {
+		case "github":
+			ghIntegrations = append(ghIntegrations, ig)
+		case "http-proxy":
+			proxyIntegrations = append(proxyIntegrations, ig)
+		}
+	}
+	slices.SortFunc(ghIntegrations, func(a, b IntegrationDisplayInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	slices.SortFunc(proxyIntegrations, func(a, b IntegrationDisplayInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	var ghAccounts []GitHubAccountDisplayInfo
+	var ghAccountsFull []GitHubAccountFullInfo
+	dbGHAccounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "Failed to get GitHub accounts for integrations page", "error", err, "user_id", userID)
+	}
+	for _, a := range dbGHAccounts {
+		ghAccounts = append(ghAccounts, GitHubAccountDisplayInfo{
+			GitHubLogin: a.GitHubLogin,
+			TargetLogin: a.TargetLogin,
+		})
+		ghAccountsFull = append(ghAccountsFull, GitHubAccountFullInfo{
+			GitHubLogin:    a.GitHubLogin,
+			TargetLogin:    a.TargetLogin,
+			InstallationID: a.InstallationID,
+		})
+	}
+	slices.SortFunc(ghAccountsFull, func(a, b GitHubAccountFullInfo) int {
+		return strings.Compare(a.GitHubLogin, b.GitHubLogin)
+	})
+	ghEnabled := s.githubApp.Enabled()
+	var ghAppSlug string
+	if ghEnabled {
+		ghAppSlug = s.githubApp.AppSlug
+	}
+	var hasPushTokens bool
+	if n, err := withRxRes1(s, r.Context(), (*exedb.Queries).HasPushTokens, userID); err == nil {
+		hasPushTokens = n != 0
+	}
+	hasGHFlag := s.userHasGitHubIntegrationFlag(r.Context(), userID)
+	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag || hasPushTokens
+
+	if !showIntegrations {
+		http.Redirect(w, r, "/user", http.StatusTemporaryRedirect)
+		return
+	}
+
+	var profileBoxes []BoxDisplayInfo
+	tagSet := map[string]bool{}
+	if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
+		for _, b := range userBoxes {
+			profileBoxes = append(profileBoxes, BoxDisplayInfo{Box: b})
+			for _, t := range b.GetTags() {
+				tagSet[t] = true
+			}
+		}
+	}
+	slices.SortFunc(profileBoxes, func(a, b BoxDisplayInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	var allTags []string
+	for t := range tagSet {
+		allTags = append(allTags, t)
+	}
+	slices.Sort(allTags)
+
+	data := UserPageData{
+		Env:                s.env,
+		User:               user,
+		Boxes:              profileBoxes,
+		ActivePage:         "integrations",
+		IsLoggedIn:         true,
+		IsSudoer:           isSudoer,
+		Integrations:       integrations,
+		GitHubIntegrations: ghIntegrations,
+		ProxyIntegrations:  proxyIntegrations,
+		GitHubAccounts:     ghAccounts,
+		GitHubAccountsFull: ghAccountsFull,
+		GitHubEnabled:      ghEnabled,
+		GitHubAppSlug:      ghAppSlug,
+		ShowIntegrations:   showIntegrations,
+		HasPushTokens:      hasPushTokens,
+		IntegrationScheme:  s.integrationScheme(),
+		Callout:            r.URL.Query().Get("callout"),
+		AllTags:            allTags,
+	}
+
+	s.renderTemplate(r.Context(), w, "integrations.html", data)
+}
+
 func nextUTCMonthStart() time.Time {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
@@ -2171,18 +2334,20 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request, userID str
 
 	data := struct {
 		stage.Env
-		User       exedb.User
-		InviteCode exedb.InviteCode
-		IsLoggedIn bool
-		ActivePage string
-		BasicUser  bool
+		User             exedb.User
+		InviteCode       exedb.InviteCode
+		IsLoggedIn       bool
+		ActivePage       string
+		BasicUser        bool
+		ShowIntegrations bool
 	}{
-		Env:        s.env,
-		User:       user,
-		InviteCode: invite,
-		IsLoggedIn: true,
-		ActivePage: "invites",
-		BasicUser:  false,
+		Env:              s.env,
+		User:             user,
+		InviteCode:       invite,
+		IsLoggedIn:       true,
+		ActivePage:       "invites",
+		BasicUser:        false,
+		ShowIntegrations: s.showIntegrationsNav(ctx, userID),
 	}
 
 	s.renderTemplate(ctx, w, "invite.html", data)
@@ -2216,16 +2381,18 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 	// Render confirmation page
 	data := struct {
 		stage.Env
-		User       exedb.User
-		IsLoggedIn bool
-		ActivePage string
-		BasicUser  bool
+		User             exedb.User
+		IsLoggedIn       bool
+		ActivePage       string
+		BasicUser        bool
+		ShowIntegrations bool
 	}{
-		Env:        s.env,
-		User:       user,
-		IsLoggedIn: true,
-		ActivePage: "invites",
-		BasicUser:  false,
+		Env:              s.env,
+		User:             user,
+		IsLoggedIn:       true,
+		ActivePage:       "invites",
+		BasicUser:        false,
+		ShowIntegrations: s.showIntegrationsNav(ctx, userID),
 	}
 
 	s.renderTemplate(ctx, w, "invite-requested.html", data)

@@ -29,10 +29,9 @@
             margin-right: 4px;
           "
         >
-          <rect x="3" y="3" width="8" height="8" rx="1"></rect>
-          <rect x="13" y="3" width="8" height="8" rx="1"></rect>
-          <rect x="3" y="13" width="8" height="8" rx="1"></rect>
-          <rect x="13" y="13" width="8" height="8" rx="1"></rect>
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
         </svg>
         <span class="btn-text">VMs</span>
       </span>
@@ -50,14 +49,59 @@
             margin-right: 4px;
           "
         >
-          <rect x="3" y="3" width="8" height="8" rx="1"></rect>
-          <rect x="13" y="3" width="8" height="8" rx="1"></rect>
-          <rect x="3" y="13" width="8" height="8" rx="1"></rect>
-          <rect x="13" y="13" width="8" height="8" rx="1"></rect>
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
         </svg>
         <span class="btn-text">VMs</span>
       </a>
-      {{end}} {{if and .ActivePage (eq .ActivePage "shell")}}
+      {{end}} {{if .ShowIntegrations}}{{if and .ActivePage (eq .ActivePage "integrations")}}
+      <span class="btn btn-active">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <polyline points="17 1 21 5 17 9"></polyline>
+          <line x1="3" y1="5" x2="21" y2="5"></line>
+          <polyline points="7 23 3 19 7 15"></polyline>
+          <line x1="21" y1="19" x2="3" y2="19"></line>
+        </svg>
+        <span class="btn-text">Integrations</span>
+      </span>
+      {{else}}
+      <a href="/integrations" class="btn">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <polyline points="17 1 21 5 17 9"></polyline>
+          <line x1="3" y1="5" x2="21" y2="5"></line>
+          <polyline points="7 23 3 19 7 15"></polyline>
+          <line x1="21" y1="19" x2="3" y2="19"></line>
+        </svg>
+        <span class="btn-text">Integrations</span>
+      </a>
+      {{end}}{{end}} {{if and .ActivePage (eq .ActivePage "shell")}}
       <span class="btn btn-active">
         <svg
           viewBox="0 0 24 24"
@@ -74,7 +118,7 @@
           <polyline points="4,17 10,11 4,5"></polyline>
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
-        <span class="btn-text">Shell</span>
+        <span class="btn-text">Lobby</span>
       </span>
       {{else}}
       <a href="/shell" class="btn">
@@ -93,7 +137,7 @@
           <polyline points="4,17 10,11 4,5"></polyline>
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
-        <span class="btn-text">Shell</span>
+        <span class="btn-text">Lobby</span>
       </a>
       {{end}}
       {{end}} {{if and .ActivePage (eq .ActivePage "profile")}}

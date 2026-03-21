@@ -369,6 +369,11 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		errorMessage = "You have reached the maximum number of VMs allowed on your plan. Delete an existing VM to create a new one."
 	}
 
+	var showIntegrations bool
+	if isLoggedIn {
+		showIntegrations = s.showIntegrationsNav(r.Context(), userID)
+	}
+
 	data := struct {
 		stage.Env
 		HostnameSuggestion string
@@ -380,6 +385,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		BasicUser          bool
 		IdeaSlug           string
 		ErrorMessage       string
+		ShowIntegrations   bool
 	}{
 		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
@@ -391,6 +397,7 @@ func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
 		BasicUser:          false,
 		IdeaSlug:           ideaSlug,
 		ErrorMessage:       errorMessage,
+		ShowIntegrations:   showIntegrations,
 	}
 	s.renderTemplate(r.Context(), w, "new.html", data)
 }

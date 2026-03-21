@@ -124,7 +124,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to save GitHub connection", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/user?callout=add-repo-integration#github", http.StatusFound)
+		http.Redirect(w, r, "/integrations?callout=add-repo-integration#github", http.StatusFound)
 		return
 	}
 

@@ -236,18 +236,25 @@ func (s *Server) handleIdeaPage(w http.ResponseWriter, r *http.Request) {
 		canRate = s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.LLMUse, userID)
 	}
 
+	var showIntegrations bool
+	if isLoggedIn {
+		showIntegrations = s.showIntegrationsNav(r.Context(), userID)
+	}
+
 	data := struct {
 		stage.Env
-		IsLoggedIn bool
-		ActivePage string
-		BasicUser  bool
-		CanRate    bool
+		IsLoggedIn       bool
+		ActivePage       string
+		BasicUser        bool
+		CanRate          bool
+		ShowIntegrations bool
 	}{
-		Env:        s.env,
-		IsLoggedIn: isLoggedIn,
-		ActivePage: "",
-		BasicUser:  false,
-		CanRate:    canRate,
+		Env:              s.env,
+		IsLoggedIn:       isLoggedIn,
+		ActivePage:       "",
+		BasicUser:        false,
+		CanRate:          canRate,
+		ShowIntegrations: showIntegrations,
 	}
 	s.renderTemplate(r.Context(), w, "idea.html", data)
 }

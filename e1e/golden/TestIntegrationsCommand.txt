@@ -44,7 +44,7 @@ To use this integration, attach it to a VM first:
   integrations attach myproxy vm:<vm-name>
 
 Usage from a VM:
-  ssh <vm> curl http://myproxy.int.exe.cloud/
+  curl http://myproxy.int.exe.cloud/
 PROMPT ▶ integrations list
 myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
 PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://other.com --header=Authorization:Bearer-tok
@@ -54,7 +54,7 @@ To use this integration, attach it to a VM first:
   integrations attach otherproxy vm:<vm-name>
 
 Usage from a VM:
-  ssh <vm> curl http://otherproxy.int.exe.cloud/
+  curl http://otherproxy.int.exe.cloud/
 PROMPT ▶ integrations list
 otherproxy  http-proxy  target=https://other.com header=Authorization:Bearer-tok  (none)
 myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
@@ -89,7 +89,7 @@ To use this integration, attach it to a VM first:
   integrations attach customport vm:<vm-name>
 
 Usage from a VM:
-  ssh <vm> curl http://customport.int.exe.cloud/
+  curl http://customport.int.exe.cloud/
 PROMPT ▶ integrations remove customport
 Removed integration customport
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=novalue

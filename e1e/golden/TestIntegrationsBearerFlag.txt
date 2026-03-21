@@ -42,7 +42,7 @@ To use this integration, attach it to a VM first:
   integrations attach bearerproxy vm:<vm-name>
 
 Usage from a VM:
-  ssh <vm> curl http://bearerproxy.int.exe.cloud/
+  curl http://bearerproxy.int.exe.cloud/
 PROMPT ▶ integrations list
 bearerproxy  http-proxy  target=https://example.com header=Authorization:Bearer my-secret-token  (none)
 PROMPT ▶ integrations add http-proxy --name=bearerproxy2 --target=https://other.com --bearer=another-token-456
@@ -52,7 +52,7 @@ To use this integration, attach it to a VM first:
   integrations attach bearerproxy2 vm:<vm-name>
 
 Usage from a VM:
-  ssh <vm> curl http://bearerproxy2.int.exe.cloud/
+  curl http://bearerproxy2.int.exe.cloud/
 PROMPT ▶ integrations list
 bearerproxy2  http-proxy  target=https://other.com header=Authorization:Bearer another-token-456  (none)
 bearerproxy  http-proxy  target=https://example.com header=Authorization:Bearer my-secret-token  (none)
