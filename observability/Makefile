@@ -12,6 +12,9 @@ GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
 # Node environment directory
 NODEENV := .nodeenv
 
+# Ensure .nodeenv/bin is on PATH so npm's "#!/usr/bin/env node" shebang works
+export PATH := $(CURDIR)/$(NODEENV)/bin:$(PATH)
+
 # Bootstrap Node.js environment via uv nodeenv
 $(NODEENV):
 	uv tool run nodeenv --node=lts $(NODEENV)

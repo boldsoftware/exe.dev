@@ -678,7 +678,7 @@ build_binaries() {
     (cd "${REPO_ROOT}" && GOOS=linux go build -o "${CACHE_DIR}/exelet-ctl" ./cmd/exelet-ctl)
 
     log "  Building sshpiperd..."
-    (cd "${REPO_ROOT}/deps/sshpiper" && GOOS=linux go build -o "${CACHE_DIR}/sshpiperd" ./cmd/sshpiperd)
+    (cd "${REPO_ROOT}/deps/sshpiper" && GOTOOLCHAIN=go1.26.1 GOOS=linux go build -o "${CACHE_DIR}/sshpiperd" ./cmd/sshpiperd)
 
     log "Binaries built in ${CACHE_DIR}"
 }
