@@ -525,6 +525,7 @@ message StorageTier {
   uint64 used_bytes = 4;            // Used bytes
   uint64 available_bytes = 5;       // Available bytes
   uint32 instance_count = 6;        // Number of instances on this pool
+  map<string, string> metadata = 7; // Operator-defined metadata (e.g., type=nvme, tier=hot)
 }
 
 message ListStorageTiersResponse {

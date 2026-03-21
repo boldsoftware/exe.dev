@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -12,10 +13,11 @@ import (
 // It implements StorageManager by delegating to the primary pool,
 // making it a drop-in replacement for single-pool configurations.
 type TieredStorageManager struct {
-	primary    StorageManager
-	pools      map[string]StorageManager // pool name -> StorageManager
-	poolNames  []string                  // ordered list (primary first)
-	backupPool string                    // pool name to use as last resort in resolution
+	primary       StorageManager
+	pools         map[string]StorageManager       // pool name -> StorageManager
+	poolNames     []string                        // ordered list (primary first)
+	backupPool    string                          // pool name to use as last resort in resolution
+	poolMetadata  map[string]map[string]string    // pool name -> operator-defined metadata
 }
 
 // NewTieredStorageManager creates a TieredStorageManager with a primary pool
@@ -45,6 +47,25 @@ func (t *TieredStorageManager) SetBackupPool(name string) {
 	t.backupPool = name
 }
 
+// SetPoolMetadata attaches operator-defined metadata to a named pool.
+func (t *TieredStorageManager) SetPoolMetadata(name string, metadata map[string]string) {
+	if len(metadata) == 0 {
+		return
+	}
+	if t.poolMetadata == nil {
+		t.poolMetadata = make(map[string]map[string]string)
+	}
+	t.poolMetadata[name] = metadata
+}
+
+// PoolMetadata returns the operator-defined metadata for a named pool.
+func (t *TieredStorageManager) PoolMetadata(name string) map[string]string {
+	if t.poolMetadata == nil {
+		return nil
+	}
+	return t.poolMetadata[name]
+}
+
 // Primary returns the primary pool's StorageManager.
 func (t *TieredStorageManager) Primary() StorageManager {
 	return t.primary
@@ -68,21 +89,43 @@ func (t *TieredStorageManager) PoolNames() []string {
 // Returns the pool name, its StorageManager, and any error.
 // If a backup pool is configured, it is checked last so that other durable
 // storage tiers are preferred over the backup copy.
+//
+// Only ErrNotFound is treated as "try next pool". Any other Get() error
+// (e.g. transient ZFS failures) is returned immediately so callers fail
+// closed rather than silently falling through to the wrong pool.
 func (t *TieredStorageManager) PoolForInstance(ctx context.Context, id string) (string, StorageManager, error) {
+	var foundName string
+	var foundSM StorageManager
 	for _, name := range t.poolNames {
 		if name == t.backupPool {
 			continue // defer backup pool to last resort
 		}
 		sm := t.pools[name]
-		if _, err := sm.Get(ctx, id); err == nil {
-			return name, sm, nil
+		_, err := sm.Get(ctx, id)
+		if err == nil {
+			if foundSM != nil {
+				return "", nil, fmt.Errorf("instance %s found on multiple pools (%s and %s): possible split-brain, manual intervention required", id, foundName, name)
+			}
+			foundName = name
+			foundSM = sm
+			continue
 		}
+		if !errors.Is(err, api.ErrNotFound) {
+			return "", nil, fmt.Errorf("pool %s: error checking instance %s: %w", name, id, err)
+		}
+	}
+	if foundSM != nil {
+		return foundName, foundSM, nil
 	}
 	// Fall back to backup pool if configured and instance exists there.
 	if t.backupPool != "" {
 		if sm, ok := t.pools[t.backupPool]; ok {
-			if _, err := sm.Get(ctx, id); err == nil {
+			_, err := sm.Get(ctx, id)
+			if err == nil {
 				return t.backupPool, sm, nil
+			}
+			if !errors.Is(err, api.ErrNotFound) {
+				return "", nil, fmt.Errorf("pool %s: error checking instance %s: %w", t.backupPool, id, err)
 			}
 		}
 	}
@@ -119,8 +162,11 @@ func (t *TieredStorageManager) GetAnyPool(ctx context.Context, id string) (*api.
 		if err == nil {
 			return fs, nil
 		}
+		if !errors.Is(err, api.ErrNotFound) {
+			return nil, fmt.Errorf("pool %s: error checking instance %s: %w", name, id, err)
+		}
 	}
-	return t.primary.Get(ctx, id)
+	return nil, api.ErrNotFound
 }
 
 func (t *TieredStorageManager) Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error) {

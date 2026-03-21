@@ -24,17 +24,39 @@ func PoolNameFromAddress(addr string) string {
 	return dataset
 }
 
+// MetadataFromAddress parses query parameters from a storage tier URL and
+// returns all non-reserved params as metadata. The "dataset" param is reserved.
+func MetadataFromAddress(addr string) map[string]string {
+	u, err := url.Parse(addr)
+	if err != nil {
+		return nil
+	}
+	md := make(map[string]string)
+	for key, vals := range u.Query() {
+		if key == "dataset" {
+			continue
+		}
+		if len(vals) > 0 {
+			md[key] = vals[0]
+		}
+	}
+	if len(md) == 0 {
+		return nil
+	}
+	return md
+}
+
 // ResolveForID returns the StorageManager that holds the given dataset ID.
 // If sm is a TieredStorageManager, it scans all pools. Otherwise, returns sm directly.
-func ResolveForID(ctx context.Context, sm StorageManager, id string) StorageManager {
+// Returns an error if pool resolution fails (transient backend error or not found).
+func ResolveForID(ctx context.Context, sm StorageManager, id string) (StorageManager, error) {
 	tiered, ok := sm.(*TieredStorageManager)
 	if !ok {
-		return sm
+		return sm, nil
 	}
 	_, resolved, err := tiered.PoolForInstance(ctx, id)
 	if err != nil {
-		// Fall back to primary if not found on any pool
-		return tiered.Primary()
+		return nil, err
 	}
-	return resolved
+	return resolved, nil
 }

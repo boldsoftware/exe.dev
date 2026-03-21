@@ -136,6 +136,16 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 		return nil, status.Errorf(codes.InvalidArgument, "instance %s is already on pool %s", req.InstanceID, req.TargetPool)
 	}
 
+	// Check if the target pool already has a dataset for this instance
+	// (e.g. leftover from a previously failed migration). Migrating into
+	// an existing dataset would fail or corrupt data.
+	targetSM, _ := tiered.Pool(req.TargetPool)
+	if _, err := targetSM.Get(ctx, req.InstanceID); err == nil {
+		return nil, status.Errorf(codes.AlreadyExists,
+			"instance %s already has a dataset on target pool %s (possible leftover from a failed migration); delete it before retrying",
+			req.InstanceID, req.TargetPool)
+	}
+
 	opID, err := uuid.NewV7()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate operation ID: %v", err)
@@ -303,10 +313,10 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 
 	op.setProgress(0.8)
 
-	// Delete source dataset
+	// Delete source dataset — this must succeed to prevent split-brain where
+	// both pools hold a copy and future PoolForInstance resolves the stale one.
 	if err := srcManager.Delete(ctx, instanceID); err != nil {
-		s.log.WarnContext(ctx, "tier migration: failed to delete source dataset (non-fatal)",
-			"instance", instanceID, "pool", sourcePool, "error", err)
+		return fmt.Errorf("delete source dataset on pool %s: %w (migration partially complete, target has data)", sourcePool, err)
 	}
 
 	op.setProgress(1.0)
@@ -525,13 +535,13 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	// Delete source dataset
+	// Delete source dataset — this must succeed to prevent split-brain where
+	// both pools hold a copy and future PoolForInstance resolves the stale one.
 	if err := srcManager.Delete(ctx, instanceID); err != nil {
-		s.log.WarnContext(ctx, "tier migration: failed to delete source dataset (non-fatal)",
-			"instance", instanceID, "pool", sourcePool, "error", err)
+		return fmt.Errorf("delete source dataset on pool %s: %w (migration partially complete, target has data)", sourcePool, err)
 	}
 
-	// Clean up pre-snapshot
+	// Clean up pre-snapshot (best-effort since source dataset is gone)
 	if err := srcManager.DestroySnapshot(ctx, preSnapName); err != nil {
 		s.log.WarnContext(ctx, "tier migration: failed to destroy pre-copy snapshot",
 			"snapshot", preSnapName, "error", err)
@@ -564,6 +574,7 @@ func (s *Service) ListStorageTiers(ctx context.Context, req *api.ListStorageTier
 			s.log.WarnContext(ctx, "failed to get pool info", "pool", name, "error", err)
 			continue
 		}
+		tier.Metadata = tiered.PoolMetadata(name)
 		tiers = append(tiers, tier)
 	}
 

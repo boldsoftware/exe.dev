@@ -510,6 +510,17 @@ func serveAction(clix *cli.Context) error {
 	}
 	storageManager := storage.NewTieredStorageManager(primaryPoolName, primaryStorageManager, tierManagers)
 
+	// Attach operator-defined metadata from tier URL query params
+	if md := storage.MetadataFromAddress(cfg.StorageManagerAddress); md != nil {
+		storageManager.SetPoolMetadata(primaryPoolName, md)
+	}
+	for _, tierAddr := range cfg.StorageTiers {
+		tierName := storage.PoolNameFromAddress(tierAddr)
+		if md := storage.MetadataFromAddress(tierAddr); md != nil {
+			storageManager.SetPoolMetadata(tierName, md)
+		}
+	}
+
 	// If replication targets a local zpool that is also a storage tier,
 	// mark it as the backup pool so PoolForInstance resolves it last.
 	if strings.HasPrefix(cfg.ReplicationTarget, "zpool:///") {
