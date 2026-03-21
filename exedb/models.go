@@ -217,8 +217,8 @@ type GithubAccount struct {
 	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
 	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
 	TokenRenewedAt        *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
-	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	AccessTokenExpiresAt  *string    `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *string    `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 }
 
 type HllSketch struct {

@@ -870,6 +870,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
 	}
+	if q.listAllGitHubAccountsStmt, err = db.PrepareContext(ctx, listAllGitHubAccounts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllGitHubAccounts: %w", err)
+	}
 	if q.listAllIntegrationsStmt, err = db.PrepareContext(ctx, listAllIntegrations); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllIntegrations: %w", err)
 	}
@@ -2597,6 +2600,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllBoxesWithOwnerStmt: %w", cerr)
 		}
 	}
+	if q.listAllGitHubAccountsStmt != nil {
+		if cerr := q.listAllGitHubAccountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllGitHubAccountsStmt: %w", cerr)
+		}
+	}
 	if q.listAllIntegrationsStmt != nil {
 		if cerr := q.listAllIntegrationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllIntegrationsStmt: %w", cerr)
@@ -3438,6 +3446,7 @@ type Queries struct {
 	listAllAccountsStmt                        *sql.Stmt
 	listAllActiveAccountPlansStmt              *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
+	listAllGitHubAccountsStmt                  *sql.Stmt
 	listAllIntegrationsStmt                    *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
@@ -3830,6 +3839,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
 		listAllActiveAccountPlansStmt:              q.listAllActiveAccountPlansStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
+		listAllGitHubAccountsStmt:                  q.listAllGitHubAccountsStmt,
 		listAllIntegrationsStmt:                    q.listAllIntegrationsStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,

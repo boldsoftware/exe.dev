@@ -191,22 +191,27 @@ type TokenResponse struct {
 	RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"` // seconds until refresh token expires
 }
 
-// AccessTokenExpiresAt returns the access token expiry time, or nil if not provided.
-func (tr *TokenResponse) AccessTokenExpiresAt() *time.Time {
+// sqliteTimeFmt is the format used by SQLite's CURRENT_TIMESTAMP and datetime().
+const sqliteTimeFmt = "2006-01-02 15:04:05"
+
+// AccessTokenExpiresAt returns the access token expiry as a SQLite-compatible
+// UTC datetime string, or nil if not provided.
+func (tr *TokenResponse) AccessTokenExpiresAt() *string {
 	if tr.ExpiresIn <= 0 {
 		return nil
 	}
-	t := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
-	return &t
+	s := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second).UTC().Format(sqliteTimeFmt)
+	return &s
 }
 
-// RefreshTokenExpiresAt returns the refresh token expiry time, or nil if not provided.
-func (tr *TokenResponse) RefreshTokenExpiresAt() *time.Time {
+// RefreshTokenExpiresAt returns the refresh token expiry as a SQLite-compatible
+// UTC datetime string, or nil if not provided.
+func (tr *TokenResponse) RefreshTokenExpiresAt() *string {
 	if tr.RefreshTokenExpiresIn <= 0 {
 		return nil
 	}
-	t := time.Now().Add(time.Duration(tr.RefreshTokenExpiresIn) * time.Second)
-	return &t
+	s := time.Now().Add(time.Duration(tr.RefreshTokenExpiresIn) * time.Second).UTC().Format(sqliteTimeFmt)
+	return &s
 }
 
 // ExchangeCode exchanges an authorization code for a user access token.

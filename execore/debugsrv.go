@@ -126,6 +126,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/teams/delete-sso", s.handleDebugTeamDeleteSSO)
 	mux.HandleFunc("POST /debug/teams/test-sso", s.handleDebugTeamTestSSO)
 	mux.HandleFunc("GET /debug/integrations", s.handleDebugIntegrations)
+	mux.HandleFunc("GET /debug/github-integrations", s.handleDebugGitHubIntegrations)
+	mux.HandleFunc("POST /debug/github-integrations/refresh", s.handleDebugGitHubIntegrationsRefresh)
 	mux.HandleFunc("GET /debug/ideas", s.handleDebugTemplateReview)
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 	mux.HandleFunc("/debug/glb-rollout", s.handleDebugGLBRollout)
@@ -6899,6 +6901,101 @@ func (s *Server) handleDebugIntegrations(w http.ResponseWriter, r *http.Request)
 		Types:      types,
 	}
 	s.renderDebugTemplate(ctx, w, "integrations.html", data)
+}
+
+func (s *Server) handleDebugGitHubIntegrations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	accounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllGitHubAccounts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list GitHub accounts: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Accounts []exedb.ListAllGitHubAccountsRow
+	}{
+		Accounts: accounts,
+	}
+	s.renderDebugTemplate(ctx, w, "github-integrations.html", data)
+}
+
+func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := r.FormValue("user_id")
+	installationID, _ := strconv.ParseInt(r.FormValue("installation_id"), 10, 64)
+
+	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetGitHubAccount, exedb.GetGitHubAccountParams{
+		UserID:         userID,
+		InstallationID: installationID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("account not found: %v", err), http.StatusNotFound)
+		return
+	}
+	if acct.RefreshToken == "" {
+		http.Error(w, "no refresh token", http.StatusBadRequest)
+		return
+	}
+
+	// Serialize token refreshes to prevent concurrent refresh token rotation.
+	s.githubRefreshMu.Lock()
+	defer s.githubRefreshMu.Unlock()
+
+	// Re-read the account under the lock — another refresh may have already
+	// given us a fresh token, in which case we can skip the GitHub round-trip.
+	acct, err = withRxRes1(s, ctx, (*exedb.Queries).GetGitHubAccount, exedb.GetGitHubAccountParams{
+		UserID:         userID,
+		InstallationID: installationID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("account not found: %v", err), http.StatusNotFound)
+		return
+	}
+	if acct.AccessTokenExpiresAt != nil {
+		if expires, err := parseGitHubTokenExpiry(*acct.AccessTokenExpiresAt); err == nil {
+			if time.Until(expires) > 5*time.Minute {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, "OK (already fresh)")
+				return
+			}
+		}
+	}
+
+	tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "debug: GitHub token refresh failed",
+			"user_id", acct.UserID,
+			"github_login", acct.GitHubLogin,
+			"installation_id", acct.InstallationID,
+			"error", err,
+		)
+		http.Error(w, fmt.Sprintf("refresh failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+			AccessToken:           tokenResp.AccessToken,
+			RefreshToken:          tokenResp.RefreshToken,
+			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
+			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
+			UserID:                acct.UserID,
+			InstallationID:        acct.InstallationID,
+		})
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("save failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "debug: refreshed GitHub token",
+		"user_id", acct.UserID,
+		"github_login", acct.GitHubLogin,
+		"installation_id", acct.InstallationID,
+	)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "OK")
 }
 
 // renderDebugTemplate renders a debug template to a browser.

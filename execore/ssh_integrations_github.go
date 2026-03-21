@@ -13,7 +13,6 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"exe.dev/githubapp"
 )
 
 // GitHubSetup represents a pending GitHub App setup flow (in-memory).
@@ -37,8 +36,8 @@ type GitHubSetup struct {
 	InstallationID        int64
 	AccessToken           string
 	RefreshToken          string
-	AccessTokenExpiresAt  *time.Time
-	RefreshTokenExpiresAt *time.Time
+	AccessTokenExpiresAt  *string
+	RefreshTokenExpiresAt *string
 	Err                   error
 }
 
@@ -147,6 +146,7 @@ func (ss *SSHServer) handleListGitHub(ctx context.Context, cc *exemenu.CommandCo
 
 // handleVerifyGitHub verifies that stored GitHub tokens are valid and
 // that the GitHub App is still installed on each target account.
+// Token refresh is left to the background renewal loop.
 func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
 	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
 	if err != nil {
@@ -162,52 +162,15 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 	for _, acct := range existing {
 		label := formatGitHubAccount(acct.TargetLogin, acct.GitHubLogin)
 
-		// Resolve a working access token.
-		workingToken := acct.AccessToken
-		_, err := ss.server.githubApp.GetUser(ctx, workingToken)
+		accessToken, err := ss.server.resolveGitHubTokenWeb(ctx, acct)
 		if err != nil {
-			if !githubapp.IsAuthError(err) {
-				cc.Writeln("  %s ✗ %v", label, err)
-				allOK = false
-				continue
-			}
-			if acct.RefreshToken == "" {
-				cc.Writeln("  %s ✗ token expired", label)
-				allOK = false
-				continue
-			}
-			tokenResp, refreshErr := ss.server.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
-			if refreshErr != nil {
-				cc.Writeln("  %s ✗ token expired, refresh failed", label)
-				allOK = false
-				continue
-			}
-			_, err = ss.server.githubApp.GetUser(ctx, tokenResp.AccessToken)
-			if err != nil {
-				cc.Writeln("  %s ✗ refresh failed", label)
-				allOK = false
-				continue
-			}
-			workingToken = tokenResp.AccessToken
-			// Update stored tokens.
-			if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
-					AccessToken:           tokenResp.AccessToken,
-					RefreshToken:          tokenResp.RefreshToken,
-					AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
-					RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
-					UserID:                cc.User.ID,
-					InstallationID:        acct.InstallationID,
-				})
-			}); err != nil {
-				cc.Writeln("  %s ✗ failed to save refreshed token", label)
-				allOK = false
-				continue
-			}
+			cc.Writeln("  %s ✗ %v", label, err)
+			allOK = false
+			continue
 		}
 
 		// Check that the GitHub App installation is still active.
-		installs, err := ss.server.githubApp.GetUserInstallations(ctx, workingToken)
+		installs, err := ss.server.githubApp.GetUserInstallations(ctx, accessToken)
 		if err != nil {
 			cc.Writeln("  %s ✗ failed to check installations: %v", label, err)
 			allOK = false

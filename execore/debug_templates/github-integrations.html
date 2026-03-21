@@ -1,0 +1,100 @@
+<!doctype html>
+<html><head><title>GitHub Integrations</title>
+{{template "base-head"}}
+<style>
+table#accounts { width: 100%; border-collapse: collapse; }
+table#accounts th, table#accounts td { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; }
+table#accounts th { background: #f5f5f5; }
+.token-mask { color: #999; }
+.status-ok { color: #28a745; font-weight: bold; }
+.status-expired { color: #dc3545; font-weight: bold; }
+.status-unknown { color: #6c757d; }
+.refresh-btn { padding: 3px 8px; cursor: pointer; border: 1px solid #007bff; background: #007bff; color: white; border-radius: 3px; font-size: 11px; }
+.refresh-btn:hover { background: #0056b3; }
+.refresh-btn:disabled { background: #6c757d; border-color: #6c757d; cursor: not-allowed; }
+.result { font-size: 11px; margin-left: 6px; }
+.result.ok { color: #28a745; }
+.result.err { color: #dc3545; }
+</style>
+</head><body>
+<h1>GitHub Integrations</h1>
+<div><a href="/debug">/debug</a> &gt; <a href="/debug/github-integrations">github-integrations</a></div>
+<p>Total accounts: {{len .Accounts}}</p>
+
+<table id="accounts">
+<thead>
+<tr>
+<th>Email</th>
+<th>User ID</th>
+<th>GitHub Login</th>
+<th>Target</th>
+<th>Installation ID</th>
+<th>Access Token</th>
+<th>Access Expires</th>
+<th>Refresh Token</th>
+<th>Refresh Expires</th>
+<th>Last Renewed</th>
+<th>Created</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>
+{{range .Accounts}}
+<tr>
+<td><a href="/debug/user?userId={{.UserID}}">{{.Email}}</a></td>
+<td><code>{{.UserID}}</code></td>
+<td>{{.GitHubLogin}}</td>
+<td>{{.TargetLogin}}</td>
+<td>{{.InstallationID}}</td>
+<td class="token-mask">{{maskToken .AccessToken}}</td>
+<td>{{tokenStatus .AccessTokenExpiresAt}}</td>
+<td class="token-mask">{{if .RefreshToken}}present{{else}}-{{end}}</td>
+<td>{{tokenStatus .RefreshTokenExpiresAt}}</td>
+<td>{{fmtTime .TokenRenewedAt}}</td>
+<td>{{fmtTime .CreatedAt}}</td>
+<td>
+{{if .RefreshToken}}
+<button class="refresh-btn" onclick="refreshToken(this, '{{.UserID}}', {{.InstallationID}})">Refresh</button>
+<span class="result"></span>
+{{else}}
+<span class="status-unknown">no refresh token</span>
+{{end}}
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+
+<script>
+function refreshToken(btn, userID, installationID) {
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    var result = btn.nextElementSibling;
+    result.textContent = '';
+    result.className = 'result';
+
+    fetch('/debug/github-integrations/refresh', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'user_id=' + encodeURIComponent(userID) + '&installation_id=' + encodeURIComponent(installationID)
+    }).then(function(resp) {
+        return resp.text().then(function(text) {
+            if (resp.ok) {
+                result.textContent = 'OK';
+                result.className = 'result ok';
+                setTimeout(function() { location.reload(); }, 1000);
+            } else {
+                result.textContent = text;
+                result.className = 'result err';
+            }
+        });
+    }).catch(function(err) {
+        result.textContent = err.toString();
+        result.className = 'result err';
+    }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+    });
+}
+</script>
+</body></html>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"exe.dev/exedb"
 	"exe.dev/githubapp"
@@ -141,35 +142,23 @@ func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 	writeGitHubJSON(w, true, "", allRepos)
 }
 
-// resolveGitHubTokenWeb resolves a working access token, refreshing if needed.
-// Web version (no exemenu.CommandContext).
+// resolveGitHubTokenWeb returns the stored access token if it hasn't expired.
+// Token refresh is handled by the background renewal loop, not here, to avoid
+// concurrent refresh races that can invalidate the stored refresh token.
 func (s *Server) resolveGitHubTokenWeb(ctx context.Context, acct exedb.GithubAccount) (string, error) {
-	_, err := s.githubApp.GetUser(ctx, acct.AccessToken)
-	if err == nil {
+	if acct.AccessTokenExpiresAt == nil {
+		// No known expiry (e.g. token expiration not enabled on the GitHub App,
+		// or legacy row). Return the token and let the caller handle API errors.
 		return acct.AccessToken, nil
 	}
-	if !githubapp.IsAuthError(err) {
-		return "", err
-	}
-	if acct.RefreshToken == "" {
-		return "", fmt.Errorf("token expired, no refresh token")
-	}
-	tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+	expires, err := parseGitHubTokenExpiry(*acct.AccessTokenExpiresAt)
 	if err != nil {
-		return "", fmt.Errorf("refresh failed: %w", err)
+		return "", fmt.Errorf("GitHub access token has unparseable expiry %q", *acct.AccessTokenExpiresAt)
 	}
-	// Update stored tokens and renewal timestamp.
-	s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
-			AccessToken:           tokenResp.AccessToken,
-			RefreshToken:          tokenResp.RefreshToken,
-			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
-			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
-			UserID:                acct.UserID,
-			InstallationID:        acct.InstallationID,
-		})
-	})
-	return tokenResp.AccessToken, nil
+	if time.Now().Before(expires) {
+		return acct.AccessToken, nil
+	}
+	return "", fmt.Errorf("GitHub access token expired, waiting for background refresh")
 }
 
 // saveGitHubSetupWeb saves a completed web-initiated GitHub setup to the database.
@@ -220,7 +209,6 @@ func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) err
 }
 
 // handleGitHubVerify tests the GitHub connection by listing repos for a specific installation.
-// Does token refresh if needed and returns the repo count.
 func (s *Server) handleGitHubVerify(w http.ResponseWriter, r *http.Request) {
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
@@ -273,6 +261,17 @@ func (s *Server) handleGitHubVerify(w http.ResponseWriter, r *http.Request) {
 		"success":    true,
 		"repo_count": len(repos),
 	})
+}
+
+// parseGitHubTokenExpiry parses a token expiry string stored in the DB.
+// Handles both SQLite format ("2006-01-02 15:04:05") and RFC 3339 ("2006-01-02T15:04:05Z").
+func parseGitHubTokenExpiry(s string) (time.Time, error) {
+	for _, fmt := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.Parse(fmt, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized format: %s", s)
 }
 
 func writeGitHubJSON(w http.ResponseWriter, success bool, errMsg string, data any) {

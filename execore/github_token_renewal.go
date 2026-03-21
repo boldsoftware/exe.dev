@@ -65,40 +65,46 @@ func (s *Server) renewGitHubTokens(ctx context.Context) {
 			continue
 		}
 
-		tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
-		if err != nil {
-			s.slog().WarnContext(ctx, "failed to refresh GitHub token",
-				"user_id", acct.UserID,
-				"github_login", acct.GitHubLogin,
-				"installation_id", acct.InstallationID,
-				"error", err,
-			)
-			continue
-		}
+		s.githubRefreshMu.Lock()
+		s.renewOneGitHubToken(ctx, acct)
+		s.githubRefreshMu.Unlock()
+	}
+}
 
-		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
-				AccessToken:           tokenResp.AccessToken,
-				RefreshToken:          tokenResp.RefreshToken,
-				AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
-				RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
-				UserID:                acct.UserID,
-				InstallationID:        acct.InstallationID,
-			})
-		})
-		if err != nil {
-			s.slog().ErrorContext(ctx, "failed to save renewed GitHub tokens",
-				"user_id", acct.UserID,
-				"installation_id", acct.InstallationID,
-				"error", err,
-			)
-			continue
-		}
-
-		s.slog().InfoContext(ctx, "renewed GitHub token",
+func (s *Server) renewOneGitHubToken(ctx context.Context, acct exedb.GithubAccount) {
+	tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to refresh GitHub token",
 			"user_id", acct.UserID,
 			"github_login", acct.GitHubLogin,
 			"installation_id", acct.InstallationID,
+			"error", err,
 		)
+		return
 	}
+
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+			AccessToken:           tokenResp.AccessToken,
+			RefreshToken:          tokenResp.RefreshToken,
+			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
+			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
+			UserID:                acct.UserID,
+			InstallationID:        acct.InstallationID,
+		})
+	})
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to save renewed GitHub tokens",
+			"user_id", acct.UserID,
+			"installation_id", acct.InstallationID,
+			"error", err,
+		)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "renewed GitHub token",
+		"user_id", acct.UserID,
+		"github_login", acct.GitHubLogin,
+		"installation_id", acct.InstallationID,
+	)
 }

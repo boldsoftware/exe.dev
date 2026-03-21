@@ -34,6 +34,12 @@ SET access_token = ?,
     refresh_token_expires_at = ?
 WHERE user_id = ? AND installation_id = ?;
 
+-- name: ListAllGitHubAccounts :many
+SELECT ga.*, u.email
+FROM github_accounts ga
+JOIN users u ON u.user_id = ga.user_id
+ORDER BY ga.token_renewed_at DESC NULLS LAST;
+
 -- name: ListGitHubAccountsNeedingRenewal :many
 SELECT * FROM github_accounts
 WHERE refresh_token != ''

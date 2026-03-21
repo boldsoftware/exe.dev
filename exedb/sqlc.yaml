@@ -37,6 +37,14 @@ sql:
             go_type: "bool"
           - column: "invite_codes.is_batch"
             go_type: "bool"
+          - column: "github_accounts.access_token_expires_at"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "github_accounts.refresh_token_expires_at"
+            go_type:
+              type: "string"
+              pointer: true
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

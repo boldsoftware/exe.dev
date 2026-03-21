@@ -522,9 +522,10 @@ type Server struct {
 	apnsSandbox    *apns.Client
 
 	// GitHub App for installation flow
-	githubApp      *githubapp.Client
-	githubSetupsMu sync.RWMutex
-	githubSetups   map[string]*GitHubSetup // state -> setup
+	githubApp       *githubapp.Client
+	githubSetupsMu  sync.RWMutex
+	githubSetups    map[string]*GitHubSetup // state -> setup
+	githubRefreshMu sync.Mutex              // serializes token refreshes to avoid rotating the same refresh token concurrently
 
 	// Cache for GitHub installation access tokens (minted by exed).
 	ghTokenCacheMu sync.Mutex
