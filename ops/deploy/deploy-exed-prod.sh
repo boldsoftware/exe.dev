@@ -165,6 +165,10 @@ else
 fi
 echo ""
 
+# Get the previous binary version for rollback instructions
+PREV_BINARY=$(ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" "readlink -f ~/exed.latest | xargs basename" 2>/dev/null || echo "unknown")
+PREV_TIMESTAMP=$(echo "$PREV_BINARY" | sed 's/^exed\.//')
+
 # Show rollback instructions BEFORE restarting the service
 echo ""
 echo -e "${YELLOW}==========================================="
@@ -176,7 +180,7 @@ echo ""
 echo "Binary rollback:"
 echo "  ssh ubuntu@$INSTANCE_NAME"
 echo "  ls -la ~/exed.*  # list all binary versions"
-echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
+echo "  sudo ln -sf ~/$PREV_BINARY ~/exed.latest"
 echo "  sudo systemctl restart exed"
 echo ""
 echo "Rollback with DB restore:"
@@ -187,8 +191,8 @@ echo "  sudo systemctl stop exed"
 echo "  mv ~/exe.db ~/exe.db.broken"
 echo "  mv ~/exe.db-wal ~/exe.db.broken-wal 2>/dev/null || true"
 echo "  mv ~/exe.db-shm ~/exe.db.broken-shm 2>/dev/null || true"
-echo "  zstd -d ~/exe.db.TIMESTAMP.sql.zst -c | sqlite3 ~/exe.db"
-echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
+echo "  zstd -d ~/exe.db.$PREV_TIMESTAMP.sql.zst -c | sqlite3 ~/exe.db"
+echo "  sudo ln -sf ~/$PREV_BINARY ~/exed.latest"
 echo "  sudo systemctl start exed"
 echo ""
 echo -e "${YELLOW}==========================================="
