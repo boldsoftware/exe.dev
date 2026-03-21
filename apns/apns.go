@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	BundleID           = "dev.exe.app"
+	BundleID           = "dev.exe.exe-dev"
 	tokenRefreshPeriod = 50 * time.Minute
 	productionURL      = "https://api.push.apple.com"
 	sandboxURL         = "https://api.sandbox.push.apple.com"
