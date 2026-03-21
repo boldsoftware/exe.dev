@@ -424,7 +424,6 @@ EOF
         --block-device-mappings \
         "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
         "DeviceName=/dev/xvdf,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
-        "DeviceName=/dev/xvdg,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
         --query 'Instances[0].InstanceId' \
         --output text \
@@ -439,14 +438,9 @@ EOF
         --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/sda1`].Ebs.VolumeId' \
         --output text \
         --region ${REGION})
-    BACKUP_VOLUME_1_ID=$(aws ec2 describe-instances \
+    BACKUP_VOLUME_ID=$(aws ec2 describe-instances \
         --instance-ids ${INSTANCE_ID} \
         --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
-        --output text \
-        --region ${REGION})
-    BACKUP_VOLUME_2_ID=$(aws ec2 describe-instances \
-        --instance-ids ${INSTANCE_ID} \
-        --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdg`].Ebs.VolumeId' \
         --output text \
         --region ${REGION})
 
@@ -454,12 +448,10 @@ EOF
         aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
         echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
     fi
-    for BVOL_ID in "$BACKUP_VOLUME_1_ID" "$BACKUP_VOLUME_2_ID"; do
-        if [ -n "$BVOL_ID" ] && [ "$BVOL_ID" != "None" ]; then
-            aws ec2 create-tags --resources ${BVOL_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
-            echo "Tagged backup volume ${BVOL_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
-        fi
-    done
+    if [ -n "$BACKUP_VOLUME_ID" ] && [ "$BACKUP_VOLUME_ID" != "None" ]; then
+        aws ec2 create-tags --resources ${BACKUP_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
+        echo "Tagged backup volume ${BACKUP_VOLUME_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
+    fi
 
     # Wait for instance to be running
     echo "Waiting for instance to start..."
@@ -675,18 +667,11 @@ for dev in "${EBS_DATA_DEVICES[@]}"; do
 done
 EBS_DATA_DEVICES=("${RESOLVED_EBS[@]}")
 
-# Create backup pool from EBS volumes (striped for throughput)
+# Create backup pool from EBS volume
 echo ""
 echo "=== Setting up ZFS backup pool ==="
-if [ ${#EBS_DATA_DEVICES[@]} -ge 2 ]; then
-  echo "Creating backup pool (striped) from ${#EBS_DATA_DEVICES[@]} EBS volumes: ${EBS_DATA_DEVICES[*]}"
-  sudo zpool create -o ashift=12 -m none backup "${EBS_DATA_DEVICES[@]}"
-  sudo zfs set compression=lz4 backup
-  sudo zfs set atime=off backup
-  echo "Backup pool ready:"
-  zpool status backup
-elif [ ${#EBS_DATA_DEVICES[@]} -eq 1 ]; then
-  echo "Creating backup pool from single EBS volume: ${EBS_DATA_DEVICES[0]}"
+if [ ${#EBS_DATA_DEVICES[@]} -ge 1 ]; then
+  echo "Creating backup pool from EBS volume: ${EBS_DATA_DEVICES[0]}"
   sudo zpool create -o ashift=12 -m none backup "${EBS_DATA_DEVICES[0]}"
   sudo zfs set compression=lz4 backup
   sudo zfs set atime=off backup
@@ -981,7 +966,7 @@ else
     echo "  - Cloud Hypervisor"
     echo "  - Swap on 25% of each instance-store NVMe drive"
     echo "  - ZFS pool 'tank' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives"
-    echo "  - ZFS pool 'backup' (striped) on 2x EBS io2 volumes"
+    echo "  - ZFS pool 'backup' on EBS io2 volume"
     echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
 fi
 echo ""
