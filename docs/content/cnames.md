@@ -52,3 +52,13 @@ For apex domains like `example.com`, you need two DNS records.
    | Porkbun DNS      | ALIAS     | [docs](https://kb.porkbun.com/article/68-how-to-edit-dns-records) |
    | DigitalOcean DNS | A         | [docs](https://docs.digitalocean.com/products/networking/dns/) |
 
+## Cloudflare: Disable Proxy Mode or Configure Snippets
+
+If you use Cloudflare for DNS, they tend to default you
+to **Proxied** (orange cloud) rather than **DNS Only** (grey cloud).
+Cloudflare's proxy replaces your desired CNAME/ALIAS targets
+with Cloudflare IP addresses, and therefore breaks exe.dev's
+custom domain support. To fix this, either disable their
+proxy, or use Cloudflare Snippets (or Workers) to re-write
+the request to point to `vmname.exe.xyz`. Snippets are a paid
+feature.
