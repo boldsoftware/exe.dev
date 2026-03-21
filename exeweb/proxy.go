@@ -1063,8 +1063,9 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 				100 * time.Millisecond,
 				200 * time.Millisecond,
 			})
-			if err != nil {
-				return nil, fmt.Errorf("SSH dial failed: %w", err)
+			// DialWithRetries guarantees (conn, nil) on success; check conn for defensiveness.
+			if conn == nil {
+				return nil, errors.Join(errors.New("SSH dial failed"), err)
 			}
 			return &countingConn{Conn: conn, metrics: ps.HTTPMetrics}, nil
 		},

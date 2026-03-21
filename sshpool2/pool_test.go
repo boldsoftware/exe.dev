@@ -1149,13 +1149,12 @@ func TestDialWithRetriesRetriesDialThroughClient(t *testing.T) {
 
 	// DialWithRetries should retry the entire operation (connect + dialThroughClient),
 	// so it should eventually succeed after the first 2 port-forward failures.
-	// Note: err may be non-nil even on success (contains errors from prior attempts).
 	conn, err := pool.DialWithRetries(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config, retries)
 	if conn == nil {
 		t.Fatalf("DialWithRetries failed to get connection: %v", err)
 	}
 	if err != nil {
-		t.Logf("DialWithRetries succeeded with prior errors (expected): %v", err)
+		t.Errorf("DialWithRetries returned non-nil error on success: %v", err)
 	}
 	conn.Close()
 
@@ -1309,16 +1308,14 @@ func TestDialWithRetriesStaleConnectionRecovery(t *testing.T) {
 	t.Log("Closed underlying SSH client to simulate stale connection")
 
 	// Step 3: Try to dial with retries - should recover within single call
-	// Note: err may be non-nil even on success (contains errors from prior attempts).
 	retries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
 	conn2, err := pool.DialWithRetries(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config, retries)
 	if conn2 == nil {
 		t.Fatalf("DialWithRetries failed to recover from stale connection: %v", err)
 	}
 	if err != nil {
-		t.Logf("DialWithRetries recovered with prior errors (expected): %v", err)
+		t.Errorf("DialWithRetries returned non-nil error on success: %v", err)
 	}
-	t.Log("DialWithRetries recovered from stale connection within single call")
 	conn2.Close()
 }
 
@@ -2546,15 +2543,13 @@ func TestDialWithRetriesErrStaleConnectionRecovery(t *testing.T) {
 		t.Fatalf("DialWithRetries failed to recover from stale connection: %v", err)
 	}
 	defer conn2.Close()
-
-	// Joined error chain should contain ErrStaleConnection from the first attempt.
-	if err == nil {
-		t.Fatal("expected joined error containing ErrStaleConnection from first attempt")
+	if err != nil {
+		t.Errorf("DialWithRetries returned non-nil error on success: %v", err)
 	}
-	if !errors.Is(err, ErrStaleConnection) {
-		t.Fatalf("expected ErrStaleConnection in joined error chain, got: %v", err)
-	}
-	t.Logf("DialWithRetries recovered with prior errors: %v", err)
+	// Success itself proves stale detection + eviction + reconnection worked:
+	// the test setup guarantees the second channel on the original connection
+	// hangs, so the only path to a valid conn is stale-detection → eviction →
+	// fresh SSH connection.
 }
 
 // TestRunCommandStaleConnectionEviction verifies that when NewSession hangs

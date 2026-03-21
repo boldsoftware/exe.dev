@@ -185,19 +185,18 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 
 // DialWithRetries dials with retries on the entire operation (connect + port-forward).
 //
+// On success it returns (conn, nil); on failure it returns (nil, err) where err
+// joins all attempt errors.
+//
 // Metrics wrapper: records one observation for the entire retry sequence, not
 // per attempt. The metric reflects the caller-visible outcome: if a connection
-// was obtained (conn != nil), the result is "success" regardless of errors from
-// prior retried attempts (which are joined into the returned error for caller
-// diagnostics but don't represent the final outcome). Per-attempt visibility
+// was obtained (conn != nil), the result is "success". Per-attempt visibility
 // comes from cache misses in sshpool_cache_total.
 //
 // The internal retry loop calls dialContext (not the exported DialContext), so
 // retries do not double-count in sshpool_operation_total.
 //
 // This is safe because dialing is idempotent.
-// The returned error may contain errors from prior attempts, even on success.
-// (In contrast, [Pool.RunCommand] always drops connect errors.)
 //
 // Context deadlines shorter than the effective stale timeout (500ms floor,
 // scaled by RTT) disable stale-connection detection; see staleTimeout and
@@ -205,15 +204,12 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
 	start := time.Now()
 	conn, err := p.dialWithRetries(ctx, network, addr, host, user, port, signer, config, retries)
-	// dialWithRetries returns (conn, joinedPriorErrors) on success — conn is
-	// non-nil but err contains errors from retried attempts. The metric must
-	// reflect the caller-visible outcome (success), not the prior-attempt noise.
 	if conn != nil {
 		p.recordOp("DialWithRetries", nil, time.Since(start))
-	} else {
-		p.recordOp("DialWithRetries", err, time.Since(start))
+		return conn, nil // Drop prior-attempt errors; they're noise.
 	}
-	return conn, err
+	p.recordOp("DialWithRetries", err, time.Since(start))
+	return nil, err
 }
 
 // RunCommand runs a command on a remote host through a pooled SSH connection.
