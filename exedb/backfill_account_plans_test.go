@@ -62,13 +62,13 @@ func TestBackfillAccountPlans(t *testing.T) {
 			createdAt: oldDate, wantPlan: "grandfathered",
 		},
 		{
-			userID: "usr_sc_indiv001", email: "sc-indiv@example.com",
+			userID:           "usr_sc_indiv001", email: "sc-indiv@example.com",
 			createdAt:        newDate,
 			billingEventType: strPtrVal("active"),
 			wantPlan:         "individual",
 		},
 		{
-			userID: "usr_sc_cancl001", email: "sc-cancel@example.com",
+			userID:           "usr_sc_cancl001", email: "sc-cancel@example.com",
 			createdAt:        newDate,
 			billingEventType: strPtrVal("canceled"),
 			wantPlan:         "basic",

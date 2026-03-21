@@ -2,12 +2,12 @@ package exedb_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"exe.dev/exedb"
 	"exe.dev/tslog"
+	"database/sql"
 	_ "modernc.org/sqlite"
 )
 
