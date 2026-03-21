@@ -129,7 +129,7 @@ func (t *TieredStorageManager) PoolForInstance(ctx context.Context, id string) (
 			}
 		}
 	}
-	return "", nil, fmt.Errorf("instance %s not found on any storage pool", id)
+	return "", nil, fmt.Errorf("instance %s not found on any storage pool: %w", id, api.ErrNotFound)
 }
 
 // PoolName returns the pool name for a given StorageManager, or empty string if not found.

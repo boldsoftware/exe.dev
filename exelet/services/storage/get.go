@@ -15,6 +15,9 @@ func (s *Service) GetFilesystem(ctx context.Context, req *api.GetFilesystemReque
 	// Resolve correct pool for tiered storage
 	sm, err := exeletstorage.ResolveForID(ctx, s.context.StorageManager, req.ID)
 	if err != nil {
+		if errors.Is(err, api.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "filesystem %s", req.ID)
+		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	i, err := sm.Get(ctx, req.ID)

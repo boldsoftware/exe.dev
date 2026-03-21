@@ -395,7 +395,9 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		reader.Close()
 		return fmt.Errorf("receive pre-copy: %w", err)
 	}
-	reader.Close()
+	if err := reader.Close(); err != nil {
+		return fmt.Errorf("send pre-copy: %w", err)
+	}
 
 	op.setProgress(0.4)
 
@@ -434,7 +436,9 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		reader.Close()
 		return fmt.Errorf("receive incremental: %w", err)
 	}
-	reader.Close()
+	if err := reader.Close(); err != nil {
+		return fmt.Errorf("send incremental: %w", err)
+	}
 
 	op.setProgress(0.6)
 

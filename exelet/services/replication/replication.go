@@ -592,9 +592,12 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 		return nil, fmt.Errorf("volume_id is required")
 	}
 
+	// Resolve the pool that holds this volume. For DR restores the volume
+	// may no longer exist locally, so fall back to the primary pool which
+	// can still derive the dataset name.
 	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
 	if err != nil {
-		return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+		sm = s.context.StorageManager
 	}
 	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset == "" {
@@ -803,10 +806,12 @@ func (s *Service) ListSnapshots(ctx context.Context, req *api.ListSnapshotsReque
 		VolumeID: req.VolumeID,
 	}
 
-	// Get local snapshots (resolve correct pool for tiered storage)
+	// Get local snapshots (resolve correct pool for tiered storage).
+	// If the volume no longer exists locally, skip local snapshot listing
+	// but still return remote snapshots for DR visibility.
 	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
 	if err != nil {
-		return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+		sm = s.context.StorageManager
 	}
 	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset != "" {
