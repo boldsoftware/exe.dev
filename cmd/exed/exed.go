@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -18,11 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"database/sql"
-
 	"exe.dev/billing"
-	"exe.dev/exedb"
 	"exe.dev/execore"
+	"exe.dev/exedb"
 	"exe.dev/logging"
 	"exe.dev/stage"
 	"exe.dev/version"
