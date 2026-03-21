@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,32 @@ func (op *TierMigrationOp) setProgress(p float32) {
 	op.mu.Lock()
 	op.Progress = p
 	op.mu.Unlock()
+}
+
+// progressReader wraps an io.Reader and reports byte-level progress as a
+// fraction between progressMin and progressMax. totalBytes is the estimated
+// stream size; if zero, no intermediate updates are emitted.
+type progressReader struct {
+	r           io.Reader
+	read        int64
+	totalBytes  int64
+	progressMin float32
+	progressMax float32
+	op          *TierMigrationOp
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	if n > 0 && pr.totalBytes > 0 {
+		pr.read += int64(n)
+		frac := float64(pr.read) / float64(pr.totalBytes)
+		if frac > 1 {
+			frac = 1
+		}
+		progress := pr.progressMin + float32(frac)*float32(pr.progressMax-pr.progressMin)
+		pr.op.setProgress(progress)
+	}
+	return n, err
 }
 
 func (op *TierMigrationOp) complete(err error) {
@@ -142,7 +169,7 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 	targetSM, _ := tiered.Pool(req.TargetPool)
 	if _, err := targetSM.Get(ctx, req.InstanceID); err == nil {
 		return nil, status.Errorf(codes.AlreadyExists,
-			"instance %s already has a dataset on target pool %s (possible leftover from a failed migration); delete it before retrying",
+			"instance %s already has a dataset on target pool %s; delete it before retrying",
 			req.InstanceID, req.TargetPool)
 	}
 
@@ -269,15 +296,20 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 
 	op.setProgress(0.2)
 
+	// Get filesystem size for progress estimation
+	var estimatedBytes int64
+	if fs, err := srcManager.Get(ctx, instanceID); err == nil && fs.Size > 0 {
+		estimatedBytes = int64(fs.Size)
+	}
+
 	// Full ZFS send/recv locally (pipe, no gRPC)
 	reader, err := srcManager.SendSnapshot(ctx, snapName, false, "")
 	if err != nil {
 		return fmt.Errorf("send snapshot: %w", err)
 	}
 
-	op.setProgress(0.3)
-
-	if err := dstManager.ReceiveSnapshot(ctx, instanceID, reader); err != nil {
+	pr := &progressReader{r: reader, totalBytes: estimatedBytes, progressMin: 0.2, progressMax: 0.7, op: op}
+	if err := dstManager.ReceiveSnapshot(ctx, instanceID, pr); err != nil {
 		reader.Close()
 		return fmt.Errorf("receive snapshot: %w", err)
 	}
@@ -386,12 +418,19 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 
 	op.setProgress(0.1)
 
+	// Get filesystem size for progress estimation
+	var estimatedBytes int64
+	if fs, err := srcManager.Get(ctx, instanceID); err == nil && fs.Size > 0 {
+		estimatedBytes = int64(fs.Size)
+	}
+
 	// Full send of pre-copy snapshot
 	reader, err := srcManager.SendSnapshot(ctx, preSnapName, false, "")
 	if err != nil {
 		return fmt.Errorf("send pre-copy: %w", err)
 	}
-	if err := dstManager.ReceiveSnapshot(ctx, instanceID, reader); err != nil {
+	preCopyPR := &progressReader{r: reader, totalBytes: estimatedBytes, progressMin: 0.1, progressMax: 0.4, op: op}
+	if err := dstManager.ReceiveSnapshot(ctx, instanceID, preCopyPR); err != nil {
 		reader.Close()
 		return fmt.Errorf("receive pre-copy: %w", err)
 	}
@@ -592,16 +631,22 @@ func (s *Service) getPoolInfo(ctx context.Context, poolName string, primary bool
 		Primary: primary,
 	}
 
-	// Count instances on this pool
+	// Count VM instances on this pool (datasets with "vm" prefix)
 	datasets, err := sm.ListDatasets(ctx)
 	if err == nil {
-		tier.InstanceCount = uint32(len(datasets))
+		var count uint32
+		for _, ds := range datasets {
+			if strings.HasPrefix(ds, "vm") {
+				count++
+			}
+		}
+		tier.InstanceCount = count
 	}
 
 	// Get pool capacity via zpool get
 	size, used, avail, err := getZpoolCapacity(ctx, poolName)
 	if err != nil {
-		s.log.DebugContext(ctx, "failed to get zpool capacity", "pool", poolName, "error", err)
+		s.log.WarnContext(ctx, "failed to get zpool capacity", "pool", poolName, "error", err)
 	} else {
 		tier.SizeBytes = size
 		tier.UsedBytes = used
@@ -616,17 +661,18 @@ func getZpoolCapacity(ctx context.Context, pool string) (size, used, avail uint6
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// zpool get -Hp size,alloc,free <pool>
+	// zpool get -H -p size,allocated,free <pool>
 	// Returns three lines:
-	//   pool  size   <bytes>  -
-	//   pool  alloc  <bytes>  -
-	//   pool  free   <bytes>  -
-	cmd := exec.CommandContext(ctx, "zpool", "get", "-Hp", "size,alloc,free", pool)
+	//   pool  size       <bytes>  -
+	//   pool  allocated  <bytes>  -
+	//   pool  free       <bytes>  -
+	cmd := exec.CommandContext(ctx, "zpool", "get", "-H", "-p", "size,allocated,free", pool)
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("zpool get failed for %s: %w", pool, err)
 	}
 
+	var parsed int
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
@@ -639,11 +685,17 @@ func getZpoolCapacity(ctx context.Context, pool string) (size, used, avail uint6
 		switch fields[1] {
 		case "size":
 			size = val
-		case "alloc":
+			parsed++
+		case "allocated":
 			used = val
+			parsed++
 		case "free":
 			avail = val
+			parsed++
 		}
+	}
+	if parsed == 0 {
+		return 0, 0, 0, fmt.Errorf("zpool get for %s returned no parseable values: %s", pool, strings.TrimSpace(string(output)))
 	}
 	return size, used, avail, nil
 }

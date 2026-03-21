@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -50,6 +51,15 @@ var statusCommand = &cli.Command{
 			return nil
 		}
 
+		// Sort by start time, then by state with "completed" last
+		sort.Slice(resp.Operations, func(i, j int) bool {
+			a, b := resp.Operations[i], resp.Operations[j]
+			if a.StartedAt != b.StartedAt {
+				return a.StartedAt < b.StartedAt
+			}
+			return stateOrder(a.State) < stateOrder(b.State)
+		})
+
 		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(tw, "OP ID\tINSTANCE\tFROM\tTO\tSTATE\tPROGRESS\tSTARTED")
 		for _, op := range resp.Operations {
@@ -81,4 +91,19 @@ func truncateName(name string) string {
 		return name[:36]
 	}
 	return name
+}
+
+func stateOrder(state string) int {
+	switch state {
+	case "migrating":
+		return 0
+	case "pending":
+		return 1
+	case "failed":
+		return 2
+	case "completed":
+		return 3
+	default:
+		return 4
+	}
 }

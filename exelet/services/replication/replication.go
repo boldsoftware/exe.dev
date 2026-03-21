@@ -20,6 +20,7 @@ import (
 	"exe.dev/exelet/storage"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/replication/v1"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
 const (
@@ -594,9 +595,13 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 
 	// Resolve the pool that holds this volume. For DR restores the volume
 	// may no longer exist locally, so fall back to the primary pool which
-	// can still derive the dataset name.
+	// can still derive the dataset name. Transient or split-brain errors
+	// must still fail closed.
 	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
 	if err != nil {
+		if !errors.Is(err, storageapi.ErrNotFound) {
+			return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+		}
 		sm = s.context.StorageManager
 	}
 	dataset := sm.GetDatasetName(req.VolumeID)
@@ -808,9 +813,13 @@ func (s *Service) ListSnapshots(ctx context.Context, req *api.ListSnapshotsReque
 
 	// Get local snapshots (resolve correct pool for tiered storage).
 	// If the volume no longer exists locally, skip local snapshot listing
-	// but still return remote snapshots for DR visibility.
+	// but still return remote snapshots for DR visibility. Transient or
+	// split-brain errors must still fail closed.
 	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
 	if err != nil {
+		if !errors.Is(err, storageapi.ErrNotFound) {
+			return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+		}
 		sm = s.context.StorageManager
 	}
 	dataset := sm.GetDatasetName(req.VolumeID)
