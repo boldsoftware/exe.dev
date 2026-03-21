@@ -207,6 +207,17 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		wp.log.Debug("using incremental send", "volume_id", volume.LocalID, "base", baseSnapshot)
 	} else {
 		wp.log.Debug("using full send", "volume_id", volume.LocalID)
+		// If remote has snapshots but no common base was found, the ancestry
+		// has diverged (e.g. after a storage tier migration). Delete the remote
+		// dataset so the full send can succeed.
+		if len(remoteSnapshots) > 0 {
+			wp.log.Warn("ancestry diverged, deleting remote dataset before full send", "volume_id", volume.LocalID, "remote_snapshots", len(remoteSnapshots))
+			if deleter, ok := wp.target.(VolumeDeleter); ok {
+				if err := deleter.DeleteVolume(wp.ctx, volume.ID); err != nil {
+					wp.log.Warn("failed to delete diverged remote volume", "volume_id", volume.LocalID, "error", err)
+				}
+			}
+		}
 	}
 
 	// Send with retries

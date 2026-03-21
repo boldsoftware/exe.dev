@@ -112,7 +112,10 @@ func (m *ResourceManager) applyThrottling(ctx context.Context, req *api.Throttle
 			return nil, status.Error(codes.FailedPrecondition, "storage manager not available for IO throttling")
 		}
 
-		sm := storage.ResolveForID(ctx, m.context.StorageManager, req.VmID)
+		sm, err := storage.ResolveForID(ctx, m.context.StorageManager, req.VmID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to resolve storage for IO throttle: %v", err)
+		}
 		fs, err := sm.Get(ctx, req.VmID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get filesystem for IO throttle: %v", err)
@@ -159,9 +162,11 @@ func (m *ResourceManager) clearThrottling(ctx context.Context, vmID, cgroupPath 
 
 	// Clear IO throttle if storage manager is available
 	if m.context != nil && m.context.StorageManager != nil {
-		sm := storage.ResolveForID(ctx, m.context.StorageManager, vmID)
-		fs, err := sm.Get(ctx, vmID)
+		sm, err := storage.ResolveForID(ctx, m.context.StorageManager, vmID)
 		if err != nil {
+			m.log.WarnContext(ctx, "failed to resolve storage for IO throttle clear", "vm_id", vmID, "error", err)
+			errs = append(errs, fmt.Sprintf("io (resolve storage): %v", err))
+		} else if fs, err := sm.Get(ctx, vmID); err != nil {
 			m.log.WarnContext(ctx, "failed to get filesystem for IO throttle clear", "vm_id", vmID, "error", err)
 			errs = append(errs, fmt.Sprintf("io (get filesystem): %v", err))
 		} else if majMin, err := getDeviceMajorMinor(fs.Path); err != nil {

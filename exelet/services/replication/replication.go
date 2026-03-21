@@ -426,7 +426,11 @@ func (s *Service) cleanOrphanedVMDatasets(ctx context.Context, datasetIDs []stri
 			continue
 		}
 		s.log.InfoContext(ctx, "deleting orphaned VM dataset", "id", id)
-		sm := storage.ResolveForID(ctx, s.context.StorageManager, id)
+		sm, err := storage.ResolveForID(ctx, s.context.StorageManager, id)
+		if err != nil {
+			s.log.ErrorContext(ctx, "failed to resolve storage for orphaned VM dataset", "id", id, "error", err)
+			continue
+		}
 		if err := sm.Delete(ctx, id); err != nil {
 			s.log.ErrorContext(ctx, "failed to delete orphaned VM dataset", "id", id, "error", err)
 		}
@@ -492,7 +496,10 @@ func (s *Service) GetStatus(ctx context.Context, req *api.GetStatusRequest) (*ap
 func (s *Service) TriggerReplication(ctx context.Context, req *api.TriggerReplicationRequest) (*api.TriggerReplicationResponse, error) {
 	if req.VolumeID != "" {
 		// Replicate specific volume - verify dataset exists (resolve correct pool)
-		sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+		sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+		}
 		dataset := sm.GetDatasetName(req.VolumeID)
 		if dataset == "" {
 			return nil, fmt.Errorf("volume %s has no dataset", req.VolumeID)
@@ -585,7 +592,10 @@ func (s *Service) RestoreVolume(ctx context.Context, req *api.RestoreVolumeReque
 		return nil, fmt.Errorf("volume_id is required")
 	}
 
-	sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+	}
 	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset == "" {
 		return nil, fmt.Errorf("volume %s has no dataset configured", req.VolumeID)
@@ -794,7 +804,10 @@ func (s *Service) ListSnapshots(ctx context.Context, req *api.ListSnapshotsReque
 	}
 
 	// Get local snapshots (resolve correct pool for tiered storage)
-	sm := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	sm, err := storage.ResolveForID(ctx, s.context.StorageManager, req.VolumeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve storage for %s: %w", req.VolumeID, err)
+	}
 	dataset := sm.GetDatasetName(req.VolumeID)
 	if dataset != "" {
 		localSnapshots, err := s.listLocalSnapshots(ctx, dataset)

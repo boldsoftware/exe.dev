@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	api "exe.dev/pkg/api/exe/storage/v1"
@@ -12,6 +14,7 @@ import (
 type mockStorageManager struct {
 	name     string
 	datasets map[string]*api.Filesystem // id -> Filesystem
+	getErr   error                      // if set, Get() returns this for missing datasets instead of ErrNotFound
 }
 
 func newMockSM(name string, instanceIDs ...string) *mockStorageManager {
@@ -31,6 +34,9 @@ func (m *mockStorageManager) Type() string { return "mock" }
 func (m *mockStorageManager) Get(_ context.Context, id string) (*api.Filesystem, error) {
 	fs, ok := m.datasets[id]
 	if !ok {
+		if m.getErr != nil {
+			return nil, m.getErr
+		}
 		return nil, api.ErrNotFound
 	}
 	return fs, nil
@@ -342,6 +348,69 @@ func TestTieredStorageManager_PoolForInstance_BackupPoolLastResort(t *testing.T)
 	}
 	if sm != backup {
 		t.Error("PoolForInstance(vm-1) fallback returned wrong manager")
+	}
+}
+
+func TestTieredStorageManager_PoolForInstance_SplitBrain(t *testing.T) {
+	// If the same VM exists on two non-backup pools, PoolForInstance must
+	// return an error to prevent silent split-brain.
+	primary := newMockSM("tank", "vm-1")
+	nvme := newMockSM("nvme", "vm-1")
+
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"nvme": nvme,
+	})
+
+	ctx := context.Background()
+	_, _, err := tiered.PoolForInstance(ctx, "vm-1")
+	if err == nil {
+		t.Fatal("PoolForInstance should return error when VM exists on multiple pools")
+	}
+	if !strings.Contains(err.Error(), "split-brain") {
+		t.Errorf("error should mention split-brain, got: %v", err)
+	}
+
+	// Backup pool duplicates should NOT trigger the split-brain check.
+	backup := newMockSM("backup", "vm-2")
+	block := newMockSM("block", "vm-2")
+	tiered2 := NewTieredStorageManager("tank", newMockSM("tank"), map[string]StorageManager{
+		"backup": backup,
+		"block":  block,
+	})
+	tiered2.SetBackupPool("backup")
+
+	name, _, err := tiered2.PoolForInstance(ctx, "vm-2")
+	if err != nil {
+		t.Fatalf("PoolForInstance should succeed when duplicate is on backup pool, got: %v", err)
+	}
+	if name != "block" {
+		t.Errorf("PoolForInstance pool = %q, want %q", name, "block")
+	}
+}
+
+func TestTieredStorageManager_PoolForInstance_TransientError(t *testing.T) {
+	// A non-ErrNotFound error from Get() must be surfaced, not swallowed.
+	transientErr := errors.New("zfs I/O error")
+	primary := newMockSM("tank")
+	// Inject a transient error into the primary pool's mock.
+	primary.getErr = transientErr
+
+	nvme := newMockSM("nvme", "vm-1")
+
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"nvme": nvme,
+	})
+
+	ctx := context.Background()
+
+	// Even though vm-1 exists on nvme, the transient error on primary
+	// must cause PoolForInstance to fail closed.
+	_, _, err := tiered.PoolForInstance(ctx, "vm-1")
+	if err == nil {
+		t.Fatal("PoolForInstance should return error on transient failure")
+	}
+	if !strings.Contains(err.Error(), "zfs I/O error") {
+		t.Errorf("error should contain transient error, got: %v", err)
 	}
 }
 

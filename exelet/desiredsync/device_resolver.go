@@ -22,7 +22,10 @@ type StorageDeviceResolver struct {
 // ResolveDevice returns the "MAJ:MIN" string for a VM's block device.
 func (r *StorageDeviceResolver) ResolveDevice(ctx context.Context, vmID string) (string, error) {
 	// Resolve correct pool for tiered storage — the VM may be on any tier.
-	sm := storage.ResolveForID(ctx, r.StorageManager, vmID)
+	sm, err := storage.ResolveForID(ctx, r.StorageManager, vmID)
+	if err != nil {
+		return "", fmt.Errorf("resolve storage for %s: %w", vmID, err)
+	}
 	fs, err := sm.Get(ctx, vmID)
 	if err != nil {
 		return "", fmt.Errorf("get filesystem for %s: %w", vmID, err)

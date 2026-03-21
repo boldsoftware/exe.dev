@@ -13,7 +13,10 @@ import (
 
 func (s *Service) GetFilesystem(ctx context.Context, req *api.GetFilesystemRequest) (*api.GetFilesystemResponse, error) {
 	// Resolve correct pool for tiered storage
-	sm := exeletstorage.ResolveForID(ctx, s.context.StorageManager, req.ID)
+	sm, err := exeletstorage.ResolveForID(ctx, s.context.StorageManager, req.ID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 	i, err := sm.Get(ctx, req.ID)
 	if errors.Is(err, api.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "filesystem %s", req.ID)
