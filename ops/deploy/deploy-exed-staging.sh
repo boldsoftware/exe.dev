@@ -134,6 +134,29 @@ echo "Backing up database..."
 sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$TIMESTAMP.sql.zst
 EOF
 
+# Preflight migration check: only run if there are new migrations
+LATEST_LOCAL=$(ls "$REPO_ROOT"/exedb/schema/*.sql | xargs -I{} basename {} | grep -oE '^[0-9]+' | sort -n | tail -1)
+LATEST_REMOTE=$(ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" "sqlite3 'file:exe.db?mode=ro' 'SELECT MAX(migration_number) FROM migrations;'" 2>/dev/null || echo "0")
+
+if [ "$LATEST_LOCAL" -gt "$LATEST_REMOTE" ]; then
+    echo -e "${YELLOW}New migrations detected (remote: $LATEST_REMOTE, local: $LATEST_LOCAL). Running preflight...${NC}"
+    ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<'PREFLIGHT'
+sqlite3 ~/exe.db ".backup /tmp/preflight.db"
+if ~/$BINARY_NAME --preflight --db /tmp/preflight.db --stage staging; then
+    echo "✓ Migration preflight passed"
+else
+    echo "✗ Migration preflight FAILED"
+    rm -f /tmp/preflight.db
+    exit 1
+fi
+rm -f /tmp/preflight.db
+PREFLIGHT
+    echo -e "${GREEN}✓ Migration preflight passed${NC}"
+else
+    echo -e "${GREEN}✓ No new migrations (remote: $LATEST_REMOTE, local: $LATEST_LOCAL)${NC}"
+fi
+echo ""
+
 # Show rollback instructions BEFORE restarting the service
 echo ""
 echo -e "${YELLOW}==========================================="

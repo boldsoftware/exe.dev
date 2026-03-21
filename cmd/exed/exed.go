@@ -18,7 +18,10 @@ import (
 	"strings"
 	"time"
 
+	"database/sql"
+
 	"exe.dev/billing"
+	"exe.dev/exedb"
 	"exe.dev/execore"
 	"exe.dev/logging"
 	"exe.dev/stage"
@@ -49,6 +52,7 @@ func run() error {
 	// TODO(ian): Remove this unused flag when we are sure
 	// no script still uses it.
 	flag.String("gateway", "", "unused")
+	preflight := flag.Bool("preflight", false, "Run database migrations and exit (for preflight checks)")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (local/test only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet locally or on lima-exe-ctr (local/test only)")
@@ -66,6 +70,20 @@ func run() error {
 	env, err := stage.Parse(*stageName)
 	if err != nil {
 		return err
+	}
+
+	if *preflight {
+		slog.Info("preflight: running migrations", "db", *dbPath)
+		rawDB, err := sql.Open("sqlite3", *dbPath)
+		if err != nil {
+			return fmt.Errorf("failed to open database: %w", err)
+		}
+		defer rawDB.Close()
+		if err := exedb.RunMigrations(slog.Default(), rawDB); err != nil {
+			return fmt.Errorf("preflight failed: %w", err)
+		}
+		slog.Info("preflight: ok")
+		return nil
 	}
 
 	// Disable LMTP if the stage doesn't enable it
