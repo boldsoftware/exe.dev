@@ -369,7 +369,7 @@ func (m *Manager) buildArtifact(ctx context.Context, d *deploy, process, sha str
 
 	m.log.Info("building", "process", process, "sha", sha[:12], "target", recipe.BuildTarget)
 	buildStart := time.Now()
-	buildCmd := exec.CommandContext(ctx, "go", "build", "-v", "-o", outputPath, recipe.BuildTarget)
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-v", "-o", outputPath, recipe.BuildTarget)
 	buildCmd.Dir = buildRoot
 	buildCmd.Env = buildEnv(recipe.CGO)
 	if out, err := m.runCmd(buildCmd, d, "compiling: "); err != nil {
