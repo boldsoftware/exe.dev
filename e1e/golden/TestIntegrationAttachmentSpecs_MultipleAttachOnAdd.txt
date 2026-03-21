@@ -1,0 +1,22 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --name=multiint --target=https://example.com --header=X-Auth:secret --attach=vm:BOX_NAME --attach=auto:all
+
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --name=multiint --target=https://example.com --header=X-Auth:secret --attach=vm:BOX_NAME --attach=auto:all
+Added integration multiint
+
+Usage from a VM:
+  ssh BOX_NAME curl http://multiint.int.exe.cloud/
+PROMPT ▶ integrations list
+multiint  http-proxy  target=https://example.com header=X-Auth:secret  vm:BOX_NAME auto:all
+testint  http-proxy  target=https://example.com header=X-Auth:secret  (none)
+PROMPT ▶ integrations remove multiint
+Removed integration multiint
+PROMPT ▶ exit
+Goodbye!

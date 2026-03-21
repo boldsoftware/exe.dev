@@ -245,19 +245,81 @@
             color: #374151;
         }
 
-        .int-attach-dropdown {
-            display: none;
-            font-family: inherit;
-            font-size: 12px;
-            padding: 1px 4px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            color: #555;
+        .ms-dropdown {
+            position: fixed;
+            z-index: 10000;
+            min-width: 200px;
+            max-height: 260px;
             background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            font-size: 12px;
         }
 
-        .int-attach-dropdown.visible {
-            display: inline;
+        .ms-filter {
+            padding: 6px 8px;
+            border: none;
+            border-bottom: 1px solid #e5e7eb;
+            outline: none;
+            font-family: inherit;
+            font-size: 12px;
+            background: transparent;
+            color: #374151;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .ms-filter::placeholder {
+            color: #9ca3af;
+        }
+
+        .ms-options {
+            overflow-y: auto;
+            flex: 1;
+            padding: 4px 0;
+        }
+
+        .ms-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            color: #374151;
+        }
+
+        .ms-option:hover {
+            background: #f3f4f6;
+        }
+
+        .ms-option.ms-checked {
+            color: #065f46;
+            background: #f0fdf4;
+        }
+
+        .ms-option.ms-checked:hover {
+            background: #dcfce7;
+        }
+
+        .ms-option input[type="checkbox"] {
+            accent-color: #059669;
+            margin: 0;
+            pointer-events: none;
+        }
+
+        .ms-option.ms-hidden {
+            display: none;
+        }
+
+        .ms-empty {
+            padding: 8px;
+            color: #9ca3af;
+            text-align: center;
+            font-style: italic;
         }
 
         /* Command Modal Styles */
@@ -522,10 +584,40 @@
                 color: #f3f4f6;
             }
 
-            .int-attach-dropdown {
-                background: #2a2a2a;
+            .ms-dropdown {
+                background: #1f1f1f;
                 border-color: #444;
-                color: #9ca3af;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            }
+
+            .ms-filter {
+                border-bottom-color: #333;
+                color: #d1d5db;
+            }
+
+            .ms-filter::placeholder {
+                color: #6b7280;
+            }
+
+            .ms-option {
+                color: #d1d5db;
+            }
+
+            .ms-option:hover {
+                background: #2a2a2a;
+            }
+
+            .ms-option.ms-checked {
+                color: #86efac;
+                background: #052e16;
+            }
+
+            .ms-option.ms-checked:hover {
+                background: #064e3b;
+            }
+
+            .ms-empty {
+                color: #6b7280;
             }
 
             /* Command Modal */
@@ -647,12 +739,7 @@
                         <div class="int-row-info">
                             <div class="int-row-name">{{$ig.Name}}</div>
                             <div class="int-row-detail">{{range $i, $r := $ig.Repositories}}{{if $i}}, {{end}}{{$r}}{{end}}</div>
-                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $ig.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$ig.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="showAttachDropdown(this)" title="Attach">+</button><select class="int-attach-dropdown" onchange="if(this.value){integrationAttach({{$ig.Name}}, this.value); this.selectedIndex=0;} hideAttachDropdown(this);">
-                                <option value="">attach to…</option>
-                                <option value="auto:all">auto:all</option>
-                                {{range $.AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
-                                {{end}}{{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
-                                {{end}}</select></div>
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $ig.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$ig.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="openInlineMultiSelect(this, {{$ig.Name}}, [{{range $i, $a := $ig.Attachments}}{{if $i}},{{end}}'{{$a}}'{{end}}])" title="Attach">+</button></div>
                             {{if $ig.Repositories}}<div class="int-row-meta">git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git <button style="border: none; background: none; cursor: pointer; padding: 0; vertical-align: middle; color: #888;" onclick="copyToClipboard(this, 'git clone {{$.IntegrationScheme}}://{{$ig.Name}}.int.{{$.BoxHost}}/{{index $ig.Repositories 0}}.git')" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>{{end}}
                         </div>
                         <div class="int-row-actions">
@@ -681,12 +768,7 @@
                         <div class="int-row-info">
                             <div class="int-row-name">{{$hp.Name}}</div>
                             <div class="int-row-detail">{{$hp.Target}}{{if $hp.HasHeader}} · custom header{{end}}{{if $hp.HasBasicAuth}} · basic auth{{end}}</div>
-                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $hp.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$hp.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="showAttachDropdown(this)" title="Attach">+</button><select class="int-attach-dropdown" onchange="if(this.value){integrationAttach({{$hp.Name}}, this.value); this.selectedIndex=0;} hideAttachDropdown(this);">
-                                <option value="">attach to…</option>
-                                <option value="auto:all">auto:all</option>
-                                {{range $.AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
-                                {{end}}{{range $.Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}}</option>
-                                {{end}}</select></div>
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;">{{range $a := $hp.Attachments}}<span class="int-tag">{{$a}}<button class="int-tag-remove" onclick="integrationDetach({{$hp.Name}}, '{{$a}}')" title="Detach from {{$a}}">&times;</button></span>{{end}}<button class="int-tag-add-btn" onclick="openInlineMultiSelect(this, {{$hp.Name}}, [{{range $i, $a := $hp.Attachments}}{{if $i}},{{end}}'{{$a}}'{{end}}])" title="Attach">+</button></div>
                         </div>
                         <div class="int-row-actions">
                             <button class="btn btn-danger btn-small" onclick="cmdModal.open({title: 'Remove Integration', command: 'integrations remove ' + shellQuote({{$hp.Name}}), danger: true})">Remove</button>
@@ -757,16 +839,8 @@
                     </div>
                 </div>
                 <div class="form-row">
-                    <label class="form-label" for="gh-add-attach">Attach to</label>
-                    <div class="form-input">
-                        <select id="gh-add-attach">
-                            <option value="">None</option>
-                            <option value="auto:all">auto:all</option>
-                            {{range .AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
-                            {{end}}{{range .Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}} ({{.Status}})</option>
-                            {{end}}
-                        </select>
-                    </div>
+                    <label class="form-label">Attach to</label>
+                    <div class="form-input" id="gh-add-attach-container"></div>
                 </div>
             </div>
             <div class="cmd-display" id="gh-add-cmd"></div>
@@ -818,16 +892,8 @@
                     </div>
                 </div>
                 <div class="form-row">
-                    <label class="form-label" for="http-add-attach">Attach to</label>
-                    <div class="form-input">
-                        <select id="http-add-attach">
-                            <option value="">None</option>
-                            <option value="auto:all">auto:all</option>
-                            {{range .AllTags}}<option value="tag:{{.}}">tag:{{.}}</option>
-                            {{end}}{{range .Boxes}}<option value="vm:{{.Name}}">vm:{{.Name}} ({{.Status}})</option>
-                            {{end}}
-                        </select>
-                    </div>
+                    <label class="form-label">Attach to</label>
+                    <div class="form-input" id="http-add-attach-container"></div>
                 </div>
             </div>
             <div class="cmd-display" id="http-add-cmd"></div>
@@ -848,25 +914,222 @@
             return "'" + s.replace(/'/g, "'\\''" ) + "'";
         }
 
-        // Attach dropdown: show on + click, hide after selection
-        function showAttachDropdown(btn) {
-            var sel = btn.nextElementSibling;
-            btn.style.display = 'none';
-            sel.classList.add('visible');
-            sel.focus();
-            sel.addEventListener('blur', function onBlur() {
-                sel.removeEventListener('blur', onBlur);
-                setTimeout(function() {
-                    sel.classList.remove('visible');
-                    btn.style.display = '';
-                }, 150);
+        // All available attach options (built from Go template data)
+        var allAttachOptions = [
+            {value: 'auto:all', label: 'auto:all'},
+            {{range $.AllTags}}{value: 'tag:{{.}}', label: 'tag:{{.}}'},
+            {{end}}{{range $.Boxes}}{value: 'vm:{{.Name}}', label: 'vm:{{.Name}}'},
+            {{end}}
+        ];
+
+        // MultiSelect dropdown widget
+        function createMultiSelectDropdown(options, selected, onChange) {
+            var dd = document.createElement('div');
+            dd.className = 'ms-dropdown';
+
+            var filter = document.createElement('input');
+            filter.className = 'ms-filter';
+            filter.type = 'text';
+            filter.placeholder = 'Filter…';
+            dd.appendChild(filter);
+
+            var list = document.createElement('div');
+            list.className = 'ms-options';
+            dd.appendChild(list);
+
+            var selectedSet = new Set(selected || []);
+
+            function render(filterText) {
+                list.innerHTML = '';
+                var ft = (filterText || '').toLowerCase();
+                var unchecked = [];
+                var checked = [];
+                for (var i = 0; i < options.length; i++) {
+                    var o = options[i];
+                    if (ft && o.label.toLowerCase().indexOf(ft) === -1) continue;
+                    if (selectedSet.has(o.value)) checked.push(o);
+                    else unchecked.push(o);
+                }
+                var all = unchecked.concat(checked);
+                if (all.length === 0) {
+                    var empty = document.createElement('div');
+                    empty.className = 'ms-empty';
+                    empty.textContent = 'No matches';
+                    list.appendChild(empty);
+                    return;
+                }
+                for (var j = 0; j < all.length; j++) {
+                    (function(opt) {
+                        var row = document.createElement('label');
+                        row.className = 'ms-option' + (selectedSet.has(opt.value) ? ' ms-checked' : '');
+                        var cb = document.createElement('input');
+                        cb.type = 'checkbox';
+                        cb.checked = selectedSet.has(opt.value);
+                        var span = document.createElement('span');
+                        span.textContent = opt.label;
+                        row.appendChild(cb);
+                        row.appendChild(span);
+                        row.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            var isChecked = selectedSet.has(opt.value);
+                            if (isChecked) {
+                                selectedSet.delete(opt.value);
+                            } else {
+                                selectedSet.add(opt.value);
+                            }
+                            if (onChange) onChange(opt.value, !isChecked);
+                            render(filter.value);
+                        });
+                        list.appendChild(row);
+                    })(all[j]);
+                }
+            }
+
+            filter.addEventListener('input', function() { render(filter.value); });
+            render('');
+
+            dd.focusFilter = function() { filter.focus(); };
+            dd.getSelected = function() { return Array.from(selectedSet); };
+            dd.setSelected = function(vals) { selectedSet = new Set(vals || []); render(filter.value); };
+            dd.resetFilter = function() { filter.value = ''; render(''); };
+
+            return dd;
+        }
+
+        // Close any open inline dropdown when clicking outside
+        var activeInlineDropdown = null;
+        var activeInlineBtn = null;
+        document.addEventListener('mousedown', function(e) {
+            if (activeInlineDropdown && !activeInlineDropdown.contains(e.target) && e.target !== activeInlineBtn) {
+                closeInlineMultiSelect();
+            }
+        });
+
+        function closeInlineMultiSelect() {
+            if (activeInlineDropdown) {
+                activeInlineDropdown.remove();
+                activeInlineDropdown = null;
+                activeInlineBtn = null;
+            }
+        }
+
+        function positionDropdown(dd, btn) {
+            var rect = btn.getBoundingClientRect();
+            dd.style.left = rect.left + 'px';
+            dd.style.top = (rect.bottom + 4) + 'px';
+            // After rendering, check if it overflows the viewport and flip up if needed.
+            requestAnimationFrame(function() {
+                var ddRect = dd.getBoundingClientRect();
+                if (ddRect.bottom > window.innerHeight - 8) {
+                    dd.style.top = Math.max(8, rect.top - ddRect.height - 4) + 'px';
+                }
+                if (ddRect.right > window.innerWidth - 8) {
+                    dd.style.left = Math.max(8, window.innerWidth - ddRect.width - 8) + 'px';
+                }
             });
         }
 
-        function hideAttachDropdown(sel) {
-            sel.classList.remove('visible');
-            var btn = sel.previousElementSibling;
-            if (btn) btn.style.display = '';
+        function openInlineMultiSelect(btn, integrationName, currentAttachments) {
+            // Toggle if clicking same button
+            if (activeInlineBtn === btn) {
+                closeInlineMultiSelect();
+                return;
+            }
+            // Close any existing dropdown first
+            closeInlineMultiSelect();
+
+            var dd = createMultiSelectDropdown(allAttachOptions, currentAttachments, function(spec, checked) {
+                if (checked) {
+                    integrationAttach(integrationName, spec);
+                } else {
+                    integrationDetach(integrationName, spec);
+                }
+            });
+            document.body.appendChild(dd);
+            positionDropdown(dd, btn);
+            activeInlineDropdown = dd;
+            activeInlineBtn = btn;
+            dd.focusFilter();
+        }
+
+        // Modal multi-select: creates an always-visible picker with tags
+        function createModalMultiSelect(containerEl, options, onChange) {
+            containerEl.innerHTML = '';
+
+            var tagsDiv = document.createElement('div');
+            tagsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; min-height: 1px;';
+            containerEl.appendChild(tagsDiv);
+
+            var addBtn = document.createElement('button');
+            addBtn.className = 'int-tag-add-btn';
+            addBtn.textContent = '+';
+            addBtn.type = 'button';
+            tagsDiv.appendChild(addBtn);
+
+            var selectedSet = new Set();
+            var dd = null;
+
+            function renderTags() {
+                // Remove existing tags (but keep the + button)
+                var existing = tagsDiv.querySelectorAll('.int-tag');
+                for (var i = 0; i < existing.length; i++) existing[i].remove();
+                selectedSet.forEach(function(val) {
+                    var tag = document.createElement('span');
+                    tag.className = 'int-tag';
+                    tag.textContent = val;
+                    var rm = document.createElement('button');
+                    rm.className = 'int-tag-remove';
+                    rm.type = 'button';
+                    rm.innerHTML = '&times;';
+                    rm.addEventListener('click', function() {
+                        selectedSet.delete(val);
+                        renderTags();
+                        if (dd) dd.setSelected(Array.from(selectedSet));
+                        if (onChange) onChange();
+                    });
+                    tag.appendChild(rm);
+                    tagsDiv.insertBefore(tag, addBtn);
+                });
+            }
+
+            function openDropdown() {
+                if (dd) { dd.remove(); dd = null; }
+                dd = createMultiSelectDropdown(options, Array.from(selectedSet), function(val, checked) {
+                    if (checked) selectedSet.add(val);
+                    else selectedSet.delete(val);
+                    renderTags();
+                    if (onChange) onChange();
+                });
+                document.body.appendChild(dd);
+                positionDropdown(dd, addBtn);
+                dd.focusFilter();
+            }
+
+            addBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (dd && document.body.contains(dd)) {
+                    dd.remove(); dd = null;
+                } else {
+                    openDropdown();
+                }
+            });
+
+            document.addEventListener('mousedown', function(e) {
+                if (dd && !dd.contains(e.target) && e.target !== addBtn) {
+                    dd.remove(); dd = null;
+                }
+            });
+
+            renderTags();
+
+            return {
+                getSelected: function() { return Array.from(selectedSet); },
+                reset: function() {
+                    selectedSet.clear();
+                    renderTags();
+                    if (dd) { dd.remove(); dd = null; }
+                }
+            };
         }
 
         // Integration attach/detach helpers
@@ -910,7 +1173,7 @@
             overlay: null,
             repoEl: null,
             nameEl: null,
-            attachEl: null,
+            attachMs: null,
             cmdEl: null,
             outputEl: null,
             errorEl: null,
@@ -922,15 +1185,18 @@
                 this.overlay = document.getElementById('gh-add-overlay');
                 this.repoEl = document.getElementById('gh-add-repo');
                 this.nameEl = document.getElementById('gh-add-name');
-                this.attachEl = document.getElementById('gh-add-attach');
+                var self = this;
+                this.attachMs = createModalMultiSelect(
+                    document.getElementById('gh-add-attach-container'),
+                    allAttachOptions,
+                    function() { self.updateCmd(); }
+                );
                 this.cmdEl = document.getElementById('gh-add-cmd');
                 this.outputEl = document.getElementById('gh-add-output');
                 this.errorEl = document.getElementById('gh-add-error');
                 this.runBtn = document.getElementById('gh-add-run');
-                var self = this;
                 this.repoEl.addEventListener('change', function() { self.updateName(); self.updateCmd(); });
                 this.nameEl.addEventListener('input', function() { self.updateCmd(); });
-                this.attachEl.addEventListener('change', function() { self.updateCmd(); });
             },
 
             open: async function() {
@@ -942,7 +1208,7 @@
                 this.succeeded = false;
                 this.needsReload = false;
                 this.nameEl.value = '';
-                this.attachEl.selectedIndex = 0;
+                this.attachMs.reset();
                 this.overlay.classList.add('visible');
                 document.addEventListener('keydown', this.handleEscape);
 
@@ -993,20 +1259,20 @@
             updateCmd: function() {
                 var repo = this.repoEl.value;
                 var name = this.nameEl.value || this.nameEl.placeholder || 'github';
-                var attach = this.attachEl.value;
+                var attachVals = this.attachMs.getSelected();
                 if (!repo) { this.cmdEl.textContent = ''; return; }
                 var cmd = 'integrations add github --name=' + shellQuote(name) + ' --repository=' + shellQuote(repo);
-                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                for (var i = 0; i < attachVals.length; i++) cmd += ' --attach=' + shellQuote(attachVals[i]);
                 this.cmdEl.textContent = cmd;
             },
 
             buildCommand: function() {
                 var repo = this.repoEl.value;
                 var name = this.nameEl.value || this.nameEl.placeholder || 'github';
-                var attach = this.attachEl.value;
+                var attachVals = this.attachMs.getSelected();
                 if (!repo) return null;
                 var cmd = 'integrations add github --name=' + shellQuote(name) + ' --repository=' + shellQuote(repo);
-                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                for (var i = 0; i < attachVals.length; i++) cmd += ' --attach=' + shellQuote(attachVals[i]);
                 return cmd;
             },
 
@@ -1069,7 +1335,7 @@
             headerEl: null,
             bearerRow: null,
             headerRow: null,
-            attachEl: null,
+            attachMs: null,
             cmdEl: null,
             outputEl: null,
             errorEl: null,
@@ -1086,18 +1352,21 @@
                 this.headerEl = document.getElementById('http-add-header');
                 this.bearerRow = document.getElementById('http-add-bearer-row');
                 this.headerRow = document.getElementById('http-add-header-row');
-                this.attachEl = document.getElementById('http-add-attach');
+                var self = this;
+                this.attachMs = createModalMultiSelect(
+                    document.getElementById('http-add-attach-container'),
+                    allAttachOptions,
+                    function() { self.updateCmd(); }
+                );
                 this.cmdEl = document.getElementById('http-add-cmd');
                 this.outputEl = document.getElementById('http-add-output');
                 this.errorEl = document.getElementById('http-add-error');
                 this.runBtn = document.getElementById('http-add-run');
-                var self = this;
                 this.nameEl.addEventListener('input', function() { self.updateCmd(); });
                 this.targetEl.addEventListener('input', function() { self.updateCmd(); });
                 this.authEl.addEventListener('change', function() { self.updateAuthFields(); self.updateCmd(); });
                 this.bearerEl.addEventListener('input', function() { self.updateCmd(); });
                 this.headerEl.addEventListener('input', function() { self.updateCmd(); });
-                this.attachEl.addEventListener('change', function() { self.updateCmd(); });
             },
 
             open: function() {
@@ -1114,7 +1383,7 @@
                 this.authEl.selectedIndex = 0;
                 this.bearerEl.value = '';
                 this.headerEl.value = '';
-                this.attachEl.selectedIndex = 0;
+                this.attachMs.reset();
                 this.updateAuthFields();
                 this.cmdEl.textContent = '';
                 this.overlay.classList.add('visible');
@@ -1143,8 +1412,8 @@
                 var header = this.headerEl.value.trim();
                 if (authType === 'bearer' && bearer) cmd += ' --bearer=' + shellQuote(bearer);
                 else if (authType === 'header' && header) cmd += ' --header=' + shellQuote(header);
-                var attach = this.attachEl.value;
-                if (attach) cmd += ' --attach=' + shellQuote(attach);
+                var attachVals = this.attachMs.getSelected();
+                for (var i = 0; i < attachVals.length; i++) cmd += ' --attach=' + shellQuote(attachVals[i]);
                 return cmd;
             },
 

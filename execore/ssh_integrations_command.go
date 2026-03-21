@@ -246,6 +246,17 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 	}
 }
 
+// stringSliceFlag is a flag.Value that collects repeated --flag=value into a slice.
+type stringSliceFlag struct {
+	values []string
+}
+
+func (f *stringSliceFlag) String() string { return strings.Join(f.values, ",") }
+func (f *stringSliceFlag) Set(v string) error {
+	f.values = append(f.values, v)
+	return nil
+}
+
 var knownIntegrationTypes = map[string]bool{
 	"http-proxy": true,
 	"github":     true,
@@ -260,17 +271,21 @@ func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.Comm
 		return cc.Errorf("unknown integration type %q (known types: %s)", typeName, strings.Join(knownIntegrationTypeNames(), ", "))
 	}
 
-	// Parse optional --attach flag.
+	// Parse optional --attach flags (can be repeated).
 	var attachments string
-	if attachFlag := cc.FlagSet.Lookup("attach").Value.String(); attachFlag != "" {
-		spec, err := parseAttachmentSpec(attachFlag)
-		if err != nil {
-			return cc.Errorf("%v", err)
+	if attachVal, ok := cc.FlagSet.Lookup("attach").Value.(*stringSliceFlag); ok && len(attachVal.values) > 0 {
+		var specs []string
+		for _, raw := range attachVal.values {
+			spec, err := parseAttachmentSpec(raw)
+			if err != nil {
+				return cc.Errorf("%v", err)
+			}
+			if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
+				return err
+			}
+			specs = append(specs, spec)
 		}
-		if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
-			return err
-		}
-		attachments = exedb.AttachmentsJSON([]string{spec})
+		attachments = exedb.AttachmentsJSON(specs)
 	}
 
 	switch typeName {
@@ -290,7 +305,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("header", "", "header to inject (e.g. X-Auth:secret)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
-	fs.String("attach", "", "attach to a spec (vm:<name>, tag:<name>, or auto:all)")
+	fs.Var(&stringSliceFlag{}, "attach", "attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated")
 	return fs
 }
 

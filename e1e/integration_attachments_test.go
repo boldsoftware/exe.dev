@@ -198,6 +198,28 @@ func TestIntegrationAttachmentSpecs(t *testing.T) {
 		repl.WantPrompt()
 	})
 
+	// --- Multiple --attach on add ---
+
+	t.Run("MultipleAttachOnAdd", func(t *testing.T) {
+		repl := sshToExeDev(t, keyFile)
+		defer repl.Disconnect()
+
+		repl.SendLine(fmt.Sprintf("integrations add http-proxy --name=multiint --target=https://example.com --header=X-Auth:secret --attach=vm:%s --attach=auto:all", bn))
+		repl.Want("Added integration multiint")
+		repl.WantPrompt()
+
+		// List should show both attachments.
+		repl.SendLine("integrations list")
+		repl.Want("vm:" + bn)
+		repl.Want("auto:all")
+		repl.WantPrompt()
+
+		// Clean up.
+		repl.SendLine("integrations remove multiint")
+		repl.Want("Removed")
+		repl.WantPrompt()
+	})
+
 	// Clean up.
 	pty.SendLine("integrations remove testint")
 	pty.Want("Removed")
