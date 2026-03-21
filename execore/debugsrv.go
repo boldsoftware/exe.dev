@@ -43,6 +43,7 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
 	"exe.dev/region"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"tailscale.com/client/local"
 )
@@ -2468,23 +2469,22 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user already has a billing account.
-	_, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
-	if err == nil {
-		// Account already exists, nothing to do.
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	// Get or create account for this user.
+	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	var accountID string
+	if errors.Is(err, sql.ErrNoRows) {
+		accountID = "exe_" + crand.Text()[:16]
+	} else if err != nil {
 		http.Error(w, fmt.Sprintf("failed to check existing account: %v", err), http.StatusInternalServerError)
 		return
+	} else {
+		accountID = acct.ID
 	}
 
-	// Create account, activate it, and insert a billing event.
-	accountID := "exe_" + crand.Text()[:16]
-	now := time.Now().UTC().Round(0)
+	now := sqlite.NormalizeTime(time.Now())
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		// Create account if it doesn't exist yet.
 		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
 			ID:        accountID,
 			CreatedBy: userID,
@@ -2503,6 +2503,22 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 			EventAt:   now,
 		}); err != nil {
 			return fmt.Errorf("insert billing event: %w", err)
+		}
+		// Upgrade account plan to individual.
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: accountID,
+			EndedAt:   &now,
+		}); err != nil {
+			return fmt.Errorf("close existing plan: %w", err)
+		}
+		changedBy := "debug:add-billing"
+		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: accountID,
+			PlanID:    string(entitlement.VersionIndividual),
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		}); err != nil {
+			return fmt.Errorf("insert individual plan: %w", err)
 		}
 		return nil
 	})

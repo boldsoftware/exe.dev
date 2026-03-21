@@ -31,9 +31,9 @@ func TestPlanGrants(t *testing.T) {
 		{VersionGrandfathered, CreditPurchase, false},
 
 		// Invite
-		{VersionInvite, VMCreate, true},
-		{VersionInvite, VMRun, true},
-		{VersionInvite, CreditPurchase, false},
+		{VersionTrial, VMCreate, true},
+		{VersionTrial, VMRun, true},
+		{VersionTrial, CreditPurchase, false},
 
 		// Basic
 		{VersionBasic, LLMUse, true},
@@ -118,9 +118,9 @@ func TestGetPlanVersion(t *testing.T) {
 			want:   VersionIndividual,
 		},
 		{
-			name:   "trial not expired is invite",
+			name:   "trial not expired is trial",
 			inputs: UserPlanInputs{Category: "no_billing", BillingExemption: &trial, BillingTrialEndsAt: &future},
-			want:   VersionInvite,
+			want:   VersionTrial,
 		},
 		{
 			name:   "trial expired falls through",
@@ -215,7 +215,7 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 		{VersionTeam, 0},
 		{VersionFriend, 0},
 		{VersionGrandfathered, 0},
-		{VersionInvite, 0},
+		{VersionTrial, 0},
 		{VersionBasic, 0},
 		{VersionRestricted, 0},
 	}
@@ -261,7 +261,7 @@ func TestRestrictedPlanGrantsNothing(t *testing.T) {
 
 // TestVMRunGranted verifies VMRun is granted to the right plans.
 func TestVMRunGranted(t *testing.T) {
-	shouldGrant := []PlanVersion{VersionVIP, VersionTeam, VersionIndividual, VersionFriend, VersionGrandfathered, VersionInvite}
+	shouldGrant := []PlanVersion{VersionVIP, VersionTeam, VersionIndividual, VersionFriend, VersionGrandfathered, VersionTrial}
 	shouldDeny := []PlanVersion{VersionBasic, VersionRestricted}
 
 	for _, v := range shouldGrant {

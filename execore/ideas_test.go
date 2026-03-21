@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"exe.dev/exedb"
 	"exe.dev/idea"
@@ -453,33 +452,6 @@ func TestIdeaSubmitDuplicateSlug(t *testing.T) {
 	}
 }
 
-// activateUserBilling sets up a billing account and active billing event for the given user.
-func activateUserBilling(t *testing.T, server *Server, userID, billingID string) {
-	t.Helper()
-	err := withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        billingID,
-		CreatedBy: userID,
-	})
-	if err != nil {
-		t.Fatalf("InsertAccount: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: userID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("ActivateAccount: %v", err)
-	}
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: billingID,
-		EventType: "active",
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent: %v", err)
-	}
-}
-
 func TestIdeaRateAllowedForBasicUserWithLLMUseEntitlement(t *testing.T) {
 	// Basic plan grants LLMUse, so even a non-paying user can rate templates.
 	// This is an intentional expansion from the old userIsPaying check.
@@ -531,7 +503,7 @@ func TestIdeaRateAllowedWithLLMUseEntitlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
-	activateUserBilling(t, server, user.UserID, "exe_rate_allowed_test")
+	activateUserBilling(t, server, user.UserID)
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -594,7 +566,7 @@ func TestIdeaPageCanRateRequiresLLMUseEntitlement(t *testing.T) {
 	}
 
 	// Now activate billing and check again
-	activateUserBilling(t, server, user.UserID, "exe_canrate_test")
+	activateUserBilling(t, server, user.UserID)
 
 	req = httptest.NewRequest(http.MethodGet, "/idea", nil)
 	req.Host = server.env.WebHost

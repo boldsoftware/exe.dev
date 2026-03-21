@@ -16,6 +16,90 @@ import (
 	"exe.dev/sqlite"
 )
 
+// activateUserBilling is a test helper that upgrades a user to the 'individual' plan
+// and inserts an 'active' billing event. Use this instead of the legacy
+// InsertAccount + ActivateAccount pattern; every user now has an account at signup.
+// Returns the account ID.
+func activateUserBilling(t *testing.T, server *Server, userID string) string {
+	t.Helper()
+
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("activateUserBilling: GetAccountByUserID(%s): %v", userID, err)
+	}
+
+	now := time.Now()
+	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		// Insert billing event (keeps legacy GetAccountWithBillingStatus working).
+		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			AccountID: acct.ID,
+			EventType: "active",
+			EventAt:   now,
+		}); err != nil {
+			return err
+		}
+		// Upgrade account plan to 'individual'.
+		if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: acct.ID,
+			EndedAt:   &now,
+		}); err != nil {
+			return err
+		}
+		changedBy := "stripe:event"
+		return queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "individual",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
+	})
+	if err != nil {
+		t.Fatalf("activateUserBilling: %v", err)
+	}
+	return acct.ID
+}
+
+// cancelUserBilling is a test helper that downgrades a user to the 'basic' plan
+// and inserts a 'canceled' billing event. Use after activateUserBilling to simulate
+// subscription cancellation.
+func cancelUserBilling(t *testing.T, server *Server, userID string) {
+	t.Helper()
+
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("cancelUserBilling: GetAccountByUserID(%s): %v", userID, err)
+	}
+
+	now := time.Now()
+	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		// Insert canceled billing event (keeps legacy path working).
+		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			AccountID: acct.ID,
+			EventType: "canceled",
+			EventAt:   now,
+		}); err != nil {
+			return err
+		}
+		// Downgrade account plan to 'basic'.
+		if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: acct.ID,
+			EndedAt:   &now,
+		}); err != nil {
+			return err
+		}
+		changedBy := "stripe:event"
+		return queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "basic",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
+	})
+	if err != nil {
+		t.Fatalf("cancelUserBilling: %v", err)
+	}
+}
+
 func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
 	t.Parallel()
 	// Test that /new always shows the form, even for users who need billing.
@@ -131,21 +215,8 @@ func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add an account record for this user and activate it (simulates completed Stripe checkout)
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_test123",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	// Activate billing for this user (simulates completed Stripe checkout).
+	activateUserBilling(t, server, user.UserID)
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -250,7 +321,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
-	// Create a user without billing info
+	// Create a user — createUser calls createUserRecord which inserts account + basic plan.
 	email := "ispaying-test@example.com"
 	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
@@ -258,39 +329,39 @@ func TestUserIsPayingQuery(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Check that user does not have entitlement initially
+	// User starts on 'basic' plan (from createUserRecord). Basic does NOT grant VMCreate.
 	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected user without account record to not have VMCreate entitlement")
+		t.Error("Expected basic plan user to not have VMCreate entitlement")
 	}
 
-	// Add an account record and activate it (simulates completing Stripe checkout)
-	billingID := "exe_ispaying_test"
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        billingID,
-		CreatedBy: user.UserID,
-	})
+	// Upgrade to 'individual' plan (simulates completing Stripe checkout).
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
+		t.Fatalf("GetAccountByUserID: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
+	now := time.Now()
+	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: acct.ID,
+			EndedAt:   &now,
+		}); err != nil {
+			return err
+		}
+		changedBy := "stripe:event"
+		return queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "individual",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
 	})
 	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: billingID,
-		EventType: "active",
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert billing event: %v", err)
+		t.Fatalf("upgrade to individual: %v", err)
 	}
 
-	// Check that user now has entitlement
+	// User now on 'individual' plan — must have VMCreate entitlement.
 	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected user with active billing event to have VMCreate entitlement")
+		t.Error("Expected individual plan user to have VMCreate entitlement")
 	}
 }
 
@@ -299,7 +370,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
-	// Create a user
+	// Create a user — gets basic plan at signup.
 	email := "needsbilling-test@example.com"
 	publicKey := testSSHPubKey
 	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
@@ -307,53 +378,47 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
-	}
-
-	// New user (created after billing requirement date) without account record should not have VMCreate
+	// Basic plan does not grant VMCreate.
 	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected new user without account record to not have VMCreate entitlement")
+		t.Error("Expected basic plan user to not have VMCreate entitlement")
 	}
 
-	// Add an account record and activate it (simulate completing Stripe checkout)
-	billingID := "exe_needsbilling_test"
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        billingID,
-		CreatedBy: user.UserID,
-	})
+	// Upgrade to 'individual' plan (simulate completing Stripe checkout).
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
+		t.Fatalf("GetAccountByUserID: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
+	now := time.Now()
+	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: acct.ID,
+			EndedAt:   &now,
+		}); err != nil {
+			return err
+		}
+		changedBy := "stripe:event"
+		return queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "individual",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
 	})
 	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: billingID,
-		EventType: "active",
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert billing event: %v", err)
+		t.Fatalf("upgrade to individual: %v", err)
 	}
 
-	// User with active billing event should have VMCreate
+	// Individual plan grants VMCreate.
 	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected user with active billing event to have VMCreate entitlement")
+		t.Error("Expected individual plan user to have VMCreate entitlement")
 	}
 }
 
 func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 	t.Parallel()
+	// With account-based plans, "grandfathered" users (those created before the billing
+	// cutoff) are migrated to the 'grandfathered' plan in account_plans. This test verifies
+	// that a user with the 'grandfathered' plan has VMCreate entitlement without a paid subscription.
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
@@ -365,18 +430,32 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Update user's created_at to before the billing requirement date (2026-01-06 23:10 UTC)
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
-		return err
+	// Simulate the migration: upgrade account plan from 'basic' to 'grandfathered'.
+	// In production, migration 121 does this for users created before the billing cutoff.
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Now()
+	changedBy := "migration:grandfathered"
+	err = server.withTx(t.Context(), func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{AccountID: acct.ID, EndedAt: &now}); err != nil {
+			return err
+		}
+		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "grandfathered",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
 	})
 	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
+		t.Fatalf("Failed to set grandfathered plan: %v", err)
 	}
 
-	// Legacy user (created before 2026-01-06 23:10 UTC) should have VMCreate even without an account
+	// Grandfathered user should have VMCreate without paid subscription.
 	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected legacy user (created before 2026-01-06 23:10 UTC) to have VMCreate entitlement")
+		t.Error("Expected grandfathered user to have VMCreate entitlement")
 	}
 }
 
@@ -531,71 +610,40 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	}
 }
 
-func TestBillingEventRaceCondition(t *testing.T) {
+func TestBillingActivateThenCancelThenReactivate(t *testing.T) {
 	t.Parallel()
-	// This test verifies that event-sourced billing status correctly handles
-	// the race condition where a cancellation event (at T1) is processed
-	// after a newer activation event (at T2, where T2 > T1).
-	// The user should remain active because T2 > T1.
+	// Verifies that the account_plans model correctly reflects the current plan
+	// after a sequence of activate -> cancel -> reactivate transitions.
 
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 
-	// Create a user
-	email := "race-condition@example.com"
-	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "plan-transitions@example.com", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Set user's created_at to after the billing requirement date
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
+	// New user has 'basic' plan — no VMCreate.
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("New user with basic plan should not have VMCreate")
 	}
 
-	// Insert an account
-	billingID := "exe_race_condition_test"
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        billingID,
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-
-	// Set timestamps: T1 (cancellation) < T2 (activation)
-	t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC) // Old cancellation
-	t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC) // Newer activation
-
-	// Insert activation event at T2 first (user subscribed)
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: billingID,
-		EventType: "active",
-		EventAt:   t2,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert activation event: %v", err)
-	}
-
-	// Insert backdated cancellation event at T1 (as if poller processed old cancellation late)
-	_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: billingID,
-		EventType: "canceled",
-		EventAt:   t1,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert cancellation event: %v", err)
-	}
-
-	// Even though the cancellation event was inserted after activation,
-	// T2 > T1 so activation should win — user should have VMCreate
-	server.env.SkipBilling = false
+	// Activate billing — user gets 'individual' plan.
+	activateUserBilling(t, server, user.UserID)
 	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-		t.Error("Expected user to have VMCreate: activation at T2 should win over cancellation at T1")
+		t.Error("User with individual plan should have VMCreate after activation")
+	}
+
+	// Cancel billing — user drops back to 'basic' plan.
+	cancelUserBilling(t, server, user.UserID)
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("User with basic plan should not have VMCreate after cancellation")
+	}
+
+	// Reactivate — user gets 'individual' plan again.
+	activateUserBilling(t, server, user.UserID)
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("Reactivated user with individual plan should have VMCreate")
 	}
 }
 
@@ -802,14 +850,22 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
 
-	// Count accounts before
+	// With account-based plans, every user gets an account at signup (in createUserRecord).
+	// Verify the user already has exactly one account after user creation.
+	signupAccount, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("Expected account to exist at signup, got: %v", err)
+	}
+	signupAccountID := signupAccount.ID
+
+	// Count accounts before billing update visits.
 	var accountCountBefore int64
 	accountCountBefore, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
 
-	// Visit /billing/update first time
+	// Visit /billing/update first time.
 	req := httptest.NewRequest("GET", "/billing/update?name=test-vm&prompt=test", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
@@ -820,24 +876,26 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 		t.Fatalf("First visit: expected redirect to Stripe, got %d", w.Code)
 	}
 
-	// Get the account ID from first visit
+	// Get the account ID after first visit — must be the same account created at signup.
 	firstAccount, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err != nil {
 		t.Fatalf("Failed to get account after first visit: %v", err)
 	}
-	firstAccountID := firstAccount.ID
+	if firstAccount.ID != signupAccountID {
+		t.Errorf("Expected billing update to reuse signup account %q, got %q", signupAccountID, firstAccount.ID)
+	}
 
-	// Verify one new account was created
+	// Visiting /billing/update must NOT create a new account (account already exists from signup).
 	var accountCountAfterFirst int64
 	accountCountAfterFirst, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
-	if accountCountAfterFirst != accountCountBefore+1 {
-		t.Errorf("Expected one new account after first visit, got %d -> %d", accountCountBefore, accountCountAfterFirst)
+	if accountCountAfterFirst != accountCountBefore {
+		t.Errorf("BUG: visiting /billing/update created a new account (count %d -> %d)", accountCountBefore, accountCountAfterFirst)
 	}
 
-	// Visit /billing/update second time (simulating user abandoning checkout and returning)
+	// Visit /billing/update second time (simulating user abandoning checkout and returning).
 	req = httptest.NewRequest("GET", "/billing/update?name=test-vm2&prompt=test2", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
@@ -848,29 +906,26 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 		t.Fatalf("Second visit: expected redirect to Stripe, got %d", w.Code)
 	}
 
-	// Get the account ID from second visit
+	// Get the account ID from second visit — still the signup account.
 	secondAccount, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
 	if err != nil {
 		t.Fatalf("Failed to get account after second visit: %v", err)
 	}
-	secondAccountID := secondAccount.ID
-
-	// Verify the SAME account ID was reused
-	if firstAccountID != secondAccountID {
-		t.Errorf("Expected same account ID to be reused, got first=%q, second=%q", firstAccountID, secondAccountID)
+	if secondAccount.ID != signupAccountID {
+		t.Errorf("Expected same signup account %q on second visit, got %q", signupAccountID, secondAccount.ID)
 	}
 
-	// Verify NO new accounts were created
+	// Verify NO new accounts were created on the second visit.
 	var accountCountAfterSecond int64
 	accountCountAfterSecond, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
 	if accountCountAfterSecond != accountCountAfterFirst {
-		t.Errorf("BUG: Duplicate account created! Count went from %d to %d", accountCountAfterFirst, accountCountAfterSecond)
+		t.Errorf("BUG: duplicate account on second visit (count %d -> %d)", accountCountAfterFirst, accountCountAfterSecond)
 	}
 
-	// Visit a third time for good measure
+	// Visit a third time for good measure.
 	req = httptest.NewRequest("GET", "/billing/update", nil)
 	req.Host = server.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
@@ -881,14 +936,14 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 		t.Fatalf("Third visit: expected redirect to Stripe, got %d", w.Code)
 	}
 
-	// Verify still only one account
+	// Verify still only one account.
 	var accountCountAfterThird int64
 	accountCountAfterThird, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
 	if accountCountAfterThird != accountCountAfterFirst {
-		t.Errorf("BUG: Duplicate account created on third visit! Count went from %d to %d", accountCountAfterFirst, accountCountAfterThird)
+		t.Errorf("BUG: duplicate account on third visit (count %d -> %d)", accountCountAfterFirst, accountCountAfterThird)
 	}
 }
 
@@ -1366,15 +1421,8 @@ func TestBillingPortal_PendingAccount_RedirectsToSubscribe(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add a pending account record (simulates incomplete checkout)
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_portalpending",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	// Don't activate - leave as pending
+	// User already has a pending account from createUser (no billing events = pending).
+	// No action needed to simulate an incomplete checkout — it's the default state.
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -1414,21 +1462,8 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add an active account record (simulates completed checkout)
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_portalactive",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	// Activate billing (simulates completed checkout).
+	activateUserBilling(t, server, user.UserID)
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -1472,21 +1507,8 @@ func TestUserProfile_ShowsBillingSection_ActiveAccountActiveBilling(t *testing.T
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add an active account record
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_profilebilling",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	// Activate billing (simulates completed checkout).
+	activateUserBilling(t, server, user.UserID)
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -1528,21 +1550,8 @@ func TestUserProfile_ShowsBillingSection_ActiveAccountSkipBilling(t *testing.T) 
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Add an active account record
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_profilebillingskip",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	// Activate billing (simulates completed checkout).
+	activateUserBilling(t, server, user.UserID)
 
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
@@ -1570,80 +1579,91 @@ func TestUserProfile_ShowsBillingSection_ActiveAccountSkipBilling(t *testing.T) 
 	}
 }
 
-// TestUserWithMultipleAccounts_* tests were removed: the unique index on
-// accounts(created_by) now prevents duplicate accounts per user. The original
-// bug (multiple checkout attempts creating duplicate accounts) is fixed at the
-// database level. See commit 480bd838 for the original workaround.
-
-func TestCanceledUserCannotCreateVM(t *testing.T) {
+func TestBillingCheckoutReusesExistingAccount(t *testing.T) {
 	t.Parallel()
-	// Test that users with canceled subscriptions cannot create VMs,
-	// even if they have exemptions (legacy, free tier, trial).
+	// Verifies that users have exactly one canonical account and that
+	// activating billing upgrades that account's plan to 'individual'.
+	// (Replaces old multi-account tests that tested a bug that can no longer
+	// occur since createUserRecord now creates the canonical account.)
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
-	t.Run("CanceledLegacyUser", func(t *testing.T) {
-		// Create a legacy user (created before billing requirement date)
-		email := "canceled-legacy@example.com"
-		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ1 test-canceled-legacy"
-		user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "single-account@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// User starts with basic plan — no VMCreate.
+	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("New user should not have VMCreate before billing activation")
+	}
+
+	// Activate billing via the canonical account.
+	activateUserBilling(t, server, user.UserID)
+
+	// Now user should have VMCreate.
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		t.Error("User with individual plan should have VMCreate after billing activation")
+	}
+
+	// Try to create VM - should succeed (not redirect to billing).
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("hostname", "single-account-vm")
+	form.Add("prompt", "test")
+	req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code == http.StatusSeeOther {
+		location := w.Header().Get("Location")
+		if strings.HasPrefix(location, "/billing/update") {
+			t.Errorf("User with active billing was redirected to billing: %s", location)
+		}
+	}
+}
+
+func TestCanceledUserCannotCreateVM(t *testing.T) {
+	t.Parallel()
+	// Test that users with canceled subscriptions (basic plan) cannot create VMs.
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	t.Run("CanceledAfterActivation", func(t *testing.T) {
+		// User activates billing then cancels — should drop back to basic (no VMCreate).
+		user, err := server.createUser(t.Context(),
+			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ1 test-canceled-after",
+			"canceled-after@example.com", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
 
-		// Set user as legacy (created before billing requirement date)
-		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:09:59' WHERE user_id = ?`, user.UserID)
-			return err
-		})
-		if err != nil {
-			t.Fatalf("Failed to update user created_at: %v", err)
+		activateUserBilling(t, server, user.UserID)
+		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Fatal("User should have VMCreate after activation")
 		}
 
-		// Add an account
-		billingID := "exe_canceled_legacy"
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        billingID,
-			CreatedBy: user.UserID,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert account: %v", err)
-		}
+		cancelUserBilling(t, server, user.UserID)
 
-		// Insert active event first, then canceled event (simulating subscription cancellation)
-		// Use specific timestamps to ensure canceled is the most recent
-		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC) // Active
-		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC) // Canceled (later)
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "active",
-			EventAt:   t1,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert active event: %v", err)
-		}
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "canceled",
-			EventAt:   t2,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert canceled event: %v", err)
-		}
-
-		// CRITICAL: Canceled legacy user MUST NOT have VMCreate (regression test)
+		// CRITICAL: Canceled user MUST NOT have VMCreate.
 		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-			t.Error("BUG: Canceled legacy user should not have VMCreate - they cannot bypass by being grandfathered!")
+			t.Error("BUG: Canceled user should not have VMCreate after cancellation")
 		}
 
-		// Try to create VM - should redirect to billing
+		// Try to create VM - should redirect to billing.
 		cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 		if err != nil {
 			t.Fatalf("Failed to create auth cookie: %v", err)
 		}
-
 		form := url.Values{}
-		form.Add("hostname", "canceled-legacy-vm")
+		form.Add("hostname", "canceled-vm")
 		form.Add("prompt", "test")
 		req := httptest.NewRequest("POST", "/create-vm", strings.NewReader(form.Encode()))
 		req.Host = server.env.WebHost
@@ -1657,195 +1677,76 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		}
 		location := w.Header().Get("Location")
 		if !strings.HasPrefix(location, "/billing/update") {
-			t.Errorf("Expected redirect to /billing/update, got %q - billing was bypassed!", location)
+			t.Errorf("Expected redirect to /billing/update, got %q", location)
 		}
 	})
 
-	t.Run("CanceledFreeUser", func(t *testing.T) {
-		// Create a user with free tier exemption
-		email := "canceled-free@example.com"
-		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ2 test-canceled-free"
-		user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	t.Run("FriendPlanHasVMCreate", func(t *testing.T) {
+		// Users with 'friend' plan (not canceled) should have VMCreate.
+		user, err := server.createUser(t.Context(),
+			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ2 test-friend",
+			"friend-plan@example.com", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
 
-		// Set user as free tier
-		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET billing_exemption = 'free', created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-			return err
+		// Upgrade to 'friend' plan directly.
+		acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+		if err != nil {
+			t.Fatalf("GetAccountByUserID: %v", err)
+		}
+		now := time.Now()
+		err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+			if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+				AccountID: acct.ID,
+				EndedAt:   &now,
+			}); err != nil {
+				return err
+			}
+			changedBy := "admin"
+			return queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+				AccountID: acct.ID,
+				PlanID:    "friend",
+				StartedAt: now,
+				ChangedBy: &changedBy,
+			})
 		})
 		if err != nil {
-			t.Fatalf("Failed to update user: %v", err)
+			t.Fatalf("Failed to set friend plan: %v", err)
 		}
 
-		// Add an account
-		billingID := "exe_canceled_free"
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        billingID,
-			CreatedBy: user.UserID,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert account: %v", err)
-		}
-
-		// Insert active then canceled events
-		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "active",
-			EventAt:   t1,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert active event: %v", err)
-		}
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "canceled",
-			EventAt:   t2,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert canceled event: %v", err)
-		}
-
-		// CRITICAL: Canceled free tier user MUST NOT have VMCreate
-		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-			t.Error("BUG: Canceled free tier user should not have VMCreate - they cannot bypass with free exemption!")
-		}
-	})
-
-	t.Run("CanceledTrialUser", func(t *testing.T) {
-		// Create a user with active trial exemption
-		email := "canceled-trial@example.com"
-		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3 test-canceled-trial"
-		user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
-		if err != nil {
-			t.Fatalf("Failed to create user: %v", err)
-		}
-
-		// Set user as trial with future end date
-		futureDate := time.Now().Add(30 * 24 * time.Hour) // 30 days from now
-		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET billing_exemption = 'trial', billing_trial_ends_at = ?, created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, futureDate, user.UserID)
-			return err
-		})
-		if err != nil {
-			t.Fatalf("Failed to update user: %v", err)
-		}
-
-		// Add an account
-		billingID := "exe_canceled_trial"
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        billingID,
-			CreatedBy: user.UserID,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert account: %v", err)
-		}
-
-		// Insert active then canceled events
-		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "active",
-			EventAt:   t1,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert active event: %v", err)
-		}
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "canceled",
-			EventAt:   t2,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert canceled event: %v", err)
-		}
-
-		// CRITICAL: Canceled trial user MUST NOT have VMCreate, even with active trial
-		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
-			t.Error("BUG: Canceled trial user should not have VMCreate - they cannot bypass with trial exemption!")
+		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Error("User with friend plan should have VMCreate")
 		}
 	})
 
 	t.Run("ReactivatedUser", func(t *testing.T) {
-		// Test that a user who canceled and then resubscribed can create VMs
-		email := "reactivated@example.com"
-		publicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ4 test-reactivated"
-		user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+		// User who canceled and resubscribed should have VMCreate again.
+		user, err := server.createUser(t.Context(),
+			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ4 test-reactivated",
+			"reactivated@example.com", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
 
-		// Set user as post-billing-requirement
-		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-			return err
-		})
-		if err != nil {
-			t.Fatalf("Failed to update user created_at: %v", err)
+		activateUserBilling(t, server, user.UserID)
+		cancelUserBilling(t, server, user.UserID)
+
+		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+			t.Fatal("User should not have VMCreate after cancellation")
 		}
 
-		// Add an account and activate it
-		billingID := "exe_reactivated"
-		err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        billingID,
-			CreatedBy: user.UserID,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert account: %v", err)
-		}
-		err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-			CreatedBy: user.UserID,
-			EventAt:   time.Now(),
-		})
-		if err != nil {
-			t.Fatalf("Failed to activate account: %v", err)
-		}
+		// Reactivate.
+		activateUserBilling(t, server, user.UserID)
 
-		// Insert events: active -> canceled -> active (reactivation)
-		t1 := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-		t2 := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-		t3 := time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)
-
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "active",
-			EventAt:   t1,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert first active event: %v", err)
-		}
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "canceled",
-			EventAt:   t2,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert canceled event: %v", err)
-		}
-		_, err = withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: billingID,
-			EventType: "active",
-			EventAt:   t3,
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert reactivation event: %v", err)
-		}
-
-		// Reactivated user should have VMCreate
 		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
 			t.Error("Reactivated user should have VMCreate entitlement")
 		}
 
-		// Try to create VM - should succeed
 		cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 		if err != nil {
 			t.Fatalf("Failed to create auth cookie: %v", err)
 		}
-
 		form := url.Values{}
 		form.Add("hostname", "reactivated-vm")
 		form.Add("prompt", "test")
@@ -1856,7 +1757,6 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)
 
-		// Should not redirect to billing (should redirect to / or create VM)
 		if w.Code == http.StatusSeeOther {
 			location := w.Header().Get("Location")
 			if strings.Contains(location, "/billing/update") {
@@ -2077,31 +1977,22 @@ func TestBillingCancelRestoresLongPrompt(t *testing.T) {
 	}
 }
 
-// createUserWithAccount is a test helper that creates a user with a billing account.
-func createUserWithAccount(t *testing.T, server *Server, email, billingID string) (*exedb.User, string) {
+// createUserWithAccount is a test helper that creates a user with an activated billing account.
+// The billingID parameter is ignored; every user now gets a canonical account at signup.
+// Use activateUserBilling for the account_plans upgrade.
+func createUserWithAccount(t *testing.T, server *Server, email, _ string) (*exedb.User, string) {
 	t.Helper()
 	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        billingID,
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+
+	// Upgrade the canonical account to 'individual' plan.
+	accountID := activateUserBilling(t, server, user.UserID)
 
 	// Credits checkout uses the Stripe customer ID from accounts.id.
 	// Ensure that customer exists in Stripe for tests using recorded Stripe APIs.
-	_, err = server.billing.Subscribe(t.Context(), billingID, &billing.SubscribeParams{
+	_, err = server.billing.Subscribe(t.Context(), accountID, &billing.SubscribeParams{
 		Email:      email,
 		SuccessURL: "https://example.com/success",
 		CancelURL:  "https://example.com/cancel",
@@ -2150,7 +2041,7 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 		t.Error("Expected Shelley Credits section on profile page when flag enabled")
 	}
 	if !strings.Contains(body, "Monthly Allowance") {
-		t.Error("Expected 'Monthly Allowance' section on profile page")
+		t.Error("Expected 'Plan (Monthly)' section on profile page")
 	}
 	expectedReset := nextUTCMonthStart().Format("15:04 on Jan 2")
 	if !strings.Contains(body, expectedReset) {
@@ -2159,7 +2050,6 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 	if !strings.Contains(body, "/credits/buy") {
 		t.Error("Expected credits buy form on profile page")
 	}
-	// 1 of 10 used (9 available)
 	if !strings.Contains(body, "1 of 10 used") {
 		t.Fatalf("Expected '1 of 10 used' in body")
 	}
@@ -2186,7 +2076,6 @@ func TestCreditPurchase_ProfileShowsCreditsSection(t *testing.T) {
 		t.Fatalf("Expected 200 after previous-month refresh scenario, got %d", w.Code)
 	}
 	body = w.Body.String()
-	// After month rollover, credits refresh to max (10) so 0 used
 	if !strings.Contains(body, "0 of 10 used") {
 		t.Fatalf("Expected '0 of 10 used' after month rollover")
 	}
@@ -2224,16 +2113,10 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 	server := newBillingTestServer(t)
 	// Entitlement check requires SkipBilling=false so UserHasEntitlement actually evaluates
 	server.env.SkipBilling = false
-	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "exe_renew_credits")
+	user, cookieValue := createUserWithAccount(t, server, "credits-renew@example.com", "")
 
-	_, err := withTxRes1(server, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: "exe_renew_credits",
-		EventType: "canceled",
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(canceled): %v", err)
-	}
+	// Cancel billing — user drops back to basic plan (no CreditPurchase entitlement).
+	cancelUserBilling(t, server, user.UserID)
 
 	form := url.Values{}
 	form.Add("dollars", "123")
@@ -2259,7 +2142,11 @@ func TestCreditPurchase_BuyRequiresActiveBilling(t *testing.T) {
 
 func TestCreditPurchase_BuyNoAccount(t *testing.T) {
 	t.Parallel()
+	// With account-based plans, every user has an account at signup. This test
+	// verifies that a user without active billing (basic plan) is redirected to
+	// the billing update page instead of proceeding to credit checkout.
 	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
 	user, err := server.createUser(t.Context(), testSSHPubKey, "credits-noaccount@example.com", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -2489,13 +2376,20 @@ func TestCreditPurchase_SuccessRequiresAuth(t *testing.T) {
 func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
-	user, cookieValue := createUserWithAccount(t, server, "credits-balance@example.com", "exe_balance_credits")
+	user, cookieValue := createUserWithAccount(t, server, "credits-balance@example.com", "")
+
+	// Look up the canonical account ID for subsequent DB operations.
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	accountID := acct.ID
 
 	// Manually insert a credit ledger entry to simulate a completed purchase
-	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Conn().ExecContext(ctx,
 			`INSERT INTO credit_ledger (account_id, amount, stripe_event_id) VALUES (?, ?, ?)`,
-			"exe_balance_credits", 500000, "pi_test_balance")
+			accountID, 500000, "pi_test_balance")
 		return err
 	})
 	if err != nil {
@@ -2506,7 +2400,7 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 	}
 
 	// Check balance via UseCredits(0)
-	balance, err := server.billing.SpendCredits(t.Context(), "exe_balance_credits", 0, tender.Zero())
+	balance, err := server.billing.SpendCredits(t.Context(), accountID, 0, tender.Zero())
 	if err != nil && !strings.Contains(err.Error(), "no such table") {
 		t.Fatalf("UseCredits failed: %v", err)
 	}
@@ -2531,7 +2425,6 @@ func TestCreditPurchase_BalanceUpdatesAfterSync(t *testing.T) {
 			t.Errorf("Expected balance 500000 on profile page, body contains: %s", body[:min(500, len(body))])
 		}
 	}
-	_ = user
 }
 
 // TestCreditPurchase_BuyEntitlementDeniedForNonPayingUser verifies that
@@ -2582,20 +2475,7 @@ func TestDashboard_HasBillingUsesEntitlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_dash_billing",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	activateUserBilling(t, server, user.UserID)
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -2710,20 +2590,7 @@ func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_invite_billing",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert account: %v", err)
-	}
-	err = withTx1(server, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("Failed to activate account: %v", err)
-	}
+	activateUserBilling(t, server, user.UserID)
 	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -2737,5 +2604,96 @@ func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestCreateUserRecordCreatesAccountAndPlan verifies that createUserRecord + createAccountWithBasicPlan
+// inserts exactly one account row and one account_plans row with plan_id='basic' and ended_at IS NULL.
+func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	var userID string
+	err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = server.createUserRecord(ctx, queries, "account-plan-test@example.com", false)
+		if err != nil {
+			return err
+		}
+		_, err = createAccountWithBasicPlan(ctx, queries, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("createUserRecord: %v", err)
+	}
+
+	// User must have exactly one account.
+	acct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: expected account after createUserRecord, got: %v", err)
+	}
+	if acct.CreatedBy != userID {
+		t.Errorf("account.created_by=%q, want %q", acct.CreatedBy, userID)
+	}
+
+	// Account must have exactly one active plan with plan_id='basic'.
+	ap, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, acct.ID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan: expected basic plan after signup, got: %v", err)
+	}
+	if ap.PlanID != "basic" {
+		t.Errorf("initial plan_id=%q, want 'basic'", ap.PlanID)
+	}
+	if ap.EndedAt != nil {
+		t.Errorf("initial plan ended_at=%v, want nil (plan must be active)", ap.EndedAt)
+	}
+	if ap.ChangedBy == nil || *ap.ChangedBy != "system:signup" {
+		t.Errorf("initial plan changed_by=%v, want 'system:signup'", ap.ChangedBy)
+	}
+}
+
+// TestCreateUserRecordNoAccountPlanDuplicates verifies that calling createUserRecord twice
+// with different emails does not cross-contaminate account_plans rows.
+func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	emails := []string{"dup-check-a@example.com", "dup-check-b@example.com"}
+	var userIDs []string
+	for _, email := range emails {
+		var uid string
+		if err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			var err error
+			uid, err = server.createUserRecord(ctx, queries, email, false)
+			if err != nil {
+				return err
+			}
+			_, err = createAccountWithBasicPlan(ctx, queries, uid)
+			return err
+		}); err != nil {
+			t.Fatalf("createUserRecord(%s): %v", email, err)
+		}
+		userIDs = append(userIDs, uid)
+	}
+
+	for i, uid := range userIDs {
+		acct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, uid)
+		if err != nil {
+			t.Fatalf("user %d GetAccountByUserID: %v", i, err)
+		}
+		ap, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, acct.ID)
+		if err != nil {
+			t.Fatalf("user %d GetActiveAccountPlan: %v", i, err)
+		}
+		if ap.PlanID != "basic" {
+			t.Errorf("user %d: plan=%q, want 'basic'", i, ap.PlanID)
+		}
+		if ap.AccountID != acct.ID {
+			t.Errorf("user %d: plan.account_id=%q, want %q", i, ap.AccountID, acct.ID)
+		}
 	}
 }

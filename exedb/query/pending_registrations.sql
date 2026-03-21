@@ -1,6 +1,6 @@
 -- name: InsertPendingRegistration :exec
-INSERT INTO pending_registrations (token, email, invite_code_id, expires_at)
-VALUES (?, ?, ?, ?);
+INSERT INTO pending_registrations (token, email, invite_code_id, expires_at, account_id)
+VALUES (?, ?, ?, ?, ?);
 
 -- name: GetPendingRegistrationByToken :one
 SELECT * FROM pending_registrations

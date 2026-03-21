@@ -356,6 +356,7 @@ type PendingRegistration struct {
 	InviteCodeID *int64    `db:"invite_code_id" json:"invite_code_id"`
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 	ExpiresAt    time.Time `db:"expires_at" json:"expires_at"`
+	AccountID    *string   `db:"account_id" json:"account_id"`
 }
 
 type PendingSSHKey struct {

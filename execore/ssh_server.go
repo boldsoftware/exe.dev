@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/boxname"
 	"exe.dev/ctrlc"
 	"exe.dev/domz"
@@ -23,6 +24,7 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/googleoauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/sqlite"
 	"exe.dev/sshkey"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
@@ -1414,7 +1416,7 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			exemption := "trial"
 			billingExemption = &exemption
 			// Trial ends in 1 month
-			t := time.Now().AddDate(0, 1, 0)
+			t := sqlite.NormalizeTime(time.Now().AddDate(0, 1, 0))
 			trialEndsAt = &t
 		}
 
@@ -1425,6 +1427,40 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			UserID:               userID,
 		}); err != nil {
 			return fmt.Errorf("failed to set user billing exemption: %w", err)
+		}
+
+		// Update account_plans if the user has an account.
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err == nil {
+			var newPlanID string
+			switch inviteCode.PlanType {
+			case "free":
+				newPlanID = string(entitlement.VersionFriend)
+			case "trial":
+				newPlanID = string(entitlement.VersionTrial)
+			}
+			if newPlanID != "" {
+				now := sqlite.NormalizeTime(time.Now())
+				if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+					AccountID: acct.ID,
+					EndedAt:   &now,
+				}); err != nil {
+					return fmt.Errorf("failed to close existing plan: %w", err)
+				}
+				changedBy := "invite:" + inviteCode.Code
+				params := exedb.InsertAccountPlanParams{
+					AccountID: acct.ID,
+					PlanID:    newPlanID,
+					StartedAt: now,
+					ChangedBy: &changedBy,
+				}
+				if trialEndsAt != nil {
+					params.TrialExpiresAt = trialEndsAt
+				}
+				if err := q.InsertAccountPlan(ctx, params); err != nil {
+					return fmt.Errorf("failed to insert invite plan: %w", err)
+				}
+			}
 		}
 
 		return nil

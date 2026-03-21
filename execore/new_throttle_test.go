@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
@@ -267,20 +268,8 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 		t.Error("expected user to be throttled, but was not")
 	}
 
-	// Add an account record for user and activate it.
-	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        "exe_test456",
-		CreatedBy: user.UserID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = withTx1(s, t.Context(), (*exedb.Queries).ActivateAccount, exedb.ActivateAccountParams{
-		CreatedBy: user.UserID,
-		EventAt:   time.Now(),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	// Activate billing for the user's canonical account.
+	activateUserBilling(t, s, user.UserID)
 
 	throttled, msg := s.CheckNewThrottle(t.Context(), user.UserID, email)
 	if throttled {
@@ -288,9 +277,8 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	}
 }
 
-// TestCheckNewThrottleGrandfathered verifies that a grandfathered user (created before
-// billing-required date, no active subscription) bypasses the disposable email throttle
-// because their plan grants vm:create.
+// TestCheckNewThrottleGrandfathered verifies that a grandfathered user bypasses the
+// disposable email throttle because their plan grants vm:create.
 func TestCheckNewThrottleGrandfathered(t *testing.T) {
 	s := newTestServer(t)
 	s.env.SkipBilling = false
@@ -302,13 +290,26 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set created_at to before the billing-required date so the user is grandfathered.
-	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2025-01-01 00:00:00' WHERE user_id = ?`, user.UserID)
-		return err
+	// Upgrade the user's account plan to 'grandfathered' so vm:create is granted.
+	acct, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Now()
+	changedBy := "test:grandfathered"
+	err = s.withTx(t.Context(), func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{AccountID: acct.ID, EndedAt: &now}); err != nil {
+			return err
+		}
+		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    string(entitlement.VersionGrandfathered),
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
 	})
 	if err != nil {
-		t.Fatalf("Failed to update created_at: %v", err)
+		t.Fatalf("Failed to set grandfathered plan: %v", err)
 	}
 
 	// Grandfathered user should NOT be throttled — plan grants vm:create.
@@ -318,8 +319,8 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 	}
 }
 
-// TestCheckNewThrottleFreeExemption verifies that a user with billing_exemption='free'
-// (friend plan) bypasses the disposable email throttle because their plan grants vm:create.
+// TestCheckNewThrottleFreeExemption verifies that a user on the 'friend' plan
+// bypasses the disposable email throttle because their plan grants vm:create.
 func TestCheckNewThrottleFreeExemption(t *testing.T) {
 	s := newTestServer(t)
 	s.env.SkipBilling = false
@@ -331,13 +332,26 @@ func TestCheckNewThrottleFreeExemption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set billing_exemption to 'free' (friend plan).
-	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET billing_exemption = 'free' WHERE user_id = ?`, user.UserID)
-		return err
+	// Upgrade the user's account plan to 'friend' so vm:create is granted.
+	acct, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Now()
+	changedBy := "test:friend"
+	err = s.withTx(t.Context(), func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{AccountID: acct.ID, EndedAt: &now}); err != nil {
+			return err
+		}
+		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    string(entitlement.VersionFriend),
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
 	})
 	if err != nil {
-		t.Fatalf("Failed to update billing_exemption: %v", err)
+		t.Fatalf("Failed to set friend plan: %v", err)
 	}
 
 	// Friend user should NOT be throttled — plan grants vm:create.

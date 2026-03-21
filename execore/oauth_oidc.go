@@ -234,6 +234,10 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
 		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe)
+		if err != nil {
+			return err
+		}
+		_, err = createAccountWithBasicPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {

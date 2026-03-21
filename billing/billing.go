@@ -596,12 +596,71 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 		if err != nil {
 			return since, fmt.Errorf("insert billing event: %w", err)
 		}
+
+		// Update account_plans to reflect the subscription change.
+		// On "active": close current plan and insert "individual".
+		// On "canceled": close current plan and insert "basic".
+		if err := m.syncAccountPlan(ctx, sub.Customer.ID, eventType, eventAt); err != nil {
+			m.slog().WarnContext(ctx, "failed to sync account plan",
+				"account_id", sub.Customer.ID,
+				"event_type", eventType,
+				"error", err,
+			)
+		}
 	}
 
 	if maxEventAt == sinceUnix {
 		return since, nil
 	}
 	return time.Unix(maxEventAt, 0).UTC(), nil
+}
+
+// syncAccountPlan updates account_plans when a subscription event is processed.
+// "active" -> close current plan, insert "individual".
+// "canceled" -> close current plan, insert "basic".
+func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time) error {
+	newPlanID := "basic"
+	if eventType == "active" {
+		newPlanID = "individual"
+	}
+
+	// Skip if the active plan already matches — avoids duplicate rows from poller replays.
+	const checkQ = `SELECT plan_id FROM account_plans WHERE account_id = @accountID AND ended_at IS NULL`
+	var currentPlanID string
+	for rows, err := range m.query(ctx, checkQ, sql.Named("accountID", accountID)) {
+		if err != nil {
+			return fmt.Errorf("check current plan: %w", err)
+		}
+		if err := rows.Scan(&currentPlanID); err != nil {
+			return fmt.Errorf("scan current plan: %w", err)
+		}
+	}
+	if currentPlanID == newPlanID {
+		return nil
+	}
+
+	normalizedAt := sqlite.NormalizeTime(eventAt)
+	changedBy := "stripe:event"
+
+	const closeQ = `UPDATE account_plans SET ended_at = @endedAt WHERE account_id = @accountID AND ended_at IS NULL`
+	if err := m.exec(ctx, closeQ,
+		sql.Named("accountID", accountID),
+		sql.Named("endedAt", normalizedAt),
+	); err != nil {
+		return fmt.Errorf("close existing plan: %w", err)
+	}
+
+	const insertQ = `INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by) VALUES (@accountID, @planID, @startedAt, @changedBy)`
+	if err := m.exec(ctx, insertQ,
+		sql.Named("accountID", accountID),
+		sql.Named("planID", newPlanID),
+		sql.Named("startedAt", normalizedAt),
+		sql.Named("changedBy", changedBy),
+	); err != nil {
+		return fmt.Errorf("insert new plan: %w", err)
+	}
+
+	return nil
 }
 
 // SubscriptionEvents returns subscription events for an account, ordered by time.

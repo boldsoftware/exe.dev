@@ -20,7 +20,7 @@ func (q *Queries) DeletePendingRegistrationByToken(ctx context.Context, token st
 }
 
 const getPendingRegistrationByToken = `-- name: GetPendingRegistrationByToken :one
-SELECT token, email, invite_code_id, created_at, expires_at FROM pending_registrations
+SELECT token, email, invite_code_id, created_at, expires_at, account_id FROM pending_registrations
 WHERE token = ?
 `
 
@@ -33,13 +33,14 @@ func (q *Queries) GetPendingRegistrationByToken(ctx context.Context, token strin
 		&i.InviteCodeID,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.AccountID,
 	)
 	return i, err
 }
 
 const insertPendingRegistration = `-- name: InsertPendingRegistration :exec
-INSERT INTO pending_registrations (token, email, invite_code_id, expires_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO pending_registrations (token, email, invite_code_id, expires_at, account_id)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertPendingRegistrationParams struct {
@@ -47,6 +48,7 @@ type InsertPendingRegistrationParams struct {
 	Email        string    `db:"email" json:"email"`
 	InviteCodeID *int64    `db:"invite_code_id" json:"invite_code_id"`
 	ExpiresAt    time.Time `db:"expires_at" json:"expires_at"`
+	AccountID    *string   `db:"account_id" json:"account_id"`
 }
 
 func (q *Queries) InsertPendingRegistration(ctx context.Context, arg InsertPendingRegistrationParams) error {
@@ -55,6 +57,7 @@ func (q *Queries) InsertPendingRegistration(ctx context.Context, arg InsertPendi
 		arg.Email,
 		arg.InviteCodeID,
 		arg.ExpiresAt,
+		arg.AccountID,
 	)
 	return err
 }

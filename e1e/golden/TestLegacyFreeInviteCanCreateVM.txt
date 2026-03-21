@@ -1,0 +1,56 @@
+
+
+●
+● ssh with free invite
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+
+✓ Invite code accepted: free account
+To sign up, please verify your email.
+
+Please enter your email address: TestLegacyFreeInviteCanCreateVM@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestLegacyFreeInviteCanCreateVM@example.com
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ new --name=BOX_NAME
+Creating BOX_NAME using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME!
+
+Coding agent
+http://BOX_NAME.shelley.exe.cloud:EXED_HTTP_PORT
+
+App (HTTPS proxy → :8000)
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+
+SSH
+ssh -p SSH_PORT BOX_NAME@exe.cloud
+
+PROMPT ▶ ls
+Your VMs:
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu)
+PROMPT ▶ rm BOX_NAME
+Deleting BOX_NAME...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

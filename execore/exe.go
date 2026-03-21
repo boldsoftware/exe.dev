@@ -42,6 +42,7 @@ import (
 
 	"exe.dev/apns"
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/container"
@@ -3330,7 +3331,8 @@ func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount i
 	return boxCount == 0
 }
 
-// createUserRecord creates a user record and returns the new user ID.
+// createUserRecord creates a user record, an account, and an initial account_plans row,
+// then returns the new user ID. All three inserts happen in the caller's transaction.
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
 func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool) (string, error) {
@@ -3357,7 +3359,35 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		return "", fmt.Errorf("failed to create user: %w", err)
 	}
 
+	// Account creation is handled by the caller, not here.
+	// Non-billing callers (SSH, OAuth, invite) call createAccountWithBasicPlan after this.
+	// The billing flow (handleNewUserBillingSuccess) creates the account with the Stripe customer ID.
+
 	return userID, nil
+}
+
+// createAccountWithBasicPlan creates an account and a 'basic' plan for a user.
+// Used by non-billing signup paths (SSH, OAuth, invite code).
+// The billing path uses the Stripe customer ID as the account ID instead.
+func createAccountWithBasicPlan(ctx context.Context, queries *exedb.Queries, userID string) (string, error) {
+	accountID := "exe_" + crand.Text()[:16]
+	if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
+		ID:        accountID,
+		CreatedBy: userID,
+	}); err != nil {
+		return "", fmt.Errorf("create account: %w", err)
+	}
+	now := sqlite.NormalizeTime(time.Now())
+	changedBy := "system:signup"
+	if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID: accountID,
+		PlanID:    string(entitlement.VersionBasic),
+		StartedAt: now,
+		ChangedBy: &changedBy,
+	}); err != nil {
+		return "", fmt.Errorf("create basic plan: %w", err)
+	}
+	return accountID, nil
 }
 
 // checkEmailQuality checks the email quality via IPQS and updates the user if disposable.
@@ -3777,6 +3807,9 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		userID, err := s.createUserRecord(ctx, queries, email, false)
 		if err != nil {
+			return err
+		}
+		if _, err := createAccountWithBasicPlan(ctx, queries, userID); err != nil {
 			return err
 		}
 

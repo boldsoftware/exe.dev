@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
@@ -56,15 +57,30 @@ var (
 	}
 )
 
-// planForUser determines the appropriate Plan for a user based on their billing status.
+// planForUser determines the appropriate Plan for a user based on their account_plans record.
 // If the user has explicit overrides for max_credit or refresh_per_hour, those are applied
 // on top of the base plan.
+// Falls back to GetUserPlanCategory if no account_plans row exists (legacy/migration path).
 // This version takes a *exedb.Queries to be used within an existing transaction.
 func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
-	// Determine base plan from billing status
-	catResult, err := q.GetUserPlanCategory(ctx, userID)
+	// Primary path: resolve plan from account_plans table.
+	planRow, err := q.GetActivePlanForUser(ctx, userID)
+	var catResult string
 	if err != nil {
-		return Plan{}, fmt.Errorf("failed to get user plan category: %w", err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return Plan{}, fmt.Errorf("failed to get active plan for user: %w", err)
+		}
+		// Legacy fallback: user has no account_plans row yet (pre-backfill).
+		catResult, err = q.GetUserPlanCategory(ctx, userID)
+		if err != nil {
+			return Plan{}, fmt.Errorf("failed to get user plan category (legacy): %w", err)
+		}
+	} else {
+		p, ok := entitlement.GetPlanByID(planRow.PlanID)
+		if !ok {
+			return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
+		}
+		catResult = p.LLMGatewayCategory
 	}
 
 	var plan Plan

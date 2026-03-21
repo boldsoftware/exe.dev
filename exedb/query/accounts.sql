@@ -20,10 +20,12 @@ WHERE account_id = ?
 ORDER BY started_at DESC;
 
 -- name: GetActivePlanForUser :one
+-- Resolves a user's effective plan. If parent_id is set, uses parent's plan.
+-- trial_expires_at is excluded because COALESCE returns it as a string
+-- that the Go SQLite driver cannot scan into *time.Time.
 SELECT
     COALESCE(parent_ap.plan_id, own_ap.plan_id) AS plan_id,
-    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id,
-    COALESCE(parent_ap.trial_expires_at, own_ap.trial_expires_at) AS trial_expires_at
+    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id
 FROM users u
 JOIN accounts a ON a.created_by = u.user_id
 JOIN account_plans own_ap ON own_ap.account_id = a.id AND own_ap.ended_at IS NULL

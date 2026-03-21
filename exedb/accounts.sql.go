@@ -170,8 +170,7 @@ func (q *Queries) GetActiveAccountPlan(ctx context.Context, accountID string) (A
 const getActivePlanForUser = `-- name: GetActivePlanForUser :one
 SELECT
     COALESCE(parent_ap.plan_id, own_ap.plan_id) AS plan_id,
-    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id,
-    COALESCE(parent_ap.trial_expires_at, own_ap.trial_expires_at) AS trial_expires_at
+    COALESCE(parent_ap.account_id, own_ap.account_id) AS account_id
 FROM users u
 JOIN accounts a ON a.created_by = u.user_id
 JOIN account_plans own_ap ON own_ap.account_id = a.id AND own_ap.ended_at IS NULL
@@ -181,15 +180,17 @@ WHERE u.user_id = ?
 `
 
 type GetActivePlanForUserRow struct {
-	PlanID         string     `db:"plan_id" json:"plan_id"`
-	AccountID      string     `db:"account_id" json:"account_id"`
-	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	PlanID    string `db:"plan_id" json:"plan_id"`
+	AccountID string `db:"account_id" json:"account_id"`
 }
 
+// Resolves a user's effective plan. If parent_id is set, uses parent's plan.
+// trial_expires_at is excluded because COALESCE returns it as a string
+// that the Go SQLite driver cannot scan into *time.Time.
 func (q *Queries) GetActivePlanForUser(ctx context.Context, userID string) (GetActivePlanForUserRow, error) {
 	row := q.queryRow(ctx, q.getActivePlanForUserStmt, getActivePlanForUser, userID)
 	var i GetActivePlanForUserRow
-	err := row.Scan(&i.PlanID, &i.AccountID, &i.TrialExpiresAt)
+	err := row.Scan(&i.PlanID, &i.AccountID)
 	return i, err
 }
 

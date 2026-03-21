@@ -12,7 +12,7 @@ const (
 	VersionIndividual    PlanVersion = "individual"
 	VersionFriend        PlanVersion = "friend"
 	VersionGrandfathered PlanVersion = "grandfathered"
-	VersionInvite        PlanVersion = "invite"
+	VersionTrial         PlanVersion = "trial"
 	VersionBasic         PlanVersion = "basic"
 	VersionRestricted    PlanVersion = "restricted"
 )
@@ -24,6 +24,10 @@ type Plan struct {
 
 	// Name is the human-readable display name.
 	Name string
+
+	// LLMGatewayCategory determines credit refresh behavior in the LLM gateway.
+	// Values: "has_billing", "friend", "no_billing".
+	LLMGatewayCategory string
 
 	// Entitlements is the set of capabilities this plan grants.
 	Entitlements map[Entitlement]bool
@@ -43,15 +47,17 @@ type PlanQuotas struct {
 
 var plans = map[PlanVersion]Plan{
 	VersionVIP: {
-		Version: VersionVIP,
-		Name:    "VIP",
+		Version:            VersionVIP,
+		Name:               "VIP",
+		LLMGatewayCategory: "friend",
 		Entitlements: map[Entitlement]bool{
 			All: true,
 		},
 	},
 	VersionTeam: {
-		Version: VersionTeam,
-		Name:    "Team",
+		Version:            VersionTeam,
+		Name:               "Team",
+		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -62,8 +68,9 @@ var plans = map[PlanVersion]Plan{
 		},
 	},
 	VersionIndividual: {
-		Version: VersionIndividual,
-		Name:    "Individual",
+		Version:            VersionIndividual,
+		Name:               "Individual",
+		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -78,8 +85,9 @@ var plans = map[PlanVersion]Plan{
 		},
 	},
 	VersionFriend: {
-		Version: VersionFriend,
-		Name:    "Friend",
+		Version:            VersionFriend,
+		Name:               "Friend",
+		LLMGatewayCategory: "friend",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
@@ -88,8 +96,9 @@ var plans = map[PlanVersion]Plan{
 		},
 	},
 	VersionGrandfathered: {
-		Version: VersionGrandfathered,
-		Name:    "Grandfathered",
+		Version:            VersionGrandfathered,
+		Name:               "Grandfathered",
+		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
@@ -97,9 +106,10 @@ var plans = map[PlanVersion]Plan{
 			VMRun:     true,
 		},
 	},
-	VersionInvite: {
-		Version: VersionInvite,
-		Name:    "Invite",
+	VersionTrial: {
+		Version:            VersionTrial,
+		Name:               "Trial",
+		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
@@ -108,17 +118,19 @@ var plans = map[PlanVersion]Plan{
 		},
 	},
 	VersionBasic: {
-		Version: VersionBasic,
-		Name:    "Basic",
+		Version:            VersionBasic,
+		Name:               "Basic",
+		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMConnect: true,
 		},
 	},
 	VersionRestricted: {
-		Version:      VersionRestricted,
-		Name:         "Restricted",
-		Entitlements: map[Entitlement]bool{},
+		Version:            VersionRestricted,
+		Name:               "Restricted",
+		LLMGatewayCategory: "no_billing",
+		Entitlements:       map[Entitlement]bool{},
 	},
 }
 
@@ -126,6 +138,11 @@ var plans = map[PlanVersion]Plan{
 func GetPlan(version PlanVersion) (Plan, bool) {
 	p, ok := plans[version]
 	return p, ok
+}
+
+// GetPlanByID returns the Plan for a given plan ID string and whether it exists.
+func GetPlanByID(id string) (Plan, bool) {
+	return GetPlan(PlanVersion(id))
 }
 
 // PlanName returns the human-readable name for a plan version (e.g., "Individual").
@@ -208,10 +225,10 @@ func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
 		return VersionIndividual
 	}
 
-	// Invite: trial exemption that hasn't expired.
+	// Trial: trial exemption that hasn't expired.
 	if inputs.BillingExemption != nil && *inputs.BillingExemption == "trial" {
 		if inputs.BillingTrialEndsAt != nil && time.Now().Before(*inputs.BillingTrialEndsAt) {
-			return VersionInvite
+			return VersionTrial
 		}
 	}
 

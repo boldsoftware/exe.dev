@@ -482,33 +482,60 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	// craft fake session_id parameters without completing checkout.
 	devBypass := s.env.WebDev && r.URL.Query().Get("dev_bypass") == "1"
 	if sessionID != "" || devBypass {
-		var billingID string
 		if devBypass {
-			billingID = "dev_bypass"
 			s.slog().InfoContext(r.Context(), "billing success: dev bypass", "user_id", userID)
 		} else {
-			var err error
-			billingID, err = s.billing.VerifyCheckout(r.Context(), sessionID)
-			if err != nil {
+			// Verify the Stripe checkout session. We no longer use the returned billingID
+			// as an account identifier — the user's canonical account (created at signup) is used.
+			if _, err := s.billing.VerifyCheckout(r.Context(), sessionID); err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to verify checkout session", "error", err, "session_id", sessionID)
 				http.Error(w, "failed to verify billing", http.StatusBadRequest)
 				return
 			}
 		}
 		now := sqlite.NormalizeTime(time.Now())
+		var accountID string
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			if err := queries.ActivateAccount(ctx, exedb.ActivateAccountParams{
-				CreatedBy: userID,
-				EventAt:   now,
-			}); err != nil {
-				return fmt.Errorf("activate account: %w", err)
+			// Fetch the user's canonical account (created at signup).
+			// In dev mode, create one on the fly if it doesn't exist.
+			acct, err := queries.GetAccountByUserID(ctx, userID)
+			if err != nil && devBypass {
+				newID := "exe_" + crand.Text()[:16]
+				if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
+					ID:        newID,
+					CreatedBy: userID,
+				}); err != nil {
+					return fmt.Errorf("dev bypass: create account: %w", err)
+				}
+				acct = exedb.Account{ID: newID, CreatedBy: userID}
+			} else if err != nil {
+				return fmt.Errorf("get account for user: %w", err)
 			}
+			accountID = acct.ID
+			// Insert a billing event to mark the account as paid.
 			if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
-				AccountID: billingID,
+				AccountID: acct.ID,
 				EventType: "active",
 				EventAt:   now,
 			}); err != nil {
 				return fmt.Errorf("insert billing event: %w", err)
+			}
+			// Upgrade the account plan to 'individual'.
+			// The poller's syncAccountPlan will be a no-op since the plan already matches.
+			if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+				AccountID: acct.ID,
+				EndedAt:   &now,
+			}); err != nil {
+				return fmt.Errorf("close existing plan: %w", err)
+			}
+			changedBy := "stripe:event"
+			if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+				AccountID: acct.ID,
+				PlanID:    string(entitlement.VersionIndividual),
+				StartedAt: now,
+				ChangedBy: &changedBy,
+			}); err != nil {
+				return fmt.Errorf("insert individual plan: %w", err)
 			}
 			return nil
 		})
@@ -525,8 +552,8 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		// Grant one-time signup bonus via the new gift credit system.
 		// This runs alongside TopUpOnBillingUpgrade during the transition period;
 		// once the old llmgateway credit path is removed, only this will remain.
-		giftSignupBonus(r.Context(), s.billing, billingID, s.slog())
-		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "billing_id", billingID)
+		giftSignupBonus(r.Context(), s.billing, accountID, s.slog())
+		s.slog().InfoContext(r.Context(), "account activated after Stripe checkout", "user_id", userID, "session_id", sessionID, "account_id", accountID)
 		s.slackFeed.Subscribed(r.Context(), userID)
 
 		// Best-effort cleanup of the checkout params token.
@@ -596,8 +623,16 @@ func (s *Server) handleNewUserBillingSubscribe(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Create account ID for this registration
-	accountID := "exe_" + crand.Text()[:16]
+	// Use the account ID stored in the pending registration.
+	// This was generated when the pending registration was created and will
+	// become both the Stripe customer ID and the canonical account ID.
+	var accountID string
+	if pending.AccountID != nil {
+		accountID = *pending.AccountID
+	} else {
+		// Legacy pending registration without account_id (pre-migration 123).
+		accountID = "exe_" + crand.Text()[:16]
+	}
 
 	// Read VM creation params to preserve through checkout.
 	vmName := strings.TrimSpace(r.URL.Query().Get("name"))
@@ -688,7 +723,9 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Create user + account in transaction
+	// Create user + account in transaction.
+	// The account ID comes from the Stripe checkout session (billingID) — it was
+	// generated when the checkout session was created and is already the Stripe customer ID.
 	now := sqlite.NormalizeTime(time.Now())
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
@@ -697,24 +734,29 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
+		// Create the account with the Stripe customer ID (billingID).
 		if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
 			ID:        billingID,
 			CreatedBy: userID,
 		}); err != nil {
 			return fmt.Errorf("insert account: %w", err)
 		}
-		if err := queries.ActivateAccount(ctx, exedb.ActivateAccountParams{
-			CreatedBy: userID,
-			EventAt:   now,
-		}); err != nil {
-			return fmt.Errorf("activate account: %w", err)
-		}
+		// Insert the billing event to mark the account as active (paid).
 		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   now,
 		}); err != nil {
 			return fmt.Errorf("insert billing event: %w", err)
+		}
+		changedBy := "stripe:event"
+		if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: billingID,
+			PlanID:    string(entitlement.VersionIndividual),
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		}); err != nil {
+			return fmt.Errorf("insert individual plan: %w", err)
 		}
 		return nil
 	})
@@ -1527,13 +1569,17 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	oidcProvider := s.shouldUseTeamOIDC(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
 	willUseOIDC := oidcProvider != nil
 	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC {
-		// Create pending registration to track email through Stripe
+		// Create pending registration to track email through Stripe.
+		// Generate the account ID now so it can be used as the Stripe customer ID
+		// and later as the canonical account ID when the user is created.
 		token := generateRegistrationToken()
+		pendingAccountID := "exe_" + crand.Text()[:16]
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
 			Token:        token,
 			Email:        addr,
-			InviteCodeID: nil, // No invite code in billing flow
+			InviteCodeID: nil,
 			ExpiresAt:    time.Now().Add(1 * time.Hour),
+			AccountID:    &pendingAccountID,
 		})
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to create pending registration", "error", err)
@@ -1620,6 +1666,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe)
+			if err != nil {
+				return err
+			}
+			_, err = createAccountWithBasicPlan(ctx, queries, userID)
 			return err
 		})
 		if err != nil {

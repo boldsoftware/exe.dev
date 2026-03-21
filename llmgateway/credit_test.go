@@ -423,18 +423,23 @@ func TestPlanCategories(t *testing.T) {
 
 	t.Run("friend", func(t *testing.T) {
 		userID := "friend-user"
+		accountID := "exe_friend_acct001"
 		createTestUser(t, db, userID, "friend@example.com")
+		// Set 'friend' plan via account_plans (billing_exemption was dropped in migration 122).
 		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			return q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
-				BillingExemption: func() *string {
-					s := "free"
-					return &s
-				}(),
-				UserID: userID,
+			if err := q.InsertAccount(ctx, exedb.InsertAccountParams{ID: accountID, CreatedBy: userID}); err != nil {
+				return err
+			}
+			changedBy := "test:friend"
+			return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+				AccountID: accountID,
+				PlanID:    "friend",
+				StartedAt: now,
+				ChangedBy: &changedBy,
 			})
 		})
 		if err != nil {
-			t.Fatalf("failed to set billing exemption: %v", err)
+			t.Fatalf("failed to set friend plan: %v", err)
 		}
 
 		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
