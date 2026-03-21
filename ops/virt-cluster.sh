@@ -1740,7 +1740,7 @@ cmd_destroy() {
 }
 
 cmd_os_upgrade() {
-    local name ip
+    local name ip pids=() names=()
     for name in $(all_vm_names); do
         ip="$(get_vm_ip "$name")"
         if [[ -z "$ip" ]]; then
@@ -1748,8 +1748,21 @@ cmd_os_upgrade() {
             continue
         fi
         log "Upgrading $name ($ip)..."
-        ssh_run "$ip" 'sudo apt update && sudo NEEDRESTART_MODE=l apt upgrade -y'
+        ssh_run "$ip" 'sudo apt update && sudo NEEDRESTART_MODE=l apt upgrade -y' &
+        pids+=("$!")
+        names+=("$name")
     done
+    local failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            log "ERROR: upgrade failed on ${names[$i]}"
+            failed=1
+        fi
+    done
+    if [[ "$failed" -eq 1 ]]; then
+        log "Some nodes failed to upgrade"
+        exit 1
+    fi
     log "All nodes upgraded"
 }
 
