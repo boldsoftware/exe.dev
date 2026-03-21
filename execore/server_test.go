@@ -47,6 +47,9 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
+	if err := exedb.CopyTemplateDB(tslog.Slogger(t), dbPath); err != nil {
+		t.Fatalf("failed to copy template database: %v", err)
+	}
 	env := stage.Test()
 	registry := prometheus.NewRegistry()
 	cassette := filepath.Join("testdata", "stripe", strings.ReplaceAll(t.Name(), "/", "_")+".httprr")
