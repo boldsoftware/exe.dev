@@ -1739,6 +1739,20 @@ cmd_destroy() {
     log "Cluster destroyed"
 }
 
+cmd_os_upgrade() {
+    local name ip
+    for name in $(all_vm_names); do
+        ip="$(get_vm_ip "$name")"
+        if [[ -z "$ip" ]]; then
+            log "WARN: could not get IP for $name, skipping"
+            continue
+        fi
+        log "Upgrading $name ($ip)..."
+        ssh_run "$ip" 'sudo apt update && sudo NEEDRESTART_MODE=l apt upgrade -y'
+    done
+    log "All nodes upgraded"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 case "${1:-}" in
@@ -1748,8 +1762,9 @@ status) cmd_status ;;
 destroy) cmd_destroy ;;
 deploy) cmd_deploy ;;
 deploy-metrics) cmd_deploy_metrics ;;
+os-upgrade) cmd_os_upgrade ;;
 *)
-    echo "Usage: $0 {start|stop|status|destroy|deploy|deploy-metrics}"
+    echo "Usage: $0 {start|stop|status|destroy|deploy|deploy-metrics|os-upgrade}"
     echo ""
     echo "Subcommands:"
     echo "  start           Create and provision the VM cluster (idempotent)"
@@ -1758,6 +1773,7 @@ deploy-metrics) cmd_deploy_metrics ;;
     echo "  destroy         Tear down all VMs and remove disks"
     echo "  deploy          Rebuild binaries, push to VMs, restart services"
     echo "  deploy-metrics  Update prometheus config and deploy Grafana dashboards"
+    echo "  os-upgrade      Run apt upgrade on all cluster VMs"
     echo ""
     echo "Environment variables:"
     echo "  NUM_EXELETS=${NUM_EXELETS}  NUM_EXEPROXES=${NUM_EXEPROXES}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
