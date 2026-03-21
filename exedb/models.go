@@ -208,17 +208,23 @@ type Exe1Token struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
-type GithubAccount struct {
+type GithubInstallation struct {
+	UserID                  string     `db:"user_id" json:"user_id"`
+	GitHubLogin             string     `db:"github_login" json:"github_login"`
+	GitHubAppInstallationID int64      `db:"github_app_installation_id" json:"github_app_installation_id"`
+	GitHubAccountLogin      string     `db:"github_account_login" json:"github_account_login"`
+	CreatedAt               *time.Time `db:"created_at" json:"created_at"`
+}
+
+type GithubUserToken struct {
 	UserID                string     `db:"user_id" json:"user_id"`
 	GitHubLogin           string     `db:"github_login" json:"github_login"`
-	InstallationID        int64      `db:"installation_id" json:"installation_id"`
-	TargetLogin           string     `db:"target_login" json:"target_login"`
 	AccessToken           string     `db:"access_token" json:"access_token"`
 	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
-	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
 	TokenRenewedAt        *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
 	AccessTokenExpiresAt  *string    `db:"access_token_expires_at" json:"access_token_expires_at"`
 	RefreshTokenExpiresAt *string    `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
 }
 
 type HllSketch struct {

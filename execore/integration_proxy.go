@@ -181,17 +181,17 @@ func (s *Server) buildGitHubProxyConfig(ctx context.Context, ownerUserID, config
 	if len(cfg.Repositories) > 0 {
 		repoOwner, _, _ := strings.Cut(cfg.Repositories[0], "/")
 		if repoOwner != "" {
-			ghAccount, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetGitHubAccountByTarget, exedb.GetGitHubAccountByTargetParams{
-				UserID:      ownerUserID,
-				TargetLogin: repoOwner,
+			ghInstall, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetGitHubInstallationByTarget, exedb.GetGitHubInstallationByTargetParams{
+				UserID:             ownerUserID,
+				GitHubAccountLogin: repoOwner,
 			})
-			if err == nil && ghAccount.InstallationID != cfg.InstallationID {
+			if err == nil && ghInstall.GitHubAppInstallationID != cfg.InstallationID {
 				s.slog().InfoContext(ctx, "integration config: resolved updated installation ID",
 					"old_installation_id", cfg.InstallationID,
-					"new_installation_id", ghAccount.InstallationID,
+					"new_installation_id", ghInstall.GitHubAppInstallationID,
 					"target", repoOwner,
 				)
-				cfg.InstallationID = ghAccount.InstallationID
+				cfg.InstallationID = ghInstall.GitHubAppInstallationID
 			}
 		}
 	}

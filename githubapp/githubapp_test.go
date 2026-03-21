@@ -139,6 +139,103 @@ func TestGetUserError(t *testing.T) {
 	}
 }
 
+func TestRefreshUserToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.Header.Get("Accept") != "application/json" {
+			t.Errorf("expected Accept: application/json")
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("client_id") != "test-client" {
+			t.Errorf("expected client_id=test-client, got %s", r.Form.Get("client_id"))
+		}
+		if r.Form.Get("client_secret") != "test-secret" {
+			t.Errorf("expected client_secret=test-secret, got %s", r.Form.Get("client_secret"))
+		}
+		if r.Form.Get("grant_type") != "refresh_token" {
+			t.Errorf("expected grant_type=refresh_token, got %s", r.Form.Get("grant_type"))
+		}
+		if r.Form.Get("refresh_token") != "ghr_test_refresh" {
+			t.Errorf("expected refresh_token=ghr_test_refresh, got %s", r.Form.Get("refresh_token"))
+		}
+		json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken:           "ghu_new_token",
+			RefreshToken:          "ghr_new_refresh",
+			TokenType:             "bearer",
+			ExpiresIn:             28800,
+			RefreshTokenExpiresIn: 15552000,
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		TokenURL:     srv.URL,
+	}
+	resp, err := c.RefreshUserToken(context.Background(), "ghr_test_refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.AccessToken != "ghu_new_token" {
+		t.Errorf("expected ghu_new_token, got %s", resp.AccessToken)
+	}
+	if resp.RefreshToken != "ghr_new_refresh" {
+		t.Errorf("expected ghr_new_refresh, got %s", resp.RefreshToken)
+	}
+	if resp.ExpiresIn != 28800 {
+		t.Errorf("expected expires_in=28800, got %d", resp.ExpiresIn)
+	}
+	if resp.RefreshTokenExpiresIn != 15552000 {
+		t.Errorf("expected refresh_token_expires_in=15552000, got %d", resp.RefreshTokenExpiresIn)
+	}
+}
+
+func TestRefreshUserTokenError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "bad_refresh_token",
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{ClientID: "test", ClientSecret: "secret", TokenURL: srv.URL}
+	_, err := c.RefreshUserToken(context.Background(), "bad-refresh-token")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestTokenResponseExpiryHelpers(t *testing.T) {
+	tr := &TokenResponse{
+		ExpiresIn:             28800,
+		RefreshTokenExpiresIn: 15552000,
+	}
+
+	at := tr.AccessTokenExpiresAt()
+	if at == nil {
+		t.Fatal("expected non-nil AccessTokenExpiresAt")
+	}
+
+	rt := tr.RefreshTokenExpiresAt()
+	if rt == nil {
+		t.Fatal("expected non-nil RefreshTokenExpiresAt")
+	}
+
+	// With zero values, should return nil.
+	tr2 := &TokenResponse{}
+	if tr2.AccessTokenExpiresAt() != nil {
+		t.Error("expected nil AccessTokenExpiresAt for zero ExpiresIn")
+	}
+	if tr2.RefreshTokenExpiresAt() != nil {
+		t.Error("expected nil RefreshTokenExpiresAt for zero RefreshTokenExpiresIn")
+	}
+}
+
 func TestInstallationTokensEnabled(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

@@ -37,11 +37,11 @@ sql:
             go_type: "bool"
           - column: "invite_codes.is_batch"
             go_type: "bool"
-          - column: "github_accounts.access_token_expires_at"
+          - column: "github_user_tokens.access_token_expires_at"
             go_type:
               type: "string"
               pointer: true
-          - column: "github_accounts.refresh_token_expires_at"
+          - column: "github_user_tokens.refresh_token_expires_at"
             go_type:
               type: "string"
               pointer: true
@@ -78,8 +78,11 @@ sql:
           exe1_tokens: "Exe1Token"
           exe1: "Exe1"
           exe0: "Exe0"
-          github_accounts: "GitHubAccount"
+          github_user_tokens: "GitHubUserToken"
+          github_installations: "GitHubInstallation"
           github_integration: "GitHubIntegration"
           github_login: "GitHubLogin"
+          github_app_installation_id: "GitHubAppInstallationID"
+          github_account_login: "GitHubAccountLogin"
           signup_ip_checks: "SignupIPCheck"
           signup_ip_check: "SignupIPCheck"

@@ -127,19 +127,19 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 
 // handleListGitHub shows the current GitHub account connections.
 func (ss *SSHServer) handleListGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+	installations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubInstallations, cc.User.ID)
 	if err != nil {
 		return err
 	}
-	if len(existing) == 0 {
+	if len(installations) == 0 {
 		cc.Writeln("No GitHub accounts connected.")
 		cc.Writeln("Run: integrations setup github")
 		return nil
 	}
 
 	cc.Writeln("GitHub accounts:")
-	for _, a := range existing {
-		cc.Writeln("  %s", formatGitHubAccount(a.TargetLogin, a.GitHubLogin))
+	for _, inst := range installations {
+		cc.Writeln("  %s", formatGitHubAccount(inst.GitHubAccountLogin, inst.GitHubLogin))
 	}
 	return nil
 }
@@ -148,47 +148,50 @@ func (ss *SSHServer) handleListGitHub(ctx context.Context, cc *exemenu.CommandCo
 // that the GitHub App is still installed on each target account.
 // Token refresh is left to the background renewal loop.
 func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+	installations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubInstallations, cc.User.ID)
 	if err != nil {
 		return err
 	}
-	if len(existing) == 0 {
+	if len(installations) == 0 {
 		cc.Writeln("No GitHub accounts connected.")
 		cc.Writeln("Run: integrations setup github")
 		return nil
 	}
 
+	// Build remote installation set per GitHub login (a user may have
+	// installations linked to different GitHub accounts).
+	remoteSet := make(map[int64]bool)
+	verifiedLogins := make(map[string]bool)
+	for _, inst := range installations {
+		if verifiedLogins[inst.GitHubLogin] {
+			continue
+		}
+		accessToken, err := ss.server.resolveGitHubTokenWeb(ctx, cc.User.ID, inst.GitHubLogin)
+		if err != nil {
+			cc.Writeln("  %s: token error: %v", inst.GitHubLogin, err)
+			verifiedLogins[inst.GitHubLogin] = true
+			continue
+		}
+		remoteInstalls, err := ss.server.githubApp.GetUserInstallations(ctx, accessToken)
+		if err != nil {
+			cc.Writeln("  %s: failed to check installations: %v", inst.GitHubLogin, err)
+			verifiedLogins[inst.GitHubLogin] = true
+			continue
+		}
+		for _, ri := range remoteInstalls {
+			remoteSet[ri.ID] = true
+		}
+		verifiedLogins[inst.GitHubLogin] = true
+	}
+
 	allOK := true
-	for _, acct := range existing {
-		label := formatGitHubAccount(acct.TargetLogin, acct.GitHubLogin)
-
-		accessToken, err := ss.server.resolveGitHubTokenWeb(ctx, acct)
-		if err != nil {
-			cc.Writeln("  %s ✗ %v", label, err)
-			allOK = false
-			continue
-		}
-
-		// Check that the GitHub App installation is still active.
-		installs, err := ss.server.githubApp.GetUserInstallations(ctx, accessToken)
-		if err != nil {
-			cc.Writeln("  %s ✗ failed to check installations: %v", label, err)
-			allOK = false
-			continue
-		}
-		found := false
-		for _, inst := range installs {
-			if inst.ID == acct.InstallationID {
-				found = true
-				break
-			}
-		}
-		if !found {
+	for _, inst := range installations {
+		label := formatGitHubAccount(inst.GitHubAccountLogin, inst.GitHubLogin)
+		if !remoteSet[inst.GitHubAppInstallationID] {
 			cc.Writeln("  %s ✗ app not installed", label)
 			allOK = false
 			continue
 		}
-
 		cc.Writeln("  %s ✓", label)
 	}
 
@@ -200,22 +203,27 @@ func (ss *SSHServer) handleVerifyGitHub(ctx context.Context, cc *exemenu.Command
 }
 
 func (ss *SSHServer) handleDeleteGitHub(ctx context.Context, cc *exemenu.CommandContext) error {
-	existing, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+	installations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubInstallations, cc.User.ID)
 	if err != nil {
 		return err
 	}
-	if len(existing) == 0 {
+	if len(installations) == 0 {
 		return cc.Errorf("no GitHub account connected")
 	}
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).DeleteAllGitHubAccounts, cc.User.ID)
-	if err != nil {
+	// Delete installations first (FK constraint), then the tokens, atomically.
+	if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		if err := queries.DeleteAllGitHubInstallations(ctx, cc.User.ID); err != nil {
+			return err
+		}
+		return queries.DeleteAllGitHubUserTokens(ctx, cc.User.ID)
+	}); err != nil {
 		return err
 	}
 
 	cc.Writeln("Disconnected:")
-	for _, a := range existing {
-		cc.Writeln("  %s", formatGitHubAccount(a.TargetLogin, a.GitHubLogin))
+	for _, inst := range installations {
+		cc.Writeln("  %s", formatGitHubAccount(inst.GitHubAccountLogin, inst.GitHubLogin))
 	}
 	return nil
 }

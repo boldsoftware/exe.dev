@@ -1771,23 +1771,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	// Fetch GitHub account connections.
-	var ghAccounts []GitHubAccountDisplayInfo
-	var ghAccountsFull []GitHubAccountFullInfo
-	dbGHAccounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to get GitHub accounts for profile", "error", err, "user_id", userID)
-	}
-	for _, a := range dbGHAccounts {
-		ghAccounts = append(ghAccounts, GitHubAccountDisplayInfo{
-			GitHubLogin: a.GitHubLogin,
-			TargetLogin: a.TargetLogin,
-		})
-		ghAccountsFull = append(ghAccountsFull, GitHubAccountFullInfo{
-			GitHubLogin:    a.GitHubLogin,
-			TargetLogin:    a.TargetLogin,
-			InstallationID: a.InstallationID,
-		})
-	}
+	ghAccounts, ghAccountsFull := s.fetchGitHubAccountDisplayInfo(r.Context(), userID)
 	ghEnabled := s.githubApp.Enabled()
 	var ghAppSlug string
 	if ghEnabled {
@@ -1994,23 +1978,7 @@ func (s *Server) handleIntegrationsPage(w http.ResponseWriter, r *http.Request, 
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	var ghAccounts []GitHubAccountDisplayInfo
-	var ghAccountsFull []GitHubAccountFullInfo
-	dbGHAccounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to get GitHub accounts for integrations page", "error", err, "user_id", userID)
-	}
-	for _, a := range dbGHAccounts {
-		ghAccounts = append(ghAccounts, GitHubAccountDisplayInfo{
-			GitHubLogin: a.GitHubLogin,
-			TargetLogin: a.TargetLogin,
-		})
-		ghAccountsFull = append(ghAccountsFull, GitHubAccountFullInfo{
-			GitHubLogin:    a.GitHubLogin,
-			TargetLogin:    a.TargetLogin,
-			InstallationID: a.InstallationID,
-		})
-	}
+	ghAccounts, ghAccountsFull := s.fetchGitHubAccountDisplayInfo(r.Context(), userID)
 	slices.SortFunc(ghAccountsFull, func(a, b GitHubAccountFullInfo) int {
 		return strings.Compare(a.GitHubLogin, b.GitHubLogin)
 	})

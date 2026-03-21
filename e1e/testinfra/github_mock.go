@@ -68,6 +68,13 @@ type MockGitHubServer struct {
 	defaultInstallations []MockInstallation
 	tokenInstallations   map[string]*[]MockInstallation // token -> installations (pointer for mutability)
 	tokenUsers           map[string]string              // token -> login (empty = 401)
+
+	// Token rotation tracking (enabled via EnableTokenRotation).
+	tokenRotation        bool
+	validRefreshTokens   map[string]bool   // refresh token -> valid?
+	refreshToAccessToken map[string]string // refresh token -> access token that was issued with it
+	tokenExpiresIn       map[string]int64  // access token -> custom expires_in (for per-token override)
+	refreshCounter       int               // monotonic counter for unique refresh tokens
 }
 
 // NewMockGitHubServer creates and starts a mock GitHub server.
@@ -77,8 +84,11 @@ func NewMockGitHubServer() *MockGitHubServer {
 		defaultInstallations: []MockInstallation{
 			{ID: 12345, Login: "testghuser"},
 		},
-		tokenInstallations: make(map[string]*[]MockInstallation),
-		tokenUsers:         make(map[string]string),
+		tokenInstallations:   make(map[string]*[]MockInstallation),
+		tokenUsers:           make(map[string]string),
+		validRefreshTokens:   make(map[string]bool),
+		refreshToAccessToken: make(map[string]string),
+		tokenExpiresIn:       make(map[string]int64),
 	}
 
 	mux := http.NewServeMux()
@@ -90,8 +100,52 @@ func NewMockGitHubServer() *MockGitHubServer {
 		w.Header().Set("Content-Type", "application/json")
 
 		if r.FormValue("grant_type") == "refresh_token" {
-			// Token refresh: return a new access token and rotated refresh token.
 			oldRefresh := r.FormValue("refresh_token")
+
+			m.mu.Lock()
+			rotation := m.tokenRotation
+			if rotation {
+				if !m.validRefreshTokens[oldRefresh] {
+					m.mu.Unlock()
+					// Return an OAuth error response (200 with error field),
+					// matching GitHub's real behavior for revoked refresh tokens.
+					json.NewEncoder(w).Encode(map[string]any{
+						"error":             "bad_refresh_token",
+						"error_description": "The refresh token is invalid (already rotated)",
+					})
+					return
+				}
+				// Invalidate the old refresh token.
+				delete(m.validRefreshTokens, oldRefresh)
+				// Mint a new unique refresh token and mark it valid.
+				m.refreshCounter++
+				newRefresh := fmt.Sprintf("ghr_rotated_%d", m.refreshCounter)
+				m.validRefreshTokens[newRefresh] = true
+				newAccessToken := "ghu_refreshed_" + newRefresh
+				// Propagate per-token installations: if the original access
+				// token (associated with the old refresh token) had per-token
+				// installations, copy them to the new access token.
+				if origAccess, ok := m.refreshToAccessToken[oldRefresh]; ok {
+					if instPtr, ok := m.tokenInstallations[origAccess]; ok {
+						m.tokenInstallations[newAccessToken] = instPtr
+					}
+				}
+				m.refreshToAccessToken[newRefresh] = newAccessToken
+				delete(m.refreshToAccessToken, oldRefresh)
+				m.mu.Unlock()
+
+				json.NewEncoder(w).Encode(map[string]any{
+					"access_token":             newAccessToken,
+					"refresh_token":            newRefresh,
+					"token_type":               "bearer",
+					"expires_in":               28800,
+					"refresh_token_expires_in": 15552000,
+				})
+				return
+			}
+			m.mu.Unlock()
+
+			// Non-rotation mode: deterministic tokens for simpler tests.
 			json.NewEncoder(w).Encode(map[string]any{
 				"access_token":             "ghu_refreshed_" + oldRefresh,
 				"refresh_token":            "ghr_refreshed_" + oldRefresh,
@@ -105,11 +159,25 @@ func NewMockGitHubServer() *MockGitHubServer {
 		code := r.FormValue("code")
 		token := "ghu_" + code
 
+		m.mu.Lock()
+		expiresIn := int64(28800)
+		if ei, ok := m.tokenExpiresIn[token]; ok {
+			expiresIn = ei
+		}
+		refreshToken := "ghr_mock_refresh"
+		if m.tokenRotation {
+			m.refreshCounter++
+			refreshToken = fmt.Sprintf("ghr_rotated_%d", m.refreshCounter)
+			m.validRefreshTokens[refreshToken] = true
+			m.refreshToAccessToken[refreshToken] = token
+		}
+		m.mu.Unlock()
+
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token":             token,
-			"refresh_token":            "ghr_mock_refresh",
+			"refresh_token":            refreshToken,
 			"token_type":               "bearer",
-			"expires_in":               28800,
+			"expires_in":               expiresIn,
 			"refresh_token_expires_in": 15552000,
 		})
 	})
@@ -228,6 +296,49 @@ func NewMockGitHubServer() *MockGitHubServer {
 
 	m.Server = httptest.NewServer(mux)
 	return m
+}
+
+// EnableTokenRotation turns on strict refresh token rotation tracking.
+// When enabled:
+//   - Each code exchange issues a unique, tracked refresh token.
+//   - Each refresh invalidates the old refresh token and issues a new one.
+//   - Using an already-invalidated refresh token returns an OAuth error.
+func (m *MockGitHubServer) EnableTokenRotation() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tokenRotation = true
+}
+
+// SetExpiresInForToken configures the expires_in value returned when the
+// given access token is issued via code exchange. Use a small value (e.g. 1)
+// so the token expires immediately for testing on-demand refresh.
+func (m *MockGitHubServer) SetExpiresInForToken(token string, expiresIn int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tokenExpiresIn[token] = expiresIn
+}
+
+// DisableTokenRotation turns off strict refresh token rotation tracking
+// and returns to the default deterministic behavior.
+func (m *MockGitHubServer) DisableTokenRotation() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tokenRotation = false
+	m.validRefreshTokens = make(map[string]bool)
+	m.refreshToAccessToken = make(map[string]string)
+	m.refreshCounter = 0
+}
+
+// GetValidRefreshTokens returns a copy of the currently valid refresh tokens.
+// Useful for test assertions.
+func (m *MockGitHubServer) GetValidRefreshTokens() map[string]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	copy := make(map[string]bool, len(m.validRefreshTokens))
+	for k, v := range m.validRefreshTokens {
+		copy[k] = v
+	}
+	return copy
 }
 
 // SetInstallationsForToken configures installations returned when the given

@@ -421,19 +421,19 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	// Look up the installation for this repo owner.
 	// Check this before the server-level config so that users who haven't
 	// connected GitHub get a more actionable error message.
-	ghAccount, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubAccountByTarget, exedb.GetGitHubAccountByTargetParams{
-		UserID:      cc.User.ID,
-		TargetLogin: repoOwner,
+	ghInstall, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubInstallationByTarget, exedb.GetGitHubInstallationByTargetParams{
+		UserID:             cc.User.ID,
+		GitHubAccountLogin: repoOwner,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		// List what's connected to give a helpful error.
-		accounts, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubAccounts, cc.User.ID)
+		accounts, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubInstallations, cc.User.ID)
 		if len(accounts) == 0 {
 			return cc.Errorf("no GitHub account connected; run: integrations setup github")
 		}
 		var connected []string
 		for _, a := range accounts {
-			connected = append(connected, a.TargetLogin)
+			connected = append(connected, a.GitHubAccountLogin)
 		}
 		return cc.Errorf("no GitHub App installed on %q; connected: %s. Run: integrations setup github", repoOwner, strings.Join(connected, ", "))
 	}
@@ -447,7 +447,7 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 
 	cfg := githubIntegrationConfig{
 		Repositories:   repositories,
-		InstallationID: ghAccount.InstallationID,
+		InstallationID: ghInstall.GitHubAppInstallationID,
 	}
 	cfgJSON, err := json.Marshal(cfg)
 	if err != nil {

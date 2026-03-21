@@ -748,7 +748,7 @@ func (s *Server) showIntegrationsNav(ctx context.Context, userID string) bool {
 	if ints, err := withRxRes1(s, ctx, (*exedb.Queries).ListIntegrationsByUser, userID); err == nil && len(ints) > 0 {
 		return true
 	}
-	if gha, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubAccounts, userID); err == nil && len(gha) > 0 {
+	if gha, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubInstallations, userID); err == nil && len(gha) > 0 {
 		return true
 	}
 	if n, err := withRxRes1(s, ctx, (*exedb.Queries).HasPushTokens, userID); err == nil && n != 0 {

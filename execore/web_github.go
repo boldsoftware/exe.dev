@@ -50,7 +50,7 @@ func (s *Server) handleGitHubSignin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.githubApp.AuthorizeURL(setup.State), http.StatusFound)
 }
 
-// handleGitHubUnlink removes a GitHub account connection.
+// handleGitHubUnlink removes a GitHub installation connection.
 func (s *Server) handleGitHubUnlink(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -76,10 +76,14 @@ func (s *Server) handleGitHubUnlink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeleteGitHubAccount(ctx, exedb.DeleteGitHubAccountParams{
-			UserID:         userID,
-			InstallationID: req.InstallationID,
-		})
+		if err := queries.DeleteGitHubInstallation(ctx, exedb.DeleteGitHubInstallationParams{
+			UserID:                  userID,
+			GitHubAppInstallationID: req.InstallationID,
+		}); err != nil {
+			return err
+		}
+		// Clean up tokens that no longer have any installations.
+		return queries.DeleteOrphanedGitHubUserTokens(ctx, userID)
 	})
 	if err != nil {
 		writeGitHubJSON(w, false, "Failed to unlink", nil)
@@ -99,13 +103,13 @@ func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
+	installations, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubInstallations, userID)
 	if err != nil {
-		writeGitHubJSON(w, false, "Failed to look up accounts", nil)
+		writeGitHubJSON(w, false, "Failed to look up installations", nil)
 		return
 	}
 
-	// If installation_id specified, filter to that one account.
+	// If installation_id specified, filter to that one installation.
 	if idStr := r.URL.Query().Get("installation_id"); idStr != "" {
 		installationID, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -113,9 +117,9 @@ func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var found bool
-		for _, a := range accounts {
-			if a.InstallationID == installationID {
-				accounts = []exedb.GithubAccount{a}
+		for _, inst := range installations {
+			if inst.GitHubAppInstallationID == installationID {
+				installations = []exedb.GithubInstallation{inst}
 				found = true
 				break
 			}
@@ -127,12 +131,12 @@ func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var allRepos []githubapp.Repository
-	for _, acct := range accounts {
-		accessToken, err := s.resolveGitHubTokenWeb(r.Context(), acct)
+	for _, inst := range installations {
+		accessToken, err := s.resolveGitHubTokenWeb(r.Context(), userID, inst.GitHubLogin)
 		if err != nil {
-			continue // skip accounts with token issues
+			continue
 		}
-		repos, err := s.githubApp.GetInstallationRepositories(r.Context(), accessToken, acct.InstallationID)
+		repos, err := s.githubApp.GetInstallationRepositories(r.Context(), accessToken, inst.GitHubAppInstallationID)
 		if err != nil {
 			continue
 		}
@@ -142,27 +146,92 @@ func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 	writeGitHubJSON(w, true, "", allRepos)
 }
 
-// resolveGitHubTokenWeb returns the stored access token if it hasn't expired.
-// Token refresh is handled by the background renewal loop, not here, to avoid
-// concurrent refresh races that can invalidate the stored refresh token.
-func (s *Server) resolveGitHubTokenWeb(ctx context.Context, acct exedb.GithubAccount) (string, error) {
-	if acct.AccessTokenExpiresAt == nil {
-		// No known expiry (e.g. token expiration not enabled on the GitHub App,
-		// or legacy row). Return the token and let the caller handle API errors.
-		return acct.AccessToken, nil
-	}
-	expires, err := parseGitHubTokenExpiry(*acct.AccessTokenExpiresAt)
+// resolveGitHubTokenWeb returns a valid access token for the given user.
+// If the stored access token has expired, it refreshes on demand using the
+// refresh token (under the refresh mutex to prevent concurrent rotation).
+func (s *Server) resolveGitHubTokenWeb(ctx context.Context, userID, githubLogin string) (string, error) {
+	tok, err := withRxRes1(s, ctx, (*exedb.Queries).GetGitHubUserToken, exedb.GetGitHubUserTokenParams{
+		UserID:      userID,
+		GitHubLogin: githubLogin,
+	})
 	if err != nil {
-		return "", fmt.Errorf("GitHub access token has unparseable expiry %q", *acct.AccessTokenExpiresAt)
+		return "", fmt.Errorf("no GitHub token for user: %w", err)
+	}
+
+	if tok.AccessTokenExpiresAt == nil {
+		return tok.AccessToken, nil
+	}
+	expires, err := parseGitHubTokenExpiry(*tok.AccessTokenExpiresAt)
+	if err != nil {
+		return "", fmt.Errorf("GitHub access token has unparseable expiry %q", *tok.AccessTokenExpiresAt)
 	}
 	if time.Now().Before(expires) {
-		return acct.AccessToken, nil
+		return tok.AccessToken, nil
 	}
-	return "", fmt.Errorf("GitHub access token expired, waiting for background refresh")
+
+	// Access token is expired. Refresh on demand.
+	if tok.RefreshToken == "" {
+		return "", fmt.Errorf("GitHub access token expired and no refresh token available")
+	}
+
+	s.githubRefreshMu.Lock()
+	defer s.githubRefreshMu.Unlock()
+
+	// Re-read the token under the lock — another goroutine may have
+	// already refreshed it.
+	fresh, err := withRxRes1(s, ctx, (*exedb.Queries).GetGitHubUserToken, exedb.GetGitHubUserTokenParams{
+		UserID:      userID,
+		GitHubLogin: githubLogin,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to re-read GitHub token: %w", err)
+	}
+	if fresh.AccessTokenExpiresAt != nil {
+		if exp, err := parseGitHubTokenExpiry(*fresh.AccessTokenExpiresAt); err == nil && time.Now().Before(exp) {
+			return fresh.AccessToken, nil
+		}
+	}
+
+	// Still expired — do the refresh.
+	tokenResp, err := s.githubApp.RefreshUserToken(ctx, fresh.RefreshToken)
+	if err != nil {
+		return "", fmt.Errorf("GitHub token refresh failed: %w", err)
+	}
+
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateGitHubUserToken(ctx, exedb.UpdateGitHubUserTokenParams{
+			AccessToken:           tokenResp.AccessToken,
+			RefreshToken:          tokenResp.RefreshToken,
+			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
+			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
+			UserID:                userID,
+			GitHubLogin:           githubLogin,
+		})
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to save refreshed GitHub tokens: %w", err)
+	}
+
+	s.slog().InfoContext(ctx, "on-demand GitHub token refresh", "user_id", userID)
+	return tokenResp.AccessToken, nil
 }
 
 // saveGitHubSetupWeb saves a completed web-initiated GitHub setup to the database.
 func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) error {
+	// Always upsert the user's OAuth token (one row per user).
+	if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpsertGitHubUserToken(ctx, exedb.UpsertGitHubUserTokenParams{
+			UserID:                setup.UserID,
+			GitHubLogin:           setup.GitHubLogin,
+			AccessToken:           setup.AccessToken,
+			RefreshToken:          setup.RefreshToken,
+			AccessTokenExpiresAt:  setup.AccessTokenExpiresAt,
+			RefreshTokenExpiresAt: setup.RefreshTokenExpiresAt,
+		})
+	}); err != nil {
+		return fmt.Errorf("failed to save token: %w", err)
+	}
+
 	if setup.InstallationID != 0 {
 		targetLogin := setup.GitHubLogin
 		if s.githubApp.InstallationTokensEnabled() {
@@ -171,15 +240,20 @@ func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) err
 			}
 		}
 		return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:                setup.UserID,
-				GitHubLogin:           setup.GitHubLogin,
-				InstallationID:        setup.InstallationID,
-				TargetLogin:           targetLogin,
-				AccessToken:           setup.AccessToken,
-				RefreshToken:          setup.RefreshToken,
-				AccessTokenExpiresAt:  setup.AccessTokenExpiresAt,
-				RefreshTokenExpiresAt: setup.RefreshTokenExpiresAt,
+			// Remove any stale installation for the same target account
+			// (e.g., after uninstall/reinstall gives a new installation ID).
+			if err := queries.DeleteGitHubInstallationByTarget(ctx, exedb.DeleteGitHubInstallationByTargetParams{
+				UserID:                  setup.UserID,
+				GitHubAccountLogin:      targetLogin,
+				GitHubAppInstallationID: setup.InstallationID,
+			}); err != nil {
+				return fmt.Errorf("failed to clean stale installation: %w", err)
+			}
+			return queries.UpsertGitHubInstallation(ctx, exedb.UpsertGitHubInstallationParams{
+				UserID:                  setup.UserID,
+				GitHubLogin:             setup.GitHubLogin,
+				GitHubAppInstallationID: setup.InstallationID,
+				GitHubAccountLogin:      targetLogin,
 			})
 		})
 	}
@@ -191,18 +265,22 @@ func (s *Server) saveGitHubSetupWeb(ctx context.Context, setup *GitHubSetup) err
 	}
 	for _, inst := range installs {
 		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.UpsertGitHubAccount(ctx, exedb.UpsertGitHubAccountParams{
-				UserID:                setup.UserID,
-				GitHubLogin:           setup.GitHubLogin,
-				InstallationID:        inst.ID,
-				TargetLogin:           inst.Account.Login,
-				AccessToken:           setup.AccessToken,
-				RefreshToken:          setup.RefreshToken,
-				AccessTokenExpiresAt:  setup.AccessTokenExpiresAt,
-				RefreshTokenExpiresAt: setup.RefreshTokenExpiresAt,
+			// Remove any stale installation for the same target account.
+			if err := queries.DeleteGitHubInstallationByTarget(ctx, exedb.DeleteGitHubInstallationByTargetParams{
+				UserID:                  setup.UserID,
+				GitHubAccountLogin:      inst.Account.Login,
+				GitHubAppInstallationID: inst.ID,
+			}); err != nil {
+				return fmt.Errorf("failed to clean stale installation: %w", err)
+			}
+			return queries.UpsertGitHubInstallation(ctx, exedb.UpsertGitHubInstallationParams{
+				UserID:                  setup.UserID,
+				GitHubLogin:             setup.GitHubLogin,
+				GitHubAppInstallationID: inst.ID,
+				GitHubAccountLogin:      inst.Account.Login,
 			})
 		}); err != nil {
-			return fmt.Errorf("failed to save connection: %w", err)
+			return fmt.Errorf("failed to save installation: %w", err)
 		}
 	}
 	return nil
@@ -227,24 +305,17 @@ func (s *Server) handleGitHubVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accounts, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListGitHubAccounts, userID)
+	// Verify the installation exists for this user.
+	inst, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetGitHubInstallation, exedb.GetGitHubInstallationParams{
+		UserID:                  userID,
+		GitHubAppInstallationID: installationID,
+	})
 	if err != nil {
-		writeGitHubJSON(w, false, "Failed to look up accounts", nil)
-		return
-	}
-	var account *exedb.GithubAccount
-	for _, a := range accounts {
-		if a.InstallationID == installationID {
-			account = &a
-			break
-		}
-	}
-	if account == nil {
 		writeGitHubJSON(w, false, "Installation not found", nil)
 		return
 	}
 
-	accessToken, err := s.resolveGitHubTokenWeb(r.Context(), *account)
+	accessToken, err := s.resolveGitHubTokenWeb(r.Context(), userID, inst.GitHubLogin)
 	if err != nil {
 		writeGitHubJSON(w, false, fmt.Sprintf("Token error: %v — try unlinking and reconnecting", err), nil)
 		return
@@ -272,6 +343,30 @@ func parseGitHubTokenExpiry(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unrecognized format: %s", s)
+}
+
+// fetchGitHubAccountDisplayInfo loads installations and the user's GitHub login
+// for rendering in the web UI. Returns display-only and full info slices.
+func (s *Server) fetchGitHubAccountDisplayInfo(ctx context.Context, userID string) ([]GitHubAccountDisplayInfo, []GitHubAccountFullInfo) {
+	installations, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubInstallations, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to get GitHub installations", "error", err, "user_id", userID)
+		return nil, nil
+	}
+	var display []GitHubAccountDisplayInfo
+	var full []GitHubAccountFullInfo
+	for _, inst := range installations {
+		display = append(display, GitHubAccountDisplayInfo{
+			GitHubLogin: inst.GitHubLogin,
+			TargetLogin: inst.GitHubAccountLogin,
+		})
+		full = append(full, GitHubAccountFullInfo{
+			GitHubLogin:    inst.GitHubLogin,
+			TargetLogin:    inst.GitHubAccountLogin,
+			InstallationID: inst.GitHubAppInstallationID,
+		})
+	}
+	return display, full
 }
 
 func writeGitHubJSON(w http.ResponseWriter, success bool, errMsg string, data any) {

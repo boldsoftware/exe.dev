@@ -14,7 +14,7 @@ const (
 	// Refresh tokens last ~6 months; we renew with 30 days of margin, so
 	// checking once a day is plenty.
 	githubTokenRenewalInterval = 24 * time.Hour
-	// githubTokenRenewalBatchSize is the max number of accounts to renew per tick.
+	// githubTokenRenewalBatchSize is the max number of tokens to renew per tick.
 	githubTokenRenewalBatchSize = 50
 )
 
@@ -54,57 +54,54 @@ func (s *Server) startGitHubTokenRenewal(ctx context.Context) {
 func (s *Server) renewGitHubTokens(ctx context.Context) {
 	ctx = tracing.ContextWithTraceID(ctx, tracing.GenerateTraceID())
 
-	accounts, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubAccountsNeedingRenewal, int64(githubTokenRenewalBatchSize))
+	tokens, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubUserTokensNeedingRenewal, int64(githubTokenRenewalBatchSize))
 	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to list GitHub accounts needing renewal", "error", err)
+		s.slog().ErrorContext(ctx, "failed to list GitHub tokens needing renewal", "error", err)
 		return
 	}
 
-	for _, acct := range accounts {
-		if acct.RefreshToken == "" {
+	for _, tok := range tokens {
+		if tok.RefreshToken == "" {
 			continue
 		}
 
 		s.githubRefreshMu.Lock()
-		s.renewOneGitHubToken(ctx, acct)
+		s.renewOneGitHubToken(ctx, tok)
 		s.githubRefreshMu.Unlock()
 	}
 }
 
-func (s *Server) renewOneGitHubToken(ctx context.Context, acct exedb.GithubAccount) {
-	tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+func (s *Server) renewOneGitHubToken(ctx context.Context, tok exedb.GithubUserToken) {
+	tokenResp, err := s.githubApp.RefreshUserToken(ctx, tok.RefreshToken)
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to refresh GitHub token",
-			"user_id", acct.UserID,
-			"github_login", acct.GitHubLogin,
-			"installation_id", acct.InstallationID,
+			"user_id", tok.UserID,
+			"github_login", tok.GitHubLogin,
 			"error", err,
 		)
 		return
 	}
 
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+		return queries.UpdateGitHubUserToken(ctx, exedb.UpdateGitHubUserTokenParams{
 			AccessToken:           tokenResp.AccessToken,
 			RefreshToken:          tokenResp.RefreshToken,
 			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
 			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
-			UserID:                acct.UserID,
-			InstallationID:        acct.InstallationID,
+			UserID:                tok.UserID,
+			GitHubLogin:           tok.GitHubLogin,
 		})
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "failed to save renewed GitHub tokens",
-			"user_id", acct.UserID,
-			"installation_id", acct.InstallationID,
+			"user_id", tok.UserID,
 			"error", err,
 		)
 		return
 	}
 
 	s.slog().InfoContext(ctx, "renewed GitHub token",
-		"user_id", acct.UserID,
-		"github_login", acct.GitHubLogin,
-		"installation_id", acct.InstallationID,
+		"user_id", tok.UserID,
+		"github_login", tok.GitHubLogin,
 	)
 }

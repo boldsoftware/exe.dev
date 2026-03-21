@@ -2,9 +2,9 @@
 <html><head><title>GitHub Integrations</title>
 {{template "base-head"}}
 <style>
-table#accounts { width: 100%; border-collapse: collapse; }
-table#accounts th, table#accounts td { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; }
-table#accounts th { background: #f5f5f5; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+th, td { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; }
+th { background: #f5f5f5; }
 .token-mask { color: #999; }
 .status-ok { color: #28a745; font-weight: bold; }
 .status-expired { color: #dc3545; font-weight: bold; }
@@ -19,16 +19,14 @@ table#accounts th { background: #f5f5f5; }
 </head><body>
 <h1>GitHub Integrations</h1>
 <div><a href="/debug">/debug</a> &gt; <a href="/debug/github-integrations">github-integrations</a></div>
-<p>Total accounts: {{len .Accounts}}</p>
 
-<table id="accounts">
+<h2>User Tokens ({{len .Tokens}})</h2>
+<table>
 <thead>
 <tr>
 <th>Email</th>
 <th>User ID</th>
 <th>GitHub Login</th>
-<th>Target</th>
-<th>Installation ID</th>
 <th>Access Token</th>
 <th>Access Expires</th>
 <th>Refresh Token</th>
@@ -39,13 +37,11 @@ table#accounts th { background: #f5f5f5; }
 </tr>
 </thead>
 <tbody>
-{{range .Accounts}}
+{{range .Tokens}}
 <tr>
 <td><a href="/debug/user?userId={{.UserID}}">{{.Email}}</a></td>
 <td><code>{{.UserID}}</code></td>
 <td>{{.GitHubLogin}}</td>
-<td>{{.TargetLogin}}</td>
-<td>{{.InstallationID}}</td>
 <td class="token-mask">{{maskToken .AccessToken}}</td>
 <td>{{tokenStatus .AccessTokenExpiresAt}}</td>
 <td class="token-mask">{{if .RefreshToken}}present{{else}}-{{end}}</td>
@@ -54,7 +50,7 @@ table#accounts th { background: #f5f5f5; }
 <td>{{fmtTime .CreatedAt}}</td>
 <td>
 {{if .RefreshToken}}
-<button class="refresh-btn" onclick="refreshToken(this, '{{.UserID}}', {{.InstallationID}})">Refresh</button>
+<button class="refresh-btn" onclick="refreshToken(this, '{{.UserID}}', '{{.GitHubLogin}}')">Refresh</button>
 <span class="result"></span>
 {{else}}
 <span class="status-unknown">no refresh token</span>
@@ -65,8 +61,32 @@ table#accounts th { background: #f5f5f5; }
 </tbody>
 </table>
 
+<h2>Installations ({{len .Installations}})</h2>
+<table>
+<thead>
+<tr>
+<th>User ID</th>
+<th>GitHub Login</th>
+<th>Target</th>
+<th>Installation ID</th>
+<th>Created</th>
+</tr>
+</thead>
+<tbody>
+{{range .Installations}}
+<tr>
+<td><code>{{.UserID}}</code></td>
+<td>{{.GitHubLogin}}</td>
+<td>{{.GitHubAccountLogin}}</td>
+<td>{{.GitHubAppInstallationID}}</td>
+<td>{{fmtTime .CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+
 <script>
-function refreshToken(btn, userID, installationID) {
+function refreshToken(btn, userID, githubLogin) {
     btn.disabled = true;
     btn.textContent = 'Refreshing...';
     var result = btn.nextElementSibling;
@@ -76,7 +96,7 @@ function refreshToken(btn, userID, installationID) {
     fetch('/debug/github-integrations/refresh', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'user_id=' + encodeURIComponent(userID) + '&installation_id=' + encodeURIComponent(installationID)
+        body: 'user_id=' + encodeURIComponent(userID) + '&github_login=' + encodeURIComponent(githubLogin)
     }).then(function(resp) {
         return resp.text().then(function(text) {
             if (resp.ok) {

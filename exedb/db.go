@@ -147,8 +147,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAccountsByUserIDStmt, err = db.PrepareContext(ctx, deleteAccountsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAccountsByUserID: %w", err)
 	}
-	if q.deleteAllGitHubAccountsStmt, err = db.PrepareContext(ctx, deleteAllGitHubAccounts); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteAllGitHubAccounts: %w", err)
+	if q.deleteAllGitHubInstallationsStmt, err = db.PrepareContext(ctx, deleteAllGitHubInstallations); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAllGitHubInstallations: %w", err)
+	}
+	if q.deleteAllGitHubUserTokensStmt, err = db.PrepareContext(ctx, deleteAllGitHubUserTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAllGitHubUserTokens: %w", err)
 	}
 	if q.deleteAppTokenStmt, err = db.PrepareContext(ctx, deleteAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAppToken: %w", err)
@@ -201,8 +204,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteExpiredPendingTeamInvitesStmt, err = db.PrepareContext(ctx, deleteExpiredPendingTeamInvites); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingTeamInvites: %w", err)
 	}
-	if q.deleteGitHubAccountStmt, err = db.PrepareContext(ctx, deleteGitHubAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteGitHubAccount: %w", err)
+	if q.deleteGitHubInstallationStmt, err = db.PrepareContext(ctx, deleteGitHubInstallation); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGitHubInstallation: %w", err)
+	}
+	if q.deleteGitHubInstallationByTargetStmt, err = db.PrepareContext(ctx, deleteGitHubInstallationByTarget); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGitHubInstallationByTarget: %w", err)
+	}
+	if q.deleteGitHubUserTokenStmt, err = db.PrepareContext(ctx, deleteGitHubUserToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGitHubUserToken: %w", err)
 	}
 	if q.deleteIntegrationStmt, err = db.PrepareContext(ctx, deleteIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteIntegration: %w", err)
@@ -221,6 +230,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteOldCheckoutParamsStmt, err = db.PrepareContext(ctx, deleteOldCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteOldCheckoutParams: %w", err)
+	}
+	if q.deleteOrphanedGitHubUserTokensStmt, err = db.PrepareContext(ctx, deleteOrphanedGitHubUserTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteOrphanedGitHubUserTokens: %w", err)
 	}
 	if q.deletePasskeyStmt, err = db.PrepareContext(ctx, deletePasskey); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePasskey: %w", err)
@@ -441,11 +453,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getGLBRolloutPrefixesStmt, err = db.PrepareContext(ctx, getGLBRolloutPrefixes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGLBRolloutPrefixes: %w", err)
 	}
-	if q.getGitHubAccountStmt, err = db.PrepareContext(ctx, getGitHubAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetGitHubAccount: %w", err)
+	if q.getGitHubInstallationStmt, err = db.PrepareContext(ctx, getGitHubInstallation); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGitHubInstallation: %w", err)
 	}
-	if q.getGitHubAccountByTargetStmt, err = db.PrepareContext(ctx, getGitHubAccountByTarget); err != nil {
-		return nil, fmt.Errorf("error preparing query GetGitHubAccountByTarget: %w", err)
+	if q.getGitHubInstallationByTargetStmt, err = db.PrepareContext(ctx, getGitHubInstallationByTarget); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGitHubInstallationByTarget: %w", err)
+	}
+	if q.getGitHubUserTokenStmt, err = db.PrepareContext(ctx, getGitHubUserToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGitHubUserToken: %w", err)
 	}
 	if q.getHLLSketchStmt, err = db.PrepareContext(ctx, getHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query GetHLLSketch: %w", err)
@@ -870,8 +885,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
 	}
-	if q.listAllGitHubAccountsStmt, err = db.PrepareContext(ctx, listAllGitHubAccounts); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAllGitHubAccounts: %w", err)
+	if q.listAllGitHubInstallationsWithTokensStmt, err = db.PrepareContext(ctx, listAllGitHubInstallationsWithTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllGitHubInstallationsWithTokens: %w", err)
+	}
+	if q.listAllGitHubUserTokensStmt, err = db.PrepareContext(ctx, listAllGitHubUserTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllGitHubUserTokens: %w", err)
 	}
 	if q.listAllIntegrationsStmt, err = db.PrepareContext(ctx, listAllIntegrations); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllIntegrations: %w", err)
@@ -909,11 +927,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
 	}
-	if q.listGitHubAccountsStmt, err = db.PrepareContext(ctx, listGitHubAccounts); err != nil {
-		return nil, fmt.Errorf("error preparing query ListGitHubAccounts: %w", err)
+	if q.listGitHubInstallationsStmt, err = db.PrepareContext(ctx, listGitHubInstallations); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGitHubInstallations: %w", err)
 	}
-	if q.listGitHubAccountsNeedingRenewalStmt, err = db.PrepareContext(ctx, listGitHubAccountsNeedingRenewal); err != nil {
-		return nil, fmt.Errorf("error preparing query ListGitHubAccountsNeedingRenewal: %w", err)
+	if q.listGitHubUserTokensStmt, err = db.PrepareContext(ctx, listGitHubUserTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGitHubUserTokens: %w", err)
+	}
+	if q.listGitHubUserTokensNeedingRenewalStmt, err = db.PrepareContext(ctx, listGitHubUserTokensNeedingRenewal); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGitHubUserTokensNeedingRenewal: %w", err)
 	}
 	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
@@ -1083,8 +1104,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateEmailVerificationCodeStmt, err = db.PrepareContext(ctx, updateEmailVerificationCode); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateEmailVerificationCode: %w", err)
 	}
-	if q.updateGitHubAccountTokensStmt, err = db.PrepareContext(ctx, updateGitHubAccountTokens); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateGitHubAccountTokens: %w", err)
+	if q.updateGitHubUserTokenStmt, err = db.PrepareContext(ctx, updateGitHubUserToken); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGitHubUserToken: %w", err)
 	}
 	if q.updateIntegrationAttachmentsStmt, err = db.PrepareContext(ctx, updateIntegrationAttachments); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateIntegrationAttachments: %w", err)
@@ -1131,8 +1152,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
 	}
-	if q.upsertGitHubAccountStmt, err = db.PrepareContext(ctx, upsertGitHubAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertGitHubAccount: %w", err)
+	if q.upsertGitHubInstallationStmt, err = db.PrepareContext(ctx, upsertGitHubInstallation); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertGitHubInstallation: %w", err)
+	}
+	if q.upsertGitHubUserTokenStmt, err = db.PrepareContext(ctx, upsertGitHubUserToken); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertGitHubUserToken: %w", err)
 	}
 	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
@@ -1395,9 +1419,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAccountsByUserIDStmt: %w", cerr)
 		}
 	}
-	if q.deleteAllGitHubAccountsStmt != nil {
-		if cerr := q.deleteAllGitHubAccountsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteAllGitHubAccountsStmt: %w", cerr)
+	if q.deleteAllGitHubInstallationsStmt != nil {
+		if cerr := q.deleteAllGitHubInstallationsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAllGitHubInstallationsStmt: %w", cerr)
+		}
+	}
+	if q.deleteAllGitHubUserTokensStmt != nil {
+		if cerr := q.deleteAllGitHubUserTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAllGitHubUserTokensStmt: %w", cerr)
 		}
 	}
 	if q.deleteAppTokenStmt != nil {
@@ -1485,9 +1514,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteExpiredPendingTeamInvitesStmt: %w", cerr)
 		}
 	}
-	if q.deleteGitHubAccountStmt != nil {
-		if cerr := q.deleteGitHubAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteGitHubAccountStmt: %w", cerr)
+	if q.deleteGitHubInstallationStmt != nil {
+		if cerr := q.deleteGitHubInstallationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGitHubInstallationStmt: %w", cerr)
+		}
+	}
+	if q.deleteGitHubInstallationByTargetStmt != nil {
+		if cerr := q.deleteGitHubInstallationByTargetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGitHubInstallationByTargetStmt: %w", cerr)
+		}
+	}
+	if q.deleteGitHubUserTokenStmt != nil {
+		if cerr := q.deleteGitHubUserTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGitHubUserTokenStmt: %w", cerr)
 		}
 	}
 	if q.deleteIntegrationStmt != nil {
@@ -1518,6 +1557,11 @@ func (q *Queries) Close() error {
 	if q.deleteOldCheckoutParamsStmt != nil {
 		if cerr := q.deleteOldCheckoutParamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteOldCheckoutParamsStmt: %w", cerr)
+		}
+	}
+	if q.deleteOrphanedGitHubUserTokensStmt != nil {
+		if cerr := q.deleteOrphanedGitHubUserTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteOrphanedGitHubUserTokensStmt: %w", cerr)
 		}
 	}
 	if q.deletePasskeyStmt != nil {
@@ -1885,14 +1929,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getGLBRolloutPrefixesStmt: %w", cerr)
 		}
 	}
-	if q.getGitHubAccountStmt != nil {
-		if cerr := q.getGitHubAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getGitHubAccountStmt: %w", cerr)
+	if q.getGitHubInstallationStmt != nil {
+		if cerr := q.getGitHubInstallationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGitHubInstallationStmt: %w", cerr)
 		}
 	}
-	if q.getGitHubAccountByTargetStmt != nil {
-		if cerr := q.getGitHubAccountByTargetStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getGitHubAccountByTargetStmt: %w", cerr)
+	if q.getGitHubInstallationByTargetStmt != nil {
+		if cerr := q.getGitHubInstallationByTargetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGitHubInstallationByTargetStmt: %w", cerr)
+		}
+	}
+	if q.getGitHubUserTokenStmt != nil {
+		if cerr := q.getGitHubUserTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGitHubUserTokenStmt: %w", cerr)
 		}
 	}
 	if q.getHLLSketchStmt != nil {
@@ -2600,9 +2649,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllBoxesWithOwnerStmt: %w", cerr)
 		}
 	}
-	if q.listAllGitHubAccountsStmt != nil {
-		if cerr := q.listAllGitHubAccountsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAllGitHubAccountsStmt: %w", cerr)
+	if q.listAllGitHubInstallationsWithTokensStmt != nil {
+		if cerr := q.listAllGitHubInstallationsWithTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllGitHubInstallationsWithTokensStmt: %w", cerr)
+		}
+	}
+	if q.listAllGitHubUserTokensStmt != nil {
+		if cerr := q.listAllGitHubUserTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllGitHubUserTokensStmt: %w", cerr)
 		}
 	}
 	if q.listAllIntegrationsStmt != nil {
@@ -2665,14 +2719,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
 		}
 	}
-	if q.listGitHubAccountsStmt != nil {
-		if cerr := q.listGitHubAccountsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listGitHubAccountsStmt: %w", cerr)
+	if q.listGitHubInstallationsStmt != nil {
+		if cerr := q.listGitHubInstallationsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGitHubInstallationsStmt: %w", cerr)
 		}
 	}
-	if q.listGitHubAccountsNeedingRenewalStmt != nil {
-		if cerr := q.listGitHubAccountsNeedingRenewalStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listGitHubAccountsNeedingRenewalStmt: %w", cerr)
+	if q.listGitHubUserTokensStmt != nil {
+		if cerr := q.listGitHubUserTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGitHubUserTokensStmt: %w", cerr)
+		}
+	}
+	if q.listGitHubUserTokensNeedingRenewalStmt != nil {
+		if cerr := q.listGitHubUserTokensNeedingRenewalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGitHubUserTokensNeedingRenewalStmt: %w", cerr)
 		}
 	}
 	if q.listIPShardsStmt != nil {
@@ -2955,9 +3014,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateEmailVerificationCodeStmt: %w", cerr)
 		}
 	}
-	if q.updateGitHubAccountTokensStmt != nil {
-		if cerr := q.updateGitHubAccountTokensStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateGitHubAccountTokensStmt: %w", cerr)
+	if q.updateGitHubUserTokenStmt != nil {
+		if cerr := q.updateGitHubUserTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGitHubUserTokenStmt: %w", cerr)
 		}
 	}
 	if q.updateIntegrationAttachmentsStmt != nil {
@@ -3035,9 +3094,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
 		}
 	}
-	if q.upsertGitHubAccountStmt != nil {
-		if cerr := q.upsertGitHubAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertGitHubAccountStmt: %w", cerr)
+	if q.upsertGitHubInstallationStmt != nil {
+		if cerr := q.upsertGitHubInstallationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertGitHubInstallationStmt: %w", cerr)
+		}
+	}
+	if q.upsertGitHubUserTokenStmt != nil {
+		if cerr := q.upsertGitHubUserTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertGitHubUserTokenStmt: %w", cerr)
 		}
 	}
 	if q.upsertHLLSketchStmt != nil {
@@ -3205,7 +3269,8 @@ type Queries struct {
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
 	deleteAccountsByUserIDStmt                 *sql.Stmt
-	deleteAllGitHubAccountsStmt                *sql.Stmt
+	deleteAllGitHubInstallationsStmt           *sql.Stmt
+	deleteAllGitHubUserTokensStmt              *sql.Stmt
 	deleteAppTokenStmt                         *sql.Stmt
 	deleteAppTokensByUserIDStmt                *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
@@ -3223,13 +3288,16 @@ type Queries struct {
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
 	deleteExpiredExe1TokensStmt                *sql.Stmt
 	deleteExpiredPendingTeamInvitesStmt        *sql.Stmt
-	deleteGitHubAccountStmt                    *sql.Stmt
+	deleteGitHubInstallationStmt               *sql.Stmt
+	deleteGitHubInstallationByTargetStmt       *sql.Stmt
+	deleteGitHubUserTokenStmt                  *sql.Stmt
 	deleteIntegrationStmt                      *sql.Stmt
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
 	deleteNetActuateIPShardStmt                *sql.Stmt
 	deleteOldCheckoutParamsStmt                *sql.Stmt
+	deleteOrphanedGitHubUserTokensStmt         *sql.Stmt
 	deletePasskeyStmt                          *sql.Stmt
 	deletePasskeyChallengeStmt                 *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
@@ -3303,8 +3371,9 @@ type Queries struct {
 	getExe1TokenStmt                           *sql.Stmt
 	getExe1TokenByExe0Stmt                     *sql.Stmt
 	getGLBRolloutPrefixesStmt                  *sql.Stmt
-	getGitHubAccountStmt                       *sql.Stmt
-	getGitHubAccountByTargetStmt               *sql.Stmt
+	getGitHubInstallationStmt                  *sql.Stmt
+	getGitHubInstallationByTargetStmt          *sql.Stmt
+	getGitHubUserTokenStmt                     *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
 	getIPAbuseFilterDisabledStmt               *sql.Stmt
 	getIPShardAndUserGLBByBoxNameStmt          *sql.Stmt
@@ -3446,7 +3515,8 @@ type Queries struct {
 	listAllAccountsStmt                        *sql.Stmt
 	listAllActiveAccountPlansStmt              *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
-	listAllGitHubAccountsStmt                  *sql.Stmt
+	listAllGitHubInstallationsWithTokensStmt   *sql.Stmt
+	listAllGitHubUserTokensStmt                *sql.Stmt
 	listAllIntegrationsStmt                    *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
@@ -3459,8 +3529,9 @@ type Queries struct {
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
-	listGitHubAccountsStmt                     *sql.Stmt
-	listGitHubAccountsNeedingRenewalStmt       *sql.Stmt
+	listGitHubInstallationsStmt                *sql.Stmt
+	listGitHubUserTokensStmt                   *sql.Stmt
+	listGitHubUserTokensNeedingRenewalStmt     *sql.Stmt
 	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForTeamStmt                    *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
@@ -3517,7 +3588,7 @@ type Queries struct {
 	updateBoxStatusStmt                        *sql.Stmt
 	updateBoxTagsStmt                          *sql.Stmt
 	updateEmailVerificationCodeStmt            *sql.Stmt
-	updateGitHubAccountTokensStmt              *sql.Stmt
+	updateGitHubUserTokenStmt                  *sql.Stmt
 	updateIntegrationAttachmentsStmt           *sql.Stmt
 	updateIntegrationNameStmt                  *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
@@ -3533,7 +3604,8 @@ type Queries struct {
 	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserEmailStmt                        *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
-	upsertGitHubAccountStmt                    *sql.Stmt
+	upsertGitHubInstallationStmt               *sql.Stmt
+	upsertGitHubUserTokenStmt                  *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
 	upsertIPShardStmt                          *sql.Stmt
 	upsertLatitudeIPShardStmt                  *sql.Stmt
@@ -3598,7 +3670,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
 		deleteAccountsByUserIDStmt:                 q.deleteAccountsByUserIDStmt,
-		deleteAllGitHubAccountsStmt:                q.deleteAllGitHubAccountsStmt,
+		deleteAllGitHubInstallationsStmt:           q.deleteAllGitHubInstallationsStmt,
+		deleteAllGitHubUserTokensStmt:              q.deleteAllGitHubUserTokensStmt,
 		deleteAppTokenStmt:                         q.deleteAppTokenStmt,
 		deleteAppTokensByUserIDStmt:                q.deleteAppTokensByUserIDStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
@@ -3616,13 +3689,16 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
 		deleteExpiredExe1TokensStmt:                q.deleteExpiredExe1TokensStmt,
 		deleteExpiredPendingTeamInvitesStmt:        q.deleteExpiredPendingTeamInvitesStmt,
-		deleteGitHubAccountStmt:                    q.deleteGitHubAccountStmt,
+		deleteGitHubInstallationStmt:               q.deleteGitHubInstallationStmt,
+		deleteGitHubInstallationByTargetStmt:       q.deleteGitHubInstallationByTargetStmt,
+		deleteGitHubUserTokenStmt:                  q.deleteGitHubUserTokenStmt,
 		deleteIntegrationStmt:                      q.deleteIntegrationStmt,
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
 		deleteNetActuateIPShardStmt:                q.deleteNetActuateIPShardStmt,
 		deleteOldCheckoutParamsStmt:                q.deleteOldCheckoutParamsStmt,
+		deleteOrphanedGitHubUserTokensStmt:         q.deleteOrphanedGitHubUserTokensStmt,
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
@@ -3696,8 +3772,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getExe1TokenStmt:                           q.getExe1TokenStmt,
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
 		getGLBRolloutPrefixesStmt:                  q.getGLBRolloutPrefixesStmt,
-		getGitHubAccountStmt:                       q.getGitHubAccountStmt,
-		getGitHubAccountByTargetStmt:               q.getGitHubAccountByTargetStmt,
+		getGitHubInstallationStmt:                  q.getGitHubInstallationStmt,
+		getGitHubInstallationByTargetStmt:          q.getGitHubInstallationByTargetStmt,
+		getGitHubUserTokenStmt:                     q.getGitHubUserTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
 		getIPShardAndUserGLBByBoxNameStmt:          q.getIPShardAndUserGLBByBoxNameStmt,
@@ -3839,7 +3916,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
 		listAllActiveAccountPlansStmt:              q.listAllActiveAccountPlansStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
-		listAllGitHubAccountsStmt:                  q.listAllGitHubAccountsStmt,
+		listAllGitHubInstallationsWithTokensStmt:   q.listAllGitHubInstallationsWithTokensStmt,
+		listAllGitHubUserTokensStmt:                q.listAllGitHubUserTokensStmt,
 		listAllIntegrationsStmt:                    q.listAllIntegrationsStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,
@@ -3852,8 +3930,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
-		listGitHubAccountsStmt:                     q.listGitHubAccountsStmt,
-		listGitHubAccountsNeedingRenewalStmt:       q.listGitHubAccountsNeedingRenewalStmt,
+		listGitHubInstallationsStmt:                q.listGitHubInstallationsStmt,
+		listGitHubUserTokensStmt:                   q.listGitHubUserTokensStmt,
+		listGitHubUserTokensNeedingRenewalStmt:     q.listGitHubUserTokensNeedingRenewalStmt,
 		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForTeamStmt:                    q.listIPShardsForTeamStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
@@ -3910,7 +3989,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,
 		updateBoxTagsStmt:                          q.updateBoxTagsStmt,
 		updateEmailVerificationCodeStmt:            q.updateEmailVerificationCodeStmt,
-		updateGitHubAccountTokensStmt:              q.updateGitHubAccountTokensStmt,
+		updateGitHubUserTokenStmt:                  q.updateGitHubUserTokenStmt,
 		updateIntegrationAttachmentsStmt:           q.updateIntegrationAttachmentsStmt,
 		updateIntegrationNameStmt:                  q.updateIntegrationNameStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
@@ -3926,7 +4005,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserEmailStmt:                        q.updateUserEmailStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
-		upsertGitHubAccountStmt:                    q.upsertGitHubAccountStmt,
+		upsertGitHubInstallationStmt:               q.upsertGitHubInstallationStmt,
+		upsertGitHubUserTokenStmt:                  q.upsertGitHubUserTokenStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
 		upsertIPShardStmt:                          q.upsertIPShardStmt,
 		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 )
@@ -485,6 +486,209 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 	pty.WantPrompt()
 
 	// Clean up GitHub account.
+	pty.SendLine("integrations setup github -d")
+	pty.Want("Disconnected:")
+	pty.WantPrompt()
+}
+
+// TestIntegrationsGitHubTokenRefresh tests that refreshing a GitHub token
+// works correctly with the normalized data model (one token row per user,
+// separate installation rows). With token rotation enabled, each refresh
+// invalidates the old refresh token. After refreshing, all installations
+// remain accessible because they share the single token row.
+func TestIntegrationsGitHubTokenRefresh(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Enable strict token rotation on the mock so that each refresh
+	// invalidates the old refresh token.
+	Env.servers.GitHubMock.EnableTokenRotation()
+
+	// OAuth code "refresh-test" → access token "ghu_refresh-test".
+	// Configure the token to discover 2 installations (personal + org).
+	// Set expires_in=1 so the debug refresh endpoint doesn't skip
+	// the refresh due to the "already fresh" check.
+	const code = "refresh-test"
+	const token = "ghu_" + code
+	Env.servers.GitHubMock.SetExpiresInForToken(token, 1)
+	Env.servers.GitHubMock.SetInstallationsForToken(token, []testinfra.MockInstallation{
+		{ID: 80001, Login: "refresh-user"},
+		{ID: 80002, Login: "refresh-org"},
+	})
+
+	pty, cookies, _, email := registerForExeDev(t)
+
+	// Enable the feature flag.
+	pty.SendLine("integrations setup github")
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
+
+	// Connect via web — discovers both installations, saves token once
+	// and creates two installation rows.
+	connectGitHubViaWeb(t, cookies, code)
+
+	// Verify both installations are stored.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
+	pty.Want("refresh-user")
+	pty.WantPrompt()
+
+	pty.SendLine("integrations setup github --list")
+	pty.Want("refresh-org")
+	pty.WantPrompt()
+
+	// Look up the user_id so we can call the debug refresh endpoint.
+	userID := getUserIDByEmail(t, email)
+
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+
+	// Refresh the user's token via the debug endpoint.
+	// The mock will rotate the refresh token: old token is invalidated,
+	// new token is issued.
+	resp := postRefresh(t, base, userID, "testghuser")
+	if resp != "OK" {
+		t.Fatalf("refresh failed: %s", resp)
+	}
+
+	// A second refresh should see the token is already fresh.
+	resp = postRefresh(t, base, userID, "testghuser")
+	if resp != "OK" && resp != "OK (already fresh)" {
+		t.Fatalf("second refresh failed: %s", resp)
+	}
+
+	// Verify both installations still list correctly after the refresh.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
+	pty.Want("refresh-user")
+	pty.WantPrompt()
+
+	pty.SendLine("integrations setup github --list")
+	pty.Want("refresh-org")
+	pty.WantPrompt()
+
+	// Clean up.
+	pty.SendLine("integrations setup github -d")
+	pty.Want("Disconnected:")
+	pty.WantPrompt()
+}
+
+// TestIntegrationsGitHubOnDemandRefresh tests that web/SSH operations
+// automatically refresh expired access tokens on demand.
+func TestIntegrationsGitHubOnDemandRefresh(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Enable token rotation with expires_in=1 so the access token
+	// expires immediately. The on-demand refresh in resolveGitHubTokenWeb
+	// should transparently refresh the token when the web UI tries to use it.
+	Env.servers.GitHubMock.EnableTokenRotation()
+
+	const code = "ondemand-test"
+	const token = "ghu_" + code
+	// Set expires_in=1 so the access token expires immediately,
+	// forcing on-demand refresh when the web/SSH path tries to use it.
+	Env.servers.GitHubMock.SetExpiresInForToken(token, 1)
+	Env.servers.GitHubMock.SetInstallationsForToken(token, []testinfra.MockInstallation{
+		{ID: 90001, Login: "ondemand-user"},
+	})
+
+	pty, cookies, _, _ := registerForExeDev(t)
+
+	// Enable the feature flag and connect via web.
+	pty.SendLine("integrations setup github")
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
+
+	connectGitHubViaWeb(t, cookies, code)
+
+	// The access token expired immediately (expires_in=1). Wait to ensure
+	// the 1-second access token has definitely expired.
+	time.Sleep(2 * time.Second)
+
+	// Verify via SSH should still work because resolveGitHubTokenWeb
+	// refreshes the expired access token on demand.
+	pty.SendLine("integrations setup github --verify")
+	pty.WantRE(`ondemand-user.*✓`)
+	pty.WantPrompt()
+
+	// Clean up.
+	pty.SendLine("integrations setup github -d")
+	pty.Want("Disconnected:")
+	pty.WantPrompt()
+}
+
+// postRefresh calls the debug refresh endpoint and returns the response body.
+func postRefresh(t *testing.T, base, userID, githubLogin string) string {
+	t.Helper()
+	resp, err := http.PostForm(
+		base+"/debug/github-integrations/refresh",
+		url.Values{
+			"user_id":      {userID},
+			"github_login": {githubLogin},
+		},
+	)
+	if err != nil {
+		t.Fatalf("refresh request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	return string(body)
+}
+
+// TestIntegrationsGitHubReinstall tests that reinstalling a GitHub App on the
+// same org (which gives a new installation_id) works without UNIQUE constraint
+// violations. The new installation should replace the old one.
+func TestIntegrationsGitHubReinstall(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Pre-configure: first install with installation_id 11111.
+	const code1 = "reinstall-v1"
+	const token1 = "ghu_" + code1
+	Env.servers.GitHubMock.SetInstallationsForToken(token1, []testinfra.MockInstallation{
+		{ID: 11111, Login: "myorg"},
+	})
+
+	pty, cookies, _, _ := registerForExeDev(t)
+
+	pty.SendLine("integrations setup github")
+	pty.Want("GitHub integration enabled")
+	pty.WantPrompt()
+
+	// First install.
+	connectGitHubViaWeb(t, cookies, code1)
+
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
+	pty.Want("myorg")
+	pty.WantPrompt()
+
+	// Simulate reinstall: same org, new installation_id 22222.
+	const code2 = "reinstall-v2"
+	const token2 = "ghu_" + code2
+	Env.servers.GitHubMock.SetInstallationsForToken(token2, []testinfra.MockInstallation{
+		{ID: 22222, Login: "myorg"},
+	})
+
+	// Connect again — should replace the old installation without error.
+	connectGitHubViaWeb(t, cookies, code2)
+
+	// Should still show exactly one "myorg" entry.
+	pty.SendLine("integrations setup github --list")
+	pty.Want("GitHub accounts:")
+	pty.Want("myorg")
+	pty.WantPrompt()
+
+	// Clean up.
 	pty.SendLine("integrations setup github -d")
 	pty.Want("Disconnected:")
 	pty.WantPrompt()

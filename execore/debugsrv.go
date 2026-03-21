@@ -6854,8 +6854,8 @@ func (s *Server) handleDebugIntegrations(w http.ResponseWriter, r *http.Request)
 		if email, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, uid); err == nil {
 			emailMap[uid] = email
 		}
-		if accounts, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubAccounts, uid); err == nil && len(accounts) > 0 {
-			ghMap[uid] = accounts[0].GitHubLogin
+		if tokens, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubUserTokens, uid); err == nil && len(tokens) > 0 {
+			ghMap[uid] = tokens[0].GitHubLogin
 		}
 	}
 
@@ -6906,16 +6906,23 @@ func (s *Server) handleDebugIntegrations(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleDebugGitHubIntegrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	accounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllGitHubAccounts)
+	tokens, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllGitHubUserTokens)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list GitHub accounts: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to list GitHub tokens: %v", err), http.StatusInternalServerError)
+		return
+	}
+	installations, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllGitHubInstallationsWithTokens)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list GitHub installations: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	data := struct {
-		Accounts []exedb.ListAllGitHubAccountsRow
+		Tokens        []exedb.ListAllGitHubUserTokensRow
+		Installations []exedb.ListAllGitHubInstallationsWithTokensRow
 	}{
-		Accounts: accounts,
+		Tokens:        tokens,
+		Installations: installations,
 	}
 	s.renderDebugTemplate(ctx, w, "github-integrations.html", data)
 }
@@ -6923,17 +6930,17 @@ func (s *Server) handleDebugGitHubIntegrations(w http.ResponseWriter, r *http.Re
 func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := r.FormValue("user_id")
-	installationID, _ := strconv.ParseInt(r.FormValue("installation_id"), 10, 64)
+	githubLogin := r.FormValue("github_login")
 
-	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetGitHubAccount, exedb.GetGitHubAccountParams{
-		UserID:         userID,
-		InstallationID: installationID,
+	tok, err := withRxRes1(s, ctx, (*exedb.Queries).GetGitHubUserToken, exedb.GetGitHubUserTokenParams{
+		UserID:      userID,
+		GitHubLogin: githubLogin,
 	})
 	if err != nil {
-		http.Error(w, fmt.Sprintf("account not found: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("user token not found: %v", err), http.StatusNotFound)
 		return
 	}
-	if acct.RefreshToken == "" {
+	if tok.RefreshToken == "" {
 		http.Error(w, "no refresh token", http.StatusBadRequest)
 		return
 	}
@@ -6942,18 +6949,18 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 	s.githubRefreshMu.Lock()
 	defer s.githubRefreshMu.Unlock()
 
-	// Re-read the account under the lock — another refresh may have already
+	// Re-read the token under the lock — another refresh may have already
 	// given us a fresh token, in which case we can skip the GitHub round-trip.
-	acct, err = withRxRes1(s, ctx, (*exedb.Queries).GetGitHubAccount, exedb.GetGitHubAccountParams{
-		UserID:         userID,
-		InstallationID: installationID,
+	tok, err = withRxRes1(s, ctx, (*exedb.Queries).GetGitHubUserToken, exedb.GetGitHubUserTokenParams{
+		UserID:      userID,
+		GitHubLogin: githubLogin,
 	})
 	if err != nil {
-		http.Error(w, fmt.Sprintf("account not found: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("user token not found: %v", err), http.StatusNotFound)
 		return
 	}
-	if acct.AccessTokenExpiresAt != nil {
-		if expires, err := parseGitHubTokenExpiry(*acct.AccessTokenExpiresAt); err == nil {
+	if tok.AccessTokenExpiresAt != nil {
+		if expires, err := parseGitHubTokenExpiry(*tok.AccessTokenExpiresAt); err == nil {
 			if time.Until(expires) > 5*time.Minute {
 				w.WriteHeader(http.StatusOK)
 				fmt.Fprint(w, "OK (already fresh)")
@@ -6962,12 +6969,11 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 		}
 	}
 
-	tokenResp, err := s.githubApp.RefreshUserToken(ctx, acct.RefreshToken)
+	tokenResp, err := s.githubApp.RefreshUserToken(ctx, tok.RefreshToken)
 	if err != nil {
 		s.slog().ErrorContext(ctx, "debug: GitHub token refresh failed",
-			"user_id", acct.UserID,
-			"github_login", acct.GitHubLogin,
-			"installation_id", acct.InstallationID,
+			"user_id", tok.UserID,
+			"github_login", tok.GitHubLogin,
 			"error", err,
 		)
 		http.Error(w, fmt.Sprintf("refresh failed: %v", err), http.StatusInternalServerError)
@@ -6975,13 +6981,13 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 	}
 
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateGitHubAccountTokens(ctx, exedb.UpdateGitHubAccountTokensParams{
+		return queries.UpdateGitHubUserToken(ctx, exedb.UpdateGitHubUserTokenParams{
 			AccessToken:           tokenResp.AccessToken,
 			RefreshToken:          tokenResp.RefreshToken,
 			AccessTokenExpiresAt:  tokenResp.AccessTokenExpiresAt(),
 			RefreshTokenExpiresAt: tokenResp.RefreshTokenExpiresAt(),
-			UserID:                acct.UserID,
-			InstallationID:        acct.InstallationID,
+			UserID:                userID,
+			GitHubLogin:           githubLogin,
 		})
 	})
 	if err != nil {
@@ -6990,9 +6996,8 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 	}
 
 	s.slog().InfoContext(ctx, "debug: refreshed GitHub token",
-		"user_id", acct.UserID,
-		"github_login", acct.GitHubLogin,
-		"installation_id", acct.InstallationID,
+		"user_id", tok.UserID,
+		"github_login", tok.GitHubLogin,
 	)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
