@@ -14,9 +14,6 @@ ON CONFLICT (user_id, github_login) DO UPDATE SET
     access_token_expires_at = excluded.access_token_expires_at,
     refresh_token_expires_at = excluded.refresh_token_expires_at;
 
--- name: DeleteGitHubUserToken :exec
-DELETE FROM github_user_tokens WHERE user_id = ? AND github_login = ?;
-
 -- name: DeleteAllGitHubUserTokens :exec
 DELETE FROM github_user_tokens WHERE user_id = ?;
 

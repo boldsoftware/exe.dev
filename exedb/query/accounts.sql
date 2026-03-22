@@ -1,11 +1,6 @@
 -- name: InsertAccount :exec
 INSERT INTO accounts (id, created_by) VALUES (?, ?);
 
--- name: ListAllActiveAccountPlans :many
-SELECT a.created_by AS user_id, ap.plan_id
-FROM accounts a
-JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL;
-
 -- name: InsertAccountPlan :exec
 INSERT INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
 VALUES (?, ?, ?, ?, ?);

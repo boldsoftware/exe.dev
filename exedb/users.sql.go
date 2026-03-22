@@ -200,17 +200,6 @@ func (q *Queries) GetUserIsLockedOut(ctx context.Context, userID string) (bool, 
 	return is_locked_out, err
 }
 
-const getUserLimits = `-- name: GetUserLimits :one
-SELECT limits FROM users WHERE user_id = ?
-`
-
-func (q *Queries) GetUserLimits(ctx context.Context, userID string) (*string, error) {
-	row := q.queryRow(ctx, q.getUserLimitsStmt, getUserLimits, userID)
-	var limits *string
-	err := row.Scan(&limits)
-	return limits, err
-}
-
 const getUserNewVMCreationDisabled = `-- name: GetUserNewVMCreationDisabled :one
 SELECT new_vm_creation_disabled FROM users WHERE user_id = ?
 `

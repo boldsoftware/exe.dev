@@ -48,9 +48,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
-	if q.cleanupExpiredAppTokensStmt, err = db.PrepareContext(ctx, cleanupExpiredAppTokens); err != nil {
-		return nil, fmt.Errorf("error preparing query CleanupExpiredAppTokens: %w", err)
-	}
 	if q.cleanupExpiredOAuthStatesStmt, err = db.PrepareContext(ctx, cleanupExpiredOAuthStates); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredOAuthStates: %w", err)
 	}
@@ -59,9 +56,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.cleanupExpiredRedirectsStmt, err = db.PrepareContext(ctx, cleanupExpiredRedirects); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredRedirects: %w", err)
-	}
-	if q.cleanupExpiredReleasedBoxNamesStmt, err = db.PrepareContext(ctx, cleanupExpiredReleasedBoxNames); err != nil {
-		return nil, fmt.Errorf("error preparing query CleanupExpiredReleasedBoxNames: %w", err)
 	}
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
@@ -156,9 +150,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAppTokenStmt, err = db.PrepareContext(ctx, deleteAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAppToken: %w", err)
 	}
-	if q.deleteAppTokensByUserIDStmt, err = db.PrepareContext(ctx, deleteAppTokensByUserID); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteAppTokensByUserID: %w", err)
-	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
@@ -201,17 +192,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteExpiredExe1TokensStmt, err = db.PrepareContext(ctx, deleteExpiredExe1Tokens); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExpiredExe1Tokens: %w", err)
 	}
-	if q.deleteExpiredPendingTeamInvitesStmt, err = db.PrepareContext(ctx, deleteExpiredPendingTeamInvites); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteExpiredPendingTeamInvites: %w", err)
-	}
 	if q.deleteGitHubInstallationStmt, err = db.PrepareContext(ctx, deleteGitHubInstallation); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteGitHubInstallation: %w", err)
 	}
 	if q.deleteGitHubInstallationByTargetStmt, err = db.PrepareContext(ctx, deleteGitHubInstallationByTarget); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteGitHubInstallationByTarget: %w", err)
-	}
-	if q.deleteGitHubUserTokenStmt, err = db.PrepareContext(ctx, deleteGitHubUserToken); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteGitHubUserToken: %w", err)
 	}
 	if q.deleteIntegrationStmt, err = db.PrepareContext(ctx, deleteIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteIntegration: %w", err)
@@ -261,17 +246,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePushTokenStmt, err = db.PrepareContext(ctx, deletePushToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePushToken: %w", err)
 	}
-	if q.deletePushTokensByUserIDStmt, err = db.PrepareContext(ctx, deletePushTokensByUserID); err != nil {
-		return nil, fmt.Errorf("error preparing query DeletePushTokensByUserID: %w", err)
-	}
 	if q.deleteReleasedBoxNameStmt, err = db.PrepareContext(ctx, deleteReleasedBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteReleasedBoxName: %w", err)
 	}
 	if q.deleteSSHKeyByIDStmt, err = db.PrepareContext(ctx, deleteSSHKeyByID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyByID: %w", err)
-	}
-	if q.deleteSSHKeyForUserStmt, err = db.PrepareContext(ctx, deleteSSHKeyForUser); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteSSHKeyForUser: %w", err)
 	}
 	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
@@ -396,12 +375,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
 	}
-	if q.getBoxTagsStmt, err = db.PrepareContext(ctx, getBoxTags); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxTags: %w", err)
-	}
-	if q.getBoxTeamShareStmt, err = db.PrepareContext(ctx, getBoxTeamShare); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxTeamShare: %w", err)
-	}
 	if q.getBoxTeamSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxTeamSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxTeamSharesByBoxID: %w", err)
 	}
@@ -423,9 +396,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCheckoutParamsStmt, err = db.PrepareContext(ctx, getCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCheckoutParams: %w", err)
 	}
-	if q.getCreditBalanceStmt, err = db.PrepareContext(ctx, getCreditBalance); err != nil {
-		return nil, fmt.Errorf("error preparing query GetCreditBalance: %w", err)
-	}
 	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
 	}
@@ -437,9 +407,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getEmailVerificationByEmailStmt, err = db.PrepareContext(ctx, getEmailVerificationByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByEmail: %w", err)
-	}
-	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
 	}
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
@@ -495,9 +462,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLatestBillingStatusStmt, err = db.PrepareContext(ctx, getLatestBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestBillingStatus: %w", err)
 	}
-	if q.getLatestMobilePendingVMByUserStmt, err = db.PrepareContext(ctx, getLatestMobilePendingVMByUser); err != nil {
-		return nil, fmt.Errorf("error preparing query GetLatestMobilePendingVMByUser: %w", err)
-	}
 	if q.getLatitudeShardPublicIPStmt, err = db.PrepareContext(ctx, getLatitudeShardPublicIP); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatitudeShardPublicIP: %w", err)
 	}
@@ -552,9 +516,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPendingTeamInvitesByEmailStmt, err = db.PrepareContext(ctx, getPendingTeamInvitesByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingTeamInvitesByEmail: %w", err)
 	}
-	if q.getPendingTeamInvitesByTeamStmt, err = db.PrepareContext(ctx, getPendingTeamInvitesByTeam); err != nil {
-		return nil, fmt.Errorf("error preparing query GetPendingTeamInvitesByTeam: %w", err)
-	}
 	if q.getPendingTeamInvitesForUserStmt, err = db.PrepareContext(ctx, getPendingTeamInvitesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingTeamInvitesForUser: %w", err)
 	}
@@ -593,12 +554,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getShellHistoryStmt, err = db.PrepareContext(ctx, getShellHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query GetShellHistory: %w", err)
-	}
-	if q.getSignupIPChecksByEmailStmt, err = db.PrepareContext(ctx, getSignupIPChecksByEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSignupIPChecksByEmail: %w", err)
-	}
-	if q.getSignupIPChecksByIPStmt, err = db.PrepareContext(ctx, getSignupIPChecksByIP); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSignupIPChecksByIP: %w", err)
 	}
 	if q.getSignupPOWEnabledStmt, err = db.PrepareContext(ctx, getSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSignupPOWEnabled: %w", err)
@@ -645,12 +600,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTeamShardCollisionsStmt, err = db.PrepareContext(ctx, getTeamShardCollisions); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamShardCollisions: %w", err)
 	}
-	if q.getTemplateByIDStmt, err = db.PrepareContext(ctx, getTemplateByID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTemplateByID: %w", err)
-	}
-	if q.getTemplateBySlugStmt, err = db.PrepareContext(ctx, getTemplateBySlug); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTemplateBySlug: %w", err)
-	}
 	if q.getTemplateBySlugAnyStmt, err = db.PrepareContext(ctx, getTemplateBySlugAny); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateBySlugAny: %w", err)
 	}
@@ -662,9 +611,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserBillingStmt, err = db.PrepareContext(ctx, getUserBilling); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBilling: %w", err)
-	}
-	if q.getUserBillingExemptionStmt, err = db.PrepareContext(ctx, getUserBillingExemption); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserBillingExemption: %w", err)
 	}
 	if q.getUserBillingStatusStmt, err = db.PrepareContext(ctx, getUserBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserBillingStatus: %w", err)
@@ -693,9 +639,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserLLMCreditStmt, err = db.PrepareContext(ctx, getUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserLLMCredit: %w", err)
 	}
-	if q.getUserLimitsStmt, err = db.PrepareContext(ctx, getUserLimits); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserLimits: %w", err)
-	}
 	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
 	}
@@ -704,9 +647,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
-	}
-	if q.getUserTemplateRatingStmt, err = db.PrepareContext(ctx, getUserTemplateRating); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserTemplateRating: %w", err)
 	}
 	if q.getUserWithDetailsStmt, err = db.PrepareContext(ctx, getUserWithDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithDetails: %w", err)
@@ -879,9 +819,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
-	if q.listAllActiveAccountPlansStmt, err = db.PrepareContext(ctx, listAllActiveAccountPlans); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAllActiveAccountPlans: %w", err)
-	}
 	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
 	}
@@ -956,9 +893,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTeamBoxesForAdminStmt, err = db.PrepareContext(ctx, listTeamBoxesForAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForAdmin: %w", err)
-	}
-	if q.listTemplatesByAuthorStmt, err = db.PrepareContext(ctx, listTemplatesByAuthor); err != nil {
-		return nil, fmt.Errorf("error preparing query ListTemplatesByAuthor: %w", err)
 	}
 	if q.listUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, listUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedInviteCodesForUser: %w", err)
@@ -1047,9 +981,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
 	}
-	if q.syncCreditLedgerStmt, err = db.PrepareContext(ctx, syncCreditLedger); err != nil {
-		return nil, fmt.Errorf("error preparing query SyncCreditLedger: %w", err)
-	}
 	if q.updateAppTokenLastUsedStmt, err = db.PrepareContext(ctx, updateAppTokenLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAppTokenLastUsed: %w", err)
 	}
@@ -1079,9 +1010,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
-	}
-	if q.updateBoxNameStmt, err = db.PrepareContext(ctx, updateBoxName); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxName: %w", err)
 	}
 	if q.updateBoxNameByIDStmt, err = db.PrepareContext(ctx, updateBoxNameByID); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxNameByID: %w", err)
@@ -1115,9 +1043,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updatePasskeySignCountStmt, err = db.PrepareContext(ctx, updatePasskeySignCount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePasskeySignCount: %w", err)
-	}
-	if q.updatePushTokenLastUsedStmt, err = db.PrepareContext(ctx, updatePushTokenLastUsed); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdatePushTokenLastUsed: %w", err)
 	}
 	if q.updateSSHKeyCommentStmt, err = db.PrepareContext(ctx, updateSSHKeyComment); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSSHKeyComment: %w", err)
@@ -1254,11 +1179,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
 		}
 	}
-	if q.cleanupExpiredAppTokensStmt != nil {
-		if cerr := q.cleanupExpiredAppTokensStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing cleanupExpiredAppTokensStmt: %w", cerr)
-		}
-	}
 	if q.cleanupExpiredOAuthStatesStmt != nil {
 		if cerr := q.cleanupExpiredOAuthStatesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredOAuthStatesStmt: %w", cerr)
@@ -1272,11 +1192,6 @@ func (q *Queries) Close() error {
 	if q.cleanupExpiredRedirectsStmt != nil {
 		if cerr := q.cleanupExpiredRedirectsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredRedirectsStmt: %w", cerr)
-		}
-	}
-	if q.cleanupExpiredReleasedBoxNamesStmt != nil {
-		if cerr := q.cleanupExpiredReleasedBoxNamesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing cleanupExpiredReleasedBoxNamesStmt: %w", cerr)
 		}
 	}
 	if q.clearPreferredExeletStmt != nil {
@@ -1434,11 +1349,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAppTokenStmt: %w", cerr)
 		}
 	}
-	if q.deleteAppTokensByUserIDStmt != nil {
-		if cerr := q.deleteAppTokensByUserIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteAppTokensByUserIDStmt: %w", cerr)
-		}
-	}
 	if q.deleteAuthCookieStmt != nil {
 		if cerr := q.deleteAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookieStmt: %w", cerr)
@@ -1509,11 +1419,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteExpiredExe1TokensStmt: %w", cerr)
 		}
 	}
-	if q.deleteExpiredPendingTeamInvitesStmt != nil {
-		if cerr := q.deleteExpiredPendingTeamInvitesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteExpiredPendingTeamInvitesStmt: %w", cerr)
-		}
-	}
 	if q.deleteGitHubInstallationStmt != nil {
 		if cerr := q.deleteGitHubInstallationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteGitHubInstallationStmt: %w", cerr)
@@ -1522,11 +1427,6 @@ func (q *Queries) Close() error {
 	if q.deleteGitHubInstallationByTargetStmt != nil {
 		if cerr := q.deleteGitHubInstallationByTargetStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteGitHubInstallationByTargetStmt: %w", cerr)
-		}
-	}
-	if q.deleteGitHubUserTokenStmt != nil {
-		if cerr := q.deleteGitHubUserTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteGitHubUserTokenStmt: %w", cerr)
 		}
 	}
 	if q.deleteIntegrationStmt != nil {
@@ -1609,11 +1509,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePushTokenStmt: %w", cerr)
 		}
 	}
-	if q.deletePushTokensByUserIDStmt != nil {
-		if cerr := q.deletePushTokensByUserIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deletePushTokensByUserIDStmt: %w", cerr)
-		}
-	}
 	if q.deleteReleasedBoxNameStmt != nil {
 		if cerr := q.deleteReleasedBoxNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteReleasedBoxNameStmt: %w", cerr)
@@ -1622,11 +1517,6 @@ func (q *Queries) Close() error {
 	if q.deleteSSHKeyByIDStmt != nil {
 		if cerr := q.deleteSSHKeyByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSSHKeyByIDStmt: %w", cerr)
-		}
-	}
-	if q.deleteSSHKeyForUserStmt != nil {
-		if cerr := q.deleteSSHKeyForUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteSSHKeyForUserStmt: %w", cerr)
 		}
 	}
 	if q.deleteTagResolutionStmt != nil {
@@ -1834,16 +1724,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
 		}
 	}
-	if q.getBoxTagsStmt != nil {
-		if cerr := q.getBoxTagsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxTagsStmt: %w", cerr)
-		}
-	}
-	if q.getBoxTeamShareStmt != nil {
-		if cerr := q.getBoxTeamShareStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxTeamShareStmt: %w", cerr)
-		}
-	}
 	if q.getBoxTeamSharesByBoxIDStmt != nil {
 		if cerr := q.getBoxTeamSharesByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxTeamSharesByBoxIDStmt: %w", cerr)
@@ -1879,11 +1759,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCheckoutParamsStmt: %w", cerr)
 		}
 	}
-	if q.getCreditBalanceStmt != nil {
-		if cerr := q.getCreditBalanceStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getCreditBalanceStmt: %w", cerr)
-		}
-	}
 	if q.getEmailBounceStmt != nil {
 		if cerr := q.getEmailBounceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBounceStmt: %w", cerr)
@@ -1902,11 +1777,6 @@ func (q *Queries) Close() error {
 	if q.getEmailVerificationByEmailStmt != nil {
 		if cerr := q.getEmailVerificationByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByEmailStmt: %w", cerr)
-		}
-	}
-	if q.getEmailVerificationByPartialTokenStmt != nil {
-		if cerr := q.getEmailVerificationByPartialTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEmailVerificationByPartialTokenStmt: %w", cerr)
 		}
 	}
 	if q.getEmailVerificationByTokenStmt != nil {
@@ -1999,11 +1869,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLatestBillingStatusStmt: %w", cerr)
 		}
 	}
-	if q.getLatestMobilePendingVMByUserStmt != nil {
-		if cerr := q.getLatestMobilePendingVMByUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getLatestMobilePendingVMByUserStmt: %w", cerr)
-		}
-	}
 	if q.getLatitudeShardPublicIPStmt != nil {
 		if cerr := q.getLatitudeShardPublicIPStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLatitudeShardPublicIPStmt: %w", cerr)
@@ -2094,11 +1959,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPendingTeamInvitesByEmailStmt: %w", cerr)
 		}
 	}
-	if q.getPendingTeamInvitesByTeamStmt != nil {
-		if cerr := q.getPendingTeamInvitesByTeamStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getPendingTeamInvitesByTeamStmt: %w", cerr)
-		}
-	}
 	if q.getPendingTeamInvitesForUserStmt != nil {
 		if cerr := q.getPendingTeamInvitesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingTeamInvitesForUserStmt: %w", cerr)
@@ -2162,16 +2022,6 @@ func (q *Queries) Close() error {
 	if q.getShellHistoryStmt != nil {
 		if cerr := q.getShellHistoryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getShellHistoryStmt: %w", cerr)
-		}
-	}
-	if q.getSignupIPChecksByEmailStmt != nil {
-		if cerr := q.getSignupIPChecksByEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSignupIPChecksByEmailStmt: %w", cerr)
-		}
-	}
-	if q.getSignupIPChecksByIPStmt != nil {
-		if cerr := q.getSignupIPChecksByIPStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSignupIPChecksByIPStmt: %w", cerr)
 		}
 	}
 	if q.getSignupPOWEnabledStmt != nil {
@@ -2249,16 +2099,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTeamShardCollisionsStmt: %w", cerr)
 		}
 	}
-	if q.getTemplateByIDStmt != nil {
-		if cerr := q.getTemplateByIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTemplateByIDStmt: %w", cerr)
-		}
-	}
-	if q.getTemplateBySlugStmt != nil {
-		if cerr := q.getTemplateBySlugStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTemplateBySlugStmt: %w", cerr)
-		}
-	}
 	if q.getTemplateBySlugAnyStmt != nil {
 		if cerr := q.getTemplateBySlugAnyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTemplateBySlugAnyStmt: %w", cerr)
@@ -2277,11 +2117,6 @@ func (q *Queries) Close() error {
 	if q.getUserBillingStmt != nil {
 		if cerr := q.getUserBillingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserBillingStmt: %w", cerr)
-		}
-	}
-	if q.getUserBillingExemptionStmt != nil {
-		if cerr := q.getUserBillingExemptionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserBillingExemptionStmt: %w", cerr)
 		}
 	}
 	if q.getUserBillingStatusStmt != nil {
@@ -2329,11 +2164,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserLLMCreditStmt: %w", cerr)
 		}
 	}
-	if q.getUserLimitsStmt != nil {
-		if cerr := q.getUserLimitsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserLimitsStmt: %w", cerr)
-		}
-	}
 	if q.getUserNewVMCreationDisabledStmt != nil {
 		if cerr := q.getUserNewVMCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
@@ -2347,11 +2177,6 @@ func (q *Queries) Close() error {
 	if q.getUserRootSupportStmt != nil {
 		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
-		}
-	}
-	if q.getUserTemplateRatingStmt != nil {
-		if cerr := q.getUserTemplateRatingStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserTemplateRatingStmt: %w", cerr)
 		}
 	}
 	if q.getUserWithDetailsStmt != nil {
@@ -2639,11 +2464,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
 		}
 	}
-	if q.listAllActiveAccountPlansStmt != nil {
-		if cerr := q.listAllActiveAccountPlansStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAllActiveAccountPlansStmt: %w", cerr)
-		}
-	}
 	if q.listAllBoxesWithOwnerStmt != nil {
 		if cerr := q.listAllBoxesWithOwnerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllBoxesWithOwnerStmt: %w", cerr)
@@ -2767,11 +2587,6 @@ func (q *Queries) Close() error {
 	if q.listTeamBoxesForAdminStmt != nil {
 		if cerr := q.listTeamBoxesForAdminStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamBoxesForAdminStmt: %w", cerr)
-		}
-	}
-	if q.listTemplatesByAuthorStmt != nil {
-		if cerr := q.listTemplatesByAuthorStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listTemplatesByAuthorStmt: %w", cerr)
 		}
 	}
 	if q.listUnusedInviteCodesForUserStmt != nil {
@@ -2919,11 +2734,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setUserRootSupportStmt: %w", cerr)
 		}
 	}
-	if q.syncCreditLedgerStmt != nil {
-		if cerr := q.syncCreditLedgerStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing syncCreditLedgerStmt: %w", cerr)
-		}
-	}
 	if q.updateAppTokenLastUsedStmt != nil {
 		if cerr := q.updateAppTokenLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAppTokenLastUsedStmt: %w", cerr)
@@ -2972,11 +2782,6 @@ func (q *Queries) Close() error {
 	if q.updateBoxMigrationStmt != nil {
 		if cerr := q.updateBoxMigrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxMigrationStmt: %w", cerr)
-		}
-	}
-	if q.updateBoxNameStmt != nil {
-		if cerr := q.updateBoxNameStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxNameStmt: %w", cerr)
 		}
 	}
 	if q.updateBoxNameByIDStmt != nil {
@@ -3032,11 +2837,6 @@ func (q *Queries) Close() error {
 	if q.updatePasskeySignCountStmt != nil {
 		if cerr := q.updatePasskeySignCountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updatePasskeySignCountStmt: %w", cerr)
-		}
-	}
-	if q.updatePushTokenLastUsedStmt != nil {
-		if cerr := q.updatePushTokenLastUsedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updatePushTokenLastUsedStmt: %w", cerr)
 		}
 	}
 	if q.updateSSHKeyCommentStmt != nil {
@@ -3236,11 +3036,9 @@ type Queries struct {
 	boxWithNameExistsStmt                      *sql.Stmt
 	boxWithOwnerNamedStmt                      *sql.Stmt
 	boxesForUserStmt                           *sql.Stmt
-	cleanupExpiredAppTokensStmt                *sql.Stmt
 	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	cleanupExpiredRedirectsStmt                *sql.Stmt
-	cleanupExpiredReleasedBoxNamesStmt         *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	closeAccountPlanStmt                       *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
@@ -3272,7 +3070,6 @@ type Queries struct {
 	deleteAllGitHubInstallationsStmt           *sql.Stmt
 	deleteAllGitHubUserTokensStmt              *sql.Stmt
 	deleteAppTokenStmt                         *sql.Stmt
-	deleteAppTokensByUserIDStmt                *sql.Stmt
 	deleteAuthCookieStmt                       *sql.Stmt
 	deleteAuthCookiesByDomainStmt              *sql.Stmt
 	deleteAuthCookiesByUserIDStmt              *sql.Stmt
@@ -3287,10 +3084,8 @@ type Queries struct {
 	deleteEmailQualityBypassStmt               *sql.Stmt
 	deleteEmailVerificationByTokenStmt         *sql.Stmt
 	deleteExpiredExe1TokensStmt                *sql.Stmt
-	deleteExpiredPendingTeamInvitesStmt        *sql.Stmt
 	deleteGitHubInstallationStmt               *sql.Stmt
 	deleteGitHubInstallationByTargetStmt       *sql.Stmt
-	deleteGitHubUserTokenStmt                  *sql.Stmt
 	deleteIntegrationStmt                      *sql.Stmt
 	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
@@ -3307,10 +3102,8 @@ type Queries struct {
 	deletePendingTeamInvitesByTeamIDStmt       *sql.Stmt
 	deletePendingTeamInvitesByUserStmt         *sql.Stmt
 	deletePushTokenStmt                        *sql.Stmt
-	deletePushTokensByUserIDStmt               *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
-	deleteSSHKeyForUserStmt                    *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamStmt                             *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
@@ -3352,8 +3145,6 @@ type Queries struct {
 	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                *sql.Stmt
 	getBoxSharesByBoxIDStmt                    *sql.Stmt
-	getBoxTagsStmt                             *sql.Stmt
-	getBoxTeamShareStmt                        *sql.Stmt
 	getBoxTeamSharesByBoxIDStmt                *sql.Stmt
 	getBoxWithOwnerEmailStmt                   *sql.Stmt
 	getBoxesByHostStmt                         *sql.Stmt
@@ -3361,12 +3152,10 @@ type Queries struct {
 	getBoxesSharedWithUserStmt                 *sql.Stmt
 	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
-	getCreditBalanceStmt                       *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
 	getEmailVerificationByEmailStmt            *sql.Stmt
-	getEmailVerificationByPartialTokenStmt     *sql.Stmt
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getExe1TokenStmt                           *sql.Stmt
 	getExe1TokenByExe0Stmt                     *sql.Stmt
@@ -3385,7 +3174,6 @@ type Queries struct {
 	getInviteCodeStatsForUserStmt              *sql.Stmt
 	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestBillingStatusStmt                 *sql.Stmt
-	getLatestMobilePendingVMByUserStmt         *sql.Stmt
 	getLatitudeShardPublicIPStmt               *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
@@ -3404,7 +3192,6 @@ type Queries struct {
 	getPendingSSHKeyEmailByPublicKeyStmt       *sql.Stmt
 	getPendingTeamInviteByTokenStmt            *sql.Stmt
 	getPendingTeamInvitesByEmailStmt           *sql.Stmt
-	getPendingTeamInvitesByTeamStmt            *sql.Stmt
 	getPendingTeamInvitesForUserStmt           *sql.Stmt
 	getPreferredExeletStmt                     *sql.Stmt
 	getPushTokensByUserIDStmt                  *sql.Stmt
@@ -3418,8 +3205,6 @@ type Queries struct {
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
 	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
-	getSignupIPChecksByEmailStmt               *sql.Stmt
-	getSignupIPChecksByIPStmt                  *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
 	getSiteCookiesForUserStmt                  *sql.Stmt
 	getTagResolutionStmt                       *sql.Stmt
@@ -3435,13 +3220,10 @@ type Queries struct {
 	getTeamSSOProviderByIDStmt                 *sql.Stmt
 	getTeamSSOProviderByIssuerStmt             *sql.Stmt
 	getTeamShardCollisionsStmt                 *sql.Stmt
-	getTemplateByIDStmt                        *sql.Stmt
-	getTemplateBySlugStmt                      *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
 	getTemplateRatingStatsStmt                 *sql.Stmt
 	getUserAuthProviderStmt                    *sql.Stmt
 	getUserBillingStmt                         *sql.Stmt
-	getUserBillingExemptionStmt                *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByDiscordUsernameStmt               *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
@@ -3451,11 +3233,9 @@ type Queries struct {
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserIsLockedOutStmt                     *sql.Stmt
 	getUserLLMCreditStmt                       *sql.Stmt
-	getUserLimitsStmt                          *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
 	getUserRootSupportStmt                     *sql.Stmt
-	getUserTemplateRatingStmt                  *sql.Stmt
 	getUserWithDetailsStmt                     *sql.Stmt
 	getUserWithSSHKeyStmt                      *sql.Stmt
 	getUsersWithOutOfRegionBoxesStmt           *sql.Stmt
@@ -3513,7 +3293,6 @@ type Queries struct {
 	listAWSIPShardsStmt                        *sql.Stmt
 	listAccountPlanHistoryStmt                 *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
-	listAllActiveAccountPlansStmt              *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllGitHubInstallationsWithTokensStmt   *sql.Stmt
 	listAllGitHubUserTokensStmt                *sql.Stmt
@@ -3539,7 +3318,6 @@ type Queries struct {
 	listLatitudeIPShardsStmt                   *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
-	listTemplatesByAuthorStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
@@ -3569,7 +3347,6 @@ type Queries struct {
 	setUserNewsletterSubscribedStmt            *sql.Stmt
 	setUserRegionStmt                          *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
-	syncCreditLedgerStmt                       *sql.Stmt
 	updateAppTokenLastUsedStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
@@ -3580,7 +3357,6 @@ type Queries struct {
 	updateBoxIPShardStmt                       *sql.Stmt
 	updateBoxIPShardUserStmt                   *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
-	updateBoxNameStmt                          *sql.Stmt
 	updateBoxNameByIDStmt                      *sql.Stmt
 	updateBoxOwnerStmt                         *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
@@ -3592,7 +3368,6 @@ type Queries struct {
 	updateIntegrationAttachmentsStmt           *sql.Stmt
 	updateIntegrationNameStmt                  *sql.Stmt
 	updatePasskeySignCountStmt                 *sql.Stmt
-	updatePushTokenLastUsedStmt                *sql.Stmt
 	updateSSHKeyCommentStmt                    *sql.Stmt
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
@@ -3637,11 +3412,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                           q.boxesForUserStmt,
-		cleanupExpiredAppTokensStmt:                q.cleanupExpiredAppTokensStmt,
 		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
-		cleanupExpiredReleasedBoxNamesStmt:         q.cleanupExpiredReleasedBoxNamesStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		closeAccountPlanStmt:                       q.closeAccountPlanStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
@@ -3673,7 +3446,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteAllGitHubInstallationsStmt:           q.deleteAllGitHubInstallationsStmt,
 		deleteAllGitHubUserTokensStmt:              q.deleteAllGitHubUserTokensStmt,
 		deleteAppTokenStmt:                         q.deleteAppTokenStmt,
-		deleteAppTokensByUserIDStmt:                q.deleteAppTokensByUserIDStmt,
 		deleteAuthCookieStmt:                       q.deleteAuthCookieStmt,
 		deleteAuthCookiesByDomainStmt:              q.deleteAuthCookiesByDomainStmt,
 		deleteAuthCookiesByUserIDStmt:              q.deleteAuthCookiesByUserIDStmt,
@@ -3688,10 +3460,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
 		deleteEmailVerificationByTokenStmt:         q.deleteEmailVerificationByTokenStmt,
 		deleteExpiredExe1TokensStmt:                q.deleteExpiredExe1TokensStmt,
-		deleteExpiredPendingTeamInvitesStmt:        q.deleteExpiredPendingTeamInvitesStmt,
 		deleteGitHubInstallationStmt:               q.deleteGitHubInstallationStmt,
 		deleteGitHubInstallationByTargetStmt:       q.deleteGitHubInstallationByTargetStmt,
-		deleteGitHubUserTokenStmt:                  q.deleteGitHubUserTokenStmt,
 		deleteIntegrationStmt:                      q.deleteIntegrationStmt,
 		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
@@ -3708,10 +3478,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingTeamInvitesByTeamIDStmt:       q.deletePendingTeamInvitesByTeamIDStmt,
 		deletePendingTeamInvitesByUserStmt:         q.deletePendingTeamInvitesByUserStmt,
 		deletePushTokenStmt:                        q.deletePushTokenStmt,
-		deletePushTokensByUserIDStmt:               q.deletePushTokensByUserIDStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
-		deleteSSHKeyForUserStmt:                    q.deleteSSHKeyForUserStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamStmt:                             q.deleteTeamStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
@@ -3753,8 +3521,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
-		getBoxTagsStmt:                             q.getBoxTagsStmt,
-		getBoxTeamShareStmt:                        q.getBoxTeamShareStmt,
 		getBoxTeamSharesByBoxIDStmt:                q.getBoxTeamSharesByBoxIDStmt,
 		getBoxWithOwnerEmailStmt:                   q.getBoxWithOwnerEmailStmt,
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
@@ -3762,12 +3528,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
 		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
-		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
 		getEmailVerificationByEmailStmt:            q.getEmailVerificationByEmailStmt,
-		getEmailVerificationByPartialTokenStmt:     q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getExe1TokenStmt:                           q.getExe1TokenStmt,
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
@@ -3786,7 +3550,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getInviteCodeStatsForUserStmt:              q.getInviteCodeStatsForUserStmt,
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
-		getLatestMobilePendingVMByUserStmt:         q.getLatestMobilePendingVMByUserStmt,
 		getLatitudeShardPublicIPStmt:               q.getLatitudeShardPublicIPStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
@@ -3805,7 +3568,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingSSHKeyEmailByPublicKeyStmt:       q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getPendingTeamInviteByTokenStmt:            q.getPendingTeamInviteByTokenStmt,
 		getPendingTeamInvitesByEmailStmt:           q.getPendingTeamInvitesByEmailStmt,
-		getPendingTeamInvitesByTeamStmt:            q.getPendingTeamInvitesByTeamStmt,
 		getPendingTeamInvitesForUserStmt:           q.getPendingTeamInvitesForUserStmt,
 		getPreferredExeletStmt:                     q.getPreferredExeletStmt,
 		getPushTokensByUserIDStmt:                  q.getPushTokensByUserIDStmt,
@@ -3819,8 +3581,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
 		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
-		getSignupIPChecksByEmailStmt:               q.getSignupIPChecksByEmailStmt,
-		getSignupIPChecksByIPStmt:                  q.getSignupIPChecksByIPStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
@@ -3836,13 +3596,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamSSOProviderByIDStmt:                 q.getTeamSSOProviderByIDStmt,
 		getTeamSSOProviderByIssuerStmt:             q.getTeamSSOProviderByIssuerStmt,
 		getTeamShardCollisionsStmt:                 q.getTeamShardCollisionsStmt,
-		getTemplateByIDStmt:                        q.getTemplateByIDStmt,
-		getTemplateBySlugStmt:                      q.getTemplateBySlugStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
 		getTemplateRatingStatsStmt:                 q.getTemplateRatingStatsStmt,
 		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
 		getUserBillingStmt:                         q.getUserBillingStmt,
-		getUserBillingExemptionStmt:                q.getUserBillingExemptionStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByDiscordUsernameStmt:               q.getUserByDiscordUsernameStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
@@ -3852,11 +3609,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserIsLockedOutStmt:                     q.getUserIsLockedOutStmt,
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
-		getUserLimitsStmt:                          q.getUserLimitsStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
 		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
-		getUserTemplateRatingStmt:                  q.getUserTemplateRatingStmt,
 		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
 		getUsersWithOutOfRegionBoxesStmt:           q.getUsersWithOutOfRegionBoxesStmt,
@@ -3914,7 +3669,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAWSIPShardsStmt:                        q.listAWSIPShardsStmt,
 		listAccountPlanHistoryStmt:                 q.listAccountPlanHistoryStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
-		listAllActiveAccountPlansStmt:              q.listAllActiveAccountPlansStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllGitHubInstallationsWithTokensStmt:   q.listAllGitHubInstallationsWithTokensStmt,
 		listAllGitHubUserTokensStmt:                q.listAllGitHubUserTokensStmt,
@@ -3940,7 +3694,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
-		listTemplatesByAuthorStmt:                  q.listTemplatesByAuthorStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
@@ -3970,7 +3723,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserNewsletterSubscribedStmt:            q.setUserNewsletterSubscribedStmt,
 		setUserRegionStmt:                          q.setUserRegionStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
-		syncCreditLedgerStmt:                       q.syncCreditLedgerStmt,
 		updateAppTokenLastUsedStmt:                 q.updateAppTokenLastUsedStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
@@ -3981,7 +3733,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxIPShardStmt:                       q.updateBoxIPShardStmt,
 		updateBoxIPShardUserStmt:                   q.updateBoxIPShardUserStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
-		updateBoxNameStmt:                          q.updateBoxNameStmt,
 		updateBoxNameByIDStmt:                      q.updateBoxNameByIDStmt,
 		updateBoxOwnerStmt:                         q.updateBoxOwnerStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
@@ -3993,7 +3744,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateIntegrationAttachmentsStmt:           q.updateIntegrationAttachmentsStmt,
 		updateIntegrationNameStmt:                  q.updateIntegrationNameStmt,
 		updatePasskeySignCountStmt:                 q.updatePasskeySignCountStmt,
-		updatePushTokenLastUsedStmt:                q.updatePushTokenLastUsedStmt,
 		updateSSHKeyCommentStmt:                    q.updateSSHKeyCommentStmt,
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,

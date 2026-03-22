@@ -104,9 +104,6 @@ FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name;
 
--- name: UpdateBoxName :exec
-UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?;
-
 -- name: UpdateBoxNameByID :exec
 UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
@@ -141,9 +138,6 @@ ORDER BY u.region, u.email;
 
 -- name: UpdateBoxTags :exec
 UPDATE boxes SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
-
--- name: GetBoxTags :one
-SELECT tags FROM boxes WHERE id = ?;
 
 -- name: UpdateBoxOwner :exec
 UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;

@@ -37,12 +37,6 @@ INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING;
 
--- name: DeleteSSHKeyForUser :one
-DELETE FROM ssh_keys
-WHERE user_id = ?
-  AND public_key = ?
-RETURNING 1 AS deleted;
-
 -- name: UpdateSSHKeyLastUsed :exec
 UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?;
 

@@ -433,17 +433,6 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 	return i, err
 }
 
-const getBoxTags = `-- name: GetBoxTags :one
-SELECT tags FROM boxes WHERE id = ?
-`
-
-func (q *Queries) GetBoxTags(ctx context.Context, id int) (string, error) {
-	row := q.queryRow(ctx, q.getBoxTagsStmt, getBoxTags, id)
-	var tags string
-	err := row.Scan(&tags)
-	return tags, err
-}
-
 const getBoxesByHost = `-- name: GetBoxesByHost :many
 SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
 FROM boxes b
@@ -875,21 +864,6 @@ func (q *Queries) UpdateBoxMigration(ctx context.Context, arg UpdateBoxMigration
 		arg.Region,
 		arg.ID,
 	)
-	return err
-}
-
-const updateBoxName = `-- name: UpdateBoxName :exec
-UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?
-`
-
-type UpdateBoxNameParams struct {
-	Name            string `db:"name" json:"name"`
-	ID              int    `db:"id" json:"id"`
-	CreatedByUserID string `db:"created_by_user_id" json:"created_by_user_id"`
-}
-
-func (q *Queries) UpdateBoxName(ctx context.Context, arg UpdateBoxNameParams) error {
-	_, err := q.exec(ctx, q.updateBoxNameStmt, updateBoxName, arg.Name, arg.ID, arg.CreatedByUserID)
 	return err
 }
 

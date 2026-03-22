@@ -82,10 +82,6 @@ UPDATE users SET
     created_for_login_with_exe = 0
 WHERE user_id = ?;
 
--- name: GetUserBillingExemption :one
-SELECT billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
-FROM users WHERE user_id = ?;
-
 -- name: ListAllInviteCodesWithEmails :many
 -- Lists all invite codes with giver and recipient emails for debug page
 SELECT

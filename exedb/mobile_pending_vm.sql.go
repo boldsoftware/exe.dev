@@ -32,23 +32,6 @@ func (q *Queries) DeleteMobilePendingVMByUserAndHostname(ctx context.Context, ar
 	return err
 }
 
-const getLatestMobilePendingVMByUser = `-- name: GetLatestMobilePendingVMByUser :one
-SELECT hostname, prompt, vm_image FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
-`
-
-type GetLatestMobilePendingVMByUserRow struct {
-	Hostname string  `db:"hostname" json:"hostname"`
-	Prompt   *string `db:"prompt" json:"prompt"`
-	VMImage  *string `db:"vm_image" json:"vm_image"`
-}
-
-func (q *Queries) GetLatestMobilePendingVMByUser(ctx context.Context, userID string) (GetLatestMobilePendingVMByUserRow, error) {
-	row := q.queryRow(ctx, q.getLatestMobilePendingVMByUserStmt, getLatestMobilePendingVMByUser, userID)
-	var i GetLatestMobilePendingVMByUserRow
-	err := row.Scan(&i.Hostname, &i.Prompt, &i.VMImage)
-	return i, err
-}
-
 const getMobilePendingVMByToken = `-- name: GetMobilePendingVMByToken :one
 SELECT hostname, prompt, vm_image FROM mobile_pending_vm WHERE token = ?
 `

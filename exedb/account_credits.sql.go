@@ -10,18 +10,6 @@ import (
 	"time"
 )
 
-const getCreditBalance = `-- name: GetCreditBalance :one
-SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS balance FROM billing_credits WHERE account_id = ?
-`
-
-// GetCreditBalance returns the current credit balance for an account.
-func (q *Queries) GetCreditBalance(ctx context.Context, accountID string) (int64, error) {
-	row := q.queryRow(ctx, q.getCreditBalanceStmt, getCreditBalance, accountID)
-	var balance int64
-	err := row.Scan(&balance)
-	return balance, err
-}
-
 const listBillingCreditsForAccount = `-- name: ListBillingCreditsForAccount :many
 SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type, gift_id, note
 FROM billing_credits WHERE account_id = ?
@@ -71,23 +59,6 @@ func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID st
 		return nil, err
 	}
 	return items, nil
-}
-
-const syncCreditLedger = `-- name: SyncCreditLedger :exec
-INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
-VALUES (?1, ?2, ?3)
-`
-
-type SyncCreditLedgerParams struct {
-	AccountID     string  `db:"account_id" json:"account_id"`
-	Amount        int64   `db:"amount" json:"amount"`
-	StripeEventID *string `db:"stripe_event_id" json:"stripe_event_id"`
-}
-
-// SyncCreditLedger adds credits to the ledger for a Stripe event, idempotent via UNIQUE stripe_event_id.
-func (q *Queries) SyncCreditLedger(ctx context.Context, arg SyncCreditLedgerParams) error {
-	_, err := q.exec(ctx, q.syncCreditLedgerStmt, syncCreditLedger, arg.AccountID, arg.Amount, arg.StripeEventID)
-	return err
 }
 
 const useCredits = `-- name: UseCredits :one

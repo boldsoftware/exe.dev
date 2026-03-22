@@ -524,37 +524,3 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 	}
 	return items, nil
 }
-
-const listAllActiveAccountPlans = `-- name: ListAllActiveAccountPlans :many
-SELECT a.created_by AS user_id, ap.plan_id
-FROM accounts a
-JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL
-`
-
-type ListAllActiveAccountPlansRow struct {
-	UserID string `db:"user_id" json:"user_id"`
-	PlanID string `db:"plan_id" json:"plan_id"`
-}
-
-func (q *Queries) ListAllActiveAccountPlans(ctx context.Context) ([]ListAllActiveAccountPlansRow, error) {
-	rows, err := q.query(ctx, q.listAllActiveAccountPlansStmt, listAllActiveAccountPlans)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListAllActiveAccountPlansRow{}
-	for rows.Next() {
-		var i ListAllActiveAccountPlansRow
-		if err := rows.Scan(&i.UserID, &i.PlanID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}

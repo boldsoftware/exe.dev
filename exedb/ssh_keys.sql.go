@@ -24,25 +24,6 @@ func (q *Queries) DeleteSSHKeyByID(ctx context.Context, arg DeleteSSHKeyByIDPara
 	return err
 }
 
-const deleteSSHKeyForUser = `-- name: DeleteSSHKeyForUser :one
-DELETE FROM ssh_keys
-WHERE user_id = ?
-  AND public_key = ?
-RETURNING 1 AS deleted
-`
-
-type DeleteSSHKeyForUserParams struct {
-	UserID    string `db:"user_id" json:"user_id"`
-	PublicKey string `db:"public_key" json:"public_key"`
-}
-
-func (q *Queries) DeleteSSHKeyForUser(ctx context.Context, arg DeleteSSHKeyForUserParams) (int64, error) {
-	row := q.queryRow(ctx, q.deleteSSHKeyForUserStmt, deleteSSHKeyForUser, arg.UserID, arg.PublicKey)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const getEmailBySSHKey = `-- name: GetEmailBySSHKey :one
 SELECT u.email
 FROM ssh_keys s

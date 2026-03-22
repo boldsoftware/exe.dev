@@ -13,14 +13,8 @@ UPDATE app_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?;
 -- name: DeleteAppToken :exec
 DELETE FROM app_tokens WHERE token = ? AND user_id = ?;
 
--- name: DeleteAppTokensByUserID :exec
-DELETE FROM app_tokens WHERE user_id = ?;
-
 -- name: GetAppTokensByUserID :many
 SELECT *
 FROM app_tokens
 WHERE user_id = ?
 ORDER BY created_at DESC, rowid DESC;
-
--- name: CleanupExpiredAppTokens :exec
-DELETE FROM app_tokens WHERE expires_at < ?;

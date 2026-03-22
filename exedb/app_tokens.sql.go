@@ -10,15 +10,6 @@ import (
 	"time"
 )
 
-const cleanupExpiredAppTokens = `-- name: CleanupExpiredAppTokens :exec
-DELETE FROM app_tokens WHERE expires_at < ?
-`
-
-func (q *Queries) CleanupExpiredAppTokens(ctx context.Context, expiresAt time.Time) error {
-	_, err := q.exec(ctx, q.cleanupExpiredAppTokensStmt, cleanupExpiredAppTokens, expiresAt)
-	return err
-}
-
 const deleteAppToken = `-- name: DeleteAppToken :exec
 DELETE FROM app_tokens WHERE token = ? AND user_id = ?
 `
@@ -30,15 +21,6 @@ type DeleteAppTokenParams struct {
 
 func (q *Queries) DeleteAppToken(ctx context.Context, arg DeleteAppTokenParams) error {
 	_, err := q.exec(ctx, q.deleteAppTokenStmt, deleteAppToken, arg.Token, arg.UserID)
-	return err
-}
-
-const deleteAppTokensByUserID = `-- name: DeleteAppTokensByUserID :exec
-DELETE FROM app_tokens WHERE user_id = ?
-`
-
-func (q *Queries) DeleteAppTokensByUserID(ctx context.Context, userID string) error {
-	_, err := q.exec(ctx, q.deleteAppTokensByUserIDStmt, deleteAppTokensByUserID, userID)
 	return err
 }
 

@@ -112,9 +112,6 @@ INSERT INTO box_team_shares (box_id, team_id, shared_by) VALUES (?, ?, ?);
 -- name: DeleteBoxTeamShare :exec
 DELETE FROM box_team_shares WHERE box_id = ? AND team_id = ?;
 
--- name: GetBoxTeamShare :one
-SELECT * FROM box_team_shares WHERE box_id = ? AND team_id = ?;
-
 -- name: IsBoxSharedWithUserTeam :one
 SELECT COUNT(*) > 0 as shared
 FROM box_team_shares bts
@@ -158,20 +155,10 @@ FROM pending_team_invites pti
 JOIN teams t ON pti.team_id = t.team_id
 WHERE pti.canonical_email = ? AND pti.accepted_at IS NULL AND pti.expires_at > CURRENT_TIMESTAMP;
 
--- name: GetPendingTeamInvitesByTeam :many
-SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id
-FROM pending_team_invites
-WHERE team_id = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
-ORDER BY created_at DESC;
-
 -- name: MarkPendingTeamInviteAccepted :exec
 UPDATE pending_team_invites
 SET accepted_at = CURRENT_TIMESTAMP, accepted_by_user_id = ?
 WHERE id = ?;
-
--- name: DeleteExpiredPendingTeamInvites :exec
-DELETE FROM pending_team_invites
-WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL;
 
 -- name: GetPendingTeamInvitesForUser :many
 SELECT pti.id, pti.team_id, pti.token, pti.expires_at, pti.created_at,

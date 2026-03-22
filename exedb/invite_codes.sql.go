@@ -234,24 +234,6 @@ func (q *Queries) GetNextUnallocatedInviteForUser(ctx context.Context, assignedT
 	return i, err
 }
 
-const getUserBillingExemption = `-- name: GetUserBillingExemption :one
-SELECT billing_exemption, billing_trial_ends_at, signed_up_with_invite_id
-FROM users WHERE user_id = ?
-`
-
-type GetUserBillingExemptionRow struct {
-	BillingExemption     *string    `db:"billing_exemption" json:"billing_exemption"`
-	BillingTrialEndsAt   *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
-	SignedUpWithInviteID *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
-}
-
-func (q *Queries) GetUserBillingExemption(ctx context.Context, userID string) (GetUserBillingExemptionRow, error) {
-	row := q.queryRow(ctx, q.getUserBillingExemptionStmt, getUserBillingExemption, userID)
-	var i GetUserBillingExemptionRow
-	err := row.Scan(&i.BillingExemption, &i.BillingTrialEndsAt, &i.SignedUpWithInviteID)
-	return i, err
-}
-
 const listAllInviteCodesWithEmails = `-- name: ListAllInviteCodesWithEmails :many
 SELECT
     ic.id,

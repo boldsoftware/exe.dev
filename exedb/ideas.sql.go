@@ -77,92 +77,6 @@ func (q *Queries) GetApprovedTemplateByShortname(ctx context.Context, vmShortnam
 	return i, err
 }
 
-const getTemplateByID = `-- name: GetTemplateByID :one
-SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image, deploy_count FROM vm_templates WHERE id = ?
-`
-
-func (q *Queries) GetTemplateByID(ctx context.Context, id int64) (VmTemplate, error) {
-	row := q.queryRow(ctx, q.getTemplateByIDStmt, getTemplateByID, id)
-	var i VmTemplate
-	err := row.Scan(
-		&i.ID,
-		&i.Slug,
-		&i.Title,
-		&i.ShortDescription,
-		&i.Category,
-		&i.Prompt,
-		&i.IconURL,
-		&i.ScreenshotURL,
-		&i.AuthorUserID,
-		&i.Status,
-		&i.Featured,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.VMShortname,
-		&i.Image,
-		&i.DeployCount,
-	)
-	return i, err
-}
-
-const getTemplateBySlug = `-- name: GetTemplateBySlug :one
-SELECT
-    t.id, t.slug, t.title, t.short_description, t.category, t.prompt, t.icon_url, t.screenshot_url, t.author_user_id, t.status, t.featured, t.created_at, t.updated_at, t.vm_shortname, t.image, t.deploy_count,
-    CAST(COALESCE(AVG(r.rating), 0) AS REAL) AS avg_rating,
-    CAST(COUNT(r.id) AS INTEGER) AS rating_count
-FROM vm_templates t
-LEFT JOIN template_ratings r ON r.template_id = t.id
-WHERE t.slug = ? AND t.status = 'approved'
-GROUP BY t.id
-`
-
-type GetTemplateBySlugRow struct {
-	ID               int64      `db:"id" json:"id"`
-	Slug             string     `db:"slug" json:"slug"`
-	Title            string     `db:"title" json:"title"`
-	ShortDescription string     `db:"short_description" json:"short_description"`
-	Category         string     `db:"category" json:"category"`
-	Prompt           string     `db:"prompt" json:"prompt"`
-	IconURL          string     `db:"icon_url" json:"icon_url"`
-	ScreenshotURL    string     `db:"screenshot_url" json:"screenshot_url"`
-	AuthorUserID     *string    `db:"author_user_id" json:"author_user_id"`
-	Status           string     `db:"status" json:"status"`
-	Featured         bool       `db:"featured" json:"featured"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
-	VMShortname      string     `db:"vm_shortname" json:"vm_shortname"`
-	Image            string     `db:"image" json:"image"`
-	DeployCount      int64      `db:"deploy_count" json:"deploy_count"`
-	AvgRating        float64    `db:"avg_rating" json:"avg_rating"`
-	RatingCount      int64      `db:"rating_count" json:"rating_count"`
-}
-
-func (q *Queries) GetTemplateBySlug(ctx context.Context, slug string) (GetTemplateBySlugRow, error) {
-	row := q.queryRow(ctx, q.getTemplateBySlugStmt, getTemplateBySlug, slug)
-	var i GetTemplateBySlugRow
-	err := row.Scan(
-		&i.ID,
-		&i.Slug,
-		&i.Title,
-		&i.ShortDescription,
-		&i.Category,
-		&i.Prompt,
-		&i.IconURL,
-		&i.ScreenshotURL,
-		&i.AuthorUserID,
-		&i.Status,
-		&i.Featured,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.VMShortname,
-		&i.Image,
-		&i.DeployCount,
-		&i.AvgRating,
-		&i.RatingCount,
-	)
-	return i, err
-}
-
 const getTemplateBySlugAny = `-- name: GetTemplateBySlugAny :one
 SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image, deploy_count FROM vm_templates WHERE slug = ?
 `
@@ -209,22 +123,6 @@ func (q *Queries) GetTemplateRatingStats(ctx context.Context, templateID int64) 
 	var i GetTemplateRatingStatsRow
 	err := row.Scan(&i.AvgRating, &i.RatingCount)
 	return i, err
-}
-
-const getUserTemplateRating = `-- name: GetUserTemplateRating :one
-SELECT rating FROM template_ratings WHERE template_id = ? AND user_id = ?
-`
-
-type GetUserTemplateRatingParams struct {
-	TemplateID int64  `db:"template_id" json:"template_id"`
-	UserID     string `db:"user_id" json:"user_id"`
-}
-
-func (q *Queries) GetUserTemplateRating(ctx context.Context, arg GetUserTemplateRatingParams) (int64, error) {
-	row := q.queryRow(ctx, q.getUserTemplateRatingStmt, getUserTemplateRating, arg.TemplateID, arg.UserID)
-	var rating int64
-	err := row.Scan(&rating)
-	return rating, err
 }
 
 const incrementTemplateDeployCount = `-- name: IncrementTemplateDeployCount :exec
@@ -411,50 +309,6 @@ func (q *Queries) ListApprovedTemplates(ctx context.Context) ([]ListApprovedTemp
 			&i.DeployCount,
 			&i.AvgRating,
 			&i.RatingCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTemplatesByAuthor = `-- name: ListTemplatesByAuthor :many
-SELECT id, slug, title, short_description, category, prompt, icon_url, screenshot_url, author_user_id, status, featured, created_at, updated_at, vm_shortname, image, deploy_count FROM vm_templates WHERE author_user_id = ? ORDER BY created_at DESC
-`
-
-func (q *Queries) ListTemplatesByAuthor(ctx context.Context, authorUserID *string) ([]VmTemplate, error) {
-	rows, err := q.query(ctx, q.listTemplatesByAuthorStmt, listTemplatesByAuthor, authorUserID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VmTemplate{}
-	for rows.Next() {
-		var i VmTemplate
-		if err := rows.Scan(
-			&i.ID,
-			&i.Slug,
-			&i.Title,
-			&i.ShortDescription,
-			&i.Category,
-			&i.Prompt,
-			&i.IconURL,
-			&i.ScreenshotURL,
-			&i.AuthorUserID,
-			&i.Status,
-			&i.Featured,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.VMShortname,
-			&i.Image,
-			&i.DeployCount,
 		); err != nil {
 			return nil, err
 		}

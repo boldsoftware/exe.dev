@@ -23,15 +23,6 @@ func (q *Queries) DeletePushToken(ctx context.Context, arg DeletePushTokenParams
 	return err
 }
 
-const deletePushTokensByUserID = `-- name: DeletePushTokensByUserID :exec
-DELETE FROM push_tokens WHERE user_id = ?
-`
-
-func (q *Queries) DeletePushTokensByUserID(ctx context.Context, userID string) error {
-	_, err := q.exec(ctx, q.deletePushTokensByUserIDStmt, deletePushTokensByUserID, userID)
-	return err
-}
-
 const getPushTokensByUserID = `-- name: GetPushTokensByUserID :many
 SELECT id, user_id, token, platform, created_at, last_used_at, environment FROM push_tokens WHERE user_id = ? ORDER BY created_at DESC
 `
@@ -76,15 +67,6 @@ func (q *Queries) HasPushTokens(ctx context.Context, userID string) (int64, erro
 	var has_tokens int64
 	err := row.Scan(&has_tokens)
 	return has_tokens, err
-}
-
-const updatePushTokenLastUsed = `-- name: UpdatePushTokenLastUsed :exec
-UPDATE push_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?
-`
-
-func (q *Queries) UpdatePushTokenLastUsed(ctx context.Context, token string) error {
-	_, err := q.exec(ctx, q.updatePushTokenLastUsedStmt, updatePushTokenLastUsed, token)
-	return err
 }
 
 const upsertPushToken = `-- name: UpsertPushToken :exec

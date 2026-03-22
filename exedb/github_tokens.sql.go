@@ -57,20 +57,6 @@ func (q *Queries) DeleteGitHubInstallationByTarget(ctx context.Context, arg Dele
 	return err
 }
 
-const deleteGitHubUserToken = `-- name: DeleteGitHubUserToken :exec
-DELETE FROM github_user_tokens WHERE user_id = ? AND github_login = ?
-`
-
-type DeleteGitHubUserTokenParams struct {
-	UserID      string `db:"user_id" json:"user_id"`
-	GitHubLogin string `db:"github_login" json:"github_login"`
-}
-
-func (q *Queries) DeleteGitHubUserToken(ctx context.Context, arg DeleteGitHubUserTokenParams) error {
-	_, err := q.exec(ctx, q.deleteGitHubUserTokenStmt, deleteGitHubUserToken, arg.UserID, arg.GitHubLogin)
-	return err
-}
-
 const deleteOrphanedGitHubUserTokens = `-- name: DeleteOrphanedGitHubUserTokens :exec
 DELETE FROM github_user_tokens AS t
 WHERE t.user_id = ?

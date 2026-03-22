@@ -60,16 +60,6 @@ func (q *Queries) DeleteBoxTeamSharesByTeamID(ctx context.Context, teamID string
 	return err
 }
 
-const deleteExpiredPendingTeamInvites = `-- name: DeleteExpiredPendingTeamInvites :exec
-DELETE FROM pending_team_invites
-WHERE expires_at < CURRENT_TIMESTAMP AND accepted_at IS NULL
-`
-
-func (q *Queries) DeleteExpiredPendingTeamInvites(ctx context.Context) error {
-	_, err := q.exec(ctx, q.deleteExpiredPendingTeamInvitesStmt, deleteExpiredPendingTeamInvites)
-	return err
-}
-
 const deletePendingTeamInvite = `-- name: DeletePendingTeamInvite :exec
 DELETE FROM pending_team_invites WHERE token = ?
 `
@@ -316,27 +306,6 @@ func (q *Queries) GetBoxByTeamSSHAndShard(ctx context.Context, arg GetBoxByTeamS
 	return i, err
 }
 
-const getBoxTeamShare = `-- name: GetBoxTeamShare :one
-SELECT box_id, team_id, shared_by, created_at FROM box_team_shares WHERE box_id = ? AND team_id = ?
-`
-
-type GetBoxTeamShareParams struct {
-	BoxID  int64  `db:"box_id" json:"box_id"`
-	TeamID string `db:"team_id" json:"team_id"`
-}
-
-func (q *Queries) GetBoxTeamShare(ctx context.Context, arg GetBoxTeamShareParams) (BoxTeamShare, error) {
-	row := q.queryRow(ctx, q.getBoxTeamShareStmt, getBoxTeamShare, arg.BoxID, arg.TeamID)
-	var i BoxTeamShare
-	err := row.Scan(
-		&i.BoxID,
-		&i.TeamID,
-		&i.SharedBy,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getBoxTeamSharesByBoxID = `-- name: GetBoxTeamSharesByBoxID :many
 SELECT bts.box_id, bts.team_id, bts.shared_by, bts.created_at, t.display_name as team_name
 FROM box_team_shares bts
@@ -444,60 +413,6 @@ func (q *Queries) GetPendingTeamInvitesByEmail(ctx context.Context, canonicalEma
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.TeamName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getPendingTeamInvitesByTeam = `-- name: GetPendingTeamInvitesByTeam :many
-SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id
-FROM pending_team_invites
-WHERE team_id = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
-ORDER BY created_at DESC
-`
-
-type GetPendingTeamInvitesByTeamRow struct {
-	ID               int64      `db:"id" json:"id"`
-	TeamID           string     `db:"team_id" json:"team_id"`
-	Email            string     `db:"email" json:"email"`
-	CanonicalEmail   string     `db:"canonical_email" json:"canonical_email"`
-	InvitedByUserID  string     `db:"invited_by_user_id" json:"invited_by_user_id"`
-	Token            string     `db:"token" json:"token"`
-	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-	AcceptedAt       *time.Time `db:"accepted_at" json:"accepted_at"`
-	AcceptedByUserID *string    `db:"accepted_by_user_id" json:"accepted_by_user_id"`
-}
-
-func (q *Queries) GetPendingTeamInvitesByTeam(ctx context.Context, teamID string) ([]GetPendingTeamInvitesByTeamRow, error) {
-	rows, err := q.query(ctx, q.getPendingTeamInvitesByTeamStmt, getPendingTeamInvitesByTeam, teamID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetPendingTeamInvitesByTeamRow{}
-	for rows.Next() {
-		var i GetPendingTeamInvitesByTeamRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.TeamID,
-			&i.Email,
-			&i.CanonicalEmail,
-			&i.InvitedByUserID,
-			&i.Token,
-			&i.ExpiresAt,
-			&i.CreatedAt,
-			&i.AcceptedAt,
-			&i.AcceptedByUserID,
 		); err != nil {
 			return nil, err
 		}

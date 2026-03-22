@@ -48,20 +48,6 @@ func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, email string)
 	return i, err
 }
 
-const getEmailVerificationByPartialToken = `-- name: GetEmailVerificationByPartialToken :one
-SELECT user_id
-FROM email_verifications
-WHERE token = ? AND expires_at > datetime('now')
-LIMIT 1
-`
-
-func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token string) (string, error) {
-	row := q.queryRow(ctx, q.getEmailVerificationByPartialTokenStmt, getEmailVerificationByPartialToken, token)
-	var user_id string
-	err := row.Scan(&user_id)
-	return user_id, err
-}
-
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
 SELECT token, email, user_id, expires_at, created_at, verification_code, invite_code_id, is_new_user, redirect_url, return_host, response_mode, callback_uri, verification_code_attempts FROM email_verifications
 WHERE token = ?

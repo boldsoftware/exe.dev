@@ -9,15 +9,6 @@ import (
 	"context"
 )
 
-const cleanupExpiredReleasedBoxNames = `-- name: CleanupExpiredReleasedBoxNames :exec
-DELETE FROM released_box_names WHERE released_at <= datetime('now', '-24 hours')
-`
-
-func (q *Queries) CleanupExpiredReleasedBoxNames(ctx context.Context) error {
-	_, err := q.exec(ctx, q.cleanupExpiredReleasedBoxNamesStmt, cleanupExpiredReleasedBoxNames)
-	return err
-}
-
 const deleteReleasedBoxName = `-- name: DeleteReleasedBoxName :exec
 DELETE FROM released_box_names WHERE name = ?
 `

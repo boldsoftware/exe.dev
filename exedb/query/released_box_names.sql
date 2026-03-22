@@ -6,6 +6,3 @@ DELETE FROM released_box_names WHERE name = ?;
 
 -- name: GetReleasedBoxName :one
 SELECT * FROM released_box_names WHERE name = ? AND released_at > datetime('now', '-24 hours');
-
--- name: CleanupExpiredReleasedBoxNames :exec
-DELETE FROM released_box_names WHERE released_at <= datetime('now', '-24 hours');
