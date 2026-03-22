@@ -159,6 +159,7 @@ jobs:
 
       - name: Retry on flake
         if: steps.flake.outputs.is_flake == 'true'
+        continue-on-error: true
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
           COMMIT_SUBJECT: ${{ inputs.commit_subject }}
@@ -169,13 +170,12 @@ jobs:
           RETRY_BRANCH="${BRANCH}-ralphretry"
 
           # Push to a new queue branch to re-enter the commit queue
-          git push --force origin "HEAD:${RETRY_BRANCH}"
+          git push --force origin "HEAD:refs/heads/${RETRY_BRANCH}"
 
           # Notify Slack
           python3 bin/ralph-flake-retry.py "$NTFY_SLACK_WEBHOOK_URL" "$COMMIT_SUBJECT" "$RETRY_BRANCH"
 
       - name: Run Claude
-        if: steps.flake.outputs.is_flake != 'true'
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -236,7 +236,7 @@ jobs:
           claude --dangerously-skip-permissions -p "$PROMPT"
 
       - name: Push and notify Slack
-        if: always() && steps.flake.outputs.is_flake != 'true'
+        if: always()
         env:
           NTFY_SLACK_WEBHOOK_URL: ${{ secrets.NTFY_SLACK_WEBHOOK_URL }}
           COMMIT_SUBJECT: ${{ inputs.commit_subject }}
