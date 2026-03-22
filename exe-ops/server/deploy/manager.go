@@ -72,7 +72,7 @@ type Request struct {
 	DNSName string `json:"dns_name"` // tailscale DNS for SSH
 	SHA     string `json:"sha"`      // 40-char hex
 
-	InitiatedBy string `json:"-"` // set by handler from Tailscale headers
+	InitiatedBy string `json:"-"` // set by handler via Tailscale whois
 }
 
 // Start begins a new deploy. Returns an error if a deploy is already
@@ -112,16 +112,21 @@ func (m *Manager) Start(req Request) (Status, error) {
 	return d.snapshot(), nil
 }
 
-// List returns snapshots of all deploys, most recent first.
-func (m *Manager) List() []Status {
+// List returns snapshots of deploys started at or after since, most recent first.
+// Active (non-terminal) deploys are always included regardless of since.
+func (m *Manager) List(since time.Time) []Status {
 	m.mu.Lock()
 	deploys := make([]*deploy, len(m.deploys))
 	copy(deploys, m.deploys)
 	m.mu.Unlock()
 
-	out := make([]Status, len(deploys))
-	for i, d := range deploys {
-		out[i] = d.snapshot()
+	out := make([]Status, 0, len(deploys))
+	for _, d := range deploys {
+		s := d.snapshot()
+		if s.StartedAt.Before(since) && (s.State == "done" || s.State == "failed") {
+			continue
+		}
+		out = append(out, s)
 	}
 	return out
 }

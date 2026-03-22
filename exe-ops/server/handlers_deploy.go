@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"exe.dev/exe-ops/server/deploy"
 )
@@ -67,7 +68,17 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, h.deployer.List())
+		since := time.Now().Add(-30 * time.Minute)
+		if s := r.URL.Query().Get("since"); s != "" {
+			if d, err := time.ParseDuration(s); err == nil {
+				since = time.Now().Add(-d)
+			} else if t, err := time.Parse(time.RFC3339, s); err == nil {
+				since = t
+			}
+		} else if r.URL.Query().Get("all") != "" {
+			since = time.Time{} // zero time = no filter
+		}
+		writeJSON(w, h.deployer.List(since))
 
 	case http.MethodPost:
 		var req deploy.Request
@@ -79,11 +90,11 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "process, host, and sha are required", http.StatusBadRequest)
 			return
 		}
-		// Record who initiated the deploy from Tailscale identity headers.
-		if login := r.Header.Get("Tailscale-User-Login"); login != "" {
-			req.InitiatedBy = login
-		} else if name := r.Header.Get("Tailscale-User-Name"); name != "" {
-			req.InitiatedBy = name
+		// Identify who initiated the deploy via Tailscale peer identity.
+		if identity, err := TailscaleWhoIs(r.Context(), r.RemoteAddr); err != nil {
+			h.log.Warn("tailscale whois failed", "remote_addr", r.RemoteAddr, "error", err)
+		} else {
+			req.InitiatedBy = identity
 		}
 		status, err := h.deployer.Start(req)
 		if err != nil {

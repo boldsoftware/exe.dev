@@ -463,8 +463,9 @@ export async function fetchDeployCommits(from: string, to: string): Promise<Depl
   return resp.json()
 }
 
-export async function fetchDeploys(): Promise<DeployStatus[]> {
-  const resp = await fetch('/api/v1/deploys')
+export async function fetchDeploys(since?: string): Promise<DeployStatus[]> {
+  const params = since ? `?since=${encodeURIComponent(since)}` : '?since=24h'
+  const resp = await fetch(`/api/v1/deploys${params}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
 }
