@@ -11,6 +11,7 @@
 - when editing Go code, run gofumpt on changed files. do not run formatters on generated files.
 - when editing code, run the tests for the relevant code.
 - when editing OAuth, browser-facing, or multi-account flows: always manually test with real accounts and a real browser (using the browser tool) in addition to e1e tests. Mock servers cannot reproduce all real-world behaviors (account switchers, consent screens, token scoping). See `devdocs/for-agents/testing-integrations.md` for test accounts and steps.
+- GitHub integration testing requires secrets in `~/.envrc-github` (not checked into git). This file contains the dev GitHub App credentials (`EXE_GITHUB_APP_*` env vars) and test user passwords (`SKETCHDEVTESTUSER_PASSWORD`, `SKETCHDEVTESTUSER2_PASSWORD`). To start exed with GitHub support: `source ~/.envrc-github && /tmp/exed-local -stage=local -start-exelet -db tmp`. See `devdocs/for-agents/testing-integrations.md` for full instructions.
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong

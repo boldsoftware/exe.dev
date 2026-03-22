@@ -58,9 +58,16 @@ Run this from an exe.dev VM.
 
 ### Prerequisites
 
-- **GitHub dev app credentials** in `~/.envrc-github` (env vars `EXE_GITHUB_APP_*`)
-- **GitHub test account**: user `sketchdevtestuser` (password and credentials
-  in the team's shared secrets)
+- **GitHub dev app credentials and test user passwords** in `~/.envrc-github` (env vars
+  `EXE_GITHUB_APP_*`, `SKETCHDEVTESTUSER_PASSWORD`, `SKETCHDEVTESTUSER2_PASSWORD`).
+  This file lives on exe.dev VMs outside the repo — never commit it.
+- **GitHub test accounts**:
+  - `sketchdevtestuser` — personal account, member of `sketchdevtestuserorg` org.
+    Password: `$SKETCHDEVTESTUSER_PASSWORD` from `~/.envrc-github`.
+    Email: `github@phil-exe-dev.exe.xyz` (delivered to `~/Maildir/new/` on the `phil-exe-dev` VM).
+  - `sketchdevtestuser2` — second account for multi-account testing.
+    Password: `$SKETCHDEVTESTUSER2_PASSWORD` from `~/.envrc-github`.
+    Email: `github2@phil-exe-dev.exe.xyz` (delivered to `~/Maildir/new/` on the `phil-exe-dev` VM).
 - A browser logged into the test GitHub account
 
 ### Steps
@@ -164,9 +171,10 @@ cannot reproduce all of GitHub's account-switcher behaviors.
 Prerequisites:
 - Two GitHub accounts logged into the same browser session (use GitHub's
   "Add another account" feature at https://github.com/login?add_account=1)
-- Test accounts: `sketchdevtestuser` (password: `e6408ce26b0e87d21ecbc1dce5a4aa041a4a9b01`)
-  and `sketchdevtestuser2` (password: `jemfo9-xipquQ-rormud`; email delivered to
-  `github2@phil-exe-dev.exe.xyz`)
+- Test accounts: `sketchdevtestuser` and `sketchdevtestuser2` (passwords in
+  `~/.envrc-github` as `$SKETCHDEVTESTUSER_PASSWORD` and `$SKETCHDEVTESTUSER2_PASSWORD`;
+  emails at `github@phil-exe-dev.exe.xyz` and `github2@phil-exe-dev.exe.xyz`,
+  both delivered to `~/Maildir/new/` on the `phil-exe-dev` VM)
 
 Steps:
 1. Start local exed (see above) and SSH in
