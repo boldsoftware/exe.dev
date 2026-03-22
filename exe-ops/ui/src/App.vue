@@ -15,7 +15,7 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section-label" v-if="!sidebarCollapsed">
-          <span class="section-prefix">//</span> monitoring
+          <span class="section-prefix">//</span> ops
         </div>
         <ul>
           <li>
@@ -25,55 +25,9 @@
             </router-link>
           </li>
           <li>
-            <router-link to="/servers" class="nav-item" :class="{ active: $route.name === 'servers' || $route.name === 'server-details' }" :title="sidebarCollapsed ? 'Servers' : undefined">
-              <i class="pi pi-server nav-icon icon-green"></i>
-              <span class="sidebar-label">Servers</span>
-            </router-link>
-          </li>
-        </ul>
-        <div class="nav-section-label" v-if="!sidebarCollapsed">
-          <span class="section-prefix">//</span> fleet
-        </div>
-        <ul>
-          <li>
-            <router-link to="/alerts" class="nav-item" :class="{ active: $route.name === 'alerts' }" :title="sidebarCollapsed ? 'Alerts' : undefined">
-              <i class="pi pi-exclamation-triangle nav-icon icon-red"></i>
-              <span class="sidebar-label">Alerts</span>
-            </router-link>
-          </li>
-          <li>
-            <router-link to="/storage" class="nav-item" :class="{ active: $route.name === 'storage' }" :title="sidebarCollapsed ? 'Storage' : undefined">
-              <i class="pi pi-database nav-icon icon-yellow"></i>
-              <span class="sidebar-label">Storage</span>
-            </router-link>
-          </li>
-          <li>
-            <router-link to="/components" class="nav-item" :class="{ active: $route.name === 'components' }" :title="sidebarCollapsed ? 'Components' : undefined">
-              <i class="pi pi-box nav-icon icon-cyan"></i>
-              <span class="sidebar-label">Components</span>
-            </router-link>
-          </li>
-          <li>
-            <router-link to="/updates" class="nav-item" :class="{ active: $route.name === 'updates' }" :title="sidebarCollapsed ? 'Updates' : undefined">
-              <i class="pi pi-download nav-icon icon-green"></i>
-              <span class="sidebar-label">Updates</span>
-            </router-link>
-          </li>
-          <li>
             <router-link to="/deploy" class="nav-item" :class="{ active: $route.name === 'deploy' }" :title="sidebarCollapsed ? 'Deploy' : undefined">
               <i class="pi pi-upload nav-icon icon-cyan"></i>
               <span class="sidebar-label">Deploy</span>
-            </router-link>
-          </li>
-        </ul>
-        <div class="nav-section-label" v-if="!sidebarCollapsed">
-          <span class="section-prefix">//</span> tools
-        </div>
-        <ul>
-          <li>
-            <router-link to="/agent" class="nav-item" :class="{ active: $route.name === 'agent' }" :title="sidebarCollapsed ? 'Agent' : undefined">
-              <i class="pi pi-microchip-ai nav-icon icon-cyan"></i>
-              <span class="sidebar-label">Agent</span>
             </router-link>
           </li>
         </ul>
@@ -539,6 +493,8 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-width: 0;
+  overflow-x: hidden;
   background: var(--surface-section);
   transition: margin-left 0.2s;
 }
@@ -554,6 +510,7 @@ a:hover {
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
 }
 
 /* ── Version Footer ── */

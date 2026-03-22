@@ -18,161 +18,60 @@
     </div>
 
     <template v-else>
-      <!-- Active / recent deploys -->
-      <div v-if="deploys.length > 0" class="deploys-section">
-        <div class="section-header" @click="deploysCollapsed = !deploysCollapsed">
-          <i class="pi collapse-icon" :class="deploysCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"></i>
-          <h2 class="section-title">Deploys</h2>
-          <span class="section-count">{{ filteredDeploys.length }}</span>
-          <div class="deploy-time-filters" @click.stop>
-            <button
-              v-for="f in deployTimeFilters"
-              :key="f.value"
-              class="filter-btn"
-              :class="{ active: deployTimeFilter === f.value }"
-              @click="deployTimeFilter = f.value"
-            >{{ f.label }}</button>
-          </div>
-        </div>
-        <div v-show="!deploysCollapsed" class="deploys-list">
-          <div
-            v-for="d in filteredDeploys"
-            :key="d.id"
-            class="deploy-card"
-            :class="'deploy-state-' + d.state"
-          >
-            <div class="deploy-card-header">
-              <span class="deploy-card-target">
-                <span class="deploy-card-process">{{ d.process }}</span>
-                <i class="pi pi-arrow-right deploy-card-arrow"></i>
-                <span class="deploy-card-host">{{ d.host }}</span>
-              </span>
-              <span class="deploy-card-sha">{{ d.sha.slice(0, 7) }}</span>
-              <span v-if="d.initiated_by" class="deploy-card-user">{{ d.initiated_by }}</span>
-              <span class="deploy-card-state" :class="'state-' + d.state">{{ d.state }}</span>
-            </div>
-            <div class="deploy-steps">
-              <span
-                v-for="step in d.steps"
-                :key="step.name"
-                class="deploy-step"
-                :class="'step-' + step.status"
-                :title="step.name + ': ' + step.status + (step.output ? ' — ' + step.output : '')"
-              >
-                <i v-if="step.status === 'running'" class="pi pi-spin pi-spinner step-icon"></i>
-                <i v-else-if="step.status === 'done'" class="pi pi-check step-icon"></i>
-                <i v-else-if="step.status === 'failed'" class="pi pi-times step-icon"></i>
-                <span v-else class="step-dot"></span>
-                <span class="step-label">{{ step.name }}</span>
-              </span>
-            </div>
-            <div v-if="stepsWithOutput(d).length > 0" class="deploy-step-outputs">
-              <div v-for="step in stepsWithOutput(d)" :key="step.name" class="deploy-step-output">
-                <span class="step-output-name">{{ step.name }}</span>
-                <span class="step-output-text">{{ step.output }}</span>
-              </div>
-            </div>
-            <div v-if="d.error" class="deploy-card-error">{{ d.error }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Current git HEAD -->
-      <div v-if="headSHA" class="head-sha-section">
-        <h2 class="section-title">Current git origin/main</h2>
-        <div class="head-sha-badge">
-        <span class="head-sha-label">HEAD</span>
+      <!-- Latest commit -->
+      <div v-if="headSHA" class="head-commit">
         <a
           :href="'https://github.com/boldsoftware/exe/commit/' + headSHA"
           target="_blank"
           rel="noopener"
-          class="head-sha-value"
+          class="head-commit-sha"
         >{{ headSHA.slice(0, 7) }}</a>
-        <span v-if="headSubject" class="head-sha-subject">{{ headSubject }}</span>
-        <span v-if="headDate" class="head-sha-date">{{ formatDate(headDate) }}</span>
-        </div>
+        <span v-if="headSubject" class="head-commit-subject">{{ headSubject }}</span>
+        <span v-if="headDate" class="head-commit-date">{{ formatDate(headDate) }}</span>
       </div>
 
-      <!-- Summary: COUNT(*) GROUP BY stage, process, version -->
-      <div v-if="summaryRows.length > 0" class="summary-section">
-        <div class="section-header" @click="summaryCollapsed = !summaryCollapsed">
-          <i class="pi collapse-icon" :class="summaryCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"></i>
-          <h2 class="section-title">Version Summary</h2>
-        </div>
-        <div v-show="!summaryCollapsed" class="table-wrapper summary-table-wrapper">
-        <table class="summary-table">
-          <thead>
-            <tr>
-              <th>Stage</th>
-              <th>Process</th>
-              <th>Count</th>
-              <th>Version</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, i) in summaryRows" :key="i">
-              <td>{{ row.stage }}</td>
-              <td>{{ row.process }}</td>
-              <td class="col-count">{{ row.count }}</td>
-              <td class="col-summary-version">
-                <span v-if="row.version" class="version-cell">
-                  <a
-                    v-if="row.versionURL"
-                    :href="row.versionURL"
-                    target="_blank"
-                    rel="noopener"
-                    class="version-sha"
-                    @click.stop
-                  >{{ row.version.slice(0, 7) }}</a>
-                  <span v-else class="version-sha">{{ row.version.slice(0, 7) }}</span>
-                  <span v-if="row.commitsBehind > 0" class="behind-badge">{{ row.commitsBehind }}<i class="pi pi-arrow-down"></i></span>
-                  <span v-if="row.subject" class="version-subject">{{ row.subject }}</span>
-                  <span v-if="row.date" class="version-date">{{ formatDate(row.date) }}</span>
-                </span>
-                <span v-else class="metric-blank">&mdash;</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
-      </div>
-
-      <!-- Toolbar: filters + search on one line -->
+      <!-- Toolbar: filters + search -->
       <div class="toolbar-row">
-        <div class="filter-group" v-if="uniqueStages.length > 0">
-          <span class="filter-label">Stage</span>
-          <div class="filter-buttons">
-            <button
-              v-for="s in uniqueStages"
-              :key="'stage-' + s"
-              class="filter-btn"
-              :class="{ active: activeStages.has(s) }"
-              @click="toggleStageFilter(s)"
-            >{{ s }}</button>
+        <div class="filter-dropdown" v-if="uniqueStages.length > 0">
+          <button class="dropdown-trigger" @click="toggleDropdown('stage')" :class="{ 'has-selection': activeStages.size > 0 }">
+            <span class="dropdown-label">Stage</span>
+            <span class="dropdown-value">{{ activeStages.size === 0 ? 'All' : [...activeStages].join(', ') }}</span>
+            <i class="pi pi-chevron-down dropdown-chevron"></i>
+          </button>
+          <div v-if="openDropdown === 'stage'" class="dropdown-menu">
+            <label v-for="s in uniqueStages" :key="'stage-' + s" class="dropdown-option">
+              <input type="checkbox" :checked="activeStages.has(s)" @change="toggleStageFilter(s)" />
+              <span>{{ s }}</span>
+            </label>
+            <button v-if="activeStages.size > 0" class="dropdown-clear" @click="activeStages.clear()">Clear</button>
           </div>
         </div>
-        <div class="filter-group" v-if="uniqueRoles.length > 0">
-          <span class="filter-label">Role</span>
-          <div class="filter-buttons">
-            <button
-              v-for="r in uniqueRoles"
-              :key="'role-' + r"
-              class="filter-btn"
-              :class="{ active: activeRoles.has(r) }"
-              @click="toggleRoleFilter(r)"
-            >{{ r }}</button>
+        <div class="filter-dropdown" v-if="uniqueRoles.length > 0">
+          <button class="dropdown-trigger" @click="toggleDropdown('role')" :class="{ 'has-selection': activeRoles.size > 0 }">
+            <span class="dropdown-label">Role</span>
+            <span class="dropdown-value">{{ activeRoles.size === 0 ? 'All' : [...activeRoles].join(', ') }}</span>
+            <i class="pi pi-chevron-down dropdown-chevron"></i>
+          </button>
+          <div v-if="openDropdown === 'role'" class="dropdown-menu">
+            <label v-for="r in uniqueRoles" :key="'role-' + r" class="dropdown-option">
+              <input type="checkbox" :checked="activeRoles.has(r)" @change="toggleRoleFilter(r)" />
+              <span>{{ r }}</span>
+            </label>
+            <button v-if="activeRoles.size > 0" class="dropdown-clear" @click="activeRoles.clear()">Clear</button>
           </div>
         </div>
-        <div class="filter-group" v-if="uniqueProcesses.length > 0">
-          <span class="filter-label">Process</span>
-          <div class="filter-buttons">
-            <button
-              v-for="p in uniqueProcesses"
-              :key="'proc-' + p"
-              class="filter-btn"
-              :class="{ active: activeProcesses.has(p) }"
-              @click="toggleProcessFilter(p)"
-            >{{ p }}</button>
+        <div class="filter-dropdown" v-if="uniqueProcesses.length > 0">
+          <button class="dropdown-trigger" @click="toggleDropdown('process')" :class="{ 'has-selection': activeProcesses.size > 0 }">
+            <span class="dropdown-label">Process</span>
+            <span class="dropdown-value">{{ activeProcesses.size === 0 ? 'All' : [...activeProcesses].join(', ') }}</span>
+            <i class="pi pi-chevron-down dropdown-chevron"></i>
+          </button>
+          <div v-if="openDropdown === 'process'" class="dropdown-menu">
+            <label v-for="p in uniqueProcesses" :key="'proc-' + p" class="dropdown-option">
+              <input type="checkbox" :checked="activeProcesses.has(p)" @change="toggleProcessFilter(p)" />
+              <span>{{ p }}</span>
+            </label>
+            <button v-if="activeProcesses.size > 0" class="dropdown-clear" @click="activeProcesses.clear()">Clear</button>
           </div>
         </div>
         <div class="search-box">
@@ -180,7 +79,7 @@
           <input
             v-model="search"
             type="text"
-            placeholder="Search hostnames..."
+            placeholder="Search..."
             class="search-input"
           />
           <button v-if="search" class="search-clear" @click="search = ''">
@@ -189,11 +88,27 @@
         </div>
       </div>
 
-      <div v-if="filteredProcs.length === 0" class="empty-state">
-        {{ search ? 'No processes match your search.' : 'No processes found.' }}
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-btn" :class="{ active: activeTab === 'fleet' }" @click="activeTab = 'fleet'">
+          <i class="pi pi-server"></i> Fleet
+        </button>
+        <button class="tab-btn" :class="{ active: activeTab === 'versions' }" @click="activeTab = 'versions'">
+          <i class="pi pi-tags"></i> Versions
+        </button>
+        <button class="tab-btn" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
+          <i class="pi pi-history"></i> History
+          <span v-if="deploys.length > 0" class="tab-count">{{ deploys.length }}</span>
+        </button>
       </div>
 
-      <template v-else>
+      <!-- ═══ Fleet Tab ═══ -->
+      <div v-show="activeTab === 'fleet'">
+        <div v-if="filteredProcs.length === 0" class="empty-state">
+          {{ search ? 'No processes match your search.' : 'No processes found.' }}
+        </div>
+
+        <template v-else>
         <div class="table-wrapper">
           <table class="deploy-table">
             <thead>
@@ -251,8 +166,6 @@
                     >{{ p.version.slice(0, 7) }}</a>
                     <span v-else class="version-sha">{{ p.version.slice(0, 7) }}</span>
                     <span v-if="p.commits_behind > 0" class="behind-badge">{{ p.commits_behind }}<i class="pi pi-arrow-down"></i></span>
-                    <span v-if="p.version_subject" class="version-subject">{{ p.version_subject }}</span>
-                    <span v-if="p.version_date" class="version-date">{{ formatDate(p.version_date) }}</span>
                   </span>
                   <span v-else class="metric-blank">&mdash;</span>
                 </td>
@@ -279,6 +192,111 @@
           </table>
         </div>
       </template>
+      </div>
+
+      <!-- ═══ History Tab ═══ -->
+      <div v-show="activeTab === 'history'">
+        <!-- Recent deploys -->
+        <div v-if="deploys.length > 0" class="deploys-section">
+          <div class="section-header" @click="deploysCollapsed = !deploysCollapsed">
+            <i class="pi collapse-icon" :class="deploysCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"></i>
+            <h2 class="section-title">Deploys</h2>
+            <span class="section-count">{{ filteredDeploys.length }}</span>
+            <div class="deploy-time-filters" @click.stop>
+              <button
+                v-for="f in deployTimeFilters"
+                :key="f.value"
+                class="filter-btn"
+                :class="{ active: deployTimeFilter === f.value }"
+                @click="deployTimeFilter = f.value"
+              >{{ f.label }}</button>
+            </div>
+          </div>
+          <div v-show="!deploysCollapsed" class="deploys-list">
+            <div
+              v-for="d in filteredDeploys"
+              :key="d.id"
+              class="deploy-card"
+              :class="'deploy-state-' + d.state"
+            >
+              <div class="deploy-card-header">
+                <span class="deploy-card-target">
+                  <span class="deploy-card-process">{{ d.process }}</span>
+                  <i class="pi pi-arrow-right deploy-card-arrow"></i>
+                  <span class="deploy-card-host">{{ d.host }}</span>
+                </span>
+                <span class="deploy-card-sha">{{ d.sha.slice(0, 7) }}</span>
+                <span v-if="d.initiated_by" class="deploy-card-user">{{ d.initiated_by }}</span>
+                <span class="deploy-card-state" :class="'state-' + d.state">{{ d.state }}</span>
+              </div>
+              <div class="deploy-steps">
+                <span
+                  v-for="step in d.steps"
+                  :key="step.name"
+                  class="deploy-step"
+                  :class="'step-' + step.status"
+                  :title="step.name + ': ' + step.status + (step.output ? ' — ' + step.output : '')"
+                >
+                  <i v-if="step.status === 'running'" class="pi pi-spin pi-spinner step-icon"></i>
+                  <i v-else-if="step.status === 'done'" class="pi pi-check step-icon"></i>
+                  <i v-else-if="step.status === 'failed'" class="pi pi-times step-icon"></i>
+                  <span v-else class="step-dot"></span>
+                  <span class="step-label">{{ step.name }}</span>
+                </span>
+              </div>
+              <div v-if="stepsWithOutput(d).length > 0" class="deploy-step-outputs">
+                <div v-for="step in stepsWithOutput(d)" :key="step.name" class="deploy-step-output">
+                  <span class="step-output-name">{{ step.name }}</span>
+                  <span class="step-output-text">{{ step.output }}</span>
+                </div>
+              </div>
+              <div v-if="d.error" class="deploy-card-error">{{ d.error }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">No deploys recorded yet.</div>
+      </div>
+
+      <!-- ═══ Versions Tab ═══ -->
+      <div v-show="activeTab === 'versions'">
+        <div v-if="summaryRows.length > 0" class="table-wrapper summary-table-wrapper">
+          <table class="summary-table">
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Process</th>
+                <th>Count</th>
+                <th>Version</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in summaryRows" :key="i">
+                <td>{{ row.stage }}</td>
+                <td>{{ row.process }}</td>
+                <td class="col-count">{{ row.count }}</td>
+                <td class="col-summary-version">
+                  <span v-if="row.version" class="version-cell">
+                    <a
+                      v-if="row.versionURL"
+                      :href="row.versionURL"
+                      target="_blank"
+                      rel="noopener"
+                      class="version-sha"
+                      @click.stop
+                    >{{ row.version.slice(0, 7) }}</a>
+                    <span v-else class="version-sha">{{ row.version.slice(0, 7) }}</span>
+                    <span v-if="row.commitsBehind > 0" class="behind-badge">{{ row.commitsBehind }}<i class="pi pi-arrow-down"></i></span>
+                    <span v-if="row.subject" class="version-subject">{{ row.subject }}</span>
+                    <span v-if="row.date" class="version-date">{{ formatDate(row.date) }}</span>
+                  </span>
+                  <span v-else class="metric-blank">&mdash;</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-state">No version data available.</div>
+      </div>
     </template>
 
     <!-- Deploy confirmation modal -->
@@ -394,8 +412,23 @@ const search = ref('')
 const activeStages = reactive(new Set<string>())
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
+const activeTab = ref<'fleet' | 'versions' | 'history'>('fleet')
+const openDropdown = ref<'stage' | 'role' | 'process' | null>(null)
+
+function toggleDropdown(name: 'stage' | 'role' | 'process') {
+  openDropdown.value = openDropdown.value === name ? null : name
+}
+
+function onClickOutside(e: MouseEvent) {
+  if (openDropdown.value && !(e.target as Element)?.closest('.filter-dropdown')) {
+    openDropdown.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', onClickOutside, true)
+})
 const deploysCollapsed = ref(false)
-const summaryCollapsed = ref(false)
 const deployTimeFilter = ref<'10m' | '24h' | 'all'>('all')
 const justCopied = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -500,7 +533,12 @@ const filteredProcs = computed(() => {
   let list = [...baseFilteredProcs.value]
   if (search.value) {
     const q = search.value.toLowerCase()
-    list = list.filter(p => p.hostname.toLowerCase().includes(q))
+    list = list.filter(p =>
+      p.hostname.toLowerCase().includes(q) ||
+      p.process.toLowerCase().includes(q) ||
+      p.role.toLowerCase().includes(q) ||
+      p.version.toLowerCase().includes(q)
+    )
   }
   const dir = sortDir.value === 'asc' ? 1 : -1
   if (sortCol.value === 'hostname') {
@@ -575,7 +613,16 @@ const summaryRows = computed(() => {
       })
     }
   }
-  const rows = [...groups.values()]
+  let rows = [...groups.values()]
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    rows = rows.filter(r =>
+      r.stage.toLowerCase().includes(q) ||
+      r.process.toLowerCase().includes(q) ||
+      r.version.toLowerCase().includes(q) ||
+      r.subject.toLowerCase().includes(q)
+    )
+  }
   rows.sort((a, b) => {
     let c = a.stage.localeCompare(b.stage)
     if (c !== 0) return c
@@ -778,10 +825,15 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   stopDeployPolling()
+  document.removeEventListener('click', onClickOutside, true)
 })
 </script>
 
 <style scoped>
+.deploy-view {
+  max-width: 1200px;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -790,9 +842,8 @@ onUnmounted(() => {
 }
 
 .page-header h1 {
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .page-subtitle {
@@ -801,16 +852,109 @@ onUnmounted(() => {
   margin-top: 0.25rem;
 }
 
-.head-sha-badge {
+/* -- Head commit stat -- */
+.head-commit {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
   margin-bottom: 1rem;
   background: var(--surface-card);
   border: 1px solid var(--surface-border);
-  border-radius: 4px;
+  border-radius: 8px;
+}
+
+.head-commit-sha {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.head-commit-sha:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.head-commit-subject {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.head-commit-date {
   font-size: 0.75rem;
+  color: var(--text-color-muted);
+  flex-shrink: 0;
+}
+
+/* -- Tab bar -- */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+
+.tab-btn:hover {
+  color: var(--text-color);
+}
+
+.tab-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+.tab-btn .pi {
+  font-size: 0.8rem;
+}
+
+.tab-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: var(--surface-border);
+  color: var(--text-color-secondary);
+  padding: 0.05rem 0.4rem;
+  border-radius: 8px;
+}
+
+.tab-btn.active .tab-count {
+  background: var(--primary-50);
+  color: var(--primary-color);
+}
+
+.head-sha-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  font-size: 0.8rem;
 }
 
 .head-sha-label {
@@ -892,11 +1036,9 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 0.7rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-color-muted);
+  color: var(--text-color);
   margin-bottom: 0;
 }
 
@@ -908,8 +1050,8 @@ onUnmounted(() => {
 
 .deploy-card {
   border: 1px solid var(--surface-border);
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
   background: var(--surface-card);
   font-size: 0.8rem;
 }
@@ -1120,9 +1262,146 @@ onUnmounted(() => {
 .toolbar-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+}
+
+/* -- Filter dropdowns -- */
+.filter-dropdown {
+  position: relative;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.dropdown-trigger:hover {
+  border-color: var(--surface-border-bright);
+  color: var(--text-color);
+}
+
+.dropdown-trigger.has-selection {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-50);
+}
+
+.dropdown-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-color-muted);
+}
+
+.dropdown-trigger.has-selection .dropdown-label {
+  color: var(--primary-color);
+  opacity: 0.7;
+}
+
+.dropdown-value {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-chevron {
+  font-size: 0.55rem;
+  opacity: 0.6;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 160px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.dropdown-option:hover {
+  background: var(--surface-hover);
+  color: var(--text-color);
+}
+
+.dropdown-option input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--surface-border-bright);
+  border-radius: 3px;
+  background: var(--surface-ground);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dropdown-option input[type="checkbox"]:checked {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.dropdown-option input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--primary-color-text);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.dropdown-clear {
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--surface-border);
+  color: var(--text-color-muted);
+  cursor: pointer;
+  text-align: left;
+  padding-top: 0.375rem;
+}
+
+.dropdown-clear:hover {
+  color: var(--primary-color);
 }
 
 .filter-group {
@@ -1228,7 +1507,7 @@ onUnmounted(() => {
 .table-wrapper {
   overflow-x: auto;
   border: 1px solid var(--surface-border);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface-card);
 }
 
@@ -1360,6 +1639,7 @@ a.version-sha:hover {
   text-decoration: underline;
 }
 
+
 .version-subject {
   font-size: 0.7rem;
   color: var(--text-color-muted);
@@ -1464,10 +1744,9 @@ a.version-sha:hover {
 .loading-state {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 4rem 0;
-  color: var(--text-color-muted);
+  gap: 0.5rem;
+  padding: 2rem;
+  color: var(--text-color-secondary);
   font-size: 0.85rem;
 }
 
@@ -1481,11 +1760,11 @@ a.version-sha:hover {
 .message-banner {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
-  margin-bottom: 1.5rem;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
 }
 
 .message-error {
@@ -1494,7 +1773,7 @@ a.version-sha:hover {
   border: 1px solid rgba(248, 81, 73, 0.2);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 991px) {
   .toolbar-row {
     flex-direction: column;
     align-items: flex-start;
@@ -1534,7 +1813,7 @@ a.version-sha:hover {
 .modal-dialog {
   background: var(--surface-card);
   border: 1px solid var(--surface-border);
-  border-radius: 6px;
+  border-radius: 8px;
   width: 560px;
   max-width: 90vw;
   max-height: 80vh;
