@@ -130,7 +130,7 @@ var Recipes = map[string]Recipe{
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
 		PreBuildCmds: []string{
-			"make build-ui build-agent-embed",
+			"make build-ui",
 		},
 	},
 }
