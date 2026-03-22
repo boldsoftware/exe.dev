@@ -19,10 +19,8 @@ COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 LDFLAGS="-X exe.dev/exe-ops/version.Version=${VERSION} -X exe.dev/exe-ops/version.Commit=${COMMIT} -X exe.dev/exe-ops/version.Date=${BUILD_DATE}"
 
-echo "Building embedded agent binary (linux/amd64) with version ${VERSION}..."
-AGENT_BIN_DIR="$PROJECT_DIR/server/agentbin/binaries/linux-amd64"
-mkdir -p "$AGENT_BIN_DIR"
-GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "$AGENT_BIN_DIR/exe-ops-agent" ./cmd/exe-ops-agent
+echo "Building UI..."
+make build-ui
 
 echo "Building $BINARY..."
 GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "$BINARY" ./cmd/exe-ops-server
@@ -59,10 +57,6 @@ ssh "$TARGET" "test -f /etc/default/exe-ops-server" || {
     ssh "$TARGET" "sudo mv /tmp/exe-ops-server.env /etc/default/exe-ops-server"
 }
 
-# Backup SQLite database before restarting.
-echo "Backing up database..."
-ssh "$TARGET" "if [ -f /opt/exe-ops/exe-ops.db ]; then sudo cp /opt/exe-ops/exe-ops.db /opt/exe-ops/exe-ops.db.bak-${TIMESTAMP}; echo 'Backup created'; else echo 'No existing database to back up'; fi"
-
 echo "Reloading systemd and restarting service..."
 ssh "$TARGET" "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE_FILE && sudo systemctl restart $SERVICE_FILE"
 
@@ -72,10 +66,6 @@ ssh "$TARGET" "sudo systemctl status $SERVICE_FILE --no-pager"
 # Prune old versioned binaries, keeping the 5 most recent.
 echo "Pruning old binaries..."
 ssh "$TARGET" "ls -1t $REMOTE_BIN_DIR/${BINARY}-* | tail -n +6 | xargs -r rm -f"
-
-# Prune old database backups, keeping the 5 most recent.
-echo "Pruning old database backups..."
-ssh "$TARGET" "ls -1t /opt/exe-ops/exe-ops.db.bak-* 2>/dev/null | tail -n +6 | xargs -r sudo rm -f"
 
 rm -f "$PROJECT_DIR/$BINARY"
 echo "Done."
