@@ -20,6 +20,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 	"tailscale.com/util/singleflight"
+
+	"exe.dev/tcprtt"
 )
 
 // Metrics holds Prometheus metrics for the SSH connection pool.
@@ -27,6 +29,7 @@ type Metrics struct {
 	cacheTotal        *prometheus.CounterVec
 	operationTotal    *prometheus.CounterVec   // labels: method, result
 	operationDuration *prometheus.HistogramVec // labels: method, result
+	rttGauge          *prometheus.GaugeVec     // labels: host
 }
 
 // NewMetrics creates and registers pool metrics.
@@ -60,15 +63,29 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 			},
 			opLabels,
 		),
+		rttGauge: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "sshpool_rtt_seconds",
+				Help: "TCP RTT to SSH host, measured via TCP_INFO after connection establishment.",
+			},
+			[]string{"host"},
+		),
 	}
-	registry.MustRegister(m.cacheTotal, m.operationTotal, m.operationDuration)
+	registry.MustRegister(m.cacheTotal, m.operationTotal, m.operationDuration, m.rttGauge)
 	return m
 }
 
-// staleTimeout is the short timeout used to detect stale or half-open SSH
-// connections. When a channel open (port-forward dial or session creation)
-// doesn't complete within this duration, the pool treats the connection as
-// stale and evicts it.
+// staleTimeout is the floor timeout used to detect stale or half-open SSH
+// connections. The actual timeout used is clamp(staleTimeout, 4*RTT, 5s),
+// computed dynamically by pooledConn.staleTimeoutFor using the kernel's
+// TCP_INFO RTT estimate on the underlying connection. This accommodates
+// high-latency paths (e.g., JNB edge → LAX exelet at ~300ms RTT, where a
+// channel open takes ~1–2 RTTs) without false-positive evictions, while
+// preserving fast stale detection for co-located backends (~1–5ms RTT).
+//
+// When a channel open (port-forward dial or session creation) doesn't complete
+// within the effective timeout, the pool treats the connection as stale and
+// evicts it.
 //
 // This timeout serves double duty: it detects genuinely stale SSH transports
 // (where the channel open hangs because the remote end is gone) AND slow
@@ -81,11 +98,11 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 // a stale connection causes repeated failures, while a spurious eviction just
 // costs one SSH re-establishment.
 //
-// Callers should set their context deadlines well above this value
-// (at least 2x, i.e. 1s at the current setting).
-// If a caller's deadline is shorter than staleTimeout, the pool cannot
-// distinguish "caller ran out of time" from "connection is stale" and
-// conservatively keeps the connection (see shortTimeoutIsOurs).
+// Callers should set their context deadlines well above the effective value
+// (at least 2x). If a caller's deadline is shorter than the effective stale
+// timeout, the pool cannot distinguish "caller ran out of time" from
+// "connection is stale" and conservatively keeps the connection
+// (see shortTimeoutIsOurs).
 const staleTimeout = 500 * time.Millisecond
 
 // connKey uniquely identifies an SSH connection
@@ -115,9 +132,12 @@ func (k connKey) String() string {
 // (removeConn, ssh.Client.Close) are idempotent, so zombie timer firings
 // after eviction are harmless.
 type pooledConn struct {
-	client *ssh.Client // immutable after creation
-	key    connKey     // immutable after creation
-	pool   *Pool       // immutable after creation
+	client  *ssh.Client // immutable after creation
+	rawConn net.Conn    // underlying TCP conn for TCP_INFO RTT; immutable after creation.
+	// Safe to call staleTimeoutFor even after eviction: Control returns an error
+	// on a closed fd, and the fallback path handles it.
+	key  connKey // immutable after creation
+	pool *Pool   // immutable after creation
 
 	mu sync.Mutex // protects following fields
 	// active refcounts the number of active connections.
@@ -126,6 +146,51 @@ type pooledConn struct {
 	timer  *time.Timer // timer to close the connection after last active released
 
 	log *slog.Logger
+}
+
+// staleTimeoutFor returns the stale-detection timeout for this connection,
+// scaled by the live TCP RTT from TCP_INFO. For co-located backends (RTT
+// ~1–5ms), returns the default staleTimeout (500ms). For high-latency paths
+// (e.g., JNB→LAX at ~300ms RTT), returns 4×RTT (~1200ms) to avoid
+// false-positive evictions on healthy connections (4× ≈ 2 RTTs for channel
+// open + 2 RTTs headroom). Capped at 5s to prevent
+// inflated RTT estimates from suppressing stale detection entirely.
+//
+// Queries TCP_INFO dynamically — the kernel maintains an EWMA of RTT
+// across all segments, so the value stays current as long as the
+// connection carries traffic. The getsockopt syscall is ~1μs.
+//
+// Falls back to the static staleTimeout if TCP_INFO is unavailable
+// (non-Linux, closed connection, or no rawConn).
+func (pc *pooledConn) staleTimeoutFor() time.Duration {
+	if pc.rawConn == nil {
+		return staleTimeout
+	}
+	rtt, err := tcprtt.Get(pc.rawConn)
+	if err != nil || rtt <= 0 {
+		return staleTimeout
+	}
+	return clampDuration(staleTimeout, 4*rtt, 5*time.Second)
+}
+
+// cancelCleanupTimeout returns how long to wait for an in-flight command
+// goroutine to exit after session.Close() before force-evicting. Tighter
+// than staleTimeoutFor: one round trip for the close handshake is generous,
+// and a snappy cancel matters more than preserving the connection.
+func (pc *pooledConn) cancelCleanupTimeout() time.Duration {
+	if pc.rawConn == nil {
+		return staleTimeout
+	}
+	rtt, err := tcprtt.Get(pc.rawConn)
+	if err != nil || rtt <= 0 {
+		return staleTimeout
+	}
+	return clampDuration(staleTimeout, 2*rtt, 1500*time.Millisecond)
+}
+
+// clampDuration returns v clamped to [lo, hi].
+func clampDuration(lo, v, hi time.Duration) time.Duration {
+	return max(lo, min(v, hi))
 }
 
 // trackedConn informs pc when the connection is closed.
@@ -413,9 +478,19 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	}
 
 	client := ssh.NewClient(sshConn, chans, reqs)
-	p.log().Info("established new SSH connection in pool", "key", key.String())
 
-	pc = &pooledConn{client: client, key: key, pool: p, log: p.log()}
+	// Measure TCP RTT for adaptive stale-detection thresholds and observability.
+	// After the SSH handshake (multiple round trips), the kernel's EWMA is
+	// well-calibrated. The value is also available live via staleTimeoutFor.
+	connRTT, _ := tcprtt.Get(conn)
+	if connRTT > 0 && p.Metrics != nil {
+		// Keyed by host alone (not user/port), so this reports the most-recent
+		// RTT to the host when multiple connections exist.
+		p.Metrics.rttGauge.WithLabelValues(key.host).Set(connRTT.Seconds())
+	}
+	p.log().Info("established new SSH connection in pool", "key", key.String(), "rtt", connRTT)
+
+	pc = &pooledConn{client: client, rawConn: conn, key: key, pool: p, log: p.log()}
 	// Mark as connected, insert into the pool, then disconnect for balance.
 	// setConn must precede disconnected so release() can find pc in the map.
 	// This starts the TTL clock running.
@@ -459,15 +534,17 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 	// Stale-detection logic here mirrors runCommandOnClient — keep in sync.
 	// Primary stale-detection path: DialContext observes shortCtx, so stale
 	// connections surface as DeadlineExceeded in the "case res" branch below.
-	shortCtx, cancel := context.WithTimeout(ctx, staleTimeout)
+	st := pc.staleTimeoutFor()
+	shortCtx, cancel := context.WithTimeout(ctx, st)
 	defer cancel()
 
-	// Determine whether staleTimeout is genuinely ours or was inherited from
-	// a shorter caller deadline. context.WithTimeout picks min(parent, timeout),
-	// so if ctx's deadline is shorter than staleTimeout, shortCtx inherits it.
-	// We compute this once from immutable deadline values to avoid a TOCTOU race:
-	// checking ctx.Err() at decision time is racy because the caller's context
-	// may expire between shortCtx firing and our check.
+	// Determine whether the stale timeout is genuinely ours or was inherited
+	// from a shorter caller deadline. context.WithTimeout picks
+	// min(parent, timeout), so if ctx's deadline is shorter than st,
+	// shortCtx inherits it. We compute this once from immutable deadline
+	// values to avoid a TOCTOU race: checking ctx.Err() at decision time is
+	// racy because the caller's context may expire between shortCtx firing
+	// and our check.
 	shortTimeoutIsOurs := shortTimeoutOwnership(ctx, shortCtx)
 
 	conn, err := pc.client.DialContext(shortCtx, network, addr)
@@ -475,7 +552,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		p.log().InfoContext(ctx, "dial failed", "err", err, "errtype", reflect.TypeOf(err))
 		// Error classification priority:
 		// 1. Transport errors (EOF, ECONNRESET, etc.) — connection is dead, always evict.
-		// 2. Stale detection — our staleTimeout fired (not inherited from caller)
+		// 2. Stale detection — our stale timeout fired (not inherited from caller)
 		//    AND the caller didn't explicitly cancel. The connection might be
 		//    half-open or the backend might be slow; we can't distinguish, so
 		//    we evict conservatively (see staleTimeout doc).
@@ -505,13 +582,13 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 			// stale. The window is nanosecond-scale and the failure mode is conservative
 			// (over-eviction), so we accept it rather than gating on error type — the
 			// underlying error is not guaranteed to be DeadlineExceeded.
-			p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", err)
+			p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "stale_timeout", st, "err", err)
 			p.evictConn(pc)
-			err = fmt.Errorf("channel open did not complete within %s: %w: %w", staleTimeout, ErrStaleConnection, err)
+			err = fmt.Errorf("channel open did not complete within %s: %w: %w", st, ErrStaleConnection, err)
 		case shortCtx.Err() != nil && shortTimeoutIsOurs && ctx.Err() == context.Canceled:
 			p.log().DebugContext(ctx, "stale detection suppressed: concurrent caller cancellation", "key", pc.key.String(), "err", err)
 		case shortCtx.Err() != nil && !shortTimeoutIsOurs:
-			p.log().DebugContext(ctx, "stale detection suppressed: caller deadline shorter than staleTimeout", "key", pc.key.String(), "err", err)
+			p.log().DebugContext(ctx, "stale detection suppressed: caller deadline shorter than stale timeout", "key", pc.key.String(), "err", err)
 		}
 		// Balance the connect() call. On eviction paths above, removeConn
 		// ran and client.Close was launched asynchronously, so disconnected()
@@ -568,7 +645,8 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 		ch <- sessionResult{s, err}
 	}()
 
-	shortCtx, cancel := context.WithTimeout(ctx, staleTimeout)
+	st := pc.staleTimeoutFor()
+	shortCtx, cancel := context.WithTimeout(ctx, st)
 	defer cancel()
 	shortTimeoutIsOurs := shortTimeoutOwnership(ctx, shortCtx)
 
@@ -592,14 +670,14 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 				// Falls through: eviction occurred but ErrStaleConnection is intentionally
 				// not wrapped — transport errors are self-describing. See ErrStaleConnection doc.
 			case shortCtx.Err() != nil && shortTimeoutIsOurs && ctx.Err() != context.Canceled:
-				p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", res.err)
+				p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "stale_timeout", st, "err", res.err)
 				p.evictConn(pc)
 				// Returns directly (unlike dialThroughClient which reassigns err
 				// and falls through to the common wrapper). The early return is
 				// intentional: this branch is practically unreachable (see comment
 				// above) and keeping it self-contained is clearer than emulating
 				// dialThroughClient's fallthrough pattern.
-				return nil, fmt.Errorf("session creation did not complete within %s: %w: %w", staleTimeout, ErrStaleConnection, res.err)
+				return nil, fmt.Errorf("session creation did not complete within %s: %w: %w", st, ErrStaleConnection, res.err)
 			}
 			return nil, fmt.Errorf("failed to create session: %w", res.err)
 		}
@@ -609,7 +687,7 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 			// Either the caller's own deadline expired (inherited by shortCtx)
 			// or the caller explicitly cancelled. Not a stale connection.
 			if !shortTimeoutIsOurs {
-				p.log().DebugContext(ctx, "stale detection suppressed: caller deadline shorter than staleTimeout", "key", pc.key.String())
+				p.log().DebugContext(ctx, "stale detection suppressed: caller deadline shorter than stale timeout", "key", pc.key.String())
 			} else {
 				p.log().DebugContext(ctx, "stale detection suppressed: concurrent caller cancellation", "key", pc.key.String())
 			}
@@ -627,8 +705,8 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 			// unblocks the hung NewSession calls. The TTL/caller_deadline bound
 			// only kicks in after an inactivity gap long enough for the TTL to
 			// expire. Manageable in practice (requires all callers to use
-			// deadlines shorter than staleTimeout) but worth noting for services
-			// with very short deadlines and high call rates.
+			// deadlines shorter than the effective stale timeout) but worth
+			// noting for services with very short deadlines and high call rates.
 			// TODO(#85): add observability (slog.Warn or gauge) for drain goroutine accumulation.
 			go func() {
 				if res := <-ch; res.session != nil {
@@ -644,8 +722,8 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 			}
 			return nil, fmt.Errorf("session creation cancelled: %w", err)
 		}
-		// Our staleTimeout fired — the SSH connection is unresponsive, evict it.
-		p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "err", shortCtx.Err())
+		// Our stale timeout fired — the SSH connection is unresponsive, evict it.
+		p.log().InfoContext(ctx, "dropping stale ssh connection", "key", pc.key.String(), "active", pc.activeCount(), "stale_timeout", st, "err", shortCtx.Err())
 		p.evictConn(pc)
 		// Clean up the in-flight NewSession goroutine: if it eventually
 		// returns a session, close it to avoid resource leaks.
@@ -654,7 +732,7 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 				res.session.Close()
 			}
 		}()
-		return nil, fmt.Errorf("session creation did not complete within %s: %w: %w", staleTimeout, ErrStaleConnection, shortCtx.Err())
+		return nil, fmt.Errorf("session creation did not complete within %s: %w: %w", st, ErrStaleConnection, shortCtx.Err())
 	}
 	defer session.Close()
 
@@ -709,7 +787,7 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 		session.Close() // intentionally redundant with defer — needed to unblock CombinedOutput
 		select {
 		case <-cmdCh:
-		case <-time.After(staleTimeout):
+		case <-time.After(pc.cancelCleanupTimeout()):
 			p.evictConn(pc)
 			<-cmdCh
 		}
@@ -718,13 +796,13 @@ func (p *Pool) runCommandOnClient(ctx context.Context, pc *pooledConn, command s
 }
 
 // shortTimeoutOwnership reports whether shortCtx's deadline came from
-// our staleTimeout rather than being inherited from a shorter parent deadline.
+// our stale timeout rather than being inherited from a shorter parent deadline.
 //
-// context.WithTimeout(ctx, staleTimeout) picks min(ctx.Deadline, now+staleTimeout).
-// If the caller's context has a deadline shorter than staleTimeout, shortCtx
-// inherits it. In that case, a timeout does NOT indicate a stale connection —
-// it means the caller ran out of time — and we must not evict a potentially
-// healthy connection.
+// context.WithTimeout(ctx, st) picks min(ctx.Deadline, now+st).
+// If the caller's context has a deadline shorter than the stale timeout,
+// shortCtx inherits it. In that case, a timeout does NOT indicate a stale
+// connection — it means the caller ran out of time — and we must not evict
+// a potentially healthy connection.
 //
 // We compare deadlines (immutable values set at creation) rather than checking
 // ctx.Err() at decision time, which would be a TOCTOU race: the caller's

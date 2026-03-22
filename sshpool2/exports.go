@@ -173,8 +173,9 @@ func (p *Pool) recordOp(method string, err error, d time.Duration) {
 // The caller is strongly encouraged to use DialWithRetries,
 // as there are many ways that dialing through an SSH pool can fail transiently.
 //
-// Context deadlines shorter than staleTimeout (currently 500ms) disable
-// stale-connection detection; see staleTimeout.
+// Context deadlines shorter than the effective stale timeout (500ms floor,
+// scaled by RTT) disable stale-connection detection; see staleTimeout and
+// pooledConn.staleTimeoutFor.
 func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig) (net.Conn, error) {
 	start := time.Now()
 	conn, err := p.dialContext(ctx, network, addr, host, user, port, signer, config)
@@ -198,8 +199,9 @@ func (p *Pool) DialContext(ctx context.Context, network, addr, host, user string
 // The returned error may contain errors from prior attempts, even on success.
 // (In contrast, [Pool.RunCommand] always drops connect errors.)
 //
-// Context deadlines shorter than staleTimeout (currently 500ms) disable
-// stale-connection detection; see staleTimeout.
+// Context deadlines shorter than the effective stale timeout (500ms floor,
+// scaled by RTT) disable stale-connection detection; see staleTimeout and
+// pooledConn.staleTimeoutFor.
 func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, retries []time.Duration) (net.Conn, error) {
 	start := time.Now()
 	conn, err := p.dialWithRetries(ctx, network, addr, host, user, port, signer, config, retries)
@@ -235,8 +237,9 @@ func (p *Pool) DialWithRetries(ctx context.Context, network, addr, host, user st
 // the caller sees only the command result (on success) or the command/session
 // error (on failure), never sentinels from retried connect attempts.
 //
-// Context deadlines shorter than staleTimeout (currently 500ms) disable
-// stale-connection detection; see staleTimeout.
+// Context deadlines shorter than the effective stale timeout (500ms floor,
+// scaled by RTT) disable stale-connection detection; see staleTimeout and
+// pooledConn.staleTimeoutFor.
 func (p *Pool) RunCommand(ctx context.Context, host, user string, port int, signer ssh.Signer, config *ssh.ClientConfig, command string, stdin io.Reader, connRetries []time.Duration) ([]byte, error) {
 	start := time.Now()
 	output, err := p.runCommand(ctx, host, user, port, signer, config, command, stdin, connRetries)

@@ -1026,17 +1026,17 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 			}
 			// Use a deadline that allows for stale
 			// connection recovery:
-			// - Each dial attempt is bounded to 500ms
-			//   (in dialThroughClient);
+			// - Each dial attempt is bounded by
+			//   max(500ms, 4×RTT) via staleTimeoutFor;
 			// - If first attempt hits a stale connection,
 			//   it times out and is removed;
 			// - Retries can establish a fresh connection
 			//   (up to 3s for SSH dial).
-			// 8s gives enough headroom for stale recovery
-			// when the exelet is far away (e.g. FRA→LAX).
+			// 10s gives enough headroom for stale recovery
+			// even on high-latency paths (e.g. JNB→LAX).
 			// Note: "port not bound" still fails fast
 			// since connection refused is immediate.
-			ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			conn, err := ps.SSHPool.DialWithRetries(ctx, network, addr, sshHost, box.SSHUser, box.SSHPort, sshKey, cfg, []time.Duration{
 				50 * time.Millisecond,
