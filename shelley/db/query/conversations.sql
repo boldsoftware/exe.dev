@@ -117,3 +117,9 @@ WHERE conversation_id = ? AND model IS NULL;
 -- name: GetConversationOptions :one
 SELECT conversation_options FROM conversations
 WHERE conversation_id = ?;
+
+-- name: UpdateConversationParent :one
+UPDATE conversations
+SET parent_conversation_id = ?, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING *;

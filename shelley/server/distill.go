@@ -155,6 +155,16 @@ func (s *Server) handleDistillConversation(w http.ResponseWriter, r *http.Reques
 	// Notify subscribers about the status message
 	go s.notifySubscribers(context.WithoutCancel(ctx), conversationID)
 
+	// Mark the conversation as distilling so queued messages wait for
+	// distillation to complete before being drained.
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID, "")
+	if err != nil {
+		s.logger.Error("Failed to create conversation manager for distill", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	manager.SetDistilling(true)
+
 	// Run distillation in background
 	ctxNoCancel := context.WithoutCancel(ctx)
 	go func() {
@@ -169,8 +179,10 @@ func (s *Server) handleDistillConversation(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// runDistillation performs the LLM-based distillation and inserts the result.
-func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug, modelID string, messages []generated.Message) {
+// performDistillation does the LLM call and inserts the distilled message.
+// Returns the distilled text, or empty string on error (errors are logged and
+// a distill error is inserted into the conversation).
+func (s *Server) performDistillation(ctx context.Context, conversationID, sourceSlug, modelID string, messages []generated.Message) string {
 	logger := s.logger.With("conversationID", conversationID, "sourceSlug", sourceSlug)
 
 	// Build the transcript for the LLM
@@ -181,7 +193,7 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	if err != nil {
 		logger.Error("Failed to get LLM service for distillation", "model", modelID, "error", err)
 		s.insertDistillError(ctx, conversationID, fmt.Sprintf("Failed to get model %q: %v", modelID, err))
-		return
+		return ""
 	}
 
 	// Make the LLM call
@@ -206,7 +218,7 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	if err != nil {
 		logger.Error("LLM distillation failed", "error", err)
 		s.insertDistillError(ctx, conversationID, fmt.Sprintf("Distillation failed: %v", err))
-		return
+		return ""
 	}
 
 	// Extract text from response
@@ -220,7 +232,7 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	if distilledText == "" {
 		logger.Error("LLM returned empty distillation")
 		s.insertDistillError(ctx, conversationID, "Distillation returned empty result")
-		return
+		return ""
 	}
 
 	logger.Info("Distillation complete", "output_length", len(distilledText))
@@ -237,25 +249,38 @@ func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug
 	}
 	if err := s.recordMessage(ctx, conversationID, userMessage, llm.Usage{}, map[string]string{"distilled": "true"}); err != nil {
 		logger.Error("Failed to record distilled message", "error", err)
+		return ""
+	}
+
+	return distilledText
+}
+
+// runDistillation performs the LLM-based distillation and inserts the result.
+func (s *Server) runDistillation(ctx context.Context, conversationID, sourceSlug, modelID string, messages []generated.Message) {
+	// Clear distilling flag when done, then drain any queued messages.
+	defer func() {
+		s.mu.Lock()
+		manager, ok := s.activeConversations[conversationID]
+		s.mu.Unlock()
+		if ok {
+			manager.SetDistilling(false)
+			manager.drainPendingMessages(s)
+		}
+	}()
+
+	distilledText := s.performDistillation(ctx, conversationID, sourceSlug, modelID, messages)
+	if distilledText == "" {
 		return
 	}
 
 	// Generate slug for the new conversation
 	slugCtx, slugCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer slugCancel()
-	_, err = slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, distilledText, modelID)
+	_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, distilledText, modelID)
 	if err != nil {
-		logger.Warn("Failed to generate slug", "error", err)
+		s.logger.Warn("Failed to generate slug", "conversationID", conversationID, "error", err)
 	} else {
 		go s.notifySubscribers(ctx, conversationID)
-	}
-
-	// Drain any messages that were queued while distillation was in progress
-	s.mu.Lock()
-	manager, ok := s.activeConversations[conversationID]
-	s.mu.Unlock()
-	if ok {
-		manager.drainPendingMessages(s)
 	}
 }
 
@@ -319,6 +344,234 @@ func (s *Server) updateDistillStatus(ctx context.Context, conversationID, status
 			return
 		}
 	}
+}
+
+// DistillReplaceRequest represents the request to distill and replace a conversation in place
+type DistillReplaceRequest struct {
+	SourceConversationID string `json:"source_conversation_id"`
+	Model                string `json:"model,omitempty"`
+	Cwd                  string `json:"cwd,omitempty"`
+}
+
+// handleDistillReplace handles POST /api/conversations/distill-replace
+// Creates a new conversation that takes over the source's slug. The source
+// conversation gets renamed and becomes a child of the new one.
+func (s *Server) handleDistillReplace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	var req DistillReplaceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.SourceConversationID == "" {
+		http.Error(w, "source_conversation_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get source conversation
+	sourceConv, err := s.db.GetConversationByID(ctx, req.SourceConversationID)
+	if err != nil {
+		s.logger.Error("Failed to get source conversation", "conversationID", req.SourceConversationID, "error", err)
+		http.Error(w, "Source conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// Get messages from source conversation
+	messages, err := s.db.ListMessages(ctx, req.SourceConversationID)
+	if err != nil {
+		s.logger.Error("Failed to get messages", "conversationID", req.SourceConversationID, "error", err)
+		http.Error(w, "Failed to get messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Determine model to use
+	modelID := req.Model
+	if modelID == "" && sourceConv.Model != nil {
+		modelID = *sourceConv.Model
+	}
+	if modelID == "" {
+		modelID = s.defaultModel
+	}
+
+	// Create new conversation (slug=nil, will be set after distillation)
+	var cwdPtr *string
+	if req.Cwd != "" {
+		cwdPtr = &req.Cwd
+	} else if sourceConv.Cwd != nil {
+		cwdPtr = sourceConv.Cwd
+	}
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID, db.ConversationOptions{})
+	if err != nil {
+		s.logger.Error("Failed to create conversation", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	conversationID := conversation.ConversationID
+
+	// Notify conversation list subscribers
+	go s.publishConversationListUpdate(ConversationListUpdate{
+		Type:         "update",
+		Conversation: conversation,
+	})
+
+	// Insert a status message indicating distillation is in progress
+	sourceSlug := "unknown"
+	if sourceConv.Slug != nil {
+		sourceSlug = *sourceConv.Slug
+	}
+	statusUserData := map[string]string{
+		"distill_status": "in_progress",
+		"source_slug":    sourceSlug,
+		"replace":        "true",
+	}
+	_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID:      conversationID,
+		Type:                db.MessageTypeSystem,
+		UserData:            statusUserData,
+		ExcludedFromContext: true,
+	})
+	if err != nil {
+		s.logger.Error("Failed to create status message", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Notify subscribers about the status message
+	go s.notifySubscribers(context.WithoutCancel(ctx), conversationID)
+
+	// Mark the conversation as distilling so queued messages wait.
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID, "")
+	if err != nil {
+		s.logger.Error("Failed to create conversation manager for distill-replace", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	manager.SetDistilling(true)
+
+	// Run distill-replace in background
+	ctxNoCancel := context.WithoutCancel(ctx)
+	go func() {
+		s.runDistillReplace(ctxNoCancel, conversationID, req.SourceConversationID, sourceSlug, modelID, messages)
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":          "created",
+		"conversation_id": conversationID,
+	})
+}
+
+// runDistillReplace performs distillation then swaps slugs so the new conversation
+// takes over the source's URL. The source gets renamed and becomes a child.
+func (s *Server) runDistillReplace(ctx context.Context, newConvID, sourceConvID, sourceSlug, modelID string, messages []generated.Message) {
+	logger := s.logger.With("newConvID", newConvID, "sourceConvID", sourceConvID, "sourceSlug", sourceSlug)
+
+	// Clear distilling flag when done, then drain any queued messages.
+	defer func() {
+		s.mu.Lock()
+		manager, ok := s.activeConversations[newConvID]
+		s.mu.Unlock()
+		if ok {
+			manager.SetDistilling(false)
+			manager.drainPendingMessages(s)
+		}
+	}()
+
+	// Perform the LLM distillation
+	distilledText := s.performDistillation(ctx, newConvID, sourceSlug, modelID, messages)
+	if distilledText == "" {
+		return
+	}
+
+	// Re-fetch the source conversation's current slug, since it may have been
+	// generated asynchronously between when the request was received and now.
+	sourceConv, err := s.db.GetConversationByID(ctx, sourceConvID)
+	if err != nil {
+		logger.Error("Failed to re-fetch source conversation", "error", err)
+		s.insertDistillError(ctx, newConvID, fmt.Sprintf("Failed to re-fetch source: %v", err))
+		return
+	}
+	if sourceConv.Slug != nil {
+		sourceSlug = *sourceConv.Slug
+	}
+
+	// If the source has no slug, generate one for the new conversation instead
+	// of using the literal string "unknown".
+	if sourceConv.Slug == nil {
+		slugCtx, slugCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer slugCancel()
+		_, err = slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, newConvID, distilledText, modelID)
+		if err != nil {
+			logger.Warn("Failed to generate slug for distill-replace", "error", err)
+		}
+	} else {
+		// --- Atomic slug swap ---
+		// Find a unique -prev slug for the source
+		newSourceSlug := sourceSlug + "-prev"
+		var swapErr error
+		for attempt := 0; attempt < 100; attempt++ {
+			candidateSlug := newSourceSlug
+			if attempt > 0 {
+				candidateSlug = fmt.Sprintf("%s-prev-%d", sourceSlug, attempt+1)
+			}
+			swapErr = s.db.DistillReplaceSwap(ctx, sourceConvID, newConvID, candidateSlug, sourceSlug)
+			if swapErr == nil {
+				newSourceSlug = candidateSlug
+				break
+			}
+			// Retry on unique constraint errors (candidate slug taken)
+			errLower := strings.ToLower(swapErr.Error())
+			if strings.Contains(errLower, "unique") || strings.Contains(errLower, "constraint") {
+				continue
+			}
+			break // non-constraint error, stop retrying
+		}
+		if swapErr != nil {
+			logger.Error("Failed to swap slugs", "error", swapErr)
+			s.insertDistillError(ctx, newConvID, fmt.Sprintf("Failed to swap slugs: %v", swapErr))
+			return
+		}
+		logger.Info("Slug swap complete", "originalSlug", sourceSlug, "sourceRenamedTo", newSourceSlug)
+	}
+
+	// If the source had no slug, we still need to parent and archive it.
+	if sourceConv.Slug == nil {
+		if _, err := s.db.UpdateConversationParent(ctx, sourceConvID, newConvID); err != nil {
+			logger.Error("Failed to set source parent", "error", err)
+		}
+		if _, err := s.db.ArchiveConversation(ctx, sourceConvID); err != nil {
+			logger.Error("Failed to archive source conversation", "error", err)
+		}
+	}
+
+	logger.Info("Distill-replace complete")
+
+	// Publish conversation list updates so the UI sidebar refreshes
+	newConv, err := s.db.GetConversationByID(ctx, newConvID)
+	if err == nil {
+		go s.publishConversationListUpdate(ConversationListUpdate{
+			Type:         "update",
+			Conversation: newConv,
+		})
+	}
+	sourceConvUpdated, err := s.db.GetConversationByID(ctx, sourceConvID)
+	if err == nil {
+		go s.publishConversationListUpdate(ConversationListUpdate{
+			Type:         "update",
+			Conversation: sourceConvUpdated,
+		})
+	}
+
+	// Notify SSE subscribers for the new conversation
+	go s.notifySubscribers(ctx, newConvID)
 }
 
 // truncateUTF8 truncates s to approximately maxBytes without splitting a UTF-8 character.

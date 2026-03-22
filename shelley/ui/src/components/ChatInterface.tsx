@@ -57,6 +57,7 @@ interface ContextUsageBarProps {
   conversationId?: string | null;
   modelName?: string;
   onDistillConversation?: () => void;
+  onDistillReplaceConversation?: () => void;
   agentWorking?: boolean;
 }
 
@@ -66,6 +67,7 @@ function ContextUsageBar({
   conversationId,
   modelName,
   onDistillConversation,
+  onDistillReplaceConversation,
   agentWorking,
 }: ContextUsageBarProps) {
   const [showPopup, setShowPopup] = useState(false);
@@ -148,6 +150,17 @@ function ContextUsageBar({
     }
   };
 
+  const handleDistillReplace = async () => {
+    if (distilling || !onDistillReplaceConversation) return;
+    setDistilling(true);
+    try {
+      await onDistillReplaceConversation();
+      setShowPopup(false);
+    } finally {
+      setDistilling(false);
+    }
+  };
+
   return (
     <div ref={barRef}>
       {showPopup && popupPosition && (
@@ -174,6 +187,15 @@ function ContextUsageBar({
               <button onClick={handleDistill} disabled={distilling} className="chat-distill-button">
                 {distilling ? "Distilling..." : "Distill & Continue in New Conversation"}
               </button>
+              {onDistillReplaceConversation && (
+                <button
+                  onClick={handleDistillReplace}
+                  disabled={distilling}
+                  className="chat-distill-button chat-distill-replace-button"
+                >
+                  {distilling ? "Distilling..." : "Distill & Replace in Place"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -476,6 +498,11 @@ interface ChatInterfaceProps {
     model: string,
     cwd?: string,
   ) => Promise<void>;
+  onDistillReplaceConversation?: (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => Promise<void>;
   mostRecentCwd?: string | null;
   isDrawerCollapsed?: boolean;
   onToggleDrawerCollapse?: () => void;
@@ -604,6 +631,7 @@ function ChatInterface({
   onConversationStateUpdate,
   onFirstMessage,
   onDistillConversation,
+  onDistillReplaceConversation,
   mostRecentCwd,
   isDrawerCollapsed,
   onToggleDrawerCollapse,
@@ -1658,6 +1686,16 @@ function ChatInterface({
     );
   };
 
+  // Handler to distill and replace conversation in place
+  const handleDistillReplaceConversation = async () => {
+    if (!conversationId || !onDistillReplaceConversation) return;
+    await onDistillReplaceConversation(
+      conversationId,
+      selectedModel,
+      currentConversation?.cwd || selectedCwd || undefined,
+    );
+  };
+
   // Get the display name for the selected model
   const selectedModelDisplayName = (() => {
     const modelObj = models.find((m) => m.id === selectedModel);
@@ -1989,6 +2027,9 @@ function ChatInterface({
           conversationId={conversationId}
           modelName={selectedModelDisplayName}
           onDistillConversation={onDistillConversation ? handleDistillConversation : undefined}
+          onDistillReplaceConversation={
+            onDistillReplaceConversation ? handleDistillReplaceConversation : undefined
+          }
           agentWorking={agentWorking}
         />
       </div>
@@ -2116,6 +2157,9 @@ function ChatInterface({
           conversationId={conversationId}
           modelName={selectedModelDisplayName}
           onDistillConversation={onDistillConversation ? handleDistillConversation : undefined}
+          onDistillReplaceConversation={
+            onDistillReplaceConversation ? handleDistillReplaceConversation : undefined
+          }
           agentWorking={agentWorking}
         />
       </div>

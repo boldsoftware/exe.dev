@@ -273,8 +273,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/conversations", gzipHandler(http.HandlerFunc(s.handleConversations)))
 	mux.Handle("/api/conversations/archived", gzipHandler(http.HandlerFunc(s.handleArchivedConversations)))
 	mux.Handle("/api/conversations/previews", gzipHandler(http.HandlerFunc(s.handleConversationPreviews)))
-	mux.Handle("/api/conversations/new", http.HandlerFunc(s.handleNewConversation))         // Small response
-	mux.Handle("/api/conversations/distill", http.HandlerFunc(s.handleDistillConversation)) // Small response
+	mux.Handle("/api/conversations/new", http.HandlerFunc(s.handleNewConversation))            // Small response
+	mux.Handle("/api/conversations/distill", http.HandlerFunc(s.handleDistillConversation))    // Small response
+	mux.Handle("/api/conversations/distill-replace", http.HandlerFunc(s.handleDistillReplace)) // Small response
 	mux.Handle("/api/conversation/", http.StripPrefix("/api/conversation", s.conversationMux()))
 	mux.Handle("/api/conversation-by-slug/", gzipHandler(http.HandlerFunc(s.handleConversationBySlug)))
 	mux.Handle("/api/validate-cwd", http.HandlerFunc(s.handleValidateCwd)) // Small response

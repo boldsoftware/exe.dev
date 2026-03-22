@@ -637,6 +637,24 @@ function App() {
     }
   };
 
+  const handleDistillReplaceConversation = async (
+    sourceConversationId: string,
+    model: string,
+    cwd?: string,
+  ) => {
+    try {
+      const response = await api.distillReplaceConversation(sourceConversationId, model, cwd);
+      const newConversationId = response.conversation_id;
+      const updatedConvs = await api.getConversations();
+      setConversations(updatedConvs);
+      setCurrentConversationId(newConversationId);
+    } catch (err) {
+      console.error("Failed to distill-replace conversation:", err);
+      setError("Failed to distill-replace conversation");
+      throw err;
+    }
+  };
+
   return (
     <WorkerPoolContextProvider
       poolOptions={diffsPoolOptions}
@@ -704,6 +722,7 @@ function App() {
               onConversationStateUpdate={handleConversationStateUpdate}
               onFirstMessage={handleFirstMessage}
               onDistillConversation={handleDistillConversation}
+              onDistillReplaceConversation={handleDistillReplaceConversation}
               mostRecentCwd={mostRecentCwd}
               isDrawerCollapsed={drawerCollapsed}
               onToggleDrawerCollapse={toggleDrawerCollapsed}

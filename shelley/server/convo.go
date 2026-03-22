@@ -57,6 +57,11 @@ type ConversationManager struct {
 	// This is explicitly managed and broadcast to subscribers when it changes.
 	agentWorking bool
 
+	// distilling is true while a distillation goroutine is inserting content
+	// into this conversation. When true, queued messages should NOT be drained
+	// immediately — they must wait until distillation finishes.
+	distilling bool
+
 	// pendingMessages holds messages queued to be sent after the current turn ends.
 	pendingMessages []pendingMessage
 
@@ -113,6 +118,15 @@ func (cm *ConversationManager) IsAgentWorking() bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	return cm.agentWorking
+}
+
+// SetDistilling marks the conversation as distilling. While true, queued
+// messages will not be drained immediately — they wait for distillation to
+// complete and the caller to invoke drainPendingMessages.
+func (cm *ConversationManager) SetDistilling(distilling bool) {
+	cm.mu.Lock()
+	cm.distilling = distilling
+	cm.mu.Unlock()
 }
 
 // GetModel returns the model ID used by this conversation.
@@ -302,10 +316,11 @@ func (cm *ConversationManager) QueueMessage(ctx context.Context, s *Server, mode
 		MessageID: createdMsg.MessageID,
 	})
 	cm.lastActivity = time.Now()
-	// If the agent is no longer working, we need to drain immediately.
+	// If the agent is no longer working (and not distilling), drain immediately.
 	// This handles the race where drainPendingMessages ran (finding nothing)
 	// before this QueueMessage call appended the message.
-	needsDrain := !cm.agentWorking
+	// During distillation, messages must wait — the distill goroutine will drain.
+	needsDrain := !cm.agentWorking && !cm.distilling
 	cm.mu.Unlock()
 
 	cm.logger.Info("Queued user message", "message_id", createdMsg.MessageID)

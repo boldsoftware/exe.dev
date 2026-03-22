@@ -6443,6 +6443,7 @@ kbd {
 
 .chat-distill-container {
   display: flex;
+  flex-direction: column;
   gap: 6px;
   margin-top: 8px;
 }
@@ -6463,6 +6464,12 @@ kbd {
 .chat-distill-button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.chat-distill-replace-button {
+  background-color: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--blue-text);
+  color: var(--blue-text);
 }
 
 .chat-tool-icon {

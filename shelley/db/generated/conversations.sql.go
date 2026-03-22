@@ -623,6 +623,36 @@ func (q *Queries) UpdateConversationModel(ctx context.Context, arg UpdateConvers
 	return err
 }
 
+const updateConversationParent = `-- name: UpdateConversationParent :one
+UPDATE conversations
+SET parent_conversation_id = ?, updated_at = CURRENT_TIMESTAMP
+WHERE conversation_id = ?
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd, archived, parent_conversation_id, model, conversation_options
+`
+
+type UpdateConversationParentParams struct {
+	ParentConversationID *string `json:"parent_conversation_id"`
+	ConversationID       string  `json:"conversation_id"`
+}
+
+func (q *Queries) UpdateConversationParent(ctx context.Context, arg UpdateConversationParentParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, updateConversationParent, arg.ParentConversationID, arg.ConversationID)
+	var i Conversation
+	err := row.Scan(
+		&i.ConversationID,
+		&i.Slug,
+		&i.UserInitiated,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Cwd,
+		&i.Archived,
+		&i.ParentConversationID,
+		&i.Model,
+		&i.ConversationOptions,
+	)
+	return i, err
+}
+
 const updateConversationSlug = `-- name: UpdateConversationSlug :one
 UPDATE conversations
 SET slug = ?, updated_at = CURRENT_TIMESTAMP
