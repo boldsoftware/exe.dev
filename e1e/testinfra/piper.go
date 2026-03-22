@@ -25,13 +25,42 @@ type SSHPiperdInstance struct {
 	Port   int             // port that sshpiperd listens on
 }
 
+// BuildSSHPiperd builds the sshpiperd binary and returns the path.
+func BuildSSHPiperd(ctx context.Context) (string, error) {
+	start := time.Now()
+	slog.InfoContext(ctx, "building sshpiperd")
+
+	bin, err := os.CreateTemp("", "sshpiperd-test")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	bin.Close()
+	binPath := bin.Name()
+
+	srcdir, err := exeRootDir()
+	if err != nil {
+		return "", err
+	}
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-race", "-o", binPath, "./cmd/sshpiperd")
+	buildCmd.Dir = filepath.Join(srcdir, "deps", "sshpiper")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to build sshpiperd: %w\n%s", err, out)
+	}
+	AddCleanup(func() { os.Remove(binPath) })
+
+	slog.InfoContext(ctx, "built sshpiperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
+	return binPath, nil
+}
+
 // StartSSHPiperd starts the SSH piperd process.
+//
+// binPath is the path to a pre-built sshpiperd binary (from BuildSSHPiperd).
 //
 // sshPiperPluginPort is the port on the local host where exed is running
 // a grpc server that acts as an sshpiperd plugin.
 //
-// logFile, is not nil, is a file to write logs to.
-func StartSSHPiperd(ctx context.Context, sshPiperPluginPort int, logFile io.Writer) (*SSHPiperdInstance, error) {
+// logFile, if not nil, is a file to write logs to.
+func StartSSHPiperd(ctx context.Context, binPath string, sshPiperPluginPort int, logFile io.Writer) (*SSHPiperdInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting piperd")
 
@@ -43,7 +72,7 @@ func StartSSHPiperd(ctx context.Context, sshPiperPluginPort int, logFile io.Writ
 	defer os.Remove(tmpFile.Name())
 
 	// Start piperd process and capture its output
-	piperdCmd := exec.Command("go", "run", "-race", "./cmd/sshpiperd",
+	piperdCmd := exec.Command(binPath,
 		"--log-format", "json",
 		"--log-level", "debug",
 		"--port", "0",
@@ -56,13 +85,7 @@ func StartSSHPiperd(ctx context.Context, sshPiperPluginPort int, logFile io.Writ
 		"--insecure",
 	)
 
-	srcdir, err := exeRootDir()
-	if err != nil {
-		return nil, err
-	}
-	piperdCmd.Dir = filepath.Join(srcdir, "deps", "sshpiper") // run from sshpiper dir so it finds its go.mod
-
-	// Start piperd process and capture its output
+	// Capture piperd output
 	cmdOut, err := piperdCmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)

@@ -1371,7 +1371,7 @@ var buildExeletBinaryMu sync.Mutex
 
 // BuildExeletBinary builds exelet locally for Linux and returns path to binary.
 // The binary is built with coverage instrumentation via "make exelet-coverage".
-func BuildExeletBinary(testRunID string) (string, error) {
+func BuildExeletBinary(ctx context.Context, testRunID string) (string, error) {
 	binPath := filepath.Join(os.TempDir(), "exelet-test-"+testRunID)
 
 	// Set working directory to project root (parent of e1e directory)
@@ -1391,7 +1391,7 @@ func BuildExeletBinary(testRunID string) (string, error) {
 	defer cleanup()
 
 	// Build exelet with coverage instrumentation.
-	cmd := exec.Command("make", "exelet-coverage")
+	cmd := exec.CommandContext(ctx, "make", "exelet-coverage")
 	cmd.Dir = srcdir
 	cmd.Env = append(cmd.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -446,7 +446,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		}
 	}
 
-	exeletBinary, err := testinfra.BuildExeletBinary(testRunID)
+	bins, exeletBinary, err := testinfra.BuildAll(context.Background(), testRunID)
 	if err != nil {
 		return env, err
 	}
@@ -493,6 +493,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	serverEnv, err := testinfra.StartServers(context.Background(),
+		bins,
 		[]*testinfra.ExeletInstance{exelet},
 		exepipe,
 		[]*testinfra.TCPProxy{exedHTTPProxy},

@@ -137,9 +137,10 @@ func TestMain(m *testing.M) {
 	}
 	go exeproxHTTPProxy.Serve()
 
-	exeletBinary, err = testinfra.BuildExeletBinary(testRunID)
+	bins, exeletBin, err := testinfra.BuildAll(context.Background(), testRunID)
+	exeletBinary = exeletBin
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "building exelet binary failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "building binaries failed: %v\n", err)
 		exit(1)
 	}
 	testinfra.AddCleanup(func() {
@@ -154,6 +155,7 @@ func TestMain(m *testing.M) {
 	exelets = []*testinfra.ExeletInstance{exelet}
 
 	serverEnv, err = testinfra.StartServers(context.Background(),
+		bins,
 		[]*testinfra.ExeletInstance{exelet},
 		nil,
 		[]*testinfra.TCPProxy{exedHTTPProxy, exeproxHTTPProxy},

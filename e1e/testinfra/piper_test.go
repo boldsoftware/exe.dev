@@ -1,6 +1,7 @@
 package testinfra
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -52,7 +53,12 @@ func TestSSHPiperd(t *testing.T) {
 		sshdServer(t, sshListener, keyFileServer, publicKeyServer)
 	})
 
-	pi, err := StartSSHPiperd(t.Context(), grpcListener.Addr().(*net.TCPAddr).Port, t.Output())
+	piperdBin, err := BuildSSHPiperd(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pi, err := StartSSHPiperd(t.Context(), piperdBin, grpcListener.Addr().(*net.TCPAddr).Port, t.Output())
 	if err != nil {
 		t.Fatal(err)
 	}

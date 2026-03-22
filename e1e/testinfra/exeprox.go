@@ -31,7 +31,47 @@ type ExeproxInstance struct {
 	exeproxLoggerDone chan bool // closed when logging goroutine done
 }
 
+// BuildExeprox builds the exeprox binary and returns the path.
+// If PREBUILT_EXEPROX is set, it returns that path directly.
+func BuildExeprox(ctx context.Context) (string, error) {
+	start := time.Now()
+	slog.InfoContext(ctx, "building exeprox")
+
+	if prebuilt := os.Getenv("PREBUILT_EXEPROX"); prebuilt != "" {
+		st, err := os.Stat(prebuilt)
+		if err != nil {
+			return "", fmt.Errorf("PREBUILT_EXEPROX not usable: %w", err)
+		}
+		if st.IsDir() {
+			return "", fmt.Errorf("PREBUILT_EXEPROX points to a directory, need a file: %s", prebuilt)
+		}
+		return prebuilt, nil
+	}
+
+	bin, err := os.CreateTemp("", "exeprox-test")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	bin.Close()
+	binPath := bin.Name()
+	rootDir, err := exeRootDir()
+	if err != nil {
+		return "", err
+	}
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "./cmd/exeprox")
+	buildCmd.Dir = rootDir
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to build exeprox: %w\n%s", err, out)
+	}
+	AddCleanup(func() { os.Remove(binPath) })
+
+	slog.InfoContext(ctx, "built exeprox", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
+	return binPath, nil
+}
+
 // StartExeprox starts an exeprox process.
+//
+// binPath is the path to a pre-built exeprox binary (from BuildExeprox).
 //
 // exedHTTPPort is the port on which exed handles HTTP.
 //
@@ -46,40 +86,9 @@ type ExeproxInstance struct {
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExeprox(ctx context.Context, exedHTTPPort, exedGRPCPort int, extraProxyPorts []int, logFile io.Writer, logPorts bool) (*ExeproxInstance, error) {
+func StartExeprox(ctx context.Context, binPath string, exedHTTPPort, exedGRPCPort int, extraProxyPorts []int, logFile io.Writer, logPorts bool) (*ExeproxInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exeprox")
-
-	// If PREBUILT_EXEPROX is set, use it.
-	// Otherwise build a new binary.
-	var binPath string
-	if prebuilt := os.Getenv("PREBUILT_EXEPROX"); prebuilt != "" {
-		st, err := os.Stat(prebuilt)
-		if err != nil {
-			return nil, fmt.Errorf("PREBUILT_EXEPROX not usable: %w", err)
-		}
-		if st.IsDir() {
-			return nil, fmt.Errorf("PREBUILT_EXEPROX points to a directory, need a file: %s", prebuilt)
-		}
-		binPath = prebuilt
-	} else {
-		bin, err := os.CreateTemp("", "exeprox-test")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create temp file: %w", err)
-		}
-		bin.Close()
-		binPath = bin.Name()
-		rootDir, err := exeRootDir()
-		if err != nil {
-			return nil, err
-		}
-		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "./cmd/exeprox")
-		buildCmd.Dir = rootDir
-		if out, err := buildCmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("failed to build exeprox: %v\n%s", err, out)
-		}
-		AddCleanup(func() { os.Remove(binPath) })
-	}
 
 	coverDir, err := os.MkdirTemp("", "exeprox-test_cov")
 	if err != nil {

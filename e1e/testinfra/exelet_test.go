@@ -1,6 +1,7 @@
 package testinfra
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -22,7 +23,7 @@ func TestExelet(t *testing.T) {
 
 	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
 
-	exeletBinary, err := BuildExeletBinary(testRunID)
+	exeletBinary, err := BuildExeletBinary(context.Background(), testRunID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func startTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
@@ -34,8 +36,52 @@ type ServerEnv struct {
 	GitHubMock           *MockGitHubServer
 }
 
+// PrebuiltBinaries holds paths to pre-built binaries for the servers.
+// Exelet is intentionally separate: its cleanup is caller-managed,
+// while these binaries use AddCleanup.
+type PrebuiltBinaries struct {
+	Exed      string
+	Exeprox   string
+	SSHPiperd string
+}
+
+// BuildAll builds all server binaries (exed, exeprox, sshpiperd)
+// and the exelet binary concurrently.
+// The returned exeletBinary path should be cleaned up by the caller.
+func BuildAll(ctx context.Context, testRunID string) (bins PrebuiltBinaries, exeletBinary string, err error) {
+	slog.InfoContext(ctx, "building all binaries concurrently")
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var err error
+		exeletBinary, err = BuildExeletBinary(ctx, testRunID)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		bins.Exed, err = BuildExed(ctx)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		bins.Exeprox, err = BuildExeprox(ctx)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		bins.SSHPiperd, err = BuildSSHPiperd(ctx)
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		return bins, "", err
+	}
+	slog.InfoContext(ctx, "all binaries built")
+	return bins, exeletBinary, nil
+}
+
 // StartServers takes a list of exelets that have already been started,
 // and starts all the servers needed for an end-to-end test.
+//
+// bins holds pre-built binary paths for exed, exeprox, and sshpiperd.
 //
 // tcpProxies is TCP proxies set up beforehand.
 // This is just a convenience for closing them.
@@ -48,7 +94,7 @@ type ServerEnv struct {
 // verboseEmailServer is whether email server should be verbose.
 //
 // metricsd, if not nil, is a metricsd instance to include in the environment.
-func StartServers(ctx context.Context, exelets []*ExeletInstance, exepipe *ExepipeInstance, tcpProxies []*TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
+func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletInstance, exepipe *ExepipeInstance, tcpProxies []*TCPProxy, exedLog, exeproxLog, piperLog io.Writer, logPorts, verboseEmailServer bool, metricsd *MetricsdInstance) (*ServerEnv, error) {
 	env := &ServerEnv{
 		Exelets:    exelets,
 		Exepipe:    exepipe,
@@ -131,17 +177,24 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exepipe *Exepi
 	os.Setenv("EXE_GITHUB_APP_ID", TestGitHubAppID)
 	os.Setenv("EXE_GITHUB_APP_PRIVATE_KEY", TestGitHubAppPrivateKeyPEM)
 
-	// TODO: build piperd concurrently with
-	// starting exed for faster startup.
-
 	var exeletAddrs []string
 	for _, exelet := range exelets {
 		exeletAddrs = append(exeletAddrs, exelet.Address)
 	}
 
+	// Start sshpiperd concurrently with exed.
+	// SSHPiperd only needs the proxy port, which is already available.
+	var pi *SSHPiperdInstance
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		var err error
+		pi, err = StartSSHPiperd(ctx, bins.SSHPiperd, exedPiperPluginProxy.Port(), piperLog)
+		return err
+	})
+
 	// Pass "0,0" to let the proxy listeners allocate
 	// their own port numbers.
-	ei, err := StartExed(ctx, es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts)
+	ei, err := StartExed(ctx, bins.Exed, es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts)
 	if err != nil {
 		return env, err
 	}
@@ -169,14 +222,14 @@ func StartServers(ctx context.Context, exelets []*ExeletInstance, exepipe *Exepi
 	// No current tests exercise auth redirects after restart.
 	// We can't use the proxy port here because exed's
 	// isRequestOnMainPort rejects Host headers with non-main ports.
-	epi, err := StartExeprox(ctx, ei.HTTPPort, exedExeproxProxy.Port(), []int{0, 0}, exeproxLog, logPorts)
+	epi, err := StartExeprox(ctx, bins.Exeprox, ei.HTTPPort, exedExeproxProxy.Port(), []int{0, 0}, exeproxLog, logPorts)
 	if err != nil {
 		return env, err
 	}
 	env.Exeprox = epi
 
-	pi, err := StartSSHPiperd(ctx, exedPiperPluginProxy.Port(), piperLog)
-	if err != nil {
+	// Wait for sshpiperd to finish starting.
+	if err := g.Wait(); err != nil {
 		return env, err
 	}
 	env.SSHPiperd = pi

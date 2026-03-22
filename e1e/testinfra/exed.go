@@ -246,7 +246,47 @@ drainListening:
 	}, nil
 }
 
+// BuildExed builds the exed binary and returns the path.
+// If PREBUILT_EXED is set, it returns that path directly.
+func BuildExed(ctx context.Context) (string, error) {
+	start := time.Now()
+	slog.InfoContext(ctx, "building exed")
+
+	if prebuilt := os.Getenv("PREBUILT_EXED"); prebuilt != "" {
+		st, err := os.Stat(prebuilt)
+		if err != nil {
+			return "", fmt.Errorf("PREBUILT_EXED not usable: %w", err)
+		}
+		if st.IsDir() {
+			return "", fmt.Errorf("PREBUILT_EXED points to a directory, need a file: %s", prebuilt)
+		}
+		return prebuilt, nil
+	}
+
+	bin, err := os.CreateTemp("", "exed-test")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	bin.Close()
+	binPath := bin.Name()
+	rootDir, err := exeRootDir()
+	if err != nil {
+		return "", err
+	}
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "./cmd/exed")
+	buildCmd.Dir = rootDir
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to build exed: %w\n%s", err, out)
+	}
+	AddCleanup(func() { os.Remove(binPath) })
+
+	slog.InfoContext(ctx, "built exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
+	return binPath, nil
+}
+
 // StartExed starts the exed process.
+//
+// binPath is the path to a pre-built exed binary (from BuildExed).
 //
 // emailServerPort is a port on the local host,
 // passed as the -fake-email-server exed option.
@@ -266,40 +306,9 @@ drainListening:
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExed(ctx context.Context, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool) (*ExedInstance, error) {
+func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool) (*ExedInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exed")
-
-	// If PREBUILT_EXED is set, use it.
-	// Otherwise build a new binary.
-	var binPath string
-	if prebuilt := os.Getenv("PREBUILT_EXED"); prebuilt != "" {
-		st, err := os.Stat(prebuilt)
-		if err != nil {
-			return nil, fmt.Errorf("PREBUILT_EXED not usable: %w", err)
-		}
-		if st.IsDir() {
-			return nil, fmt.Errorf("PREBUILT_EXED points to a directory, need a file: %s", prebuilt)
-		}
-		binPath = prebuilt
-	} else {
-		bin, err := os.CreateTemp("", "exed-test")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create temp file: %w", err)
-		}
-		bin.Close()
-		binPath = bin.Name()
-		rootDir, err := exeRootDir()
-		if err != nil {
-			return nil, err
-		}
-		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "./cmd/exed")
-		buildCmd.Dir = rootDir
-		if out, err := buildCmd.CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
-		}
-		AddCleanup(func() { os.Remove(binPath) })
-	}
 
 	shm := "/dev/shm"
 	if st, err := os.Stat(shm); err != nil || !st.IsDir() {
