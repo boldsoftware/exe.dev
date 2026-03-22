@@ -35,7 +35,7 @@ func main() {
 				Value:   ":5555",
 				EnvVars: []string{"EXE_OPS_ADDR"},
 			},
-&cli.BoolFlag{
+			&cli.BoolFlag{
 				Name:    "tls",
 				Usage:   "enable TLS via Tailscale (requires tailscaled)",
 				Value:   true,
