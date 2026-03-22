@@ -15,6 +15,7 @@ no network access.
 import functools
 import logging
 import os
+import re
 import subprocess
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,14 @@ log = logging.getLogger(__name__)
 _IGNORE_COMMITS = frozenset({
     "71852544c8cea3bcdc785c885b165ade631c5928",  # execore: improve lobby ergonomics
 })
+
+# Case-insensitive marker anywhere in the full commit message (subject + body).
+_SKIP_NEWSLETTER_RE = re.compile(r"\[skip newsletter\]", re.IGNORECASE)
+
+
+def _sha_ignored(sha: str) -> bool:
+    """Check if *sha* (full or prefix) matches any entry in _IGNORE_COMMITS."""
+    return any(ignored.startswith(sha) for ignored in _IGNORE_COMMITS)
 
 
 class WorktreeClient:
@@ -115,7 +124,8 @@ class WorktreeClient:
             parts = entry.split("\x00", 5)
             if len(parts) >= 6:
                 sha = parts[0]
-                if sha in _IGNORE_COMMITS:
+                full_message = parts[5]
+                if _sha_ignored(sha) or _SKIP_NEWSLETTER_RE.search(full_message):
                     continue
                 commits.append({
                     "sha": sha,
@@ -123,14 +133,27 @@ class WorktreeClient:
                     "subject": parts[2],
                     "author": parts[3],
                     "date": parts[4],
-                    "body": parts[5].strip(),
+                    "body": full_message.strip(),
                 })
 
         return commits
 
+    def _is_ignored(self, sha: str) -> bool:
+        """Check if a commit should be hidden from newsletter output."""
+        if _sha_ignored(sha):
+            return True
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%B", sha],
+            cwd=self._root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and _SKIP_NEWSLETTER_RE.search(result.stdout) is not None
+
     def commit_diff(self, sha: str) -> str:
         """Return the patch for a single commit."""
-        if sha in _IGNORE_COMMITS:
+        if self._is_ignored(sha):
             raise ValueError(f"commit {sha[:12]} not found")
         result = subprocess.run(
             ["git", "diff-tree", "-p", "--stat", "-r", sha],
