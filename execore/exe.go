@@ -539,6 +539,9 @@ type Server struct {
 	// Cache for GitHub installation access tokens (minted by exed).
 	ghTokenCacheMu sync.Mutex
 	ghTokenCache   map[ghTokenCacheKey]*ghTokenCacheEntry
+
+	// metricsdURL is the URL of the metricsd server for VM usage data.
+	metricsdURL string
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -935,6 +938,7 @@ type ServerConfig struct {
 	Billing            *billing.Manager // optional billing manager override
 	MetricsRegistry    *prometheus.Registry
 	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
+	MetricsdURL        string // URL of the metricsd server for VM usage data (e.g. http://localhost:21090)
 }
 
 // NewServer creates a new Server instance with database and container management.
@@ -1268,6 +1272,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		githubSetups: make(map[string]*GitHubSetup),
 		ghTokenCache: make(map[ghTokenCacheKey]*ghTokenCacheEntry),
 		PublicIPs:    map[netip.Addr]publicips.PublicIP{},
+		metricsdURL:  cfg.MetricsdURL,
 
 		metricsRegistry:       cfg.MetricsRegistry,
 		sshMetrics:            sshMetrics,

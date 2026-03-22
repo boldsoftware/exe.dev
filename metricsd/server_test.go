@@ -407,6 +407,99 @@ func TestSparklines(t *testing.T) {
 	})
 }
 
+func TestQueryVMs(t *testing.T) {
+	ctx := context.Background()
+
+	connector, db, err := OpenDB(ctx, "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// Insert test data
+	now := time.Now().UTC()
+	metrics := []Metric{
+		{Timestamp: now.Add(-2 * time.Hour), Host: "h1", VMName: "vm-a", DiskSizeBytes: 20e9, DiskLogicalUsedBytes: 5e9, CPUUsedCumulativeSecs: 100, CPUNominal: 2, NetworkTXBytes: 1000, NetworkRXBytes: 500},
+		{Timestamp: now.Add(-1 * time.Hour), Host: "h1", VMName: "vm-a", DiskSizeBytes: 20e9, DiskLogicalUsedBytes: 5e9, CPUUsedCumulativeSecs: 200, CPUNominal: 2, NetworkTXBytes: 2000, NetworkRXBytes: 1500},
+		{Timestamp: now, Host: "h1", VMName: "vm-a", DiskSizeBytes: 20e9, DiskLogicalUsedBytes: 6e9, CPUUsedCumulativeSecs: 350, CPUNominal: 2, NetworkTXBytes: 5000, NetworkRXBytes: 3000},
+		{Timestamp: now.Add(-1 * time.Hour), Host: "h2", VMName: "vm-b", DiskSizeBytes: 10e9, DiskLogicalUsedBytes: 2e9, CPUUsedCumulativeSecs: 50, CPUNominal: 1, NetworkTXBytes: 100, NetworkRXBytes: 200},
+		{Timestamp: now, Host: "h2", VMName: "vm-b", DiskSizeBytes: 10e9, DiskLogicalUsedBytes: 3e9, CPUUsedCumulativeSecs: 80, CPUNominal: 1, NetworkTXBytes: 300, NetworkRXBytes: 400},
+	}
+	if err := srv.InsertMetrics(ctx, metrics); err != nil {
+		t.Fatalf("InsertMetrics: %v", err)
+	}
+
+	t.Run("query both VMs", func(t *testing.T) {
+		reqBody, _ := json.Marshal(QueryVMsRequest{VMNames: []string{"vm-a", "vm-b"}, Hours: 24})
+		resp, err := http.Post(ts.URL+"/query/vms", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		var result QueryVMsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		if len(result.VMs) != 2 {
+			t.Errorf("expected 2 VMs, got %d", len(result.VMs))
+		}
+		if len(result.VMs["vm-a"]) == 0 {
+			t.Error("expected data for vm-a")
+		}
+		if len(result.VMs["vm-b"]) == 0 {
+			t.Error("expected data for vm-b")
+		}
+	})
+
+	t.Run("query single VM", func(t *testing.T) {
+		reqBody, _ := json.Marshal(QueryVMsRequest{VMNames: []string{"vm-a"}, Hours: 24})
+		resp, err := http.Post(ts.URL+"/query/vms", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var result QueryVMsResponse
+		json.NewDecoder(resp.Body).Decode(&result)
+		if len(result.VMs) != 1 {
+			t.Errorf("expected 1 VM, got %d", len(result.VMs))
+		}
+	})
+
+	t.Run("empty vm_names", func(t *testing.T) {
+		reqBody, _ := json.Marshal(QueryVMsRequest{VMNames: []string{}, Hours: 24})
+		resp, err := http.Post(ts.URL+"/query/vms", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("invalid hours", func(t *testing.T) {
+		reqBody, _ := json.Marshal(QueryVMsRequest{VMNames: []string{"vm-a"}, Hours: 0})
+		resp, err := http.Post(ts.URL+"/query/vms", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+}
+
 func TestInsertMetrics_DefaultTimestamp(t *testing.T) {
 	ctx := context.Background()
 

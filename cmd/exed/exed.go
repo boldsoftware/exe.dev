@@ -58,6 +58,7 @@ func run() error {
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
 	startMetricsd := flag.Bool("start-metricsd", false, "with -start-exelet, also start metricsd locally and configure exelet to send metrics")
+	metricsdURLFlag := flag.String("metricsd-url", "", "URL of metricsd server for usage data (e.g. http://localhost:21090); auto-set with -start-metricsd")
 	lmtpSocketDefault := "/var/run/exed/lmtp.sock"
 	if runtime.GOOS == "darwin" {
 		lmtpSocketDefault = filepath.Join(os.TempDir(), "exed-lmtp.sock")
@@ -138,10 +139,12 @@ func run() error {
 	})
 	slog.Info("Starting exed server")
 
+	// Resolve metricsd URL from flag or locally-started instance
+	metricsdURL := *metricsdURLFlag
+
 	// Start exelet(s) if requested
 	if *startExelet {
 		// Start metricsd if requested (must start before exelet so we have the URL)
-		var metricsdURL string
 		if *startMetricsd {
 			url, cleanup, err := startMetricsdLocal(*dbPath)
 			if err != nil {
@@ -257,6 +260,7 @@ func run() error {
 		Billing:            &billing.Manager{},
 		MetricsRegistry:    metricsRegistry,
 		LMTPSocketPath:     *lmtpSocket,
+		MetricsdURL:        metricsdURL,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

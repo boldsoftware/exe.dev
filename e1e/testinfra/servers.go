@@ -194,7 +194,11 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 
 	// Pass "0,0" to let the proxy listeners allocate
 	// their own port numbers.
-	ei, err := StartExed(ctx, bins.Exed, es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts)
+	var metricsdURL string
+	if metricsd != nil {
+		metricsdURL = metricsd.Address
+	}
+	ei, err := StartExed(ctx, bins.Exed, es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts, metricsdURL)
 	if err != nil {
 		return env, err
 	}

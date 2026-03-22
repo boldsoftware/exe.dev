@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -177,6 +178,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /query", s.handleGetMetrics)
 	mux.HandleFunc("GET /query/sparkline", s.handleSparklineData)
 	mux.HandleFunc("GET /sparklines", s.handleSparklines)
+	mux.HandleFunc("POST /query/vms", s.handleQueryVMs)
 	staticFS, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -472,4 +474,114 @@ func (s *Server) handleSparklines(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(data)
+}
+
+func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req QueryVMsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.ErrorContext(ctx, "failed to decode request", "error", err)
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.VMNames) == 0 {
+		http.Error(w, "vm_names cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.VMNames) > 200 {
+		http.Error(w, "vm_names cannot contain more than 200 VMs", http.StatusBadRequest)
+		return
+	}
+	if req.Hours < 1 || req.Hours > 744 {
+		http.Error(w, "hours must be between 1 and 744", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.VMNames))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+
+	args := make([]interface{}, len(req.VMNames))
+	for i, name := range req.VMNames {
+		args[i] = name
+	}
+
+	// Data is cumulative counters (CPU, network) and instantaneous gauges
+	// (disk, memory), so we can thin by simply keeping every Nth raw sample
+	// — no aggregation needed. Samples arrive ~every 10 min, so:
+	//   ≤24h  → ~144 pts/VM, keep all (step 1)
+	//   ≤168h → ~1008 pts/VM, keep every 6th → ~168 pts (hourly)
+	//   >168h → ~4464 pts/VM, keep every 36th → ~124 pts (every 6h)
+	var step int
+	switch {
+	case req.Hours <= 24:
+		step = 1
+	case req.Hours <= 168:
+		step = 6
+	default:
+		step = 36
+	}
+
+	query := fmt.Sprintf(`
+		SELECT timestamp, vm_name, host,
+			disk_size_bytes, disk_used_bytes, disk_logical_used_bytes,
+			memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
+			cpu_used_cumulative_seconds, cpu_nominal,
+			network_tx_bytes, network_rx_bytes, resource_group
+		FROM (
+			SELECT *,
+				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
+			FROM vm_metrics
+			WHERE vm_name IN (%s)
+				AND timestamp > now() - INTERVAL '%d' HOUR
+		) sub
+		WHERE (rn - 1) %% %d = 0
+		ORDER BY vm_name, timestamp ASC
+	`, placeholderStr, req.Hours, step)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to query metrics", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	vmMetrics := make(map[string][]Metric)
+	for rows.Next() {
+		var m Metric
+		if err := rows.Scan(
+			&m.Timestamp,
+			&m.VMName,
+			&m.Host,
+			&m.DiskSizeBytes,
+			&m.DiskUsedBytes,
+			&m.DiskLogicalUsedBytes,
+			&m.MemoryNominalBytes,
+			&m.MemoryRSSBytes,
+			&m.MemorySwapBytes,
+			&m.CPUUsedCumulativeSecs,
+			&m.CPUNominal,
+			&m.NetworkTXBytes,
+			&m.NetworkRXBytes,
+			&m.ResourceGroup,
+		); err != nil {
+			slog.ErrorContext(ctx, "failed to scan row", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		vmMetrics[m.VMName] = append(vmMetrics[m.VMName], m)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(QueryVMsResponse{VMs: vmMetrics})
 }

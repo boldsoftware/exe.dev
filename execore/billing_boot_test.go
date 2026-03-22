@@ -37,6 +37,7 @@ func TestNewServerInstallPricesWhenBillingEnabled(t *testing.T) {
 		},
 		MetricsRegistry: prometheus.NewRegistry(),
 		LMTPSocketPath:  "",
+		MetricsdURL:     "",
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -69,6 +70,7 @@ func TestNewServerSkipsInstallPricesWhenBillingDisabled(t *testing.T) {
 		},
 		MetricsRegistry: prometheus.NewRegistry(),
 		LMTPSocketPath:  "",
+		MetricsdURL:     "",
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)

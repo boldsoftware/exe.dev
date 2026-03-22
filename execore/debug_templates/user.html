@@ -301,6 +301,26 @@ table.info th { width: 200px; }
 {{end}}
 </div>
 
+{{if .Boxes}}
+<div class="section">
+<h2>Usage Metrics (All VMs)</h2>
+<link rel="stylesheet" href="/static/usage-charts.css">
+<div id="usageCharts"></div>
+<script src="/static/usage-charts.js"></script>
+<script>
+var vmNames = [{{range .Boxes}}'{{.Name}}',{{end}}];
+if (vmNames.length > 0) {
+  renderUsageCharts(
+    document.getElementById('usageCharts'),
+    '/debug/usage-api',
+    vmNames,
+    {hours: 24, width: 600, chartHeight: 180}
+  );
+}
+</script>
+</div>
+{{end}}
+
 <script>
 $(document).ready(function() {
     {{if .InvitePostSuccessful}}

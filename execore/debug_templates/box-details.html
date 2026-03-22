@@ -97,6 +97,21 @@
 {{end}}
 </div>
 
+<div class="section">
+<h2>Usage Metrics</h2>
+<link rel="stylesheet" href="/static/usage-charts.css">
+<div id="usageCharts"></div>
+<script src="/static/usage-charts.js"></script>
+<script>
+renderUsageCharts(
+  document.getElementById('usageCharts'),
+  '/debug/usage-api',
+  ['{{.Name}}'],
+  {hours: 24, width: 600, chartHeight: 150}
+);
+</script>
+</div>
+
 {{if .CreationLog}}
 <div class="section">
 <h2>Creation Log</h2>

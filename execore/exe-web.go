@@ -604,6 +604,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleIntegrationsPage(w, r, userID)
 		return
+	case "/usage":
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleUsagePage(w, r, userID)
+		return
+	case "/usage-api":
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleUsageAPI(w, r, userID)
+		return
 	case "/invite":
 		// Invite allocation page - require authentication, POST to allocate
 		userID, err := s.validateAuthCookie(r)

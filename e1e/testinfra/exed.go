@@ -42,6 +42,7 @@ type ExedInstance struct {
 	piperPort      int       // port for ssh piper process
 	emailServerURL string    // port for fake email server
 	whoamiPath     string    // -gh-whoami exed parameter
+	metricsdURL    string    // -metricsd-url exed parameter
 	exedLoggerDone chan bool // closed when logging goroutine done
 
 	onRestart func(*ExedInstance) // called after a successful restart
@@ -306,7 +307,7 @@ func BuildExed(ctx context.Context) (string, error) {
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool) (*ExedInstance, error) {
+func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool, metricsdURL string) (*ExedInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exed")
 
@@ -341,19 +342,23 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 		whoamiPath = "/root/whoami.sqlite3"
 	}
 
-	exedCmd := exec.Command(binPath,
-		"-db="+dbPath.Name(),
+	exedArgs := []string{
+		"-db=" + dbPath.Name(),
 		"-stage=test",
 		"-http=:0",
 		"-ssh=localhost:0",
 		"-piper-plugin=localhost:0",
-		"-piperd-port="+strconv.Itoa(piperPort),
+		"-piperd-port=" + strconv.Itoa(piperPort),
 		"-exeprox-service-port=0",
-		"-fake-email-server="+emailServerURL,
-		"-gh-whoami="+whoamiPath,
-		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
-		"-lmtp-socket="+lmtpSocketPath,
-	)
+		"-fake-email-server=" + emailServerURL,
+		"-gh-whoami=" + whoamiPath,
+		"-exelet-addresses=" + strings.Join(exeletAddrs, ","),
+		"-lmtp-socket=" + lmtpSocketPath,
+	}
+	if metricsdURL != "" {
+		exedArgs = append(exedArgs, "-metricsd-url="+metricsdURL)
+	}
+	exedCmd := exec.Command(binPath, exedArgs...)
 
 	// Convert extra proxy ports to comma-delimited string
 	extraPortsStr := ""
@@ -425,6 +430,7 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 		piperPort:       piperPort,
 		emailServerURL:  emailServerURL,
 		whoamiPath:      whoamiPath,
+		metricsdURL:     metricsdURL,
 		exedLoggerDone:  result.LoggerDone,
 	}
 
@@ -589,19 +595,23 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 
 	ei.Stop(ctx, testRunID, midTest)
 
-	exedCmd := exec.Command(ei.binPath,
-		"-db="+ei.dbPath,
+	restartArgs := []string{
+		"-db=" + ei.dbPath,
 		"-stage=test",
 		"-http=:0",
 		"-ssh=localhost:0",
 		"-piper-plugin=localhost:0",
-		"-piperd-port="+strconv.Itoa(ei.piperPort),
+		"-piperd-port=" + strconv.Itoa(ei.piperPort),
 		"-exeprox-service-port=0",
-		"-fake-email-server="+ei.emailServerURL,
-		"-gh-whoami="+ei.whoamiPath,
-		"-exelet-addresses="+strings.Join(exeletAddrs, ","),
-		"-lmtp-socket="+ei.LMTPSocketPath,
-	)
+		"-fake-email-server=" + ei.emailServerURL,
+		"-gh-whoami=" + ei.whoamiPath,
+		"-exelet-addresses=" + strings.Join(exeletAddrs, ","),
+		"-lmtp-socket=" + ei.LMTPSocketPath,
+	}
+	if ei.metricsdURL != "" {
+		restartArgs = append(restartArgs, "-metricsd-url="+ei.metricsdURL)
+	}
+	exedCmd := exec.Command(ei.binPath, restartArgs...)
 
 	exedCmd.Env = append(
 		exedCmd.Environ(),

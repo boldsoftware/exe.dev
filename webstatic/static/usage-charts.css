@@ -1,0 +1,60 @@
+/* usage-charts.css — styling for VM usage charts */
+.usage-loading {
+  color: #666;
+  padding: 20px;
+  font-style: italic;
+}
+.usage-error {
+  color: #dc3545;
+  padding: 12px;
+  background: #fff3f3;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.usage-empty {
+  color: #666;
+  padding: 12px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.usage-controls {
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.usage-range-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  margin-right: 4px;
+}
+.usage-range-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.usage-range-btn:hover {
+  background: #e9ecef;
+}
+.usage-range-btn.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+.usage-chart {
+  margin: 12px 0;
+}
+.usage-legend {
+  font-size: 11px;
+  color: #666;
+  margin: 4px 0;
+}

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico">
+    <title>EXE.DEV - Usage</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <link rel="stylesheet" href="/static/usage-charts.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #fafafa;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            min-height: 100vh;
+        }
+        .main-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 24px 20px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .vm-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .vm-pill {
+            font-size: 12px;
+            padding: 3px 10px;
+            border: 1px solid #ccc;
+            border-radius: 12px;
+            cursor: pointer;
+            background: #fff;
+            transition: all 0.15s;
+        }
+        .vm-pill:hover { border-color: #999; }
+        .vm-pill.selected { background: #333; color: #fff; border-color: #333; }
+        .vm-pill.stopped { opacity: 0.5; }
+        .select-actions {
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .select-actions a {
+            color: #007bff;
+            cursor: pointer;
+            text-decoration: none;
+            margin-right: 12px;
+        }
+        .select-actions a:hover { text-decoration: underline; }
+        #charts { min-height: 200px; }
+    </style>
+</head>
+<body>
+{{template "topbar" .}}
+<div class="main-container">
+    <div class="section-header">
+        <span class="section-title">Usage</span>
+    </div>
+
+    {{if not .HasMetrics}}
+    <p style="color: #999;">Usage metrics are not available.</p>
+    {{else if not .VMs}}
+    <p style="color: #999;">No VMs to show usage for.</p>
+    {{else}}
+    <div class="select-actions">
+        <a id="selectAll">Select All</a>
+        <a id="selectNone">Select None</a>
+        <a id="selectRunning">Running Only</a>
+    </div>
+    <div class="vm-list" id="vmList">
+        {{range .VMs}}
+        <span class="vm-pill selected{{if eq .Status "stopped"}} stopped{{end}}" data-name="{{.Name}}" data-status="{{.Status}}">{{.Name}}</span>
+        {{end}}
+    </div>
+    <div id="charts"></div>
+
+    <script src="/static/usage-charts.js"></script>
+    <script>
+    (function() {
+        var pills = document.querySelectorAll('.vm-pill');
+        var chartsEl = document.getElementById('charts');
+        var currentOpts = {hours: 24, stacked: false};
+
+        function getSelected() {
+            var names = [];
+            pills.forEach(function(p) {
+                if (p.classList.contains('selected')) names.push(p.dataset.name);
+            });
+            return names;
+        }
+
+        function refresh() {
+            var names = getSelected();
+            if (names.length === 0) {
+                chartsEl.innerHTML = '<div class="usage-empty">Select one or more VMs to view usage.</div>';
+                return;
+            }
+            renderUsageCharts(chartsEl, '/usage-api', names, currentOpts);
+        }
+
+        pills.forEach(function(p) {
+            p.addEventListener('click', function() {
+                this.classList.toggle('selected');
+                refresh();
+            });
+        });
+
+        document.getElementById('selectAll').addEventListener('click', function() {
+            pills.forEach(function(p) { p.classList.add('selected'); });
+            refresh();
+        });
+        document.getElementById('selectNone').addEventListener('click', function() {
+            pills.forEach(function(p) { p.classList.remove('selected'); });
+            refresh();
+        });
+        document.getElementById('selectRunning').addEventListener('click', function() {
+            pills.forEach(function(p) {
+                if (p.dataset.status === 'running') p.classList.add('selected');
+                else p.classList.remove('selected');
+            });
+            refresh();
+        });
+
+        refresh();
+    })();
+    </script>
+    {{end}}
+</div>
+</body>
+</html>

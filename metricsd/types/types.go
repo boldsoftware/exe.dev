@@ -28,3 +28,14 @@ type Metric struct {
 type MetricsBatch struct {
 	Metrics []Metric `json:"metrics"`
 }
+
+// QueryVMsRequest is the request body for POST /query/vms
+type QueryVMsRequest struct {
+	VMNames []string `json:"vm_names"`
+	Hours   int      `json:"hours"`
+}
+
+// QueryVMsResponse is the response for POST /query/vms
+type QueryVMsResponse struct {
+	VMs map[string][]Metric `json:"vms"`
+}

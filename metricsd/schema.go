@@ -4,8 +4,10 @@ import "exe.dev/metricsd/types"
 
 // Re-export types for backward compatibility
 type (
-	Metric       = types.Metric
-	MetricsBatch = types.MetricsBatch
+	Metric           = types.Metric
+	MetricsBatch     = types.MetricsBatch
+	QueryVMsRequest  = types.QueryVMsRequest
+	QueryVMsResponse = types.QueryVMsResponse
 )
 
 // InsertSQL is the prepared statement for inserting metrics.
