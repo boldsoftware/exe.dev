@@ -14,6 +14,17 @@ struct ChannelView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.error, viewModel.conversationID == nil {
+                ContentUnavailableView {
+                    Label("Unable to Load", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") {
+                        Task { await viewModel.loadLatestConversation() }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.conversationID != nil {
                 MessageListView(viewModel: viewModel)
             } else {

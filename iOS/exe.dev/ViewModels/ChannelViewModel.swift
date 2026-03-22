@@ -55,6 +55,9 @@ final class ChannelViewModel {
             return
         }
 
+        error = nil
+        isLoading = conversationID == nil
+
         // Show cached conversation immediately if available
         if let cachedID = await syncEngine.latestConversationID(for: vmName) {
             conversationID = cachedID
@@ -70,16 +73,26 @@ final class ChannelViewModel {
         do {
             let conversations = try await api.listConversations(shelleyURL: shelleyURL)
             if let latest = conversations.first {
+                let previousID = conversationID
                 if latest.conversationID != conversationID {
                     if let old = conversationID {
                         await syncEngine.stopStream(conversationID: old)
                     }
                     conversationID = latest.conversationID
                 }
-                try await syncEngine.loadConversation(
-                    api: api, shelleyURL: shelleyURL,
-                    conversationID: latest.conversationID, vmName: vmName
-                )
+                do {
+                    try await syncEngine.loadConversation(
+                        api: api, shelleyURL: shelleyURL,
+                        conversationID: latest.conversationID, vmName: vmName
+                    )
+                } catch {
+                    // Roll back conversationID if we had no prior conversation,
+                    // so the error is visible instead of an empty message list.
+                    if previousID == nil {
+                        conversationID = nil
+                    }
+                    throw error
+                }
                 isLoading = false
                 // fetchMessages() will be called by the save notification
                 await syncEngine.startStream(
@@ -90,9 +103,7 @@ final class ChannelViewModel {
                 isLoading = false
             }
         } catch {
-            if conversationID == nil {
-                self.error = error.localizedDescription
-            }
+            self.error = error.localizedDescription
             isLoading = false
         }
     }

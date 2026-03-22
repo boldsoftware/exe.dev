@@ -46,11 +46,12 @@ final class APIClient: Sendable {
         request.httpBody = Data("ls --json".utf8)
         addAuth(&request)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try Self.decoder.decode(VMListResponse.self, from: data)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
+        let decoded = try Self.decoder.decode(VMListResponse.self, from: data)
 
-        var vms = response.vms
-        if let teamVMs = response.teamVMs {
+        var vms = decoded.vms
+        if let teamVMs = decoded.teamVMs {
             vms.append(contentsOf: teamVMs)
         }
         return vms
@@ -62,7 +63,8 @@ final class APIClient: Sendable {
         var request = URLRequest(url: URL(string: "\(shelleyURL)/api/conversations")!)
         addAuth(&request)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
         return try Self.decoder.decode([ConversationWithState].self, from: data)
     }
 
@@ -71,7 +73,8 @@ final class APIClient: Sendable {
         addAuth(&request)
         request.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
         return try Self.decoder.decode(StreamResponse.self, from: data)
     }
 
@@ -92,7 +95,8 @@ final class APIClient: Sendable {
         let body = ChatRequest(message: message, model: nil, cwd: nil)
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
         return try Self.decoder.decode(ChatResponse.self, from: data)
     }
 
@@ -108,7 +112,8 @@ final class APIClient: Sendable {
         let body = ChatRequest(message: message, model: nil, cwd: nil)
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
         return try Self.decoder.decode(ChatResponse.self, from: data)
     }
 
@@ -186,6 +191,13 @@ final class APIClient: Sendable {
     private func addAuth(_ request: inout URLRequest) {
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
+    private static func checkStatus(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 }
