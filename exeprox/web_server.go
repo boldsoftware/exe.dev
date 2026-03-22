@@ -404,6 +404,24 @@ func (epd *exewebProxyData) DeletePushToken(ctx context.Context, token, userID s
 	return nil
 }
 
+// ValidateAppToken implements [exeweb.AppTokenValidator].
+// App token validation reuses the CookieInfo gRPC, which already
+// recognizes app tokens by their exeapp_ prefix and validates them
+// on the exed side (see execore/exeprox.go CookieInfo).
+func (epd *exewebProxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
+	if !strings.HasPrefix(token, exeweb.AppTokenPrefix) {
+		return "", errors.New("not an app token")
+	}
+	cd, ok, err := epd.exeproxData().CookieInfo(ctx, token, "")
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", errors.New("invalid app token")
+	}
+	return cd.UserID, nil
+}
+
 // exeproxData is a helper method to return the exexproxData to use.
 func (epd *exewebProxyData) exeproxData() ExeproxData {
 	return epd.wp.proxy.exeproxData
