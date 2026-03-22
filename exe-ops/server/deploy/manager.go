@@ -35,6 +35,7 @@ type Manager struct {
 	cacheDir string // artifact cache root
 	log      *slog.Logger
 	client   *http.Client
+	notifier Notifier // optional; nil = no notifications
 }
 
 // NewManager creates a deploy manager.
@@ -61,6 +62,11 @@ func NewManager(ctx context.Context, log *slog.Logger, repoDir, cacheDir string)
 			},
 		},
 	}
+}
+
+// SetNotifier configures an optional deploy lifecycle notifier (e.g. Slack).
+func (m *Manager) SetNotifier(n Notifier) {
+	m.notifier = n
 }
 
 // Request describes a deploy to start.
@@ -107,6 +113,10 @@ func (m *Manager) Start(req Request) (Status, error) {
 	m.log.Info("deploy started",
 		"id", id, "process", req.Process,
 		"host", req.Host, "sha", req.SHA[:12])
+
+	if m.notifier != nil {
+		go m.notifier.DeployStarted(d.snapshot())
+	}
 
 	go m.execute(m.ctx, d)
 	return d.snapshot(), nil
@@ -208,6 +218,10 @@ func (m *Manager) finish(d *deploy) {
 	m.mu.Lock()
 	delete(m.active, d.activeKey())
 	m.mu.Unlock()
+
+	if m.notifier != nil {
+		m.notifier.DeployFinished(d.snapshot())
+	}
 }
 
 // ensureArtifact returns the path to a built binary and a human summary,

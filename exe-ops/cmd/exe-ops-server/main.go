@@ -98,6 +98,11 @@ func main() {
 				Value:   "git@github.com:boldsoftware/exe.git",
 				EnvVars: []string{"EXE_OPS_GIT_REPO_URL"},
 			},
+			&cli.StringFlag{
+				Name:    "slack-bot-token",
+				Usage:   "Slack bot token for deploy notifications (posts to #ship/#boat)",
+				EnvVars: []string{"EXE_SLACK_BOT_TOKEN"},
+			},
 		},
 		Action: func(c *cli.Context) error {
 			useTLS := c.Bool("tls")
@@ -155,6 +160,12 @@ func main() {
 
 			// Initialize deploy manager (shares the bare git clone with inventory).
 			deployer := deploy.NewManager(ctx, log, gitRepoDir, "deploy-cache")
+
+			// Optionally attach Slack notifications for deploys.
+			if sn := deploy.NewSlackNotifier(c.String("slack-bot-token"), log); sn != nil {
+				deployer.SetNotifier(sn)
+				log.Info("slack deploy notifications enabled")
+			}
 
 			handler := server.New(store, hub, c.String("token"), uiFS, log, ai, aiCfg, exedClient, inv, deployer)
 
