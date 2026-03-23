@@ -73,7 +73,7 @@ func run() error {
 
 	if *preflight {
 		slog.Info("preflight: running migrations", "db", *dbPath)
-		rawDB, err := sql.Open("sqlite3", *dbPath)
+		rawDB, err := sql.Open("sqlite", *dbPath)
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
