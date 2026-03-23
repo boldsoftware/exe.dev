@@ -27,6 +27,7 @@ struct VMDetailView: View {
             Picker("View", selection: $selectedTab) {
                 Text("Chat").tag(0)
                 Text("Web").tag(1)
+                Text("Term").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
@@ -50,6 +51,10 @@ struct VMDetailView: View {
 
                 if selectedTab == 1, !vm.isCreating, let url = URL(string: vm.httpsURL) {
                     VMWebView(url: url, token: token)
+                }
+
+                if selectedTab == 2, !vm.isCreating {
+                    VMTerminalView(vm: vm, token: token)
                 }
             }
         }

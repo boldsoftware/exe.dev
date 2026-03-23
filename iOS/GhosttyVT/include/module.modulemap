@@ -1,0 +1,4 @@
+module GhosttyVT {
+    umbrella header "ghostty/vt.h"
+    export *
+}

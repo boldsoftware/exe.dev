@@ -68,3 +68,5 @@ iOS/exe.dev.xcodeproj/project.xcworkspace/xcuserdata/
 .env*
 !.env.example
 /rollcalld
+# Built libghostty-vt binary (built from source by build-ghostty.sh)
+iOS/GhosttyVT/lib/

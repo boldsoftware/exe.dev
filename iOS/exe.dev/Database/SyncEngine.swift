@@ -75,13 +75,11 @@ actor SyncEngine {
 
         streamTasks[conversationID] = Task {
             let lastSeq = lastSequenceID(for: conversationID)
-            let stream = await MainActor.run {
-                api.streamConversation(
-                    shelleyURL: shelleyURL,
-                    conversationID: conversationID,
-                    lastSequenceID: lastSeq
-                )
-            }
+            let stream = api.streamConversation(
+                shelleyURL: shelleyURL,
+                conversationID: conversationID,
+                lastSequenceID: lastSeq
+            )
 
             do {
                 var pending: [ShelleyMessage] = []
