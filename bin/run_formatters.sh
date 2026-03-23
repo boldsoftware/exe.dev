@@ -24,6 +24,21 @@ git ls-files -- "*.go" | grep -v -E '^deps/sshpiper' | grep -v -E '(_string|\.ge
 echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."
+
+# Bootstrap node/pnpm if not available (common on exe.dev VMs)
+if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
+    NODE_DIR="${HOME}/.local/share/nodeenv"
+    if [ ! -x "${NODE_DIR}/bin/node" ]; then
+        echo "node/pnpm not found, installing via uvx nodeenv..."
+        uvx nodeenv --node=lts --prebuilt "${NODE_DIR}"
+    fi
+    export PATH="${NODE_DIR}/bin:${PATH}"
+    if ! command -v pnpm >/dev/null 2>&1; then
+        echo "Installing pnpm..."
+        npm install -g pnpm
+    fi
+fi
+
 cd shelley/ui
 if ! pnpm exec prettier --version >/dev/null 2>&1; then
     echo "prettier not found, running pnpm install..."
