@@ -19,6 +19,9 @@ actor SyncEngine {
         let storedByName = Dictionary(uniqueKeysWithValues: stored.map { ($0.vmName, $0) })
 
         for vm in stored where !existingNames.contains(vm.vmName) {
+            // Don't delete placeholders for VMs still being created — the server
+            // may not have inserted the DB row yet.
+            if vm.isCreating { continue }
             modelContext.delete(vm)
         }
 
@@ -149,6 +152,20 @@ actor SyncEngine {
             task.cancel()
         }
         streamTasks.removeAll()
+    }
+
+    // MARK: - Placeholder VM for creation
+
+    /// Inserts a placeholder VM with status "creating" so it appears in the list immediately.
+    func insertCreatingVM(hostname: String) {
+        let name = hostname
+        let predicate = #Predicate<StoredVM> { $0.vmName == name }
+        if (try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first) != nil {
+            return // Already exists
+        }
+        let placeholder = StoredVM(creating: hostname)
+        modelContext.insert(placeholder)
+        try? saveAndNotify()
     }
 
     // MARK: - Unread Tracking

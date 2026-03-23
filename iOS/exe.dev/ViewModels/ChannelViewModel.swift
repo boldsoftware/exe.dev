@@ -16,7 +16,7 @@ struct PendingMessage: Identifiable {
 @MainActor @Observable
 final class ChannelViewModel {
     let vmName: String
-    let shelleyURL: String?
+    var shelleyURL: String?
     private(set) var conversationID: String?
     private(set) var isLoading = true
     private(set) var error: String?
@@ -69,41 +69,58 @@ final class ChannelViewModel {
             )
         }
 
-        // Refresh from API
-        do {
-            let conversations = try await api.listConversations(shelleyURL: shelleyURL)
-            if let latest = conversations.first {
-                let previousID = conversationID
-                if latest.conversationID != conversationID {
-                    if let old = conversationID {
-                        await syncEngine.stopStream(conversationID: old)
-                    }
-                    conversationID = latest.conversationID
+        // Refresh from API with retries — shelley may still be starting up.
+        let delays: [Duration] = [.seconds(0), .seconds(2), .seconds(3), .seconds(5)]
+        for (attempt, delay) in delays.enumerated() {
+            if attempt > 0 {
+                try? await Task.sleep(for: delay)
+                if Task.isCancelled { return }
+            }
+
+            do {
+                try await refreshFromAPI(shelleyURL: shelleyURL)
+                return // success
+            } catch {
+                if attempt == delays.count - 1 {
+                    // Final attempt failed — show the error.
+                    self.error = error.localizedDescription
+                    isLoading = false
                 }
-                do {
-                    try await syncEngine.loadConversation(
-                        api: api, shelleyURL: shelleyURL,
-                        conversationID: latest.conversationID, vmName: vmName
-                    )
-                } catch {
-                    // Roll back conversationID if we had no prior conversation,
-                    // so the error is visible instead of an empty message list.
-                    if previousID == nil {
-                        conversationID = nil
-                    }
-                    throw error
+                // Otherwise retry silently.
+            }
+        }
+    }
+
+    private func refreshFromAPI(shelleyURL: String) async throws {
+        let conversations = try await api.listConversations(shelleyURL: shelleyURL)
+        if let latest = conversations.first {
+            let previousID = conversationID
+            if latest.conversationID != conversationID {
+                if let old = conversationID {
+                    await syncEngine.stopStream(conversationID: old)
                 }
-                isLoading = false
-                // fetchMessages() will be called by the save notification
-                await syncEngine.startStream(
+                conversationID = latest.conversationID
+            }
+            do {
+                try await syncEngine.loadConversation(
                     api: api, shelleyURL: shelleyURL,
                     conversationID: latest.conversationID, vmName: vmName
                 )
-            } else if conversationID == nil {
-                isLoading = false
+            } catch {
+                // Roll back conversationID if we had no prior conversation,
+                // so the error is visible instead of an empty message list.
+                if previousID == nil {
+                    conversationID = nil
+                }
+                throw error
             }
-        } catch {
-            self.error = error.localizedDescription
+            isLoading = false
+            // fetchMessages() will be called by the save notification
+            await syncEngine.startStream(
+                api: api, shelleyURL: shelleyURL,
+                conversationID: latest.conversationID, vmName: vmName
+            )
+        } else if conversationID == nil {
             isLoading = false
         }
     }

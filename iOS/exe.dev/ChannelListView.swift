@@ -12,9 +12,11 @@ struct ChannelListView: View {
     @State private var selectedVMName: String?
     @State private var showingNewVM = false
     @State private var pollingTask: Task<Void, Never>?
+    @State private var creationWatchTask: Task<Void, Never>?
 
-    private var runningVMs: [StoredVM] { allVMs.filter(\.isRunning) }
-    private var stoppedVMs: [StoredVM] { allVMs.filter { !$0.isRunning } }
+    private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
+    private var runningVMs: [StoredVM] { allVMs.filter { $0.isRunning && !$0.isCreating } }
+    private var stoppedVMs: [StoredVM] { allVMs.filter { !$0.isRunning && !$0.isCreating } }
 
     var body: some View {
         NavigationSplitView {
@@ -80,7 +82,9 @@ struct ChannelListView: View {
             await loadVMs()
             startPolling()
         }
-        .onDisappear { pollingTask?.cancel() }
+        .onDisappear {
+            pollingTask?.cancel()
+        }
         .overlay(alignment: .bottomTrailing) {
             Button {
                 showingNewVM = true
@@ -97,8 +101,10 @@ struct ChannelListView: View {
         .sheet(isPresented: $showingNewVM) {
             NewVMView(api: api) { hostname in
                 Task {
-                    await loadVMs()
+                    // Insert placeholder immediately so it appears in the list.
+                    await syncEngine.insertCreatingVM(hostname: hostname)
                     selectedVMName = hostname
+                    watchCreation(hostname: hostname)
                 }
             }
         }
@@ -106,6 +112,13 @@ struct ChannelListView: View {
 
     private var vmList: some View {
         List(selection: $selectedVMName) {
+            if !creatingVMs.isEmpty {
+                Section("Creating") {
+                    ForEach(creatingVMs) { vm in
+                        vmRow(vm)
+                    }
+                }
+            }
             if !runningVMs.isEmpty {
                 Section("Running") {
                     ForEach(runningVMs) { vm in
@@ -132,7 +145,10 @@ struct ChannelListView: View {
             Text(vm.vmName)
                 .font(.system(.body, design: .monospaced))
             Spacer()
-            if vm.unreadCount > 0 {
+            if vm.isCreating {
+                ProgressView()
+                    .controlSize(.small)
+            } else if vm.unreadCount > 0 {
                 Text("\(vm.unreadCount)")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
@@ -141,11 +157,11 @@ struct ChannelListView: View {
                     .background(.red, in: Capsule())
             }
             Circle()
-                .fill(vm.isRunning ? .green : .gray.opacity(0.4))
+                .fill(vm.isCreating ? .orange : vm.isRunning ? .green : .gray.opacity(0.4))
                 .frame(width: 8, height: 8)
         }
         .tag(vm.vmName)
-        .disabled(vm.shelleyURL == nil)
+        .disabled(!vm.isRunning && !vm.isCreating)
     }
 
     private func loadVMs() async {
@@ -167,6 +183,21 @@ struct ChannelListView: View {
                 try? await Task.sleep(for: .seconds(30))
                 if Task.isCancelled { break }
                 await refreshUnreadCounts(api: api, syncEngine: syncEngine)
+            }
+        }
+    }
+
+    /// Polls VM list every 2s until the given hostname is running (or 5 minutes elapse).
+    private func watchCreation(hostname: String) {
+        creationWatchTask?.cancel()
+        creationWatchTask = Task {
+            for _ in 0..<150 {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                try? await syncEngine.refreshVMs(api: api)
+                if let vm = allVMs.first(where: { $0.vmName == hostname }), vm.isRunning {
+                    break
+                }
             }
         }
     }

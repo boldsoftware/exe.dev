@@ -291,6 +291,7 @@ struct HostnameCheckResponse: Decodable {
     var unreadCount: Int = 0
 
     var isRunning: Bool { status == "running" }
+    var isCreating: Bool { status == "creating" || status == "pending" || status == "building" }
 
     init(from vm: VM) {
         self.vmName = vm.vmName
@@ -302,6 +303,16 @@ struct HostnameCheckResponse: Decodable {
         self.image = vm.image
         self.regionDisplay = vm.regionDisplay
         self.creatorEmail = vm.creatorEmail
+        self.lastFetchedAt = Date()
+    }
+
+    /// Placeholder for a VM that is being created (not yet returned by the API).
+    init(creating hostname: String) {
+        self.vmName = hostname
+        self.sshDest = ""
+        self.status = "creating"
+        self.region = ""
+        self.httpsURL = ""
         self.lastFetchedAt = Date()
     }
 

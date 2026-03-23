@@ -31,16 +31,17 @@ struct VMDetailView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+            .disabled(vm.isCreating)
 
             ZStack {
-                ChannelView(viewModel: channelViewModel)
-                    .opacity(selectedTab == 0 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 0)
+                if vm.isCreating {
+                    VMCreatingView(vmName: vm.vmName)
+                } else {
+                    ChannelView(viewModel: channelViewModel)
+                }
 
-                if let url = URL(string: vm.httpsURL) {
+                if selectedTab == 1, !vm.isCreating, let url = URL(string: vm.httpsURL) {
                     VMWebView(url: url, token: token)
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 1)
                 }
             }
         }
@@ -49,5 +50,42 @@ struct VMDetailView: View {
         .task {
             await syncEngine.markVMAsRead(vmName: vm.vmName)
         }
+        .task(id: vm.isCreating) {
+            // Poll aggressively while the VM is being created.
+            guard vm.isCreating else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                try? await syncEngine.refreshVMs(api: api)
+            }
+        }
+        .onChange(of: vm.shelleyURL) { _, newURL in
+            if let newURL, channelViewModel.shelleyURL == nil {
+                channelViewModel.shelleyURL = newURL
+                Task { await channelViewModel.loadLatestConversation() }
+            }
+        }
+    }
+}
+
+/// Shown in the chat area while a VM is being created.
+private struct VMCreatingView: View {
+    let vmName: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            ProgressView()
+                .controlSize(.large)
+            Text("Creating \(vmName)...")
+                .font(.headline)
+            Text("You can navigate away — we'll keep going in the background.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
