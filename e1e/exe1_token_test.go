@@ -446,8 +446,10 @@ func TestExe1TokenCmdsRestricted(t *testing.T) {
 	}
 }
 
-// TestExe1TokenProxyBearer tests that an exe1 token works as Bearer for proxy HTTP requests.
-func TestExe1TokenProxyBearer(t *testing.T) {
+// TestExe1TokenProxy tests exe1 token auth for proxy HTTP requests.
+// It shares a single user+box+httpd across subtests for bearer, basic auth,
+// invalid tokens, and header stripping.
+func TestExe1TokenProxy(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
@@ -458,125 +460,88 @@ func TestExe1TokenProxyBearer(t *testing.T) {
 	pty.Disconnect()
 	waitForSSH(t, box, keyFile)
 
-	// Start HTTP server on the box.
-	serveIndex(t, box, keyFile, "proxy-bearer-test")
+	// Start HTTP server with both static content and CGI headers endpoint.
+	startHTTPServer(t, box, keyFile, 8080)
+	makeIndex := boxSSHCommand(t, box, keyFile, "sh", "-c", "'echo alive > /home/exedev/index.html'")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v", err)
+	}
+	writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
+mkdir -p /home/exedev/cgi-bin
+cat <<'EOF' >/home/exedev/cgi-bin/headers
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo
+env
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`)
+	if err := writeCGI.Run(); err != nil {
+		t.Fatalf("failed to configure header CGI: %v", err)
+	}
 
 	// Configure as private route.
 	configureProxyRoute(t, keyFile, box, 8080, "private")
 
-	// Generate exe0 token scoped to the VM, trade for exe1.
+	// Generate a valid exe1 token.
 	signer := loadTestSigner(t, keyFile)
 	exe0Token := generateToken(t, signer, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
-
 	exe1Token, err := tradeExe0ForExe1(t, keyFile, exe0Token, "--vm="+box)
 	if err != nil {
 		t.Fatalf("trade failed: %v", err)
 	}
 
-	// Use exe1 token as Bearer for proxy request.
 	httpPort := Env.servers.Exeprox.HTTPPort
 	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
-	client := noRedirectClient(nil)
-	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+exe1Token)
+	cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
+	t.Run("bearer", func(t *testing.T) {
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+exe1Token)
 
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
-	}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
 
-	if !strings.Contains(string(body), "proxy-bearer-test") {
-		t.Errorf("expected body to contain 'proxy-bearer-test', got: %s", body)
-	}
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Errorf("expected body to contain 'alive', got: %s", body)
+		}
+	})
 
-	cleanupBox(t, keyFile, box)
-}
+	t.Run("basic_auth", func(t *testing.T) {
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.SetBasicAuth("anyuser", exe1Token)
 
-// TestExe1TokenProxyBasic tests that an exe1 token works as Basic auth password for proxy.
-func TestExe1TokenProxyBasic(t *testing.T) {
-	t.Parallel()
-	reserveVMs(t, 1)
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
 
-	pty, _, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.Disconnect()
-	waitForSSH(t, box, keyFile)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Errorf("expected body to contain 'alive', got: %s", body)
+		}
+	})
 
-	// Start HTTP server on the box.
-	serveIndex(t, box, keyFile, "proxy-basic-test")
-
-	// Configure as private route.
-	configureProxyRoute(t, keyFile, box, 8080, "private")
-
-	// Generate exe0 token scoped to the VM, trade for exe1.
-	signer := loadTestSigner(t, keyFile)
-	exe0Token := generateToken(t, signer, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
-
-	exe1Token, err := tradeExe0ForExe1(t, keyFile, exe0Token, "--vm="+box)
-	if err != nil {
-		t.Fatalf("trade failed: %v", err)
-	}
-
-	// Use exe1 token as Basic auth password for proxy request.
-	httpPort := Env.servers.Exeprox.HTTPPort
-	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
-	client := noRedirectClient(nil)
-	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-	req.SetBasicAuth("anyuser", exe1Token)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
-	}
-
-	if !strings.Contains(string(body), "proxy-basic-test") {
-		t.Errorf("expected body to contain 'proxy-basic-test', got: %s", body)
-	}
-
-	cleanupBox(t, keyFile, box)
-}
-
-// TestExe1TokenInvalid tests that a non-existent exe1 token returns 401.
-func TestExe1TokenInvalid(t *testing.T) {
-	t.Parallel()
-	reserveVMs(t, 1)
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.Disconnect()
-	waitForSSH(t, box, keyFile)
-
-	// Start HTTP server on the box.
-	serveIndex(t, box, keyFile, "invalid-token-test")
-
-	// Configure as private route.
-	configureProxyRoute(t, keyFile, box, 8080, "private")
-
-	fakeToken := "exe1.LYESXTHXY46PCIGQ3RUISD64W2"
-
-	t.Run("format_invalid_exec_api", func(t *testing.T) {
+	t.Run("invalid_format_exec_api", func(t *testing.T) {
 		formatInvalid := "exe1.doesnotexist"
 		baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 		req, err := http.NewRequest("POST", baseURL+"/exec", strings.NewReader("whoami"))
@@ -597,7 +562,9 @@ func TestExe1TokenInvalid(t *testing.T) {
 		}
 	})
 
-	t.Run("exec_api", func(t *testing.T) {
+	fakeToken := "exe1.LYESXTHXY46PCIGQ3RUISD64W2"
+
+	t.Run("invalid_exec_api", func(t *testing.T) {
 		baseURL := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
 		req, err := http.NewRequest("POST", baseURL+"/exec", strings.NewReader("whoami"))
 		if err != nil {
@@ -617,9 +584,7 @@ func TestExe1TokenInvalid(t *testing.T) {
 		}
 	})
 
-	t.Run("proxy_bearer", func(t *testing.T) {
-		httpPort := Env.servers.Exeprox.HTTPPort
-		proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
+	t.Run("invalid_proxy_bearer", func(t *testing.T) {
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 		if err != nil {
@@ -639,9 +604,7 @@ func TestExe1TokenInvalid(t *testing.T) {
 		}
 	})
 
-	t.Run("proxy_basic", func(t *testing.T) {
-		httpPort := Env.servers.Exeprox.HTTPPort
-		proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, httpPort)
+	t.Run("invalid_proxy_basic", func(t *testing.T) {
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 		if err != nil {
@@ -661,56 +624,7 @@ func TestExe1TokenInvalid(t *testing.T) {
 		}
 	})
 
-	cleanupBox(t, keyFile, box)
-}
-
-// TestExe1TokenStripping verifies that exe1 token auth headers are stripped
-// when proxying to the VM backend.
-func TestExe1TokenStripping(t *testing.T) {
-	t.Parallel()
-	reserveVMs(t, 1)
-	e1eTestsOnlyRunOnce(t)
-	noGolden(t)
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, testinfra.BoxOpts{Command: "/bin/bash"})
-	pty.Disconnect()
-	waitForSSH(t, box, keyFile)
-
-	// Start HTTP server on the box.
-	startHTTPServer(t, box, keyFile, 8080)
-
-	// Create a CGI script that echoes all env vars (to inspect forwarded headers).
-	writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
-mkdir -p /home/exedev/cgi-bin
-cat <<'EOF' >/home/exedev/cgi-bin/headers
-#!/bin/sh
-echo "Content-Type: text/plain"
-echo
-env
-EOF
-chmod +x /home/exedev/cgi-bin/headers
-`)
-	if err := writeCGI.Run(); err != nil {
-		t.Fatalf("failed to configure header CGI: %v", err)
-	}
-
-	// Configure as private route.
-	configureProxyRoute(t, keyFile, box, 8080, "private")
-
-	// Generate exe0 token scoped to the VM, trade for exe1.
-	signer := loadTestSigner(t, keyFile)
-	exe0Token := generateToken(t, signer, `{}`, "v0@"+box+"."+stage.Test().BoxHost)
-
-	exe1Token, err := tradeExe0ForExe1(t, keyFile, exe0Token, "--vm="+box)
-	if err != nil {
-		t.Fatalf("trade failed: %v", err)
-	}
-
-	httpPort := Env.servers.Exeprox.HTTPPort
-
 	t.Run("bearer_stripped", func(t *testing.T) {
-		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
 		if err != nil {
@@ -732,19 +646,15 @@ chmod +x /home/exedev/cgi-bin/headers
 		body, _ := io.ReadAll(resp.Body)
 		envMap := parseCGIEnv(body)
 
-		// The Authorization header should have been stripped.
 		if auth := envMap["HTTP_AUTHORIZATION"]; auth != "" {
 			t.Errorf("expected Authorization header to be stripped, got %q", auth)
 		}
-
-		// But user identity headers should be present (proving auth worked).
 		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
 			t.Errorf("expected X-ExeDev-UserID header to be set")
 		}
 	})
 
 	t.Run("basic_auth_stripped", func(t *testing.T) {
-		cgiURL := fmt.Sprintf("http://%s.exe.cloud:%d/cgi-bin/headers", box, httpPort)
 		client := noRedirectClient(nil)
 		req, err := localhostRequestWithHostHeader("GET", cgiURL, nil)
 		if err != nil {
@@ -766,12 +676,9 @@ chmod +x /home/exedev/cgi-bin/headers
 		body, _ := io.ReadAll(resp.Body)
 		envMap := parseCGIEnv(body)
 
-		// The Authorization header should have been stripped.
 		if auth := envMap["HTTP_AUTHORIZATION"]; auth != "" {
 			t.Errorf("expected Authorization header to be stripped, got %q", auth)
 		}
-
-		// But user identity headers should be present (proving auth worked).
 		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
 			t.Errorf("expected X-ExeDev-UserID header to be set")
 		}
