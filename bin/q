@@ -155,6 +155,17 @@ def can_rebase_cleanly(ref, onto="origin/main"):
     return True
 
 
+def run_generate():
+    """Run go generate and fail if it produces uncommitted changes."""
+    print("q: running go generate...", file=sys.stderr)
+    run(["go", "generate", "./..."], capture=False)
+    if subprocess.run(["git", "diff", "--quiet"], capture_output=True).returncode != 0:
+        print("q: go generate produced changes; commit them first", file=sys.stderr)
+        git("--no-pager", "diff", "--stat", capture=False)
+        raise SystemExit(1)
+    print("q: go generate clean", file=sys.stderr)
+
+
 def run_linters():
     """Run custom linters (go vet + exelint). Raises SystemExit on failure."""
     print("q: running linters...", file=sys.stderr)
@@ -228,6 +239,8 @@ def main():
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("ref", nargs="?", default="HEAD", help="ref to push (default: HEAD)")
+    p.add_argument("--no-generate", "-G", action="store_true",
+                    help="skip running go generate")
     p.add_argument("--no-format", "-F", action="store_true",
                     help="skip running formatters")
     p.add_argument("--no-lint", "-L", action="store_true",
@@ -298,6 +311,10 @@ def main():
                 raise SystemExit(1)
             print("q: rebase looks clean, rebasing...", file=sys.stderr)
             git("rebase", "origin/main")
+
+    # --- Generate ---
+    if not args.no_generate:
+        run_generate()
 
     # --- Formatters ---
     if not args.no_format:
