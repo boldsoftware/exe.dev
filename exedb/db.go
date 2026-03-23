@@ -621,6 +621,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
+	if q.getUserCgroupOverridesByHostStmt, err = db.PrepareContext(ctx, getUserCgroupOverridesByHost); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserCgroupOverridesByHost: %w", err)
+	}
 	if q.getUserDefaultsStmt, err = db.PrepareContext(ctx, getUserDefaults); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserDefaults: %w", err)
 	}
@@ -2134,6 +2137,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getUserCgroupOverridesByHostStmt != nil {
+		if cerr := q.getUserCgroupOverridesByHostStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserCgroupOverridesByHostStmt: %w", cerr)
+		}
+	}
 	if q.getUserDefaultsStmt != nil {
 		if cerr := q.getUserDefaultsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserDefaultsStmt: %w", cerr)
@@ -3227,6 +3235,7 @@ type Queries struct {
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByDiscordUsernameStmt               *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
+	getUserCgroupOverridesByHostStmt           *sql.Stmt
 	getUserDefaultsStmt                        *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
@@ -3603,6 +3612,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByDiscordUsernameStmt:               q.getUserByDiscordUsernameStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
+		getUserCgroupOverridesByHostStmt:           q.getUserCgroupOverridesByHostStmt,
 		getUserDefaultsStmt:                        q.getUserDefaultsStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,

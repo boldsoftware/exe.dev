@@ -44,26 +44,19 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect unique user IDs so we can fetch user-level overrides.
-	userIDs := make(map[string]bool)
-	for _, box := range boxes {
-		userIDs[box.CreatedByUserID] = true
+	// Fetch user-level cgroup overrides for all users with boxes on this host.
+	overrideRows, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserCgroupOverridesByHost, host)
+	switch {
+	case errors.Is(err, context.Canceled):
+		return
+	case err != nil:
+		s.slog().ErrorContext(ctx, "failed to get user cgroup overrides for exelet desired state", "host", host, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
-
-	// Fetch user records for cgroup overrides.
-	userOverrides := make(map[string][]desiredstate.CgroupSetting)
-	for userID := range userIDs {
-		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-		switch {
-		case errors.Is(err, context.Canceled):
-			return
-		case err != nil:
-			s.slog().ErrorContext(ctx, "failed to get user for exelet desired state", "user_id", userID, "error", err)
-			continue
-		}
-		if user.CgroupOverrides != nil {
-			userOverrides[userID] = desiredstate.ParseOverrides(*user.CgroupOverrides)
-		}
+	userOverrides := make(map[string][]desiredstate.CgroupSetting, len(overrideRows))
+	for _, row := range overrideRows {
+		userOverrides[row.UserID] = desiredstate.ParseOverrides(*row.CgroupOverrides)
 	}
 
 	// Build the desired state response.

@@ -45,6 +45,12 @@ SELECT b.*
 FROM boxes b
 WHERE b.ctrhost = ? AND b.status != 'failed';
 
+-- name: GetUserCgroupOverridesByHost :many
+SELECT DISTINCT u.user_id, u.cgroup_overrides
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.ctrhost = ? AND b.status != 'failed' AND u.cgroup_overrides IS NOT NULL;
+
 -- name: GetBoxSSHDetails :one
 SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, m.ctrhost, m.ssh_user
 FROM boxes m

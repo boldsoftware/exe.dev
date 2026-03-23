@@ -607,6 +607,41 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 	return items, nil
 }
 
+const getUserCgroupOverridesByHost = `-- name: GetUserCgroupOverridesByHost :many
+SELECT DISTINCT u.user_id, u.cgroup_overrides
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.ctrhost = ? AND b.status != 'failed' AND u.cgroup_overrides IS NOT NULL
+`
+
+type GetUserCgroupOverridesByHostRow struct {
+	UserID          string  `db:"user_id" json:"user_id"`
+	CgroupOverrides *string `db:"cgroup_overrides" json:"cgroup_overrides"`
+}
+
+func (q *Queries) GetUserCgroupOverridesByHost(ctx context.Context, ctrhost string) ([]GetUserCgroupOverridesByHostRow, error) {
+	rows, err := q.query(ctx, q.getUserCgroupOverridesByHostStmt, getUserCgroupOverridesByHost, ctrhost)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserCgroupOverridesByHostRow{}
+	for rows.Next() {
+		var i GetUserCgroupOverridesByHostRow
+		if err := rows.Scan(&i.UserID, &i.CgroupOverrides); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUsersWithOutOfRegionBoxes = `-- name: GetUsersWithOutOfRegionBoxes :many
 SELECT u.user_id, u.email, u.region AS user_region, COUNT(*) AS box_count
 FROM users u
