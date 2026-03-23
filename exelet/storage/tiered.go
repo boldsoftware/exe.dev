@@ -13,11 +13,11 @@ import (
 // It implements StorageManager by delegating to the primary pool,
 // making it a drop-in replacement for single-pool configurations.
 type TieredStorageManager struct {
-	primary       StorageManager
-	pools         map[string]StorageManager       // pool name -> StorageManager
-	poolNames     []string                        // ordered list (primary first)
-	backupPool    string                          // pool name to use as last resort in resolution
-	poolMetadata  map[string]map[string]string    // pool name -> operator-defined metadata
+	primary      StorageManager
+	pools        map[string]StorageManager    // pool name -> StorageManager
+	poolNames    []string                     // ordered list (primary first)
+	backupPool   string                       // pool name to use as last resort in resolution
+	poolMetadata map[string]map[string]string // pool name -> operator-defined metadata
 }
 
 // NewTieredStorageManager creates a TieredStorageManager with a primary pool

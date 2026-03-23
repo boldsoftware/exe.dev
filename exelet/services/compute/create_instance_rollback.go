@@ -43,7 +43,7 @@ type createInstanceRollback struct {
 	// storageOverride, if set, is used for Unmount/Delete instead of
 	// serviceContext.StorageManager. This is needed when the clone was
 	// created on a non-primary pool via a resolved StorageManager.
-	storageOverride    storage.StorageManager
+	storageOverride storage.StorageManager
 }
 
 // EnhanceErrorWithBootLog reads the VM boot log and appends it to the error for debugging.

@@ -41,10 +41,11 @@ func (m *mockStorageManager) Get(_ context.Context, id string) (*api.Filesystem,
 	}
 	return fs, nil
 }
+
 func (m *mockStorageManager) Create(_ context.Context, _ string, _ *api.FilesystemConfig) (*api.Filesystem, error) {
 	return nil, nil
 }
-func (m *mockStorageManager) Clone(_ context.Context, _, _ string) error       { return nil }
+func (m *mockStorageManager) Clone(_ context.Context, _, _ string) error { return nil }
 func (m *mockStorageManager) Expand(_ context.Context, _ string, _ uint64, _ bool) error {
 	return nil
 }
@@ -52,24 +53,27 @@ func (m *mockStorageManager) Shrink(_ context.Context, _ string) error { return 
 func (m *mockStorageManager) Load(_ context.Context, id string) (*api.Filesystem, error) {
 	return m.Get(context.Background(), id)
 }
+
 func (m *mockStorageManager) Mount(_ context.Context, _ string) (*api.FilesystemMountConfig, error) {
 	return nil, nil
 }
-func (m *mockStorageManager) Unmount(_ context.Context, _ string) error        { return nil }
-func (m *mockStorageManager) Rename(_ context.Context, _, _ string) error      { return nil }
-func (m *mockStorageManager) Fsck(_ context.Context, _ string) error           { return nil }
+func (m *mockStorageManager) Unmount(_ context.Context, _ string) error   { return nil }
+func (m *mockStorageManager) Rename(_ context.Context, _, _ string) error { return nil }
+func (m *mockStorageManager) Fsck(_ context.Context, _ string) error      { return nil }
 func (m *mockStorageManager) Delete(_ context.Context, id string) error {
 	delete(m.datasets, id)
 	return nil
 }
-func (m *mockStorageManager) GetDatasetName(id string) string                  { return m.name + "/" + id }
-func (m *mockStorageManager) GetOrigin(_ string) string                        { return "" }
+func (m *mockStorageManager) GetDatasetName(id string) string { return m.name + "/" + id }
+func (m *mockStorageManager) GetOrigin(_ string) string       { return "" }
 func (m *mockStorageManager) CreateMigrationSnapshot(_ context.Context, _ string) (string, func(), error) {
 	return "", func() {}, nil
 }
+
 func (m *mockStorageManager) SendSnapshot(_ context.Context, _ string, _ bool, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }
+
 func (m *mockStorageManager) ReceiveSnapshot(_ context.Context, _ string, _ io.Reader) error {
 	return nil
 }

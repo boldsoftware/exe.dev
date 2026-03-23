@@ -42,12 +42,12 @@ type Service struct {
 	// reconcileCtx is stored in the struct (rather than passed per-call) because
 	// background reconcile goroutines outlive the gRPC request that triggers them.
 	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
-	reconcileCtx    context.Context
-	reconcileCancel context.CancelFunc
+	reconcileCtx          context.Context
+	reconcileCancel       context.CancelFunc
 	tierMigrationSem      chan struct{} // semaphore limiting concurrent tier migrations
-	tierMigrationFailures []time.Time  // timestamps of recent migration failures
-	tierMigrationDisabled bool         // true if circuit breaker tripped
-	tierMigrationMu       sync.Mutex   // protects tierMigrationFailures and tierMigrationDisabled
+	tierMigrationFailures []time.Time   // timestamps of recent migration failures
+	tierMigrationDisabled bool          // true if circuit breaker tripped
+	tierMigrationMu       sync.Mutex    // protects tierMigrationFailures and tierMigrationDisabled
 }
 
 // New returns a new service.
