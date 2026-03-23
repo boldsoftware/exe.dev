@@ -24,6 +24,9 @@ var subagentSystemPromptTemplate string
 //go:embed orchestrator_system_prompt.txt
 var orchestratorSystemPromptTemplate string
 
+//go:embed operational_context.txt
+var operationalContextTemplate string
+
 //go:embed orchestrator_subagent_system_prompt.txt
 var orchestratorSubagentSystemPromptTemplate string
 
@@ -375,22 +378,29 @@ func isSudoAvailable() bool {
 	return err == nil
 }
 
-// SubagentSystemPromptData contains data for subagent system prompts (minimal subset)
+// SubagentSystemPromptData contains data for subagent system prompts (minimal subset).
+// Used in two contexts:
+//   - Non-orchestrator subagents (GenerateSubagentSystemPrompt): WorkingDirectory, GitInfo,
+//     ShelleyDBPath, and ConversationID are populated; OperationalContext is not used.
+//   - Orchestrator subagents (GenerateOrchestratorSubagentSystemPrompt): only OperationalContext
+//     is populated (it already contains pwd, git root, codebase info, etc.).
 type SubagentSystemPromptData struct {
-	WorkingDirectory string
-	GitInfo          *GitInfo
-	ShelleyDBPath    string
-	ConversationID   string // Parent conversation ID for querying user messages
+	WorkingDirectory   string
+	GitInfo            *GitInfo
+	ShelleyDBPath      string
+	ConversationID     string // Parent conversation ID for querying user messages
+	OperationalContext string // Rendered operational context (orchestrator subagents only)
 }
 
 // OrchestratorSystemPromptData contains data for orchestrator system prompts.
 type OrchestratorSystemPromptData struct {
-	WorkingDirectory string
-	GitInfo          *GitInfo
-	ContextDir       string
-	Codebase         *CodebaseInfo
-	ShelleyDBPath    string
-	ConversationID   string // This conversation's ID for querying user messages
+	WorkingDirectory           string
+	GitInfo                    *GitInfo
+	ContextDir                 string
+	Codebase                   *CodebaseInfo
+	ShelleyDBPath              string
+	ConversationID             string // This conversation's ID for querying user messages
+	IncludeConversationHistory bool   // Whether to include the sqlite query in operational context
 }
 
 // GenerateSubagentSystemPrompt generates a minimal system prompt for subagent conversations.
@@ -430,7 +440,48 @@ func GenerateSubagentSystemPrompt(workingDir, parentConversationID string) (stri
 	return collapseBlankLines(buf.String()), nil
 }
 
+// renderOperationalContext renders the operational context template for the given working directory
+// and conversation ID. If includeConversationHistory is true, the sqlite query for looking up
+// user messages is included (useful for subagents, not needed by the orchestrator).
+func renderOperationalContext(workingDir, conversationID string, includeConversationHistory bool) (string, error) {
+	if workingDir == "" {
+		var err error
+		workingDir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+
+	data := &OrchestratorSystemPromptData{
+		WorkingDirectory:           workingDir,
+		ShelleyDBPath:              DBPath,
+		ConversationID:             conversationID,
+		IncludeConversationHistory: includeConversationHistory,
+	}
+
+	if gitInfo, err := collectGitInfo(workingDir); err == nil {
+		data.GitInfo = gitInfo
+	}
+
+	if codebaseInfo, err := collectCodebaseInfo(workingDir, data.GitInfo); err == nil {
+		data.Codebase = codebaseInfo
+	}
+
+	tmpl, err := template.New("operational_context").Parse(operationalContextTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse operational context template: %w", err)
+	}
+
+	var buf strings.Builder
+	if err = tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute operational context template: %w", err)
+	}
+
+	return collapseBlankLines(buf.String()), nil
+}
+
 // GenerateOrchestratorSystemPrompt generates the system prompt for orchestrator conversations.
+// Operational context (without conversation history) is appended to the prompt.
 func GenerateOrchestratorSystemPrompt(workingDir, contextDir, conversationID string) (string, error) {
 	wd := workingDir
 	if wd == "" {
@@ -448,51 +499,34 @@ func GenerateOrchestratorSystemPrompt(workingDir, contextDir, conversationID str
 		ConversationID:   conversationID,
 	}
 
-	gitInfo, err := collectGitInfo(wd)
-	if err == nil {
-		data.GitInfo = gitInfo
-	}
-
-	codebaseInfo, err := collectCodebaseInfo(wd, data.GitInfo)
-	if err == nil {
-		data.Codebase = codebaseInfo
-	}
-
 	tmpl, err := template.New("orchestrator_system_prompt").Parse(orchestratorSystemPromptTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse orchestrator template: %w", err)
 	}
 
 	var buf strings.Builder
-	err = tmpl.Execute(&buf, data)
-	if err != nil {
+	if err = tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("failed to execute orchestrator template: %w", err)
 	}
 
-	return collapseBlankLines(buf.String()), nil
+	operationalCtx, err := renderOperationalContext(wd, conversationID, false)
+	if err != nil {
+		return "", err
+	}
+
+	return collapseBlankLines(buf.String() + "\n\n" + operationalCtx), nil
 }
 
 // GenerateOrchestratorSubagentSystemPrompt generates the system prompt for
 // subagents spawned by an orchestrator conversation.
 func GenerateOrchestratorSubagentSystemPrompt(workingDir, parentConversationID string) (string, error) {
-	wd := workingDir
-	if wd == "" {
-		var err error
-		wd, err = os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("failed to get working directory: %w", err)
-		}
+	operationalCtx, err := renderOperationalContext(workingDir, parentConversationID, true)
+	if err != nil {
+		return "", err
 	}
 
 	data := &SubagentSystemPromptData{
-		WorkingDirectory: wd,
-		ShelleyDBPath:    DBPath,
-		ConversationID:   parentConversationID,
-	}
-
-	gitInfo, err := collectGitInfo(wd)
-	if err == nil {
-		data.GitInfo = gitInfo
+		OperationalContext: operationalCtx,
 	}
 
 	tmpl, err := template.New("orchestrator_subagent_system_prompt").Parse(orchestratorSubagentSystemPromptTemplate)
@@ -501,8 +535,7 @@ func GenerateOrchestratorSubagentSystemPrompt(workingDir, parentConversationID s
 	}
 
 	var buf strings.Builder
-	err = tmpl.Execute(&buf, data)
-	if err != nil {
+	if err = tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("failed to execute orchestrator subagent template: %w", err)
 	}
 

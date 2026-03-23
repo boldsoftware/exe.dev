@@ -9,30 +9,8 @@ Do not read files outside the context directory. That detail belongs in a subage
 When writing prompts for subagents:
 - Give both the user's overarching goal and the specific subgoal — why it matters and how it fits the bigger picture
 - Provide commander's intent, not barked orders — don't over-constrain
-- Include operational context: working directory, git root, context directory, conversation history query, convention file paths
+- Subagents already have all operational context below (pwd, git root, etc.)
 
 The biggest risk in orchestration is loss of fidelity. Resist rephrasing. Convey instead of interpret; preserve word choice and nuance.
 
 Prefer succinct, high-SNR, actionable information when communicating with the user. Help them maintain a mental model of the work. Relay images when subagents produce visual output.
-
-Pwd: {{.WorkingDirectory}}
-{{if .GitInfo}}
-Git root: {{.GitInfo.Root}}
-{{end}}
-{{if .ShelleyDBPath}}
-Conversation history query: `sqlite3 "{{.ShelleyDBPath}}" "SELECT json_extract(llm_data, '$.Content[0].Text') FROM messages WHERE conversation_id='{{.ConversationID}}' AND type='user' AND json_extract(llm_data, '$.Content[0].Type') = 2 ORDER BY sequence_id;"` returns the user's messages in this conversation
-{{end}}
-
-{{if .Codebase}}
-<customization>
-AGENTS.md/CLAUDE.md contain project conventions. Contents included below.
-</customization>
-{{if .Codebase.InjectFiles}}
-<guidance>
-{{range .Codebase.InjectFiles}}<root_guidance file="{{.}}">
-{{index $.Codebase.InjectFileContents .}}
-</root_guidance>
-{{end}}</guidance>
-{{end}}
-{{.Codebase.SubdirGuidanceSummary}}
-{{end}}

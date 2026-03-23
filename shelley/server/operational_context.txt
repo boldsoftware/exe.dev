@@ -1,0 +1,21 @@
+Pwd: {{.WorkingDirectory}}
+{{- if .GitInfo}}
+Git root: {{.GitInfo.Root}}
+{{- end}}
+{{- if .IncludeConversationHistory}}
+{{- if and .ShelleyDBPath .ConversationID}}
+
+Conversation history query: `sqlite3 "{{.ShelleyDBPath}}" "SELECT json_extract(llm_data, '$.Content[0].Text') FROM messages WHERE conversation_id='{{.ConversationID}}' AND type='user' AND json_extract(llm_data, '$.Content[0].Type') = 2 ORDER BY sequence_id;"` returns the user's messages in this conversation.
+{{- end}}
+{{- end}}
+{{- if .Codebase}}
+{{- if .Codebase.InjectFiles}}
+
+Project conventions:
+{{range .Codebase.InjectFiles}}
+<convention file="{{.}}">
+{{index $.Codebase.InjectFileContents .}}</convention>
+{{end}}
+{{- end}}
+{{- .Codebase.SubdirGuidanceSummary}}
+{{- end}}
