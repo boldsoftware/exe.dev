@@ -28,6 +28,11 @@ func newTestDB(t *testing.T) *sqlite.DB {
 	return db
 }
 
+// defaultNAShardIPs is a NetActuate shard IP slice fixture.
+var defaultNAShardIPs = []netip.Addr{
+	1: netip.MustParseAddr("161.210.92.1"),
+}
+
 // addBox adds a box to the test database, returning the box ID.
 func addBox(t *testing.T, db *sqlite.DB) int64 {
 	var boxID int64
@@ -67,18 +72,10 @@ func addBox(t *testing.T, db *sqlite.DB) int64 {
 		}
 
 		// Add box_ip_shard mapping
-		if err := queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
+		return queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
 			BoxID:   int(boxID),
 			UserID:  "test-user",
 			IPShard: 1,
-		}); err != nil {
-			return err
-		}
-
-		// Add NetActuate ip shard (default CNAME target)
-		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
-			Shard:    1,
-			PublicIP: "161.210.92.1",
 		})
 	})
 	if err != nil {
@@ -231,6 +228,7 @@ func TestXtermWildcardA(t *testing.T) {
 	lobbyIP := netip.MustParseAddr("10.0.0.100")
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 	server.SetLobbyIP(lobbyIP)
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
 	// Test wildcard xterm subdomain
 	t.Run("WildcardXterm", func(t *testing.T) {
@@ -321,6 +319,7 @@ func TestXtermWildcardA(t *testing.T) {
 	t.Run("StagingXterm", func(t *testing.T) {
 		stagingServer := NewServer(db, log, "exe-staging.xyz", "exe-staging.dev")
 		stagingServer.SetLobbyIP(lobbyIP)
+		stagingServer.SetNetActuateShardIPs(defaultNAShardIPs)
 
 		rrs, err := stagingServer.lookupA(ctx, "testbox.xterm.exe-staging.xyz", "test.xterm.exe-staging.xyz.", dns.ClassINET)
 		if err != nil {
@@ -360,6 +359,7 @@ func TestDNSServer(t *testing.T) {
 	addBox(t, db)
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
 	// Add a TXT record
 	server.SetTXTRecord("_acme-challenge.exe.xyz", "test-token-123")
@@ -659,6 +659,7 @@ func TestDNSServerIntegration(t *testing.T) {
 	mux := dns.NewServeMux()
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 	server.SetLobbyIP(netip.MustParseAddr("192.168.0.1")) // lobby IP for testing
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 	mux.HandleFunc(".", server.handleDNS)
 
 	// Find an available port
@@ -1083,15 +1084,9 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
 			Shard:    1,
 			PublicIP: "5.6.7.8",
-		}); err != nil {
-			return err
-		}
-		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
-			Shard:    1,
-			PublicIP: "161.210.92.1",
 		})
 	})
 	if err != nil {
@@ -1099,6 +1094,7 @@ func TestGlobalLoadBalancerCNAME(t *testing.T) {
 	}
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
 	t.Run("default routes to NetActuate", func(t *testing.T) {
 		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
@@ -1188,19 +1184,8 @@ func TestNetActuateShardA(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
-	// Insert a NetActuate IP shard
-	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
-			Shard:    1,
-			PublicIP: "161.210.92.1",
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
 	t.Run("QueryNetActuateShardA", func(t *testing.T) {
 		rrs, err := server.lookupA(ctx, "na001.exe.xyz", "na001.exe.xyz.", dns.ClassINET)
@@ -1235,15 +1220,9 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 	addBox(t, db)
 	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		if err := queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
+		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
 			Shard:    1,
 			PublicIP: "5.6.7.8",
-		}); err != nil {
-			return err
-		}
-		return queries.UpsertNetActuateIPShard(ctx, exedb.UpsertNetActuateIPShardParams{
-			Shard:    1,
-			PublicIP: "161.210.92.1",
 		})
 	})
 	if err != nil {
@@ -1251,6 +1230,7 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 	}
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
 	t.Run("without anycast-network set defaults to NetActuate", func(t *testing.T) {
 		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)

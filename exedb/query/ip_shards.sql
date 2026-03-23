@@ -48,10 +48,5 @@ ON CONFLICT (shard) DO UPDATE SET
     public_ip = excluded.public_ip,
     updated_at = CURRENT_TIMESTAMP;
 
--- name: GetNetActuateShardPublicIP :one
-SELECT public_ip
-FROM netactuate_ip_shards
-WHERE shard = ?;
-
 -- name: DeleteNetActuateIPShard :exec
 DELETE FROM netactuate_ip_shards WHERE shard = ?;

@@ -4004,7 +4004,7 @@ func (s *Server) handleDebugIPShardsNetActuate(w http.ResponseWriter, r *http.Re
 			http.Error(w, fmt.Sprintf("failed to delete netactuate_ip_shards: %v", err), http.StatusInternalServerError)
 			return
 		}
-		s.slog().InfoContext(ctx, "deleted netactuate IP shard", "shard", shard)
+		s.slog().InfoContext(ctx, "deleted netactuate IP shard (restart exed to pick up changes)", "shard", shard)
 		http.Redirect(w, r, "/debug/ipshards", http.StatusSeeOther)
 		return
 	}
@@ -4080,8 +4080,7 @@ func (s *Server) handleDebugIPShardsNetActuate(w http.ResponseWriter, r *http.Re
 		http.Error(w, fmt.Sprintf("failed to upsert netactuate_ip_shards: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	s.slog().InfoContext(ctx, "upserted netactuate IP shard", "shard", shard, "ip", ip)
+	s.slog().InfoContext(ctx, "upserted netactuate IP shard (restart exed to pick up changes)", "shard", shard, "ip", ip)
 	http.Redirect(w, r, "/debug/ipshards", http.StatusSeeOther)
 }
 

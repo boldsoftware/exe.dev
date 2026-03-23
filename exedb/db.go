@@ -468,9 +468,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, getMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMobilePendingVMByToken: %w", err)
 	}
-	if q.getNetActuateShardPublicIPStmt, err = db.PrepareContext(ctx, getNetActuateShardPublicIP); err != nil {
-		return nil, fmt.Errorf("error preparing query GetNetActuateShardPublicIP: %w", err)
-	}
 	if q.getNewThrottleEmailPatternsStmt, err = db.PrepareContext(ctx, getNewThrottleEmailPatterns); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNewThrottleEmailPatterns: %w", err)
 	}
@@ -1876,11 +1873,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getMobilePendingVMByTokenStmt: %w", cerr)
 		}
 	}
-	if q.getNetActuateShardPublicIPStmt != nil {
-		if cerr := q.getNetActuateShardPublicIPStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getNetActuateShardPublicIPStmt: %w", cerr)
-		}
-	}
 	if q.getNewThrottleEmailPatternsStmt != nil {
 		if cerr := q.getNewThrottleEmailPatternsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNewThrottleEmailPatternsStmt: %w", cerr)
@@ -3168,7 +3160,6 @@ type Queries struct {
 	getLatitudeShardPublicIPStmt               *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
-	getNetActuateShardPublicIPStmt             *sql.Stmt
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
 	getNewThrottleEnabledStmt                  *sql.Stmt
 	getNewThrottleMessageStmt                  *sql.Stmt
@@ -3543,7 +3534,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLatitudeShardPublicIPStmt:               q.getLatitudeShardPublicIPStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
-		getNetActuateShardPublicIPStmt:             q.getNetActuateShardPublicIPStmt,
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
 		getNewThrottleEnabledStmt:                  q.getNewThrottleEnabledStmt,
 		getNewThrottleMessageStmt:                  q.getNewThrottleMessageStmt,

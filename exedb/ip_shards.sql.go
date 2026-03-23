@@ -40,19 +40,6 @@ func (q *Queries) GetLatitudeShardPublicIP(ctx context.Context, shard int64) (st
 	return public_ip, err
 }
 
-const getNetActuateShardPublicIP = `-- name: GetNetActuateShardPublicIP :one
-SELECT public_ip
-FROM netactuate_ip_shards
-WHERE shard = ?
-`
-
-func (q *Queries) GetNetActuateShardPublicIP(ctx context.Context, shard int64) (string, error) {
-	row := q.queryRow(ctx, q.getNetActuateShardPublicIPStmt, getNetActuateShardPublicIP, shard)
-	var public_ip string
-	err := row.Scan(&public_ip)
-	return public_ip, err
-}
-
 const getShardPublicIP = `-- name: GetShardPublicIP :one
 SELECT public_ip
 FROM ip_shards

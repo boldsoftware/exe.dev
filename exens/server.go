@@ -49,6 +49,12 @@ type Server struct {
 	// Value: list of TXT values
 	txtMu      sync.RWMutex
 	txtRecords map[string][]string
+
+	// In-memory cache of NetActuate shard -> public IP, loaded at startup.
+	// Avoids per-query DB lookups for DNS resolution of naNNN.exe.xyz.
+	// Indexed by shard number; zero value means no IP for that shard.
+	// Set once before Start; read-only thereafter.
+	naShardIPs []netip.Addr
 }
 
 // NewServer creates a new DNS server backed by the given database.
@@ -72,6 +78,12 @@ func NewServer(db *sqlite.DB, log *slog.Logger, boxHost, webHost string) *Server
 // The lobby IP is the public IP for ssh exe.dev, not associated with any box shard.
 func (s *Server) SetLobbyIP(ip netip.Addr) {
 	s.lobbyIP = ip
+}
+
+// SetNetActuateShardIPs sets the in-memory cache of NetActuate shard IPs.
+// The slice is indexed by shard number. Must be called before Start.
+func (s *Server) SetNetActuateShardIPs(ips []netip.Addr) {
+	s.naShardIPs = ips
 }
 
 // Start starts the DNS server listening on the given private IP addresses.
@@ -225,8 +237,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		// return records, the name exists.
 		//
 		// This is mildly inefficient, but saves implementing the lookup logic
-		// twice to compute a "does this exist" bit. If you want to optimize
-		// this, do in-memory result caching from the DB in the lookup functions.
+		// twice to compute a "does this exist" bit.
 		lookups := []func(context.Context, string, string, uint16) ([]dns.RR, error){
 			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
 		}
@@ -331,7 +342,7 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 	// Parse NetActuate shard from name (e.g., "na043.exe.xyz" -> shard 43)
 	naShard, err := parseNetActuateShardFromName(qname)
 	if err == nil {
-		return s.lookupNetActuateShardA(ctx, naShard, fqdn, class)
+		return s.lookupNetActuateShardA(naShard, fqdn, class)
 	}
 
 	// Not a shard name, check if there's a CNAME (box name)
@@ -400,22 +411,18 @@ func (s *Server) lookupLatitudeShardA(ctx context.Context, shard int, fqdn strin
 }
 
 // lookupNetActuateShardA returns an A record for the given NetActuate shard number.
-func (s *Server) lookupNetActuateShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
-	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetNetActuateShardPublicIP, int64(shard))
-	if err != nil {
+func (s *Server) lookupNetActuateShardA(shard int, fqdn string, class uint16) ([]dns.RR, error) {
+	if shard < 0 || shard >= len(s.naShardIPs) {
 		return nil, nil
 	}
-
-	ip := net.ParseIP(publicIP)
-	if ip == nil {
-		s.log.WarnContext(ctx, "invalid IP in netactuate_ip_shards table", "shard", shard, "ip", publicIP)
+	addr := s.naShardIPs[shard]
+	if !addr.IsValid() {
 		return nil, nil
 	}
-
 	return []dns.RR{
 		&dns.A{
 			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
-			A:   ip.To4(),
+			A:   addr.AsSlice(),
 		},
 	}, nil
 }

@@ -1407,6 +1407,11 @@ func (s *Server) initShardIPs(ctx context.Context) {
 		return
 	}
 
+	if err := s.loadAndSetNAShardIPs(ctx); err != nil {
+		s.slog().ErrorContext(ctx, "NA shard IP loading failed", "error", err)
+		return
+	}
+
 	// Production: combine EC2 metadata with regional IP shard tables.
 	// EC2 metadata gives us private->public IP mappings for AWS.
 	// aws_ip_shards + latitude_ip_shards give us public_ip->shard mappings.
@@ -1416,6 +1421,21 @@ func (s *Server) initShardIPs(ctx context.Context) {
 		return
 	}
 	s.PublicIPs = ips
+}
+
+// loadAndSetNAShardIPs loads NetActuate shard IPs from the database and populates the DNS server cache.
+func (s *Server) loadAndSetNAShardIPs(ctx context.Context) error {
+	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
+	if err != nil {
+		return fmt.Errorf("load NA shard IPs: %w", err)
+	}
+	if s.dnsServer == nil {
+		return nil
+	}
+	naShardIPs := buildNAShardIPs(s.slog(), ctx, netActuateShards)
+	s.dnsServer.SetNetActuateShardIPs(naShardIPs)
+	s.slog().InfoContext(ctx, "NA shard IPs loaded", "count", len(netActuateShards))
+	return nil
 }
 
 // loadPublicIPsFromDB loads PublicIPs by combining EC2 metadata with regional IP shard tables.
@@ -1519,6 +1539,27 @@ func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]public
 	}
 
 	return result, nil
+}
+
+func buildNAShardIPs(log *slog.Logger, ctx context.Context, rows []exedb.NetActuateIPShard) []netip.Addr {
+	ips := make([]netip.Addr, publicips.MaxDomainShards+1)
+	for _, row := range rows {
+		if !publicips.ShardIsValid(int(row.Shard)) {
+			log.WarnContext(ctx, "out-of-range shard in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP)
+			continue
+		}
+		ip, err := netip.ParseAddr(row.PublicIP)
+		if err != nil {
+			log.WarnContext(ctx, "invalid public IP in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
+			continue
+		}
+		if !ip.Is4() {
+			log.WarnContext(ctx, "non-IPv4 address in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP)
+			continue
+		}
+		ips[int(row.Shard)] = ip
+	}
+	return ips
 }
 
 func (s *Server) logIPResolver() {
@@ -3031,6 +3072,8 @@ func (s *Server) start() error {
 	s.startCancel = cancel
 	defer cancel()
 
+	s.initShardIPs(ctx)
+
 	// Pass lobby IP to DNS server for apex domain resolution.
 	// Must happen before Start so DNS handlers don't race on lobbyIP.
 	if s.dnsServer != nil && s.LobbyIP.IsValid() {
@@ -3052,8 +3095,6 @@ func (s *Server) start() error {
 			}
 		}
 	}
-
-	s.initShardIPs(ctx)
 
 	if s.dnsServer != nil && len(s.PublicIPs) > 0 {
 		s.validateIPShards(ctx)
