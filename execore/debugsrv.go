@@ -134,6 +134,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/glb-rollout", s.handleDebugGLBRolloutPost)
 	mux.HandleFunc("GET /debug/regions", s.handleDebugRegions)
 
+	// SQL query stream
+	mux.Handle("GET /debug/sql", &s.db.Sniff)
+
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

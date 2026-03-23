@@ -205,6 +205,9 @@ type DB struct {
 	writer  chan *sql.Conn
 	readers chan *sql.Conn
 
+	// Sniff streams SQL activity to a connected HTTP client.
+	Sniff Sniffer
+
 	shutdown func() error
 }
 
@@ -246,6 +249,10 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 		writer:   make(chan *sql.Conn, 1),
 		readers:  make(chan *sql.Conn, readerCount),
 		shutdown: shutdown,
+	}
+	if err := p.Sniff.registerHook(conns[0]); err != nil {
+		shutdown()
+		return nil, fmt.Errorf("sqlite.New: register pre-update hook: %w", err)
 	}
 	p.writer <- conns[0]
 	for _, conn := range conns[1:] {
@@ -395,7 +402,9 @@ func (p *DB) Exec(ctx context.Context, query string, args ...any) error {
 	defer func() {
 		p.writer <- conn
 	}()
-	_, err = conn.ExecContext(sqlCtx(ctx), query, args...)
+	t0 := time.Now()
+	res, err := conn.ExecContext(sqlCtx(ctx), query, args...)
+	p.Sniff.emitExec(query, time.Since(t0), res, err)
 	return wrapErr("db.exec", err)
 }
 
@@ -527,7 +536,9 @@ type Tx struct {
 }
 
 func (tx *Tx) Exec(query string, args ...any) (sql.Result, error) {
+	t0 := time.Now()
 	res, err := tx.conn.ExecContext(sqlCtx(tx.ctx), query, args...)
+	tx.p.Sniff.emitExec(query, time.Since(t0), res, err)
 	return res, wrapErr("exec", err)
 }
 
@@ -543,27 +554,35 @@ func (rx *Rx) Context() context.Context {
 }
 
 func (rx *Rx) Query(query string, args ...any) (*sql.Rows, error) {
+	t0 := time.Now()
 	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
+	rx.p.Sniff.emitQuery(query, time.Since(t0), err)
 	return rows, wrapErr("query", err)
 }
 
 func (rx *Rx) QueryRow(query string, args ...any) *Row {
+	t0 := time.Now()
 	rows, err := rx.conn.QueryContext(sqlCtx(rx.ctx), query, args...)
+	rx.p.Sniff.emitQuery(query, time.Since(t0), err)
 	return &Row{err: err, rows: rows}
 }
 
 // Conn returns a wrapped sql.Conn-like thing for use with external libraries like sqlc.
 func (rx *Rx) Conn() *dbtxWrapper {
-	return &dbtxWrapper{conn: rx.conn}
+	return &dbtxWrapper{conn: rx.conn, sniff: &rx.p.Sniff}
 }
 
 // dbtxWrapper wraps *sql.Conn, substituting sqlCtx for the context for all database operations.
 type dbtxWrapper struct {
-	conn *sql.Conn
+	conn  *sql.Conn
+	sniff *Sniffer
 }
 
 func (c *dbtxWrapper) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return c.conn.ExecContext(sqlCtx(ctx), query, args...)
+	t0 := time.Now()
+	res, err := c.conn.ExecContext(sqlCtx(ctx), query, args...)
+	c.sniff.emitExec(query, time.Since(t0), res, err)
+	return res, err
 }
 
 func (c *dbtxWrapper) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
@@ -571,11 +590,20 @@ func (c *dbtxWrapper) PrepareContext(ctx context.Context, query string) (*sql.St
 }
 
 func (c *dbtxWrapper) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return c.conn.QueryContext(sqlCtx(ctx), query, args...)
+	t0 := time.Now()
+	rows, err := c.conn.QueryContext(sqlCtx(ctx), query, args...)
+	c.sniff.emitQuery(query, time.Since(t0), err)
+	return rows, err
 }
 
 func (c *dbtxWrapper) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return c.conn.QueryRowContext(sqlCtx(ctx), query, args...)
+	t0 := time.Now()
+	row := c.conn.QueryRowContext(sqlCtx(ctx), query, args...)
+	// sql.Row defers errors to Scan; row.Err() exists but may not reflect
+	// query-execution errors on all drivers. Pass nil — unlike Rx.QueryRow,
+	// which uses QueryContext and captures the error directly.
+	c.sniff.emitQuery(query, time.Since(t0), nil)
+	return row
 }
 
 // Row is equivalent to *sql.Row, but we provide a more useful error.
