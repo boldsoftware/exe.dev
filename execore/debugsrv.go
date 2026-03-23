@@ -2611,7 +2611,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			}
 			cancel()
 
-			info.InstanceLimit = int(ec.region.VMHardLimit)
+			info.InstanceLimit = int(ec.VMHardLimit())
 
 			// Get load information.
 			kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f", float64(kib)/1048576.0) }
@@ -6488,8 +6488,6 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		Code              string         `json:"code"`
 		Display           string         `json:"display"`
 		Active            bool           `json:"active"`
-		VMHardLimit       int32          `json:"vm_hard_limit"`
-		VMSoftLimit       int32          `json:"vm_soft_limit"`
 		RequiresUserMatch bool           `json:"requires_user_match"`
 		ExeletsTotal      int            `json:"exelets_total"`
 		ExeletsUp         int            `json:"exelets_up"`
@@ -6508,8 +6506,6 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 			Code:              reg.Code,
 			Display:           reg.Display,
 			Active:            reg.Active,
-			VMHardLimit:       reg.VMHardLimit,
-			VMSoftLimit:       reg.VMSoftLimit,
 			RequiresUserMatch: reg.RequiresUserMatch,
 			VMsByStatus:       make(map[string]int),
 		}
@@ -6531,6 +6527,7 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		info.ExeletsTotal++
 		if ec.up.Load() {
 			info.ExeletsUp++
+			info.CapacityTotal += int(ec.VMHardLimit())
 		}
 	}
 
@@ -6573,9 +6570,8 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		info.Users = int(row.Count)
 	}
 
-	// Compute capacity and build sorted result.
+	// Compute capacity used and build sorted result.
 	for _, info := range infoByCode {
-		info.CapacityTotal = info.ExeletsUp * int(info.VMHardLimit)
 		info.CapacityUsed = info.VMsTotal
 	}
 

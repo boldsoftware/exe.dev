@@ -552,6 +552,9 @@ type exeletClient struct {
 	// so they can be old.
 	usage atomic.Pointer[resourceapi.MachineUsage]
 	count atomic.Int32 // instance count
+
+	vmHardLimit atomic.Int32
+	vmSoftLimit atomic.Int32
 }
 
 // regionAllowsUser reports whether the exelet may host a VM for a user
@@ -566,6 +569,27 @@ func (ec *exeletClient) regionAllowsUser(userRegion string, userRegionInfo regio
 		return false
 	}
 	return true
+}
+
+// VMHardLimit returns the dynamic hard VM limit, computed from the exelet's reported MemTotal.
+// Returns 0 if usage has not been reported yet.
+func (ec *exeletClient) VMHardLimit() int32 {
+	return ec.vmHardLimit.Load()
+}
+
+// VMSoftLimit returns the dynamic soft VM limit, computed from the exelet's reported MemTotal.
+// Returns 0 if usage has not been reported yet.
+func (ec *exeletClient) VMSoftLimit() int32 {
+	return ec.vmSoftLimit.Load()
+}
+
+// updateVMLimits recomputes VM limits from the exelet's reported total memory.
+func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
+	memGiB := memTotalKiB / (1024 * 1024)
+	hard := int32(max(memGiB*25/24, 10))
+	soft := hard * 7 / 8
+	ec.vmHardLimit.Store(hard)
+	ec.vmSoftLimit.Store(soft)
 }
 
 // countInstances returns the number of instances on this exelet.
@@ -596,6 +620,9 @@ func (ec *exeletClient) updateUsage(ctx context.Context) {
 	} else {
 		ec.up.Store(usage.Available)
 		ec.usage.Store(usage.Usage)
+		if usage.Usage != nil && usage.Usage.MemTotal > 0 {
+			ec.updateVMLimits(usage.Usage.MemTotal)
+		}
 	}
 
 	count, err := ec.countInstances(ctx)
@@ -1134,10 +1161,6 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		exeletRegion, err := region.ParseExeletRegion(addr)
 		if err != nil {
 			slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
-			continue
-		}
-		if exeletRegion.VMHardLimit <= 0 || exeletRegion.VMSoftLimit <= 0 || exeletRegion.VMSoftLimit >= exeletRegion.VMHardLimit {
-			slog.Error("region has invalid VM limits configured, skipping host", "addr", addr, "region", exeletRegion.Code, "hard", exeletRegion.VMHardLimit, "soft", exeletRegion.VMSoftLimit)
 			continue
 		}
 
@@ -4175,7 +4198,10 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			if err != nil {
 				s.slog().WarnContext(ctx, "failed to count instances on preferred exelet, trying others", "user", userID, "exelet", maxHost, "error", err)
 				client = nil
-			} else if count >= int(client.region.VMHardLimit) {
+			} else if hardLimit := client.VMHardLimit(); hardLimit == 0 {
+				s.slog().DebugContext(ctx, "not selecting exelet because VM limits not yet computed", "user", userID, "exelet", maxHost)
+				client = nil
+			} else if count >= int(hardLimit) {
 				s.slog().DebugContext(ctx, "not selecting exelet because it is over threshold", "user", userID, "exelet", maxHost, "userVMCount", maxCnt, "exeletVMCount", count)
 				client = nil
 			}
@@ -4380,8 +4406,8 @@ func exeletUsageCmp(a, b *exeletClient) int {
 	}
 
 	// First we check for extreme cases.
-	extremeA := isExtreme(usageA) || countA+10 >= a.region.VMHardLimit
-	extremeB := isExtreme(usageB) || countB+10 >= b.region.VMHardLimit
+	extremeA := isExtreme(usageA) || countA+10 >= a.VMHardLimit()
+	extremeB := isExtreme(usageB) || countB+10 >= b.VMHardLimit()
 	switch {
 	case extremeA && extremeB:
 		return 0
@@ -4457,13 +4483,18 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 		if ec.region.RequiresUserMatch {
 			continue
 		}
+		hardLimit := ec.VMHardLimit()
+		softLimit := ec.VMSoftLimit()
+		if hardLimit == 0 || softLimit == 0 {
+			continue
+		}
 		checked++
 		count := ec.count.Load()
-		if count < ec.region.VMSoftLimit {
+		if count < softLimit {
 			// We still have capacity, nothing to do.
 			return
 		}
-		if count < ec.region.VMHardLimit {
+		if count < hardLimit {
 			someBelowLimit = true
 		}
 	}

@@ -55,54 +55,56 @@ func TestUsageCmp(t *testing.T) {
 	tests := []struct {
 		u1 *resourceapi.MachineUsage
 		c1 int32
+		h1 int32 // vmHardLimit for client 1
 		r1 region.Region
 		u2 *resourceapi.MachineUsage
 		c2 int32
+		h2 int32 // vmHardLimit for client 2
 		r2 region.Region
 		r  int
 	}{
 		{
 			u1: &resourceapi.MachineUsage{LoadAverage: 3},
-			c1: 10, r1: pdx,
+			c1: 10, h1: 400, r1: pdx,
 			u2: &resourceapi.MachineUsage{LoadAverage: 4},
-			c2: 10, r2: pdx,
+			c2: 10, h2: 400, r2: pdx,
 			r: 0,
 		},
 		{
 			u1: &resourceapi.MachineUsage{LoadAverage: 10},
-			c1: 10, r1: pdx,
+			c1: 10, h1: 400, r1: pdx,
 			u2: &resourceapi.MachineUsage{LoadAverage: 2},
-			c2: 10, r2: pdx,
+			c2: 10, h2: 400, r2: pdx,
 			r: 1,
 		},
 		{
 			u1: &resourceapi.MachineUsage{MemAvailable: 1024 << 10},
-			c1: 10, r1: pdx,
+			c1: 10, h1: 400, r1: pdx,
 			u2: &resourceapi.MachineUsage{MemAvailable: 1025 << 10},
-			c2: 10, r2: pdx,
+			c2: 10, h2: 400, r2: pdx,
 			r: 0,
 		},
 		{
 			u1: &resourceapi.MachineUsage{MemAvailable: 10 << 20},
-			c1: 10, r1: pdx,
+			c1: 10, h1: 400, r1: pdx,
 			u2: &resourceapi.MachineUsage{MemAvailable: 100 << 20},
-			c2: 10, r2: pdx,
+			c2: 10, h2: 400, r2: pdx,
 			r: 1,
 		},
-		// Per-region extreme: count=390 is extreme for pdx (VMHardLimit=400) but not for lax (VMHardLimit=800).
+		// Per-exelet extreme: count=390 is extreme for a 400-limit host but not for an 800-limit host.
 		{
 			u1: &resourceapi.MachineUsage{LoadAverage: 1},
-			c1: 390, r1: pdx,
+			c1: 390, h1: 400, r1: pdx,
 			u2: &resourceapi.MachineUsage{LoadAverage: 1},
-			c2: 390, r2: lax,
-			r: 1, // pdx is extreme, lax is not
+			c2: 390, h2: 800, r2: lax,
+			r: 1, // 400-limit host is extreme, 800-limit host is not
 		},
 		{
 			u1: &resourceapi.MachineUsage{LoadAverage: 1},
-			c1: 390, r1: lax,
+			c1: 390, h1: 800, r1: lax,
 			u2: &resourceapi.MachineUsage{LoadAverage: 1},
-			c2: 390, r2: pdx,
-			r: -1, // pdx is extreme, lax is not
+			c2: 390, h2: 400, r2: pdx,
+			r: -1, // 400-limit host is extreme, 800-limit host is not
 		},
 	}
 
@@ -111,12 +113,38 @@ func TestUsageCmp(t *testing.T) {
 		c1.usage.Store(test.u1)
 		c1.count.Store(test.c1)
 		c1.region = test.r1
+		c1.vmHardLimit.Store(test.h1)
 		c2.usage.Store(test.u2)
 		c2.count.Store(test.c2)
 		c2.region = test.r2
+		c2.vmHardLimit.Store(test.h2)
 		r := exeletUsageCmp(&c1, &c2)
 		if r != test.r {
 			t.Errorf("case (%#v %d %s cmp %#v %d %s): got %d want %d", test.u1, test.c1, test.r1.Code, test.u2, test.c2, test.r2.Code, r, test.r)
+		}
+	}
+}
+
+func TestUpdateVMLimits(t *testing.T) {
+	tests := []struct {
+		memTotalKiB int64
+		wantHard    int32
+		wantSoft    int32
+	}{
+		{memTotalKiB: 384 * 1024 * 1024, wantHard: 400, wantSoft: 350},    // AWS m5d.metal (pdx)
+		{memTotalKiB: 768 * 1024 * 1024, wantHard: 800, wantSoft: 700},    // Latitude rs4-metal-xlarge (lax)
+		{memTotalKiB: 1500 * 1024 * 1024, wantHard: 1562, wantSoft: 1366}, // large host
+		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},         // small dev box (floor)
+		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                       // zero (floor)
+	}
+	for _, tt := range tests {
+		var ec exeletClient
+		ec.updateVMLimits(tt.memTotalKiB)
+		if got := ec.VMHardLimit(); got != tt.wantHard {
+			t.Errorf("memTotalKiB=%d: VMHardLimit()=%d, want %d", tt.memTotalKiB, got, tt.wantHard)
+		}
+		if got := ec.VMSoftLimit(); got != tt.wantSoft {
+			t.Errorf("memTotalKiB=%d: VMSoftLimit()=%d, want %d", tt.memTotalKiB, got, tt.wantSoft)
 		}
 	}
 }
