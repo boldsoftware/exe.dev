@@ -598,7 +598,7 @@ var vmLimitTiers = []struct {
 // updateVMLimits recomputes VM limits from the exelet's reported total memory.
 func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
 	memGiB := memTotalKiB / (1024 * 1024)
-	var hard int32 = 10 // floor for tiny/dev hosts
+	var hard int32 = 100 // floor for tiny/dev hosts
 	for _, tier := range vmLimitTiers {
 		// Allow 5% below nominal to account for kernel-reserved memory.
 		if memGiB <= tier.memGiB && memGiB >= tier.memGiB*95/100 {

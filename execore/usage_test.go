@@ -137,8 +137,8 @@ func TestUpdateVMLimits(t *testing.T) {
 		{memTotalKiB: 754 * 1024 * 1024, wantHard: 600, wantSoft: 525},  // Latitude rs4-metal-xlarge (lax)
 		{memTotalKiB: 1536 * 1024 * 1024, wantHard: 800, wantSoft: 700}, // exact 1536 GiB
 		{memTotalKiB: 1506 * 1024 * 1024, wantHard: 800, wantSoft: 700}, // 1.5 TiB host (reported ~1506)
-		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},       // small dev box (floor)
-		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                     // zero (floor)
+		{memTotalKiB: 8 * 1024 * 1024, wantHard: 100, wantSoft: 87},     // small dev box (floor)
+		{memTotalKiB: 0, wantHard: 100, wantSoft: 87},                   // zero (floor)
 	}
 	for _, tt := range tests {
 		var ec exeletClient
