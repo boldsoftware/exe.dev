@@ -135,10 +135,10 @@ func TestUpdateVMLimits(t *testing.T) {
 		{memTotalKiB: 377 * 1024 * 1024, wantHard: 400, wantSoft: 350},  // AWS m5d.metal (pdx) — kernel reserves ~2%
 		{memTotalKiB: 768 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // exact 768 GiB
 		{memTotalKiB: 754 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // Latitude rs4-metal-xlarge (lax)
-		{memTotalKiB: 1506 * 1024 * 1024, wantHard: 1600, wantSoft: 1400}, // 1536 GiB host (reported ~1506)
-		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},       // small dev box (floor)
-		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                     // zero (floor)
-		{memTotalKiB: 5000 * 1024 * 1024, wantHard: 5208, wantSoft: 4557}, // beyond standard tiers, no rounding
+		{memTotalKiB: 1506 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // 1536 GiB host (reported ~1506) — capped
+		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},        // small dev box (floor)
+		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                      // zero (floor)
+		{memTotalKiB: 5000 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // beyond standard tiers — capped
 	}
 	for _, tt := range tests {
 		var ec exeletClient

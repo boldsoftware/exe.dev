@@ -586,7 +586,7 @@ func (ec *exeletClient) VMSoftLimit() int32 {
 // updateVMLimits recomputes VM limits from the exelet's reported total memory.
 func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
 	memGiB := nominalMemGiB(memTotalKiB / (1024 * 1024))
-	hard := int32(max(memGiB*25/24, 10))
+	hard := int32(min(max(memGiB*25/24, 10), 800))
 	soft := hard * 7 / 8
 	ec.vmHardLimit.Store(hard)
 	ec.vmSoftLimit.Store(soft)
