@@ -51,11 +51,11 @@ var statusCommand = &cli.Command{
 			return nil
 		}
 
-		// Sort by start time, then by state with "completed" last
+		// Sort by latest operation first, then by state with "completed" last
 		sort.Slice(resp.Operations, func(i, j int) bool {
 			a, b := resp.Operations[i], resp.Operations[j]
 			if a.StartedAt != b.StartedAt {
-				return a.StartedAt < b.StartedAt
+				return a.StartedAt > b.StartedAt
 			}
 			return stateOrder(a.State) < stateOrder(b.State)
 		})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +98,14 @@ func (op *TierMigrationOp) toProto() *api.TierMigrationOperation {
 	}
 }
 
+const (
+	// tierMigrationCircuitBreakerThreshold is the number of failures within
+	// tierMigrationCircuitBreakerWindow that trips the circuit breaker,
+	// disabling all tier migrations until the exelet is restarted.
+	tierMigrationCircuitBreakerThreshold = 3
+	tierMigrationCircuitBreakerWindow    = 10 * time.Minute
+)
+
 // tierMigrationOps tracks active tier migration operations.
 // Completed/failed ops are removed after a short TTL.
 var (
@@ -114,6 +123,46 @@ func removeTierMigrationOp(opID string) {
 	tierMigrationMu.Lock()
 	delete(tierMigrationOps, opID)
 	tierMigrationMu.Unlock()
+}
+
+// recordMigrationFailure records a migration failure timestamp and trips the
+// circuit breaker if the threshold is exceeded within the window.
+func (s *Service) recordMigrationFailure() {
+	s.tierMigrationMu.Lock()
+	defer s.tierMigrationMu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-tierMigrationCircuitBreakerWindow)
+
+	// Prune old failures outside the window
+	valid := s.tierMigrationFailures[:0]
+	for _, t := range s.tierMigrationFailures {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+	valid = append(valid, now)
+	s.tierMigrationFailures = valid
+
+	if len(valid) >= tierMigrationCircuitBreakerThreshold {
+		s.tierMigrationDisabled = true
+		s.log.ErrorContext(context.Background(),
+			"tier migration circuit breaker tripped: too many failures, migrations disabled until restart",
+			"failures", len(valid),
+			"window", tierMigrationCircuitBreakerWindow,
+		)
+	}
+}
+
+// checkMigrationCircuitBreaker returns an error if migrations are disabled.
+func (s *Service) checkMigrationCircuitBreaker() error {
+	s.tierMigrationMu.Lock()
+	defer s.tierMigrationMu.Unlock()
+	if s.tierMigrationDisabled {
+		return fmt.Errorf("tier migrations disabled: circuit breaker tripped after %d failures within %s (restart exelet to re-enable)",
+			tierMigrationCircuitBreakerThreshold, tierMigrationCircuitBreakerWindow)
+	}
+	return nil
 }
 
 // ClearTierMigrations removes completed and failed tier migration operations.
@@ -136,6 +185,10 @@ func (s *Service) ClearTierMigrations(ctx context.Context, req *api.ClearTierMig
 
 // MigrateStorageTier kicks off an async tier migration and returns immediately.
 func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorageTierRequest) (*api.MigrateStorageTierResponse, error) {
+	if err := s.checkMigrationCircuitBreaker(); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	if req.InstanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id is required")
 	}
@@ -207,6 +260,7 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 		op.complete(migErr)
 
 		if migErr != nil {
+			s.recordMigrationFailure()
 			s.log.ErrorContext(context.Background(), "tier migration failed",
 				"op", op.OperationID, "instance", req.InstanceID, "error", migErr)
 		} else {
@@ -319,6 +373,20 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 
 	op.setProgress(0.7)
 
+	// From this point, the target pool has a received dataset. Clean it up
+	// on any error so it doesn't block retries or cause split-brain.
+	targetRecvd := true
+	defer func() {
+		if targetRecvd {
+			s.log.WarnContext(ctx, "tier migration: cleaning up target dataset after failure",
+				"instance", instanceID, "pool", targetPool)
+			if delErr := dstManager.Delete(ctx, instanceID); delErr != nil {
+				s.log.ErrorContext(ctx, "tier migration: failed to delete target dataset",
+					"instance", instanceID, "pool", targetPool, "error", delErr)
+			}
+		}
+	}()
+
 	// Copy encryption key if present
 	if key, err := srcManager.GetEncryptionKey(instanceID); err == nil && key != nil {
 		if err := dstManager.SetEncryptionKey(instanceID, key); err != nil {
@@ -348,8 +416,12 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 	// Delete source dataset — this must succeed to prevent split-brain where
 	// both pools hold a copy and future PoolForInstance resolves the stale one.
 	if err := srcManager.Delete(ctx, instanceID); err != nil {
+		// Source delete failed but config already points to target — don't
+		// delete the target dataset on return.
+		targetRecvd = false
 		return fmt.Errorf("delete source dataset on pool %s: %w (migration partially complete, target has data)", sourcePool, err)
 	}
+	targetRecvd = false // Migration succeeded — keep the target dataset
 
 	op.setProgress(1.0)
 	return nil
@@ -448,7 +520,13 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 			s.log.WarnContext(ctx, "tier migration: resuming VM due to error", "instance", instanceID)
 			if err := s.vmm.Resume(ctx, instanceID); err != nil {
 				s.log.ErrorContext(ctx, "tier migration: failed to resume VM", "instance", instanceID, "error", err)
+				return
 			}
+			// After resume, check if the guest kernel is healthy.
+			// A failed CH snapshot can leave vCPUs in a bad state that
+			// causes RCU stalls, making the VM appear running but
+			// unresponsive. Detect this and escalate to stop/start.
+			s.checkAndRecoverStuckVM(ctx, instanceID)
 		}
 	}()
 	if err := s.vmm.Pause(ctx, instanceID); err != nil {
@@ -480,6 +558,20 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	}
 
 	op.setProgress(0.6)
+
+	// From this point, the target pool has a received dataset. Clean it up
+	// on any error so it doesn't block retries or cause split-brain.
+	targetRecvd := true
+	defer func() {
+		if targetRecvd {
+			s.log.WarnContext(ctx, "tier migration: cleaning up target dataset after failure",
+				"instance", instanceID, "pool", targetPool)
+			if delErr := dstManager.Delete(ctx, instanceID); delErr != nil {
+				s.log.ErrorContext(ctx, "tier migration: failed to delete target dataset",
+					"instance", instanceID, "pool", targetPool, "error", delErr)
+			}
+		}
+	}()
 
 	// Copy encryption key if present
 	if key, err := srcManager.GetEncryptionKey(instanceID); err == nil && key != nil {
@@ -533,12 +625,7 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 			s.log.WarnContext(ctx, "tier migration: failed to stop failed CH process", "instance", instanceID, "error", stopErr)
 		}
 
-		// Delete the partially-received target dataset to prevent it from
-		// winning future PoolForInstance resolution (which scans primary first).
-		if delErr := dstManager.Delete(ctx, instanceID); delErr != nil {
-			s.log.WarnContext(ctx, "tier migration: failed to delete target dataset after restore failure",
-				"instance", instanceID, "error", delErr)
-		}
+		// Target dataset cleanup is handled by the targetRecvd defer.
 
 		// Ensure instance config still points to source disk
 		if recoverCfg, loadErr := s.loadInstanceConfig(instanceID); loadErr == nil {
@@ -581,8 +668,12 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	// Delete source dataset — this must succeed to prevent split-brain where
 	// both pools hold a copy and future PoolForInstance resolves the stale one.
 	if err := srcManager.Delete(ctx, instanceID); err != nil {
+		// Source delete failed but VM is running from target — don't delete
+		// the target dataset on return.
+		targetRecvd = false
 		return fmt.Errorf("delete source dataset on pool %s: %w (migration partially complete, target has data)", sourcePool, err)
 	}
+	targetRecvd = false // Migration succeeded — keep the target dataset
 
 	// Clean up pre-snapshot (best-effort since source dataset is gone)
 	if err := srcManager.DestroySnapshot(ctx, preSnapName); err != nil {
@@ -593,6 +684,58 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 
 	op.setProgress(1.0)
 	return nil
+}
+
+// checkAndRecoverStuckVM waits briefly after a VM resume, then probes the
+// SSH proxy to verify the guest is actually responsive. A failed CH snapshot
+// can leave vCPUs in a bad state (RCU stalls, etc.) where the VM appears
+// running but is unresponsive. If the probe fails, escalates to stop/start.
+func (s *Service) checkAndRecoverStuckVM(ctx context.Context, instanceID string) {
+	proxyPort, ok := s.proxyManager.GetPort(ctx, instanceID)
+	if !ok {
+		s.log.WarnContext(ctx, "tier migration: no proxy port for VM, skipping health check",
+			"instance", instanceID)
+		return
+	}
+
+	// Give the guest a few seconds to stabilize after resume.
+	time.Sleep(5 * time.Second)
+
+	addr := fmt.Sprintf("127.0.0.1:%d", proxyPort)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err == nil {
+		// Read the SSH banner (e.g., "SSH-2.0-OpenSSH_9.6")
+		conn.SetReadDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
+		buf := make([]byte, 256)
+		n, readErr := conn.Read(buf)
+		conn.Close()
+		if readErr == nil && n > 0 && strings.HasPrefix(string(buf[:n]), "SSH-") {
+			// SSH is responding — VM is healthy
+			return
+		}
+		s.log.WarnContext(ctx, "tier migration: proxy connected but no SSH banner",
+			"instance", instanceID, "read_bytes", n, "error", readErr)
+	} else {
+		s.log.WarnContext(ctx, "tier migration: proxy connection failed after resume",
+			"instance", instanceID, "addr", addr, "error", err)
+	}
+
+	s.log.ErrorContext(ctx, "tier migration: VM unresponsive after resume, performing stop/start recovery",
+		"instance", instanceID)
+
+	if err := s.vmm.Stop(ctx, instanceID); err != nil {
+		s.log.ErrorContext(ctx, "tier migration: failed to stop stuck VM for recovery",
+			"instance", instanceID, "error", err)
+		return
+	}
+
+	if err := s.startInstance(ctx, instanceID); err != nil {
+		s.log.ErrorContext(ctx, "tier migration: failed to start VM after stuck recovery",
+			"instance", instanceID, "error", err)
+	} else {
+		s.log.InfoContext(ctx, "tier migration: VM recovered via stop/start after stuck resume",
+			"instance", instanceID)
+	}
 }
 
 // ListStorageTiers returns all configured storage tiers and their capacity/usage.

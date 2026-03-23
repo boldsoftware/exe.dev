@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"tailscale.com/util/singleflight"
@@ -43,7 +44,10 @@ type Service struct {
 	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
 	reconcileCtx    context.Context
 	reconcileCancel context.CancelFunc
-	tierMigrationSem chan struct{} // semaphore limiting concurrent tier migrations
+	tierMigrationSem      chan struct{} // semaphore limiting concurrent tier migrations
+	tierMigrationFailures []time.Time  // timestamps of recent migration failures
+	tierMigrationDisabled bool         // true if circuit breaker tripped
+	tierMigrationMu       sync.Mutex   // protects tierMigrationFailures and tierMigrationDisabled
 }
 
 // New returns a new service.

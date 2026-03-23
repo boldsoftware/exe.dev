@@ -530,7 +530,7 @@ func serveAction(clix *cli.Context) error {
 		}
 		if _, exists := tierManagers[backupPoolName]; exists {
 			storageManager.SetBackupPool(backupPoolName)
-			log.Info("backup pool set as last-resort for instance resolution", "pool", backupPoolName)
+			log.InfoContext(ctx, "backup pool set as last-resort for instance resolution", "pool", backupPoolName)
 		}
 	}
 
