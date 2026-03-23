@@ -6784,6 +6784,19 @@ function makeSshpoolDashboard() {
     }
   );
 
+  // Row: RTT
+  dash.withRow(new RowBuilder("RTT"));
+
+  addTimeseriesChart(
+    "TCP RTT by Host",
+    `sshpool_rtt_seconds{${FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 24, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{host}}"),
+    }
+  );
+
   return dash;
 }
 
