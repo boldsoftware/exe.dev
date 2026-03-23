@@ -85,7 +85,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		systemd-journal-catalog-update.service \
 		modprobe@.service \
 		systemd-modules-load.service \
-		systemd-journal-flush.service \
 		systemd-udevd.service \
 		systemd-udevd-control.service \
 		systemd-udevd-kernel.service \
