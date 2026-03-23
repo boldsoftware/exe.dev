@@ -6683,7 +6683,7 @@ function makeSshpoolDashboard() {
   addReadmePanel(dash);
 
   // Row: Operations
-  dash.withRow(new RowBuilder("Operations"));
+  dash.withRow(new RowBuilder("Operations").gridPos(gp({ w: 24, h: 1 })));
 
   addTimeseriesChart(
     "Operation Rate",
@@ -6706,7 +6706,7 @@ function makeSshpoolDashboard() {
   );
 
   // Row: Error Rates
-  dash.withRow(new RowBuilder("Error Rates"));
+  dash.withRow(new RowBuilder("Error Rates").gridPos(gp({ w: 24, h: 1 })));
 
   // Pool health error ratio — the primary alert signal from exports.go
   addTimeseriesChart(
@@ -6729,7 +6729,7 @@ function makeSshpoolDashboard() {
   );
 
   // Row: Latency
-  dash.withRow(new RowBuilder("Latency"));
+  dash.withRow(new RowBuilder("Latency").gridPos(gp({ w: 24, h: 1 })));
 
   addTimeseriesChart(
     "p50 Latency by Method",
@@ -6762,7 +6762,7 @@ function makeSshpoolDashboard() {
   );
 
   // Row: Cache
-  dash.withRow(new RowBuilder("Cache"));
+  dash.withRow(new RowBuilder("Cache").gridPos(gp({ w: 24, h: 1 })));
 
   addTimeseriesChart(
     "Cache Hit/Miss Rate",
@@ -6785,7 +6785,7 @@ function makeSshpoolDashboard() {
   );
 
   // Row: RTT
-  dash.withRow(new RowBuilder("RTT"));
+  dash.withRow(new RowBuilder("RTT").gridPos(gp({ w: 24, h: 1 })));
 
   addTimeseriesChart(
     "TCP RTT by Host",
