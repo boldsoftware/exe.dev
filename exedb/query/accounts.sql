@@ -1,5 +1,5 @@
 -- name: InsertAccount :exec
-INSERT INTO accounts (id, created_by) VALUES (?, ?);
+INSERT OR IGNORE INTO accounts (id, created_by) VALUES (?, ?);
 
 -- name: InsertAccountPlan :exec
 INSERT INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)

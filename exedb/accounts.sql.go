@@ -417,7 +417,7 @@ func (q *Queries) GetUserPlanCategory(ctx context.Context, createdBy string) (st
 }
 
 const insertAccount = `-- name: InsertAccount :exec
-INSERT INTO accounts (id, created_by) VALUES (?, ?)
+INSERT OR IGNORE INTO accounts (id, created_by) VALUES (?, ?)
 `
 
 type InsertAccountParams struct {

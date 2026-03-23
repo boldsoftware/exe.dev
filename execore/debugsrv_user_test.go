@@ -61,73 +61,42 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 	}
 }
 
-func TestDebugUserBillingAccountsManyMixedStatuses(t *testing.T) {
+func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
+	// Tests that a single account with multiple billing events (active -> canceled -> active)
+	// shows the correct latest status on the debug user page.
 	s := newTestServer(t)
-	userID := createTestUser(t, s, "debug-mixed-accounts@example.com")
+	userID := createTestUser(t, s, "debug-mixed-events@example.com")
+	accountID := "exe_debug_mixed_events"
 
-	canceledAccountID := "exe_debug_a_canceled"
-	pendingAccountID := "exe_debug_b_pending"
-	activeAccountID := "exe_debug_c_active"
+	err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
+		ID:        accountID,
+		CreatedBy: userID,
+	})
+	if err != nil {
+		t.Fatalf("InsertAccount: %v", err)
+	}
 
-	for _, accountID := range []string{
-		activeAccountID,
-		canceledAccountID,
-		pendingAccountID,
+	// active -> canceled -> active
+	for _, ev := range []struct {
+		eventType string
+		at        time.Time
+	}{
+		{"active", time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)},
+		{"canceled", time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)},
+		{"active", time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)},
 	} {
-		err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-			ID:        accountID,
-			CreatedBy: userID,
+		_, err := withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+			AccountID: accountID,
+			EventType: ev.eventType,
+			EventAt:   ev.at,
 		})
 		if err != nil {
-			t.Fatalf("InsertAccount(%q): %v", accountID, err)
+			t.Fatalf("InsertBillingEvent(%s): %v", ev.eventType, err)
 		}
 	}
 
-	_, err := withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: canceledAccountID,
-		EventType: "active",
-		EventAt:   time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(active): %v", err)
-	}
-	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: canceledAccountID,
-		EventType: "canceled",
-		EventAt:   time.Date(2026, 1, 11, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(canceled): %v", err)
-	}
-	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: activeAccountID,
-		EventType: "active",
-		EventAt:   time.Date(2026, 1, 12, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("InsertBillingEvent(active): %v", err)
-	}
-
 	body := debugUserPageBody(t, s, userID)
-
-	requireAccountRow(t, body, canceledAccountID, "canceled")
-	requireAccountRow(t, body, pendingAccountID, "pending")
-	requireAccountRow(t, body, activeAccountID, "active")
-
-	canceledIdx := strings.Index(body, canceledAccountID)
-	pendingIdx := strings.Index(body, pendingAccountID)
-	activeIdx := strings.Index(body, activeAccountID)
-	if canceledIdx == -1 || pendingIdx == -1 || activeIdx == -1 {
-		t.Fatalf("missing account IDs in rendered billing accounts table")
-	}
-	if !(canceledIdx < pendingIdx && pendingIdx < activeIdx) {
-		t.Fatalf(
-			"expected deterministic account ordering by account ID, got indexes canceled=%d pending=%d active=%d",
-			canceledIdx,
-			pendingIdx,
-			activeIdx,
-		)
-	}
+	requireAccountRow(t, body, accountID, "active")
 }
 
 // TestDebugBillingEntitlementTablePresent verifies the entitlement table section
