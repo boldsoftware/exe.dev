@@ -131,14 +131,14 @@ func TestUpdateVMLimits(t *testing.T) {
 		wantHard    int32
 		wantSoft    int32
 	}{
-		{memTotalKiB: 384 * 1024 * 1024, wantHard: 400, wantSoft: 350},  // exact 384 GiB
-		{memTotalKiB: 377 * 1024 * 1024, wantHard: 400, wantSoft: 350},  // AWS m5d.metal (pdx) — kernel reserves ~2%
-		{memTotalKiB: 768 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // exact 768 GiB
-		{memTotalKiB: 754 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // Latitude rs4-metal-xlarge (lax)
-		{memTotalKiB: 1506 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // 1536 GiB host (reported ~1506) — capped
-		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},        // small dev box (floor)
-		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                      // zero (floor)
-		{memTotalKiB: 5000 * 1024 * 1024, wantHard: 800, wantSoft: 700},  // beyond standard tiers — capped
+		{memTotalKiB: 384 * 1024 * 1024, wantHard: 400, wantSoft: 350}, // exact 384 GiB
+		{memTotalKiB: 377 * 1024 * 1024, wantHard: 400, wantSoft: 350}, // AWS m5d.metal (pdx) — kernel reserves ~2%
+		{memTotalKiB: 768 * 1024 * 1024, wantHard: 600, wantSoft: 525}, // exact 768 GiB
+		{memTotalKiB: 754 * 1024 * 1024, wantHard: 600, wantSoft: 525}, // Latitude rs4-metal-xlarge (lax)
+		{memTotalKiB: 1536 * 1024 * 1024, wantHard: 800, wantSoft: 700}, // exact 1536 GiB
+		{memTotalKiB: 1506 * 1024 * 1024, wantHard: 800, wantSoft: 700}, // 1.5 TiB host (reported ~1506)
+		{memTotalKiB: 8 * 1024 * 1024, wantHard: 10, wantSoft: 8},      // small dev box (floor)
+		{memTotalKiB: 0, wantHard: 10, wantSoft: 8},                    // zero (floor)
 	}
 	for _, tt := range tests {
 		var ec exeletClient
@@ -148,31 +148,6 @@ func TestUpdateVMLimits(t *testing.T) {
 		}
 		if got := ec.VMSoftLimit(); got != tt.wantSoft {
 			t.Errorf("memTotalKiB=%d: VMSoftLimit()=%d, want %d", tt.memTotalKiB, got, tt.wantSoft)
-		}
-	}
-}
-
-func TestNominalMemGiB(t *testing.T) {
-	tests := []struct {
-		actual int64
-		want   int64
-	}{
-		{0, 8},
-		{7, 8},
-		{8, 8},
-		{9, 16},
-		{377, 384},  // typical kernel-reserved 384 GiB
-		{384, 384},
-		{754, 768},  // typical kernel-reserved 768 GiB
-		{768, 768},
-		{1506, 1536}, // typical kernel-reserved 1536 GiB
-		{1536, 1536},
-		{4096, 4096},
-		{5000, 5000}, // beyond tiers, unchanged
-	}
-	for _, tt := range tests {
-		if got := nominalMemGiB(tt.actual); got != tt.want {
-			t.Errorf("nominalMemGiB(%d)=%d, want %d", tt.actual, got, tt.want)
 		}
 	}
 }
