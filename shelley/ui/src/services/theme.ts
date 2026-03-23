@@ -25,7 +25,7 @@ export function isDarkModeActive(): boolean {
 
 export function applyTheme(theme: ThemeMode): void {
   const isDark = theme === "dark" || (theme === "system" && getSystemPrefersDark());
-  document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
 }
 
 // Initialize theme on load
