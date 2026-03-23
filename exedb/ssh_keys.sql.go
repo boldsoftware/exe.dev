@@ -322,9 +322,10 @@ func (q *Queries) UpdateSSHKeyComment(ctx context.Context, arg UpdateSSHKeyComme
 }
 
 const updateSSHKeyLastUsed = `-- name: UpdateSSHKeyLastUsed :exec
-UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?
+UPDATE ssh_keys SET last_used_at = DATE('now') WHERE public_key = ? AND (last_used_at IS NULL OR last_used_at < DATE('now'))
 `
 
+// Callers should deduplicate per UTC day, but this is also safe to call repeatedly.
 func (q *Queries) UpdateSSHKeyLastUsed(ctx context.Context, publicKey string) error {
 	_, err := q.exec(ctx, q.updateSSHKeyLastUsedStmt, updateSSHKeyLastUsed, publicKey)
 	return err

@@ -621,7 +621,7 @@
                         <div class="ssh-key-meta">
                             {{if .AddedAt}}Added {{formatTimeAgo .AddedAt}}{{end}}
                             {{if and .AddedAt .LastUsedAt}} · {{end}}
-                            {{if .LastUsedAt}}Last used {{formatTimeAgo .LastUsedAt}}{{end}}
+                            {{if .LastUsedAt}}Last used {{formatVagueTimeAgo .LastUsedAt}}{{end}}
                         </div>
                         {{end}}
                     </div>

@@ -38,7 +38,8 @@ VALUES (?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING;
 
 -- name: UpdateSSHKeyLastUsed :exec
-UPDATE ssh_keys SET last_used_at = CURRENT_TIMESTAMP WHERE public_key = ?;
+-- Callers should deduplicate per UTC day, but this is also safe to call repeatedly.
+UPDATE ssh_keys SET last_used_at = DATE('now') WHERE public_key = ? AND (last_used_at IS NULL OR last_used_at < DATE('now'));
 
 -- name: GetSSHKeyByFingerprint :one
 SELECT user_id, public_key FROM ssh_keys WHERE fingerprint = ?;

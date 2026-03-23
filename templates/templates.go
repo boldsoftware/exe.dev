@@ -18,7 +18,7 @@ func Parse() (*template.Template, error) {
 	funcMap := template.FuncMap{
 		"contains":           strings.Contains,
 		"formatTimeAgo":      formatTimeAgo,
-		"formatVagueTimeAgo": formatVagueTimeAgo,
+		"formatVagueTimeAgo": FormatVagueTimeAgo,
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(Files, "*.html")
 	if err != nil {
@@ -35,9 +35,9 @@ func formatTimeAgo(t *time.Time) string {
 	return humanize.Time(*t)
 }
 
-// formatVagueTimeAgo returns a deliberately vague relative time string,
+// FormatVagueTimeAgo returns a deliberately vague relative time string,
 // avoiding precision that could be confusing across time zones.
-func formatVagueTimeAgo(t *time.Time) string {
+func FormatVagueTimeAgo(t *time.Time) string {
 	if t == nil {
 		return ""
 	}

@@ -421,6 +421,10 @@ type Server struct {
 	// passed to each per-request ProxyServer.
 	cookieAtimes sync.Map
 
+	// sshKeyAtimes deduplicates UpdateSSHKeyLastUsed writes
+	// to at most once per public key per UTC day.
+	sshKeyAtimes sync.Map // publicKey → "2006-01-02"
+
 	// Database
 	db *sqlite.DB
 
@@ -4066,9 +4070,16 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 		return "", fmt.Errorf("database error: %w", err)
 	}
 
-	// Update last_used_at timestamp
-	if err := withTx1(s, ctx, (*exedb.Queries).UpdateSSHKeyLastUsed, publicKeyStr); err != nil {
-		return "", fmt.Errorf("failed to update SSH key last_used_at: %w", err)
+	// Update last_used_at, at most once per key per UTC day.
+	today := time.Now().UTC().Format("2006-01-02")
+	if prev, ok := s.sshKeyAtimes.Load(publicKeyStr); !ok || prev.(string) != today {
+		go func() {
+			if err := withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).UpdateSSHKeyLastUsed, publicKeyStr); err != nil {
+				slog.ErrorContext(ctx, "update ssh key last used", "err", err)
+				return
+			}
+			s.sshKeyAtimes.Store(publicKeyStr, today)
+		}()
 	}
 
 	return userID, nil

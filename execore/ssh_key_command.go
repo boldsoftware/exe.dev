@@ -15,6 +15,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sshkey"
+	"exe.dev/templates"
 )
 
 // nextSSHKeyComment increments the user's next_ssh_key_number and returns the
@@ -250,7 +251,7 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 				if key.AddedAt != nil {
 					cc.Write(" · ")
 				}
-				cc.Write("\033[2mlast used %s\033[0m", humanize.Time(*key.LastUsedAt))
+				cc.Write("\033[2mlast used %s\033[0m", templates.FormatVagueTimeAgo(key.LastUsedAt))
 			}
 			cc.Writeln("")
 		}
@@ -402,6 +403,7 @@ func (ss *SSHServer) handleSSHKeyRemoveCmd(ctx context.Context, cc *exemenu.Comm
 		return err
 	}
 
+	ss.server.sshKeyAtimes.Delete(keyToDelete.PublicKey)
 	proxyChangeDeletedSSHKey(int(keyToDelete.ID), keyToDelete.UserID, keyToDelete.PublicKey, keyToDelete.Fingerprint)
 
 	if cc.WantJSON() {

@@ -349,7 +349,7 @@ CREATE TABLE IF NOT EXISTS "ssh_keys" (
     user_id TEXT NOT NULL,
     public_key TEXT UNIQUE NOT NULL,
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at DATETIME,
+    last_used_at DATETIME, -- UTC day granularity; writes use DATE('now'). See UpdateSSHKeyLastUsed.
     comment TEXT NOT NULL DEFAULT '',
     fingerprint TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
