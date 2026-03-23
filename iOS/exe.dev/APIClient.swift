@@ -169,6 +169,68 @@ final class APIClient: Sendable {
         }
     }
 
+    // MARK: - VM Creation
+
+    /// Checks if a hostname is valid and available via POST /check-hostname.
+    func checkHostname(_ hostname: String) async throws -> HostnameCheckResponse {
+        var request = URLRequest(url: URL(string: "\(baseURL)/check-hostname")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuth(&request)
+
+        request.httpBody = try JSONEncoder().encode(["hostname": hostname])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
+        return try Self.decoder.decode(HostnameCheckResponse.self, from: data)
+    }
+
+    /// Creates a VM via POST /create-vm (form-encoded, same as web UI).
+    /// The server starts async creation and redirects; we don't follow the redirect.
+    func createVM(hostname: String, prompt: String) async throws {
+        var request = URLRequest(url: URL(string: "\(baseURL)/create-vm")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        addAuth(&request)
+
+        var parts = [URLQueryItem(name: "hostname", value: hostname)]
+        if !prompt.isEmpty {
+            parts.append(URLQueryItem(name: "prompt", value: prompt))
+        }
+        var components = URLComponents()
+        components.queryItems = parts
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        // Use a session that doesn't follow redirects so we can treat 303 as success.
+        let delegate = NoRedirectDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.noData }
+
+        if http.statusCode == 303 {
+            let location = http.value(forHTTPHeaderField: "Location") ?? ""
+            if location.contains("billing") {
+                throw APIError.serverMessage("Your plan does not allow VM creation. Please upgrade at exe.dev.")
+            }
+            if location.contains("error=vm_limit") {
+                throw APIError.serverMessage("You've reached your VM limit.")
+            }
+            // Success — server redirected to dashboard.
+            return
+        }
+
+        // If the server returned a non-redirect error, try to parse it.
+        if http.statusCode >= 400 {
+            if let body = try? JSONDecoder().decode([String: String].self, from: data),
+               let message = body["error"] {
+                throw APIError.serverMessage(message)
+            }
+            throw APIError.badStatus(http.statusCode)
+        }
+    }
+
     // MARK: - Push Tokens
 
     func registerPushToken(_ token: String, platform: String = "apns", environment: String = "production") async throws {
@@ -205,11 +267,26 @@ final class APIClient: Sendable {
 enum APIError: Error, LocalizedError {
     case badStatus(Int)
     case noData
+    case serverMessage(String)
 
     var errorDescription: String? {
         switch self {
         case .badStatus(let code): "Server returned status \(code)"
         case .noData: "No data received"
+        case .serverMessage(let msg): msg
         }
+    }
+}
+
+/// URLSession delegate that prevents automatic redirect following.
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil) // Don't follow redirects
     }
 }

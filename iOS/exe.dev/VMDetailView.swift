@@ -46,5 +46,8 @@ struct VMDetailView: View {
         }
         .navigationTitle("# \(vm.vmName)")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await syncEngine.markVMAsRead(vmName: vm.vmName)
+        }
     }
 }

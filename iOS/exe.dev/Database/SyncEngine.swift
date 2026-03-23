@@ -151,6 +151,45 @@ actor SyncEngine {
         streamTasks.removeAll()
     }
 
+    // MARK: - Unread Tracking
+
+    struct VMUnreadInfo: Sendable {
+        let vmName: String
+        let shelleyURL: String
+        let lastViewedAt: Date?
+    }
+
+    /// Returns a lightweight snapshot of running VMs that have shelley — no networking.
+    func runningVMsWithShelley() -> [VMUnreadInfo] {
+        let vms = (try? modelContext.fetch(FetchDescriptor<StoredVM>())) ?? []
+        return vms.compactMap { vm in
+            guard vm.isRunning, let url = vm.shelleyURL else { return nil }
+            return VMUnreadInfo(vmName: vm.vmName, shelleyURL: url, lastViewedAt: vm.lastViewedAt)
+        }
+    }
+
+    /// Writes pre-computed unread counts into the database. Negative values are skipped (keep existing).
+    func applyUnreadCounts(_ counts: [(String, Int)]) {
+        for (vmName, count) in counts {
+            guard count >= 0 else { continue }
+            let name = vmName
+            let predicate = #Predicate<StoredVM> { $0.vmName == name }
+            if let vm = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
+                vm.unreadCount = count
+            }
+        }
+        try? saveAndNotify()
+    }
+
+    func markVMAsRead(vmName: String) {
+        let predicate = #Predicate<StoredVM> { $0.vmName == vmName }
+        if let vm = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
+            vm.lastViewedAt = Date()
+            vm.unreadCount = 0
+            try? saveAndNotify()
+        }
+    }
+
     // MARK: - Private Helpers
 
     private func saveAndNotify() throws {

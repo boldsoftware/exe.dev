@@ -127,6 +127,9 @@ private struct MessageListView: View {
                 .padding(.top, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .onAppear {
+                proxy.scrollTo("bottom")
+            }
             .onChange(of: viewModel.messages.count) { old, new in
                 if new > old {
                     proxy.scrollTo("bottom")

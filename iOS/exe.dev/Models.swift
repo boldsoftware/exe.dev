@@ -266,6 +266,14 @@ struct ChatResponse: Decodable {
     }
 }
 
+// MARK: - VM Creation
+
+struct HostnameCheckResponse: Decodable {
+    let valid: Bool
+    let available: Bool
+    let message: String?
+}
+
 // MARK: - SwiftData Models
 
 @Model final class StoredVM {
@@ -279,6 +287,8 @@ struct ChatResponse: Decodable {
     var regionDisplay: String?
     var creatorEmail: String?
     var lastFetchedAt: Date
+    var lastViewedAt: Date?
+    var unreadCount: Int = 0
 
     var isRunning: Bool { status == "running" }
 
