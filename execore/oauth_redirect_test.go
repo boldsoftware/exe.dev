@@ -187,6 +187,70 @@ func TestGoogleOAuthNewUserRedirect(t *testing.T) {
 	})
 }
 
+// TestGoogleOAuthDottedGmailPreservesEmail verifies that when a user signs up
+// with a dotted Gmail address (e.g. abc.def@gmail.com), the account is created
+// with their original email — not Google's dot-stripped version (abcdef@gmail.com).
+func TestGoogleOAuthDottedGmailPreservesEmail(t *testing.T) {
+	userEmail := "abc.def@gmail.com"
+	// Google strips dots from Gmail addresses internally.
+	googleEmail := "abcdef@gmail.com"
+
+	tokenServer := fakeGoogleTokenServer(t, googleEmail)
+
+	server := newTestServer(t)
+	server.googleOAuth = &googleoauth.Client{
+		ClientID:          "test-client-id",
+		ClientSecret:      "test-client-secret",
+		WebBaseURL:        server.httpURL(),
+		TestTokenEndpoint: tokenServer.URL,
+	}
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	state := "test-dotted-gmail-" + fmt.Sprint(time.Now().UnixNano())
+	err := server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		_ = queries.CleanupExpiredOAuthStates(ctx, time.Now())
+		return queries.InsertOAuthState(ctx, exedb.InsertOAuthStateParams{
+			State:     state,
+			Provider:  googleoauth.ProviderName,
+			Email:     userEmail,
+			IsNewUser: true,
+			ExpiresAt: sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+		})
+	})
+	if err != nil {
+		t.Fatalf("insert oauth state: %v", err)
+	}
+
+	resp, err := client.Get(server.httpURL() + "/oauth/google/callback?code=fakecode&state=" + url.QueryEscape(state))
+	if err != nil {
+		t.Fatalf("GET callback: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 (welcome page), got %d", resp.StatusCode)
+	}
+
+	// The user should have been created with the original dotted email,
+	// not Google's dot-stripped version.
+	userID, err := server.GetUserIDByEmail(t.Context(), userEmail)
+	if err != nil {
+		t.Fatalf("user not found by original email %q: %v", userEmail, err)
+	}
+	storedEmail, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetEmailByUserID, userID)
+	if err != nil {
+		t.Fatalf("failed to get stored email: %v", err)
+	}
+	if storedEmail != userEmail {
+		t.Errorf("stored email = %q, want %q (dots were stripped!)", storedEmail, userEmail)
+	}
+}
+
 // TestGoogleOAuthExistingUserRedirect verifies that redirect/return_host stored in
 // the OAuth state are honored when an existing user logs in via Google OAuth.
 func TestGoogleOAuthExistingUserRedirect(t *testing.T) {

@@ -190,14 +190,12 @@ func (s *Server) handleOAuthGoogleCallback(w http.ResponseWriter, r *http.Reques
 	if !strings.EqualFold(claims.Email, oauthState.Email) {
 		originalEmail := oauthState.Email
 
-		// Check if the original email is a plus-alias of the Google email.
-		// If so, keep the original email so users can sign up and log in
-		// with plus-addressed accounts (e.g. user+billing@gmail.com).
-		strippedOriginal := email.StripPlusSuffix(originalEmail)
-		if strings.EqualFold(strippedOriginal, claims.Email) {
-			// The user typed e.g. user+foo@gmail.com, Google confirmed user@gmail.com.
-			// Keep oauthState.Email as the original plus-addressed email.
-			s.slog().InfoContext(ctx, "google oauth plus-alias match, keeping original email",
+		// Check if the original email is the same Gmail mailbox as the Google email,
+		// accounting for plus-aliases (user+tag@) and dots (u.s.e.r@ == user@)
+		// which Gmail treats as cosmetic.
+		if email.GmailEqual(originalEmail, claims.Email) {
+			// Same mailbox — keep the user's original email (with dots/plus).
+			s.slog().InfoContext(ctx, "google oauth cosmetic email match, keeping original",
 				"original", originalEmail, "google", claims.Email)
 		} else {
 			// Genuinely different email — use Google's.
