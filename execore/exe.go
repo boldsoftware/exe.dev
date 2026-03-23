@@ -585,11 +585,25 @@ func (ec *exeletClient) VMSoftLimit() int32 {
 
 // updateVMLimits recomputes VM limits from the exelet's reported total memory.
 func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
-	memGiB := memTotalKiB / (1024 * 1024)
+	memGiB := nominalMemGiB(memTotalKiB / (1024 * 1024))
 	hard := int32(max(memGiB*25/24, 10))
 	soft := hard * 7 / 8
 	ec.vmHardLimit.Store(hard)
 	ec.vmSoftLimit.Store(soft)
+}
+
+// nominalMemGiB rounds up actual reported GiB to the nearest standard server
+// memory tier. The kernel reserves a small percentage of physical RAM, so
+// MemTotal is always slightly below the nominal hardware size (e.g. a 384 GiB
+// machine reports ~377 GiB). Rounding up recovers the intended hardware tier.
+func nominalMemGiB(actualGiB int64) int64 {
+	standardTiers := []int64{8, 16, 32, 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096}
+	for _, tier := range standardTiers {
+		if actualGiB <= tier {
+			return tier
+		}
+	}
+	return actualGiB
 }
 
 // countInstances returns the number of instances on this exelet.
