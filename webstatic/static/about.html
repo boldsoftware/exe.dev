@@ -13,7 +13,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://exe.dev/about">
     <meta property="og:site_name" content="exe.dev">
-    <link rel="stylesheet" href="exe.css">
+    <link rel="stylesheet" href="common.css">
     <style>
         body {
             display: flex;
@@ -25,15 +25,83 @@
             text-align: center;
             overflow-x: hidden;
         }
+        main {
+            max-width: 900px;
+            width: 100%;
+        }
+        h1 {
+            font-size: clamp(70px, 14vw, 140px);
+            line-height: 0.9;
+            margin-bottom: 40px;
+            font-weight: normal;
+            letter-spacing: -0.02em;
+        }
         main p {
             max-width: 720px;
             margin: 0 auto 1em;
             line-height: 1.7;
-            color: #333;
+            color: var(--color-text-secondary);
             text-align: left;
         }
+        hr {
+            width: 200px;
+            height: 40px;
+            border: 0;
+            margin: 40px auto;
+            position: relative;
+            opacity: 0.4;
+        }
+        hr::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--color-text-secondary) 20%, var(--color-text-secondary) 80%, transparent 100%);
+        }
+        hr::after {
+            content: '❦';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            background: var(--color-bg);
+            padding: 0 10px;
+            color: var(--color-text-secondary);
+        }
+        nav {
+            margin-top: 50px;
+            text-align: center;
+        }
+        nav a {
+            display: inline-block;
+            font-size: var(--text-sm);
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: var(--color-text-secondary);
+        }
+        nav a + a::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.6;
+            margin: 0 12px 2px;
+            vertical-align: middle;
+        }
+        @media (max-width: 600px) {
+            h1 { margin-left: 0; margin-right: 0; }
+            hr { transform: scale(0.8); margin: 30px auto; }
+            nav a { font-size: var(--text-xxs); letter-spacing: 0.2em; }
+            nav a + a::before { margin: 0 8px 2px; }
+        }
     </style>
-    
+
 </head>
 <body>
     <main>
@@ -56,4 +124,3 @@
     </main>
 </body>
 </html>
-

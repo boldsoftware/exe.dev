@@ -13,24 +13,10 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://blog.exe.dev/">
     <meta property="og:site_name" content="exe.dev">
-    <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="stylesheet" href="/static/common.css" />
     <link rel="alternate" type="application/atom+xml" title="exe.dev blog" href="https://blog.exe.dev/atom.xml" />
     {{template "topbar_style" .}}
     <style>
-      body {
-        font-family:
-          "Charter", "Charter Roman", "ITC Charter", "STIX Two Text", "Hoefler Text",
-          "Iowan Old Style", "Palatino", "Palatino Linotype", "URW Palladio L",
-          Georgia, "Times New Roman", serif;
-        font-size: 16px;
-        font-size-adjust: 0.48;
-        -webkit-text-size-adjust: 100%;
-        text-size-adjust: 100%;
-        background: #fff;
-        color: #1f1f1f;
-        margin: 0;
-      }
-
       main {
         max-width: 880px;
         margin: 64px auto 120px;
@@ -43,15 +29,11 @@
         gap: 36px;
       }
 
-      .post-card {
-        padding: 0;
-      }
-
       .post-card h2 {
         font-size: 28px;
         font-weight: 500;
         margin-bottom: 12px;
-        color: #101010;
+        color: var(--color-text);
       }
 
       .post-card a {
@@ -60,8 +42,8 @@
       }
 
       .post-meta {
-        font-size: 13px;
-        color: rgba(0, 0, 0, 0.55);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
         margin-bottom: 16px;
         display: flex;
         flex-wrap: wrap;
@@ -73,13 +55,13 @@
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--color-text-muted);
         margin-left: 8px;
       }
 
       .post-description {
-        font-size: 16px;
-        color: rgba(0, 0, 0, 0.75);
+        font-size: var(--text-base);
+        color: var(--color-text-secondary);
         line-height: 1.6;
       }
 
@@ -87,34 +69,6 @@
         main {
           margin: 32px auto 80px;
           padding: 0 16px;
-        }
-      }
-
-      /* Dark mode */
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #111;
-          color: #e5e5e5;
-        }
-
-        .post-card h2 {
-          color: #f3f4f6;
-        }
-
-        .post-card a {
-          color: inherit;
-        }
-
-        .post-meta {
-          color: rgba(255, 255, 255, 0.55);
-        }
-
-        .unpublished-note {
-          color: rgba(255, 255, 255, 0.55);
-        }
-
-        .post-description {
-          color: rgba(255, 255, 255, 0.75);
         }
       }
     </style>

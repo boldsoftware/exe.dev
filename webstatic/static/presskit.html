@@ -19,7 +19,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://exe.dev/presskit" />
     <meta property="og:site_name" content="exe.dev" />
-    <link rel="stylesheet" href="exe.css" />
+    <link rel="stylesheet" href="common.css" />
     <style>
       body {
         display: flex;
@@ -28,19 +28,29 @@
         padding: 60px 20px;
       }
       main {
+        max-width: 900px;
+        width: 100%;
         text-align: left;
+      }
+      h1 {
+        font-size: clamp(70px, 14vw, 140px);
+        line-height: 0.9;
+        margin-bottom: 40px;
+        font-weight: normal;
+        letter-spacing: -0.02em;
+        text-align: center;
       }
       main > p {
         max-width: 720px;
         margin: 0 auto 1.5em;
         line-height: 1.7;
-        color: #333;
+        color: var(--color-text-secondary);
       }
       h2 {
         font-size: 28px;
         font-weight: normal;
         margin: 60px 0 24px;
-        color: #000;
+        color: var(--color-text);
       }
       .resources {
         list-style: none;
@@ -57,11 +67,7 @@
         opacity: 0.4;
       }
       .resources a {
-        color: #000;
-        text-decoration: none;
-      }
-      .resources a:hover {
-        text-decoration: underline;
+        color: var(--color-text);
       }
       .asset-grid {
         display: grid;
@@ -77,38 +83,80 @@
         height: 120px;
         object-fit: contain;
         margin-bottom: 12px;
-        background: rgba(0, 0, 0, 0.02);
-        border-radius: 8px;
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
         padding: 16px;
       }
       .asset-card .asset-name {
-        font-size: 14px;
+        font-size: var(--text-sm);
         font-weight: 600;
-        color: #000;
+        color: var(--color-text);
         margin-bottom: 4px;
       }
       .asset-card .asset-links {
-        font-size: 13px;
+        font-size: var(--text-xs);
       }
       .asset-card .asset-links a {
-        color: #333;
-        text-decoration: none;
+        color: var(--color-text-secondary);
         margin: 0 4px;
       }
-      .asset-card .asset-links a:hover {
-        text-decoration: underline;
+      hr {
+        width: 200px;
+        height: 40px;
+        border: 0;
+        margin: 40px auto;
+        position: relative;
+        opacity: 0.4;
+      }
+      hr::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, var(--color-text-secondary) 20%, var(--color-text-secondary) 80%, transparent 100%);
+      }
+      hr::after {
+        content: '❦';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 24px;
+        background: var(--color-bg);
+        padding: 0 10px;
+        color: var(--color-text-secondary);
+      }
+      nav {
+        margin-top: 50px;
+        text-align: center;
+      }
+      nav a {
+        display: inline-block;
+        font-size: var(--text-sm);
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        font-variant: small-caps;
+        color: var(--color-text-secondary);
+      }
+      nav a + a::before {
+        content: '';
+        display: inline-block;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.6;
+        margin: 0 12px 2px;
+        vertical-align: middle;
       }
       @media (max-width: 600px) {
-        h2 {
-          font-size: 24px;
-        }
-        .asset-grid {
-          grid-template-columns: repeat(2, 1fr);
-          gap: 20px;
-        }
-        .asset-card img {
-          height: 80px;
-        }
+        h2 { font-size: 24px; }
+        .asset-grid { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .asset-card img { height: 80px; }
+        hr { transform: scale(0.8); margin: 30px auto; }
+        nav a { font-size: var(--text-xxs); letter-spacing: 0.2em; }
       }
     </style>
   </head>

@@ -14,20 +14,10 @@
     <meta property="og:url" content="https://exe.dev/security{{.Bulletin.Path}}">
     <meta property="og:site_name" content="exe.dev">
     <meta property="article:published_time" content="{{.Bulletin.DateString}}">
-    <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="stylesheet" href="/static/common.css" />
     <link rel="alternate" type="application/atom+xml" title="exe.dev security bulletins" href="https://exe.dev/security/atom.xml" />
     {{template "topbar_style" .}}
     <style>
-      body {
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 16px;
-        -webkit-text-size-adjust: 100%;
-        text-size-adjust: 100%;
-        background: #fafafa;
-        color: #333;
-        margin: 0;
-      }
-
       main {
         max-width: 720px;
         margin: 48px auto 96px;
@@ -36,9 +26,9 @@
 
       .bulletin {
         padding: 32px 40px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-input);
+        border-radius: var(--radius-md);
       }
 
       .bulletin-header {
@@ -48,14 +38,14 @@
       .bulletin-title {
         font-size: 28px;
         font-weight: 600;
-        color: #000;
+        color: var(--color-text);
         margin: 0 0 12px;
         line-height: 1.3;
       }
 
       .bulletin-meta {
-        font-size: 13px;
-        color: rgba(0, 0, 0, 0.55);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
         display: flex;
         flex-wrap: wrap;
         gap: 16px;
@@ -81,13 +71,12 @@
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--color-text-muted);
       }
 
       .bulletin-content {
         font-size: 15px;
         line-height: 1.75;
-        color: #333;
       }
 
       .bulletin-content h1,
@@ -96,7 +85,7 @@
         margin: 32px 0 12px;
         font-weight: 600;
         line-height: 1.3;
-        color: #000;
+        color: var(--color-text);
       }
 
       .bulletin-content h1 { font-size: 24px; }
@@ -113,17 +102,12 @@
         margin-bottom: 16px;
       }
 
-      .bulletin-content a {
-        color: #0066cc;
-        text-decoration: underline;
-      }
-
       .bulletin-content pre.code {
-        background: #f6f6f0;
+        background: var(--color-bg-muted);
         padding: 16px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         overflow-x: auto;
-        font-size: 14px;
+        font-size: var(--text-sm);
         line-height: 1.6;
       }
 
@@ -135,19 +119,18 @@
         word-break: break-word;
         font-size: 15px;
         line-height: 1.75;
+        border: none;
       }
       .bulletin-content pre.indented code { font-family: inherit; }
 
       .bulletin-footer {
         margin-top: 32px;
         padding-top: 20px;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid var(--color-border-input);
       }
 
       .bulletin-footer a {
-        color: #0066cc;
-        text-decoration: none;
-        font-size: 14px;
+        font-size: var(--text-sm);
       }
 
       @media (max-width: 768px) {
@@ -160,19 +143,6 @@
       }
 
       @media (prefers-color-scheme: dark) {
-        body { background: #111; color: #d1d5db; }
-        .bulletin { background: #1f1f1f; border-color: #333; }
-        .bulletin-title { color: #f3f4f6; }
-        .bulletin-meta { color: rgba(255, 255, 255, 0.55); }
-        .unpublished-note { color: rgba(255, 255, 255, 0.55); }
-        .bulletin-content { color: #d1d5db; }
-        .bulletin-content h1,
-        .bulletin-content h2,
-        .bulletin-content h3 { color: #f3f4f6; }
-        .bulletin-content a { color: #60a5fa; }
-        .bulletin-content pre.code { background: #1a1a1a; }
-        .bulletin-footer { border-top-color: #333; }
-        .bulletin-footer a { color: #60a5fa; }
         .severity-low { background: #1b5e20; color: #a5d6a7; }
         .severity-medium { background: #bf360c; color: #ffcc80; }
         .severity-high { background: #b71c1c; color: #ef9a9a; }

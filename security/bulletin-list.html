@@ -13,20 +13,10 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://exe.dev/security">
     <meta property="og:site_name" content="exe.dev">
-    <link rel="stylesheet" href="/static/exe.css" />
+    <link rel="stylesheet" href="/static/common.css" />
     <link rel="alternate" type="application/atom+xml" title="exe.dev security bulletins" href="https://exe.dev/security/atom.xml" />
     {{template "topbar_style" .}}
     <style>
-      body {
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 16px;
-        -webkit-text-size-adjust: 100%;
-        text-size-adjust: 100%;
-        background: #fafafa;
-        color: #333;
-        margin: 0;
-      }
-
       main {
         max-width: 720px;
         margin: 48px auto 96px;
@@ -35,16 +25,16 @@
 
       .security-intro {
         padding: 32px 40px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-input);
+        border-radius: var(--radius-md);
         margin-bottom: 40px;
       }
 
       .security-intro h1 {
         font-size: 36px;
         font-weight: 400;
-        color: #000;
+        color: var(--color-text);
         margin: 0 0 16px;
         line-height: 1.2;
         letter-spacing: -0.01em;
@@ -53,28 +43,22 @@
       .security-intro p {
         margin: 0 0 12px;
         line-height: 1.7;
-        color: #333;
       }
 
       .security-intro p:last-child {
         margin-bottom: 0;
       }
 
-      .security-intro a {
-        color: #0066cc;
-        text-decoration: underline;
-      }
-
       .bulletins-header {
         font-size: 24px;
         font-weight: 600;
-        color: #000;
+        color: var(--color-text);
         margin: 0 0 24px;
       }
 
       .feed-link {
-        font-size: 13px;
-        color: rgba(0, 0, 0, 0.55);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
         margin-left: 12px;
         font-weight: 400;
       }
@@ -92,16 +76,16 @@
 
       .bulletin-card {
         padding: 24px 28px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-input);
+        border-radius: var(--radius-md);
       }
 
       .bulletin-card h2 {
         font-size: 20px;
         font-weight: 600;
         margin: 0 0 8px;
-        color: #000;
+        color: var(--color-text);
       }
 
       .bulletin-card a {
@@ -110,8 +94,8 @@
       }
 
       .bulletin-meta {
-        font-size: 13px;
-        color: rgba(0, 0, 0, 0.55);
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
         margin-bottom: 12px;
         display: flex;
         flex-wrap: wrap;
@@ -138,18 +122,18 @@
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--color-text-muted);
       }
 
       .bulletin-description {
         font-size: 15px;
-        color: rgba(0, 0, 0, 0.75);
+        color: var(--color-text-secondary);
         line-height: 1.6;
         margin: 0;
       }
 
       .no-bulletins {
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--color-text-muted);
         font-size: 15px;
       }
 
@@ -163,19 +147,6 @@
       }
 
       @media (prefers-color-scheme: dark) {
-        body { background: #111; color: #d1d5db; }
-        .security-intro { background: #1f1f1f; border-color: #333; }
-        .security-intro h1 { color: #f3f4f6; }
-        .security-intro p { color: #d1d5db; }
-        .security-intro a { color: #60a5fa; }
-        .bulletins-header { color: #f3f4f6; }
-        .feed-link { color: rgba(255, 255, 255, 0.55); }
-        .bulletin-card { background: #1f1f1f; border-color: #333; }
-        .bulletin-card h2 { color: #f3f4f6; }
-        .bulletin-meta { color: rgba(255, 255, 255, 0.55); }
-        .unpublished-note { color: rgba(255, 255, 255, 0.55); }
-        .bulletin-description { color: rgba(255, 255, 255, 0.75); }
-        .no-bulletins { color: rgba(255, 255, 255, 0.55); }
         .severity-low { background: #1b5e20; color: #a5d6a7; }
         .severity-medium { background: #bf360c; color: #ffcc80; }
         .severity-high { background: #b71c1c; color: #ef9a9a; }

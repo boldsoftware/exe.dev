@@ -6,122 +6,101 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="icon" href="/favicon.ico">
     <title>EXE.DEV - User Profile</title>
+    <link rel="stylesheet" href="/static/common.css" />
     <link rel="stylesheet" href="/static/topbar.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            background-color: #fafafa;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
             min-height: 100vh;
         }
-        
+
         .main-container {
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
             padding-bottom: 50vh;
         }
-        
+
         .section {
             margin-bottom: 40px;
         }
-        
-        .section-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #666;
-            margin-bottom: 16px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .info-card {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 20px;
-        }
-        
+
         .info-row {
             display: flex;
             padding: 12px 0;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--color-border-subtle);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
         }
 
         /* ---- Hero area ---- */
         .credit-hero { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
         .credit-hero-left { display: flex; align-items: baseline; gap: 8px; }
-        .credit-hero-number { font-size: 32px; font-weight: 700; color: #111; line-height: 1; }
+        .credit-hero-number { font-size: 32px; font-weight: 700; color: var(--color-text); line-height: 1; }
         .credit-hero-number.style-red { color: #e53e3e; }
-        .credit-hero-label { font-size: 14px; color: #666; }
-        .credit-hero-reset { font-size: 13px; color: #888; text-align: right; }
+        .credit-hero-label { font-size: var(--text-sm); color: var(--color-text-secondary); }
+        .credit-hero-reset { font-size: var(--text-xs); color: var(--color-text-muted); text-align: right; }
+
+        @media (prefers-color-scheme: dark) {
+            .credit-hero-number.style-red { color: #fca5a5; }
+        }
 
         /* ---- Bar ---- */
         .credit-bar-wrap { margin-bottom: 6px; }
-        .credit-bar-track { background: #e0e0e0; border-radius: 4px; height: 8px; overflow: hidden; }
-        .credit-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+        .credit-bar-track { background: var(--color-border-input); border-radius: var(--radius-sm); height: 8px; overflow: hidden; }
+        .credit-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s ease; }
         .credit-bar-fill.green { background: #22a55b; }
         .credit-bar-fill.yellow { background: #eab308; }
         .credit-bar-fill.orange { background: #dd6b20; }
         .credit-bar-fill.red { background: #e53e3e; }
 
-        .credit-bar-annotation { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+        .credit-bar-annotation { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); margin-top: 4px; }
+
+        @media (prefers-color-scheme: dark) {
+            .credit-bar-fill.green { background: #4ade80; }
+            .credit-bar-fill.yellow { background: #fde047; }
+            .credit-bar-fill.orange { background: #fb923c; }
+            .credit-bar-fill.red { background: #fca5a5; }
+        }
 
         /* ---- Detail rows ---- */
-        .credit-details { margin-top: 20px; border-top: 1px solid #f0f0f0; padding-top: 16px; }
+        .credit-details { margin-top: 20px; border-top: 1px solid var(--color-border-subtle); padding-top: 16px; }
         .credit-detail-row { display: flex; padding: 8px 0; }
-        .credit-detail-label { font-size: 13px; color: #666; width: 120px; flex-shrink: 0; }
-        .credit-detail-value { font-size: 13px; color: #111; }
+        .credit-detail-label { font-size: var(--text-xs); color: var(--color-text-secondary); width: 120px; flex-shrink: 0; }
+        .credit-detail-value { font-size: var(--text-xs); color: var(--color-text); }
 
         /* ---- Buy form ---- */
-        .buy-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; gap: 12px; font-size: 13px; }
-        .buy-input { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 13px; width: 120px; }
+        .buy-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border-subtle); display: flex; align-items: center; gap: 12px; font-size: var(--text-xs); }
+        .buy-row a { color: var(--color-link); }
+        .buy-input { padding: 6px 10px; width: 120px; }
 
         /* ---- Purchases ---- */
-        .purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+        .purchases { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border-subtle); }
         .purchases:first-child { border-top: none; margin-top: 0; padding-top: 0; }
-        .purchases-label { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .purchases-table { width: 100%; border-collapse: collapse; }
-        .purchases-table th, .purchases-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-        .purchases-table th { color: #666; font-weight: 500; }
-        .purchases-table td { color: #111; }
-        .purchases-table tr:last-child td { border-bottom: none; }
-        .extra-credits-balance { font-size: 14px; color: #111; }
-        .purchases-table a, .purchases-link { color: #0066cc; }
+        .purchases-label { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .purchases-table a, .purchases-link { color: var(--color-link); }
+        .extra-credits-balance { font-size: var(--text-sm); color: var(--color-text); }
 
-        .info-row:last-child {
-            border-bottom: none;
-        }
-        
         .info-label {
-            font-size: 13px;
-            color: #666;
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
             width: 120px;
             flex-shrink: 0;
             margin-right: 12px;
         }
-        
+
         .info-value {
-            font-size: 13px;
-            color: #000;
+            font-size: var(--text-xs);
+            color: var(--color-text);
             word-break: break-all;
         }
 
-        .info-value code {
-            background: #f3f4f6;
-            color: #1f2937;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: ui-monospace, monospace;
-            font-size: 12px;
+        .info-value a {
+            color: var(--color-link);
         }
 
-.info-value-full {
+        .info-value-full {
             flex: 1;
         }
 
@@ -130,15 +109,15 @@
             flex-direction: column;
             gap: 12px;
         }
-        
+
         .ssh-key-item {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             gap: 12px;
-            background: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
+            background: var(--color-bg-subtle);
+            border: 1px solid var(--color-border-input);
+            border-radius: var(--radius-sm);
             padding: 12px;
         }
 
@@ -148,179 +127,72 @@
         }
 
         .ssh-key-comment {
-            font-size: 14px;
+            font-size: var(--text-sm);
             font-weight: 500;
-            color: #333;
+            color: var(--color-text);
             margin-bottom: 4px;
         }
 
         .ssh-key-fingerprint {
             font-family: inherit;
-            font-size: 12px;
-            color: #666;
+            font-size: var(--text-xxs);
+            color: var(--color-text-secondary);
             word-break: break-all;
         }
 
         .ssh-key-meta {
-            font-size: 12px;
-            color: #999;
+            font-size: var(--text-xxs);
+            color: var(--color-text-muted);
             margin-top: 4px;
         }
-        
+
         .no-keys {
-            color: #999;
-            font-size: 13px;
+            color: var(--color-text-muted);
+            font-size: var(--text-xs);
             font-style: italic;
         }
 
-
         .ssh-key-error {
-            color: #dc2626;
-            font-size: 13px;
+            color: var(--color-danger);
+            font-size: var(--text-xs);
             margin-bottom: 12px;
             display: none;
         }
 
         .ssh-key-success {
-            color: #16a34a;
-            font-size: 13px;
+            color: var(--color-success);
+            font-size: var(--text-xs);
             margin-bottom: 12px;
             display: none;
         }
 
-        /* Command Modal Styles */
-        .cmd-modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.15s, visibility 0.15s;
-            z-index: 1000;
-        }
+        @media (prefers-color-scheme: dark) {
+            #github .ssh-key-item {
+                background: #1f1f1f;
+            }
 
-        .cmd-modal-overlay.visible {
-            opacity: 1;
-            visibility: visible;
-        }
+            .ssh-key-error { color: #f87171; }
+            .ssh-key-success { color: #86efac; }
 
-        .cmd-modal {
-            background: #fff;
-            border-radius: 8px;
-            padding: 24px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        }
+            /* Add SSH Key Modal */
+            #ssh-key-input {
+                background: var(--color-bg-muted);
+                border-color: var(--color-border);
+                color: var(--color-text);
+            }
 
-        .cmd-modal-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 16px;
-        }
-
-        .cmd-display {
-            background: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            padding: 12px;
-            font-family: inherit;
-            font-size: 13px;
-            color: #333;
-            margin-bottom: 16px;
-            word-break: break-all;
-        }
-
-        .cmd-output {
-            font-size: 13px;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 16px;
-            display: none;
-        }
-
-        .cmd-output.visible {
-            display: block;
-        }
-
-        .cmd-output.success {
-            background: #f0fdf4;
-            border: 1px solid #86efac;
-            color: #166534;
-        }
-
-        .cmd-output.error {
-            background: #fef2f2;
-            border: 1px solid #fca5a5;
-            color: #991b1b;
-        }
-
-        .cmd-modal-buttons {
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-
-        .cmd-modal-buttons .btn.danger {
-            background: #dc2626;
-            border-color: #dc2626;
-            color: white;
-        }
-
-        .cmd-modal-buttons .btn.danger:hover {
-            background: #b91c1c;
-            border-color: #b91c1c;
-        }
-
-        .cmd-modal-buttons .btn.danger:disabled {
-            background: #f87171;
-            border-color: #f87171;
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 8px 16px;
-            border: 1px solid #e0e0e0;
-            background: #fff;
-            color: #666;
-            text-decoration: none;
-            font-size: 13px;
-            border-radius: 4px;
-            transition: all 0.15s ease;
-        }
-        
-        .btn:hover {
-            background: #f5f5f5;
-            border-color: #d0d0d0;
-            color: #333;
-        }
-        
-        .btn-danger {
-            color: #dc2626;
-            border-color: #dc2626;
-        }
-        
-        .btn-danger:hover {
-            background: #dc2626;
-            color: white;
-        }
-
-        .btn-small {
-            padding: 4px 8px;
-            font-size: 12px;
+            #ssh-key-input::placeholder {
+                color: var(--color-text-muted);
+            }
         }
 
         .passkey-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
+            background: var(--color-bg-subtle);
+            border: 1px solid var(--color-border-input);
+            border-radius: var(--radius-sm);
             padding: 12px;
         }
 
@@ -331,14 +203,14 @@
         }
 
         .passkey-name {
-            font-size: 14px;
+            font-size: var(--text-sm);
             font-weight: 500;
-            color: #333;
+            color: var(--color-text);
         }
 
         .passkey-meta {
-            font-size: 12px;
-            color: #666;
+            font-size: var(--text-xxs);
+            color: var(--color-text-secondary);
         }
 
         .passkeys-list {
@@ -355,76 +227,42 @@
 
         .add-passkey-form input {
             flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            font-family: inherit;
-            font-size: 13px;
-        }
-
-        .add-passkey-form input:focus {
-            outline: none;
-            border-color: #999;
         }
 
         .passkey-error {
-            color: #dc2626;
-            font-size: 13px;
+            color: var(--color-danger);
+            font-size: var(--text-xs);
             margin-top: 8px;
             display: none;
         }
 
         .passkey-unsupported {
-            color: #666;
-            font-size: 13px;
+            color: var(--color-text-secondary);
+            font-size: var(--text-xs);
             font-style: italic;
-        }
-
-        .sites-table {
-            width: 100%;
-            border-collapse: collapse;
         }
 
         .sites-table th,
         .sites-table td {
-            text-align: left;
             padding: 12px;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 13px;
-        }
-
-        .sites-table th {
-            color: #666;
-            font-weight: 500;
-        }
-
-        .sites-table td {
-            color: #000;
-        }
-
-        .sites-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .sites-table a {
-            color: #0066cc;
-            text-decoration: none;
-        }
-
-        .sites-table a:hover {
-            text-decoration: underline;
         }
 
         .site-last-used {
-            color: #666;
+            color: var(--color-text-secondary);
         }
 
         .section-help {
-            font-size: 12px;
-            color: #666;
+            font-size: var(--text-xxs);
+            color: var(--color-text-secondary);
             margin-bottom: 12px;
             line-height: 1.5;
         }
+
+        .section-help a {
+            color: var(--color-link);
+        }
+
+        .credit-section-divider { border-top-color: var(--color-border); }
 
         @media (max-width: 768px) {
             .main-container {
@@ -443,309 +281,6 @@
 
             .info-value {
                 width: 100%;
-            }
-        }
-
-        /* Dark mode */
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #111;
-            }
-
-            .section-title {
-                color: #9ca3af;
-            }
-
-            .section-help {
-                color: #9ca3af;
-            }
-
-            .section-help a {
-                color: #60a5fa;
-            }
-
-            .section-help code {
-                background: #2a2a2a;
-                color: #f3f4f6;
-            }
-
-            .info-value code {
-                background: #2a2a2a;
-                color: #f3f4f6;
-            }
-
-
-            .info-card {
-                background: #1f1f1f;
-                border-color: #333;
-            }
-
-            .info-row {
-                border-bottom-color: #333;
-            }
-
-            .info-label {
-                color: #6b7280;
-            }
-
-            .info-value {
-                color: #f3f4f6;
-            }
-
-            .info-value a {
-                color: #60a5fa;
-            }
-
-            .ssh-key-item {
-                background: #2a2a2a;
-                border-color: #333;
-            }
-
-            #github .ssh-key-item {
-                background: #1f1f1f;
-            }
-
-            .ssh-key-comment {
-                color: #f3f4f6;
-            }
-
-            .ssh-key-fingerprint {
-                color: #9ca3af;
-            }
-
-            .ssh-key-meta {
-                color: #6b7280;
-            }
-
-            .no-keys {
-                color: #6b7280;
-            }
-
-            .btn {
-                background: #2a2a2a;
-                border-color: #333;
-                color: #9ca3af;
-            }
-
-            .btn:hover {
-                background: #333;
-                border-color: #444;
-                color: #f3f4f6;
-            }
-
-            .btn-danger {
-                color: #f87171;
-                border-color: #dc2626;
-            }
-
-            .btn-danger:hover {
-                background: #dc2626;
-                color: white;
-            }
-
-            .passkey-item {
-                background: #2a2a2a;
-                border-color: #333;
-            }
-
-            .passkey-name {
-                color: #f3f4f6;
-            }
-
-            .passkey-meta {
-                color: #9ca3af;
-            }
-
-            .add-passkey-form input {
-                background: #2a2a2a;
-                border-color: #333;
-                color: #f3f4f6;
-            }
-
-            .add-passkey-form input::placeholder {
-                color: #6b7280;
-            }
-
-            .add-passkey-form input:focus {
-                border-color: #555;
-            }
-
-            .passkey-error {
-                color: #f87171;
-            }
-
-            .passkey-unsupported {
-                color: #6b7280;
-            }
-
-            .sites-table th {
-                color: #9ca3af;
-            }
-
-            .sites-table td {
-                color: #f3f4f6;
-                border-bottom-color: #333;
-            }
-
-            .sites-table a {
-                color: #60a5fa;
-            }
-
-            .site-last-used {
-                color: #9ca3af;
-            }
-
-            /* Command Modal */
-            .cmd-modal {
-                background: #1f1f1f;
-            }
-
-            .cmd-modal-title {
-                color: #f3f4f6;
-            }
-
-            .cmd-display {
-                background: #2a2a2a;
-                border-color: #333;
-                color: #f3f4f6;
-            }
-
-            .cmd-output.success {
-                background: #052e16;
-                border-color: #166534;
-                color: #86efac;
-            }
-
-            .cmd-output.error {
-                background: #450a0a;
-                border-color: #991b1b;
-                color: #fca5a5;
-            }
-
-            .cmd-modal-buttons .btn.danger {
-                background: #dc2626;
-                border-color: #dc2626;
-            }
-
-            .cmd-modal-buttons .btn.danger:hover {
-                background: #b91c1c;
-                border-color: #b91c1c;
-            }
-
-            .cmd-modal-buttons .btn.danger:disabled {
-                background: #7f1d1d;
-                border-color: #7f1d1d;
-            }
-
-            /* Add SSH Key Modal */
-            #ssh-key-input {
-                background: #2a2a2a;
-                border-color: #333;
-                color: #f3f4f6;
-            }
-
-            #ssh-key-input::placeholder {
-                color: #6b7280;
-            }
-
-            .ssh-key-error {
-                color: #f87171;
-            }
-
-            .ssh-key-success {
-                color: #86efac;
-            }
-
-            /* Credits section */
-            .credit-hero-number {
-                color: #f3f4f6;
-            }
-
-            .credit-hero-number.style-red {
-                color: #fca5a5;
-            }
-
-            .credit-bar-fill.green { background: #4ade80; }
-            .credit-bar-fill.yellow { background: #fde047; }
-            .credit-bar-fill.orange { background: #fb923c; }
-            .credit-bar-fill.red { background: #fca5a5; }
-            .credit-section-divider { border-top-color: #444; }
-            .purchases-label { color: #9ca3af; }
-
-            .credit-hero-label {
-                color: #9ca3af;
-            }
-
-            .credit-hero-reset {
-                color: #9ca3af;
-            }
-
-            .credit-bar-track {
-                background: #333;
-            }
-
-            .credit-bar-annotation {
-                color: #9ca3af;
-            }
-
-            .credit-details {
-                border-top-color: #333;
-            }
-
-            .credit-detail-label {
-                color: #9ca3af;
-            }
-
-            .credit-detail-value {
-                color: #f3f4f6;
-            }
-
-            .buy-row {
-                border-top-color: #333;
-            }
-
-            .buy-row a {
-                color: #60a5fa;
-            }
-
-            .buy-input {
-                background: #2a2a2a;
-                border-color: #333;
-                color: #f3f4f6;
-            }
-
-            .buy-input::placeholder {
-                color: #6b7280;
-            }
-
-            .purchases {
-                border-top-color: #333;
-            }
-
-            .purchases-label {
-                color: #9ca3af;
-            }
-
-            .purchases-table th {
-                color: #9ca3af;
-            }
-
-            .extra-credits-balance {
-                color: #f3f4f6;
-            }
-
-            .purchases-table td {
-                color: #f3f4f6;
-                border-bottom-color: #333;
-            }
-
-            .purchases-table th,
-            .purchases-table td {
-                border-bottom-color: #333;
-            }
-
-            .purchases-table a, .purchases-link {
-                color: #60a5fa;
             }
         }
     </style>
