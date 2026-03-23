@@ -10,7 +10,6 @@ package exens
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net"
@@ -189,34 +188,6 @@ func (s *Server) GLBRolloutPrefixes() []string {
 	s.glbPrefixMu.RLock()
 	defer s.glbPrefixMu.RUnlock()
 	return slices.Clone(s.glbPrefixes)
-}
-
-// userMatchesGLBPrefix returns true if the user ID matches any of the
-// configured GLB rollout prefixes. It hashes the user ID with SHA-256,
-// converts the hash to a binary string, and checks whether any prefix
-// is a prefix of that string.
-func (s *Server) userMatchesGLBPrefix(userID string) bool {
-	s.glbPrefixMu.RLock()
-	prefixes := s.glbPrefixes
-	s.glbPrefixMu.RUnlock()
-
-	if len(prefixes) == 0 {
-		return false
-	}
-
-	hash := sha256.Sum256([]byte(userID))
-	var bin strings.Builder
-	for _, b := range hash {
-		fmt.Fprintf(&bin, "%08b", b)
-	}
-	binStr := bin.String()
-
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(binStr, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // handleDNS processes DNS queries.
@@ -532,7 +503,7 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 		return nil, nil
 	}
 
-	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardAndUserGLBByBoxName, boxName)
+	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardAndAnycastNetworkByBoxName, boxName)
 	if err != nil {
 		// No record found
 		return nil, nil
@@ -540,16 +511,9 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 
 	var shardSub string
 	if row.AnycastNetwork != nil && *row.AnycastNetwork == 1 {
-		// User explicitly opted into anycast network 1 (Latitude)
 		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
-	} else if row.AnycastNetwork != nil && *row.AnycastNetwork == 2 {
-		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
-	} else if row.GlobalLoadBalancer != nil && *row.GlobalLoadBalancer != 0 {
-		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
-	} else if row.GlobalLoadBalancer == nil && s.userMatchesGLBPrefix(row.CreatedByUserID) {
-		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
 	} else {
-		shardSub = publicips.ShardSub(int(row.IPShard))
+		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
 	}
 	target := shardSub + "." + domain + "."
 
