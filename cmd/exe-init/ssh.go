@@ -53,6 +53,7 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 	cmd.Env = []string{
 		"PATH=/exe.dev/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/",
+		"SSHD_OOM_ADJUST=-17",
 		"PWD=/",
 		"TERM=xterm",
 	}
@@ -63,12 +64,6 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 	if err := cmd.Start(); err != nil {
 		slog.Error("failed to start ssh process", "err", err)
 		return fmt.Errorf("failed to start ssh process: %w", err)
-	}
-
-	// Protect sshd from OOM killer by setting oom_score_adj to -1000
-	oomPath := fmt.Sprintf("/proc/%d/oom_score_adj", cmd.Process.Pid)
-	if err := os.WriteFile(oomPath, []byte("-1000"), 0o644); err != nil {
-		slog.Warn("failed to set oom_score_adj for sshd", "err", err)
 	}
 
 	if err := cmd.Process.Release(); err != nil {

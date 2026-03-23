@@ -288,6 +288,17 @@ func TestVanillaBox(t *testing.T) {
 				"bash", "-c", "for pid in $(pgrep -x sshd); do echo \"PID $pid: oom_score_adj=$(cat /proc/$pid/oom_score_adj 2>/dev/null || echo N/A)\"; done").CombinedOutput()
 			t.Errorf("no sshd process has oom_score_adj=-1000\nsshd processes:\n%s", debug)
 		}
+
+		// Verify that user sessions do NOT inherit the OOM protection.
+		// The SSHD_OOM_ADJUST env var approach (vs OOMScoreAdjust=) should
+		// only protect the sshd daemon, not spawned login shells.
+		out, err = boxSSHCommand(t, boxName, keyFile, "cat", "/proc/self/oom_score_adj").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to read own oom_score_adj: %v\n%s", err, out)
+		}
+		if adj := strings.TrimSpace(string(out)); adj != "0" {
+			t.Errorf("user session inherited OOM protection: oom_score_adj=%s, want 0", adj)
+		}
 	})
 
 	t.Run("shelley_present_at_creation", func(t *testing.T) {
