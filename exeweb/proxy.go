@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/container"
@@ -80,6 +81,12 @@ type ProxyServer struct {
 	PublicIPs      map[netip.Addr]publicips.PublicIP
 	Transports     *TransportCache
 	PushSender     PushSender
+
+	// CookieAtimes caches the UTC date (YYYY-MM-DD) of the last
+	// UsedCookie write for each cookie value. We only write once
+	// per cookie per UTC day to avoid per-request DB writes.
+	// Must be provided by the caller and outlive individual requests.
+	CookieAtimes *sync.Map // cookieValue → "2006-01-02"
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
@@ -634,6 +641,7 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 		if err := ps.Data.DeleteAuthCookie(r.Context(), cookieValue); err != nil {
 			ps.Lg.ErrorContext(r.Context(), "deleting auth cookie failed", "cookieValue", cookieValue, "error", err)
 		}
+		ps.CookieAtimes.Delete(cookieValue)
 	}
 
 	// Clear the proxy auth cookie in the browser.
@@ -823,6 +831,7 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 		return "", fmt.Errorf("database error: %w", err)
 	}
 	if !exists {
+		ps.CookieAtimes.Delete(cookieValue)
 		return "", fmt.Errorf("invalid cookie")
 	}
 
@@ -830,11 +839,22 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 	if time.Now().After(cookieData.ExpiresAt) {
 		// We don't call DeleteAuthCookie here;
 		// we expect the CookieInfo method to handle that.
+		ps.CookieAtimes.Delete(cookieValue)
 		return "", fmt.Errorf("cookie expired")
 	}
 
-	// Update last used time.
-	ps.Data.UsedCookie(ctx, cookieValue)
+	// Update last used time, at most once per cookie per UTC day.
+	// Runs in a goroutine to avoid blocking the request.
+	// Only caches on success so transient failures allow retries.
+	today := time.Now().UTC().Format("2006-01-02")
+	if prev, ok := ps.CookieAtimes.Load(cookieValue); !ok || prev.(string) != today {
+		go func() {
+			if err := ps.Data.UsedCookie(context.WithoutCancel(ctx), cookieValue); err != nil {
+				return
+			}
+			ps.CookieAtimes.Store(cookieValue, today)
+		}()
+	}
 
 	return cookieData.UserID, nil
 }

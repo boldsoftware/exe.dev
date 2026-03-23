@@ -1545,16 +1545,10 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 			}
 			seenDomains[cookie.Domain] = true
 
-			var lastUsed string
-			if cookie.LastUsedAt != nil {
-				lastUsed = cookie.LastUsedAt.Format("Jan 2, 2006")
-			} else {
-				lastUsed = "Never"
-			}
 			siteSessions = append(siteSessions, SiteSession{
 				Domain:     cookie.Domain,
 				URL:        "https://" + cookie.Domain,
-				LastUsedAt: lastUsed,
+				LastUsedAt: cookie.LastUsedAt,
 			})
 		}
 	}

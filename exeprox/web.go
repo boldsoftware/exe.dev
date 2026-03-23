@@ -75,6 +75,10 @@ type WebProxy struct {
 
 	templates *template.Template
 
+	// cookieAtimes is the shared cookie-atime dedup cache,
+	// passed to each per-request ProxyServer.
+	cookieAtimes sync.Map
+
 	stopping atomic.Bool // reports whether stop was called
 }
 

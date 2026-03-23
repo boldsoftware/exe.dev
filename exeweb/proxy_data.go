@@ -35,8 +35,10 @@ type ProxyData interface {
 	// DeleteAuthCookie deletes an authentication cookie.
 	DeleteAuthCookie(ctx context.Context, cookievalue string) error
 
-	// UsedCookie is used to report that an authentication cookie was used.
-	UsedCookie(ctx context.Context, cookieValue string)
+	// UsedCookie reports that an authentication cookie was used.
+	// Writes last_used_at at UTC day granularity.
+	// Callers should deduplicate per UTC day to reduce unnecessary writes.
+	UsedCookie(ctx context.Context, cookieValue string) error
 
 	// HasUserAccessToBox reports whether a user has access
 	// to a box based on box shares with the user's email.

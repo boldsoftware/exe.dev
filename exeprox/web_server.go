@@ -136,6 +136,7 @@ func (wp *WebProxy) proxyServer() *exeweb.ProxyServer {
 		Templates:     wp.templates,
 		LobbyIP:       wp.lobbyIP,
 		PublicIPs:     wp.publicIPs,
+		CookieAtimes:  &wp.cookieAtimes,
 	}
 }
 
@@ -306,13 +307,9 @@ func (epd *exewebProxyData) DeleteAuthCookie(ctx context.Context, cookieValue st
 }
 
 // UsedCookie implements [exeweb.ProxyData.UsedCookie].
-func (epd *exewebProxyData) UsedCookie(ctx context.Context, cookieValue string) {
-	// We don't need to wait for this, and we don't care about errors,
-	// so run it in a separate goroutine.
-	go func() {
-		ctx = context.WithoutCancel(ctx)
-		epd.exeproxData().UsedCookie(ctx, cookieValue)
-	}()
+// Writes last_used_at at UTC day granularity; callers should deduplicate per day.
+func (epd *exewebProxyData) UsedCookie(ctx context.Context, cookieValue string) error {
+	return epd.exeproxData().UsedCookie(ctx, cookieValue)
 }
 
 // HasUserAccessToBox implements [exeweb.ProxyData.HasUserAccessToBox].

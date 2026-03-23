@@ -11,7 +11,8 @@ WHERE cookie_value = ? AND domain = ?;
 DELETE FROM auth_cookies WHERE cookie_value = ?;
 
 -- name: UpdateAuthCookieLastUsed :exec
-UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?;
+-- Callers should deduplicate per UTC day, but this is also safe to call repeatedly.
+UPDATE auth_cookies SET last_used_at = DATE('now') WHERE cookie_value = ? AND last_used_at < DATE('now');
 
 -- name: DeleteAuthCookiesByUserID :exec
 DELETE FROM auth_cookies WHERE user_id = ?;

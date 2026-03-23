@@ -571,7 +571,7 @@
                         {{range .SiteSessions}}
                         <tr>
                             <td><a href="{{.URL}}" target="_blank">{{.Domain}}</a></td>
-                            <td class="site-last-used">{{.LastUsedAt}}</td>
+                            <td class="site-last-used">{{if .LastUsedAt}}{{formatVagueTimeAgo .LastUsedAt}}{{else}}Never{{end}}</td>
                         </tr>
                         {{end}}
                     </tbody>

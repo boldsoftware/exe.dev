@@ -59,7 +59,7 @@ type ExeproxData interface {
 	DeleteAuthCookie(ctx context.Context, cookievalue string) error
 
 	// UsedCookie is used to report that an authentication cookie was used.
-	UsedCookie(ctx context.Context, cookieValue string)
+	UsedCookie(ctx context.Context, cookieValue string) error
 
 	// HasUserAccessToBox reports whether a user has access
 	// to a box based on box shares with the user's email.
@@ -337,13 +337,12 @@ func (ged *grpcExeproxData) DeleteAuthCookie(ctx context.Context, cookieValue st
 }
 
 // UsedCookie reports that a cookie was used.
-func (ged *grpcExeproxData) UsedCookie(ctx context.Context, cookieValue string) {
+// Writes last_used_at at UTC day granularity; callers should deduplicate per day.
+func (ged *grpcExeproxData) UsedCookie(ctx context.Context, cookieValue string) error {
 	_, err := ged.client.UsedCookie(ctx, &proxyapi.UsedCookieRequest{
 		CookieValue: cookieValue,
 	})
-	if err != nil {
-		ged.lg.ErrorContext(ctx, "failed to report used cookie", "cookieValue", cookieValue, "error", err)
-	}
+	return err
 }
 
 // HasUserAccessToBox reports whether a box is shared with a user.

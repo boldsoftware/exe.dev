@@ -169,10 +169,11 @@ func (lb *loopbackProxyData) DeleteAuthCookie(ctx context.Context, cookieValue s
 	return err
 }
 
-func (lb *loopbackProxyData) UsedCookie(ctx context.Context, cookieValue string) {
-	lb.client.UsedCookie(ctx, &proxyapi.UsedCookieRequest{
+func (lb *loopbackProxyData) UsedCookie(ctx context.Context, cookieValue string) error {
+	_, err := lb.client.UsedCookie(ctx, &proxyapi.UsedCookieRequest{
 		CookieValue: cookieValue,
 	})
+	return err
 }
 
 func (lb *loopbackProxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {

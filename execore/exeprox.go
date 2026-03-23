@@ -408,13 +408,13 @@ func (es *exeproxServer) DeleteAuthCookie(ctx context.Context, req *proxyapi.Del
 	return &proxyapi.DeleteAuthCookieResponse{}, nil
 }
 
-// UsedCookie is used to report that an authentication cookie was used.
+// UsedCookie reports that an authentication cookie was used.
+// Writes last_used_at at UTC day granularity; callers should deduplicate per day.
 func (es *exeproxServer) UsedCookie(ctx context.Context, req *proxyapi.UsedCookieRequest) (*proxyapi.UsedCookieResponse, error) {
 	err := withTx1(es.s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, req.CookieValue)
 	if err != nil {
 		es.s.slog().ErrorContext(ctx, "UpdateAuthCookieLastUsed failed in exeproxServer.UsedCookie", "error", err)
-		// Don't bother to return the error,
-		// there is nothing the caller can do.
+		return nil, err
 	}
 	return &proxyapi.UsedCookieResponse{}, nil
 }

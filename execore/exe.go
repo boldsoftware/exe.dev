@@ -270,8 +270,8 @@ type TeamMemberDisplayInfo struct {
 // SiteSession represents an active session cookie for a site hosted by exe
 type SiteSession struct {
 	Domain     string
-	URL        string // Full URL with https://
-	LastUsedAt string // Formatted time string
+	URL        string     // Full URL with https://
+	LastUsedAt *time.Time // Used by formatVagueTimeAgo in template
 }
 
 // SSHKey represents an SSH key for the user page
@@ -416,6 +416,10 @@ type Server struct {
 
 	// Piper plugin for SSH proxy authentication
 	piperPlugin *PiperPlugin
+
+	// cookieAtimes is the shared cookie-atime dedup cache,
+	// passed to each per-request ProxyServer.
+	cookieAtimes sync.Map
 
 	// Database
 	db *sqlite.DB

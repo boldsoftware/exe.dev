@@ -23,7 +23,7 @@ CREATE TABLE auth_cookies (
     domain TEXT NOT NULL, -- exe.dev or localhost
     expires_at DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP, -- UTC day granularity; subsequent writes use DATE('now'). See UpdateAuthCookieLastUsed.
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 CREATE TABLE pending_ssh_keys (

@@ -290,6 +290,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		LookupCNAMEFunc: s.lookupCNAMEFunc,
 		LookupAFunc:     s.lookupAFunc,
 		PushSender:      pushSender,
+		CookieAtimes:    &s.cookieAtimes,
 	}
 	if s.servingHTTP() {
 		ps.ProxyHTTPPort = s.httpLn.tcp.Port
@@ -427,8 +428,9 @@ func (pd *proxyData) DeleteAuthCookie(ctx context.Context, cookieValue string) e
 }
 
 // UsedCookie implements [exeweb.ProxyData.UsedCookie].
-func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) {
-	withTx1(pd.s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
+// Writes last_used_at at UTC day granularity; callers should deduplicate per day.
+func (pd *proxyData) UsedCookie(ctx context.Context, cookieValue string) error {
+	return withTx1(pd.s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
 }
 
 // HasUserAccessToBox implements [exeweb.ProxyData.HasUserAccessToBox].

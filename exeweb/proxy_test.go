@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -737,7 +738,7 @@ func (m *mockProxyData) CreateAuthCookie(ctx context.Context, userID, domain str
 	return "", nil
 }
 func (m *mockProxyData) DeleteAuthCookie(ctx context.Context, cookieValue string) error { return nil }
-func (m *mockProxyData) UsedCookie(ctx context.Context, cookieValue string)             {}
+func (m *mockProxyData) UsedCookie(ctx context.Context, cookieValue string) error       { return nil }
 func (m *mockProxyData) HasUserAccessToBox(ctx context.Context, boxID int, boxName, userID string) (bool, error) {
 	return false, nil
 }
@@ -813,6 +814,7 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 		Lg:             slog.Default(),
 		Env:            &testEnv,
 		ProxyHTTPSPort: 443,
+		CookieAtimes:   &sync.Map{},
 	}
 
 	t.Run("app_token_in_cookie_authenticates", func(t *testing.T) {
@@ -891,6 +893,7 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 			Lg:             slog.Default(),
 			Env:            &testEnvCookie,
 			ProxyHTTPSPort: 443,
+			CookieAtimes:   &sync.Map{},
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)

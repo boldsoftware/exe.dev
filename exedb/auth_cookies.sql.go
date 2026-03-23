@@ -123,9 +123,10 @@ func (q *Queries) InsertAuthCookie(ctx context.Context, arg InsertAuthCookiePara
 }
 
 const updateAuthCookieLastUsed = `-- name: UpdateAuthCookieLastUsed :exec
-UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?
+UPDATE auth_cookies SET last_used_at = DATE('now') WHERE cookie_value = ? AND last_used_at < DATE('now')
 `
 
+// Callers should deduplicate per UTC day, but this is also safe to call repeatedly.
 func (q *Queries) UpdateAuthCookieLastUsed(ctx context.Context, cookieValue string) error {
 	_, err := q.exec(ctx, q.updateAuthCookieLastUsedStmt, updateAuthCookieLastUsed, cookieValue)
 	return err
