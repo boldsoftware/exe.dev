@@ -419,10 +419,21 @@ func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.Command
 		return cc.Errorf("port must be between 3000 and 9999, got %q", portStr)
 	}
 
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+	var oldPort int
+	err = ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		oldPort = route.Port
 		route.Port = port
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	if oldPort != 0 && oldPort != port && oldPort != 80 {
+		cc.Writeln("Port %d is now publicly shareable.", port)
+		cc.Writeln("Port %d is now private and will require sign-in.", oldPort)
+	}
+	return nil
 }
 
 func (ss *SSHServer) handleShareSetPublicCmd(ctx context.Context, cc *exemenu.CommandContext) error {
