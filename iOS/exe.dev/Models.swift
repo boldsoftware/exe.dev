@@ -158,6 +158,31 @@ struct ShelleyMessage: Identifiable, Decodable {
     var toolName: String? {
         parsed?.content.first { $0.type == 5 }?.toolName
     }
+
+    /// Extracts the tool input as a readable string (e.g. the bash command).
+    var toolInputSummary: String? {
+        guard let block = parsed?.content.first(where: { $0.type == 5 }),
+              let input = block.toolInput else { return nil }
+        // toolInput is an AnyCodable wrapping a dictionary.
+        guard let dict = input.value as? [String: AnyCodable] else { return nil }
+        // For Bash/shell tools, show "command"; for Edit, show "file_path"; etc.
+        // Fall back to showing all string values.
+        for key in ["command", "pattern", "file_path", "path", "query", "url"] {
+            if let val = dict[key], let str = val.value as? String, !str.isEmpty {
+                return str
+            }
+        }
+        // Generic: show all string key=value pairs
+        let parts = dict.compactMap { k, v -> String? in
+            guard let s = v.value as? String, !s.isEmpty else { return nil }
+            return "\(k): \(s)"
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
+    var toolUseID: String? {
+        parsed?.content.first { $0.type == 5 }?.toolUseID
+    }
 }
 
 // MARK: - LLM Message Format
@@ -408,6 +433,59 @@ struct HostnameCheckResponse: Decodable {
     var displayText: String
     var isToolUse: Bool
     var toolName: String?
+
+    /// Parses llmData on demand to extract tool input details.
+    var toolInputSummary: String? {
+        guard let llmData, let data = llmData.data(using: .utf8),
+              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data),
+              let block = msg.content.first(where: { $0.type == 5 }),
+              let input = block.toolInput,
+              let dict = input.value as? [String: AnyCodable] else { return nil }
+        for key in ["command", "pattern", "file_path", "path", "query", "url"] {
+            if let val = dict[key], let str = val.value as? String, !str.isEmpty {
+                return str
+            }
+        }
+        let parts = dict.compactMap { k, v -> String? in
+            guard let s = v.value as? String, !s.isEmpty else { return nil }
+            return "\(k): \(s)"
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
+    /// The tool_use ID, used to match against tool_result messages.
+    var toolUseID: String? {
+        guard let llmData, let data = llmData.data(using: .utf8),
+              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data) else { return nil }
+        return msg.content.first { $0.type == 5 }?.toolUseID
+    }
+
+    /// Extracts tool result text from a message containing tool_result content blocks.
+    var toolResultText: String? {
+        guard let llmData, let data = llmData.data(using: .utf8),
+              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data) else { return nil }
+        // tool_result content blocks (type 6) have text in the "text" field.
+        for block in msg.content where block.type == 6 {
+            if let text = block.text, !text.isEmpty { return text }
+        }
+        return nil
+    }
+
+    /// Extracts a screenshot relative URL from displayData (e.g. "/api/read?path=...").
+    /// displayData is JSON like: [{"tool_name":"browser","display":{"type":"screenshot","url":"..."}}]
+    var screenshotPath: String? {
+        guard let displayData, let data = displayData.data(using: .utf8),
+              let entries = try? JSONDecoder().decode([[String: AnyCodable]].self, from: data)
+        else { return nil }
+        for entry in entries {
+            guard let display = entry["display"]?.value as? [String: AnyCodable],
+                  let type = display["type"]?.value as? String, type == "screenshot",
+                  let url = display["url"]?.value as? String
+            else { continue }
+            return url
+        }
+        return nil
+    }
 
     init(from msg: ShelleyMessage) {
         self.messageID = msg.messageID

@@ -38,6 +38,14 @@ struct VMDetailView: View {
                     VMCreatingView(vmName: vm.vmName)
                 } else {
                     ChannelView(viewModel: channelViewModel)
+                        .environment(\.openURL, OpenURLAction { url in
+                            if isVMProxyURL(url) {
+                                selectedTab = 1
+                                return .handled
+                            }
+                            return .systemAction
+                        })
+                        .environment(\.authToken, token)
                 }
 
                 if selectedTab == 1, !vm.isCreating, let url = URL(string: vm.httpsURL) {
@@ -65,6 +73,17 @@ struct VMDetailView: View {
                 Task { await channelViewModel.loadLatestConversation() }
             }
         }
+    }
+
+    /// Returns true if the URL points to this VM's HTTPS proxy (e.g. ocean-horizon.exe.xyz:8000).
+    private func isVMProxyURL(_ url: URL) -> Bool {
+        guard let host = url.host else { return false }
+        // Match the VM's proxy hostname (vmName.exe.xyz or similar).
+        if let proxyURL = URL(string: vm.httpsURL), let proxyHost = proxyURL.host {
+            return host == proxyHost
+        }
+        // Fallback: match vmName as subdomain of a known exe domain.
+        return host.hasPrefix(vm.vmName + ".")
     }
 }
 

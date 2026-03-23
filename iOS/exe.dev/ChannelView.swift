@@ -1,6 +1,24 @@
 import SwiftUI
 import SwiftData
 
+// Environment keys for passing shelley context to nested views.
+private struct ShelleyURLKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+private struct AuthTokenKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+extension EnvironmentValues {
+    var shelleyURL: String? {
+        get { self[ShelleyURLKey.self] }
+        set { self[ShelleyURLKey.self] = newValue }
+    }
+    var authToken: String? {
+        get { self[AuthTokenKey.self] }
+        set { self[AuthTokenKey.self] = newValue }
+    }
+}
+
 struct ChannelView: View {
     @State var viewModel: ChannelViewModel
 
@@ -27,6 +45,7 @@ struct ChannelView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.conversationID != nil {
                 MessageListView(viewModel: viewModel)
+                    .environment(\.shelleyURL, viewModel.shelleyURL)
             } else {
                 Spacer()
             }
@@ -106,7 +125,7 @@ private struct MessageListView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(groupedMessages) { group in
-                        MessageGroupView(group: group)
+                        MessageGroupView(group: group, allMessages: viewModel.messages)
                     }
 
                     ForEach(viewModel.pendingMessages) { pending in
@@ -268,6 +287,7 @@ private struct PendingMessageView: View {
 
 private struct MessageGroupView: View {
     let group: MessageListView.MessageGroup
+    let allMessages: [StoredMessage]
 
     private var senderName: String {
         group.senderType == "user" ? "You" : "Shelley"
@@ -299,7 +319,7 @@ private struct MessageGroupView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(group.messages) { msg in
-                    MessageContentView(message: msg)
+                    MessageContentView(message: msg, allMessages: allMessages)
                 }
             }
             .padding(.leading, 30)
@@ -313,18 +333,16 @@ private struct MessageGroupView: View {
 
 private struct MessageContentView: View {
     let message: StoredMessage
+    let allMessages: [StoredMessage]
+    @State private var isToolExpanded = false
 
     var body: some View {
         if message.isToolUse {
-            let name = message.toolName ?? "tool"
-            HStack(spacing: 4) {
-                Image(systemName: "wrench")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text("Used \(name)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ToolUseView(
+                message: message,
+                allMessages: allMessages,
+                isExpanded: $isToolExpanded
+            )
         }
 
         let text = message.displayText
@@ -334,7 +352,141 @@ private struct MessageContentView: View {
     }
 }
 
-// MARK: - Formatted Text (code blocks + regular text)
+// MARK: - Tool Use View
+
+private struct ToolUseView: View {
+    let message: StoredMessage
+    let allMessages: [StoredMessage]
+    @Binding var isExpanded: Bool
+    @Environment(\.shelleyURL) private var shelleyURL
+
+    private var name: String { message.toolName ?? "tool" }
+
+    private var toolResultMessage: StoredMessage? {
+        let startSeq = message.sequenceID
+        // Tool results are stored as "user" type messages following the agent message.
+        // Find the next non-agent message that has tool result content or display data.
+        return allMessages
+            .first { $0.sequenceID > startSeq && $0.type != "agent" &&
+                     ($0.toolResultText != nil || $0.screenshotPath != nil || $0.displayData != nil) }
+    }
+
+    private var isScreenshot: Bool {
+        toolResultMessage?.screenshotPath != nil
+    }
+
+    private var screenshotURL: URL? {
+        guard let path = toolResultMessage?.screenshotPath,
+              let base = shelleyURL else { return nil }
+        return URL(string: base + path)
+    }
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isScreenshot ? "camera" : "wrench")
+                    .font(.caption2)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                Text(isScreenshot ? "Screenshot" : "Used \(name)")
+                    .font(.caption)
+            }
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            // Screenshots default to expanded.
+            if isScreenshot && !isExpanded {
+                isExpanded = true
+            }
+        }
+
+        if isExpanded {
+            VStack(alignment: .leading, spacing: 6) {
+                if let url = screenshotURL {
+                    ScreenshotView(url: url)
+                } else {
+                    if let input = message.toolInputSummary {
+                        Text(input)
+                            .font(.system(size: 12, design: .monospaced))
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    if let result = toolResultMessage?.toolResultText {
+                        Text(result.prefix(2000))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .lineLimit(20)
+                    }
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+}
+
+// MARK: - Screenshot View
+
+private struct ScreenshotView: View {
+    let url: URL
+    @Environment(\.authToken) private var authToken
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        // Always use a fixed-height placeholder so layout never depends on the network.
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else if failed {
+                Label("Failed to load screenshot", systemImage: "photo")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: image == nil ? 150 : 0)
+        .background(image == nil ? Color(.systemGray6) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .task(id: url) { await loadImage() }
+    }
+
+    private func loadImage() async {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        if let authToken {
+            request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(status), let loaded = UIImage(data: data) {
+                image = loaded
+            } else {
+                print("[ScreenshotView] HTTP \(status) for \(url)")
+                failed = true
+            }
+        } catch {
+            print("[ScreenshotView] Error loading \(url): \(error)")
+            failed = true
+        }
+    }
+}
+
+// MARK: - Formatted Text (code blocks + markdown)
 
 private struct FormattedText: View {
     let text: String
@@ -351,11 +503,41 @@ private struct FormattedText: View {
                         .background(Color(.systemGray6))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else if !segment.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(segment.content)
-                        .font(.system(size: 15))
+                    markdownText(segment.content)
                 }
             }
         }
+    }
+
+    /// Renders a text segment with markdown formatting (bold, italic, inline code, links).
+    private func markdownText(_ raw: String) -> some View {
+        let processed = Self.linkifyBareURLs(raw)
+        let attributed = (try? AttributedString(markdown: processed, options: .init(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        ))) ?? AttributedString(raw)
+        return Text(attributed)
+            .font(.system(size: 15))
+    }
+
+    /// Finds bare URLs (not already inside markdown link syntax) and wraps them as markdown links.
+    private static func linkifyBareURLs(_ text: String) -> String {
+        // Match URLs that aren't preceded by ]( (already a markdown link target)
+        // or by [ (start of markdown link text that happens to be a URL).
+        let pattern = #"(?<!\]\()(?<!\[)(https?://[^\s\)\]>]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        let nsText = text as NSString
+        var result = text
+        // Process matches in reverse so indices stay valid.
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: result) else { continue }
+            let url = String(result[range])
+            // Strip trailing punctuation that's likely not part of the URL.
+            let cleaned = url.replacingOccurrences(of: #"[.,;:!?\*]+$"#, with: "", options: .regularExpression)
+            let suffix = String(url.dropFirst(cleaned.count))
+            result.replaceSubrange(range, with: "[\(cleaned)](\(cleaned))\(suffix)")
+        }
+        return result
     }
 
     private struct Segment {
