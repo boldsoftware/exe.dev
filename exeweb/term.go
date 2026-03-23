@@ -145,8 +145,14 @@ func (ps *ProxyServer) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc 
 			return
 		}
 
-		// Check authentication - terminal requests use exe-auth cookie
+		// Check authentication - terminal requests use exe-auth cookie.
+		// Also supports app tokens (exeapp_...) in the exe-auth cookie
+		// for iOS apps that can't do the browser auth flow.
 		userID, err := ps.ValidateAuthCookie(r)
+		if err != nil {
+			// Try app token from the exe-auth cookie (iOS app support).
+			userID, err = ps.validateTerminalAppToken(r)
+		}
 		if err != nil {
 			// Not authenticated - redirect to login
 			http.Redirect(w, r, ps.xtermAuthURL(r), http.StatusTemporaryRedirect)
@@ -555,6 +561,23 @@ type terminalAuthInfo struct {
 	BoxName string
 }
 
+// validateTerminalAppToken checks the exe-auth cookie for an app token.
+// This supports iOS apps which set their app token as the exe-auth cookie value.
+func (ps *ProxyServer) validateTerminalAppToken(r *http.Request) (string, error) {
+	cookie, err := r.Cookie("exe-auth")
+	if err != nil || cookie.Value == "" {
+		return "", fmt.Errorf("no exe-auth cookie")
+	}
+	if !strings.HasPrefix(cookie.Value, AppTokenPrefix) {
+		return "", fmt.Errorf("not an app token")
+	}
+	validator, ok := ps.Data.(AppTokenValidator)
+	if !ok {
+		return "", fmt.Errorf("app token validation not supported")
+	}
+	return validator.ValidateAppToken(r.Context(), cookie.Value)
+}
+
 // terminalAuthKey is the context key for terminal authentication info
 type terminalAuthKey struct{}
 
@@ -568,6 +591,9 @@ func (ps *ProxyServer) HandleTerminalRequest(w http.ResponseWriter, r *http.Requ
 
 	// Check authentication for other paths
 	userID, err := ps.ValidateAuthCookie(r)
+	if err != nil {
+		userID, err = ps.validateTerminalAppToken(r)
+	}
 	if err != nil {
 		// Invalid cookie, redirect to auth
 		http.Redirect(w, r, ps.xtermAuthURL(r), http.StatusTemporaryRedirect)
