@@ -5098,7 +5098,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		Boxes                      []boxInfo
 		Region                     string
 		RegionDisplay              string
-		GLBDefault                 string
 		AllRegions                 []region.Region
 		BoxesOutsideRegion         []struct {
 			Name   string
@@ -5143,19 +5142,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 
 	if r, err := region.ByCode(user.Region); err == nil {
 		data.RegionDisplay = r.Display
-	}
-
-	userDefaults, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserDefaults, userID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		s.slog().WarnContext(ctx, "failed to fetch user defaults", "error", err, "user_id", userID)
-	}
-	switch {
-	case errors.Is(err, sql.ErrNoRows) || userDefaults.GlobalLoadBalancer == nil:
-		data.GLBDefault = "unset"
-	case *userDefaults.GlobalLoadBalancer == 1:
-		data.GLBDefault = "on"
-	default:
-		data.GLBDefault = "off"
 	}
 
 	for _, b := range boxes {
@@ -5776,7 +5762,7 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 	}
 }
 
-// handleDebugUserMigrateRegion sets the user's region and enables GLB.
+// handleDebugUserMigrateRegion sets the user's region.
 func (s *Server) handleDebugUserMigrateRegion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -5804,22 +5790,9 @@ func (s *Server) handleDebugUserMigrateRegion(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Set user region and enable GLB default in a single transaction.
-	glbOn := int64(1)
-	if err := withTx0(s, ctx, func(q *exedb.Queries, ctx context.Context) error {
-		if err := q.SetUserRegion(ctx, exedb.SetUserRegionParams{
-			Region: reg.Code,
-			UserID: userID,
-		}); err != nil {
-			return fmt.Errorf("set region: %w", err)
-		}
-		if err := q.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
-			UserID:             userID,
-			GlobalLoadBalancer: &glbOn,
-		}); err != nil {
-			return fmt.Errorf("enable GLB: %w", err)
-		}
-		return nil
+	if err := withTx1(s, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{
+		Region: reg.Code,
+		UserID: userID,
 	}); err != nil {
 		http.Error(w, fmt.Sprintf("failed to migrate region: %v", err), http.StatusInternalServerError)
 		return

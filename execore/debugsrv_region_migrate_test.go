@@ -54,15 +54,6 @@ func TestHandleDebugUserMigrateRegion(t *testing.T) {
 	if user.Region != "lon" {
 		t.Errorf("user region = %q, want %q", user.Region, "lon")
 	}
-
-	// Verify GLB default was enabled.
-	defaults, err := withRxRes1(server, ctx, (*exedb.Queries).GetUserDefaults, userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if defaults.GlobalLoadBalancer == nil || *defaults.GlobalLoadBalancer != 1 {
-		t.Errorf("GlobalLoadBalancer = %v, want 1", defaults.GlobalLoadBalancer)
-	}
 }
 
 func TestHandleDebugUserMigrateRegionCanonicalizesCode(t *testing.T) {

@@ -27,15 +27,6 @@ func (q *Queries) DeleteUserDefaultGitHubIntegration(ctx context.Context, userID
 	return err
 }
 
-const deleteUserDefaultGlobalLoadBalancer = `-- name: DeleteUserDefaultGlobalLoadBalancer :exec
-UPDATE user_defaults SET global_load_balancer = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
-`
-
-func (q *Queries) DeleteUserDefaultGlobalLoadBalancer(ctx context.Context, userID string) error {
-	_, err := q.exec(ctx, q.deleteUserDefaultGlobalLoadBalancerStmt, deleteUserDefaultGlobalLoadBalancer, userID)
-	return err
-}
-
 const deleteUserDefaultNewVMEmail = `-- name: DeleteUserDefaultNewVMEmail :exec
 UPDATE user_defaults SET new_vm_email = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
 `
@@ -97,24 +88,6 @@ type UpsertUserDefaultGitHubIntegrationParams struct {
 
 func (q *Queries) UpsertUserDefaultGitHubIntegration(ctx context.Context, arg UpsertUserDefaultGitHubIntegrationParams) error {
 	_, err := q.exec(ctx, q.upsertUserDefaultGitHubIntegrationStmt, upsertUserDefaultGitHubIntegration, arg.UserID, arg.GitHubIntegration)
-	return err
-}
-
-const upsertUserDefaultGlobalLoadBalancer = `-- name: UpsertUserDefaultGlobalLoadBalancer :exec
-INSERT INTO user_defaults (user_id, global_load_balancer, updated_at)
-VALUES (?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT(user_id) DO UPDATE SET
-    global_load_balancer = excluded.global_load_balancer,
-    updated_at = CURRENT_TIMESTAMP
-`
-
-type UpsertUserDefaultGlobalLoadBalancerParams struct {
-	UserID             string `db:"user_id" json:"user_id"`
-	GlobalLoadBalancer *int64 `db:"global_load_balancer" json:"global_load_balancer"`
-}
-
-func (q *Queries) UpsertUserDefaultGlobalLoadBalancer(ctx context.Context, arg UpsertUserDefaultGlobalLoadBalancerParams) error {
-	_, err := q.exec(ctx, q.upsertUserDefaultGlobalLoadBalancerStmt, upsertUserDefaultGlobalLoadBalancer, arg.UserID, arg.GlobalLoadBalancer)
 	return err
 }
 

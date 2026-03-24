@@ -1076,7 +1076,7 @@ func TestDNSServerIntegration(t *testing.T) {
 	})
 }
 
-func TestGlobalLoadBalancerCNAME(t *testing.T) {
+func TestAnycastNetworkCNAMERouting(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	log := tslog.Slogger(t)

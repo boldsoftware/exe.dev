@@ -12,10 +12,9 @@ import (
 
 // knownDefaultsKeys maps key names to their expected type for validation
 var knownDefaultsKeys = map[string]string{
-	"new-vm-email":         "bool",
-	"global-load-balancer": "bool",
-	"anycast-network":      "int",
-	"github-integration":   "bool",
+	"new-vm-email":       "bool",
+	"anycast-network":    "int",
+	"github-integration": "bool",
 }
 
 // defaultsCommand returns the command definition for the hidden defaults command
@@ -103,13 +102,6 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 					NewVMEmail: &intVal,
 				})
 			})
-		case "global-load-balancer":
-			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				return queries.UpsertUserDefaultGlobalLoadBalancer(ctx, exedb.UpsertUserDefaultGlobalLoadBalancerParams{
-					UserID:             cc.User.ID,
-					GlobalLoadBalancer: &intVal,
-				})
-			})
 		case "github-integration":
 			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 				return queries.UpsertUserDefaultGitHubIntegration(ctx, exedb.UpsertUserDefaultGitHubIntegrationParams{
@@ -159,7 +151,6 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	// If no key specified, show all
 	if len(cc.Args) == 1 {
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
-		cc.Writeln("global-load-balancer: %s", formatBoolPtr(defaults.GlobalLoadBalancer))
 		cc.Writeln("anycast-network: %s", formatIntPtr(defaults.AnycastNetwork))
 		cc.Writeln("github-integration: %s", formatBoolPtr(defaults.GitHubIntegration))
 		return nil
@@ -170,8 +161,6 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	switch key {
 	case "new-vm-email":
 		cc.Writeln("%s", formatBoolPtr(defaults.NewVMEmail))
-	case "global-load-balancer":
-		cc.Writeln("%s", formatBoolPtr(defaults.GlobalLoadBalancer))
 	case "anycast-network":
 		cc.Writeln("%s", formatIntPtr(defaults.AnycastNetwork))
 	case "github-integration":
@@ -203,10 +192,6 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 	case "new-vm-email":
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultNewVMEmail(ctx, cc.User.ID)
-		})
-	case "global-load-balancer":
-		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteUserDefaultGlobalLoadBalancer(ctx, cc.User.ID)
 		})
 	case "anycast-network":
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {

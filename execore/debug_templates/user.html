@@ -28,7 +28,6 @@ table.info th { width: 200px; }
 {{if .BillingTrialEndsAt}}<tr><th>Billing Trial Ends</th><td>{{.BillingTrialEndsAt}}</td></tr>{{end}}
 {{if .SignedUpWithInviteID}}<tr><th>Signed Up With Invite</th><td>{{.SignedUpWithInviteID}}</td></tr>{{end}}
 <tr><th>Region</th><td>{{.Region}} ({{.RegionDisplay}})</td></tr>
-<tr><th>GLB Default</th><td>{{.GLBDefault}}</td></tr>
 </table>
 </div>
 
@@ -44,7 +43,7 @@ table.info th { width: 200px; }
 
 <div class="section">
 <h2>Migrate to Region</h2>
-<p style="font-size:13px;color:#666;">Sets user region and enables GLB default.</p>
+<p style="font-size:13px;color:#666;">Sets user region.</p>
 <form method="post" action="/debug/user/migrate-region" style="display: flex; gap: 8px; align-items: center;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <select name="region" style="padding: 8px; font-family: inherit;">

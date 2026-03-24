@@ -70,7 +70,6 @@ sql:
           rating_count: "RatingCount"
           vm_shortname: "VMShortname"
           anycast_network: "AnycastNetwork"
-          global_load_balancer: "GlobalLoadBalancer"
           vm_templates: "VMTemplate"
           template_ratings: "TemplateRating"
           icon_url: "IconURL"
