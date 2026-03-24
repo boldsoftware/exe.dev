@@ -274,13 +274,13 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 			continue
 		}
 
-		teamID, err := ss.server.EnableTeam(ctx, cc.User.ID, displayName)
+		_, err = ss.server.EnableTeam(ctx, cc.User.ID, displayName)
 		if err != nil {
 			return cc.Errorf("Failed to create team: %v", err)
 		}
 
 		cc.Writeln("")
-		cc.Writeln("Team \033[1m%s\033[0m created! (ID: %s)", displayName, teamID)
+		cc.Writeln("Team \033[1m%s\033[0m created!", displayName)
 		cc.Writeln("Use \033[1mteam add <email>\033[0m to invite members.")
 		return nil
 	}

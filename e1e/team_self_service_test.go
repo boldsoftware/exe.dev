@@ -28,7 +28,6 @@ func TestTeamEnableDisableLifecycle(t *testing.T) {
 		repl.Want("Team name:")
 		repl.SendLine("Self Service Squad")
 		repl.Want("created")
-		repl.Want("tm_")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})

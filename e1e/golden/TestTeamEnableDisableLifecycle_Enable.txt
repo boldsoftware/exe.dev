@@ -23,7 +23,7 @@ Your existing VMs will become part of the team.
 Enable teams? (yes/no): localhost ▶ yes
 Team name: localhost ▶ Self Service Squad
 
-Team Self Service Squad created! (ID: TEAM_ID)
+Team Self Service Squad created!
 Use team add <email> to invite members.
 PROMPT ▶ exit
 Goodbye!
