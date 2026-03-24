@@ -40,11 +40,3 @@ git clone https://blog.int.exe.xyz/ghuser/blog.git
 Only the specific repository you configured is accessible through the
 integration, and the credentials never appear inside the VM.
 
-## Disconnecting
-
-To disconnect your GitHub account:
-
-```
-exe.dev ▶ integrations setup github -d
-Disconnected GitHub: your-github-user (your-github-user)
-```
