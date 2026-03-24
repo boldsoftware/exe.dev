@@ -4685,23 +4685,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			info.LatestStatus = status
 		}
 
-		// Plan history.
-		if history, err := withRxRes1(s, ctx, (*exedb.Queries).ListAccountPlanHistory, a.ID); err == nil {
-			for _, h := range history {
-				row := planHistoryRow{
-					PlanID:    h.PlanID,
-					StartedAt: h.StartedAt.Format(time.RFC3339),
-				}
-				if h.EndedAt != nil {
-					row.EndedAt = h.EndedAt.Format(time.RFC3339)
-				}
-				if h.ChangedBy != nil {
-					row.ChangedBy = *h.ChangedBy
-				}
-				info.PlanHistory = append(info.PlanHistory, row)
-			}
-		}
-
 		// Child accounts (team members whose parent_id points to this account).
 		allAccounts, _ := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
 		for _, child := range allAccounts {
@@ -5019,8 +5002,12 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.IsOnTeam = true
 	}
 
-	// Resolve entitlements for this user's plan.
-	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
+	// Resolve entitlements using the same logic as UserHasEntitlement:
+	// try account_plans first (walks parent_id for team members), fall back to legacy.
+	var version entitlement.PlanVersion
+	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+		version = entitlement.PlanVersion(planRow.PlanID)
+	} else if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
 		inputs := entitlement.UserPlanInputs{
 			Category:           billingRow.Category,
 			BillingStatus:      billingRow.BillingStatus,
@@ -5028,7 +5015,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:          billingRow.CreatedAt,
 			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
 		}
-		version := entitlement.GetPlanVersion(inputs)
+		version = entitlement.GetPlanVersion(inputs)
+	}
+	if version != "" {
 		for _, ent := range entitlement.AllEntitlements() {
 			data.Entitlements = append(data.Entitlements, struct {
 				Name    string
