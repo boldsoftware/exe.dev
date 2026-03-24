@@ -5,70 +5,72 @@
    ================================================================ */
 :root {
   /* Colors — hierarchy: bg (page) → surface (cards) → subtle (inset) → muted (code) */
-  --color-bg: #fafafa;
-  --color-surface: #fff;
-  --color-bg-subtle: #f8f8f8;
-  --color-bg-muted: #f3f4f6;
-  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg:           #fafafa;
+  --color-surface:      #fff;
+  --color-bg-subtle:    #f8f8f8;
+  --color-bg-muted:     #f3f4f6;
+  --color-bg-overlay:   rgba(0, 0, 0, 0.5);
 
-  --color-text: #111;
+  --color-text:         #111;
   --color-text-secondary: #666;
-  --color-text-muted: #999;
+  --color-text-muted:   #999;
 
-  --color-border: #e5e5e5;
+  --color-border:       #e5e5e5;
   --color-border-subtle: #f0f0f0;
   --color-border-input: #e0e0e0;
 
-  --color-link: #0066cc;
-  --color-link-hover: #004499;
+  --color-link:         #0066cc;
+  --color-link-hover:   #004499;
 
-  --color-success: #16a34a;
+  --color-success:      #16a34a;
   --color-success-light: #f0fdf4;
   --color-success-border: #86efac;
-  --color-danger: #dc2626;
+  --color-danger:       #dc2626;
   --color-danger-light: #fef2f2;
   --color-danger-border: #fca5a5;
 
   /* Typography */
   --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --font-system: system-ui, -apple-system, sans-serif;
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --font-system:
+    system-ui, -apple-system, sans-serif;
 
-  --leading: 1.6;
-  --text-base: 16px;
-  --text-sm: 14px;
-  --text-xs: 13px;
-  --text-xxs: 12px;
+  --leading:            1.6;
+  --text-base:          16px;
+  --text-sm:            14px;
+  --text-xs:            13px;
+  --text-xxs:           12px;
 
   /* Spacing */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-sm:          4px;
+  --radius-md:          6px;
+  --radius-lg:          8px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #111;
-    --color-surface: #1f1f1f;
-    --color-bg-subtle: #2a2a2a;
-    --color-bg-muted: #2a2a2a;
-    --color-bg-overlay: rgba(0, 0, 0, 0.7);
+    --color-bg:           #111;
+    --color-surface:      #1f1f1f;
+    --color-bg-subtle:    #2a2a2a;
+    --color-bg-muted:     #2a2a2a;
+    --color-bg-overlay:   rgba(0, 0, 0, 0.7);
 
-    --color-text: #f3f4f6;
+    --color-text:         #f3f4f6;
     --color-text-secondary: #9ca3af;
-    --color-text-muted: #6b7280;
+    --color-text-muted:   #6b7280;
 
-    --color-border: #333;
+    --color-border:       #333;
     --color-border-subtle: #333;
     --color-border-input: #333;
 
-    --color-link: #60a5fa;
-    --color-link-hover: #93c5fd;
+    --color-link:         #60a5fa;
+    --color-link-hover:   #93c5fd;
 
-    --color-success: #86efac;
+    --color-success:      #86efac;
     --color-success-light: #052e16;
     --color-success-border: #166534;
-    --color-danger: #f87171;
+    --color-danger:       #f87171;
     --color-danger-light: #450a0a;
     --color-danger-border: #991b1b;
   }
@@ -76,33 +78,33 @@
 
 /* Explicit theme overrides for manual theme toggle (terminal, etc.) */
 [data-theme="light"] {
-  --color-bg: #fafafa;
-  --color-surface: #fff;
-  --color-bg-subtle: #f8f8f8;
-  --color-bg-muted: #f3f4f6;
-  --color-text: #111;
+  --color-bg:           #fafafa;
+  --color-surface:      #fff;
+  --color-bg-subtle:    #f8f8f8;
+  --color-bg-muted:     #f3f4f6;
+  --color-text:         #111;
   --color-text-secondary: #666;
-  --color-text-muted: #999;
-  --color-border: #e5e5e5;
+  --color-text-muted:   #999;
+  --color-border:       #e5e5e5;
   --color-border-subtle: #f0f0f0;
   --color-border-input: #e0e0e0;
-  --color-link: #0066cc;
-  --color-link-hover: #004499;
+  --color-link:         #0066cc;
+  --color-link-hover:   #004499;
 }
 
 [data-theme="dark"] {
-  --color-bg: #111;
-  --color-surface: #1f1f1f;
-  --color-bg-subtle: #2a2a2a;
-  --color-bg-muted: #2a2a2a;
-  --color-text: #f3f4f6;
+  --color-bg:           #111;
+  --color-surface:      #1f1f1f;
+  --color-bg-subtle:    #2a2a2a;
+  --color-bg-muted:     #2a2a2a;
+  --color-text:         #f3f4f6;
   --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-  --color-border: #333;
+  --color-text-muted:   #6b7280;
+  --color-border:       #333;
   --color-border-subtle: #333;
   --color-border-input: #333;
-  --color-link: #60a5fa;
-  --color-link-hover: #93c5fd;
+  --color-link:         #60a5fa;
+  --color-link-hover:   #93c5fd;
 }
 
 /* ================================================================
@@ -286,9 +288,7 @@ table a:hover {
   justify-content: center;
   opacity: 0;
   visibility: hidden;
-  transition:
-    opacity 0.15s,
-    visibility 0.15s;
+  transition: opacity 0.15s, visibility 0.15s;
   z-index: 1000;
 }
 
