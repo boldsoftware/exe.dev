@@ -407,6 +407,45 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     func(ctx context.Context, cc *exemenu.CommandContext) error { return nil },
 		},
 		{
+			Name:        "hi",
+			Aliases:     []string{"hello"},
+			Hidden:      true,
+			Description: "Greetings, human",
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				fmt.Fprint(cc.Output, "Hello!\r\n")
+				return nil
+			},
+		},
+		{
+			Name:        "newt",
+			Hidden:      true,
+			Description: "She turned me into a VM",
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				fmt.Fprint(cc.Output, "🦎\r\n")
+				return nil
+			},
+		},
+		{
+			Name:        "easter",
+			Aliases:     []string{"egg", "easter-egg"},
+			Hidden:      true,
+			Description: "No chicken is an island",
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				fmt.Fprint(cc.Output, "🥚\r\n")
+				return nil
+			},
+		},
+		{
+			Name:        "april",
+			Aliases:     []string{"april-fools", "fools"},
+			Hidden:      true,
+			Description: "May flour",
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				fmt.Fprint(cc.Output, "Nice try.\r\n")
+				return nil
+			},
+		},
+		{
 			Name:              "grant-support-root",
 			Hidden:            true,
 			Description:       "Grant or revoke exe.dev support root access to a VM",
@@ -509,6 +548,13 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			FlagSetFunc:       exe0ToExe1Flags,
 			Handler:           ss.handleExe0ToExe1Command,
+		},
+		{
+			Name:        "roll",
+			Hidden:      true,
+			Aliases:     []string{"rick", "rickroll"},
+			Description: "🎵",
+			Handler:     ss.handleRollCommand,
 		},
 		{
 			Name:        "game",
