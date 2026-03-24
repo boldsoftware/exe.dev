@@ -789,6 +789,14 @@ provision_exelet() {
     # Ensure data directory exists (ZFS mounts /data but /data/exelet must be created)
     ssh_run "$ip" 'sudo mkdir -p /data/exelet'
 
+    # Build storage tier args for additional ZFS pools (dozer, backup, ramdisk)
+    local storage_tier_args=""
+    storage_tier_args+=" --storage-tier zfs:///data/exelet/storage?dataset=dozer"
+    storage_tier_args+=" --storage-tier zfs:///data/exelet/storage?dataset=backup"
+    if [[ -n "${EXELET_RAMDISK_POOL_SIZE}" ]]; then
+        storage_tier_args+=" --storage-tier zfs:///data/exelet/storage?dataset=ramdisk"
+    fi
+
     # Install systemd unit
     ssh_run "$ip" "sudo tee /etc/systemd/system/exelet.service >/dev/null" <<EOF
 [Unit]
@@ -804,7 +812,7 @@ KillMode=process
 LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 
-ExecStart=/usr/local/bin/exeletd.latest -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
+ExecStart=/usr/local/bin/exeletd.latest -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank${storage_tier_args} --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --enable-hugepages --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
 
 Restart=always
 RestartSec=5
