@@ -2908,17 +2908,17 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 	}
 
 	var (
-		version, arch                       string
-		loadAvg, memTotal, memFree          string
-		swapTotal, swapFree                 string
-		diskTotal, diskFree                 string
-		rxRate, txRate                       string
-		available                           bool
-		tiers                               []tierInfo
-		instances                           []instanceInfo
-		migrations                          []migrationInfo
-		mu                                  sync.Mutex
-		wg                                  sync.WaitGroup
+		version, arch              string
+		loadAvg, memTotal, memFree string
+		swapTotal, swapFree        string
+		diskTotal, diskFree        string
+		rxRate, txRate             string
+		available                  bool
+		tiers                      []tierInfo
+		instances                  []instanceInfo
+		migrations                 []migrationInfo
+		mu                         sync.Mutex
+		wg                         sync.WaitGroup
 	)
 
 	bytesToHuman := func(b uint64) string {
