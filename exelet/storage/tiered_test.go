@@ -341,8 +341,15 @@ func TestTieredStorageManager_PoolForInstance_BackupPoolLastResort(t *testing.T)
 		t.Error("PoolForInstance(vm-1) returned wrong manager")
 	}
 
-	// Remove from block to test fallback — VM only on backup
+	// Remove from block — VM only on backup, but fallback disabled (default)
 	delete(block.datasets, "vm-1")
+	_, _, err = tiered.PoolForInstance(ctx, "vm-1")
+	if err == nil {
+		t.Fatal("PoolForInstance(vm-1) should fail when VM only on backup and fallback disabled")
+	}
+
+	// Enable fallback — should now resolve from backup
+	tiered.SetBackupFallback(true)
 	name, sm, err = tiered.PoolForInstance(ctx, "vm-1")
 	if err != nil {
 		t.Fatalf("PoolForInstance(vm-1) fallback error: %v", err)

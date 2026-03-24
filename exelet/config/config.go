@@ -149,6 +149,11 @@ type ExeletConfig struct {
 	// BootLogKeepBytes is how many bytes to keep after rotation
 	BootLogKeepBytes int64
 
+	// BackupPoolFallback allows PoolForInstance to resolve instances from the
+	// backup pool when they don't exist on any primary storage tier. Disabled by
+	// default to prevent accidental runs from backup storage.
+	BackupPoolFallback bool
+
 	// ReplicationEnabled enables storage replication
 	ReplicationEnabled bool
 	// ReplicationInterval is the interval between replication cycles

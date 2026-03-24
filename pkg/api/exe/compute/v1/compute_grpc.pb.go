@@ -39,6 +39,7 @@ const (
 	ComputeService_GetTierMigrationStatus_FullMethodName = "/exe.compute.v1.ComputeService/GetTierMigrationStatus"
 	ComputeService_ListStorageTiers_FullMethodName       = "/exe.compute.v1.ComputeService/ListStorageTiers"
 	ComputeService_ClearTierMigrations_FullMethodName    = "/exe.compute.v1.ComputeService/ClearTierMigrations"
+	ComputeService_CancelTierMigration_FullMethodName    = "/exe.compute.v1.ComputeService/CancelTierMigration"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -74,6 +75,8 @@ type ComputeServiceClient interface {
 	ListStorageTiers(ctx context.Context, in *ListStorageTiersRequest, opts ...grpc.CallOption) (*ListStorageTiersResponse, error)
 	// ClearTierMigrations removes completed and failed tier migration operations
 	ClearTierMigrations(ctx context.Context, in *ClearTierMigrationsRequest, opts ...grpc.CallOption) (*ClearTierMigrationsResponse, error)
+	// CancelTierMigration cancels a pending or in-progress tier migration
+	CancelTierMigration(ctx context.Context, in *CancelTierMigrationRequest, opts ...grpc.CallOption) (*CancelTierMigrationResponse, error)
 }
 
 type computeServiceClient struct {
@@ -326,6 +329,16 @@ func (c *computeServiceClient) ClearTierMigrations(ctx context.Context, in *Clea
 	return out, nil
 }
 
+func (c *computeServiceClient) CancelTierMigration(ctx context.Context, in *CancelTierMigrationRequest, opts ...grpc.CallOption) (*CancelTierMigrationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelTierMigrationResponse)
+	err := c.cc.Invoke(ctx, ComputeService_CancelTierMigration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility.
@@ -359,6 +372,8 @@ type ComputeServiceServer interface {
 	ListStorageTiers(context.Context, *ListStorageTiersRequest) (*ListStorageTiersResponse, error)
 	// ClearTierMigrations removes completed and failed tier migration operations
 	ClearTierMigrations(context.Context, *ClearTierMigrationsRequest) (*ClearTierMigrationsResponse, error)
+	// CancelTierMigration cancels a pending or in-progress tier migration
+	CancelTierMigration(context.Context, *CancelTierMigrationRequest) (*CancelTierMigrationResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -428,6 +443,9 @@ func (UnimplementedComputeServiceServer) ListStorageTiers(context.Context, *List
 }
 func (UnimplementedComputeServiceServer) ClearTierMigrations(context.Context, *ClearTierMigrationsRequest) (*ClearTierMigrationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ClearTierMigrations not implemented")
+}
+func (UnimplementedComputeServiceServer) CancelTierMigration(context.Context, *CancelTierMigrationRequest) (*CancelTierMigrationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelTierMigration not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 func (UnimplementedComputeServiceServer) testEmbeddedByValue()                        {}
@@ -760,6 +778,24 @@ func _ComputeService_ClearTierMigrations_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_CancelTierMigration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelTierMigrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).CancelTierMigration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_CancelTierMigration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).CancelTierMigration(ctx, req.(*CancelTierMigrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -822,6 +858,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ClearTierMigrations",
 			Handler:    _ComputeService_ClearTierMigrations_Handler,
+		},
+		{
+			MethodName: "CancelTierMigration",
+			Handler:    _ComputeService_CancelTierMigration_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

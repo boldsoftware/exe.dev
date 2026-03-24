@@ -215,6 +215,11 @@ func main() {
 			Value:   config.DefaultReplicationInterval,
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_INTERVAL"},
 		},
+		&cli.BoolFlag{
+			Name:    "storage-backup-fallback",
+			Usage:   "allow VMs to resolve from the backup pool when not found on primary storage (for disaster recovery)",
+			EnvVars: []string{"EXELET_STORAGE_BACKUP_FALLBACK"},
+		},
 		&cli.StringFlag{
 			Name:    "storage-replication-target",
 			Usage:   "replication target URL (ssh://user@host/pool or file:///path)",
@@ -363,6 +368,7 @@ func serveAction(clix *cli.Context) error {
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
 	proxyBindIP := clix.String("proxy-bind-ip")
+	backupFallback := clix.Bool("storage-backup-fallback")
 	replicationEnabled := clix.Bool("storage-replication-enabled")
 	replicationInterval := clix.Duration("storage-replication-interval")
 	replicationTarget := clix.String("storage-replication-target")
@@ -424,6 +430,7 @@ func serveAction(clix *cli.Context) error {
 		ResourceManagerInterval:     resourceManagerInterval,
 		EnableHugepages:             enableHugepages,
 		ProxyBindIP:                 proxyBindIP,
+		BackupPoolFallback:          backupFallback,
 		ReplicationEnabled:          replicationEnabled,
 		ReplicationInterval:         replicationInterval,
 		ReplicationTarget:           replicationTarget,
@@ -530,7 +537,9 @@ func serveAction(clix *cli.Context) error {
 		}
 		if _, exists := tierManagers[backupPoolName]; exists {
 			storageManager.SetBackupPool(backupPoolName)
-			log.InfoContext(ctx, "backup pool set as last-resort for instance resolution", "pool", backupPoolName)
+			storageManager.SetBackupFallback(cfg.BackupPoolFallback)
+			log.InfoContext(ctx, "backup pool set as last-resort for instance resolution",
+				"pool", backupPoolName, "fallback_enabled", cfg.BackupPoolFallback)
 		}
 	}
 

@@ -4,6 +4,8 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +65,8 @@ func Parse(env stage.Env) (*template.Template, error) {
 				}
 				return t.UTC().Format("2006-01-02 15:04:05")
 			},
+			"hasPrefix":      strings.HasPrefix,
+			"urlPathEscape":  url.PathEscape,
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})

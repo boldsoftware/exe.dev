@@ -1,0 +1,254 @@
+<!doctype html>
+<html><head><title>Exelet: {{.Address}}</title>
+{{template "base-head"}}
+<style>
+.section { margin-bottom: 30px; }
+.primary-tag { background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+.backup-tag { background: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+.result-msg { padding: 10px; margin-bottom: 15px; border-radius: 4px; }
+.result-msg.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+.result-msg.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+.btn { padding: 6px 14px; cursor: pointer; border-radius: 3px; font-size: 13px; border: none; color: white; }
+.btn-primary { background: #007bff; }
+.btn-primary:hover { background: #0056b3; }
+.btn-danger { background: #dc3545; }
+.btn-danger:hover { background: #c82333; }
+.btn-secondary { background: #6c757d; color: white; border: none; padding: 6px 14px; cursor: pointer; border-radius: 3px; font-size: 13px; margin-right: 8px; }
+fieldset { margin: 15px 0; padding: 15px; }
+legend { font-weight: bold; }
+.box-list { max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; margin-top: 5px; }
+.box-item { padding: 4px 0; }
+.box-item .status { margin-left: 8px; font-size: 12px; color: #666; }
+.box-item .pool { margin-left: 8px; font-size: 12px; color: #999; }
+.summary { margin-top: 10px; font-size: 14px; }
+select { padding: 8px; font-size: 14px; }
+.vm-table-scroll { max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; }
+.vm-table-scroll table { margin: 0; border: none; }
+.vm-table-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+</style>
+</head><body>
+<h1>Exelet: {{.Address}}</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/exelets">exelets</a> &gt; detail</p>
+
+{{if .Result}}
+<div class="result-msg {{if hasPrefix .Result "error"}}error{{else}}success{{end}}">{{.Result}}</div>
+{{end}}
+
+<div class="section">
+<h2>Host Resources</h2>
+<table>
+<tr><th>Version</th><td>{{.Version}}</td></tr>
+<tr><th>Architecture</th><td>{{.Arch}}</td></tr>
+<tr><th>Available</th><td>{{.Available}}</td></tr>
+<tr><th>Load Average</th><td>{{.LoadAvg}}</td></tr>
+<tr><th>Memory</th><td>{{.MemFree}} free / {{.MemTotal}} total</td></tr>
+<tr><th>Swap</th><td>{{.SwapFree}} free / {{.SwapTotal}} total</td></tr>
+<tr><th>Disk</th><td>{{.DiskFree}} free / {{.DiskTotal}} total</td></tr>
+<tr><th>Network RX</th><td>{{.RxRate}}</td></tr>
+<tr><th>Network TX</th><td>{{.TxRate}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Storage Tiers ({{len .Tiers}})</h2>
+{{if .Tiers}}
+<table>
+<tr><th>Pool</th><th>Primary</th><th>Size</th><th>Used</th><th>Free</th><th>Utilization</th><th>VMs</th><th>Metadata</th></tr>
+{{range .Tiers}}
+<tr>
+<td><code>{{.Name}}</code></td>
+<td>{{if .Primary}}<span class="primary-tag">primary</span>{{end}}{{if .Backup}}<span class="backup-tag">backup</span>{{end}}</td>
+<td>{{.Size}}</td>
+<td>{{.Used}}</td>
+<td>{{.Free}}</td>
+<td>{{.Utilization}}</td>
+<td>{{.VMs}}</td>
+<td>{{.Metadata}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p>No storage tiers configured or unavailable.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>VMs on this Exelet ({{len .Instances}})</h2>
+{{if .Instances}}
+<div class="vm-table-scroll">
+<table>
+<thead><tr><th>Name</th><th>State</th><th>CPUs</th><th>Memory</th><th>Disk</th><th>Pool</th><th>IP</th></tr></thead>
+<tbody>
+{{range .Instances}}
+<tr>
+<td>{{if .Name}}<a href="/debug/vms/{{.Name}}">{{.Name}}</a>{{else}}<code>{{.ID}}</code>{{end}}</td>
+<td>{{.State}}</td>
+<td>{{.CPUs}}</td>
+<td>{{.Memory}}</td>
+<td>{{.Disk}}</td>
+<td><code>{{.Pool}}</code></td>
+<td>{{.IP}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p>No instances found.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>Tier Migration Operations ({{len .Migrations}})</h2>
+{{if .Migrations}}
+<table>
+<tr><th>OpID</th><th>Instance</th><th>From → To</th><th>Progress</th><th>State</th><th>Error</th><th>Started</th><th>Completed</th><th>Actions</th></tr>
+{{range .Migrations}}
+<tr>
+<td><code>{{.OpID}}</code></td>
+<td><code>{{.Instance}}</code></td>
+<td>{{.From}} → {{.To}}</td>
+<td>{{.Progress}}</td>
+<td>{{.State}}</td>
+<td>{{.Error}}</td>
+<td>{{.Started}}</td>
+<td>{{.Completed}}</td>
+<td>{{if eq .State "pending"}}<form method="post" action="/debug/exelets/{{$.Hostname}}/cancel-tier-migration" style="display:inline;" onsubmit="return confirm('Cancel migration {{.OpID}}?');"><input type="hidden" name="operation_id" value="{{.OpID}}"><button type="submit" class="btn btn-danger" style="padding: 2px 8px; font-size: 12px;">Cancel</button></form>{{end}}</td>
+</tr>
+{{end}}
+</table>
+<div style="margin-top: 10px;">
+<form method="post" action="/debug/exelets/{{.Hostname}}/cancel-all-pending-tier-migrations" style="display: inline;" onsubmit="return confirm('Cancel all pending tier migrations?');">
+<button type="submit" class="btn btn-danger">Cancel All Pending</button>
+</form>
+<form method="post" action="/debug/exelets/{{.Hostname}}/clear-tier-migrations" style="display: inline;" onsubmit="return confirm('Clear completed/failed/cancelled migration operations?');">
+<button type="submit" class="btn btn-danger">Clear Completed</button>
+</form>
+</div>
+{{else}}
+<p>No tier migration operations.</p>
+{{end}}
+
+{{if and .Tiers .Instances}}
+<div class="section">
+<h2>Tier Migration</h2>
+
+<fieldset>
+<legend>1. Select VMs to migrate</legend>
+<div class="box-list" id="tierBoxList">
+{{range .Instances}}
+<div class="box-item">
+<label><input type="checkbox" class="tier-vm-cb" value="{{.ID}}" data-name="{{.Name}}" data-pool="{{.Pool}}"> {{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</label>
+<span class="status">[{{.State}}]</span>
+<span class="pool">{{.Pool}}</span>
+</div>
+{{end}}
+</div>
+<p>
+<button type="button" class="btn-secondary" id="tierSelectAll">Select All</button>
+<button type="button" class="btn-secondary" id="tierDeselectAll">Deselect All</button>
+</p>
+<div class="summary" id="tierSummary">0 VM(s) selected</div>
+</fieldset>
+
+<fieldset>
+<legend>2. Select target pool</legend>
+<select id="tierTargetPool">
+<option value="">Select pool...</option>
+{{range .Tiers}}{{if not .Backup}}<option value="{{.Name}}">{{.Name}}</option>{{end}}{{end}}
+</select>
+</fieldset>
+
+<fieldset>
+<legend>3. Options</legend>
+<label style="display:inline;"><input type="checkbox" id="tierLive" checked> Live migration</label>
+</fieldset>
+
+<fieldset>
+<legend>4. Confirm</legend>
+<p id="tierConfirmPrompt">Select VMs and target pool to continue.</p>
+<input type="text" id="tierConfirm" autocomplete="off" placeholder="" style="display:none; padding: 8px; font-size: 14px; width: 100%; box-sizing: border-box; margin-top: 5px;">
+</fieldset>
+
+<p>
+<button class="btn btn-primary" id="tierSubmitBtn" disabled>Start Tier Migration</button>
+</p>
+</div>
+{{end}}
+</div>
+
+<script>
+(function() {
+    var cbs = document.querySelectorAll('.tier-vm-cb');
+    if (!cbs.length) return;
+
+    var summary = document.getElementById('tierSummary');
+    var targetPool = document.getElementById('tierTargetPool');
+    var submitBtn = document.getElementById('tierSubmitBtn');
+    var confirmInput = document.getElementById('tierConfirm');
+    var confirmPrompt = document.getElementById('tierConfirmPrompt');
+
+    function getSelected() {
+        var sel = [];
+        cbs.forEach(function(cb) { if (cb.checked) sel.push(cb.value); });
+        return sel;
+    }
+    function updateState() {
+        var sel = getSelected();
+        summary.textContent = sel.length + ' VM(s) selected';
+
+        if (sel.length > 0 && targetPool.value) {
+            confirmPrompt.textContent = 'Type "' + sel.length + '" to confirm migrating ' + sel.length + ' VM(s):';
+            confirmInput.style.display = '';
+            confirmInput.placeholder = sel.length.toString();
+        } else {
+            confirmPrompt.textContent = 'Select VMs and target pool to continue.';
+            confirmInput.style.display = 'none';
+        }
+
+        var valid = sel.length > 0 && targetPool.value && confirmInput.value === sel.length.toString();
+        submitBtn.disabled = !valid;
+    }
+
+    cbs.forEach(function(cb) { cb.addEventListener('change', updateState); });
+    targetPool.addEventListener('change', updateState);
+    confirmInput.addEventListener('input', updateState);
+
+    document.getElementById('tierSelectAll').addEventListener('click', function() {
+        cbs.forEach(function(cb) { cb.checked = true; });
+        updateState();
+    });
+    document.getElementById('tierDeselectAll').addEventListener('click', function() {
+        cbs.forEach(function(cb) { cb.checked = false; });
+        updateState();
+    });
+
+    submitBtn.addEventListener('click', function() {
+        var sel = getSelected();
+        var pool = targetPool.value;
+        var live = document.getElementById('tierLive').checked;
+        if (!sel.length || !pool) return;
+
+        var params = new URLSearchParams();
+        sel.forEach(function(id) { params.append('instance_id', id); });
+        params.append('target_pool', pool);
+        if (live) params.append('live', 'on');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Migrating...';
+
+        fetch('/debug/exelets/{{.Hostname}}/migrate-tier', {
+            method: 'POST',
+            body: params
+        }).then(function(r) { return r.text(); }).then(function() {
+            window.location.reload();
+        }).catch(function(err) {
+            alert('Error: ' + err);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Start Tier Migration';
+        });
+    });
+})();
+</script>
+
+</body></html>

@@ -28,13 +28,14 @@ type TierMigrationOp struct {
 	InstanceID  string
 	SourcePool  string
 	TargetPool  string
-	State       string  // "pending", "migrating", "completed", "failed"
+	State       string  // "pending", "migrating", "completed", "failed", "cancelled"
 	Progress    float32 // 0.0 to 1.0
 	Error       string
 	StartedAt   time.Time
 	CompletedAt time.Time
 
-	mu sync.Mutex
+	cancel context.CancelFunc // cancels the migration context
+	mu     sync.Mutex
 }
 
 func (op *TierMigrationOp) setProgress(p float32) {
@@ -165,6 +166,55 @@ func (s *Service) checkMigrationCircuitBreaker() error {
 	return nil
 }
 
+// CancelTierMigration cancels a pending or in-progress tier migration.
+func (s *Service) CancelTierMigration(ctx context.Context, req *api.CancelTierMigrationRequest) (*api.CancelTierMigrationResponse, error) {
+	if req.OperationID == "" {
+		return nil, status.Error(codes.InvalidArgument, "operation_id is required")
+	}
+
+	tierMigrationMu.Lock()
+	op, ok := tierMigrationOps[req.OperationID]
+	tierMigrationMu.Unlock()
+
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "operation %s not found", req.OperationID)
+	}
+
+	op.mu.Lock()
+	state := op.State
+	cancelFn := op.cancel
+	op.mu.Unlock()
+
+	if state == "completed" || state == "failed" || state == "cancelled" {
+		return &api.CancelTierMigrationResponse{
+			OperationID: req.OperationID,
+			State:       state,
+		}, nil
+	}
+
+	if cancelFn != nil {
+		cancelFn()
+	}
+
+	// Wait briefly for the goroutine to acknowledge cancellation
+	for i := 0; i < 20; i++ {
+		time.Sleep(100 * time.Millisecond)
+		op.mu.Lock()
+		state = op.State
+		op.mu.Unlock()
+		if state == "cancelled" || state == "completed" || state == "failed" {
+			break
+		}
+	}
+
+	s.log.InfoContext(ctx, "tier migration cancel requested", "op", req.OperationID, "state", state)
+
+	return &api.CancelTierMigrationResponse{
+		OperationID: req.OperationID,
+		State:       state,
+	}, nil
+}
+
 // ClearTierMigrations removes completed and failed tier migration operations.
 func (s *Service) ClearTierMigrations(ctx context.Context, req *api.ClearTierMigrationsRequest) (*api.ClearTierMigrationsResponse, error) {
 	tierMigrationMu.Lock()
@@ -173,7 +223,7 @@ func (s *Service) ClearTierMigrations(ctx context.Context, req *api.ClearTierMig
 		op.mu.Lock()
 		state := op.State
 		op.mu.Unlock()
-		if state == "completed" || state == "failed" {
+		if state == "completed" || state == "failed" || state == "cancelled" {
 			delete(tierMigrationOps, id)
 			cleared++
 		}
@@ -181,6 +231,21 @@ func (s *Service) ClearTierMigrations(ctx context.Context, req *api.ClearTierMig
 	tierMigrationMu.Unlock()
 
 	return &api.ClearTierMigrationsResponse{Cleared: cleared}, nil
+}
+
+// replicationTargetPool returns the ZFS pool name that the storage replication
+// target points to, or "" if replication is not configured or targets a remote host.
+// This pool is reserved for backups and must not be used as a tier migration target.
+func (s *Service) replicationTargetPool() string {
+	target := s.config.ReplicationTarget
+	if !strings.HasPrefix(target, "zpool:///") {
+		return ""
+	}
+	pool := strings.TrimPrefix(target, "zpool:///")
+	if idx := strings.IndexByte(pool, '?'); idx >= 0 {
+		pool = pool[:idx]
+	}
+	return pool
 }
 
 // MigrateStorageTier kicks off an async tier migration and returns immediately.
@@ -204,6 +269,11 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 	// Validate target pool exists
 	if _, err := tiered.Pool(req.TargetPool); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "target pool: %v", err)
+	}
+
+	// Reject migration to the replication target (backup) pool
+	if bp := s.replicationTargetPool(); bp != "" && req.TargetPool == bp {
+		return nil, status.Errorf(codes.InvalidArgument, "pool %q is the storage replication target and reserved for backups", req.TargetPool)
 	}
 
 	// Resolve source pool
@@ -231,8 +301,12 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 		return nil, status.Errorf(codes.Internal, "failed to generate operation ID: %v", err)
 	}
 
+	// Use first 24 hex chars for a shorter but still unique operation ID.
+	// With <4096 concurrent ops the collision probability is negligible.
+	shortID := fmt.Sprintf("%x", opID[:12])
+
 	op := &TierMigrationOp{
-		OperationID: opID.String(),
+		OperationID: shortID,
 		InstanceID:  req.InstanceID,
 		SourcePool:  sourcePool,
 		TargetPool:  req.TargetPool,
@@ -242,20 +316,61 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 	addTierMigrationOp(op)
 
 	// Run migration in background, gated by worker semaphore
+	migCtx, migCancel := context.WithCancel(context.Background())
+	op.mu.Lock()
+	op.cancel = migCancel
+	op.mu.Unlock()
+
 	go func() {
-		// Acquire semaphore slot (blocks if all workers are busy)
-		s.tierMigrationSem <- struct{}{}
+		defer migCancel()
+
+		// Acquire semaphore slot (blocks if all workers are busy).
+		// Check for cancellation while waiting.
+		select {
+		case s.tierMigrationSem <- struct{}{}:
+		case <-migCtx.Done():
+			op.mu.Lock()
+			op.State = "cancelled"
+			op.CompletedAt = time.Now()
+			op.Error = "cancelled while pending"
+			op.mu.Unlock()
+			s.log.InfoContext(context.Background(), "tier migration cancelled while pending",
+				"op", op.OperationID, "instance", req.InstanceID)
+			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
+			return
+		}
 		defer func() { <-s.tierMigrationSem }()
 
 		op.mu.Lock()
+		if migCtx.Err() != nil {
+			op.State = "cancelled"
+			op.CompletedAt = time.Now()
+			op.Error = "cancelled before start"
+			op.mu.Unlock()
+			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
+			return
+		}
 		op.State = "migrating"
 		op.mu.Unlock()
 
 		var migErr error
 		if req.Live {
-			migErr = s.migrateTierLive(context.Background(), tiered, req.InstanceID, sourcePool, req.TargetPool, op)
+			migErr = s.migrateTierLive(migCtx, tiered, req.InstanceID, sourcePool, req.TargetPool, op)
 		} else {
-			migErr = s.migrateTierStopped(context.Background(), tiered, req.InstanceID, sourcePool, req.TargetPool, op)
+			migErr = s.migrateTierStopped(migCtx, tiered, req.InstanceID, sourcePool, req.TargetPool, op)
+		}
+
+		// If the context was cancelled, mark as cancelled rather than failed
+		if migErr != nil && migCtx.Err() != nil {
+			op.mu.Lock()
+			op.State = "cancelled"
+			op.CompletedAt = time.Now()
+			op.Error = "cancelled"
+			op.mu.Unlock()
+			s.log.InfoContext(context.Background(), "tier migration cancelled",
+				"op", op.OperationID, "instance", req.InstanceID)
+			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
+			return
 		}
 		op.complete(migErr)
 
@@ -517,16 +632,19 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	vmPaused := true
 	defer func() {
 		if vmPaused {
-			s.log.WarnContext(ctx, "tier migration: resuming VM due to error", "instance", instanceID)
-			if err := s.vmm.Resume(ctx, instanceID); err != nil {
-				s.log.ErrorContext(ctx, "tier migration: failed to resume VM", "instance", instanceID, "error", err)
+			// Use a fresh context for cleanup — the caller's context may be
+			// cancelled (e.g. operator cancel), but we must still resume the VM.
+			cleanupCtx := context.Background()
+			s.log.WarnContext(cleanupCtx, "tier migration: resuming VM due to error", "instance", instanceID)
+			if err := s.vmm.Resume(cleanupCtx, instanceID); err != nil {
+				s.log.ErrorContext(cleanupCtx, "tier migration: failed to resume VM", "instance", instanceID, "error", err)
 				return
 			}
 			// After resume, check if the guest kernel is healthy.
 			// A failed CH snapshot can leave vCPUs in a bad state that
 			// causes RCU stalls, making the VM appear running but
 			// unresponsive. Detect this and escalate to stop/start.
-			s.checkAndRecoverStuckVM(ctx, instanceID)
+			s.checkAndRecoverStuckVM(cleanupCtx, instanceID)
 		}
 	}()
 	if err := s.vmm.Pause(ctx, instanceID); err != nil {
@@ -611,6 +729,11 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		return fmt.Errorf("stop old VM: %w", err)
 	}
 	vmPaused = false // Don't try to resume after stop
+
+	// Past the point of no return — the VM is stopped. All subsequent
+	// operations (restore, recovery cold-boot) must use a background
+	// context so that operator cancellation cannot strand the VM.
+	ctx = context.Background()
 
 	// Restore from snapshot with new disk path
 	s.log.InfoContext(ctx, "tier migration: restoring VM", "instance", instanceID)
@@ -760,7 +883,14 @@ func (s *Service) ListStorageTiers(ctx context.Context, req *api.ListStorageTier
 			s.log.WarnContext(ctx, "failed to get pool info", "pool", name, "error", err)
 			continue
 		}
-		tier.Metadata = tiered.PoolMetadata(name)
+		md := tiered.PoolMetadata(name)
+		if bp := s.replicationTargetPool(); bp != "" && name == bp {
+			if md == nil {
+				md = make(map[string]string)
+			}
+			md["role"] = "backup"
+		}
+		tier.Metadata = md
 		tiers = append(tiers, tier)
 	}
 

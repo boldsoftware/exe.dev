@@ -68,6 +68,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/vms/start", s.handleDebugBoxStart)
 	mux.HandleFunc("GET /debug/vms/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/vms/migrate", s.handleDebugBoxMigrate)
+	mux.HandleFunc("POST /debug/vms/{name}/migrate-tier", s.handleDebugBoxMigrateTier)
 	mux.HandleFunc("GET /debug/migrate", s.handleDebugMassMigrateForm)
 	mux.HandleFunc("GET /debug/migrate/vms", s.handleDebugMassMigrateBoxes)
 	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
@@ -88,6 +89,11 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
+	mux.HandleFunc("/debug/exelets/{hostname}", s.handleDebugExeletDetail)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/migrate-tier", s.handleDebugExeletMigrateTier)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/clear-tier-migrations", s.handleDebugExeletClearTierMigrations)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-tier-migration", s.handleDebugExeletCancelTierMigration)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-all-pending-tier-migrations", s.handleDebugExeletCancelAllPendingTierMigrations)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -1925,6 +1931,32 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		shardDNS = shardSub + "." + s.env.BoxHost
 	}
 
+	// Look up storage pool information if the VM has a container ID
+	var storagePool string
+	var availablePools []string
+	if box.ContainerID != nil && box.Ctrhost != "" {
+		if ec := s.getExeletClient(box.Ctrhost); ec != nil {
+			instCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if inst, err := ec.client.GetInstance(instCtx, &computeapi.GetInstanceRequest{ID: *box.ContainerID}); err == nil {
+				if inst.Instance != nil && inst.Instance.VMConfig != nil {
+					storagePool = poolFromRootDiskPath(inst.Instance.VMConfig.RootDiskPath)
+				}
+			}
+			cancel()
+
+			tierCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if tierResp, err := ec.client.ListStorageTiers(tierCtx, &computeapi.ListStorageTiersRequest{}); err == nil {
+				for _, t := range tierResp.Tiers {
+					if t.Metadata["role"] == "backup" {
+						continue
+					}
+					availablePools = append(availablePools, t.Name)
+				}
+			}
+			cancel()
+		}
+	}
+
 	data := struct {
 		Name                 string
 		ID                   int64
@@ -1950,6 +1982,8 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		PendingShares        []shareInfo
 		ShareLinks           []linkInfo
 		CreationLog          string
+		StoragePool          string
+		AvailablePools       []string
 	}{
 		Name:                 box.Name,
 		ID:                   int64(box.ID),
@@ -1975,6 +2009,8 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		PendingShares:        pendingShareList,
 		ShareLinks:           shareLinkList,
 		CreationLog:          creationLog,
+		StoragePool:          storagePool,
+		AvailablePools:       availablePools,
 	}
 
 	s.renderDebugTemplate(ctx, w, "box-details.html", data)
@@ -2565,6 +2601,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 
 	type exeletInfo struct {
 		Address       string `json:"address"`
+		Hostname      string `json:"hostname"`
 		Version       string `json:"version"`
 		Available     bool   `json:"available"`
 		Status        string `json:"status"`
@@ -2580,6 +2617,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 		Error         string `json:"error,omitempty"`
 		DebugURL      string `json:"debug_url"`
 		CgtopURL      string `json:"cgtop_url"`
+		TierCount     int    `json:"tier_count"`
 	}
 
 	// Get the preferred exelet setting
@@ -2602,6 +2640,7 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			}
 			if u, err := url.Parse(addr); err == nil {
 				host := u.Hostname()
+				info.Hostname = host
 				info.DebugURL = "http://" + host + ":9081"
 				info.CgtopURL = "http://" + host + ":9090"
 			}
@@ -2638,6 +2677,13 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				info.DiskFree = kibToGB(usage.Usage.DiskFree)
 				info.RxRate = fmt.Sprintf("%.1f", float64(usage.Usage.RxBytesRate)*8/1000000)
 				info.TxRate = fmt.Sprintf("%.1f", float64(usage.Usage.TxBytesRate)*8/1000000)
+			}
+			cancel()
+
+			// Get storage tier count
+			tierCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if tierResp, err := ec.client.ListStorageTiers(tierCtx, &computeapi.ListStorageTiersRequest{}); err == nil {
+				info.TierCount = len(tierResp.Tiers)
 			}
 			cancel()
 
@@ -2801,6 +2847,587 @@ func (s *Server) handleDebugExeletRecover(w http.ResponseWriter, r *http.Request
 
 	fmt.Fprintf(w, "\ndone: %d started, %d failed\n", started, failed)
 	s.slog().InfoContext(ctx, "exelet recover completed", "address", address, "started", started, "failed", failed, "total", len(containerIDs))
+}
+
+// poolFromRootDiskPath extracts the ZFS pool name from a root disk path.
+// e.g., "/dev/zvol/tank/vm-xxx" → "tank"
+func poolFromRootDiskPath(path string) string {
+	trimmed := strings.TrimPrefix(path, "/dev/zvol/")
+	if trimmed == path || trimmed == "" {
+		return ""
+	}
+	if idx := strings.IndexByte(trimmed, '/'); idx >= 0 {
+		return trimmed[:idx]
+	}
+	return trimmed
+}
+
+// handleDebugExeletDetail shows detailed information about a single exelet.
+func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	type tierInfo struct {
+		Name        string
+		Primary     bool
+		Backup      bool
+		Size        string
+		Used        string
+		Free        string
+		Utilization string
+		VMs         uint32
+		Metadata    string
+	}
+	type instanceInfo struct {
+		ID     string
+		Name   string
+		State  string
+		CPUs   uint64
+		Memory string
+		Disk   string
+		Pool   string
+		IP     string
+	}
+	type migrationInfo struct {
+		OpID      string
+		Instance  string
+		From      string
+		To        string
+		Progress  string
+		State     string
+		Error     string
+		Started   string
+		Completed string
+		startedAt int64 // for sorting
+	}
+
+	var (
+		version, arch                       string
+		loadAvg, memTotal, memFree          string
+		swapTotal, swapFree                 string
+		diskTotal, diskFree                 string
+		rxRate, txRate                       string
+		available                           bool
+		tiers                               []tierInfo
+		instances                           []instanceInfo
+		migrations                          []migrationInfo
+		mu                                  sync.Mutex
+		wg                                  sync.WaitGroup
+	)
+
+	bytesToHuman := func(b uint64) string {
+		switch {
+		case b >= 1<<40:
+			return fmt.Sprintf("%.1f TB", float64(b)/float64(1<<40))
+		case b >= 1<<30:
+			return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
+		default:
+			return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
+		}
+	}
+	kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f GB", float64(kib)/1048576.0) }
+
+	// Parallel gRPC calls
+	wg.Add(4)
+
+	// 1. GetSystemInfo + GetMachineUsage
+	go func() {
+		defer wg.Done()
+		sysCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if resp, err := ec.client.GetSystemInfo(sysCtx, &computeapi.GetSystemInfoRequest{}); err == nil {
+			mu.Lock()
+			version = resp.Version
+			arch = resp.Arch
+			mu.Unlock()
+		}
+		cancel()
+
+		usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if usage, err := ec.client.GetMachineUsage(usageCtx, &resourceapi.GetMachineUsageRequest{}); err == nil {
+			mu.Lock()
+			available = usage.Available
+			loadAvg = fmt.Sprintf("%.2f", usage.Usage.LoadAverage)
+			memTotal = kibToGB(usage.Usage.MemTotal)
+			memFree = kibToGB(usage.Usage.MemFree)
+			swapTotal = kibToGB(usage.Usage.SwapTotal)
+			swapFree = kibToGB(usage.Usage.SwapFree)
+			diskTotal = kibToGB(usage.Usage.DiskTotal)
+			diskFree = kibToGB(usage.Usage.DiskFree)
+			rxRate = fmt.Sprintf("%.1f Mbit/s", float64(usage.Usage.RxBytesRate)*8/1000000)
+			txRate = fmt.Sprintf("%.1f Mbit/s", float64(usage.Usage.TxBytesRate)*8/1000000)
+			mu.Unlock()
+		}
+		cancel()
+	}()
+
+	// 2. ListStorageTiers
+	go func() {
+		defer wg.Done()
+		tierCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if resp, err := ec.client.ListStorageTiers(tierCtx, &computeapi.ListStorageTiersRequest{}); err == nil {
+			mu.Lock()
+			for _, t := range resp.Tiers {
+				var util string
+				if t.SizeBytes > 0 {
+					util = fmt.Sprintf("%.1f%%", float64(t.UsedBytes)/float64(t.SizeBytes)*100)
+				}
+				metaKeys := make([]string, 0, len(t.Metadata))
+				for k := range t.Metadata {
+					metaKeys = append(metaKeys, k)
+				}
+				sort.Strings(metaKeys)
+				var meta string
+				for _, k := range metaKeys {
+					if meta != "" {
+						meta += ", "
+					}
+					meta += k + "=" + t.Metadata[k]
+				}
+				tiers = append(tiers, tierInfo{
+					Name:        t.Name,
+					Primary:     t.Primary,
+					Backup:      t.Metadata["role"] == "backup",
+					Size:        bytesToHuman(t.SizeBytes),
+					Used:        bytesToHuman(t.UsedBytes),
+					Free:        bytesToHuman(t.AvailableBytes),
+					Utilization: util,
+					VMs:         t.InstanceCount,
+					Metadata:    meta,
+				})
+			}
+			mu.Unlock()
+		}
+	}()
+
+	// 3. GetTierMigrationStatus
+	go func() {
+		defer wg.Done()
+		migCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if resp, err := ec.client.GetTierMigrationStatus(migCtx, &computeapi.GetTierMigrationStatusRequest{}); err == nil {
+			mu.Lock()
+			for _, op := range resp.Operations {
+				var started, completed string
+				if op.StartedAt > 0 {
+					started = time.Unix(op.StartedAt, 0).UTC().Format("2006-01-02 15:04:05")
+				}
+				if op.CompletedAt > 0 {
+					completed = time.Unix(op.CompletedAt, 0).UTC().Format("2006-01-02 15:04:05")
+				}
+				migrations = append(migrations, migrationInfo{
+					OpID:      op.OperationID,
+					Instance:  op.InstanceID,
+					From:      op.SourcePool,
+					To:        op.TargetPool,
+					Progress:  fmt.Sprintf("%.0f%%", op.Progress*100),
+					State:     op.State,
+					Error:     op.Error,
+					Started:   started,
+					Completed: completed,
+					startedAt: op.StartedAt,
+				})
+			}
+			mu.Unlock()
+		}
+	}()
+
+	// 4. ListInstances
+	go func() {
+		defer wg.Done()
+		listCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		stream, err := ec.client.ListInstances(listCtx, &computeapi.ListInstancesRequest{})
+		if err != nil {
+			return
+		}
+		var insts []instanceInfo
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				break
+			}
+			inst := resp.Instance
+			info := instanceInfo{
+				ID:    inst.ID,
+				Name:  inst.Name,
+				State: inst.State.String(),
+			}
+			if inst.VMConfig != nil {
+				info.CPUs = inst.VMConfig.CPUs
+				info.Memory = bytesToHuman(inst.VMConfig.Memory)
+				info.Disk = bytesToHuman(inst.VMConfig.Disk)
+				info.Pool = poolFromRootDiskPath(inst.VMConfig.RootDiskPath)
+			}
+			if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+				info.IP = inst.VMConfig.NetworkInterface.IP.IPV4
+			}
+			insts = append(insts, info)
+		}
+		mu.Lock()
+		instances = insts
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+
+	// Sort migrations: newest first, then by state (migrating > pending > failed > completed)
+	migrationStateOrder := func(state string) int {
+		switch state {
+		case "migrating":
+			return 0
+		case "pending":
+			return 1
+		case "failed":
+			return 2
+		case "cancelled":
+			return 3
+		case "completed":
+			return 4
+		default:
+			return 5
+		}
+	}
+	sort.Slice(migrations, func(i, j int) bool {
+		if migrations[i].startedAt != migrations[j].startedAt {
+			return migrations[i].startedAt > migrations[j].startedAt
+		}
+		return migrationStateOrder(migrations[i].State) < migrationStateOrder(migrations[j].State)
+	})
+
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(map[string]any{
+			"address":    address,
+			"version":    version,
+			"arch":       arch,
+			"available":  available,
+			"tiers":      tiers,
+			"instances":  instances,
+			"migrations": migrations,
+		})
+		return
+	}
+
+	data := struct {
+		Address    string
+		Hostname   string
+		Version    string
+		Arch       string
+		Available  bool
+		LoadAvg    string
+		MemTotal   string
+		MemFree    string
+		SwapTotal  string
+		SwapFree   string
+		DiskTotal  string
+		DiskFree   string
+		RxRate     string
+		TxRate     string
+		Tiers      []tierInfo
+		Instances  []instanceInfo
+		Migrations []migrationInfo
+		Result     string
+	}{
+		Address:    address,
+		Hostname:   hostname,
+		Version:    version,
+		Arch:       arch,
+		Available:  available,
+		LoadAvg:    loadAvg,
+		MemTotal:   memTotal,
+		MemFree:    memFree,
+		SwapTotal:  swapTotal,
+		SwapFree:   swapFree,
+		DiskTotal:  diskTotal,
+		DiskFree:   diskFree,
+		RxRate:     rxRate,
+		TxRate:     txRate,
+		Tiers:      tiers,
+		Instances:  instances,
+		Migrations: migrations,
+		Result:     r.URL.Query().Get("result"),
+	}
+
+	s.renderDebugTemplate(ctx, w, "exelet-detail.html", data)
+}
+
+// handleDebugExeletMigrateTier initiates a tier migration on an exelet.
+func (s *Server) handleDebugExeletMigrateTier(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form data", http.StatusBadRequest)
+		return
+	}
+	instanceIDs := r.Form["instance_id"]
+	targetPool := r.FormValue("target_pool")
+	live := r.FormValue("live") == "on"
+
+	if len(instanceIDs) == 0 || targetPool == "" {
+		http.Error(w, "instance_id and target_pool are required", http.StatusBadRequest)
+		return
+	}
+
+	var results []string
+	for _, instanceID := range instanceIDs {
+		migCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		resp, err := ec.client.MigrateStorageTier(migCtx, &computeapi.MigrateStorageTierRequest{
+			InstanceID: instanceID,
+			TargetPool: targetPool,
+			Live:       live,
+		})
+		cancel()
+
+		if err != nil {
+			results = append(results, fmt.Sprintf("error (%s): %v", instanceID, err))
+			s.slog().ErrorContext(ctx, "tier migration failed", "address", address, "instance", instanceID, "error", err)
+		} else {
+			results = append(results, fmt.Sprintf("started %s: %s → %s", resp.OperationID, resp.SourcePool, resp.TargetPool))
+			s.slog().InfoContext(ctx, "tier migration started", "address", address, "instance", instanceID, "op", resp.OperationID)
+		}
+	}
+
+	result := strings.Join(results, "; ")
+	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugExeletClearTierMigrations clears completed/failed tier migration operations.
+func (s *Server) handleDebugExeletClearTierMigrations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	_, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	clearCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	resp, err := ec.client.ClearTierMigrations(clearCtx, &computeapi.ClearTierMigrationsRequest{})
+	cancel()
+
+	var result string
+	if err != nil {
+		result = "error: " + err.Error()
+	} else {
+		result = fmt.Sprintf("cleared %d operations", resp.Cleared)
+	}
+
+	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugExeletCancelTierMigration cancels a pending or in-progress tier migration.
+func (s *Server) handleDebugExeletCancelTierMigration(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	opID := r.FormValue("operation_id")
+	if opID == "" {
+		http.Error(w, "operation_id is required", http.StatusBadRequest)
+		return
+	}
+
+	cancelCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	resp, err := ec.client.CancelTierMigration(cancelCtx, &computeapi.CancelTierMigrationRequest{
+		OperationID: opID,
+	})
+	cancel()
+
+	var result string
+	if err != nil {
+		result = "error: " + err.Error()
+		s.slog().ErrorContext(ctx, "cancel tier migration failed", "address", address, "op", opID, "error", err)
+	} else {
+		result = fmt.Sprintf("operation %s: %s", resp.OperationID, resp.State)
+		s.slog().InfoContext(ctx, "cancel tier migration", "address", address, "op", opID, "state", resp.State)
+	}
+
+	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugExeletCancelAllPendingTierMigrations cancels all pending tier migrations on an exelet.
+func (s *Server) handleDebugExeletCancelAllPendingTierMigrations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	// Get current operations to find pending ones
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	statusResp, err := ec.client.GetTierMigrationStatus(statusCtx, &computeapi.GetTierMigrationStatusRequest{})
+	cancel()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get migration status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var cancelled, errors int
+	for _, op := range statusResp.Operations {
+		if op.State != "pending" {
+			continue
+		}
+		cancelCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := ec.client.CancelTierMigration(cancelCtx, &computeapi.CancelTierMigrationRequest{
+			OperationID: op.OperationID,
+		})
+		cancel()
+		if err != nil {
+			errors++
+			s.slog().ErrorContext(ctx, "cancel pending tier migration failed", "address", address, "op", op.OperationID, "error", err)
+		} else {
+			cancelled++
+		}
+	}
+
+	result := fmt.Sprintf("cancelled %d pending operations", cancelled)
+	if errors > 0 {
+		result += fmt.Sprintf(", %d errors", errors)
+	}
+
+	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugBoxMigrateTier migrates a VM's storage tier with streaming progress.
+func (s *Server) handleDebugBoxMigrateTier(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	boxName := r.PathValue("name")
+
+	if boxName == "" {
+		http.Error(w, "box name is required", http.StatusBadRequest)
+		return
+	}
+
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("box %q not found", boxName), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up box: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if box.ContainerID == nil {
+		http.Error(w, "box has no container_id", http.StatusBadRequest)
+		return
+	}
+
+	ec := s.getExeletClient(box.Ctrhost)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("exelet %q not available", box.Ctrhost), http.StatusBadRequest)
+		return
+	}
+
+	targetPool := r.FormValue("target_pool")
+	live := r.FormValue("live") == "on"
+
+	if targetPool == "" {
+		http.Error(w, "target_pool is required", http.StatusBadRequest)
+		return
+	}
+
+	// Set up streaming response
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+
+	containerID := *box.ContainerID
+	writeProgress("Starting tier migration for %s (container %s) to pool %s...", boxName, containerID, targetPool)
+
+	migCtx := context.WithoutCancel(ctx)
+	resp, err := ec.client.MigrateStorageTier(migCtx, &computeapi.MigrateStorageTierRequest{
+		InstanceID: containerID,
+		TargetPool: targetPool,
+		Live:       live,
+	})
+	if err != nil {
+		writeProgress("ERROR: %v", err)
+		writeProgress("TIER_MIGRATION_ERROR:%s", err.Error())
+		return
+	}
+
+	opID := resp.OperationID
+	writeProgress("Migration started: op=%s, %s → %s", opID, resp.SourcePool, resp.TargetPool)
+
+	// Poll for progress
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		statusCtx, cancel := context.WithTimeout(migCtx, 5*time.Second)
+		statusResp, err := ec.client.GetTierMigrationStatus(statusCtx, &computeapi.GetTierMigrationStatusRequest{})
+		cancel()
+		if err != nil {
+			writeProgress("Warning: failed to get status: %v", err)
+			continue
+		}
+
+		var found bool
+		for _, op := range statusResp.Operations {
+			if op.OperationID != opID {
+				continue
+			}
+			found = true
+			writeProgress("Progress: %.0f%% (%s)", op.Progress*100, op.State)
+
+			if op.State == "completed" {
+				writeProgress("Tier migration completed successfully.")
+				writeProgress("TIER_MIGRATION_SUCCESS:%s", boxName)
+				return
+			}
+			if op.State == "failed" {
+				writeProgress("ERROR: %s", op.Error)
+				writeProgress("TIER_MIGRATION_ERROR:%s", op.Error)
+				return
+			}
+			if op.State == "cancelled" {
+				writeProgress("Tier migration was cancelled.")
+				writeProgress("TIER_MIGRATION_ERROR:cancelled")
+				return
+			}
+			break
+		}
+		if !found {
+			writeProgress("Warning: operation %s not found in status", opID)
+			writeProgress("TIER_MIGRATION_ERROR:operation not found")
+			return
+		}
+	}
 }
 
 // NewThrottleConfig represents the configuration for throttling "new" VM creation.

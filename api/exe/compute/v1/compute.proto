@@ -34,6 +34,8 @@ service ComputeService {
   rpc ListStorageTiers(ListStorageTiersRequest) returns (ListStorageTiersResponse);
   // ClearTierMigrations removes completed and failed tier migration operations
   rpc ClearTierMigrations(ClearTierMigrationsRequest) returns (ClearTierMigrationsResponse);
+  // CancelTierMigration cancels a pending or in-progress tier migration
+  rpc CancelTierMigration(CancelTierMigrationRequest) returns (CancelTierMigrationResponse);
 }
 
 message CreateInstanceRequest {
@@ -536,4 +538,13 @@ message ClearTierMigrationsRequest {}
 
 message ClearTierMigrationsResponse {
   uint32 cleared = 1;              // Number of operations cleared
+}
+
+message CancelTierMigrationRequest {
+  string operation_id = 1;         // Operation ID to cancel
+}
+
+message CancelTierMigrationResponse {
+  string operation_id = 1;
+  string state = 2;                // State after cancellation attempt ("cancelled", "completed", "failed")
 }

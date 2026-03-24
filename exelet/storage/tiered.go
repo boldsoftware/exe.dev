@@ -13,11 +13,12 @@ import (
 // It implements StorageManager by delegating to the primary pool,
 // making it a drop-in replacement for single-pool configurations.
 type TieredStorageManager struct {
-	primary      StorageManager
-	pools        map[string]StorageManager    // pool name -> StorageManager
-	poolNames    []string                     // ordered list (primary first)
-	backupPool   string                       // pool name to use as last resort in resolution
-	poolMetadata map[string]map[string]string // pool name -> operator-defined metadata
+	primary        StorageManager
+	pools          map[string]StorageManager    // pool name -> StorageManager
+	poolNames      []string                     // ordered list (primary first)
+	backupPool     string                       // pool name to use as last resort in resolution
+	backupFallback bool                         // if true, PoolForInstance may resolve from the backup pool
+	poolMetadata   map[string]map[string]string // pool name -> operator-defined metadata
 }
 
 // NewTieredStorageManager creates a TieredStorageManager with a primary pool
@@ -45,6 +46,14 @@ func NewTieredStorageManager(primaryName string, primary StorageManager, tiers m
 // to resolve it only as a last resort after all other pools are checked.
 func (t *TieredStorageManager) SetBackupPool(name string) {
 	t.backupPool = name
+}
+
+// SetBackupFallback controls whether PoolForInstance may resolve instances
+// from the backup pool. When false (default), instances that only exist on the
+// backup pool return ErrNotFound, preventing accidental runs from backup storage.
+// Enable for disaster recovery when primary storage is unavailable.
+func (t *TieredStorageManager) SetBackupFallback(allow bool) {
+	t.backupFallback = allow
 }
 
 // SetPoolMetadata attaches operator-defined metadata to a named pool.
@@ -117,8 +126,8 @@ func (t *TieredStorageManager) PoolForInstance(ctx context.Context, id string) (
 	if foundSM != nil {
 		return foundName, foundSM, nil
 	}
-	// Fall back to backup pool if configured and instance exists there.
-	if t.backupPool != "" {
+	// Fall back to backup pool if configured, allowed, and instance exists there.
+	if t.backupPool != "" && t.backupFallback {
 		if sm, ok := t.pools[t.backupPool]; ok {
 			_, err := sm.Get(ctx, id)
 			if err == nil {

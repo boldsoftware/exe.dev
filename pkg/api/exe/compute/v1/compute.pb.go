@@ -5016,6 +5016,102 @@ func (x *ClearTierMigrationsResponse) GetCleared() uint32 {
 	return 0
 }
 
+type CancelTierMigrationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationID   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"` // Operation ID to cancel
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelTierMigrationRequest) Reset() {
+	*x = CancelTierMigrationRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelTierMigrationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelTierMigrationRequest) ProtoMessage() {}
+
+func (x *CancelTierMigrationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelTierMigrationRequest.ProtoReflect.Descriptor instead.
+func (*CancelTierMigrationRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *CancelTierMigrationRequest) GetOperationID() string {
+	if x != nil {
+		return x.OperationID
+	}
+	return ""
+}
+
+type CancelTierMigrationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationID   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"` // State after cancellation attempt ("cancelled", "completed", "failed")
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelTierMigrationResponse) Reset() {
+	*x = CancelTierMigrationResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelTierMigrationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelTierMigrationResponse) ProtoMessage() {}
+
+func (x *CancelTierMigrationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelTierMigrationResponse.ProtoReflect.Descriptor instead.
+func (*CancelTierMigrationResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *CancelTierMigrationResponse) GetOperationID() string {
+	if x != nil {
+		return x.OperationID
+	}
+	return ""
+}
+
+func (x *CancelTierMigrationResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
 var File_exe_compute_v1_compute_proto protoreflect.FileDescriptor
 
 const file_exe_compute_v1_compute_proto_rawDesc = "" +
@@ -5393,7 +5489,12 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x05tiers\x18\x01 \x03(\v2\x1b.exe.compute.v1.StorageTierR\x05tiers\"\x1c\n" +
 	"\x1aClearTierMigrationsRequest\"7\n" +
 	"\x1bClearTierMigrationsResponse\x12\x18\n" +
-	"\acleared\x18\x01 \x01(\rR\acleared*\x99\x01\n" +
+	"\acleared\x18\x01 \x01(\rR\acleared\"?\n" +
+	"\x1aCancelTierMigrationRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\"V\n" +
+	"\x1bCancelTierMigrationResponse\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state*\x99\x01\n" +
 	"\aVMState\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aCREATED\x10\x01\x12\f\n" +
@@ -5407,7 +5508,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\bUPDATING\x10\b\x12\t\n" +
 	"\x05ERROR\x10\t\x12\f\n" +
 	"\bCREATING\x10\n" +
-	"2\x90\x0f\n" +
+	"2\x80\x10\n" +
 	"\x0eComputeService\x12a\n" +
 	"\x0eCreateInstance\x12%.exe.compute.v1.CreateInstanceRequest\x1a&.exe.compute.v1.CreateInstanceResponse0\x01\x12^\n" +
 	"\rListInstances\x12$.exe.compute.v1.ListInstancesRequest\x1a%.exe.compute.v1.ListInstancesResponse0\x01\x12V\n" +
@@ -5428,7 +5529,8 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x12MigrateStorageTier\x12).exe.compute.v1.MigrateStorageTierRequest\x1a*.exe.compute.v1.MigrateStorageTierResponse\x12w\n" +
 	"\x16GetTierMigrationStatus\x12-.exe.compute.v1.GetTierMigrationStatusRequest\x1a..exe.compute.v1.GetTierMigrationStatusResponse\x12e\n" +
 	"\x10ListStorageTiers\x12'.exe.compute.v1.ListStorageTiersRequest\x1a(.exe.compute.v1.ListStorageTiersResponse\x12n\n" +
-	"\x13ClearTierMigrations\x12*.exe.compute.v1.ClearTierMigrationsRequest\x1a+.exe.compute.v1.ClearTierMigrationsResponseB\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
+	"\x13ClearTierMigrations\x12*.exe.compute.v1.ClearTierMigrationsRequest\x1a+.exe.compute.v1.ClearTierMigrationsResponse\x12n\n" +
+	"\x13CancelTierMigration\x12*.exe.compute.v1.CancelTierMigrationRequest\x1a+.exe.compute.v1.CancelTierMigrationResponseB\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
 
 var (
 	file_exe_compute_v1_compute_proto_rawDescOnce sync.Once
@@ -5443,7 +5545,7 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 }
 
 var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
 var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(VMState)(0),                           // 0: exe.compute.v1.VMState
 	(Log_Type)(0),                          // 1: exe.compute.v1.Log.Type
@@ -5526,7 +5628,9 @@ var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(*ListStorageTiersResponse)(nil),       // 78: exe.compute.v1.ListStorageTiersResponse
 	(*ClearTierMigrationsRequest)(nil),     // 79: exe.compute.v1.ClearTierMigrationsRequest
 	(*ClearTierMigrationsResponse)(nil),    // 80: exe.compute.v1.ClearTierMigrationsResponse
-	nil,                                    // 81: exe.compute.v1.StorageTier.MetadataEntry
+	(*CancelTierMigrationRequest)(nil),     // 81: exe.compute.v1.CancelTierMigrationRequest
+	(*CancelTierMigrationResponse)(nil),    // 82: exe.compute.v1.CancelTierMigrationResponse
+	nil,                                    // 83: exe.compute.v1.StorageTier.MetadataEntry
 }
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	13, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
@@ -5578,7 +5682,7 @@ var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	67, // 46: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
 	37, // 47: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
 	74, // 48: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
-	81, // 49: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
+	83, // 49: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
 	77, // 50: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
 	8,  // 51: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
 	17, // 52: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
@@ -5600,28 +5704,30 @@ var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	73, // 68: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
 	76, // 69: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
 	79, // 70: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
-	16, // 71: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
-	18, // 72: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
-	20, // 73: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
-	22, // 74: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
-	24, // 75: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
-	26, // 76: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
-	34, // 77: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
-	28, // 78: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
-	30, // 79: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
-	32, // 80: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
-	36, // 81: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
-	47, // 82: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
-	61, // 83: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
-	65, // 84: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
-	70, // 85: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
-	68, // 86: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
-	72, // 87: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
-	75, // 88: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
-	78, // 89: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
-	80, // 90: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
-	71, // [71:91] is the sub-list for method output_type
-	51, // [51:71] is the sub-list for method input_type
+	81, // 71: exe.compute.v1.ComputeService.CancelTierMigration:input_type -> exe.compute.v1.CancelTierMigrationRequest
+	16, // 72: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
+	18, // 73: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
+	20, // 74: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
+	22, // 75: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
+	24, // 76: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
+	26, // 77: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
+	34, // 78: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
+	28, // 79: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
+	30, // 80: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
+	32, // 81: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
+	36, // 82: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
+	47, // 83: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
+	61, // 84: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
+	65, // 85: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
+	70, // 86: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
+	68, // 87: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
+	72, // 88: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
+	75, // 89: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
+	78, // 90: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
+	80, // 91: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
+	82, // 92: exe.compute.v1.ComputeService.CancelTierMigration:output_type -> exe.compute.v1.CancelTierMigrationResponse
+	72, // [72:93] is the sub-list for method output_type
+	51, // [51:72] is the sub-list for method input_type
 	51, // [51:51] is the sub-list for extension type_name
 	51, // [51:51] is the sub-list for extension extendee
 	0,  // [0:51] is the sub-list for field type_name
@@ -5675,7 +5781,7 @@ func file_exe_compute_v1_compute_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   74,
+			NumMessages:   76,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
