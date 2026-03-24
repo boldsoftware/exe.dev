@@ -67,7 +67,9 @@ async function registerPasskey(name) {
         credential = await navigator.credentials.create(options);
     } catch (err) {
         if (err.name === 'NotAllowedError') {
-            throw new Error('Registration was cancelled');
+            const e = new Error('Passkey creation declined; you can always add passkeys on the profile page.');
+            e.cancelled = true;
+            throw e;
         }
         throw err;
     }

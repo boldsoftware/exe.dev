@@ -802,6 +802,11 @@
             } catch (err) {
                 errorDiv.textContent = err.message;
                 errorDiv.style.display = 'block';
+                if (err.cancelled) {
+                    errorDiv.style.color = 'var(--color-text-muted)';
+                } else {
+                    errorDiv.style.color = 'var(--color-danger)';
+                }
             }
         }
 
