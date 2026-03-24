@@ -49,12 +49,6 @@ type Server struct {
 	// Value: list of TXT values
 	txtMu      sync.RWMutex
 	txtRecords map[string][]string
-
-	// GLB rollout prefixes for hash-prefix gating.
-	// Each prefix is a binary string (e.g., "0101").
-	// A user matches if the binary representation of SHA-256(userID) starts with any prefix.
-	glbPrefixMu sync.RWMutex
-	glbPrefixes []string
 }
 
 // NewServer creates a new DNS server backed by the given database.
@@ -173,21 +167,6 @@ func (s *Server) GetTXTRecords(name string) []string {
 	s.txtMu.RLock()
 	defer s.txtMu.RUnlock()
 	return slices.Clone(s.txtRecords[name])
-}
-
-// SetGLBRolloutPrefixes sets the binary prefixes used for hash-prefix gating
-// of the GLB rollout. Each prefix is a binary string (e.g., "0101").
-func (s *Server) SetGLBRolloutPrefixes(prefixes []string) {
-	s.glbPrefixMu.Lock()
-	defer s.glbPrefixMu.Unlock()
-	s.glbPrefixes = prefixes
-}
-
-// GLBRolloutPrefixes returns a copy of the current GLB rollout prefixes.
-func (s *Server) GLBRolloutPrefixes() []string {
-	s.glbPrefixMu.RLock()
-	defer s.glbPrefixMu.RUnlock()
-	return slices.Clone(s.glbPrefixes)
 }
 
 // handleDNS processes DNS queries.

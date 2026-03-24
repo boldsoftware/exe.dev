@@ -3037,17 +3037,6 @@ func (s *Server) start() error {
 	s.startCancel = cancel
 	defer cancel()
 
-	// Load GLB rollout prefixes before serving DNS queries.
-	if s.dnsServer != nil {
-		prefixes, err := s.loadGLBRolloutPrefixes(ctx)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "failed to load GLB rollout prefixes", "error", err)
-		} else if len(prefixes) > 0 {
-			s.dnsServer.SetGLBRolloutPrefixes(prefixes)
-			s.slog().InfoContext(ctx, "loaded GLB rollout prefixes", "count", len(prefixes))
-		}
-	}
-
 	// Start embedded DNS server.
 	if s.dnsServer != nil && s.env.DiscoverPublicIPs {
 		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)

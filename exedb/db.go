@@ -417,9 +417,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getExe1TokenByExe0Stmt, err = db.PrepareContext(ctx, getExe1TokenByExe0); err != nil {
 		return nil, fmt.Errorf("error preparing query GetExe1TokenByExe0: %w", err)
 	}
-	if q.getGLBRolloutPrefixesStmt, err = db.PrepareContext(ctx, getGLBRolloutPrefixes); err != nil {
-		return nil, fmt.Errorf("error preparing query GetGLBRolloutPrefixes: %w", err)
-	}
 	if q.getGitHubInstallationStmt, err = db.PrepareContext(ctx, getGitHubInstallation); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGitHubInstallation: %w", err)
 	}
@@ -923,9 +920,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setBoxSupportAccessAllowedStmt, err = db.PrepareContext(ctx, setBoxSupportAccessAllowed); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxSupportAccessAllowed: %w", err)
-	}
-	if q.setGLBRolloutPrefixesStmt, err = db.PrepareContext(ctx, setGLBRolloutPrefixes); err != nil {
-		return nil, fmt.Errorf("error preparing query SetGLBRolloutPrefixes: %w", err)
 	}
 	if q.setIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, setIPAbuseFilterDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetIPAbuseFilterDisabled: %w", err)
@@ -1797,11 +1791,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getExe1TokenByExe0Stmt: %w", cerr)
 		}
 	}
-	if q.getGLBRolloutPrefixesStmt != nil {
-		if cerr := q.getGLBRolloutPrefixesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getGLBRolloutPrefixesStmt: %w", cerr)
-		}
-	}
 	if q.getGitHubInstallationStmt != nil {
 		if cerr := q.getGitHubInstallationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getGitHubInstallationStmt: %w", cerr)
@@ -2642,11 +2631,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxSupportAccessAllowedStmt: %w", cerr)
 		}
 	}
-	if q.setGLBRolloutPrefixesStmt != nil {
-		if cerr := q.setGLBRolloutPrefixesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setGLBRolloutPrefixesStmt: %w", cerr)
-		}
-	}
 	if q.setIPAbuseFilterDisabledStmt != nil {
 		if cerr := q.setIPAbuseFilterDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setIPAbuseFilterDisabledStmt: %w", cerr)
@@ -3167,7 +3151,6 @@ type Queries struct {
 	getEmailVerificationByTokenStmt            *sql.Stmt
 	getExe1TokenStmt                           *sql.Stmt
 	getExe1TokenByExe0Stmt                     *sql.Stmt
-	getGLBRolloutPrefixesStmt                  *sql.Stmt
 	getGitHubInstallationStmt                  *sql.Stmt
 	getGitHubInstallationByTargetStmt          *sql.Stmt
 	getGitHubUserTokenStmt                     *sql.Stmt
@@ -3336,7 +3319,6 @@ type Queries struct {
 	setBoxEmailReceiveStmt                     *sql.Stmt
 	setBoxLockReasonStmt                       *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
-	setGLBRolloutPrefixesStmt                  *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
 	setLastBouncesPollStmt                     *sql.Stmt
 	setLoginCreationDisabledStmt               *sql.Stmt
@@ -3544,7 +3526,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
 		getExe1TokenStmt:                           q.getExe1TokenStmt,
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
-		getGLBRolloutPrefixesStmt:                  q.getGLBRolloutPrefixesStmt,
 		getGitHubInstallationStmt:                  q.getGitHubInstallationStmt,
 		getGitHubInstallationByTargetStmt:          q.getGitHubInstallationByTargetStmt,
 		getGitHubUserTokenStmt:                     q.getGitHubUserTokenStmt,
@@ -3713,7 +3694,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
 		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
-		setGLBRolloutPrefixesStmt:                  q.setGLBRolloutPrefixesStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
 		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,
 		setLoginCreationDisabledStmt:               q.setLoginCreationDisabledStmt,

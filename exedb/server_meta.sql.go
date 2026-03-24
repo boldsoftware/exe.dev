@@ -18,17 +18,6 @@ func (q *Queries) ClearPreferredExelet(ctx context.Context) error {
 	return err
 }
 
-const getGLBRolloutPrefixes = `-- name: GetGLBRolloutPrefixes :one
-SELECT value FROM server_meta WHERE key = 'glb_rollout_prefixes'
-`
-
-func (q *Queries) GetGLBRolloutPrefixes(ctx context.Context) (string, error) {
-	row := q.queryRow(ctx, q.getGLBRolloutPrefixesStmt, getGLBRolloutPrefixes)
-	var value string
-	err := row.Scan(&value)
-	return value, err
-}
-
 const getIPAbuseFilterDisabled = `-- name: GetIPAbuseFilterDisabled :one
 SELECT value FROM server_meta WHERE key = 'ip_abuse_filter_disabled'
 `
@@ -115,16 +104,6 @@ func (q *Queries) GetSignupPOWEnabled(ctx context.Context) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
-}
-
-const setGLBRolloutPrefixes = `-- name: SetGLBRolloutPrefixes :exec
-INSERT INTO server_meta (key, value, updated_at) VALUES ('glb_rollout_prefixes', ?, CURRENT_TIMESTAMP)
-ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-`
-
-func (q *Queries) SetGLBRolloutPrefixes(ctx context.Context, value string) error {
-	_, err := q.exec(ctx, q.setGLBRolloutPrefixesStmt, setGLBRolloutPrefixes, value)
-	return err
 }
 
 const setIPAbuseFilterDisabled = `-- name: SetIPAbuseFilterDisabled :exec
