@@ -256,7 +256,7 @@ func Test() Env {
 		MaxMaildirEmails: 5, // low limit for testing
 
 		FakeEmail:      true,
-		SkipBilling:    true,
+		SkipBilling:    envStripeKey == "",
 		ReplDev:        false,
 		WebDev:         false,
 		ProxyDev:       true,
