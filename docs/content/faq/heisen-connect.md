@@ -1,7 +1,7 @@
 ---
 title: ssh exe.dev sometimes asks me to register
 description: how to solve heisen-connection issues
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 11
 published: true
 ---

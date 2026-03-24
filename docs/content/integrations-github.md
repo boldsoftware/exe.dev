@@ -1,9 +1,9 @@
 ---
 title: GitHub Integration
 description: Connect your GitHub account to exe.dev for private repo access
-subheading: "9. Integrations"
+subheading: "3. Integrations"
 suborder: 3
-preview: true
+published: true
 ---
 
 Instead of [setting up a GitHub personal access token](faq/github-token),

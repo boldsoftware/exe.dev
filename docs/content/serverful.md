@@ -1,7 +1,7 @@
 ---
 title: Persistent disks, not serverless
 description: exe.dev is serverful, not serverless
-subheading: "6. Editorials"
+subheading: "7. Editorials"
 ---
 
 Most serverless Platform-as-a-Service offerings don't give you a persistent disk.

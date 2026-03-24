@@ -1,7 +1,7 @@
 ---
 title: How do I connect VSCode to my VM?
 description: Open your VM in VSCode
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 3
 published: true
 ---

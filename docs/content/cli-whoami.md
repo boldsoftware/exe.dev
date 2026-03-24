@@ -2,7 +2,7 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "whoami"
 description: "Show your user information including email and all SSH keys."
-subheading: "8. CLI Reference"
+subheading: "9. CLI Reference"
 suborder: 11
 ---
 

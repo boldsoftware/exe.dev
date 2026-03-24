@@ -1,7 +1,7 @@
 ---
 title: Why exe.dev?
 description: EXE is just a computer.
-subheading: "6. Editorials"
+subheading: "7. Editorials"
 published: true
 ---
 

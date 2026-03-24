@@ -1,9 +1,9 @@
 ---
 title: What are Integrations?
 description: Integrate exe.dev with other tools and services
-subheading: "9. Integrations"
+subheading: "3. Integrations"
 suborder: 1
-preview: true
+published: true
 ---
 
 Integrations connect your exe.dev VM to other services securely and flexibly.

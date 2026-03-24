@@ -1,7 +1,7 @@
 ---
 title: How do I access GitHub? How do I set up a minimal GitHub token?
 description: GitHub access and fine-grained tokens
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 7
 published: true
 ---

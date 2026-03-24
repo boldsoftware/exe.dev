@@ -1,7 +1,7 @@
 ---
 title: Openclaw
 description: Openclaw, formerly known as Moltbot, formerly known as Clawdbot
-subheading: "5. Use Cases"
+subheading: "6. Use Cases"
 published: true
 ---
 

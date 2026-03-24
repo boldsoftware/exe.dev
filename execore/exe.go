@@ -800,19 +800,7 @@ func (s *Server) integrationScheme() string {
 
 // showIntegrationsNav reports whether the Integrations nav link should be shown for a user.
 func (s *Server) showIntegrationsNav(ctx context.Context, userID string) bool {
-	if s.UserHasExeSudo(ctx, userID) {
-		return true
-	}
-	if ints, err := withRxRes1(s, ctx, (*exedb.Queries).ListIntegrationsByUser, userID); err == nil && len(ints) > 0 {
-		return true
-	}
-	if gha, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubInstallations, userID); err == nil && len(gha) > 0 {
-		return true
-	}
-	if n, err := withRxRes1(s, ctx, (*exedb.Queries).HasPushTokens, userID); err == nil && n != 0 {
-		return true
-	}
-	return s.userHasGitHubIntegrationFlag(ctx, userID)
+	return true
 }
 
 // httpPort returns the HTTP listening port, or -1 if not listening.

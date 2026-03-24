@@ -1,7 +1,7 @@
 ---
 title: How do I set up tab completion for VM names?
 description: Autocomplete exe.xyz VM hostnames in your favorite shell
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 9
 published: true
 ---

@@ -1778,16 +1778,11 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	if n, err := withRxRes1(s, r.Context(), (*exedb.Queries).HasPushTokens, userID); err == nil {
 		hasPushTokens = n != 0
 	}
-	hasGHFlag := s.userHasGitHubIntegrationFlag(r.Context(), userID)
-	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag || hasPushTokens
-
 	// Fetch boxes for integration wizard and attach modals.
 	var profileBoxes []BoxDisplayInfo
-	if showIntegrations {
-		if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
-			for _, b := range userBoxes {
-				profileBoxes = append(profileBoxes, BoxDisplayInfo{Box: b})
-			}
+	if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
+		for _, b := range userBoxes {
+			profileBoxes = append(profileBoxes, BoxDisplayInfo{Box: b})
 		}
 	}
 
@@ -1835,7 +1830,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		GitHubAccountsFull: ghAccountsFull,
 		GitHubEnabled:      ghEnabled,
 		GitHubAppSlug:      ghAppSlug,
-		ShowIntegrations:   showIntegrations,
+		ShowIntegrations:   true,
 		HasPushTokens:      hasPushTokens,
 		IntegrationScheme:  s.integrationScheme(),
 		Callout:            r.URL.Query().Get("callout"),
@@ -1987,14 +1982,6 @@ func (s *Server) handleIntegrationsPage(w http.ResponseWriter, r *http.Request, 
 	if n, err := withRxRes1(s, r.Context(), (*exedb.Queries).HasPushTokens, userID); err == nil {
 		hasPushTokens = n != 0
 	}
-	hasGHFlag := s.userHasGitHubIntegrationFlag(r.Context(), userID)
-	showIntegrations := isSudoer || len(integrations) > 0 || len(ghAccounts) > 0 || hasGHFlag || hasPushTokens
-
-	if !showIntegrations {
-		http.Redirect(w, r, "/user", http.StatusTemporaryRedirect)
-		return
-	}
-
 	var profileBoxes []BoxDisplayInfo
 	tagSet := map[string]bool{}
 	if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
@@ -2028,7 +2015,7 @@ func (s *Server) handleIntegrationsPage(w http.ResponseWriter, r *http.Request, 
 		GitHubAccountsFull: ghAccountsFull,
 		GitHubEnabled:      ghEnabled,
 		GitHubAppSlug:      ghAppSlug,
-		ShowIntegrations:   showIntegrations,
+		ShowIntegrations:   true,
 		HasPushTokens:      hasPushTokens,
 		IntegrationScheme:  s.integrationScheme(),
 		Callout:            r.URL.Query().Get("callout"),

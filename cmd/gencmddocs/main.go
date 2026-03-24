@@ -67,7 +67,7 @@ func generateCommandDoc(cmd *exemenu.Command, suborder int) string {
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "%s"
 description: "%s"
-subheading: "8. CLI Reference"
+subheading: "9. CLI Reference"
 suborder: %d
 ---
 

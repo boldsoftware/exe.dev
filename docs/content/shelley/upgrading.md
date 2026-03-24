@@ -1,7 +1,7 @@
 ---
 title: Upgrading Shelley
 description: Keep Shelley up to date
-subheading: "3. Shelley"
+subheading: "4. Shelley"
 suborder: 4
 published: true
 ---

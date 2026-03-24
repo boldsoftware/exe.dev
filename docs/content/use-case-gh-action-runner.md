@@ -1,7 +1,7 @@
 ---
 title: Running a self-hosted GitHub Actions Runner
 description: log in easily into your CI environment
-subheading: "5. Use Cases"
+subheading: "6. Use Cases"
 published: true
 ---
 

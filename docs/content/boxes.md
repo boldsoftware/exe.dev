@@ -1,7 +1,7 @@
 ---
 title: Put your agent in a VM and let it be
 description: Agent security is unsolved; a virtual machine is pragmatic
-subheading: "6. Editorials"
+subheading: "7. Editorials"
 ---
 
 exe.dev is a great place to run a coding agent securely, with minimal

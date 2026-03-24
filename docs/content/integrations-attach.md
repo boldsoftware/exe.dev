@@ -1,9 +1,9 @@
 ---
 title: Attaching Integrations
 description: Attach integrations to VMs using direct attachment, tags, or auto-attach
-subheading: "9. Integrations"
+subheading: "3. Integrations"
 suborder: 4
-preview: true
+published: true
 ---
 
 Integrations can be attached to specific VMs, to all VMs, or to tags.

@@ -2,8 +2,8 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "shelley"
 description: "Manage Shelley agent on VMs"
-subheading: "8. CLI Reference"
-suborder: 13
+subheading: "9. CLI Reference"
+suborder: 14
 ---
 
 # shelley

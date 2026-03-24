@@ -1,7 +1,7 @@
 ---
 title: How do you pronounce "exe"?
 description: The official pronunciation
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 6
 published: true
 ---

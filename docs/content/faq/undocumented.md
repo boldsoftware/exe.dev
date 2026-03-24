@@ -1,7 +1,7 @@
 ---
 title: I found an undocumented command! Can I use it?
 description: Using undocumented commands
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 12
 published: true
 ---

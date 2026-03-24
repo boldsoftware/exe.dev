@@ -121,9 +121,9 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// SSH setup command should enable the feature flag and print a web URL.
+	// SSH setup command should print a web URL.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.Want("/integrations#github")
 	pty.WantPrompt()
 
@@ -138,7 +138,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 
 	// Running setup again is idempotent — just prints the URL again.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// Connect again via web — upserts idempotently.
@@ -194,9 +194,9 @@ func TestIntegrationsSetupGitHubNoInstallations(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Enable the feature flag.
+	// Print setup URL.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// Connect via web with the no-installs code — callback completes but
@@ -241,9 +241,9 @@ func TestIntegrationsSetupGitHubOrg(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Enable the feature flag.
+	// Print setup URL.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// Connect via web — discovers both installations.
@@ -331,9 +331,9 @@ func TestIntegrationsSetupGitHubWrongAccount(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Enable the feature flag.
+	// Print setup URL.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// Initiate web signin flow with the bad code.
@@ -397,9 +397,9 @@ func TestIntegrationsVerifyGitHub(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Enable the feature flag and connect via web.
+	// Print setup URL and connect via web.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	connectGitHubViaWeb(t, cookies, code)
@@ -439,9 +439,9 @@ func TestIntegrationsAddGitHub(t *testing.T) {
 	pty.Want("no GitHub account connected")
 	pty.WantPrompt()
 
-	// Enable the feature flag and connect via web.
+	// Print setup URL and connect via web.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	connectGitHubViaWebDefault(t, cookies)
@@ -518,9 +518,9 @@ func TestIntegrationsGitHubTokenRefresh(t *testing.T) {
 
 	pty, cookies, _, email := registerForExeDev(t)
 
-	// Enable the feature flag.
+	// Print setup URL.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// Connect via web — discovers both installations, saves token once
@@ -596,9 +596,9 @@ func TestIntegrationsGitHubOnDemandRefresh(t *testing.T) {
 
 	pty, cookies, _, _ := registerForExeDev(t)
 
-	// Enable the feature flag and connect via web.
+	// Print setup URL and connect via web.
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	connectGitHubViaWeb(t, cookies, code)
@@ -659,7 +659,7 @@ func TestIntegrationsGitHubReinstall(t *testing.T) {
 	pty, cookies, _, _ := registerForExeDev(t)
 
 	pty.SendLine("integrations setup github")
-	pty.Want("GitHub integration enabled")
+	pty.Want("Continue setup in your browser")
 	pty.WantPrompt()
 
 	// First install.

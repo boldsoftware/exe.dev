@@ -1,9 +1,9 @@
 ---
 title: HTTP Proxy Integration
 description: Inject headers into HTTP requests from your VM
-subheading: "9. Integrations"
+subheading: "3. Integrations"
 suborder: 2
-preview: true
+published: true
 ---
 
 The HTTP Proxy integration serves as an HTTP(S) proxy that injects a header

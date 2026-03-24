@@ -2,7 +2,7 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "new"
 description: "Create a new VM"
-subheading: "8. CLI Reference"
+subheading: "9. CLI Reference"
 suborder: 4
 ---
 

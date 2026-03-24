@@ -3,9 +3,7 @@ package execore
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -104,21 +102,8 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 		return ss.handleVerifyGitHub(ctx, cc)
 	}
 
-	// Enable the GitHub integration feature flag.
-	one := int64(1)
-	if err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpsertUserDefaultGitHubIntegration(ctx, exedb.UpsertUserDefaultGitHubIntegrationParams{
-			UserID:            cc.User.ID,
-			GitHubIntegration: &one,
-		})
-	}); err != nil {
-		return cc.Errorf("failed to enable GitHub integration: %v", err)
-	}
-
 	// Show the web URL.
 	webURL := ss.server.webBaseURLNoRequest() + "/integrations#github"
-	cc.Writeln("GitHub integration enabled.")
-	cc.Writeln("")
 	cc.Writeln("Continue setup in your browser:")
 	cc.Writeln("  %s", webURL)
 
@@ -266,17 +251,4 @@ func (s *Server) registerGitHubSetup(userID string, webFlow bool) (*GitHubSetup,
 		s.githubSetupsMu.Unlock()
 	}
 	return setup, cleanup, nil
-}
-
-// userHasGitHubIntegrationFlag checks whether the user has the github-integration
-// feature flag enabled.
-func (s *Server) userHasGitHubIntegrationFlag(ctx context.Context, userID string) bool {
-	defaults, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserDefaults, userID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false
-		}
-		return false
-	}
-	return defaults.GitHubIntegration != nil && *defaults.GitHubIntegration != 0
 }

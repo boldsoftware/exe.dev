@@ -1,7 +1,7 @@
 ---
 title: How do I use a specific SSH key for exe.dev?
 description: Configure SSH to use a specific key
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 2
 published: true
 ---

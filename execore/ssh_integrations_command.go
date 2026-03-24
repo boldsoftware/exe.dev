@@ -20,7 +20,6 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "integrations",
 		Aliases:     []string{"int"},
-		Hidden:      true,
 		Description: "Manage integrations",
 		Usage:       "integrations <subcommand> [args...]",
 		Handler:     ss.handleIntegrationsHelp,

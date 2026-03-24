@@ -1,7 +1,7 @@
 ---
 title: How does exe.dev work?
 description: behind-the-scenes look
-subheading: "4. FAQ"
+subheading: "5. FAQ"
 suborder: 10
 published: true
 ---
