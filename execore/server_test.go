@@ -180,6 +180,25 @@ func newUnstartedServer(t testing.TB) *Server {
 				"data":     []map[string]any{},
 				"has_more": false,
 			})
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/products/"):
+			// Get product (used by install_prices at startup)
+			productID := strings.TrimPrefix(r.URL.Path, "/v1/products/")
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":     productID,
+				"object": "product",
+				"name":   "Individual",
+			})
+		case r.Method == "GET" && r.URL.Path == "/v1/prices":
+			// List prices (used by install_prices at startup)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":         "price_test123",
+					"object":     "price",
+					"lookup_key": "individual",
+					"product":    "prod_individual",
+				}},
+				"has_more": false,
+			})
 		default:
 			t.Errorf("unhandled fake Stripe request: %s %s", r.Method, r.URL)
 			w.WriteHeader(http.StatusNotFound)

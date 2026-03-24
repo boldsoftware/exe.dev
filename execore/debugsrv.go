@@ -4325,6 +4325,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 
 	type billingAccountInfo struct {
 		AccountID    string
+		PlanID       string
 		LatestStatus string
 		BillingURL   string
 	}
@@ -4361,8 +4362,13 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		if status != "active" && status != "canceled" {
 			status = "pending"
 		}
+		var planID string
+		if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, a.ID); err == nil {
+			planID = ap.PlanID
+		}
 		billingAccounts = append(billingAccounts, billingAccountInfo{
 			AccountID:    a.ID,
+			PlanID:       planID,
 			LatestStatus: status,
 			BillingURL:   billing.MakeCustomerDashboardURL(a.ID),
 		})
@@ -4594,13 +4600,33 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		Note          string
 		CreatedAt     string
 	}
+	type planHistoryRow struct {
+		PlanID    string
+		StartedAt string
+		EndedAt   string
+		ChangedBy string
+	}
 	type accountInfo struct {
-		AccountID     string
-		LatestStatus  string
-		BillingURL    string
-		CreditBalance string
-		Events        []eventRow
-		Credits       []creditRow
+		AccountID       string
+		AccountStatus   string
+		LatestStatus    string
+		BillingURL      string
+		CreditBalance   string
+		CurrentPlanID   string
+		CurrentPlanAt   string
+		TrialExpiresAt  string
+		PlanChangedBy   string
+		ParentID        string
+		ParentCreatedBy string
+		ChildAccounts   []struct {
+			AccountID string
+			UserID    string
+			Email     string
+			PlanID    string
+		}
+		PlanHistory []planHistoryRow
+		Events      []eventRow
+		Credits     []creditRow
 	}
 
 	var accounts []accountInfo
@@ -4608,8 +4634,44 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	cutoff := time.Now().AddDate(0, 0, -30)
 	for _, a := range userAccounts {
 		info := accountInfo{
-			AccountID:  a.ID,
-			BillingURL: billing.MakeCustomerDashboardURL(a.ID),
+			AccountID:     a.ID,
+			AccountStatus: a.Status,
+			BillingURL:    billing.MakeCustomerDashboardURL(a.ID),
+		}
+		if a.ParentID != nil {
+			info.ParentID = *a.ParentID
+			if parentAcct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccount, *a.ParentID); err == nil {
+				info.ParentCreatedBy = parentAcct.CreatedBy
+			}
+		}
+
+		// Active plan from account_plans.
+		if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, a.ID); err == nil {
+			info.CurrentPlanID = ap.PlanID
+			info.CurrentPlanAt = ap.StartedAt.Format(time.RFC3339)
+			if ap.TrialExpiresAt != nil {
+				info.TrialExpiresAt = ap.TrialExpiresAt.Format(time.RFC3339)
+			}
+			if ap.ChangedBy != nil {
+				info.PlanChangedBy = *ap.ChangedBy
+			}
+		}
+
+		// Plan history.
+		if history, err := withRxRes1(s, ctx, (*exedb.Queries).ListAccountPlanHistory, a.ID); err == nil {
+			for _, h := range history {
+				row := planHistoryRow{
+					PlanID:    h.PlanID,
+					StartedAt: h.StartedAt.Format(time.RFC3339),
+				}
+				if h.EndedAt != nil {
+					row.EndedAt = h.EndedAt.Format(time.RFC3339)
+				}
+				if h.ChangedBy != nil {
+					row.ChangedBy = *h.ChangedBy
+				}
+				info.PlanHistory = append(info.PlanHistory, row)
+			}
 		}
 
 		// Latest billing status.
@@ -4621,6 +4683,49 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			info.LatestStatus = "error"
 		default:
 			info.LatestStatus = status
+		}
+
+		// Plan history.
+		if history, err := withRxRes1(s, ctx, (*exedb.Queries).ListAccountPlanHistory, a.ID); err == nil {
+			for _, h := range history {
+				row := planHistoryRow{
+					PlanID:    h.PlanID,
+					StartedAt: h.StartedAt.Format(time.RFC3339),
+				}
+				if h.EndedAt != nil {
+					row.EndedAt = h.EndedAt.Format(time.RFC3339)
+				}
+				if h.ChangedBy != nil {
+					row.ChangedBy = *h.ChangedBy
+				}
+				info.PlanHistory = append(info.PlanHistory, row)
+			}
+		}
+
+		// Child accounts (team members whose parent_id points to this account).
+		allAccounts, _ := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
+		for _, child := range allAccounts {
+			if child.ParentID != nil && *child.ParentID == a.ID {
+				childEmail := ""
+				if u, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, child.CreatedBy); err == nil {
+					childEmail = u.Email
+				}
+				childPlan := ""
+				if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, child.ID); err == nil {
+					childPlan = ap.PlanID
+				}
+				info.ChildAccounts = append(info.ChildAccounts, struct {
+					AccountID string
+					UserID    string
+					Email     string
+					PlanID    string
+				}{
+					AccountID: child.ID,
+					UserID:    child.CreatedBy,
+					Email:     childEmail,
+					PlanID:    childPlan,
+				})
+			}
 		}
 
 		// Credit balance via billing manager (same as profile page).
@@ -4865,6 +4970,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			ID      string
 			Granted bool
 		}
+		CreditLedger []creditRow
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -4900,6 +5006,11 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.CreditRefreshPerHrOverride = creditState.RefreshPerHour
 		data.CreditTotalUsedUSD = creditState.TotalUsed
 		data.CreditLastRefreshAt = creditState.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	// Copy credit ledger from first account to top-level for template access.
+	if len(accounts) > 0 {
+		data.CreditLedger = accounts[0].Credits
 	}
 
 	// Check if user is on a team — if so, entitlements are misleading since
@@ -5876,16 +5987,18 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			DisplayName string `json:"display_name,omitempty"`
 		}
 		type teamInfo struct {
-			TeamID       string       `json:"team_id"`
-			DisplayName  string       `json:"display_name"`
-			CreatedAt    string       `json:"created_at"`
-			MemberCount  int64        `json:"member_count"`
-			VMCount      int64        `json:"vm_count"`
-			MaxBoxes     int          `json:"max_boxes"`
-			Limits       string       `json:"limits,omitempty"`
-			AuthProvider string       `json:"auth_provider,omitempty"`
-			Members      []memberInfo `json:"members"`
-			SSO          *ssoInfo     `json:"sso,omitempty"`
+			TeamID             string       `json:"team_id"`
+			DisplayName        string       `json:"display_name"`
+			CreatedAt          string       `json:"created_at"`
+			MemberCount        int64        `json:"member_count"`
+			VMCount            int64        `json:"vm_count"`
+			MaxBoxes           int          `json:"max_boxes"`
+			Limits             string       `json:"limits,omitempty"`
+			AuthProvider       string       `json:"auth_provider,omitempty"`
+			Members            []memberInfo `json:"members"`
+			SSO                *ssoInfo     `json:"sso,omitempty"`
+			BillingAccountID   string       `json:"billing_account_id,omitempty"`
+			BillingOwnerUserID string       `json:"billing_owner_user_id,omitempty"`
 		}
 		var teamsJSON []teamInfo
 		for _, t := range teams {
@@ -5931,6 +6044,13 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 						ti.VMCount += vmCount
 					}
 					ti.Members = append(ti.Members, mi)
+					// Look up the billing owner's account
+					if m.Role == "billing_owner" {
+						ti.BillingOwnerUserID = m.UserID
+						if acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, m.UserID); err == nil {
+							ti.BillingAccountID = acct.ID
+						}
+					}
 				}
 			}
 			teamsJSON = append(teamsJSON, ti)

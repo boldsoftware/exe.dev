@@ -28,6 +28,7 @@ tr.shown td.details-control::before { content: '-'; }
 <th>Team ID</th>
 <th>Display Name</th>
 <th>Created At</th>
+<th>Billing Account</th>
 <th>Members</th>
 <th>VMs</th>
 <th>Limits</th>
@@ -203,6 +204,10 @@ $(document).ready(function() {
             { data: 'team_id' },
             { data: 'display_name' },
             { data: 'created_at' },
+            { data: null, render: function(d) {
+                if (!d.billing_account_id) return '-';
+                return '<a href="/debug/billing?userId=' + encodeURIComponent(d.billing_owner_user_id) + '"><code>' + d.billing_account_id + '</code></a>';
+            }},
             { data: 'member_count' },
             { data: null, render: function(d) { return d.vm_count + ' / ' + d.max_boxes; } },
             { data: null, render: function(d) {

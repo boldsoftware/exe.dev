@@ -7,108 +7,66 @@ table.info th { width: 200px; }
 .negative { color: red; }
 .positive { color: green; }
 .muted { color: #888; font-size: 12px; }
-.account-section { margin: 16px 0; padding: 12px; border: 1px solid #ddd; border-radius: 4px; }
-.account-section h3 { margin-top: 0; }
-.credit-bar-track { background: #e0e0e0; border-radius: 3px; height: 10px; overflow: hidden; display: flex; }
-.credit-bar-monthly { min-width: 2px; }
-.credit-bar-monthly.green { background: #22a55b; }
-.credit-bar-monthly.yellow { background: #eab308; }
-.credit-bar-monthly.orange { background: #dd6b20; }
-.credit-bar-monthly.red { background: #e53e3e; }
-.credit-bar-extra { background: #3b82f6; min-width: 2px; }
-.credit-legend-item { display: inline-flex; align-items: center; gap: 4px; }
-.credit-legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-.credit-legend-dot.green { background: #22a55b; }
-.credit-legend-dot.blue { background: #3b82f6; }
 </style>
 </head><body>
 <h1>Billing: {{.Email}}</h1>
 <p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a> &gt; billing</p>
 
+{{range .Accounts}}
 <div class="section">
-<h2>Shelley Credits (same as profile page)</h2>
-{{if .HasShelleyFreeCreditPct}}
+<h2>Account: {{.AccountID}}</h2>
 <table class="info">
-<tr><th>Monthly Allowance</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
-<tr><th>Extra Credits</th><td>{{printf "%.0f" .LedgerBalanceUSD}} remaining</td></tr>
+<tr><th>Account Status</th><td>{{.AccountStatus}}</td></tr>
+<tr><th>Parent Account</th><td>{{if .ParentID}}<a href="/debug/billing?userId={{.ParentCreatedBy}}"><code>{{.ParentID}}</code></a>{{else}}—{{end}}</td></tr>
+<tr><th>Stripe Dashboard</th><td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td></tr>
 </table>
-{{if .Gifts}}
-<h4>Gift History</h4>
-<table>
-<thead><tr><th>Credits</th><th>Reason</th></tr></thead>
-<tbody>
-{{range .Gifts}}
-<tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-{{if .Purchases}}
-<h4>Purchases (Last 30D)</h4>
-<table>
-<thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
-<tbody>
-{{range .Purchases}}
-<tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-{{else}}
-<table class="info">
-<tr><th>Credits</th><td>-</td></tr>
-</table>
-{{end}}
-</div>
 
-{{if .IsOnTeam}}
-<div class="section">
-<h2>Entitlements</h2>
-<p>This user is on a team. Entitlements are resolved from the team's billing owner.</p>
-</div>
-{{else if .Entitlements}}
-<div class="section">
-<h2>Entitlements</h2>
+<h3>Plan Details</h3>
+<table class="info">
+<tr><th>Plan ID</th><td><code>{{if .CurrentPlanID}}{{.CurrentPlanID}}{{else}}(none){{end}}</code></td></tr>
+<tr><th>Started At</th><td>{{if .CurrentPlanAt}}{{.CurrentPlanAt}}{{else}}—{{end}}</td></tr>
+<tr><th>Ended At</th><td><em>(active)</em></td></tr>
+<tr><th>Trial Expires At</th><td>{{if .TrialExpiresAt}}{{.TrialExpiresAt}}{{else}}—{{end}}</td></tr>
+<tr><th>Changed By</th><td>{{if .PlanChangedBy}}{{.PlanChangedBy}}{{else}}—{{end}}</td></tr>
+</table>
+
+{{if .ChildAccounts}}
+<h3>Team Members</h3>
 <table class="info">
 <thead>
-<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
+<tr><th>Email</th><th>Account</th><th>Own Plan</th></tr>
 </thead>
 <tbody>
-{{range .Entitlements}}
-<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
+{{range .ChildAccounts}}
+<tr>
+<td>{{.Email}}</td>
+<td><a href="/debug/billing?userId={{.UserID}}"><code>{{.AccountID}}</code></a></td>
+<td><code>{{if .PlanID}}{{.PlanID}}{{else}}—{{end}}</code></td>
+</tr>
 {{end}}
 </tbody>
 </table>
-</div>
 {{end}}
 
-{{if .HasCredit}}
-<div class="section">
-<h2>LLM Gateway Credit</h2>
-<table class="info">
-<tr><th>Plan (LLM gateway)</th><td>{{.CreditPlanName}}</td></tr>
-<tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
-<tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
-<tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
-{{if gt .BonusRemainingUSD 0.0}}<tr><th>Gifts Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
-<tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
-<tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
-<tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
+{{if .PlanHistory}}
+<h4>Plan Changes</h4>
+<table>
+<thead><tr><th>Plan ID</th><th>Started At</th><th>Ended At</th><th>Changed By</th></tr></thead>
+<tbody>
+{{range .PlanHistory}}
+<tr>
+<td><code>{{.PlanID}}</code></td>
+<td>{{.StartedAt}}</td>
+<td>{{if .EndedAt}}{{.EndedAt}}{{else}}<em>(active)</em>{{end}}</td>
+<td class="muted">{{.ChangedBy}}</td>
+</tr>
+{{end}}
+</tbody>
 </table>
-</div>
 {{end}}
 
-{{range .Accounts}}
-<div class="account-section">
-<h3>Account: {{.AccountID}}</h3>
-<table class="info">
-<tr><th>Latest Status</th><td>{{.LatestStatus}}</td></tr>
-<tr><th>Stripe Dashboard</th><td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td></tr>
-<tr><th>Credit Balance</th><td>{{.CreditBalance}}</td></tr>
-</table>
-
-<h4>Billing Events ({{len .Events}})</h4>
 {{if .Events}}
+<h4>Billing Events ({{len .Events}})</h4>
 <table>
 <thead><tr><th>ID</th><th>Event Type</th><th>Event At</th><th>Created At</th></tr></thead>
 <tbody>
@@ -125,13 +83,83 @@ table.info th { width: 200px; }
 {{else}}
 <p>No billing events.</p>
 {{end}}
+</div>
+{{end}}
 
-<h4>Credit Ledger ({{len .Credits}})</h4>
-{{if .Credits}}
+{{if not .Accounts}}
+<p>No billing accounts.</p>
+{{end}}
+
+{{if .Entitlements}}
+<div class="section">
+<h2>Entitlements{{if .IsOnTeam}} <span class="muted">(inherited from team billing owner)</span>{{end}}</h2>
+<table class="info">
+<thead>
+<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
+</thead>
+<tbody>
+{{range .Entitlements}}
+<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
+<div class="section">
+<h2>Credits</h2>
+
+{{if .HasCredit}}
+<h4>LLM Gateway Credit</h4>
+<table class="info">
+<tr><th>Credit row in DB</th><td{{if lt .CreditAvailableUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditAvailableUSD}}</td></tr>
+<tr><th>After applying refresh</th><td{{if lt .CreditEffectiveUSD 0.0}} class="negative"{{end}}>${{printf "%.2f" .CreditEffectiveUSD}}</td></tr>
+<tr><th>Max Credit</th><td>${{printf "%.2f" .CreditMaxUSD}}{{if not .CreditMaxUSDOverride}} (plan default){{else}} (override){{end}}</td></tr>
+{{if gt .BonusRemainingUSD 0.0}}<tr><th>Gifts Remaining</th><td>${{printf "%.2f" .BonusRemainingUSD}}</td></tr>{{end}}
+<tr><th>Refresh per Hour</th><td>${{printf "%.2f" .CreditRefreshPerHrUSD}}{{if not .CreditRefreshPerHrOverride}} (plan default){{else}} (override){{end}}</td></tr>
+<tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
+<tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
+</table>
+{{end}}
+
+{{if .HasShelleyFreeCreditPct}}
+<h4>Profile Display (same as user sees)</h4>
+<table class="info">
+<tr><th>Monthly Allowance</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Extra Credits</th><td>{{printf "%.0f" .LedgerBalanceUSD}} remaining</td></tr>
+</table>
+{{end}}
+
+{{if .Gifts}}
+<h4>Gift History</h4>
+<table>
+<thead><tr><th>Credits</th><th>Reason</th></tr></thead>
+<tbody>
+{{range .Gifts}}
+<tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{if .Purchases}}
+<h4>Purchases (Last 30D)</h4>
+<table>
+<thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
+<tbody>
+{{range .Purchases}}
+<tr><td>{{.Amount}}</td><td>{{.Date}}</td><td>{{if .ReceiptURL}}<a href="{{.ReceiptURL}}" target="_blank">View</a>{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+<h4>Credit Ledger ({{len .CreditLedger}})</h4>
+{{if .CreditLedger}}
 <table>
 <thead><tr><th>ID</th><th>Amount</th><th>Credit Type</th><th>Hour Bucket</th><th>Stripe Event</th><th>Receipt</th><th>Gift ID</th><th>Note</th><th>Created At</th></tr></thead>
 <tbody>
-{{range .Credits}}
+{{range .CreditLedger}}
 <tr>
 <td>{{.ID}}</td>
 <td{{if .IsNegative}} class="negative"{{end}}{{if .IsPositive}} class="positive"{{end}}>{{.AmountStr}}</td>
@@ -150,10 +178,5 @@ table.info th { width: 200px; }
 <p>No credit ledger entries.</p>
 {{end}}
 </div>
-{{end}}
-
-{{if not .Accounts}}
-<p>No billing accounts.</p>
-{{end}}
 
 </body></html>

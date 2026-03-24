@@ -218,12 +218,13 @@ table.info th { width: 200px; }
 {{if .BillingAccounts}}
 <table class="info">
 <thead>
-<tr><th>Account ID</th><th>Latest Status</th><th>Billing Dashboard</th></tr>
+<tr><th>Account ID</th><th>Plan</th><th>Status</th><th>Billing Dashboard</th></tr>
 </thead>
 <tbody>
 {{range .BillingAccounts}}
 <tr>
 <td>{{.AccountID}}</td>
+<td><code>{{if .PlanID}}{{.PlanID}}{{else}}—{{end}}</code></td>
 <td>{{.LatestStatus}}</td>
 <td><a href="{{.BillingURL}}" target="_blank">{{.BillingURL}}</a></td>
 </tr>

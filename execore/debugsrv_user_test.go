@@ -233,7 +233,7 @@ func debugBillingPageBody(t *testing.T, s *Server, userID string) string {
 func requireAccountRow(t *testing.T, body, accountID, status string) {
 	t.Helper()
 	row := regexp.MustCompile(
-		`<td>` + regexp.QuoteMeta(accountID) + `</td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`,
+		`<td>` + regexp.QuoteMeta(accountID) + `</td>\s*<td><code>[^<]*</code></td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`,
 	)
 	if !row.MatchString(body) {
 		t.Fatalf("expected billing row account=%q status=%q", accountID, status)
