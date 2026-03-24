@@ -60,7 +60,11 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	notFound := func() {
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", vmName))
+	sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
+
+	notFound := func(reason string) {
+		sloghttp.AddCustomAttributes(r, slog.String("integration_result", reason))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
 	}
@@ -68,7 +72,7 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 	box, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).BoxNamed, vmName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			notFound()
+			notFound("box_not_found")
 			return
 		}
 		s.slog().ErrorContext(ctx, "integration config: box lookup failed", "error", err, "vm_name", vmName)
@@ -76,12 +80,13 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
+
 	// "notify" is a synthetic integration that exists for every user,
 	// attached to all VMs. It forwards push notifications to exed.
 	if integrationName == "notify" {
-		sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
 		sloghttp.AddCustomAttributes(r, slog.String("integration_type", "notify"))
-		sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
+		sloghttp.AddCustomAttributes(r, slog.String("integration_result", "ok"))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(integrationConfigResponse{
@@ -97,7 +102,7 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			notFound()
+			notFound("integration_not_found")
 			return
 		}
 		s.slog().ErrorContext(ctx, "integration config: lookup failed", "error", err, "vm_name", vmName, "integration", integrationName)
@@ -106,13 +111,12 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !exedb.IntegrationMatchesBox(&integration, &box) {
-		notFound()
+		notFound("not_attached")
 		return
 	}
 
-	sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
 	sloghttp.AddCustomAttributes(r, slog.String("integration_type", integration.Type))
-	sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
+	sloghttp.AddCustomAttributes(r, slog.String("integration_result", "ok"))
 
 	resp, err := s.buildProxyConfig(ctx, box.CreatedByUserID, integration.Type, integration.Config)
 	if err != nil {

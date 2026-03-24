@@ -738,6 +738,10 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 
 	sloghttp.AddCustomAttributes(r, slog.String("vm_name", vmName))
 	sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
+	sloghttp.AddCustomAttributes(r, slog.String("request_type", "integration_proxy"))
+	if host := r.Host; host != "" {
+		sloghttp.AddCustomAttributes(r, slog.String("integration_host", host))
+	}
 
 	cfg, ok := s.getIntegrationConfig(r.Context(), vmName, integrationName)
 	if !ok {
@@ -759,6 +763,7 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	proxyStart := time.Now()
 	proxy := &httputil.ReverseProxy{
 		Transport: s.integrationTransport(),
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -776,6 +781,12 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 			if cfg.basicAuth != nil {
 				pr.Out.SetBasicAuth(cfg.basicAuth.User, cfg.basicAuth.Pass)
 			}
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			sloghttp.AddCustomAttributes(r, slog.Int("upstream_status", resp.StatusCode))
+			sloghttp.AddCustomAttributes(r, slog.Int64("upstream_content_length", resp.ContentLength))
+			sloghttp.AddCustomAttributes(r, slog.String("upstream_latency", time.Since(proxyStart).String()))
+			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
