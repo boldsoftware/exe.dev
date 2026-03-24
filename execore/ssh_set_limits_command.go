@@ -2,9 +2,7 @@ package execore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -82,13 +80,6 @@ func (ss *SSHServer) handleSetLimitsCommand(ctx context.Context, cc *exemenu.Com
 		if parseErr != nil || v < 1 {
 			return cc.Errorf("invalid --max-boxes: must be a positive integer")
 		}
-		// Shards > 25 require GLB (nXXX CNAMEs). Without it, DNS for
-		// sXXX shards beyond s025 won't resolve and boxes are unreachable.
-		if v > stage.DefaultMaxBoxes {
-			if err := ss.requireGLB(ctx, user); err != nil {
-				return cc.Errorf("%v", err)
-			}
-		}
 		existing.MaxBoxes = v
 		changed = true
 	}
@@ -161,8 +152,6 @@ func (ss *SSHServer) showUserLimits(ctx context.Context, cc *exemenu.CommandCont
 	} else {
 		effectiveMaxBoxes = GetMaxBoxes(effectiveLimits)
 	}
-	glbStatus := ss.userGLBStatus(ctx, user.UserID)
-
 	if cc.WantJSON() {
 		result := map[string]any{
 			"user_id":             user.UserID,
@@ -170,7 +159,6 @@ func (ss *SSHServer) showUserLimits(ctx context.Context, cc *exemenu.CommandCont
 			"current_boxes":       boxCount,
 			"effective_max_boxes": effectiveMaxBoxes,
 			"default_max_boxes":   stage.DefaultMaxBoxes,
-			"glb":                 glbStatus,
 		}
 		if limits != nil {
 			result["overrides"] = limits
@@ -191,7 +179,6 @@ func (ss *SSHServer) showUserLimits(ctx context.Context, cc *exemenu.CommandCont
 	cc.Writeln("")
 	cc.Writeln("\033[1mUser:\033[0m %s (%s)", user.Email, user.UserID)
 	cc.Writeln("\033[1mCurrent VMs:\033[0m %d / %d", boxCount, effectiveMaxBoxes)
-	cc.Writeln("\033[1mGLB:\033[0m %s", glbStatus)
 	cc.Writeln("")
 
 	if limits != nil && (limits.MaxBoxes > 0 || limits.MaxMemory > 0 || limits.MaxDisk > 0 || limits.MaxCPUs > 0) {
@@ -237,42 +224,6 @@ func printLimitsIndented(cc *exemenu.CommandContext, limits *UserLimits, indent 
 	if limits.MaxCPUs > 0 {
 		cc.Writeln("%smax_cpus:   %d", indent, limits.MaxCPUs)
 	}
-}
-
-// requireGLB checks that the target user has GLB (global load balancer) enabled.
-// Without GLB, shards > 25 CNAME to sXXX.exe.xyz which only exists for s001–s025,
-// so boxes with higher shard numbers would be unreachable.
-func (ss *SSHServer) requireGLB(ctx context.Context, user *exedb.User) error {
-	defaults, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserDefaults, user.UserID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (defaults.GlobalLoadBalancer == nil || *defaults.GlobalLoadBalancer != 1)) {
-		return fmt.Errorf("user %s does not have GLB enabled; shards > %d require it.\n"+
-			"Enable with: defaults write dev.exe global-load-balancer on\n"+
-			"(or use the debug page to migrate the user's region)\n"+
-			"Note: users enabled via GLB rollout prefix still need the explicit flag for >%d boxes",
-			user.Email, stage.DefaultMaxBoxes, stage.DefaultMaxBoxes)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to check GLB status: %v", err)
-	}
-	return nil
-}
-
-// userGLBStatus returns a human-readable GLB status for the user.
-func (ss *SSHServer) userGLBStatus(ctx context.Context, userID string) string {
-	defaults, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserDefaults, userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "unset"
-	}
-	if err != nil {
-		return "error"
-	}
-	if defaults.GlobalLoadBalancer == nil {
-		return "unset"
-	}
-	if *defaults.GlobalLoadBalancer == 1 {
-		return "on"
-	}
-	return "off"
 }
 
 // formatBytes formats bytes as a human-readable string (e.g., "8 GB").
