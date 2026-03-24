@@ -742,6 +742,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLinkDiscord(w, r)
 	case "/github/callback":
 		s.handleGitHubCallback(w, r)
+	case "/github/setup":
+		s.handleGitHubSetup(w, r)
 	case "/github/install":
 		s.handleGitHubInstall(w, r)
 	case "/github/signin":

@@ -12,12 +12,33 @@ import (
 	"exe.dev/githubapp"
 )
 
+// handleGitHubSetup initiates the unified GitHub setup flow from the web UI.
+// Redirects to GitHub OAuth (no special scopes — just identifies the user).
+// The callback then checks whether the app is already installed and either
+// links the account directly or redirects to the app installation page.
+func (s *Server) handleGitHubSetup(w http.ResponseWriter, r *http.Request) {
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth?redirect=/integrations%23github", http.StatusTemporaryRedirect)
+		return
+	}
+
+	setup, _, err := s.registerGitHubSetup(userID, true)
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "GitHub setup failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, s.githubApp.AuthorizeURL(setup.State), http.StatusFound)
+}
+
 // handleGitHubInstall initiates the GitHub App install flow from the web UI.
 // Creates a pending setup, then redirects the browser to GitHub's install page.
 func (s *Server) handleGitHubInstall(w http.ResponseWriter, r *http.Request) {
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
-		http.Redirect(w, r, "/auth?redirect=/user%23github", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/auth?redirect=/integrations%23github", http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -36,7 +57,7 @@ func (s *Server) handleGitHubInstall(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGitHubSignin(w http.ResponseWriter, r *http.Request) {
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
-		http.Redirect(w, r, "/auth?redirect=/user%23github", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/auth?redirect=/integrations%23github", http.StatusTemporaryRedirect)
 		return
 	}
 

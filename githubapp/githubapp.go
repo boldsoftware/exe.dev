@@ -87,7 +87,7 @@ func (c *Client) InstallURL(state string) string {
 // needs to link their account. The callback will receive code and state
 // but NOT installation_id.
 func (c *Client) AuthorizeURL(state string) string {
-	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&state=%s",
+	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=read:user",
 		url.QueryEscape(c.ClientID), url.QueryEscape(state))
 }
 

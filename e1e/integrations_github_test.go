@@ -124,7 +124,7 @@ func TestIntegrationsSetupGitHub(t *testing.T) {
 	// SSH setup command should enable the feature flag and print a web URL.
 	pty.SendLine("integrations setup github")
 	pty.Want("GitHub integration enabled")
-	pty.Want("/user#github")
+	pty.Want("/integrations#github")
 	pty.WantPrompt()
 
 	// Connect a GitHub account via the web flow.
@@ -271,8 +271,8 @@ func TestIntegrationsSetupGitHubOrg(t *testing.T) {
 }
 
 // TestIntegrationsGitHubOrphanInstallCallback tests that an install callback
-// arriving after the SSH session has already completed shows a friendly page
-// instead of an error.
+// arriving without a matching pending setup redirects to integrations
+// instead of showing an error.
 func TestIntegrationsGitHubOrphanInstallCallback(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -280,14 +280,12 @@ func TestIntegrationsGitHubOrphanInstallCallback(t *testing.T) {
 	noGolden(t)
 
 	// Send an install callback with no matching pending setup.
-	// This simulates what happens when a user installs the app on an org
-	// after the SSH session has already completed.
+	// This simulates what happens when a user installs the app directly
+	// from the GitHub App page (Step 1 link) without going through
+	// /github/install which sets state.
 	status, body := simulateGitHubInstallCallback(t, 117180919)
-	if status != http.StatusOK {
-		t.Fatalf("expected 200 OK for orphan install callback, got %d: %s", status, body)
-	}
-	if !regexp.MustCompile(`(?i)installed`).MatchString(body) {
-		t.Fatalf("expected friendly 'installed' page, got: %s", body)
+	if status != http.StatusFound {
+		t.Fatalf("expected 302 redirect for orphan install callback, got %d: %s", status, body)
 	}
 }
 

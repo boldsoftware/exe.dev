@@ -116,7 +116,7 @@ func (ss *SSHServer) handleSetupGitHub(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// Show the web URL.
-	webURL := ss.server.webBaseURLNoRequest() + "/user#github"
+	webURL := ss.server.webBaseURLNoRequest() + "/integrations#github"
 	cc.Writeln("GitHub integration enabled.")
 	cc.Writeln("")
 	cc.Writeln("Continue setup in your browser:")

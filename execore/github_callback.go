@@ -71,13 +71,44 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 
 	if setup == nil {
 		// Install callbacks arrive without state (GitHub doesn't reliably
-		// relay it for org-admin approvals). The SSH session detects new
-		// installations via polling, so just show a friendly page.
+		// relay it for org-admin approvals, and the Step 1 install link
+		// goes directly to GitHub without state).
 		if installationID != 0 {
-			s.renderTemplate(ctx, w, "github-installed.html", nil)
+			// If the user is logged in and we have a code, exchange it
+			// and save the installation so they land back on integrations
+			// with everything linked.
+			if userID, err := s.validateAuthCookie(r); err == nil && code != "" {
+				orphanSetup := &GitHubSetup{
+					UserID:         userID,
+					WebFlow:        true,
+					InstallationID: installationID,
+				}
+				tokenResp, err := s.githubApp.ExchangeCode(ctx, code)
+				if err == nil {
+					login, err := s.githubApp.GetUser(ctx, tokenResp.AccessToken)
+					if err == nil {
+						orphanSetup.GitHubLogin = login
+						orphanSetup.AccessToken = tokenResp.AccessToken
+						orphanSetup.RefreshToken = tokenResp.RefreshToken
+						orphanSetup.AccessTokenExpiresAt = tokenResp.AccessTokenExpiresAt()
+						orphanSetup.RefreshTokenExpiresAt = tokenResp.RefreshTokenExpiresAt()
+						if err := s.saveGitHubSetupWeb(ctx, orphanSetup); err != nil {
+							s.slog().ErrorContext(ctx, "Failed to save orphan GitHub install", "error", err)
+						} else {
+							http.Redirect(w, r, "/integrations?callout=github-connected#github", http.StatusFound)
+							return
+						}
+					}
+				}
+				// If any step failed, fall through to redirect without saving.
+				s.slog().WarnContext(ctx, "Orphan install: token exchange or user lookup failed, redirecting anyway")
+			}
+			// No auth cookie or code exchange failed — just redirect to integrations.
+			// The SSH session detects new installations via polling.
+			http.Redirect(w, r, "/integrations#github", http.StatusFound)
 			return
 		}
-		http.Error(w, "unknown or expired setup — please try again from SSH", http.StatusBadRequest)
+		http.Error(w, "unknown or expired setup — please try again", http.StatusBadRequest)
 		return
 	}
 
@@ -117,14 +148,58 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	setup.AccessTokenExpiresAt = tokenResp.AccessTokenExpiresAt()
 	setup.RefreshTokenExpiresAt = tokenResp.RefreshTokenExpiresAt()
 
-	// Web-initiated flow: save account and redirect to /user#github.
+	// Web-initiated flow: save account and redirect.
 	if setup.WebFlow {
+		// If we have an installation_id (from install flow), save everything.
+		// Otherwise, check if the app is already installed for this user.
+		if setup.InstallationID != 0 {
+			if err := s.saveGitHubSetupWeb(ctx, setup); err != nil {
+				s.slog().ErrorContext(ctx, "Failed to save GitHub connection", "error", err)
+				http.Error(w, "Failed to save GitHub connection", http.StatusInternalServerError)
+				return
+			}
+			http.Redirect(w, r, "/integrations?callout=github-connected#github", http.StatusFound)
+			return
+		}
+
+		// OAuth-only callback (no installation_id). Check if the app is
+		// installed for this user by listing their accessible installations.
+		installs, err := s.githubApp.GetUserInstallations(ctx, setup.AccessToken)
+		if err != nil {
+			s.slog().WarnContext(ctx, "GitHub: failed to list user installations", "error", err, "login", login)
+			// Fall through — treat as no installations.
+		}
+
+		if len(installs) > 0 {
+			// App is already installed. Save token + discovered installations.
+			if err := s.saveGitHubSetupWeb(ctx, setup); err != nil {
+				s.slog().ErrorContext(ctx, "Failed to save GitHub connection", "error", err)
+				http.Error(w, "Failed to save GitHub connection", http.StatusInternalServerError)
+				return
+			}
+			http.Redirect(w, r, "/integrations?callout=github-connected#github", http.StatusFound)
+			return
+		}
+
+		// App is NOT installed for this user. Save the OAuth token so the
+		// user's GitHub identity is preserved, then redirect to the GitHub
+		// App installation page. When they finish installing, GitHub will
+		// callback with installation_id + a new code.
 		if err := s.saveGitHubSetupWeb(ctx, setup); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to save GitHub connection", "error", err)
+			s.slog().ErrorContext(ctx, "Failed to save GitHub token", "error", err)
 			http.Error(w, "Failed to save GitHub connection", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/integrations?callout=add-repo-integration#github", http.StatusFound)
+
+		// Create a new setup for the install callback.
+		installSetup, _, err := s.registerGitHubSetup(setup.UserID, true)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "GitHub install setup failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "GitHub: app not installed, redirecting to install", "login", login)
+		http.Redirect(w, r, s.githubApp.InstallURL(installSetup.State), http.StatusFound)
 		return
 	}
 
