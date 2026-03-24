@@ -45,20 +45,20 @@ echo "Using ghostty source at: $GHOSTTY_SRC"
 # or default to aarch64-ios for manual builds.
 if [ -n "${PLATFORM_NAME:-}" ]; then
     case "$PLATFORM_NAME" in
-        iphoneos)
-            ZIG_TARGET="aarch64-ios"
-            ;;
-        iphonesimulator)
-            case "${ARCHS:-arm64}" in
-                *arm64*) ZIG_TARGET="aarch64-ios-simulator" ;;
-                *x86_64*) ZIG_TARGET="x86_64-ios-simulator" ;;
-                *) ZIG_TARGET="aarch64-ios-simulator" ;;
-            esac
-            ;;
-        *)
-            echo "error: Unknown platform $PLATFORM_NAME"
-            exit 1
-            ;;
+    iphoneos)
+        ZIG_TARGET="aarch64-ios"
+        ;;
+    iphonesimulator)
+        case "${ARCHS:-arm64}" in
+        *arm64*) ZIG_TARGET="aarch64-ios-simulator" ;;
+        *x86_64*) ZIG_TARGET="x86_64-ios-simulator" ;;
+        *) ZIG_TARGET="aarch64-ios-simulator" ;;
+        esac
+        ;;
+    *)
+        echo "error: Unknown platform $PLATFORM_NAME"
+        exit 1
+        ;;
     esac
 else
     # Manual build — default to device
