@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -526,14 +527,72 @@ func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 	}
 	defer svc.Stop(context.Background())
 
-	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/", nil)
+	req := httptest.NewRequest("GET", "https://myproxy.int.exe.cloud/", nil)
 	req.Host = "myproxy.int.exe.cloud"
 	req.RemoteAddr = "10.42.0.2:12345"
+	req.TLS = &tls.ConnectionState{}
 	rr := httptest.NewRecorder()
 	svc.server.Handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for not-found integration, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMetadataServiceIntegrationHTTPToHTTPSRedirect(t *testing.T) {
+	log := slog.Default()
+
+	// gatewayDev=false (production): HTTP integration requests redirect to HTTPS.
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:0", []string{".int.exe.cloud"}, "", "", false, nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/foo?bar=1", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	rr := httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301 redirect, got %d: %s", rr.Code, rr.Body.String())
+	}
+	loc := rr.Header().Get("Location")
+	if loc != "https://myproxy.int.exe.cloud/foo?bar=1" {
+		t.Fatalf("unexpected redirect location: %s", loc)
+	}
+
+	// HTTPS requests (r.TLS != nil) should NOT redirect.
+	req = httptest.NewRequest("GET", "https://myproxy.int.exe.cloud/foo", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	req.TLS = &tls.ConnectionState{}
+	rr = httptest.NewRecorder()
+	svc.server.Handler.ServeHTTP(rr, req)
+	if rr.Code == http.StatusMovedPermanently {
+		t.Fatal("should not redirect HTTPS requests")
+	}
+
+	// gatewayDev=true (dev/test): HTTP integration requests pass through.
+	devSvc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:0", []string{".int.exe.cloud"}, "", "", true, nil)
+	if err != nil {
+		t.Fatalf("failed to create dev service: %v", err)
+	}
+	if err := devSvc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start dev service: %v", err)
+	}
+	defer devSvc.Stop(context.Background())
+
+	req = httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/foo", nil)
+	req.Host = "myproxy.int.exe.cloud"
+	req.RemoteAddr = "10.42.0.2:12345"
+	rr = httptest.NewRecorder()
+	devSvc.server.Handler.ServeHTTP(rr, req)
+	if rr.Code == http.StatusMovedPermanently {
+		t.Fatal("dev mode should not redirect HTTP to HTTPS")
 	}
 }
 
@@ -550,9 +609,10 @@ func TestMetadataServiceIntegrationProxyNoBox(t *testing.T) {
 	}
 	defer svc.Stop(context.Background())
 
-	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/", nil)
+	req := httptest.NewRequest("GET", "https://myproxy.int.exe.cloud/", nil)
 	req.Host = "myproxy.int.exe.cloud"
 	req.RemoteAddr = "10.42.0.99:12345"
+	req.TLS = &tls.ConnectionState{}
 	rr := httptest.NewRecorder()
 	svc.server.Handler.ServeHTTP(rr, req)
 

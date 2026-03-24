@@ -213,6 +213,12 @@ func (s *Service) Start(ctx context.Context) error {
 				integrationError(w, r, "team integrations are not yet available", http.StatusNotImplemented)
 				return
 			}
+			// In production, redirect plain HTTP to HTTPS.
+			if r.TLS == nil && !s.gatewayDev {
+				u := "https://" + r.Host + r.URL.RequestURI()
+				http.Redirect(w, r, u, http.StatusMovedPermanently)
+				return
+			}
 			s.handleIntegrationProxy(w, r, name)
 			return
 		}
