@@ -35,6 +35,7 @@ DISK_GB="${DISK_GB:-40}"
 EXELET_DATA_DISK_GB="${EXELET_DATA_DISK_GB:-50}"
 EXELET_BACKUP_DISK_GB="${EXELET_BACKUP_DISK_GB:-50}"
 EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-16G}"
+EXELET_RAMDISK_POOL_SIZE="${EXELET_RAMDISK_POOL_SIZE:-}"
 SSH_PUBKEY_DIR="${SSH_PUBKEY_DIR:-$HOME/.ssh}"
 CLUSTER_PREFIX="${CLUSTER_PREFIX:-exe-local}"
 
@@ -502,6 +503,20 @@ EOF
     generate_network_config "$tmpdir"
 }
 
+ramdisk_pool_cloud_init() {
+    [[ -n "${EXELET_RAMDISK_POOL_SIZE}" ]] || return 0
+    cat <<RAMDISK
+  # Ramdisk-backed ZFS pool (tmpfs, ephemeral)
+  - |
+    if ! zpool list ramdisk >/dev/null 2>&1; then
+      mkdir -p /mnt/ramdisk
+      mount -t tmpfs -o size=${EXELET_RAMDISK_POOL_SIZE} tmpfs /mnt/ramdisk
+      truncate -s ${EXELET_RAMDISK_POOL_SIZE} /mnt/ramdisk/ramdisk.img
+      zpool create -f -m none ramdisk /mnt/ramdisk/ramdisk.img
+    fi
+RAMDISK
+}
+
 generate_cloud_init_exelet() {
     local tmpdir="$1" name="$2"
     cat >"${tmpdir}/user-data" <<EOF
@@ -552,6 +567,7 @@ runcmd:
     if ! zpool list dozer >/dev/null 2>&1; then
       zpool create -f -m none dozer /dev/vdd
     fi
+$(ramdisk_pool_cloud_init)
 swap:
   filename: /swapfile
   size: ${EXELET_SWAP_SIZE}
@@ -1802,6 +1818,7 @@ os-upgrade) cmd_os_upgrade ;;
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
     echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
     echo "  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
+    echo "  EXELET_RAMDISK_POOL_SIZE=${EXELET_RAMDISK_POOL_SIZE}  (tmpfs-backed 'ramdisk' zpool, ephemeral)"
     echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
     exit 1
     ;;
