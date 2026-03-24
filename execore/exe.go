@@ -3031,6 +3031,12 @@ func (s *Server) start() error {
 	s.startCancel = cancel
 	defer cancel()
 
+	// Pass lobby IP to DNS server for apex domain resolution.
+	// Must happen before Start so DNS handlers don't race on lobbyIP.
+	if s.dnsServer != nil && s.LobbyIP.IsValid() {
+		s.dnsServer.SetLobbyIP(s.LobbyIP)
+	}
+
 	// Start embedded DNS server.
 	if s.dnsServer != nil && s.env.DiscoverPublicIPs {
 		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -3048,11 +3054,6 @@ func (s *Server) start() error {
 	}
 
 	s.initShardIPs(ctx)
-
-	// Pass lobby IP to DNS server for apex domain resolution
-	if s.dnsServer != nil && s.LobbyIP.IsValid() {
-		s.dnsServer.SetLobbyIP(s.LobbyIP)
-	}
 
 	if s.dnsServer != nil && len(s.PublicIPs) > 0 {
 		s.validateIPShards(ctx)
