@@ -718,6 +718,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/pricing":
 		http.Redirect(w, r, "/docs/pricing", http.StatusTemporaryRedirect)
+	case "/usage-pricing":
+		s.serveStaticFile(w, r, "usage-pricing.html")
 		return
 	case "/love":
 		s.handleLovePage(w, r)

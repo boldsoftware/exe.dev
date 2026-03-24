@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico">
+    <title>Usage Pricing - exe.dev</title>
+    <meta name="description" content="exe.dev usage-based pricing: pay for what you use.">
+    <link rel="canonical" href="https://exe.dev/usage-pricing">
+    <meta property="og:title" content="Usage Pricing - exe.dev">
+    <meta property="og:description" content="exe.dev usage-based pricing: pay for what you use.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://exe.dev/usage-pricing">
+    <meta property="og:site_name" content="exe.dev">
+    <link rel="stylesheet" href="common.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        h1 {
+            font-size: clamp(40px, 8vw, 80px);
+            line-height: 0.95;
+            margin-bottom: 40px;
+            font-weight: normal;
+            letter-spacing: -0.02em;
+            text-align: center;
+        }
+        main {
+            max-width: 720px;
+            width: 100%;
+            line-height: 1.7;
+        }
+        .pricing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0 32px;
+        }
+        .pricing-table th {
+            text-align: left;
+            padding: 10px 12px;
+        }
+        .pricing-table th:last-child {
+            text-align: right;
+            border-bottom: 2px solid var(--color-border);
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pricing-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border-subtle);
+            font-size: var(--text-sm);
+        }
+        .pricing-table tr:last-child td {
+            border-bottom: none;
+        }
+        .pricing-table td:last-child {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .note {
+            color: var(--color-text-secondary);
+            font-size: var(--text-xs);
+            line-height: 1.6;
+            margin: 24px 0;
+        }
+        .example {
+            background: var(--color-bg-muted);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin: 24px 0;
+            font-size: var(--text-sm);
+            line-height: 1.7;
+        }
+        .example-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--color-text);
+        }
+        .example p {
+            margin: 8px 0;
+        }
+        .contact {
+            margin: 32px 0;
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+        }
+        .contact a {
+            color: var(--color-link);
+        }
+        hr {
+            width: 200px;
+            height: 40px;
+            border: 0;
+            margin: 40px auto;
+            position: relative;
+            opacity: 0.4;
+        }
+        hr::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--color-text-secondary) 20%, var(--color-text-secondary) 80%, transparent 100%);
+        }
+        hr::after {
+            content: '\2766';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            background: var(--color-bg);
+            padding: 0 10px;
+            color: var(--color-text-secondary);
+        }
+        nav {
+            margin-top: 50px;
+            text-align: center;
+        }
+        nav a {
+            display: inline-block;
+            font-size: var(--text-sm);
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: var(--color-text-secondary);
+        }
+        nav a + a::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.6;
+            margin: 0 12px 2px;
+            vertical-align: middle;
+        }
+        /* Calculator */
+        .calculator {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin: 32px 0;
+        }
+        .calculator h2 {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--color-text-secondary);
+            margin-bottom: 20px;
+        }
+        .calc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .calc-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .calc-field.full {
+            grid-column: 1 / -1;
+        }
+        .calc-field label {
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+        }
+        .calc-field input {
+            width: 100%;
+        }
+        .calc-results {
+            margin-top: 20px;
+            border-top: 1px solid var(--color-border);
+            padding-top: 16px;
+        }
+        .calc-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+            padding: 4px 0;
+        }
+        .calc-row.total {
+            border-top: 1px solid var(--color-border);
+            margin-top: 8px;
+            padding-top: 10px;
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        .calc-section-label {
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--color-text);
+            margin-top: 16px;
+            margin-bottom: 4px;
+        }
+        .calc-section-label:first-child {
+            margin-top: 0;
+        }
+        .calc-slider-field {
+            margin-top: 20px;
+        }
+        .calc-slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 8px;
+        }
+        .calc-slider-header label {
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        .calc-slider-value {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text);
+            font-variant-numeric: tabular-nums;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--color-border);
+            outline: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--color-text);
+            cursor: pointer;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--color-text);
+            border: none;
+            cursor: pointer;
+        }
+        @media (max-width: 600px) {
+            .pricing-table td,
+            .pricing-table th {
+                padding: 8px 6px;
+                font-size: var(--text-xs);
+            }
+            .calc-grid {
+                grid-template-columns: 1fr;
+            }
+            nav a { font-size: var(--text-xxs); letter-spacing: 0.2em; }
+            nav a + a::before { margin: 0 8px 2px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>usage pricing</h1>
+    </header>
+    <main>
+        <table class="pricing-table">
+            <thead>
+                <tr>
+                    <th>Resource</th>
+                    <th>Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Disk Usage</td>
+                    <td>$0.08 / GiB / month</td>
+                </tr>
+                <tr>
+                    <td>CPU</td>
+                    <td>$0.05 / core / hour</td>
+                </tr>
+                <tr>
+                    <td>Active Memory</td>
+                    <td>$0.016 / GiB / hour</td>
+                </tr>
+                <tr>
+                    <td>Inactive Memory</td>
+                    <td>$0.08 / GiB / month</td>
+                </tr>
+                <tr>
+                    <td>Per-VM Minimum</td>
+                    <td>$0.001 / hour</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p class="note">
+            CPU and active memory are billed by peak usage within each hour.
+            Disk usage and inactive memory are billed monthly.
+            The per-VM minimum is billed by the peak number of VMs in a given hour.
+        </p>
+
+        <div class="example">
+            <div class="example-title">Example</div>
+            <p>
+                A 2-CPU, 8&nbsp;GiB memory VM with 20&nbsp;GiB of storage running
+                continuously for 30&nbsp;days at full capacity would cost
+                <strong>$166.48</strong>.
+            </p>
+            <p>
+                But a typical idle machine on our platform uses about 200&nbsp;MiB of
+                active memory, 300&nbsp;MiB of inactive memory, and 0.1% of a CPU.
+                With 20&nbsp;GiB of storage, its monthly charge would be roughly
+                <strong>$4.63</strong>.
+            </p>
+        </div>
+
+        <p class="contact">
+            Please contact us at <a href="mailto:support@exe.dev">support@exe.dev</a>
+            to talk about what you&rsquo;re building and your needs.
+        </p>
+
+        <div class="calculator">
+            <h2>Cost Calculator</h2>
+
+            <div class="calc-field">
+                <label for="disk">Disk (GiB)</label>
+                <input type="number" id="disk" value="20" min="0" step="1">
+            </div>
+
+            <div class="calc-section-label">CPU</div>
+            <div class="calc-grid">
+                <div class="calc-field">
+                    <label for="cpu-active">Active (cores)</label>
+                    <input type="number" id="cpu-active" value="2" min="0" step="0.1">
+                </div>
+                <div class="calc-field">
+                    <label for="cpu-idle">Idle (cores)</label>
+                    <input type="number" id="cpu-idle" value="0.001" min="0" step="0.001">
+                </div>
+            </div>
+
+            <div class="calc-section-label">Memory</div>
+            <div class="calc-grid">
+                <div class="calc-field">
+                    <label for="mem-active">Active (GiB)</label>
+                    <input type="number" id="mem-active" value="8" min="0" step="0.1">
+                </div>
+                <div class="calc-field">
+                    <label for="mem-idle-active">Idle &mdash; active (MiB)</label>
+                    <input type="number" id="mem-idle-active" value="200" min="0" step="1">
+                </div>
+                <div class="calc-field">
+                    <label for="mem-idle-inactive">Idle &mdash; inactive (MiB)</label>
+                    <input type="number" id="mem-idle-inactive" value="300" min="0" step="1">
+                </div>
+            </div>
+
+            <div class="calc-slider-field">
+                <div class="calc-slider-header">
+                    <label for="idle-pct">Time idle</label>
+                    <span class="calc-slider-value" id="idle-pct-display">0%</span>
+                </div>
+                <input type="range" id="idle-pct" value="0" min="0" max="100" step="1">
+            </div>
+
+            <div class="calc-results">
+                <div class="calc-row"><span>Disk</span><span id="calc-disk">—</span></div>
+                <div class="calc-row"><span>CPU</span><span id="calc-cpu">—</span></div>
+                <div class="calc-row"><span>Active Memory</span><span id="calc-active-mem">—</span></div>
+                <div class="calc-row"><span>Inactive Memory</span><span id="calc-inactive-mem">—</span></div>
+                <div class="calc-row"><span>Per-VM Minimum</span><span id="calc-vm">—</span></div>
+                <div class="calc-row total"><span>Monthly Estimate</span><span id="calc-total">—</span></div>
+            </div>
+        </div>
+
+        <hr/>
+
+        <nav>
+            <a href="/docs/what-is-exe">about</a>
+            <a href="/blog">blog</a>
+            <a href="/jobs">jobs</a>
+        </nav>
+    </main>
+    <script src="usage-pricing.js"></script>
+</body>
+</html>
+
