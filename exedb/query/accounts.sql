@@ -5,6 +5,11 @@ INSERT OR IGNORE INTO accounts (id, created_by) VALUES (?, ?);
 INSERT INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
 VALUES (?, ?, ?, ?, ?);
 
+-- name: InsertAccountPlanIgnore :exec
+-- InsertAccountPlanIgnore inserts an account plan, ignoring conflicts (e.g. from poller replays).
+INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
+VALUES (?, ?, ?, ?);
+
 -- name: GetActiveAccountPlan :one
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
 FROM account_plans

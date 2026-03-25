@@ -396,6 +396,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCheckoutParamsStmt, err = db.PrepareContext(ctx, getCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCheckoutParams: %w", err)
 	}
+	if q.getCreditStateStmt, err = db.PrepareContext(ctx, getCreditState); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCreditState: %w", err)
+	}
 	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
 	}
@@ -654,6 +657,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUsersWithOutOfRegionBoxesStmt, err = db.PrepareContext(ctx, getUsersWithOutOfRegionBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUsersWithOutOfRegionBoxes: %w", err)
 	}
+	if q.giftCreditsStmt, err = db.PrepareContext(ctx, giftCredits); err != nil {
+		return nil, fmt.Errorf("error preparing query GiftCredits: %w", err)
+	}
 	if q.grantBillingUpgradeBonusOnceStmt, err = db.PrepareContext(ctx, grantBillingUpgradeBonusOnce); err != nil {
 		return nil, fmt.Errorf("error preparing query GrantBillingUpgradeBonusOnce: %w", err)
 	}
@@ -683,6 +689,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertAccountPlanStmt, err = db.PrepareContext(ctx, insertAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAccountPlan: %w", err)
+	}
+	if q.insertAccountPlanIgnoreStmt, err = db.PrepareContext(ctx, insertAccountPlanIgnore); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAccountPlanIgnore: %w", err)
 	}
 	if q.insertAppTokenStmt, err = db.PrepareContext(ctx, insertAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAppToken: %w", err)
@@ -731,6 +740,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
+	}
+	if q.insertPaidCreditsStmt, err = db.PrepareContext(ctx, insertPaidCredits); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPaidCredits: %w", err)
 	}
 	if q.insertPasskeyStmt, err = db.PrepareContext(ctx, insertPasskey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPasskey: %w", err)
@@ -861,6 +873,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
 	}
+	if q.listGiftCreditsStmt, err = db.PrepareContext(ctx, listGiftCredits); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGiftCredits: %w", err)
+	}
 	if q.listGitHubInstallationsStmt, err = db.PrepareContext(ctx, listGitHubInstallations); err != nil {
 		return nil, fmt.Errorf("error preparing query ListGitHubInstallations: %w", err)
 	}
@@ -887,6 +902,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listNetActuateIPShardsStmt, err = db.PrepareContext(ctx, listNetActuateIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListNetActuateIPShards: %w", err)
+	}
+	if q.listSubscriptionEventsStmt, err = db.PrepareContext(ctx, listSubscriptionEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSubscriptionEvents: %w", err)
 	}
 	if q.listTeamBoxesForAdminStmt, err = db.PrepareContext(ctx, listTeamBoxesForAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForAdmin: %w", err)
@@ -1753,6 +1771,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCheckoutParamsStmt: %w", cerr)
 		}
 	}
+	if q.getCreditStateStmt != nil {
+		if cerr := q.getCreditStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCreditStateStmt: %w", cerr)
+		}
+	}
 	if q.getEmailBounceStmt != nil {
 		if cerr := q.getEmailBounceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBounceStmt: %w", cerr)
@@ -2183,6 +2206,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUsersWithOutOfRegionBoxesStmt: %w", cerr)
 		}
 	}
+	if q.giftCreditsStmt != nil {
+		if cerr := q.giftCreditsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing giftCreditsStmt: %w", cerr)
+		}
+	}
 	if q.grantBillingUpgradeBonusOnceStmt != nil {
 		if cerr := q.grantBillingUpgradeBonusOnceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing grantBillingUpgradeBonusOnceStmt: %w", cerr)
@@ -2231,6 +2259,11 @@ func (q *Queries) Close() error {
 	if q.insertAccountPlanStmt != nil {
 		if cerr := q.insertAccountPlanStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAccountPlanStmt: %w", cerr)
+		}
+	}
+	if q.insertAccountPlanIgnoreStmt != nil {
+		if cerr := q.insertAccountPlanIgnoreStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAccountPlanIgnoreStmt: %w", cerr)
 		}
 	}
 	if q.insertAppTokenStmt != nil {
@@ -2311,6 +2344,11 @@ func (q *Queries) Close() error {
 	if q.insertOrReplaceEmailVerificationStmt != nil {
 		if cerr := q.insertOrReplaceEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertOrReplaceEmailVerificationStmt: %w", cerr)
+		}
+	}
+	if q.insertPaidCreditsStmt != nil {
+		if cerr := q.insertPaidCreditsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPaidCreditsStmt: %w", cerr)
 		}
 	}
 	if q.insertPasskeyStmt != nil {
@@ -2528,6 +2566,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
 		}
 	}
+	if q.listGiftCreditsStmt != nil {
+		if cerr := q.listGiftCreditsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGiftCreditsStmt: %w", cerr)
+		}
+	}
 	if q.listGitHubInstallationsStmt != nil {
 		if cerr := q.listGitHubInstallationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listGitHubInstallationsStmt: %w", cerr)
@@ -2571,6 +2614,11 @@ func (q *Queries) Close() error {
 	if q.listNetActuateIPShardsStmt != nil {
 		if cerr := q.listNetActuateIPShardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listNetActuateIPShardsStmt: %w", cerr)
+		}
+	}
+	if q.listSubscriptionEventsStmt != nil {
+		if cerr := q.listSubscriptionEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSubscriptionEventsStmt: %w", cerr)
 		}
 	}
 	if q.listTeamBoxesForAdminStmt != nil {
@@ -3136,6 +3184,7 @@ type Queries struct {
 	getBoxesSharedWithUserStmt                 *sql.Stmt
 	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
+	getCreditStateStmt                         *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
@@ -3222,6 +3271,7 @@ type Queries struct {
 	getUserWithDetailsStmt                     *sql.Stmt
 	getUserWithSSHKeyStmt                      *sql.Stmt
 	getUsersWithOutOfRegionBoxesStmt           *sql.Stmt
+	giftCreditsStmt                            *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
 	hasPushTokensStmt                          *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
@@ -3232,6 +3282,7 @@ type Queries struct {
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
 	insertAccountPlanStmt                      *sql.Stmt
+	insertAccountPlanIgnoreStmt                *sql.Stmt
 	insertAppTokenStmt                         *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
 	insertBillingEventStmt                     *sql.Stmt
@@ -3248,6 +3299,7 @@ type Queries struct {
 	insertIntegrationStmt                      *sql.Stmt
 	insertOAuthStateStmt                       *sql.Stmt
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
+	insertPaidCreditsStmt                      *sql.Stmt
 	insertPasskeyStmt                          *sql.Stmt
 	insertPasskeyChallengeStmt                 *sql.Stmt
 	insertPendingRegistrationStmt              *sql.Stmt
@@ -3291,6 +3343,7 @@ type Queries struct {
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
+	listGiftCreditsStmt                        *sql.Stmt
 	listGitHubInstallationsStmt                *sql.Stmt
 	listGitHubUserTokensStmt                   *sql.Stmt
 	listGitHubUserTokensNeedingRenewalStmt     *sql.Stmt
@@ -3300,6 +3353,7 @@ type Queries struct {
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listLatitudeIPShardsStmt                   *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
+	listSubscriptionEventsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
@@ -3510,6 +3564,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
 		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
+		getCreditStateStmt:                         q.getCreditStateStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
@@ -3596,6 +3651,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
 		getUsersWithOutOfRegionBoxesStmt:           q.getUsersWithOutOfRegionBoxesStmt,
+		giftCreditsStmt:                            q.giftCreditsStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
 		hasPushTokensStmt:                          q.hasPushTokensStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
@@ -3606,6 +3662,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
 		insertAccountPlanStmt:                      q.insertAccountPlanStmt,
+		insertAccountPlanIgnoreStmt:                q.insertAccountPlanIgnoreStmt,
 		insertAppTokenStmt:                         q.insertAppTokenStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
@@ -3622,6 +3679,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertIntegrationStmt:                      q.insertIntegrationStmt,
 		insertOAuthStateStmt:                       q.insertOAuthStateStmt,
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
+		insertPaidCreditsStmt:                      q.insertPaidCreditsStmt,
 		insertPasskeyStmt:                          q.insertPasskeyStmt,
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
@@ -3665,6 +3723,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
+		listGiftCreditsStmt:                        q.listGiftCreditsStmt,
 		listGitHubInstallationsStmt:                q.listGitHubInstallationsStmt,
 		listGitHubUserTokensStmt:                   q.listGitHubUserTokensStmt,
 		listGitHubUserTokensNeedingRenewalStmt:     q.listGitHubUserTokensNeedingRenewalStmt,
@@ -3674,6 +3733,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
+		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,

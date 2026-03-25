@@ -465,6 +465,29 @@ func (q *Queries) InsertAccountPlan(ctx context.Context, arg InsertAccountPlanPa
 	return err
 }
 
+const insertAccountPlanIgnore = `-- name: InsertAccountPlanIgnore :exec
+INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
+VALUES (?, ?, ?, ?)
+`
+
+type InsertAccountPlanIgnoreParams struct {
+	AccountID string    `db:"account_id" json:"account_id"`
+	PlanID    string    `db:"plan_id" json:"plan_id"`
+	StartedAt time.Time `db:"started_at" json:"started_at"`
+	ChangedBy *string   `db:"changed_by" json:"changed_by"`
+}
+
+// InsertAccountPlanIgnore inserts an account plan, ignoring conflicts (e.g. from poller replays).
+func (q *Queries) InsertAccountPlanIgnore(ctx context.Context, arg InsertAccountPlanIgnoreParams) error {
+	_, err := q.exec(ctx, q.insertAccountPlanIgnoreStmt, insertAccountPlanIgnore,
+		arg.AccountID,
+		arg.PlanID,
+		arg.StartedAt,
+		arg.ChangedBy,
+	)
+	return err
+}
+
 const listAccountPlanHistory = `-- name: ListAccountPlanHistory :many
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
 FROM account_plans

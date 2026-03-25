@@ -72,3 +72,40 @@ func (q *Queries) ListBillingEventsForAccount(ctx context.Context, accountID str
 	}
 	return items, nil
 }
+
+const listSubscriptionEvents = `-- name: ListSubscriptionEvents :many
+SELECT account_id, event_type, event_at
+FROM billing_events
+WHERE account_id = ?
+ORDER BY event_at ASC
+`
+
+type ListSubscriptionEventsRow struct {
+	AccountID string    `db:"account_id" json:"account_id"`
+	EventType string    `db:"event_type" json:"event_type"`
+	EventAt   time.Time `db:"event_at" json:"event_at"`
+}
+
+// ListSubscriptionEvents returns subscription events for an account, ordered by time ascending.
+func (q *Queries) ListSubscriptionEvents(ctx context.Context, accountID string) ([]ListSubscriptionEventsRow, error) {
+	rows, err := q.query(ctx, q.listSubscriptionEventsStmt, listSubscriptionEvents, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSubscriptionEventsRow{}
+	for rows.Next() {
+		var i ListSubscriptionEventsRow
+		if err := rows.Scan(&i.AccountID, &i.EventType, &i.EventAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

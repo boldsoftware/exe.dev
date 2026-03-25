@@ -45,6 +45,10 @@ sql:
             go_type:
               type: "string"
               pointer: true
+          - column: "billing_credits.hour_bucket"
+            go_type:
+              type: "string"
+              pointer: true
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

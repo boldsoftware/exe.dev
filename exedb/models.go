@@ -61,15 +61,15 @@ type AuthToken struct {
 }
 
 type BillingCredit struct {
-	ID            int64      `db:"id" json:"id"`
-	AccountID     string     `db:"account_id" json:"account_id"`
-	Amount        int64      `db:"amount" json:"amount"`
-	StripeEventID *string    `db:"stripe_event_id" json:"stripe_event_id"`
-	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
-	HourBucket    *time.Time `db:"hour_bucket" json:"hour_bucket"`
-	CreditType    *string    `db:"credit_type" json:"credit_type"`
-	Note          *string    `db:"note" json:"note"`
-	GiftID        *string    `db:"gift_id" json:"gift_id"`
+	ID            int64     `db:"id" json:"id"`
+	AccountID     string    `db:"account_id" json:"account_id"`
+	Amount        int64     `db:"amount" json:"amount"`
+	StripeEventID *string   `db:"stripe_event_id" json:"stripe_event_id"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	HourBucket    *string   `db:"hour_bucket" json:"hour_bucket"`
+	CreditType    *string   `db:"credit_type" json:"credit_type"`
+	Note          *string   `db:"note" json:"note"`
+	GiftID        *string   `db:"gift_id" json:"gift_id"`
 }
 
 type BillingEvent struct {

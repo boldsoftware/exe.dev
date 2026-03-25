@@ -10,6 +10,79 @@ import (
 	"time"
 )
 
+const getCreditState = `-- name: GetCreditState :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN credit_type = 'gift' THEN amount ELSE 0 END), 0) AS INTEGER) AS gift,
+    CAST(COALESCE(SUM(CASE WHEN credit_type = 'usage' THEN amount ELSE 0 END), 0) AS INTEGER) AS used,
+    CAST(COALESCE(SUM(CASE WHEN credit_type IS NULL AND stripe_event_id IS NOT NULL THEN amount ELSE 0 END), 0) AS INTEGER) AS paid,
+    CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS total
+FROM billing_credits
+WHERE account_id = ?
+`
+
+type GetCreditStateRow struct {
+	Gift  int64 `db:"gift" json:"gift"`
+	Used  int64 `db:"used" json:"used"`
+	Paid  int64 `db:"paid" json:"paid"`
+	Total int64 `db:"total" json:"total"`
+}
+
+// GetCreditState returns the credit breakdown (gift, usage, paid, total) for an account.
+// Used (usage) rows are negative in the DB; the caller should negate the used value.
+func (q *Queries) GetCreditState(ctx context.Context, accountID string) (GetCreditStateRow, error) {
+	row := q.queryRow(ctx, q.getCreditStateStmt, getCreditState, accountID)
+	var i GetCreditStateRow
+	err := row.Scan(
+		&i.Gift,
+		&i.Used,
+		&i.Paid,
+		&i.Total,
+	)
+	return i, err
+}
+
+const giftCredits = `-- name: GiftCredits :exec
+INSERT OR IGNORE INTO billing_credits (account_id, amount, credit_type, gift_id, note)
+VALUES (?, ?, 'gift', ?, ?)
+`
+
+type GiftCreditsParams struct {
+	AccountID string  `db:"account_id" json:"account_id"`
+	Amount    int64   `db:"amount" json:"amount"`
+	GiftID    *string `db:"gift_id" json:"gift_id"`
+	Note      *string `db:"note" json:"note"`
+}
+
+// GiftCredits inserts a gift credit for a billing account.
+// The gift_id unique index provides idempotency; duplicates are silently ignored.
+func (q *Queries) GiftCredits(ctx context.Context, arg GiftCreditsParams) error {
+	_, err := q.exec(ctx, q.giftCreditsStmt, giftCredits,
+		arg.AccountID,
+		arg.Amount,
+		arg.GiftID,
+		arg.Note,
+	)
+	return err
+}
+
+const insertPaidCredits = `-- name: InsertPaidCredits :exec
+INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
+VALUES (?, ?, ?)
+`
+
+type InsertPaidCreditsParams struct {
+	AccountID     string  `db:"account_id" json:"account_id"`
+	Amount        int64   `db:"amount" json:"amount"`
+	StripeEventID *string `db:"stripe_event_id" json:"stripe_event_id"`
+}
+
+// InsertPaidCredits records a paid credit from a Stripe payment.
+// The stripe_event_id unique index provides idempotency; duplicates are silently ignored.
+func (q *Queries) InsertPaidCredits(ctx context.Context, arg InsertPaidCreditsParams) error {
+	_, err := q.exec(ctx, q.insertPaidCreditsStmt, insertPaidCredits, arg.AccountID, arg.Amount, arg.StripeEventID)
+	return err
+}
+
 const listBillingCreditsForAccount = `-- name: ListBillingCreditsForAccount :many
 SELECT id, account_id, amount, stripe_event_id, created_at, hour_bucket, credit_type, gift_id, note
 FROM billing_credits WHERE account_id = ?
@@ -17,15 +90,15 @@ ORDER BY id DESC
 `
 
 type ListBillingCreditsForAccountRow struct {
-	ID            int64      `db:"id" json:"id"`
-	AccountID     string     `db:"account_id" json:"account_id"`
-	Amount        int64      `db:"amount" json:"amount"`
-	StripeEventID *string    `db:"stripe_event_id" json:"stripe_event_id"`
-	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
-	HourBucket    *time.Time `db:"hour_bucket" json:"hour_bucket"`
-	CreditType    *string    `db:"credit_type" json:"credit_type"`
-	GiftID        *string    `db:"gift_id" json:"gift_id"`
-	Note          *string    `db:"note" json:"note"`
+	ID            int64     `db:"id" json:"id"`
+	AccountID     string    `db:"account_id" json:"account_id"`
+	Amount        int64     `db:"amount" json:"amount"`
+	StripeEventID *string   `db:"stripe_event_id" json:"stripe_event_id"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	HourBucket    *string   `db:"hour_bucket" json:"hour_bucket"`
+	CreditType    *string   `db:"credit_type" json:"credit_type"`
+	GiftID        *string   `db:"gift_id" json:"gift_id"`
+	Note          *string   `db:"note" json:"note"`
 }
 
 func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID string) ([]ListBillingCreditsForAccountRow, error) {
@@ -61,9 +134,52 @@ func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID st
 	return items, nil
 }
 
+const listGiftCredits = `-- name: ListGiftCredits :many
+SELECT amount, note, gift_id, created_at
+FROM billing_credits
+WHERE account_id = ? AND credit_type = 'gift'
+ORDER BY created_at DESC, id DESC
+`
+
+type ListGiftCreditsRow struct {
+	Amount    int64     `db:"amount" json:"amount"`
+	Note      *string   `db:"note" json:"note"`
+	GiftID    *string   `db:"gift_id" json:"gift_id"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+}
+
+// ListGiftCredits returns all gift credits for an account, most recent first.
+func (q *Queries) ListGiftCredits(ctx context.Context, accountID string) ([]ListGiftCreditsRow, error) {
+	rows, err := q.query(ctx, q.listGiftCreditsStmt, listGiftCredits, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGiftCreditsRow{}
+	for rows.Next() {
+		var i ListGiftCreditsRow
+		if err := rows.Scan(
+			&i.Amount,
+			&i.Note,
+			&i.GiftID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const useCredits = `-- name: UseCredits :one
 INSERT INTO billing_credits (account_id, amount, hour_bucket, credit_type)
-VALUES (?1, ?2, strftime('%Y-%m-%d %H:00:00', CURRENT_TIMESTAMP), ?3)
+VALUES (?1, ?2, ?3, ?4)
 ON CONFLICT(account_id, hour_bucket, credit_type)
 DO UPDATE SET amount = billing_credits.amount + excluded.amount
 RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM billing_credits WHERE account_id = ?1) AS INTEGER)
@@ -72,13 +188,19 @@ RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM billing_credits WHERE accou
 type UseCreditsParams struct {
 	AccountID  string  `db:"account_id" json:"account_id"`
 	Amount     int64   `db:"amount" json:"amount"`
+	HourBucket *string `db:"hour_bucket" json:"hour_bucket"`
 	CreditType *string `db:"credit_type" json:"credit_type"`
 }
 
 // UseCredits inserts a deduction into the credit ledger and returns the new balance.
 // amount should be negative for deductions. Negative balances are allowed.
 func (q *Queries) UseCredits(ctx context.Context, arg UseCreditsParams) (int64, error) {
-	row := q.queryRow(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount, arg.CreditType)
+	row := q.queryRow(ctx, q.useCreditsStmt, useCredits,
+		arg.AccountID,
+		arg.Amount,
+		arg.HourBucket,
+		arg.CreditType,
+	)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

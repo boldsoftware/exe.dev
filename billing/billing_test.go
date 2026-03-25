@@ -2,12 +2,12 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
 
 	"exe.dev/billing/tender"
+	"exe.dev/exedb"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -394,14 +394,14 @@ func TestGetCreditState(t *testing.T) {
 	}
 
 	// Simulate a paid credit by inserting directly (SyncCredits path).
-	err = m.exec(ctx, `
-		INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
-		VALUES (@accountID, @amount, @stripeEventID)
-	`,
-		sql.Named("accountID", accountID),
-		sql.Named("amount", tender.Mint(3000, 0)),
-		sql.Named("stripeEventID", "pi_test_paid"),
-	)
+	stripeEventID := "pi_test_paid"
+	err = exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.InsertPaidCredits(ctx, exedb.InsertPaidCreditsParams{
+			AccountID:     accountID,
+			Amount:        tender.Mint(3000, 0).Microcents(),
+			StripeEventID: &stripeEventID,
+		})
+	})
 	if err != nil {
 		t.Fatalf("insert paid credit: %v", err)
 	}

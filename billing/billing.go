@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"iter"
 	"log/slog"
 	"os"
 	"sync"
@@ -16,6 +15,7 @@ import (
 
 	"exe.dev/billing/tender"
 	"exe.dev/errorz"
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v82"
 	"tailscale.com/syncs"
@@ -551,11 +551,6 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 		},
 	}
 
-	const q = `
-		INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at)
-		VALUES (@accountID, @eventType, @eventAt)
-	`
-
 	maxEventAt := sinceUnix
 	for event, err := range c.V1Events.List(ctx, params) {
 		if err != nil {
@@ -588,11 +583,14 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 
 		eventAt := time.Unix(event.Created, 0)
 		maxEventAt = max(maxEventAt, eventAt.Unix())
-		err := m.exec(ctx, q,
-			sql.Named("accountID", sub.Customer.ID),
-			sql.Named("eventType", eventType),
-			sql.Named("eventAt", sqlite.NormalizeTime(eventAt)),
-		)
+		err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			_, err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+				AccountID: sub.Customer.ID,
+				EventType: eventType,
+				EventAt:   sqlite.NormalizeTime(eventAt),
+			})
+			return err
+		})
 		if err != nil {
 			return since, fmt.Errorf("insert billing event: %w", err)
 		}
@@ -625,38 +623,30 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	}
 
 	// Skip if the active plan already matches — avoids duplicate rows from poller replays.
-	const checkQ = `SELECT plan_id FROM account_plans WHERE account_id = @accountID AND ended_at IS NULL`
-	var currentPlanID string
-	for rows, err := range m.query(ctx, checkQ, sql.Named("accountID", accountID)) {
-		if err != nil {
-			return fmt.Errorf("check current plan: %w", err)
-		}
-		if err := rows.Scan(&currentPlanID); err != nil {
-			return fmt.Errorf("scan current plan: %w", err)
-		}
+	plan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check current plan: %w", err)
 	}
-	if currentPlanID == newPlanID {
+	if plan.PlanID == newPlanID {
 		return nil
 	}
 
 	normalizedAt := sqlite.NormalizeTime(eventAt)
 	changedBy := "stripe:event"
 
-	const closeQ = `UPDATE account_plans SET ended_at = @endedAt WHERE account_id = @accountID AND ended_at IS NULL`
-	if err := m.exec(ctx, closeQ,
-		sql.Named("accountID", accountID),
-		sql.Named("endedAt", normalizedAt),
-	); err != nil {
+	if err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).CloseAccountPlan, exedb.CloseAccountPlanParams{
+		AccountID: accountID,
+		EndedAt:   &normalizedAt,
+	}); err != nil {
 		return fmt.Errorf("close existing plan: %w", err)
 	}
 
-	const insertQ = `INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by) VALUES (@accountID, @planID, @startedAt, @changedBy)`
-	if err := m.exec(ctx, insertQ,
-		sql.Named("accountID", accountID),
-		sql.Named("planID", newPlanID),
-		sql.Named("startedAt", normalizedAt),
-		sql.Named("changedBy", changedBy),
-	); err != nil {
+	if err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertAccountPlanIgnore, exedb.InsertAccountPlanIgnoreParams{
+		AccountID: accountID,
+		PlanID:    newPlanID,
+		StartedAt: normalizedAt,
+		ChangedBy: &changedBy,
+	}); err != nil {
 		return fmt.Errorf("insert new plan: %w", err)
 	}
 
@@ -665,22 +655,17 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 
 // SubscriptionEvents returns subscription events for an account, ordered by time.
 func (m *Manager) SubscriptionEvents(ctx context.Context, billingID string) ([]SubscriptionEvent, error) {
-	const q = `
-		SELECT account_id, event_type, event_at
-		FROM billing_events
-		WHERE account_id = @accountID
-		ORDER BY event_at ASC
-	`
+	rows, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListSubscriptionEvents, billingID)
+	if err != nil {
+		return nil, fmt.Errorf("query billing events: %w", err)
+	}
 	var events []SubscriptionEvent
-	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
-		if err != nil {
-			return nil, fmt.Errorf("query billing events: %w", err)
-		}
-		var event SubscriptionEvent
-		if err := rows.Scan(&event.AccountID, &event.EventType, &event.EventAt); err != nil {
-			return nil, fmt.Errorf("scan billing event: %w", err)
-		}
-		events = append(events, event)
+	for _, r := range rows {
+		events = append(events, SubscriptionEvent{
+			AccountID: r.AccountID,
+			EventType: r.EventType,
+			EventAt:   r.EventAt,
+		})
 	}
 	return events, nil
 }
@@ -759,16 +744,14 @@ func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCred
 		note = "Credit gift from support@exe.dev"
 	}
 
-	const q = `
-		INSERT OR IGNORE INTO billing_credits (account_id, amount, credit_type, gift_id, note)
-		VALUES (@accountID, @amount, 'gift', @giftID, @note)
-	`
-	return m.exec(ctx, q,
-		sql.Named("accountID", billingID),
-		sql.Named("amount", amount),
-		sql.Named("giftID", giftID),
-		sql.Named("note", note),
-	)
+	return exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.GiftCredits(ctx, exedb.GiftCreditsParams{
+			AccountID: billingID,
+			Amount:    amount.Microcents(),
+			GiftID:    &giftID,
+			Note:      &note,
+		})
+	})
 }
 
 // CreditState holds the breakdown of credits for an account.
@@ -782,30 +765,21 @@ type CreditState struct {
 // GetCreditState returns the credit breakdown for the given billing account.
 // Used is stored as an absolute (positive) value even though usage rows are negative in the DB.
 func (m *Manager) GetCreditState(ctx context.Context, billingID string) (*CreditState, error) {
-	const q = `
-		SELECT
-			CAST(COALESCE(SUM(CASE WHEN credit_type = 'gift' THEN amount ELSE 0 END), 0) AS INTEGER) AS gift,
-			CAST(COALESCE(SUM(CASE WHEN credit_type = 'usage' THEN amount ELSE 0 END), 0) AS INTEGER) AS used,
-			CAST(COALESCE(SUM(CASE WHEN credit_type IS NULL AND stripe_event_id IS NOT NULL THEN amount ELSE 0 END), 0) AS INTEGER) AS paid,
-			CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS total
-		FROM billing_credits
-		WHERE account_id = @accountID
-	`
-
-	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
-		if err != nil {
-			return nil, fmt.Errorf("get credit state: %w", err)
+	row, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetCreditState, billingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &CreditState{}, nil
 		}
-		var s CreditState
-		if err := rows.Scan(&s.Gift, &s.Used, &s.Paid, &s.Total); err != nil {
-			return nil, fmt.Errorf("scan credit state: %w", err)
-		}
-		// Used is stored as negative in DB; return absolute value.
-		s.Used = tender.Mint(0, -s.Used.Microcents())
-		return &s, nil
+		return nil, fmt.Errorf("get credit state: %w", err)
 	}
-
-	return &CreditState{}, nil
+	s := &CreditState{
+		Gift:  tender.Mint(0, row.Gift),
+		Paid:  tender.Mint(0, row.Paid),
+		Total: tender.Mint(0, row.Total),
+		// Used is stored as negative in DB; return absolute value.
+		Used: tender.Mint(0, -row.Used),
+	}
+	return s, nil
 }
 
 // GiftEntry represents a single gift credit entry.
@@ -819,23 +793,22 @@ type GiftEntry struct {
 // ListGifts returns all gift credits for the given billing account, ordered by
 // most recent first. Returns an empty (non-nil) slice if no gifts exist.
 func (m *Manager) ListGifts(ctx context.Context, billingID string) ([]GiftEntry, error) {
-	const q = `
-		SELECT amount, note, gift_id, created_at
-		FROM billing_credits
-		WHERE account_id = @accountID AND credit_type = 'gift'
-		ORDER BY created_at DESC, id DESC
-	`
-
-	gifts := []GiftEntry{} // non-nil empty slice
-	for rows, err := range m.query(ctx, q, sql.Named("accountID", billingID)) {
-		if err != nil {
-			return nil, fmt.Errorf("list gifts: %w", err)
+	rows, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListGiftCredits, billingID)
+	if err != nil {
+		return nil, fmt.Errorf("list gifts: %w", err)
+	}
+	gifts := make([]GiftEntry, len(rows))
+	for i, r := range rows {
+		gifts[i] = GiftEntry{
+			Amount:    tender.Mint(0, r.Amount),
+			CreatedAt: r.CreatedAt,
 		}
-		var g GiftEntry
-		if err := rows.Scan(&g.Amount, &g.Note, &g.GiftID, &g.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan gift: %w", err)
+		if r.Note != nil {
+			gifts[i].Note = *r.Note
 		}
-		gifts = append(gifts, g)
+		if r.GiftID != nil {
+			gifts[i].GiftID = *r.GiftID
+		}
 	}
 	return gifts, nil
 }
@@ -845,39 +818,18 @@ func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity i
 		return tender.Zero(), fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())
 	}
 
-	const q = `
-		-- Insert a new credit deduction for the current hour and credit type,
-		-- or update the existing one if it already exists,
-		-- and return the new total balance for the account after the deduction for all types.
-		INSERT INTO billing_credits (account_id, amount, hour_bucket, credit_type)
-		VALUES (@accountID, @amount, @hourBucket, @creditType)
-		ON CONFLICT(account_id, hour_bucket, credit_type) DO
-			UPDATE SET amount = billing_credits.amount + excluded.amount
-		RETURNING (
-			-- Return the new balance after deduction
-			SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER)
-			FROM billing_credits
-			WHERE account_id = @accountID
-		)
-	`
-
-	for rows, err := range m.query(ctx, q,
-		sql.Named("accountID", billingID),
-		sql.Named("amount", unitPrice.Times(-quantity)),
-		sql.Named("hourBucket", time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")),
-		sql.Named("creditType", "usage"),
-	) {
-		if err != nil {
-			return tender.Zero(), err
-		}
-		var rem tender.Value
-		if err := rows.Scan(&rem); err != nil {
-			return tender.Zero(), err
-		}
-		return rem, nil
+	creditType := "usage"
+	hourBucket := time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")
+	rem, err := exedb.WithTxRes1(m.DB, ctx, (*exedb.Queries).UseCredits, exedb.UseCreditsParams{
+		AccountID:  billingID,
+		Amount:     unitPrice.Times(-quantity).Microcents(),
+		HourBucket: &hourBucket,
+		CreditType: &creditType,
+	})
+	if err != nil {
+		return tender.Zero(), err
 	}
-
-	return tender.Zero(), errors.New("UseCredits: query returned no rows (but should have)")
+	return tender.Mint(0, rem), nil
 }
 
 // BuyCreditsParams contains the parameters for purchasing credits.
@@ -980,17 +932,15 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 		}
 
 		// TODO(bmizrany): bulk insert?
-		const q = `
-			INSERT OR IGNORE INTO billing_credits (account_id, amount, stripe_event_id)
-			VALUES (@accountID, @amount, @stripeEventID)
-		`
-
 		amount := tender.Mint(intent.Amount, 0)
-		err := m.exec(ctx, q,
-			sql.Named("accountID", intent.Customer.ID),
-			sql.Named("amount", amount),
-			sql.Named("stripeEventID", intent.ID),
-		)
+		stripeEventID := intent.ID
+		err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.InsertPaidCredits(ctx, exedb.InsertPaidCreditsParams{
+				AccountID:     intent.Customer.ID,
+				Amount:        amount.Microcents(),
+				StripeEventID: &stripeEventID,
+			})
+		})
 		if err != nil {
 			return fmt.Errorf("insert credit ledger entry: %w", err)
 		}
@@ -1027,36 +977,4 @@ func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[strin
 		result[charge.PaymentIntent.ID] = charge.ReceiptURL
 	}
 	return result, nil
-}
-
-func (m *Manager) exec(ctx context.Context, q string, args ...any) error {
-	for _, err := range m.query(ctx, q, args...) {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
-func (m *Manager) query(ctx context.Context, q string, args ...any) iter.Seq2[*sql.Rows, error] {
-	return func(yield func(*sql.Rows, error) bool) {
-		err := m.DB.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			rows, err := tx.Query(q, args...)
-			if err != nil {
-				return err
-			}
-			defer rows.Close()
-
-			for rows.Next() {
-				if !yield(rows, nil) {
-					break
-				}
-			}
-			return rows.Err()
-		})
-		if err != nil {
-			yield(nil, err)
-		}
-	}
 }
