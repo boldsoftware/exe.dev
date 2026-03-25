@@ -537,6 +537,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleDebug)).ServeHTTP(w, r)
 		return
 	} else if strings.HasPrefix(path, "/docs") || path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" {
+		// Serve Vue SPA for docs page routes (HTML views, not raw content, assets, or section pages)
+		isRawContent := path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" ||
+			strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".txt")
+		isAsset := strings.HasSuffix(path, ".svg") || strings.HasSuffix(path, ".png") ||
+			strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".gif")
+		isSection := strings.HasPrefix(path, "/docs/section/")
+		if r.Method == http.MethodGet && !isRawContent && !isAsset && !isSection {
+			if s.serveDashboardUI(w, r) {
+				return
+			}
+		}
 		if s.docs != nil && s.docs.Handle(w, r) {
 			return
 		}
@@ -894,6 +905,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ideas/submit":
 		s.handleTemplateSubmitAPI(w, r)
 		return
+	case "/api/docs":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if s.docs != nil {
+			s.docs.HandleAPIList(w, r)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"groups":[],"defaultSlug":""}`))
+		}
+		return
 	case "/idea":
 		s.handleIdeaPage(w, r)
 		return
@@ -901,6 +924,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/idea", http.StatusMovedPermanently)
 		return
 	default:
+		// /api/docs/entry/<slug> returns a single doc entry as JSON
+		if slug, ok := strings.CutPrefix(path, "/api/docs/entry/"); ok && slug != "" {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if s.docs != nil {
+				s.docs.HandleAPIEntry(w, r, slug)
+			} else {
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			}
+			return
+		}
 		// /idea/<slug> is the idea page with a specific idea pre-opened
 		if _, ok := strings.CutPrefix(path, "/idea/"); ok {
 			s.handleIdeaPage(w, r)

@@ -8,7 +8,7 @@
             <span class="logo-text">exe.dev</span>
           </router-link>
           <nav class="nav-links">
-            <a href="/docs">docs</a>
+            <router-link to="/docs" class="docs-link">docs</router-link>
           </nav>
         </div>
         <div class="nav-right">

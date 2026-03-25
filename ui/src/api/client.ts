@@ -266,3 +266,48 @@ export async function fetchGitHubRepos(): Promise<any> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
 }
+
+// --- Docs API ---
+
+export interface DocsDocRef {
+  slug: string
+  path: string
+  title: string
+  description?: string
+}
+
+export interface DocsGroup {
+  heading: string
+  slug: string
+  docs: DocsDocRef[]
+}
+
+export interface DocsListData {
+  groups: DocsGroup[]
+  defaultSlug: string
+}
+
+export interface DocsEntryData {
+  entry: {
+    slug: string
+    path: string
+    title: string
+    description: string
+    content: string
+    markdown: string
+  }
+  prev: DocsDocRef | null
+  next: DocsDocRef | null
+}
+
+export async function fetchDocsList(): Promise<DocsListData> {
+  const resp = await fetch('/api/docs')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchDocsEntry(slug: string): Promise<DocsEntryData> {
+  const resp = await fetch(`/api/docs/entry/${encodeURIComponent(slug)}`)
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}

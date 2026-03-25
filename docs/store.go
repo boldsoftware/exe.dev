@@ -3,6 +3,7 @@ package docs
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -435,6 +436,149 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	return false
+}
+
+// HandleAPIList returns the docs structure as JSON (groups with doc metadata, no content).
+func (h *Handler) HandleAPIList(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.store == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"groups":[],"defaultSlug":""}`))
+		return
+	}
+
+	isSudoer := h.topbarData(r).IsSudoer
+
+	type apiDoc struct {
+		Slug        string `json:"slug"`
+		Path        string `json:"path"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	type apiGroup struct {
+		Heading string   `json:"heading"`
+		Slug    string   `json:"slug"`
+		Docs    []apiDoc `json:"docs"`
+	}
+	type apiResponse struct {
+		Groups      []apiGroup `json:"groups"`
+		DefaultSlug string     `json:"defaultSlug"`
+	}
+
+	resp := apiResponse{
+		Groups: make([]apiGroup, 0),
+	}
+
+	for _, g := range h.store.Groups() {
+		ag := apiGroup{
+			Heading: g.Heading,
+			Slug:    g.Slug,
+			Docs:    make([]apiDoc, 0),
+		}
+		for _, e := range g.Docs {
+			if !h.canShow(e, isSudoer) {
+				continue
+			}
+			ag.Docs = append(ag.Docs, apiDoc{
+				Slug:        e.Slug,
+				Path:        e.Path,
+				Title:       e.Title + h.statusTag(e),
+				Description: e.Description,
+			})
+		}
+		if len(ag.Docs) > 0 {
+			resp.Groups = append(resp.Groups, ag)
+		}
+	}
+
+	// Find the default slug from the default path.
+	if e, ok := h.store.byPath[h.store.defaultPath]; ok {
+		resp.DefaultSlug = e.Slug
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// HandleAPIEntry returns a single doc entry with content, markdown, and prev/next links as JSON.
+func (h *Handler) HandleAPIEntry(w http.ResponseWriter, r *http.Request, slug string) {
+	if h == nil || h.store == nil {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+
+	entry, ok := h.store.EntryBySlug(slug)
+	if !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+
+	isSudoer := h.topbarData(r).IsSudoer
+	if !h.canShow(entry, isSudoer) {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+
+	type apiDocRef struct {
+		Slug  string `json:"slug"`
+		Path  string `json:"path"`
+		Title string `json:"title"`
+	}
+	type apiEntry struct {
+		Slug        string `json:"slug"`
+		Path        string `json:"path"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+		Markdown    string `json:"markdown"`
+	}
+	type apiResponse struct {
+		Entry apiEntry   `json:"entry"`
+		Prev  *apiDocRef `json:"prev"`
+		Next  *apiDocRef `json:"next"`
+	}
+
+	resp := apiResponse{
+		Entry: apiEntry{
+			Slug:        entry.Slug,
+			Path:        entry.Path,
+			Title:       entry.Title + h.statusTag(entry),
+			Description: entry.Description,
+			Content:     string(entry.Content),
+			Markdown:    entry.Markdown,
+		},
+	}
+
+	// Compute prev/next from the flattened visible doc list.
+	var flat []*Entry
+	for _, g := range h.store.Groups() {
+		for _, e := range g.Docs {
+			if h.canShow(e, isSudoer) {
+				flat = append(flat, e)
+			}
+		}
+	}
+	for i, e := range flat {
+		if e.Path == entry.Path {
+			if i > 0 {
+				resp.Prev = &apiDocRef{
+					Slug:  flat[i-1].Slug,
+					Path:  flat[i-1].Path,
+					Title: flat[i-1].Title,
+				}
+			}
+			if i < len(flat)-1 {
+				resp.Next = &apiDocRef{
+					Slug:  flat[i+1].Slug,
+					Path:  flat[i+1].Path,
+					Title: flat[i+1].Title,
+				}
+			}
+			break
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // topbarData returns the topbar fields for a request.
