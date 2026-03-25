@@ -56,6 +56,12 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sloghttp.AddCustomAttributes(r, slog.String("user_id", userID))
 	}
 
+	// /__exe.dev/who is served directly regardless of host or protocol.
+	if r.URL.Path == "/__exe.dev/who" {
+		wp.handleDebugWho(w, r)
+		return
+	}
+
 	if isProxy {
 		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		ps.HandleProxyRequest(w, r)
@@ -96,9 +102,6 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
 			return
 		}
-	case r.URL.Path == "/__exe.dev/who":
-		wp.handleDebugWho(w, r)
-		return
 	}
 
 	// This is a web request that we aren't going to handle
