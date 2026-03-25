@@ -1,7 +1,6 @@
 # Billing Architecture
 
 For the current billing architecture, see [devdocs/BILLING.md](../devdocs/BILLING.md).
-What follows is a proposed evolution of the billing system.
 
 ## Plans and Entitlements
 
@@ -10,13 +9,13 @@ All plans are defined in `billing/entitlement/plan.go`. Each plan grants a set o
 | Plan | Version | Price | Entitlements |
 |------|---------|-------|-------------|
 | VIP | `"vip"` | $0 | All (wildcard) |
-| Restricted | `"restricted"` | — | None |
+| Individual | `"individual"` | $20/mo | `llm:use`, `credit:purchase`, `invite:request`, `team:create`, `vm:create`, `vm:connect`, `vm:run`. Signup bonus: $100 |
 | Team | `"team"` | — | `llm:use`, `credit:purchase`, `invite:request`, `vm:create`, `vm:connect`, `vm:run` |
-| Individual | `"individual"` | $20/mo | Same as Team + `team:create`. Signup bonus: $100 |
 | Friend | `"friend"` | $0 | `llm:use`, `vm:create`, `vm:connect`, `vm:run` |
 | Grandfathered | `"grandfathered"` | $0 | Same as Friend |
-| Invite | `"invite"` | $0 (trial) | Same as Friend |
+| Trial | `"trial"` | $0 | Same as Friend |
 | Basic | `"basic"` | $0 | `llm:use`, `vm:connect` |
+| Restricted | `"restricted"` | — | None |
 
 ## Credits Architecture
 
@@ -156,57 +155,118 @@ This entire refresh system lives in `llmgateway/credit.go` and is a candidate fo
 
 Entitlements are boolean feature gates that control what features an account has access to (e.g. VM creation, credit purchases, LLM gateway). This is not an authorization system — it determines feature availability per plan, not user permissions. Each plan grants a fixed set of entitlements, checked at request time via `UserHasEntitlement`.
 
+### Plan Resolution
+
+Plan resolution uses the `account_plans` table. Every user has an account (created at signup), and every account has exactly one active plan row (`ended_at IS NULL`). For team members, the parent account's plan is used instead.
+
 ```
 User request (SSH/HTTP)
          │
          ▼
-  Resolve plan version
-  ┌────────────────────────────────────────┐
-  │  GetUserBilling()                      │  ◄── SQL: billing_exemption, billing_status,
-  │  GetPlanVersion(UserPlanInputs)        │       created_at, team_billing_active
-  │                                        │
-  │  Canceled?           ──► Basic         │
-  │  Friend + overrides? ──► VIP           │
-  │  Friend?             ──► Friend        │
-  │  Team billing?       ──► Team          │
-  │  Has billing?        ──► Individual    │
-  │  Trial + valid?      ──► Invite        │
-  │  Old user?           ──► Grandfathered │
-  │  Default             ──► Basic         │
-  └────────────────────────────────────────┘
+  UserHasEntitlement(source, entitlement, userID)
          │
          ▼
-  Check entitlement
-  ┌────────────────────────────────────────┐
-  │  PlanGrants(version, entitlement)      │
-  │                                        │
-  │  Plan ──► Entitlements map             │
-  │  VIP  ──► All: true (wildcard)         │
-  │  Restricted ──► nothing                │
-  │  Basic ──► LLMUse, VMConnect only      │
-  └────────────────────────────────────────┘
+  GetActivePlanForUser(userID)
+  ┌──────────────────────────────────────────────────────┐
+  │                                                      │
+  │  users ──► accounts (via created_by)                 │
+  │              │                                       │
+  │              ├── parent_id IS NULL                    │
+  │              │   └── own account_plans row            │
+  │              │       (WHERE ended_at IS NULL)         │
+  │              │                                        │
+  │              └── parent_id IS NOT NULL (team member)  │
+  │                  └── parent's account_plans row       │
+  │                      (WHERE ended_at IS NULL)         │
+  │                                                      │
+  │  Returns: plan_id, account_id                        │
+  └──────────────────────────────────────────────────────┘
+         │
+         ▼
+  PlanGrants(plan_id, entitlement)
+  ┌──────────────────────────────────────────────────────┐
+  │                                                      │
+  │  plan_id ──► Plan.Entitlements map                   │
+  │                                                      │
+  │  "vip"        ──► All: true (wildcard)               │
+  │  "individual" ──► all 7 entitlements                 │
+  │  "team"       ──► all except team:create             │
+  │  "friend"     ──► llm:use, vm:create/connect/run    │
+  │  "trial"      ──► same as friend                    │
+  │  "basic"      ──► llm:use, vm:connect only          │
+  │  "restricted" ──► nothing                            │
+  │                                                      │
+  │  Granted? ──► allow request                          │
+  │  Denied?  ──► log + reject                           │
+  └──────────────────────────────────────────────────────┘
 ```
 
-Plans are defined in `billing/entitlement/plan.go` as a static map. Each plan has:
+### Account Hierarchy
 
-- `Version` — identifier (e.g. `"individual"`)
-- `Name` — display name (e.g. `"Individual"`)
-- `Entitlements` — `map[Entitlement]bool` for boolean feature gates
-- `Quotas` — `PlanQuotas` struct for numeric values (e.g. `SignupBonusCreditUSD`)
+```
+  Individual account          Team billing owner
+  ┌────────────────┐          ┌────────────────┐
+  │ id: exe_abc    │          │ id: exe_team1  │
+  │ parent_id: NULL│          │ parent_id: NULL│
+  │ plan: individual          │ plan: individual
+  └────────────────┘          └───────┬────────┘
+                                      │ parent_id
+                              ┌───────┴────────┐
+                              │ id: exe_member1│
+                              │ parent_id:     │
+                              │   exe_team1    │
+                              │ plan: basic    │  ◄── own plan ignored,
+                              └────────────────┘      parent's plan used
+```
+
+Team members' entitlements are resolved through the parent account's plan. The member's own plan row (`basic`) is not used for entitlement checks — `GetActivePlanForUser` follows `parent_id` and returns the parent's active plan.
+
+### Plan Lifecycle
+
+Plans change via `account_plans` rows (append-only history):
+
+```
+  Signup (SSH/OAuth/email)      Stripe checkout success
+  ┌─────────────────────┐      ┌─────────────────────┐
+  │ createAccountWith   │      │ syncAccountPlan      │
+  │ BasicPlan           │      │ (subscription poller)│
+  │                     │      │                      │
+  │ INSERT account      │      │ Close current plan   │
+  │ INSERT account_plan │      │ (set ended_at)       │
+  │ plan_id = "basic"   │      │                      │
+  │ changed_by =        │      │ INSERT account_plan  │
+  │   "system:signup"   │      │ plan_id = "individual│
+  └─────────────────────┘      │ changed_by =         │
+                               │   "stripe:event"     │
+  Invite code applied          └─────────────────────┘
+  ┌─────────────────────┐
+  │ applyInviteCode     │      Cancellation
+  │                     │      ┌─────────────────────┐
+  │ Close basic plan    │      │ syncAccountPlan      │
+  │ INSERT account_plan │      │                      │
+  │ plan_id = "trial"   │      │ Close current plan   │
+  │   or "friend"       │      │ INSERT account_plan  │
+  │ changed_by =        │      │ plan_id = "basic"    │
+  │   "system:invite"   │      │ changed_by =         │
+  └─────────────────────┘      │   "stripe:event"     │
+                               └─────────────────────┘
+```
 
 ### Key files
 
 | File | Role |
 |------|------|
-| `billing/entitlement/plan.go` | Plan definitions, `GetPlanVersion`, `PlanGrants`, `PlanQuotas` |
+| `billing/entitlement/plan.go` | Plan catalog, `PlanGrants`, `PlanQuotas`, `GetPlanByID` |
 | `billing/entitlement/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
 | `execore/billing_status.go` | `UserHasEntitlement` — main entitlement check used by request handlers |
+| `exedb/query/accounts.sql` | `GetActivePlanForUser` — SQL that walks account hierarchy |
+| `execore/subscription_poller.go` | `syncAccountPlan` — keeps account_plans in sync with Stripe |
 
 ## Three Billing Systems
 
 ### 1. Subscriptions (Access Gating)
 Controls whether a user can access exe.dev. Managed via Stripe subscriptions.
-The subscription poller (`execore/subscription_poller.go`) syncs status from Stripe every ~5 minutes.
+The subscription poller (`execore/subscription_poller.go`) syncs status from Stripe every ~5 minutes and calls `syncAccountPlan` to keep `account_plans` in sync.
 Subscriptions can be created via Stripe Checkout or directly in the Stripe dashboard.
 
 ### 2. Billing Credits (Prepaid Balance)
@@ -216,7 +276,7 @@ Accounts can go up to $2.00 negative (debt tolerance).
 
 ### 3. LLM Gateway Credits (Per-User Quota)
 Rate-limiting mechanism for LLM API proxy usage. Not purchasable — allocated by plan tier.
-Refreshes per hour based on plan. See table above for rates.
+Refreshes monthly for paid users, flat lifetime grant for free users.
 
 ## Spending Waterfall (LLM Requests)
 1. Gateway credits first (per-user quota)
@@ -224,13 +284,9 @@ Refreshes per hour based on plan. See table above for rates.
 3. Debt up to $2.00 tolerated
 4. 402 rejection if everything is exhausted
 
-## Access Gating
-Access is controlled by `UserHasEntitlement`. A user can access the platform if their plan grants the relevant entitlement (e.g. `vm:create` for VM creation). Plan resolution uses `GetPlanVersion` which examines billing status, exemptions, team membership, and account age.
-
 ## VIP
-VIP users get `billing_exemption='free'` for access and per-user overrides
+VIP users have a `vip` plan in `account_plans` and per-user overrides
 in the `user_llm_credit` table for custom `max_credit` and `refresh_per_hour`.
 Can be granted via:
 - Invite codes with `plan_type='free'`
 - Debug admin endpoints (Tailscale/localhost only)
-- Creating a subscription directly in the Stripe dashboard
