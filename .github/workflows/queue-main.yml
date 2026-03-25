@@ -128,6 +128,22 @@ jobs:
                 fi
               done
 
+              # Check for commits authored by default/system users
+              author_name=$(git log --format="%an" -n 1 "$commit")
+              author_email=$(git log --format="%ae" -n 1 "$commit")
+              case "$author_name" in
+                "exe.dev user"|"exe.dev system"|ubuntu|shelley)
+                  echo "❌ ERROR: Commit $commit is authored by '$author_name' (a default/system user)"
+                  echo "Please set your git author name: git config user.name 'Your Name'"
+                  has_errors=1
+                  ;;
+              esac
+              if echo "$author_email" | grep -qE '@.*\.exe\.xyz$'; then
+                  echo "❌ ERROR: Commit $commit has an internal machine email: $author_email"
+                  echo "Please set your git author email: git config user.email 'you@example.com'"
+                  has_errors=1
+              fi
+
               # Check for WIP in subject line (case insensitive)
               if echo "$subject" | grep -i "WIP" >/dev/null 2>&1; then
                   echo "❌ ERROR: Commit $commit has 'WIP' in subject line: $subject"
