@@ -188,7 +188,6 @@ var (
 		Name: "sqlite_shm_size_bytes",
 		Help: "Size of the WAL shared-memory index file in bytes.",
 	})
-
 )
 
 // RegisterSQLiteMetrics registers SQLite pool metrics with the provided registry
