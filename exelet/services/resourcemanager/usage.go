@@ -84,7 +84,7 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 	}
 
 	// IO usage from cgroup io.stat
-	usage.ioReadBytes, usage.ioWriteBytes, err = m.readIOUsage(id)
+	usage.ioReadBytes, usage.ioWriteBytes, err = readIOStat(cgroupPath)
 	if err != nil {
 		m.log.DebugContext(ctx, "failed to read IO usage", "id", id, "error", err)
 	}
@@ -284,32 +284,14 @@ func (m *ResourceManager) readNetStat(ifaceName, stat string) (uint64, error) {
 	return strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
 }
 
-// readIOUsage reads cumulative IO bytes from the VM's cgroup io.stat.
+// readIOStat reads cumulative IO bytes from a cgroup's io.stat file.
 // It sums rbytes and wbytes across all devices.
-func (m *ResourceManager) readIOUsage(id string) (readBytes, writeBytes uint64, err error) {
-	// Find the cgroup path by scanning exelet.slice for the VM's scope
-	scopeName := fmt.Sprintf("vm-%s.scope", sanitizeCgroupName(id))
-	slicePath := filepath.Join(m.cgroupRoot, cgroupSlice)
-
-	// Look in each group slice under exelet.slice
-	entries, err := os.ReadDir(slicePath)
+func readIOStat(cgroupPath string) (readBytes, writeBytes uint64, err error) {
+	data, err := os.ReadFile(filepath.Join(cgroupPath, "io.stat"))
 	if err != nil {
-		return 0, 0, fmt.Errorf("read exelet slice: %w", err)
+		return 0, 0, err
 	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasSuffix(entry.Name(), ".slice") {
-			continue
-		}
-		ioStatPath := filepath.Join(slicePath, entry.Name(), scopeName, "io.stat")
-		data, err := os.ReadFile(ioStatPath)
-		if err != nil {
-			continue // not in this group slice
-		}
-		return parseIOStat(data)
-	}
-
-	return 0, 0, fmt.Errorf("cgroup scope %s not found", scopeName)
+	return parseIOStat(data)
 }
 
 // parseIOStat parses cgroup v2 io.stat content, summing rbytes and wbytes across all devices.
