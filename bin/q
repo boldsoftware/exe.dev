@@ -218,7 +218,7 @@ def run_formatters(ref):
 # Per-user default flags, keyed by git config user.email.
 # Add your email and preferred defaults here.
 USER_DEFAULTS = {
-    "josharian@gmail.com":       ["--no-format"],
+    "josharian@gmail.com":       ["--no-format", "--post-success", "wtx"],
     "philip@bold.dev":           ["--slug"],
     "philip.zeyliger@gmail.com": ["--slug"],
 }
