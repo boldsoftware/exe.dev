@@ -1,7 +1,7 @@
 ---
 title: Lock-in on exe.dev
 description: It's just a computer. Of the Linux sort.
-subheading: "7. Editorials"
+subheading: "8. Editorials"
 ---
 
 As long as it runs on Linux, exe.dev supports it. It's

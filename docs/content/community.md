@@ -1,7 +1,7 @@
 ---
 title: Help & Community
 description: Join our Discord
-subheading: "8. Other"
+subheading: "9. Other"
 suborder: 2
 published: true
 ---

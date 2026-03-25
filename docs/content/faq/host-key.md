@@ -1,7 +1,7 @@
 ---
 title: What is the host key for exe.dev?
 description: How to verify you're connecting to exe.dev
-subheading: "5. FAQ"
+subheading: "6. FAQ"
 suborder: 1
 published: true
 ---

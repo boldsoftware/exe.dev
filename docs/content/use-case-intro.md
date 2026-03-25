@@ -1,7 +1,7 @@
 ---
 title: Intro
 description: an open source reactive notebook
-subheading: "6. Use Cases"
+subheading: "7. Use Cases"
 suborder: 1
 published: true
 ---

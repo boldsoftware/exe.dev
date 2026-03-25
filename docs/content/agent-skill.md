@@ -1,7 +1,7 @@
 ---
 title: Teach your coding agent to exe.dev
 description: Agent skill and docs for coding agents
-subheading: "5. FAQ"
+subheading: "6. FAQ"
 published: true
 ---
 

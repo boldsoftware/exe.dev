@@ -1,7 +1,7 @@
 ---
 title: Sharing a web site should be as simple as sharing a document
 description: use exe.dev VMs as a sandbox
-subheading: "8. Blog Posts"
+subheading: "9. Blog Posts"
 published: false
 ---
 

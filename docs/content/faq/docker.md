@@ -1,7 +1,7 @@
 ---
 title: Can I run docker images?
 description: Running Docker on exe.dev VMs
-subheading: "5. FAQ"
+subheading: "6. FAQ"
 suborder: 5
 published: true
 ---

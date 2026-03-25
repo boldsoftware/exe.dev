@@ -2,10 +2,12 @@
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "team"
 description: "View and manage your team"
-subheading: "9. CLI Reference"
+subheading: "10. CLI Reference"
 suborder: 12
-published: false
+published: true
 ---
+
+For a guide on using teams, see [Teams Overview](/docs/teams/overview).
 
 # team
 

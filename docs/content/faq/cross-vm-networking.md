@@ -1,7 +1,7 @@
 ---
 title: How do I connect from one VM to another?
 description: SSH, Tailscale, and other tricks
-subheading: "5. FAQ"
+subheading: "6. FAQ"
 suborder: 8
 published: true
 ---

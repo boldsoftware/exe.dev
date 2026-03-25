@@ -1,7 +1,7 @@
 ---
 title: How do I copy files to/from my VM?
 description: Transfer files with scp
-subheading: "5. FAQ"
+subheading: "6. FAQ"
 suborder: 4
 published: true
 ---

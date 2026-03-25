@@ -1,7 +1,7 @@
 ---
 title: Running Agents
 description: use exe.dev VMs as a sandbox
-subheading: "6. Use Cases"
+subheading: "7. Use Cases"
 published: true
 ---
 
