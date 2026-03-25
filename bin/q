@@ -233,6 +233,15 @@ def get_user_email():
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def run_post_hook(command):
+    """Run a shell command if non-empty. Failures are reported but don't change the exit code."""
+    if not command:
+        return
+    r = subprocess.run(command, shell=True)
+    if r.returncode != 0:
+        print(f"q: post hook {command!r} exited {r.returncode}", file=sys.stderr)
+
+
 def main():
     email = get_user_email()
     user_defaults = USER_DEFAULTS.get(email, [])
@@ -257,6 +266,10 @@ def main():
                     help="don't auto-rebase; fail if not fast-forwardable")
     p.add_argument("--no-fetch", action="store_true",
                     help="skip fetching origin/main on success")
+    p.add_argument("--post-success", default="",
+                    help="shell command to run after successful CI (e.g. 'say passed')")
+    p.add_argument("--post-failure", default="",
+                    help="shell command to run after failed CI (e.g. 'say failed')")
 
     # Parse user defaults first, then real args on top.
     args = p.parse_args(user_defaults)
@@ -352,7 +365,9 @@ def main():
     if not gh_has_actions_access():
         # Fallback: watch origin/main for the merge
         if not watch_origin_main(ref, timeout=300):
+            run_post_hook(args.post_failure)
             raise SystemExit(1)
+        run_post_hook(args.post_success)
         return
 
     print("q: waiting for run...", file=sys.stderr)
@@ -377,11 +392,13 @@ def main():
         print(f"q: passed [{m}m{s}s]", file=sys.stderr)
         if not args.no_fetch:
             git("fetch", "origin", "main", "--quiet", check=False)
+        run_post_hook(args.post_success)
     else:
         if url:
             print(f"q: FAILED [{m}m{s}s] {url}", file=sys.stderr)
         else:
             print(f"q: FAILED [{m}m{s}s]", file=sys.stderr)
+        run_post_hook(args.post_failure)
         raise SystemExit(1)
 
 
