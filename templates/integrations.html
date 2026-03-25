@@ -106,6 +106,42 @@
             font-style: italic;
         }
 
+        .gh-callout {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #166534;
+            font-size: 13px;
+        }
+
+        .gh-actions-bar {
+            padding: 10px 16px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: #fff;
+        }
+
+        .gh-install-section {
+            padding: 16px;
+            background: #fff;
+        }
+
+        .gh-install-hint {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .gh-disabled-msg {
+            padding: 16px;
+            background: #fff;
+            color: #666;
+            font-size: 13px;
+        }
+
         .section-help {
             font-size: 12px;
             color: #666;
@@ -522,6 +558,29 @@
                 color: #6b7280;
             }
 
+            .gh-callout {
+                background: #052e16;
+                border-color: #166534;
+                color: #86efac;
+            }
+
+            .gh-actions-bar {
+                background: #1f1f1f;
+            }
+
+            .gh-install-section {
+                background: #1f1f1f;
+            }
+
+            .gh-install-hint {
+                color: #9ca3af;
+            }
+
+            .gh-disabled-msg {
+                background: #1f1f1f;
+                color: #9ca3af;
+            }
+
             .btn {
                 background: #2a2a2a;
                 border-color: #333;
@@ -693,7 +752,7 @@
             <div class="section" id="github">
                 <div class="section-title">GitHub</div>
                 <div class="integration-hint" style="margin-bottom: 16px;">Linking to the exe.dev GitHub app allows you to connect VMs to git repos. <a href="/docs/integrations-github" target="_blank">Learn more →</a></div>
-                {{if eq .Callout "github-connected"}}<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; color: #166534; font-size: 13px;">✓ GitHub account connected.</div>{{end}}
+                {{if eq .Callout "github-connected"}}<div class="gh-callout">✓ GitHub account connected.</div>{{end}}
 
                 <!-- GitHub Accounts -->
                 <div class="subsection-title">Connected Accounts</div>
@@ -713,22 +772,22 @@
                         </div>
                     </div>
                     {{end}}
-                    <div style="padding: 10px 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #fff;">
+                    <div class="gh-actions-bar">
                         {{if $.GitHubAppSlug}}<a class="btn btn-small" href="https://github.com/apps/{{$.GitHubAppSlug}}/installations/new" target="_blank">Install on another account</a>{{end}}
                         <a class="btn btn-small" href="/github/setup">Link another account</a>
                     </div>
                     {{else}}
                     {{if .GitHubEnabled}}
-                    <div style="padding: 16px; background: #fff;">
+                    <div class="gh-install-section">
                         <div style="margin-bottom: 12px;">
                             <a class="btn" href="https://github.com/apps/{{.GitHubAppSlug}}/installations/new" target="_blank"><svg style="vertical-align: middle; margin-right: 4px; margin-top: -2px;" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Install the exe.dev app</a>
                         </div>
-                        <div style="font-size: 13px; color: #666;">
+                        <div class="gh-install-hint">
                             If the app is already installed on the accounts you need, <a class="btn btn-small" href="/github/setup">link to installed apps</a>
                         </div>
                     </div>
                     {{else}}
-                    <div style="padding: 16px; background: #fff; color: #666; font-size: 13px;">GitHub integration is not available on this server.</div>
+                    <div class="gh-disabled-msg">GitHub integration is not available on this server.</div>
                     {{end}}
                     {{end}}
                 </div>
