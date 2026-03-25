@@ -20,7 +20,7 @@ POST https://exe.dev/exec
 
 The POST body is the ssh command to run, exactly as if it were typed into the REPL or exec'd via ssh. JSON output is always enabled for API responses (equivalent to `--json`). The returned body is the ssh output. That's it.
 
-See the [CLI reference](/docs/section/8-cli-reference) docs section for the full list of available commands.
+See the [CLI reference](/docs/section/9-cli-reference) for the full list of available commands.
 
 ## Authentication
 
