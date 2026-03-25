@@ -2,6 +2,7 @@
 package hll
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -68,9 +69,10 @@ type Tracker struct {
 }
 
 type sketch struct {
-	hll      *hyperloglog.Sketch
-	period   string // e.g., "2026-01-07" for day, "2026-W02" for week
-	modified bool
+	hll       *hyperloglog.Sketch
+	period    string // e.g., "2026-01-07" for day, "2026-W02" for week
+	modified  bool
+	lastSaved []byte // marshaled data from last successful save
 }
 
 // NewTracker creates a new HLL tracker with the given storage backend.
@@ -79,7 +81,7 @@ func NewTracker(storage Storage) *Tracker {
 	t := &Tracker{
 		storage:      storage,
 		sketches:     make(map[string]*sketch),
-		saveInterval: 30 * time.Second,
+		saveInterval: 1 * time.Minute,
 		stop:         make(chan struct{}),
 	}
 
@@ -221,9 +223,14 @@ func (t *Tracker) saveAllModified() error {
 			return fmt.Errorf("marshal sketch %s: %w", key, err)
 		}
 		data := marshalSketchData(s.period, hllData)
+		if bytes.Equal(data, s.lastSaved) {
+			s.modified = false
+			continue
+		}
 		if err := t.storage.Save(ctx, key, data); err != nil {
 			return fmt.Errorf("save sketch %s: %w", key, err)
 		}
+		s.lastSaved = data
 		s.modified = false
 	}
 	return nil
