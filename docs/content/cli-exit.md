@@ -4,6 +4,7 @@ title: "exit"
 description: "Exit"
 subheading: "9. CLI Reference"
 suborder: 17
+published: true
 ---
 
 # exit

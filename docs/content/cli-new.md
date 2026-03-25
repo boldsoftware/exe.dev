@@ -4,6 +4,7 @@ title: "new"
 description: "Create a new VM"
 subheading: "9. CLI Reference"
 suborder: 4
+published: true
 ---
 
 # new

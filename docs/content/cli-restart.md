@@ -4,6 +4,7 @@ title: "restart"
 description: "Restart a VM"
 subheading: "9. CLI Reference"
 suborder: 6
+published: true
 ---
 
 # restart

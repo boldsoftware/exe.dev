@@ -4,6 +4,7 @@ title: "rm"
 description: "Delete a VM"
 subheading: "9. CLI Reference"
 suborder: 5
+published: true
 ---
 
 # rm

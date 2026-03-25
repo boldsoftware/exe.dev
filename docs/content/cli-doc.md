@@ -4,6 +4,7 @@ title: "doc"
 description: "Browse documentation"
 subheading: "9. CLI Reference"
 suborder: 2
+published: true
 ---
 
 # doc

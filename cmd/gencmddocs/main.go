@@ -69,6 +69,7 @@ title: "%s"
 description: "%s"
 subheading: "9. CLI Reference"
 suborder: %d
+published: true
 ---
 
 `, cmd.Name, cmd.Description, suborder)

@@ -4,6 +4,7 @@ title: "ls"
 description: "List your VMs"
 subheading: "9. CLI Reference"
 suborder: 3
+published: true
 ---
 
 # ls

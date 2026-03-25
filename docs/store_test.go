@@ -453,7 +453,7 @@ func TestGroupSlug(t *testing.T) {
 	}{
 		{"1. Introduction", "1-introduction"},
 		{"2. Features", "2-features"},
-		{"8. CLI Reference", "8-cli-reference"},
+		{"9. CLI Reference", "9-cli-reference"},
 		{"4. FAQ", "4-faq"},
 		{"5. Use Cases", "5-use-cases"},
 		{"99. Drafts", "99-drafts"},

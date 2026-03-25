@@ -4,6 +4,7 @@ title: "tag"
 description: "Add or remove a tag on a VM"
 subheading: "9. CLI Reference"
 suborder: 8
+published: true
 ---
 
 # tag

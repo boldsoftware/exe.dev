@@ -4,6 +4,7 @@ title: "rename"
 description: "rename a vm"
 subheading: "9. CLI Reference"
 suborder: 7
+published: true
 ---
 
 # rename
