@@ -67,6 +67,16 @@ func (r Recipe) remoteUser() string {
 	return "ubuntu"
 }
 
+// prodDeployAllowed reports whether a process is allowed to be deployed
+// to prod-stage hosts. Processes not in this set require staging first.
+func prodDeployAllowed(process string) bool {
+	switch process {
+	case "metricsd", "cgtop":
+		return true
+	}
+	return false
+}
+
 // Recipes maps process name to its deploy recipe.
 var Recipes = map[string]Recipe{
 	"exeletd": {

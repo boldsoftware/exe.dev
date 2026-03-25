@@ -84,8 +84,11 @@ type Request struct {
 // Start begins a new deploy. Returns an error if a deploy is already
 // active for the same target or the process type is unknown.
 func (m *Manager) Start(req Request) (Status, error) {
-	if req.Stage != "staging" && req.Stage != "global" {
-		return Status{}, fmt.Errorf("only staging and global deploys are currently allowed")
+	if req.Stage != "staging" && req.Stage != "global" && req.Stage != "prod" {
+		return Status{}, fmt.Errorf("only staging, prod, and global deploys are currently allowed")
+	}
+	if req.Stage == "prod" && !prodDeployAllowed(req.Process) {
+		return Status{}, fmt.Errorf("prod deploys not allowed for %q", req.Process)
 	}
 	if _, ok := Recipes[req.Process]; !ok {
 		return Status{}, fmt.Errorf("unknown process %q", req.Process)

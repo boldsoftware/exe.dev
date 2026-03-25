@@ -698,10 +698,12 @@ function isDeploying(p: DeployProcess): boolean {
   return activeDeployKeys.value.has(deployKey(p.stage, p.role, p.process, p.hostname))
 }
 
-const deployableStages = new Set(['staging', 'global'])
+const deployableStages = new Set(['staging', 'prod', 'global'])
+const prodAllowedProcesses = new Set(['metricsd', 'cgtop'])
 
 function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false
+  if (p.stage === 'prod' && !prodAllowedProcesses.has(p.process)) return false
   if (isDeploying(p)) return false
   if (!headSHA.value) return false
   // exe-ops deploys the deploy server itself; don't allow while other deploys are active
@@ -712,7 +714,8 @@ function canDeploy(p: DeployProcess): boolean {
 }
 
 function deployTitle(p: DeployProcess): string {
-  if (!deployableStages.has(p.stage)) return 'Only staging and global deploys are allowed'
+  if (!deployableStages.has(p.stage)) return 'Only staging, prod, and global deploys are allowed'
+  if (p.stage === 'prod' && !prodAllowedProcesses.has(p.process)) return `Prod deploys not allowed for ${p.process}`
   if (isDeploying(p)) return 'Deploy in progress'
   if (!headSHA.value) return 'HEAD SHA unknown'
   if (p.process === 'exe-ops' && hasActiveDeploys.value) return 'Wait for active deploys to finish before deploying exe-ops'
