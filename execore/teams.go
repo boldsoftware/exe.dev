@@ -327,7 +327,29 @@ func (s *Server) transferBox(ctx context.Context, box exedb.Box, newOwnerID stri
 	return nil
 }
 
-// deleteTeamMember deletes a member from a team.
+// addTeamMember adds a user to a team and sets parent_id on their account
+// to point to the billing owner's account (unless they ARE the billing owner).
+func (s *Server) addTeamMember(ctx context.Context, teamID, userID, role string) error {
+	err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
+		TeamID: teamID,
+		UserID: userID,
+		Role:   role,
+	})
+	if err != nil {
+		return err
+	}
+	if role != "billing_owner" {
+		if billingOwnerAcctID, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamBillingOwnerAccountID, userID); err == nil {
+			_ = withTx1(s, ctx, (*exedb.Queries).SetAccountParentID, exedb.SetAccountParentIDParams{
+				CreatedBy: userID,
+				ParentID:  &billingOwnerAcctID,
+			})
+		}
+	}
+	return nil
+}
+
+// deleteTeamMember deletes a member from a team and clears parent_id.
 func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) error {
 	err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamMember, exedb.DeleteTeamMemberParams{
 		TeamID: teamID,
@@ -336,6 +358,7 @@ func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) er
 	if err != nil {
 		return err
 	}
+	_ = withTx1(s, ctx, (*exedb.Queries).ClearAccountParentID, userID)
 	proxyChangeDeletedTeamMember(teamID, userID)
 	return nil
 }
@@ -456,12 +479,7 @@ func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userI
 		}
 
 		// Try to add user to the team
-		err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-			TeamID: invite.TeamID,
-			UserID: userID,
-			Role:   "user",
-		})
-		if err != nil {
+		if err := s.addTeamMember(ctx, invite.TeamID, userID, "user"); err != nil {
 			// User might already be in a team (UNIQUE constraint on user_id)
 			slog.WarnContext(ctx, "failed to add user to team from pending invite",
 				"error", err, "team_id", invite.TeamID, "user_id", userID)
@@ -529,12 +547,7 @@ func (s *Server) handleTeamInviteAccept(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Add user to team
-	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: invite.TeamID,
-		UserID: userID,
-		Role:   "user",
-	})
-	if err != nil {
+	if err := s.addTeamMember(ctx, invite.TeamID, userID, "user"); err != nil {
 		s.slog().ErrorContext(ctx, "failed to add user to team", "error", err, "team_id", invite.TeamID, "user_id", userID)
 		http.Error(w, "Failed to join team", http.StatusInternalServerError)
 		return

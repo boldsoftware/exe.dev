@@ -606,12 +606,7 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("Failed to create team: %v", err)
 	}
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID,
-		UserID: billingOwnerUserID,
-		Role:   "billing_owner",
-	})
-	if err != nil {
+	if err := ss.server.addTeamMember(ctx, teamID, billingOwnerUserID, "billing_owner"); err != nil {
 		return cc.Errorf("Failed to add billing owner: %v", err)
 	}
 
@@ -669,12 +664,7 @@ func (ss *SSHServer) handleTeamEnrollCommand(ctx context.Context, cc *exemenu.Co
 		role = "billing_owner"
 	}
 
-	err = withTx1(ss.server, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID,
-		UserID: userID,
-		Role:   role,
-	})
-	if err != nil {
+	if err := ss.server.addTeamMember(ctx, teamID, userID, role); err != nil {
 		return cc.Errorf("Failed to add member: %v", err)
 	}
 

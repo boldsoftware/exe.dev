@@ -437,15 +437,10 @@
                     </div>
                 </div>
                 {{else}}
-                {{if .SelfServeBilling}}
+                {{if .PlanName}}
                 <div class="info-row">
                     <div class="info-label">Plan</div>
-                    <div class="info-value"><a href="/billing/update?source=profile">{{.PlanName}} (Monthly)</a></div>
-                </div>
-                {{else if .PlanName}}
-                <div class="info-row">
-                    <div class="info-label">Plan</div>
-                    <div class="info-value">{{.PlanName}}</div>
+                    <div class="info-value">{{if .SelfServeBilling}}<a href="/billing/update?source=profile">{{.PlanName}} (Monthly)</a>{{else}}{{.PlanName}}{{end}}</div>
                 </div>
                 {{end}}
                 {{if .SelfServeBilling}}

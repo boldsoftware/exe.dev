@@ -5636,9 +5636,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.CreditLedger = accounts[0].Credits
 	}
 
-	// Check if user is on a team — if so, entitlements are misleading since
-	// plan resolves as Individual but they're effectively on the Team plan.
-	if team, _ := s.GetTeamForUser(ctx, userID); team != nil {
+	// Show "(inherited from team billing owner)" only when the user's account
+	// has a parent_id — meaning their entitlements resolve through the parent.
+	if len(accounts) > 0 && accounts[0].ParentID != "" {
 		data.IsOnTeam = true
 	}
 
@@ -6423,12 +6423,7 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the billing owner
-	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID,
-		UserID: ownerUserID,
-		Role:   "billing_owner",
-	})
-	if err != nil {
+	if err := s.addTeamMember(ctx, teamID, ownerUserID, "billing_owner"); err != nil {
 		http.Error(w, fmt.Sprintf("failed to add billing owner: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -6532,12 +6527,7 @@ func (s *Server) handleDebugTeamAddMember(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID,
-		UserID: userID,
-		Role:   role,
-	})
-	if err != nil {
+	if err := s.addTeamMember(ctx, teamID, userID, role); err != nil {
 		http.Error(w, fmt.Sprintf("failed to add team member: %v", err), http.StatusInternalServerError)
 		return
 	}

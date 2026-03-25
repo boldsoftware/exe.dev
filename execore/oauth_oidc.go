@@ -458,12 +458,7 @@ func (s *Server) autoJoinTeam(ctx context.Context, userID, teamID string, teamIn
 		return
 	}
 
-	err := withTx1(s, ctx, (*exedb.Queries).InsertTeamMember, exedb.InsertTeamMemberParams{
-		TeamID: teamID,
-		UserID: userID,
-		Role:   "user",
-	})
-	if err != nil {
+	if err := s.addTeamMember(ctx, teamID, userID, "user"); err != nil {
 		s.slog().ErrorContext(ctx, "failed to auto-join team", "error", err,
 			"user_id", userID, "team_id", teamID)
 	}

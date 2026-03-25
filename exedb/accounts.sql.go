@@ -28,6 +28,16 @@ func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams
 	return err
 }
 
+const clearAccountParentID = `-- name: ClearAccountParentID :exec
+UPDATE accounts SET parent_id = NULL WHERE created_by = ?
+`
+
+// Clears the parent_id on a user's account when they leave a team.
+func (q *Queries) ClearAccountParentID(ctx context.Context, createdBy string) error {
+	_, err := q.exec(ctx, q.clearAccountParentIDStmt, clearAccountParentID, createdBy)
+	return err
+}
+
 const closeAccountPlan = `-- name: CloseAccountPlan :exec
 UPDATE account_plans SET ended_at = ?2 WHERE account_id = ?1 AND ended_at IS NULL
 `
@@ -524,4 +534,19 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAccountParentID = `-- name: SetAccountParentID :exec
+UPDATE accounts SET parent_id = ?2 WHERE created_by = ?1
+`
+
+type SetAccountParentIDParams struct {
+	CreatedBy string  `db:"created_by" json:"created_by"`
+	ParentID  *string `db:"parent_id" json:"parent_id"`
+}
+
+// Sets the parent_id on a user's account to link them to a team billing owner's account.
+func (q *Queries) SetAccountParentID(ctx context.Context, arg SetAccountParentIDParams) error {
+	_, err := q.exec(ctx, q.setAccountParentIDStmt, setAccountParentID, arg.CreatedBy, arg.ParentID)
+	return err
 }

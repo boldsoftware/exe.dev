@@ -7,6 +7,60 @@ import (
 	"exe.dev/exedb"
 )
 
+func TestAddTeamMemberSetsParentID(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	ownerID := createTestUser(t, server, "owner@parent-test.example")
+	memberID := createTestUser(t, server, "member@parent-test.example")
+
+	// Create team with billing owner.
+	teamID := "tm_parentid_test"
+	err := withTx1(server, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
+		TeamID: teamID, DisplayName: "ParentID Test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.addTeamMember(ctx, teamID, ownerID, "billing_owner"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Billing owner should NOT have parent_id.
+	ownerAcct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ownerAcct.ParentID != nil {
+		t.Fatalf("billing owner should have nil parent_id, got %v", *ownerAcct.ParentID)
+	}
+
+	// Add member — should set parent_id to owner's account.
+	if err := server.addTeamMember(ctx, teamID, memberID, "user"); err != nil {
+		t.Fatal(err)
+	}
+	memberAcct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memberAcct.ParentID == nil || *memberAcct.ParentID != ownerAcct.ID {
+		t.Fatalf("member parent_id = %v, want %q", memberAcct.ParentID, ownerAcct.ID)
+	}
+
+	// Remove member — should clear parent_id.
+	if err := server.deleteTeamMember(ctx, teamID, memberID); err != nil {
+		t.Fatal(err)
+	}
+	memberAcct, err = withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memberAcct.ParentID != nil {
+		t.Fatalf("after removal, member parent_id = %v, want nil", *memberAcct.ParentID)
+	}
+}
+
 func TestResolveTeamShardCollisions(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)

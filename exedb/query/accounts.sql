@@ -122,6 +122,14 @@ WHERE (
     )
 );
 
+-- name: SetAccountParentID :exec
+-- Sets the parent_id on a user's account to link them to a team billing owner's account.
+UPDATE accounts SET parent_id = ?2 WHERE created_by = ?1;
+
+-- name: ClearAccountParentID :exec
+-- Clears the parent_id on a user's account when they leave a team.
+UPDATE accounts SET parent_id = NULL WHERE created_by = ?;
+
 -- name: DeleteAccountsByUserID :exec
 DELETE FROM accounts WHERE created_by = ?;
 

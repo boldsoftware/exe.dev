@@ -208,6 +208,69 @@ func TestTeams(t *testing.T) {
 	})
 }
 
+// TestTeamMemberInheritsOwnerPlan verifies that a team member's entitlements
+// resolve through the billing owner's plan (via parent_id on the account).
+// The member starts on basic (no VM creation), but after joining a team whose
+// billing owner has an individual plan, the member can create VMs.
+func TestTeamMemberInheritsOwnerPlan(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+	testinfra.SkipWithoutStripe(t) // SkipBilling=true bypasses entitlement checks
+
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-inherit.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-inherit.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+
+	// Owner gets billing (individual plan).
+	if err := Env.servers.AddBillingForEmail(ownerEmail); err != nil {
+		t.Fatalf("failed to add billing for owner: %v", err)
+	}
+
+	// Member on basic plan — cannot create VMs.
+	t.Run("MemberDeniedBeforeTeam", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("new")
+		repl.Want("Billing Required")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Create team and add member.
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_inherit_e2e", "InheritTest", ownerEmail)
+	addTeamMember(t, "team_inherit_e2e", memberEmail)
+
+	// Member should now inherit owner's individual plan and be able to create VMs.
+	// Use newBox which fatals with clear output if "Creating" never appears
+	// (e.g. if parent_id wasn't set and member still gets "Billing Required").
+	var boxName string
+	t.Run("MemberCanCreateVMAfterTeam", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("new")
+		repl.Reject("Billing Required")
+		repl.Want("Creating")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		// Create a real box to confirm full flow works.
+		repl = sshToExeDev(t, memberKeyFile)
+		boxName = newBox(t, repl)
+		repl.Disconnect()
+	})
+
+	// Cleanup.
+	if boxName != "" {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("rm " + boxName)
+		repl.Want("deleted")
+		repl.WantPrompt()
+		repl.Disconnect()
+	}
+}
+
 // TestTeamOwnerCanManageMemberVMs tests that team owners can perform
 // various operations on team member VMs (rename, cp, ssh).
 func TestTeamOwnerCanManageMemberVMs(t *testing.T) {

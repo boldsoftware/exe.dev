@@ -57,6 +57,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.cleanupExpiredRedirectsStmt, err = db.PrepareContext(ctx, cleanupExpiredRedirects); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredRedirects: %w", err)
 	}
+	if q.clearAccountParentIDStmt, err = db.PrepareContext(ctx, clearAccountParentID); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAccountParentID: %w", err)
+	}
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
 	}
@@ -906,6 +909,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
+	if q.setAccountParentIDStmt, err = db.PrepareContext(ctx, setAccountParentID); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAccountParentID: %w", err)
+	}
 	if q.setBoxCgroupOverridesStmt, err = db.PrepareContext(ctx, setBoxCgroupOverrides); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxCgroupOverrides: %w", err)
 	}
@@ -1186,6 +1192,11 @@ func (q *Queries) Close() error {
 	if q.cleanupExpiredRedirectsStmt != nil {
 		if cerr := q.cleanupExpiredRedirectsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredRedirectsStmt: %w", cerr)
+		}
+	}
+	if q.clearAccountParentIDStmt != nil {
+		if cerr := q.clearAccountParentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAccountParentIDStmt: %w", cerr)
 		}
 	}
 	if q.clearPreferredExeletStmt != nil {
@@ -2603,6 +2614,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
+	if q.setAccountParentIDStmt != nil {
+		if cerr := q.setAccountParentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAccountParentIDStmt: %w", cerr)
+		}
+	}
 	if q.setBoxCgroupOverridesStmt != nil {
 		if cerr := q.setBoxCgroupOverridesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxCgroupOverridesStmt: %w", cerr)
@@ -3023,6 +3039,7 @@ type Queries struct {
 	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	cleanupExpiredRedirectsStmt                *sql.Stmt
+	clearAccountParentIDStmt                   *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	closeAccountPlanStmt                       *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
@@ -3306,6 +3323,7 @@ type Queries struct {
 	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
+	setAccountParentIDStmt                     *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
 	setBoxLockReasonStmt                       *sql.Stmt
@@ -3397,6 +3415,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
+		clearAccountParentIDStmt:                   q.clearAccountParentIDStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		closeAccountPlanStmt:                       q.closeAccountPlanStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
@@ -3680,6 +3699,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
+		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
 		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,
