@@ -52,7 +52,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 				"priority": 1,
 				"ports": [80]
 			}
-		]`, "test-identity-key", "test-authorized-keys", "test-client-key", 2222)
+		]`, []byte("test-identity-key"), "test-authorized-keys", []byte("test-client-key"), 2222)
 		return err
 	})
 	if err != nil {
@@ -183,7 +183,7 @@ func TestCustomDomainReturnHostValidation(t *testing.T) {
 				"priority": 1,
 				"ports": [80]
 			}
-		]`, "test-identity-key", "test-authorized-keys", "test-client-key", 2222)
+		]`, []byte("test-identity-key"), "test-authorized-keys", []byte("test-client-key"), 2222)
 		return err
 	})
 	if err != nil {
