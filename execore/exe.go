@@ -399,7 +399,7 @@ type Server struct {
 	certRateLimiter     *exeweb.CertRateLimiter
 	wildcardCertManager *wildcardcert.Manager
 
-	// dnsServer is the embedded DNS nameserver for BoxHost (prod/staging only)
+	// dnsServer is the embedded DNS nameserver for BoxHost. Started in prod/staging only.
 	dnsServer *exens.Server
 	// lmtpServer handles inbound email delivery
 	lmtpServer *LMTPServer
@@ -1346,10 +1346,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return domz.Label(hostname, s.env.BoxHost)
 	})
 
-	// Initialize embedded DNS server for BoxHost (exe.xyz) in prod/staging
-	if cfg.Env.DiscoverPublicIPs {
-		s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
-	}
+	// Initialize embedded DNS server for BoxHost (exe.xyz).
+	// Started in prod/staging only (when DiscoverPublicIPs is set).
+	s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
 
 	// Initialize LMTP server for inbound email delivery
 	if cfg.LMTPSocketPath != "" {
@@ -1428,9 +1427,6 @@ func (s *Server) loadAndSetNAShardIPs(ctx context.Context) error {
 	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
 	if err != nil {
 		return fmt.Errorf("load NA shard IPs: %w", err)
-	}
-	if s.dnsServer == nil {
-		return nil
 	}
 	naShardIPs := buildNAShardIPs(s.slog(), ctx, netActuateShards)
 	s.dnsServer.SetNetActuateShardIPs(naShardIPs)
@@ -3076,12 +3072,12 @@ func (s *Server) start() error {
 
 	// Pass lobby IP to DNS server for apex domain resolution.
 	// Must happen before Start so DNS handlers don't race on lobbyIP.
-	if s.dnsServer != nil && s.LobbyIP.IsValid() {
+	if s.LobbyIP.IsValid() {
 		s.dnsServer.SetLobbyIP(s.LobbyIP)
 	}
 
 	// Start embedded DNS server.
-	if s.dnsServer != nil && s.env.DiscoverPublicIPs {
+	if s.env.DiscoverPublicIPs {
 		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)
 		privateIPs, err := publicips.EC2PrivateIPs(dnsCtx)
 		dnsCancel()
@@ -3096,7 +3092,7 @@ func (s *Server) start() error {
 		}
 	}
 
-	if s.dnsServer != nil && len(s.PublicIPs) > 0 {
+	if s.env.DiscoverPublicIPs {
 		s.validateIPShards(ctx)
 	}
 
@@ -3938,9 +3934,7 @@ func (s *Server) Stop() error {
 	if s.subscriptionPoller != nil {
 		s.subscriptionPoller.Stop()
 	}
-	if s.dnsServer != nil {
-		s.dnsServer.Stop(ctx)
-	}
+	s.dnsServer.Stop(ctx)
 	if s.lmtpServer != nil {
 		s.lmtpServer.Stop(ctx)
 	}
