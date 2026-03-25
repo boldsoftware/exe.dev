@@ -260,28 +260,38 @@ func TestGiftCreditsShowInProfile(t *testing.T) {
 	// Gift $30 via debug endpoint.
 	giftCreditsViaDebug(t, userID, 30.00, "profile page test gift")
 
-	// GET /user (the profile page) using auth cookies.
+	// GET /api/profile (JSON) using auth cookies.
 	client := newClientWithCookies(t, cookies)
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/user", Env.HTTPPort()))
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/api/profile", Env.HTTPPort()))
 	if err != nil {
-		t.Fatalf("failed to GET /user: %v", err)
+		t.Fatalf("failed to GET /api/profile: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status from /user profile page: %d", resp.StatusCode)
+		t.Fatalf("unexpected status from /api/profile: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("failed to read /user response body: %v", err)
+	var profile struct {
+		Credits struct {
+			Gifts []struct {
+				Amount string `json:"amount"`
+				Reason string `json:"reason"`
+			} `json:"gifts"`
+		} `json:"credits"`
 	}
-	bodyStr := string(body)
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		t.Fatalf("failed to decode /api/profile: %v", err)
+	}
 
-	if !strings.Contains(bodyStr, "Gift History") {
-		t.Errorf("expected Gift History section in /user profile page, got:\n%s", bodyStr)
+	found := false
+	for _, g := range profile.Credits.Gifts {
+		if strings.Contains(g.Reason, "profile page test gift") {
+			found = true
+			break
+		}
 	}
-	if !strings.Contains(bodyStr, "profile page test gift") {
-		t.Errorf("expected gift note in /user profile page, got:\n%s", bodyStr)
+	if !found {
+		t.Errorf("expected gift with reason 'profile page test gift' in /api/profile gifts, got: %+v", profile.Credits.Gifts)
 	}
 }

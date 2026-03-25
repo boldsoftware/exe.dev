@@ -304,9 +304,10 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 		t.Fatalf("web login failed: %v", err)
 	}
 
-	// Visit dashboard - should show "0 invites" with "Request More" link
-	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.HTTPPort())
-	req, err := http.NewRequest("GET", dashboardURL, nil)
+	apiURL := fmt.Sprintf("http://localhost:%d/api/dashboard", Env.HTTPPort())
+
+	// Check dashboard API - should show 0 invites
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -316,29 +317,28 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("failed to GET /: %v", err)
+		t.Fatalf("failed to GET /api/dashboard: %v", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
+	var data struct {
+		InviteCount       int64 `json:"inviteCount"`
+		CanRequestInvites bool  `json:"canRequestInvites"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		t.Fatalf("failed to decode /api/dashboard: %v", err)
+	}
+	if data.InviteCount != 0 {
+		t.Errorf("expected inviteCount=0, got %d", data.InviteCount)
 	}
 
-	// Should show "0 invites" and "Request More" link (SkipBilling=true in test)
-	if !strings.Contains(string(body), "0 invite") {
-		t.Error("expected to see '0 invites' on dashboard")
-	}
-	if !strings.Contains(string(body), "/invite/request") {
-		t.Error("expected to see 'Request More' link when user has 0 invites")
-	}
-
+	// Give user 1 invite
 	if err := Env.servers.GiveInvitesToUser(email, 1, "trial"); err != nil {
 		t.Fatalf("failed to give invite to user: %v", err)
 	}
 
-	// Visit dashboard again - should show "1 invite" with "Allocate" form
-	req2, err := http.NewRequest("GET", dashboardURL, nil)
+	// Check dashboard API again - should show 1 invite
+	req2, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		t.Fatalf("failed to create second request: %v", err)
 	}
@@ -348,26 +348,24 @@ func TestDashboardShowsInviteCount(t *testing.T) {
 
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {
-		t.Fatalf("failed to GET / second time: %v", err)
+		t.Fatalf("failed to GET /api/dashboard: %v", err)
 	}
 	defer resp2.Body.Close()
 
-	body2, err := io.ReadAll(resp2.Body)
-	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
+	var data2 struct {
+		InviteCount int64 `json:"inviteCount"`
 	}
-
-	// Should show "1 invite" and "Allocate" form
-	if !strings.Contains(string(body2), "1 invite") {
-		t.Errorf("expected to see '1 invite' on dashboard, got body:\n%s", string(body2))
+	if err := json.NewDecoder(resp2.Body).Decode(&data2); err != nil {
+		t.Fatalf("failed to decode /api/dashboard: %v", err)
 	}
-	if !strings.Contains(string(body2), `action="/invite"`) {
-		t.Error("expected to see 'Allocate' form when user has invites")
+	if data2.InviteCount != 1 {
+		t.Errorf("expected inviteCount=1, got %d", data2.InviteCount)
 	}
 }
 
 // TestInviteCodePassthrough tests that invite codes are passed through
-// the /new and /create-vm forms correctly.
+// the /create-vm form correctly.
+// Note: GET /new?invite=CODE hidden field rendering is now handled by the Vue SPA.
 func TestInviteCodePassthrough(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -379,11 +377,15 @@ func TestInviteCodePassthrough(t *testing.T) {
 		t.Fatalf("failed to create invite code: %v", err)
 	}
 
-	// Step 1: GET /new?invite=CODE should include invite in hidden form field
-	newURL := fmt.Sprintf("http://localhost:%d/new?invite=%s", Env.HTTPPort(), inviteCode)
-	resp, err := http.Get(newURL)
+	// POST /create-vm with invite should pass it to auth form with "Invite code accepted"
+	createURL := fmt.Sprintf("http://localhost:%d/create-vm", Env.HTTPPort())
+	resp, err := http.PostForm(createURL, map[string][]string{
+		"hostname": {"testvm"},
+		"prompt":   {"test prompt"},
+		"invite":   {inviteCode},
+	})
 	if err != nil {
-		t.Fatalf("failed to GET /new: %v", err)
+		t.Fatalf("failed to POST /create-vm: %v", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -393,35 +395,12 @@ func TestInviteCodePassthrough(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", resp.StatusCode)
 	}
-	// Verify the invite code is in a hidden field
-	if !strings.Contains(string(body), fmt.Sprintf(`name="invite" value="%s"`, inviteCode)) {
-		t.Errorf("expected hidden invite field with value %q in /new form", inviteCode)
-	}
-
-	// Step 2: POST /create-vm with invite should pass it to auth form with "Invite code accepted"
-	createURL := fmt.Sprintf("http://localhost:%d/create-vm", Env.HTTPPort())
-	resp2, err := http.PostForm(createURL, map[string][]string{
-		"hostname": {"testvm"},
-		"prompt":   {"test prompt"},
-		"invite":   {inviteCode},
-	})
-	if err != nil {
-		t.Fatalf("failed to POST /create-vm: %v", err)
-	}
-	body2, err := io.ReadAll(resp2.Body)
-	resp2.Body.Close()
-	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
-	}
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp2.StatusCode)
-	}
 	// Valid invite code should show acceptance message
-	if !strings.Contains(string(body2), "Invite code accepted") {
+	if !strings.Contains(string(body), "Invite code accepted") {
 		t.Errorf("expected 'Invite code accepted' message for valid invite code")
 	}
 	// The form should include the invite hidden field for valid codes
-	if !strings.Contains(string(body2), `name="invite"`) {
+	if !strings.Contains(string(body), `name="invite"`) {
 		t.Errorf("expected invite hidden field for valid code")
 	}
 }

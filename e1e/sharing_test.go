@@ -698,41 +698,27 @@ func TestBasicUserDashboard(t *testing.T) {
 	// Set up HTTP client with the auth cookies
 	client := newClientWithCookies(t, cookies)
 
-	// Access the dashboard - basic users should be redirected to /user
-	dashboardURL := fmt.Sprintf("http://localhost:%d/", Env.HTTPPort())
-	resp, err := client.Get(dashboardURL)
+	// The SPA now handles the dashboard; verify the profile API reports this as a basic user.
+	profileURL := fmt.Sprintf("http://localhost:%d/api/profile", Env.HTTPPort())
+	resp, err := client.Get(profileURL)
 	if err != nil {
-		t.Fatalf("failed to get dashboard: %v", err)
+		t.Fatalf("failed to get /api/profile: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// The request should end up at /user (after redirect)
-	if !strings.HasSuffix(resp.Request.URL.Path, "/user") {
-		t.Errorf("Expected basic user to be redirected to /user, but ended up at %s", resp.Request.URL.Path)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/profile returned status %d, want 200", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
+	var profile struct {
+		BasicUser bool `json:"basicUser"`
 	}
-	dashboard := string(body)
-
-	// Basic user should see the "What is exe?" section
-	if !strings.Contains(dashboard, "What is exe?") {
-		t.Errorf("Expected 'What is exe?' section in profile page for basic user")
-	}
-	if !strings.Contains(dashboard, "exe.dev is a hosting service") {
-		t.Errorf("Expected 'exe.dev is a hosting service' explanation in profile page")
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		t.Fatalf("failed to decode /api/profile: %v", err)
 	}
 
-	// Basic user should NOT see the Shell tab
-	if strings.Contains(dashboard, `href="/shell"`) {
-		t.Errorf("Basic user should NOT see Shell tab in navigation")
-	}
-
-	// Basic user SHOULD see Profile (and it should be active since we're on /user)
-	if !strings.Contains(dashboard, "Profile") {
-		t.Errorf("Basic user should see Profile in the page")
+	if !profile.BasicUser {
+		t.Errorf("Expected basicUser=true for login-with-exe user in /api/profile")
 	}
 }
 

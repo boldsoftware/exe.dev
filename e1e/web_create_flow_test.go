@@ -2,6 +2,7 @@ package e1e
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -223,75 +224,68 @@ func TestNewPageRendersLoggedInAndOut(t *testing.T) {
 
 	base := fmt.Sprintf("http://localhost:%d", Env.HTTPPort())
 
-	// Test 1: Logged out - GET /new should render the create box form
+	// Test 1: Logged out - GET /new should return 200 (serves Vue SPA)
 	t.Run("logged_out", func(t *testing.T) {
 		resp, err := http.Get(base + "/new")
 		if err != nil {
 			t.Fatalf("GET /new: %v", err)
 		}
-		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
 		}
-		if !strings.Contains(string(body), "Create") {
-			t.Fatalf("GET /new should contain 'Create', got: %s", string(body))
-		}
-		// Verify topbar rendered without error (page would be blank/error if template failed)
-		if !strings.Contains(string(body), "Sign in") {
-			t.Fatalf("GET /new (logged out) should show 'Sign in' link, got: %s", string(body))
-		}
 	})
 
-	// Test 2: Logged in without billing - In test env (SkipBilling=true), should still show create form
-	// Note: Billing is skipped in test environment, so users without billing can still create VMs.
-	// In production (SkipBilling=false), users without billing would see the billing required page.
+	// Test 2: Logged in without billing - dashboard API should return valid data
 	t.Run("logged_in_no_billing", func(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDevWithoutBilling(t)
 		pty.Disconnect()
 
 		client := newClientWithCookies(t, cookies)
-		resp, err := client.Get(base + "/new")
+		resp, err := client.Get(base + "/api/dashboard")
 		if err != nil {
-			t.Fatalf("GET /new: %v", err)
+			t.Fatalf("GET /api/dashboard: %v", err)
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
+			t.Fatalf("GET /api/dashboard returned status %d, want 200", resp.StatusCode)
 		}
-		// In test env, billing is skipped so user should see create form
-		if !strings.Contains(string(body), "Create a New VM") {
-			t.Fatalf("GET /new (logged in, no billing, test env) should show 'Create a New VM', got: %s", string(body))
+		var data struct {
+			User struct{ Email string } `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			t.Fatalf("failed to decode /api/dashboard: %v", err)
+		}
+		if data.User.Email == "" {
+			t.Fatal("expected non-empty user email in dashboard API response")
 		}
 	})
 
-	// Test 3: Logged in with billing - GET /new should show create form
+	// Test 3: Logged in with billing - dashboard API should return valid data
 	t.Run("logged_in_with_billing", func(t *testing.T) {
 		pty, cookies, _, _ := registerForExeDev(t)
 		pty.Disconnect()
 
-		// Billing is added automatically by registerForExeDev
-
 		client := newClientWithCookies(t, cookies)
-		resp, err := client.Get(base + "/new")
+		resp, err := client.Get(base + "/api/dashboard")
 		if err != nil {
-			t.Fatalf("GET /new: %v", err)
+			t.Fatalf("GET /api/dashboard: %v", err)
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("GET /new returned status %d, want 200", resp.StatusCode)
+			t.Fatalf("GET /api/dashboard returned status %d, want 200", resp.StatusCode)
 		}
-		if !strings.Contains(string(body), "Create") {
-			t.Fatalf("GET /new (with billing) should contain 'Create', got: %s", string(body))
+		var data struct {
+			User struct{ Email string } `json:"user"`
 		}
-		// User with billing should not see billing required page
-		if strings.Contains(string(body), "Billing Required") {
-			t.Fatalf("GET /new (with billing) should not show 'Billing Required', got: %s", string(body))
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			t.Fatalf("failed to decode /api/dashboard: %v", err)
+		}
+		if data.User.Email == "" {
+			t.Fatal("expected non-empty user email in dashboard API response")
 		}
 	})
 }
