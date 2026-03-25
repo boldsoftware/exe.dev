@@ -17,7 +17,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging deploy-whoami deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help ui build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-staging deploy-whoami deploy-qa deploy-piperd deploy-piperd-staging deploy-blogd clean run-dev run-devlet run-devlets generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
