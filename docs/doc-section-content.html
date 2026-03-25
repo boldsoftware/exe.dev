@@ -1,8 +1,8 @@
-{{define "doc-section-content"}}{{range .}}
+{{range .}}
 <div class="doc-item">
   <h3 class="doc-title"><a href="{{.Path}}">{{.Title}}</a></h3>
   {{if .Description}}
   <p class="doc-description">{{.Description}}</p>
   {{end}}
 </div>
-{{end}}{{end}}
+{{end}}
