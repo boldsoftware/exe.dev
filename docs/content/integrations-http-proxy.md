@@ -18,9 +18,9 @@ exe.dev ▶ integrations add http-proxy --name mirror --target https://httpbin.o
 Added integration mirror
 
 Usage from a VM:
-  ssh my-vm-name curl http://mirror.int.exe-staging.xyz/
+  ssh my-vm-name curl http://mirror.int.exe.xyz/
 
-exe.dev ▶ ssh my-vm-name curl -s http://mirror.int.exe-staging.xyz/anything -Hfoo:bar
+exe.dev ▶ ssh my-vm-name curl -s http://mirror.int.exe.xyz/anything -Hfoo:bar
 {
   "args": {},
   "data": "",
