@@ -634,20 +634,21 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	normalizedAt := sqlite.NormalizeTime(eventAt)
 	changedBy := "stripe:event"
 
-	if err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).CloseAccountPlan, exedb.CloseAccountPlanParams{
-		AccountID: accountID,
-		EndedAt:   &normalizedAt,
+	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: accountID,
+			EndedAt:   &normalizedAt,
+		}); err != nil {
+			return fmt.Errorf("close existing plan: %w", err)
+		}
+		return q.InsertAccountPlanIgnore(ctx, exedb.InsertAccountPlanIgnoreParams{
+			AccountID: accountID,
+			PlanID:    newPlanID,
+			StartedAt: normalizedAt,
+			ChangedBy: &changedBy,
+		})
 	}); err != nil {
-		return fmt.Errorf("close existing plan: %w", err)
-	}
-
-	if err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertAccountPlanIgnore, exedb.InsertAccountPlanIgnoreParams{
-		AccountID: accountID,
-		PlanID:    newPlanID,
-		StartedAt: normalizedAt,
-		ChangedBy: &changedBy,
-	}); err != nil {
-		return fmt.Errorf("insert new plan: %w", err)
+		return fmt.Errorf("sync account plan: %w", err)
 	}
 
 	return nil
