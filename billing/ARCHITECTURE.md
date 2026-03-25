@@ -200,7 +200,7 @@ Plans are defined in `billing/entitlement/plan.go` as a static map. Each plan ha
 |------|------|
 | `billing/entitlement/plan.go` | Plan definitions, `GetPlanVersion`, `PlanGrants`, `PlanQuotas` |
 | `billing/entitlement/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
-| `execore/billing_status.go` | `UserHasEntitlement`, `teamBillingCovers` — main entitlement check used by request handlers |
+| `execore/billing_status.go` | `UserHasEntitlement` — main entitlement check used by request handlers |
 
 ## Three Billing Systems
 

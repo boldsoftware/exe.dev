@@ -1,7 +1,6 @@
 package execore
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,38 +12,20 @@ import (
 	"exe.dev/billing"
 	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
-	"exe.dev/sqlite"
 )
-
-func TestDebugUserBillingAccountsNoAccounts(t *testing.T) {
-	s := newTestServer(t)
-	userID := createTestUser(t, s, "debug-no-accounts@example.com")
-
-	body := debugUserPageBody(t, s, userID)
-
-	if !strings.Contains(body, "<h2>Billing Accounts</h2>") {
-		t.Fatalf("expected Billing Accounts section")
-	}
-	if !strings.Contains(body, "No billing accounts.") {
-		t.Fatalf("expected empty billing accounts message")
-	}
-}
 
 func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-one-account@example.com")
-	accountID := "exe_debug_single_account"
 
-	err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
-	})
+	// createTestUser creates an account. Look it up and add a billing event.
+	account, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 	if err != nil {
-		t.Fatalf("InsertAccount: %v", err)
+		t.Fatalf("GetAccountByUserID: %v", err)
 	}
 
 	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: accountID,
+		AccountID: account.ID,
 		EventType: "active",
 		EventAt:   time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
 	})
@@ -54,10 +35,10 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 
 	body := debugUserPageBody(t, s, userID)
 
-	requireAccountRow(t, body, accountID, "active")
-	dashboardURL := billing.MakeCustomerDashboardURL(accountID)
+	requireAccountRow(t, body, account.ID, "active")
+	dashboardURL := billing.MakeCustomerDashboardURL(account.ID)
 	if !strings.Contains(body, dashboardURL) {
-		t.Fatalf("expected dashboard URL for %q", accountID)
+		t.Fatalf("expected dashboard URL for %q", account.ID)
 	}
 }
 
@@ -66,14 +47,10 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 	// shows the correct latest status on the debug user page.
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-mixed-events@example.com")
-	accountID := "exe_debug_mixed_events"
 
-	err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
-	})
+	account, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 	if err != nil {
-		t.Fatalf("InsertAccount: %v", err)
+		t.Fatalf("GetAccountByUserID: %v", err)
 	}
 
 	// active -> canceled -> active
@@ -86,7 +63,7 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 		{"active", time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)},
 	} {
 		_, err := withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: accountID,
+			AccountID: account.ID,
 			EventType: ev.eventType,
 			EventAt:   ev.at,
 		})
@@ -96,7 +73,7 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 	}
 
 	body := debugUserPageBody(t, s, userID)
-	requireAccountRow(t, body, accountID, "active")
+	requireAccountRow(t, body, account.ID, "active")
 }
 
 // TestDebugBillingEntitlementTablePresent verifies the entitlement table section
@@ -138,17 +115,31 @@ func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
 }
 
 // TestDebugBillingEntitlementTableFriendUser verifies a Friend plan user
-// (billing_exemption='free') has most entitlements granted.
+// has most entitlements granted.
 func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-friend-ent@example.com")
 
-	err := s.db.Tx(context.Background(), func(_ context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`UPDATE users SET billing_exemption = 'free' WHERE user_id = ?`, userID)
-		return err
+	// Upgrade from basic to friend plan.
+	account, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Now()
+	err = withTx1(s, t.Context(), (*exedb.Queries).CloseAccountPlan, exedb.CloseAccountPlanParams{
+		AccountID: account.ID,
+		EndedAt:   &now,
 	})
 	if err != nil {
-		t.Fatalf("failed to set billing_exemption: %v", err)
+		t.Fatalf("CloseAccountPlan: %v", err)
+	}
+	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
+		AccountID: account.ID,
+		PlanID:    string(entitlement.VersionFriend),
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("InsertAccountPlan(friend): %v", err)
 	}
 
 	body := debugBillingPageBody(t, s, userID)
@@ -161,25 +152,36 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 }
 
 // TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user
-// (active billing) has all entitlements granted on the billing page.
-// The user has an account + active billing event, which makes GetUserBilling
-// return has_billing → Individual plan → all entitlements granted.
+// has all entitlements granted on the billing page.
 func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-individual-ent@example.com")
-	accountID := "exe_debug_individual_ent"
 
-	err := withTx1(s, t.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
-		ID:        accountID,
-		CreatedBy: userID,
+	// createTestUser creates account + basic plan. Upgrade to individual.
+	account, err := withRxRes1(s, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	err = withTx1(s, t.Context(), (*exedb.Queries).CloseAccountPlan, exedb.CloseAccountPlanParams{
+		AccountID: account.ID,
+		EndedAt:   &now,
 	})
 	if err != nil {
-		t.Fatalf("InsertAccount: %v", err)
+		t.Fatalf("CloseAccountPlan: %v", err)
+	}
+	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
+		AccountID: account.ID,
+		PlanID:    string(entitlement.VersionIndividual),
+		StartedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("InsertAccountPlan: %v", err)
 	}
 	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-		AccountID: accountID,
+		AccountID: account.ID,
 		EventType: "active",
-		EventAt:   time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+		EventAt:   now,
 	})
 	if err != nil {
 		t.Fatalf("InsertBillingEvent: %v", err)

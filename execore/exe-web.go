@@ -1607,20 +1607,14 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 	var billingStatus string
 	var planName string
 	var selfServeBilling bool
+	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+		version := entitlement.PlanVersion(planRow.PlanID)
+		planName = entitlement.PlanName(version)
+		selfServeBilling = version == entitlement.VersionIndividual
+	}
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {
 		billingStatus = billingRow.BillingStatus
-		inputs := entitlement.UserPlanInputs{
-			Category:           billingRow.Category,
-			BillingStatus:      billingRow.BillingStatus,
-			BillingExemption:   billingRow.BillingExemption,
-			CreatedAt:          billingRow.CreatedAt,
-			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
-			TeamBillingActive:  s.teamBillingCovers(r.Context(), userID),
-		}
-		version := entitlement.GetPlanVersion(inputs)
-		planName = entitlement.PlanName(version)
-		selfServeBilling = version == entitlement.VersionIndividual
 	}
 
 	// Fetch credit balance if credit purchases are enabled and user has a billing account.

@@ -5642,20 +5642,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.IsOnTeam = true
 	}
 
-	// Resolve entitlements using the same logic as UserHasEntitlement:
-	// try account_plans first (walks parent_id for team members), fall back to legacy.
+	// Resolve entitlements from account_plans (walks parent_id for team members).
 	var version entitlement.PlanVersion
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		version = entitlement.PlanVersion(planRow.PlanID)
-	} else if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
-		inputs := entitlement.UserPlanInputs{
-			Category:           billingRow.Category,
-			BillingStatus:      billingRow.BillingStatus,
-			BillingExemption:   billingRow.BillingExemption,
-			CreatedAt:          billingRow.CreatedAt,
-			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
-		}
-		version = entitlement.GetPlanVersion(inputs)
 	}
 	if version != "" {
 		for _, ent := range entitlement.AllEntitlements() {

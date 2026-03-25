@@ -13,7 +13,7 @@ tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 - `billing/entitlement/entitlement.go` -- Entitlement constants and types
 - `billing/entitlement/plan.go` -- Plan catalog, plan version resolution (`GetPlanVersion`)
 - `billing/entitlement/plan_test.go` -- Plan resolution tests
-- `execore/billing_status.go` -- `UserHasEntitlement`, `teamBillingCovers`, plan resolution at the server layer
+- `execore/billing_status.go` -- `UserHasEntitlement`, plan resolution at the server layer
 
 ## Responsibilities
 
