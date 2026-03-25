@@ -18,6 +18,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"golang.org/x/sys/unix"
+
 	"exe.dev/exelet/storage"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -452,9 +454,7 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 	op.setProgress(0.1)
 
 	// Sync filesystem to flush in-flight writes before snapshotting
-	if err := exec.CommandContext(ctx, "sync").Run(); err != nil {
-		s.log.WarnContext(ctx, "tier migration: sync failed (continuing)", "error", err)
-	}
+	unix.Sync()
 
 	// Create migration snapshot on source
 	snapName, cleanup, err := srcManager.CreateMigrationSnapshot(ctx, instanceID)
@@ -591,7 +591,7 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	srcManager.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
 
 	// Sync before pre-copy snapshot to capture as much data as possible
-	exec.CommandContext(ctx, "sync").Run() //nolint:errcheck
+	unix.Sync()
 
 	if err := srcManager.CreateSnapshot(ctx, preSnapName); err != nil {
 		return fmt.Errorf("create pre-copy snapshot: %w", err)
@@ -655,7 +655,7 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 
 	// Phase 2: Incremental send from pre-copy to migration snapshot
 	// Sync after pause to flush any remaining in-flight writes
-	exec.CommandContext(ctx, "sync").Run() //nolint:errcheck
+	unix.Sync()
 
 	migrationSnap, cleanup, err := srcManager.CreateMigrationSnapshot(ctx, instanceID)
 	if err != nil {

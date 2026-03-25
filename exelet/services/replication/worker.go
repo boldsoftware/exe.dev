@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	api "exe.dev/pkg/api/exe/replication/v1"
 )
 
@@ -554,6 +556,9 @@ func (wp *WorkerPool) Stop() {
 
 // createSnapshot creates a ZFS snapshot
 func (wp *WorkerPool) createSnapshot(dataset, name string) error {
+	// Sync filesystem to flush in-flight writes before snapshotting
+	unix.Sync()
+
 	snapshotPath := fmt.Sprintf("%s@%s", dataset, name)
 	cmd := exec.CommandContext(wp.ctx, "zfs", "snapshot", snapshotPath)
 	if output, err := cmd.CombinedOutput(); err != nil {

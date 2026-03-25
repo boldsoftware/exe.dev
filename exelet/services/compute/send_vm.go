@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -183,6 +185,9 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	// Clean up any leftover pre-snapshot from a previous failed attempt
 	sm.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
 
+	// Sync filesystem to flush in-flight writes before snapshotting
+	unix.Sync()
+
 	s.log.InfoContext(ctx, "two-phase: creating pre-copy snapshot", "snapshot", preSnapName)
 	if err := sm.CreateSnapshot(ctx, preSnapName); err != nil {
 		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
@@ -236,6 +241,9 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 		}
 	}
 	s.log.InfoContext(ctx, "two-phase: VM stopped, creating final snapshot")
+
+	// Sync after stop to flush any remaining in-flight writes
+	unix.Sync()
 
 	// Create final migration snapshot
 	migrationSnap, cleanup, err := sm.CreateMigrationSnapshot(ctx, instanceID)
@@ -388,6 +396,9 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	// Clean up any leftover pre-snapshot from a previous failed attempt
 	sm.DestroySnapshot(ctx, preSnapName) //nolint:errcheck
 
+	// Sync filesystem to flush in-flight writes before snapshotting
+	unix.Sync()
+
 	s.log.InfoContext(ctx, "live: creating pre-copy snapshot", "snapshot", preSnapName)
 	if err := sm.CreateSnapshot(ctx, preSnapName); err != nil {
 		return status.Errorf(codes.Internal, "failed to create pre-copy snapshot: %v", err)
@@ -480,6 +491,9 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 
 	// Phase 2: Incremental ZFS diff from pre-copy to final
+	// Sync after pause to flush any remaining in-flight writes
+	unix.Sync()
+
 	migrationSnap, cleanup, err := sm.CreateMigrationSnapshot(ctx, instanceID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create migration snapshot: %v", err)
