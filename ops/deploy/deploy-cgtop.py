@@ -68,6 +68,8 @@ sudo systemctl enable cgtop
 sudo systemctl restart cgtop
 sleep 1
 sudo systemctl is-active cgtop
+curl -sf http://$(tailscale ip -4):9090/debug/gitsha
+echo ""
 echo "cgtop running on $(hostname)"
 """)
     except subprocess.CalledProcessError as e:

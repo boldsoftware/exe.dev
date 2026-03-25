@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cgtop -http :9090
+ExecStart=/bin/bash -c 'exec /usr/local/bin/cgtop -http "$(tailscale ip -4):9090"'
 Restart=always
 RestartSec=5
 StandardOutput=journal
