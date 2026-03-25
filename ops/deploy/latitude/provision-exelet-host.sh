@@ -109,7 +109,7 @@ setup_tailscale() {
     local hostname="$2"
 
     echo "Installing Tailscale..."
-    ssh $DIRECT_SSH_OPTS "$target" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq pv'
+    ssh $DIRECT_SSH_OPTS "$target" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y binutils curl jq net-tools pv'
     ssh $DIRECT_SSH_OPTS "$target" 'curl -fsSL https://tailscale.com/install.sh | sudo sh'
 
     echo "Generating Tailscale auth key via OAuth..."

@@ -517,7 +517,7 @@ fi
 # Install required packages
 echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted socat zfsutils-linux >/dev/null 2>&1
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y binutils net-tools parted socat zfsutils-linux >/dev/null 2>&1
 
 # Resolve a /dev/ path to its /dev/disk/by-id/nvme-* symlink for stable device naming
 resolve_by_id() {
