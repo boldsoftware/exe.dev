@@ -1080,6 +1080,47 @@ function makeDevExeDashboard() {
     );
   dash.withPanel(readerPoolPanel);
 
+  // SQLite Database File Metrics
+  dash.withRow(
+    new RowBuilder("SQLite Database Files").gridPos(gp({ w: 24, h: 1 }))
+  );
+
+  addTimeseriesChart(
+    "WAL File Size",
+    `sqlite_wal_size_bytes{job="exed",${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+      alert: {
+        threshold: 100 * 1024 * 1024, // 100 MB
+        condition: "gt",
+        forDuration: "5m",
+        summary: "SQLite WAL file is too large",
+        description: "WAL file has exceeded 100MB for 5+ minutes. This likely indicates a stuck checkpoint or connection leak preventing WAL recycling.",
+        labels: { channel: "buzz" },
+      },
+      alertQueryOverride: `sqlite_wal_size_bytes{job="exed",stage="production"}`,
+    }
+  );
+
+  addTimeseriesChart(
+    "Database File Size",
+    `sqlite_db_size_bytes{job="exed",${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "SHM File Size",
+    `sqlite_shm_size_bytes{job="exed",${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.unit("bytes").min(0),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
   // SQLite Transaction Metrics
   dash.withRow(
     new RowBuilder("SQLite Transaction Metrics").gridPos(gp({ w: 24, h: 1 }))
@@ -1101,25 +1142,59 @@ function makeDevExeDashboard() {
     }
   );
 
-  addTimeseriesChart(
-    "SQLite Transaction Latency (95th percentile)",
-    `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
-    {
-      panelCustomization: (x) =>
-        x.unit("ms"),
-      gridPos: { w: 8, h: 6 },
-    }
-  );
+  const txLatencyPanel = new TimeseriesBuilder()
+    .title("SQLite Write Latency Percentiles")
+    .unit("ms")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.50, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p50")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.90, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p90")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p95")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.99, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p99")
+    );
+  dash.withPanel(txLatencyPanel);
 
-  addTimeseriesChart(
-    "SQLite Read Latency (95th percentile)",
-    `histogram_quantile(0.95, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
-    {
-      panelCustomization: (x) =>
-        x.unit("ms"),
-      gridPos: { w: 8, h: 6 },
-    }
-  );
+  const rxLatencyPanel = new TimeseriesBuilder()
+    .title("SQLite Read Latency Percentiles")
+    .unit("ms")
+    .min(0)
+    .gridPos(gp({ w: 12, h: 6 }))
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.50, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p50")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.90, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p90")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.95, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p95")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.99, rate(sqlite_rx_latency_bucket{job="exed",${STAGE_FILTER}}[5m]))`)
+        .legendFormat("p99")
+    );
+  dash.withPanel(rxLatencyPanel);
 
   // Box creation time (user-perceived)
   dash.withRow(
