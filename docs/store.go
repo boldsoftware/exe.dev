@@ -527,6 +527,7 @@ func (h *Handler) renderDocSection(w http.ResponseWriter, r *http.Request, group
 		Title:       group.Heading,
 		Description: "exe.dev documentation: " + group.Heading,
 		Content:     template.HTML(contentBuf.String()),
+		Published:   true,
 	}
 
 	buf := new(bytes.Buffer)
