@@ -551,7 +551,7 @@ jobs:
   notify:
     runs-on: [self-hosted, exe-ci, edric]
     needs: [commit-validation-and-formatting, test, shelley-test, push-to-main, trigger-ralph]
-    if: ${{ always() && needs.commit-validation-and-formatting.outputs.ci_only != 'true' }}
+    if: ${{ always() && needs.commit-validation-and-formatting.outputs.ci_only != 'true' && !contains(github.event.head_commit.message, 'CI ONLY') }}
     steps:
       - uses: actions/checkout@v6
       - name: Notify Slack

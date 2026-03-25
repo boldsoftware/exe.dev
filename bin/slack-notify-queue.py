@@ -48,6 +48,9 @@ def main():
     else:
         mention = actor
 
+    if status != "success" and "CI ONLY" in commit_subject.upper():
+        return
+
     if status == "success":
         commits = [line for line in commit_log.splitlines() if line.strip()] if commit_log else []
         if len(commits) <= 1:
