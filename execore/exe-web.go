@@ -560,7 +560,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// If authenticated, show user dashboard; otherwise show index page
 		if userID, err := s.validateAuthCookie(r); err == nil {
-			s.handleUserDashboard(w, r, userID)
+			if s.serveDashboardUI(w, r) {
+				return
+			}
+			s.handleUserDashboard(w, r, userID) // TODO(#vue-migration): remove old template handler
 			return
 		}
 		hostnameSuggestion := boxname.Random()
@@ -592,7 +595,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
-		s.handleUserProfile(w, r, userID)
+		if s.serveDashboardUI(w, r) {
+			return
+		}
+		s.handleUserProfile(w, r, userID) // TODO(#vue-migration): remove old template handler
 		return
 	case "/integrations":
 		// Integrations page - require authentication
@@ -602,7 +608,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
-		s.handleIntegrationsPage(w, r, userID)
+		if s.serveDashboardUI(w, r) {
+			return
+		}
+		s.handleIntegrationsPage(w, r, userID) // TODO(#vue-migration): remove old template handler
 		return
 	case "/usage":
 		userID, err := s.validateAuthCookie(r)
@@ -788,11 +797,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/logged-out":
 		s.handleLoggedOut(w, r)
 	case "/shell":
-		s.handleWebShell(w, r)
+		if s.dashboardUI != nil {
+			// Check auth; redirect to login if not authenticated
+			if _, err := s.validateAuthCookie(r); err != nil {
+				scheme := getScheme(r)
+				returnURL := fmt.Sprintf("%s://%s/shell", scheme, r.Host)
+				authURL := fmt.Sprintf("%s://%s/auth?redirect=%s", scheme, r.Host, returnURL)
+				http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+				return
+			}
+			s.serveDashboardUI(w, r)
+			return
+		}
+		s.handleWebShell(w, r) // TODO(#vue-migration): remove old template handler
 	case "/shell/ws":
 		s.handleWebShellWS(w, r)
 	case "/new":
-		s.handleNewBox(w, r)
+		if r.Method == http.MethodGet && s.serveDashboardUI(w, r) {
+			return
+		}
+		s.handleNewBox(w, r) // TODO(#vue-migration): remove old template handler
 		return
 	case "/check-hostname":
 		s.handleHostnameCheck(w, r)
@@ -818,6 +842,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/exec":
 		s.handleExec(w, r)
+		return
+	case "/api/dashboard":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPIDashboard(w, r, userID)
+		return
+	case "/api/profile":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPIProfile(w, r, userID)
+		return
+	case "/api/integrations":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPIIntegrations(w, r, userID)
 		return
 	case "/api/push-tokens":
 		s.handlePushTokens(w, r)
@@ -853,7 +913,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				q.Set("idea", shortname)
 				r.URL.RawQuery = q.Encode()
 			}
-			s.handleNewBox(w, r)
+			s.handleNewBox(w, r) // TODO(#vue-migration): remove old template handler
 			return
 		}
 
@@ -866,6 +926,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(path, "/passkey/") {
 			s.handlePasskeyRoutes(w, r)
 			return
+		}
+
+		// Serve dashboard UI assets (Vue SPA build output)
+		if assetPath, ok := strings.CutPrefix(path, "/assets/"); ok {
+			if assetPath != "" && !strings.Contains(assetPath, "..") {
+				if s.serveDashboardUIAsset(w, r, "assets/"+assetPath) {
+					return
+				}
+			}
 		}
 
 		// Serve embedded static assets under /static/
@@ -894,6 +963,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Uses the binary's VCS build time as the modification time to enable HTTP caching.
 func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
 	webstatic.Serve(w, r, s.slog(), filename)
+}
+
+// serveDashboardUI serves the Vue SPA index.html for dashboard routes.
+// Returns true if served (dashboardUI is configured), false otherwise.
+func (s *Server) serveDashboardUI(w http.ResponseWriter, r *http.Request) bool {
+	if s.dashboardUI == nil {
+		return false
+	}
+	http.ServeFileFS(w, r, s.dashboardUI, "index.html")
+	return true
+}
+
+// serveDashboardUIAsset serves a static asset from the embedded dashboard UI.
+// Returns true if served, false otherwise.
+func (s *Server) serveDashboardUIAsset(w http.ResponseWriter, r *http.Request, assetPath string) bool {
+	if s.dashboardUI == nil {
+		return false
+	}
+	http.ServeFileFS(w, r, s.dashboardUI, assetPath)
+	return true
 }
 
 // handleHealth handles health check requests

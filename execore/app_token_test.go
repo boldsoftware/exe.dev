@@ -556,7 +556,7 @@ func TestAppTokenInProxyCookie(t *testing.T) {
 			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"fake_ctrhost", boxName, "running", "test-image", "test-container-id", userID, privateRoute,
-			[]byte("test-identity-key"), "test-authorized-keys", []byte("test-client-key"), 2222)
+			"test-identity-key", "test-authorized-keys", "test-client-key", 2222)
 		return err
 	})
 	if err != nil {

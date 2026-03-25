@@ -257,3 +257,30 @@ jobs:
       # without fear of accidentally merging it.
       # - name: Always fail
       #   run: exit 1
+
+  test-ui:
+    runs-on: [self-hosted, exe-ci, edric]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: cd ui && pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: cd ui && pnpm typecheck
+
+      - name: Build
+        run: cd ui && pnpm build

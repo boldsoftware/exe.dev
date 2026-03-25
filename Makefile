@@ -31,7 +31,10 @@ help: ## Show this help message
 	@echo '  - For first-time setup: TAILSCALE_AUTH_KEY from https://login.tailscale.com/admin/settings/keys'
 	@echo ''
 
-build: ## Build the exed binary
+ui: ## Build the Vue dashboard UI
+	@$(MAKE) -C ui build
+
+build: ui ## Build the exed binary (includes UI)
 	@echo "Building exed binary..."
 	@go build -ldflags="-s -w" -o exed ./cmd/exed
 	@echo "✓ Build complete"
@@ -110,15 +113,15 @@ deploy-qa: ## Ask claude for a QA/testing plan for pending changes
 	@echo "./ops/deploy/deploy-qa.sh"
 	@echo ""
 
-run-dev: ## Run exed locally for development
+run-dev: ui ## Run exed locally for development
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
 	@go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223
 
-run-devlet: ## Run exed locally for development along with exelet on lima-exe-ctr
+run-devlet: ui ## Run exed locally for development along with exelet on lima-exe-ctr
 	@echo "Starting dev server with exelet on lima-exe-ctr"
 	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet
 
-run-devlets: ## Run exed locally with exelets on both lima-exe-ctr and lima-exe-ctr-tests
+run-devlets: ui ## Run exed locally with exelets on both lima-exe-ctr and lima-exe-ctr-tests
 	@echo "Starting dev server with exelets on lima-exe-ctr and lima-exe-ctr-tests"
 	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet
 

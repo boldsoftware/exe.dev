@@ -68,7 +68,10 @@ BINARY_NAME="exed.$TIMESTAMP"
 echo -e "${YELLOW}Building binary...${NC}"
 echo "Binary name: $BINARY_NAME"
 
-# Build the binary
+# Build the dashboard UI
+make -C "$REPO_ROOT/ui" build
+
+# Build the binary (embeds UI assets)
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "/tmp/$BINARY_NAME" ./cmd/exed
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then

@@ -184,6 +184,8 @@ func findOrBuildExeletBinary() (string, error) {
 	return buildExeletBinary()
 }
 
+const cloudHypervisorVersion = "48.0"
+
 // bootstrapLocalhost ensures all dependencies are available for running exelet locally.
 func bootstrapLocalhost() error {
 	slog.Info("bootstrapping localhost for exelet")
@@ -202,9 +204,16 @@ func bootstrapLocalhost() error {
 		}
 	}
 
-	// Ensure cloud-hypervisor is available
+	// Ensure cloud-hypervisor and virtiofsd are available, install if missing
 	if _, err := exec.LookPath("cloud-hypervisor"); err != nil {
-		return fmt.Errorf("cloud-hypervisor not found in PATH: %w", err)
+		if err := installCloudHypervisor(); err != nil {
+			return fmt.Errorf("failed to install cloud-hypervisor: %w", err)
+		}
+	}
+	if _, err := exec.LookPath("virtiofsd"); err != nil {
+		if err := installVirtiofsd(); err != nil {
+			return fmt.Errorf("failed to install virtiofsd: %w", err)
+		}
 	}
 
 	// Ensure ZFS pool "tank" exists
@@ -234,5 +243,62 @@ func bootstrapLocalhost() error {
 	}
 
 	slog.Info("bootstrap complete")
+	return nil
+}
+
+// installCloudHypervisor downloads a static cloud-hypervisor binary from GitHub releases.
+func installCloudHypervisor() error {
+	arch, err := archSuffix()
+	if err != nil {
+		return err
+	}
+	// GitHub release binary naming: cloud-hypervisor-static (amd64) or cloud-hypervisor-static-aarch64 (arm64)
+	binaryName := "cloud-hypervisor-static"
+	if arch == "aarch64" {
+		binaryName = "cloud-hypervisor-static-aarch64"
+	}
+	url := fmt.Sprintf("https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v%s/%s", cloudHypervisorVersion, binaryName)
+	slog.Info("downloading cloud-hypervisor", "version", cloudHypervisorVersion, "url", url)
+	return downloadBinary(url, "/usr/local/bin/cloud-hypervisor")
+}
+
+// installVirtiofsd installs virtiofsd via apt.
+func installVirtiofsd() error {
+	slog.Info("installing virtiofsd via apt")
+	exec.Command("sudo", "apt-get", "update").Run()
+	if out, err := exec.Command("sudo", "apt-get", "install", "-y", "virtiofsd").CombinedOutput(); err != nil {
+		return fmt.Errorf("apt-get install virtiofsd failed: %w\n%s", err, out)
+	}
+	return nil
+}
+
+func archSuffix() (string, error) {
+	out, err := exec.Command("uname", "-m").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine architecture: %w", err)
+	}
+	arch := strings.TrimSpace(string(out))
+	switch arch {
+	case "x86_64", "aarch64":
+		return arch, nil
+	default:
+		return "", fmt.Errorf("unsupported architecture: %s", arch)
+	}
+}
+
+// downloadBinary downloads a file from url and installs it to destPath with 0755 permissions.
+func downloadBinary(url, destPath string) error {
+	tmpFile := destPath + ".tmp"
+	out, err := exec.Command("sudo", "curl", "-fSL", "--retry", "3", "-o", tmpFile, url).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("download failed: %w\n%s", err, out)
+	}
+	if out, err := exec.Command("sudo", "chmod", "0755", tmpFile).CombinedOutput(); err != nil {
+		return fmt.Errorf("chmod failed: %w\n%s", err, out)
+	}
+	if out, err := exec.Command("sudo", "mv", tmpFile, destPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("mv failed: %w\n%s", err, out)
+	}
+	slog.Info("installed binary", "path", destPath)
 	return nil
 }

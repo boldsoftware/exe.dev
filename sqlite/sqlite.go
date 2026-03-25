@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -172,22 +171,6 @@ var (
 		Help:    "Microseconds spent executing a Tx callback fn",
 		Buckets: latencyBuckets1To10KMS,
 	})
-
-	// Database file size metrics
-	dbSizeBytesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "sqlite_db_size_bytes",
-		Help: "Size of the main SQLite database file in bytes.",
-	})
-
-	walSizeBytesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "sqlite_wal_size_bytes",
-		Help: "Size of the WAL file in bytes.",
-	})
-
-	shmSizeBytesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "sqlite_shm_size_bytes",
-		Help: "Size of the WAL shared-memory index file in bytes.",
-	})
 )
 
 // RegisterSQLiteMetrics registers SQLite pool metrics with the provided registry
@@ -208,11 +191,6 @@ func RegisterSQLiteMetrics(reg *prometheus.Registry) {
 	// Latency metrics
 	reg.MustRegister(rxLatencyHistogram)
 	reg.MustRegister(txLatencyHistogram)
-
-	// File size metrics
-	reg.MustRegister(dbSizeBytesGauge)
-	reg.MustRegister(walSizeBytesGauge)
-	reg.MustRegister(shmSizeBytesGauge)
 }
 
 // DB is an SQLite connection pool.
@@ -224,7 +202,6 @@ func RegisterSQLiteMetrics(reg *prometheus.Registry) {
 // SQLite is single-writer) and use the rest as readers.
 type DB struct {
 	db      *sql.DB
-	dbPath  string // filesystem path to the database file (empty if unknown)
 	writer  chan *sql.Conn
 	readers chan *sql.Conn
 
@@ -269,7 +246,6 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 
 	p := &DB{
 		db:       db,
-		dbPath:   dbPathFromDSN(dataSourceName),
 		writer:   make(chan *sql.Conn, 1),
 		readers:  make(chan *sql.Conn, readerCount),
 		shutdown: shutdown,
@@ -347,16 +323,6 @@ func (p *DB) Close() error {
 	return p.shutdown()
 }
 
-// dbPathFromDSN extracts the filesystem path from a SQLite DSN.
-// Handles both plain paths ("/data/db.sqlite") and URI form ("file:/data/db.sqlite?_pragma=...").
-func dbPathFromDSN(dsn string) string {
-	dsn = strings.TrimPrefix(dsn, "file:")
-	if i := strings.IndexByte(dsn, '?'); i >= 0 {
-		dsn = dsn[:i]
-	}
-	return dsn
-}
-
 // UpdateMetrics updates Prometheus metrics with current connection pool status
 func (p *DB) UpdateMetrics() {
 	// Update SQL-level connection pool metrics
@@ -370,23 +336,6 @@ func (p *DB) UpdateMetrics() {
 	availableReadersGauge.Set(float64(len(p.readers)))
 	totalWritersGauge.Set(float64(cap(p.writer)))
 	totalReadersGauge.Set(float64(cap(p.readers)))
-
-	// Update file size metrics
-	if p.dbPath != "" {
-		if info, err := os.Stat(p.dbPath); err == nil {
-			dbSizeBytesGauge.Set(float64(info.Size()))
-		}
-		if info, err := os.Stat(p.dbPath + "-wal"); err == nil {
-			walSizeBytesGauge.Set(float64(info.Size()))
-		} else {
-			walSizeBytesGauge.Set(0)
-		}
-		if info, err := os.Stat(p.dbPath + "-shm"); err == nil {
-			shmSizeBytesGauge.Set(float64(info.Size()))
-		} else {
-			shmSizeBytesGauge.Set(0)
-		}
-	}
 }
 
 type ctxKeyType int

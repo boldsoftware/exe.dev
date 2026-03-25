@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"log/slog"
 	"maps"
@@ -487,6 +488,9 @@ type Server struct {
 	stopChan    chan struct{} // closed by Stop to unblock start's select
 	stopping    atomic.Bool
 
+	// Dashboard UI filesystem (built Vue SPA); nil disables
+	dashboardUI fs.FS
+
 	// General purpose slogger
 	log *slog.Logger
 	// net/http server error logger
@@ -939,6 +943,7 @@ type ServerConfig struct {
 	MetricsRegistry    *prometheus.Registry
 	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
 	MetricsdURL        string // URL of the metricsd server for VM usage data (e.g. http://localhost:21090)
+	DashboardUI        fs.FS  // embedded Vue SPA dist filesystem; nil disables
 }
 
 // NewServer creates a new Server instance with database and container management.
@@ -1282,13 +1287,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		hllTracker:            hllTracker,
 		hllCollector:          hllCollector,
 
-		docs:      docsHandler,
-		security:  securityHandler,
-		templates: tmpl,
-		stopChan:  make(chan struct{}),
-		log:       slog,
-		slackFeed: logging.NewSlackFeed(slog, cfg.Env),
-		billing:   cfg.Billing,
+		docs:        docsHandler,
+		security:    securityHandler,
+		templates:   tmpl,
+		dashboardUI: cfg.DashboardUI,
+		stopChan:    make(chan struct{}),
+		log:         slog,
+		slackFeed:   logging.NewSlackFeed(slog, cfg.Env),
+		billing:     cfg.Billing,
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
 			Max:            20,              // 20 requests max

@@ -70,3 +70,8 @@ iOS/exe.dev.xcodeproj/project.xcworkspace/xcuserdata/
 /rollcalld
 # Built libghostty-vt binary (built from source by build-ghostty.sh)
 iOS/GhosttyVT/lib/
+
+# Vue dashboard
+ui/node_modules/
+ui/dist/
+!ui/dist/.gitkeep

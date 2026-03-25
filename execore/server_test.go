@@ -72,6 +72,7 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 		MetricsRegistry: registry,
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
+		DashboardUI:     nil,
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing test server: %v", err)
@@ -232,6 +233,7 @@ func newUnstartedServer(t testing.TB) *Server {
 		MetricsRegistry: registry,
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
+		DashboardUI:     nil,
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

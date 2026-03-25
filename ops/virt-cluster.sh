@@ -690,6 +690,8 @@ build_binaries() {
     log "Building binaries..."
     mkdir -p "${CACHE_DIR}"
 
+    log "  Building dashboard UI..."
+    (cd "${REPO_ROOT}/ui" && pnpm install --frozen-lockfile && pnpm build)
     log "  Building exed..."
     (cd "${REPO_ROOT}" && GOOS=linux go build -o "${CACHE_DIR}/exed" ./cmd/exed)
 

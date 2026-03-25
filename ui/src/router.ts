@@ -1,0 +1,15 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import VMList from './views/VMList.vue'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/', name: 'vms', component: VMList },
+    { path: '/user', name: 'profile', component: () => import('./views/Profile.vue') },
+    { path: '/integrations', name: 'integrations', component: () => import('./views/Integrations.vue') },
+    { path: '/shell', name: 'shell', component: () => import('./views/Shell.vue') },
+    { path: '/new', name: 'new-vm', component: () => import('./views/NewVM.vue') },
+  ],
+})
+
+export default router

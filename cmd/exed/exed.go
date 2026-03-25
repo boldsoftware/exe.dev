@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/url"
@@ -24,6 +25,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	"exe.dev/stage"
+	"exe.dev/ui"
 	"exe.dev/version"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -81,6 +83,9 @@ func run() error {
 		defer rawDB.Close()
 		if err := exedb.RunMigrations(slog.Default(), rawDB); err != nil {
 			return fmt.Errorf("preflight failed: %w", err)
+		}
+		if !ui.HasIndex() {
+			return fmt.Errorf("preflight failed: dashboard UI not built; run: cd ui && pnpm install --frozen-lockfile && pnpm build")
 		}
 		slog.Info("preflight: ok")
 		return nil
@@ -244,6 +249,14 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
+	// Dashboard UI: embedded in the binary at build time.
+	// Build with: cd ui && pnpm install --frozen-lockfile && pnpm build
+	if !ui.HasIndex() {
+		return fmt.Errorf("dashboard UI not built, run: cd ui && pnpm install --frozen-lockfile && pnpm build")
+	}
+	dashboardUI := ui.DistFS()
+	warnIfUIStale()
+
 	server, err := execore.NewServer(execore.ServerConfig{
 		Logger:             slog.Default(),
 		HTTPAddr:           *httpAddr,
@@ -261,6 +274,7 @@ func run() error {
 		MetricsRegistry:    metricsRegistry,
 		LMTPSocketPath:     *lmtpSocket,
 		MetricsdURL:        metricsdURL,
+		DashboardUI:        dashboardUI,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
@@ -1003,4 +1017,37 @@ func scpUpload(localPath, host, remotePath string) error {
 		return fmt.Errorf("scp failed: %w\n%s", err, out)
 	}
 	return nil
+}
+
+// warnIfUIStale checks whether ui/src/ has files newer than the running binary,
+// which means the embedded UI is out of date.
+func warnIfUIStale() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	exeInfo, err := os.Stat(exePath)
+	if err != nil {
+		return
+	}
+	exeTime := exeInfo.ModTime()
+
+	stale := false
+	_ = filepath.WalkDir("ui/src", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.ModTime().After(exeTime) {
+			stale = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	if stale {
+		slog.Warn("dashboard UI is out of date, rebuild: cd ui && pnpm build && go build -o /tmp/exed-local ./cmd/exed/")
+	}
 }
