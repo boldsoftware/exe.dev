@@ -214,6 +214,15 @@ async function fetchJSON<T>(url: string): Promise<T> {
   return resp.json()
 }
 
+export async function checkAuth(): Promise<boolean> {
+  try {
+    const resp = await fetch('/api/dashboard')
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
 export async function fetchDashboard(): Promise<DashboardData> {
   return fetchJSON('/api/dashboard')
 }

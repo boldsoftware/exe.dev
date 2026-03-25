@@ -12,25 +12,31 @@
           </nav>
         </div>
         <div class="nav-right">
-          <router-link to="/" class="nav-btn" :class="{ active: route.name === 'vms' }">
-            <i class="pi pi-box"></i>
-            <span class="nav-btn-text">VMs</span>
-          </router-link>
-          <router-link to="/integrations" class="nav-btn" :class="{ active: route.name === 'integrations' }">
-            <i class="pi pi-arrows-h"></i>
-            <span class="nav-btn-text">Integrations</span>
-          </router-link>
-          <router-link to="/shell" class="nav-btn" :class="{ active: route.name === 'shell' }">
-            <i class="pi pi-chevron-right"></i>
-            <span class="nav-btn-text">Lobby</span>
-          </router-link>
-          <router-link to="/user" class="nav-btn" :class="{ active: route.name === 'profile' }">
-            <i class="pi pi-user"></i>
-            <span class="nav-btn-text">Profile</span>
-          </router-link>
-          <a href="/logout" class="nav-btn">
-            <i class="pi pi-sign-out"></i>
-            <span class="nav-btn-text">Sign out</span>
+          <template v-if="isLoggedIn">
+            <router-link to="/" class="nav-btn" :class="{ active: route.name === 'vms' }">
+              <i class="pi pi-box"></i>
+              <span class="nav-btn-text">VMs</span>
+            </router-link>
+            <router-link to="/integrations" class="nav-btn" :class="{ active: route.name === 'integrations' }">
+              <i class="pi pi-arrows-h"></i>
+              <span class="nav-btn-text">Integrations</span>
+            </router-link>
+            <router-link to="/shell" class="nav-btn" :class="{ active: route.name === 'shell' }">
+              <i class="pi pi-chevron-right"></i>
+              <span class="nav-btn-text">Lobby</span>
+            </router-link>
+            <router-link to="/user" class="nav-btn" :class="{ active: route.name === 'profile' }">
+              <i class="pi pi-user"></i>
+              <span class="nav-btn-text">Profile</span>
+            </router-link>
+            <a href="/logout" class="nav-btn">
+              <i class="pi pi-sign-out"></i>
+              <span class="nav-btn-text">Sign out</span>
+            </a>
+          </template>
+          <a v-else href="/auth" class="nav-btn">
+            <i class="pi pi-sign-in"></i>
+            <span class="nav-btn-text">Sign in</span>
           </a>
         </div>
       </div>
@@ -43,10 +49,17 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Toast from 'primevue/toast'
+import { checkAuth } from './api/client'
 
 const route = useRoute()
+const isLoggedIn = ref(true) // assume logged in, flip on 401
+
+onMounted(async () => {
+  isLoggedIn.value = await checkAuth()
+})
 </script>
 
 <style>
