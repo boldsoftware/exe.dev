@@ -79,9 +79,23 @@ integrations remove <name>
 
 Attach an integration to a VM, tag, or all VMs
 
+A <spec> controls where the integration is mounted:
+  vm:<vm-name>   attach to a specific VM
+  tag:<tag-name> attach to every VM with the given tag
+  auto:all       attach to all current and future VMs
+
+You can attach the same integration multiple times with different specs.
+
 **Usage:**
 ```
 integrations attach <name> <spec>
+```
+
+**Examples:**
+```
+int attach my-mcp vm:dev1
+int attach my-mcp tag:production
+int attach my-mcp auto:all
 ```
 
 ### integrations detach

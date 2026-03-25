@@ -117,6 +117,13 @@ Subcommands:
   add      - Add a new integration
   remove   - Remove an integration
   attach   - Attach an integration to a VM, tag, or all VMs
+
+A <spec> controls where the integration is mounted:
+  vm:<vm-name>   attach to a specific VM
+  tag:<tag-name> attach to every VM with the given tag
+  auto:all       attach to all current and future VMs
+
+You can attach the same integration multiple times with different specs.
   detach   - Detach an integration from a VM, tag, or all VMs
   rename   - Rename an integration
 PROMPT ▶ integrations remove otherproxy

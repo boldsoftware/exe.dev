@@ -55,11 +55,21 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 				HasPositionalArgs: true,
 			},
 			{
-				Name:              "attach",
-				Description:       "Attach an integration to a VM, tag, or all VMs",
+				Name: "attach",
+				Description: "Attach an integration to a VM, tag, or all VMs" +
+					"\r\n\r\nA <spec> controls where the integration is mounted:\r\n" +
+					"  vm:<vm-name>   attach to a specific VM\r\n" +
+					"  tag:<tag-name> attach to every VM with the given tag\r\n" +
+					"  auto:all       attach to all current and future VMs\r\n\r\n" +
+					"You can attach the same integration multiple times with different specs.",
 				Usage:             "integrations attach <name> <spec>",
 				Handler:           ss.handleIntegrationsAttach,
 				HasPositionalArgs: true,
+				Examples: []string{
+					"int attach my-mcp vm:dev1",
+					"int attach my-mcp tag:production",
+					"int attach my-mcp auto:all",
+				},
 			},
 			{
 				Name:              "detach",
