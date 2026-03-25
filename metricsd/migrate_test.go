@@ -8,7 +8,7 @@ import (
 func TestRunMigrations(t *testing.T) {
 	ctx := context.Background()
 
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}
@@ -21,8 +21,8 @@ func TestRunMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query migrations: %v", err)
 	}
-	if count < 3 {
-		t.Errorf("expected at least 3 migrations, got %d", count)
+	if count < 5 {
+		t.Errorf("expected at least 5 migrations, got %d", count)
 	}
 
 	// Verify resource_group column exists
@@ -49,7 +49,7 @@ func TestRunMigrations(t *testing.T) {
 func TestRunMigrations_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestRunMigrations_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query migrations: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("expected exactly 3 migrations after idempotent run, got %d", count)
+	if count != 5 {
+		t.Errorf("expected exactly 5 migrations after idempotent run, got %d", count)
 	}
 }

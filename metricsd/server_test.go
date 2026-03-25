@@ -18,7 +18,7 @@ func TestServer(t *testing.T) {
 	ctx := context.Background()
 
 	// Use in-memory database
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestServer(t *testing.T) {
 func TestSparklines(t *testing.T) {
 	ctx := context.Background()
 
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestSparklines(t *testing.T) {
 func TestQueryVMs(t *testing.T) {
 	ctx := context.Background()
 
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestQueryVMs(t *testing.T) {
 func TestInsertMetrics_DefaultTimestamp(t *testing.T) {
 	ctx := context.Background()
 
-	connector, db, err := OpenDB(ctx, "")
+	connector, db, _, err := OpenDB(ctx, "", "")
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)
 	}

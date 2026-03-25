@@ -110,21 +110,51 @@ func NewServer(connector *duckdb.Connector, db *sql.DB, requireTailscale bool) *
 	return s
 }
 
-// OpenDB opens a DuckDB database and runs migrations.
-// Returns the connector and sql.DB handle.
-func OpenDB(ctx context.Context, path string) (*duckdb.Connector, *sql.DB, error) {
+// OpenDB opens a DuckDB database, runs migrations, and sets up the archive view.
+// archiveDir is the directory where parquet archive files are stored.
+// If archiveDir is empty, no archiving is configured and the view points
+// directly to the vm_metrics table.
+// Returns the connector, sql.DB handle, and archiver (nil if archiveDir is empty).
+func OpenDB(ctx context.Context, path, archiveDir string) (*duckdb.Connector, *sql.DB, *Archiver, error) {
 	connector, err := duckdb.NewConnector(path, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create connector: %w", err)
+		return nil, nil, nil, fmt.Errorf("create connector: %w", err)
 	}
 
 	db := sql.OpenDB(connector)
 	if err := RunMigrations(ctx, db); err != nil {
 		db.Close()
 		connector.Close()
-		return nil, nil, fmt.Errorf("run migrations: %w", err)
+		return nil, nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
-	return connector, db, nil
+
+	var archiver *Archiver
+	if archiveDir != "" {
+		archiver = NewArchiver(db, archiveDir)
+	}
+
+	// Build the view (either with or without parquet files).
+	if archiver != nil {
+		if err := archiver.RebuildView(ctx); err != nil {
+			db.Close()
+			connector.Close()
+			return nil, nil, nil, fmt.Errorf("rebuild view: %w", err)
+		}
+	} else {
+		// No archiver — create a simple passthrough view.
+		if _, err := db.ExecContext(ctx, "DROP VIEW IF EXISTS vm_metrics_all"); err != nil {
+			db.Close()
+			connector.Close()
+			return nil, nil, nil, fmt.Errorf("drop view: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, "CREATE VIEW vm_metrics_all AS SELECT * FROM vm_metrics"); err != nil {
+			db.Close()
+			connector.Close()
+			return nil, nil, nil, fmt.Errorf("create view: %w", err)
+		}
+	}
+
+	return connector, db, archiver, nil
 }
 
 // Close releases resources held by the server.
@@ -535,7 +565,7 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 		FROM (
 			SELECT *,
 				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
-			FROM vm_metrics
+			FROM vm_metrics_all
 			WHERE vm_name IN (%s)
 				AND timestamp > now() - INTERVAL '%d' HOUR
 		) sub

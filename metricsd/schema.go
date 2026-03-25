@@ -24,6 +24,7 @@ INSERT INTO vm_metrics (
 `
 
 // SelectSQL is the query for retrieving metrics.
+// Uses vm_metrics_all view which unions the duckdb table with archived parquet files.
 const SelectSQL = `
 SELECT
 	timestamp, host, vm_name,
@@ -33,11 +34,12 @@ SELECT
 	network_tx_bytes, network_rx_bytes,
 	resource_group,
 	io_read_bytes, io_write_bytes
-FROM vm_metrics
+FROM vm_metrics_all
 `
 
 // SparklineSQL is the query template for the sparkline dashboard.
 // Use fmt.Sprintf to fill in the hours value (validated as integer).
+// Uses vm_metrics_all view which unions the duckdb table with archived parquet files.
 const SparklineSQL = `
 SELECT
 	timestamp, host, vm_name,
@@ -47,7 +49,7 @@ SELECT
 	network_tx_bytes, network_rx_bytes,
 	resource_group,
 	io_read_bytes, io_write_bytes
-FROM vm_metrics
+FROM vm_metrics_all
 WHERE timestamp > now() - INTERVAL '%d' HOUR
 ORDER BY vm_name, timestamp ASC
 `
