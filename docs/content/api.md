@@ -13,8 +13,8 @@ For example:
 $ ssh exe.dev ls --json | jq '.vms[0]'
 {
   "https_url": "https://bloggy.exe.xyz",
-  "region": "sjc",
-  "region_display": "San Jose, CA",
+  "region": "lon",
+  "region_display": "London, UK",
   "ssh_dest": "bloggy.exe.xyz",
   "status": "running",
   "vm_name": "bloggy"

@@ -12,3 +12,9 @@ published: false
 exe.dev VMs can be deployed in multiple regions around the world.
 
 - **pdx**: Oregon, USA
+- **lax**: Los Angeles, USA
+- **nyc**: New York, USA
+- **fra**: Frankfurt, Germany
+- **tyo**: Tokyo, Japan
+- **syd**: Sydney, Australia
+- **lon**: London, UK

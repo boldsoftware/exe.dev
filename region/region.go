@@ -34,12 +34,12 @@ type Region struct {
 
 var allRegions = []Region{
 	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: false},
-	{Code: "lax", Display: "Los Angeles, USA", Active: false, RequiresUserMatch: false},
-	{Code: "nyc", Display: "New York, USA", Active: false, RequiresUserMatch: true},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: false, RequiresUserMatch: true},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: false, RequiresUserMatch: true},
-	{Code: "syd", Display: "Sydney, Australia", Active: false, RequiresUserMatch: true},
-	{Code: "lon", Display: "London, UK", Active: false, RequiresUserMatch: true},
+	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false},
+	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: true},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: true},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: true},
+	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: true},
+	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: true},
 	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false},
 	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false},
 }
