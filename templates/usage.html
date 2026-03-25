@@ -63,6 +63,15 @@
         }
         .select-actions a:hover { text-decoration: underline; }
         #charts { min-height: 200px; }
+        .view-toggle { display: flex; gap: 4px; }
+        .toggle-btn {
+            font-size: 12px; padding: 3px 10px;
+            border: 1px solid #ccc; border-radius: 3px;
+            background: #f5f5f5; color: #333;
+            text-decoration: none; font-family: inherit;
+        }
+        .toggle-btn:hover { background: #e9ecef; }
+        .toggle-btn.active { background: #333; color: #fff; border-color: #333; }
     </style>
 </head>
 <body>
@@ -70,6 +79,10 @@
 <div class="main-container">
     <div class="section-header">
         <span class="section-title">Usage</span>
+        <div class="view-toggle">
+            <a href="/usage" class="toggle-btn active">Charts</a>
+            <a href="/usage2" class="toggle-btn">Table</a>
+        </div>
     </div>
 
     {{if not .HasMetrics}}
@@ -94,7 +107,7 @@
     (function() {
         var pills = document.querySelectorAll('.vm-pill');
         var chartsEl = document.getElementById('charts');
-        var currentOpts = {hours: 24, stacked: false};
+        var currentOpts = {hours: 24, debug: false};
 
         function getSelected() {
             var names = [];

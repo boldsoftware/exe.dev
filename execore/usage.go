@@ -54,6 +54,48 @@ func (s *Server) handleUsagePage(w http.ResponseWriter, r *http.Request, userID 
 	}
 }
 
+// handleUsage2Page renders the user-facing /usage2 page.
+func (s *Server) handleUsage2Page(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+
+	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to list user boxes", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	type vmInfo struct {
+		Name   string
+		Status string
+	}
+
+	var vms []vmInfo
+	for _, b := range boxes {
+		vms = append(vms, vmInfo{Name: b.Name, Status: b.Status})
+	}
+
+	data := struct {
+		stage.Env
+		VMs              []vmInfo
+		HasMetrics       bool
+		ActivePage       string
+		IsLoggedIn       bool
+		BasicUser        bool
+		ShowIntegrations bool
+	}{
+		Env:        s.env,
+		VMs:        vms,
+		HasMetrics: s.metricsdURL != "",
+		ActivePage: "usage2",
+		IsLoggedIn: true,
+	}
+
+	if err := s.renderTemplate(ctx, w, "usage2.html", data); err != nil {
+		return
+	}
+}
+
 // handleUsageAPI returns metrics data for the authenticated user's VMs only.
 func (s *Server) handleUsageAPI(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()

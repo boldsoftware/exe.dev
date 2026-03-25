@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico">
+    <title>EXE.DEV - Usage Table</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <link rel="stylesheet" href="/static/usage2-table.css">
+</head>
+<body>
+{{template "topbar" .}}
+<div class="main-container">
+    <div class="section-header">
+        <span class="section-title">Usage Table</span>
+        <div class="view-toggle">
+            <a href="/usage" class="toggle-btn">Charts</a>
+            <a href="/usage2" class="toggle-btn active">Table</a>
+        </div>
+    </div>
+
+    {{if not .HasMetrics}}
+    <p style="color: #999;">Usage metrics are not available.</p>
+    {{else if not .VMs}}
+    <p style="color: #999;">No VMs to show usage for.</p>
+    {{else}}
+    <div id="usage-table-container"></div>
+
+    <script src="/static/usage2-table.js"></script>
+    <script>
+    (function() {
+        var vmNames = [{{range .VMs}}'{{.Name}}',{{end}}];
+        var vmStatuses = { {{range .VMs}}'{{.Name}}': '{{.Status}}',{{end}} };
+        renderUsageTable(
+            document.getElementById('usage-table-container'),
+            '/usage-api',
+            vmNames,
+            vmStatuses,
+            {hours: 24}
+        );
+    })();
+    </script>
+    {{end}}
+</div>
+</body>
+</html>

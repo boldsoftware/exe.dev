@@ -58,16 +58,20 @@ func (s *Server) handleDebugUsageAPI(w http.ResponseWriter, r *http.Request) {
 
 // usageDataPoint is the derived data point sent to the frontend for charting.
 type usageDataPoint struct {
-	Timestamp       string  `json:"timestamp"`
-	DiskSizeGB      float64 `json:"disk_size_gb"`
-	DiskUsedGB      float64 `json:"disk_used_gb"`
-	CPUCores        float64 `json:"cpu_cores"`   // CPU seconds/second (cores used)
-	CPUNominal      float64 `json:"cpu_nominal"` // total nominal cores
-	NetworkTXMbps   float64 `json:"network_tx_mbps"`
-	NetworkRXMbps   float64 `json:"network_rx_mbps"`
-	MemoryRSSGB     float64 `json:"memory_rss_gb"`
-	MemoryNominalGB float64 `json:"memory_nominal_gb"`
-	VMName          string  `json:"vm_name"`
+	Timestamp         string  `json:"timestamp"`
+	DiskSizeGB        float64 `json:"disk_size_gb"`
+	DiskUsedGB        float64 `json:"disk_used_gb"`
+	DiskLogicalUsedGB float64 `json:"disk_logical_used_gb"`
+	CPUCores          float64 `json:"cpu_cores"`   // CPU seconds/second (cores used)
+	CPUNominal        float64 `json:"cpu_nominal"` // total nominal cores
+	NetworkTXMbps     float64 `json:"network_tx_mbps"`
+	NetworkRXMbps     float64 `json:"network_rx_mbps"`
+	MemoryRSSGB       float64 `json:"memory_rss_gb"`
+	MemorySwapGB      float64 `json:"memory_swap_gb"`
+	MemoryNominalGB   float64 `json:"memory_nominal_gb"`
+	IOReadMBps        float64 `json:"io_read_mbps"`
+	IOWriteMBps       float64 `json:"io_write_mbps"`
+	VMName            string  `json:"vm_name"`
 }
 
 func computeUsageData(metrics []types.Metric) []usageDataPoint {
@@ -78,13 +82,15 @@ func computeUsageData(metrics []types.Metric) []usageDataPoint {
 	points := make([]usageDataPoint, 0, len(metrics))
 	for i, m := range metrics {
 		p := usageDataPoint{
-			Timestamp:       m.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
-			DiskSizeGB:      float64(m.DiskSizeBytes) / 1e9,
-			DiskUsedGB:      float64(m.DiskLogicalUsedBytes) / 1e9,
-			CPUNominal:      m.CPUNominal,
-			MemoryRSSGB:     float64(m.MemoryRSSBytes) / 1e9,
-			MemoryNominalGB: float64(m.MemoryNominalBytes) / 1e9,
-			VMName:          m.VMName,
+			Timestamp:         m.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
+			DiskSizeGB:        float64(m.DiskSizeBytes) / 1e9,
+			DiskUsedGB:        float64(m.DiskUsedBytes) / 1e9,
+			DiskLogicalUsedGB: float64(m.DiskLogicalUsedBytes) / 1e9,
+			CPUNominal:        m.CPUNominal,
+			MemoryRSSGB:       float64(m.MemoryRSSBytes) / 1e9,
+			MemorySwapGB:      float64(m.MemorySwapBytes) / 1e9,
+			MemoryNominalGB:   float64(m.MemoryNominalBytes) / 1e9,
+			VMName:            m.VMName,
 		}
 
 		// Compute CPU cores used (seconds/second) from cumulative seconds
@@ -109,6 +115,16 @@ func computeUsageData(metrics []types.Metric) []usageDataPoint {
 			}
 			if rxDelta >= 0 {
 				p.NetworkRXMbps = float64(rxDelta) * 8 / 1e6 / dt
+			}
+
+			// Compute IO rates
+			ioReadDelta := m.IOReadBytes - prev.IOReadBytes
+			ioWriteDelta := m.IOWriteBytes - prev.IOWriteBytes
+			if ioReadDelta >= 0 {
+				p.IOReadMBps = float64(ioReadDelta) / dt / 1e6
+			}
+			if ioWriteDelta >= 0 {
+				p.IOWriteMBps = float64(ioWriteDelta) / dt / 1e6
 			}
 		}
 

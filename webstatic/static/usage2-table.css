@@ -1,0 +1,154 @@
+/* usage2-table.css — styling for VM usage table view */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background-color: #fafafa;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    min-height: 100vh;
+}
+.main-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 20px;
+}
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.view-toggle { display: flex; gap: 4px; }
+.toggle-btn {
+    font-size: 12px; padding: 3px 10px;
+    border: 1px solid #ccc; border-radius: 3px;
+    background: #f5f5f5; color: #333;
+    text-decoration: none; font-family: inherit;
+}
+.toggle-btn:hover { background: #e9ecef; }
+.toggle-btn.active { background: #333; color: #fff; border-color: #333; }
+
+.usage2-controls {
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.usage2-range-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin-right: 4px;
+}
+.usage2-range-btn {
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.usage2-range-btn:hover { background: #e9ecef; }
+.usage2-range-btn.active { background: #333; color: #fff; border-color: #333; }
+
+.usage2-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.usage2-table th {
+    background: #f6f8fa;
+    color: #57606a;
+    text-align: right;
+    padding: 4px 8px;
+    border-bottom: 2px solid #d0d7de;
+    font-weight: 600;
+    font-size: 11px;
+}
+.usage2-table th:first-child {
+    text-align: left;
+}
+.usage2-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid #eaeef2;
+    text-align: right;
+    vertical-align: middle;
+}
+.usage2-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+}
+.usage2-table tr:hover td {
+    background: #f0f4f8;
+}
+
+.vm-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.vm-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.vm-status-dot.running { background: #2da44e; }
+.vm-status-dot.stopped { background: #8c959f; }
+.vm-status-dot.starting { background: #bf8700; }
+
+.spark-inline {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.spark-inline polyline {
+    fill: none;
+    stroke-width: 1.5;
+}
+
+.metric-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.usage2-loading {
+    color: #666;
+    padding: 20px;
+    font-style: italic;
+}
+.usage2-error {
+    color: #dc3545;
+    padding: 12px;
+    background: #fff3f3;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    margin: 8px 0;
+}
+.usage2-empty {
+    color: #666;
+    padding: 12px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+.group-header {
+    text-align: center !important;
+    font-weight: bold;
+    color: #24292f;
+    border-bottom: 1px solid #d0d7de;
+    font-size: 11px;
+}
