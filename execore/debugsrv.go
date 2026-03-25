@@ -1957,6 +1957,16 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get list of exelets for the migration dropdown, excluding current host
+	var exeletOptions []string
+	for addr := range s.exeletClients {
+		if addr != box.Ctrhost {
+			exeletOptions = append(exeletOptions, addr)
+		}
+	}
+	sort.Strings(exeletOptions)
+	boxNameJSON, _ := json.Marshal(box.Name)
+
 	data := struct {
 		Name                 string
 		ID                   int64
@@ -1984,6 +1994,8 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		CreationLog          string
 		StoragePool          string
 		AvailablePools       []string
+		ExeletOptions        []string
+		BoxNameJSON          template.JS
 	}{
 		Name:                 box.Name,
 		ID:                   int64(box.ID),
@@ -2011,6 +2023,8 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		CreationLog:          creationLog,
 		StoragePool:          storagePool,
 		AvailablePools:       availablePools,
+		ExeletOptions:        exeletOptions,
+		BoxNameJSON:          template.JS(boxNameJSON),
 	}
 
 	s.renderDebugTemplate(ctx, w, "box-details.html", data)

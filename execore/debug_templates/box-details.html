@@ -30,6 +30,25 @@
 </table>
 </div>
 
+{{if .ExeletOptions}}
+<div class="section">
+<h2>Migrate VM</h2>
+<form id="vmMigrateForm" method="post" action="/debug/vms/migrate">
+<input type="hidden" name="box_name" value="{{.Name}}">
+<input type="hidden" name="confirm_name" value="{{.Name}}">
+<input type="hidden" name="live" id="vmMigrateLive" value="true">
+<label for="vmMigrateTarget">Target exelet:</label>
+<select name="target" id="vmMigrateTarget" required style="margin: 5px 8px 0 0;">
+<option value="">Select target exelet...</option>
+{{range .ExeletOptions}}<option value="{{.}}">{{.}}</option>{{end}}
+</select>
+<button type="submit" id="liveMigrateBtn" class="logs-btn" disabled style="background:#007bff;">Live Migrate</button>
+<button type="button" id="coldMigrateBtn" class="logs-btn" disabled style="background:#6c757d;">Cold Migrate</button>
+</form>
+<div id="vmMigProgress" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto;"></div>
+</div>
+{{end}}
+
 {{if .StoragePool}}
 <div class="section">
 <h2>Storage</h2>
@@ -185,6 +204,86 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
         });
 });
 </script>
+
+{{if .ExeletOptions}}
+<script>
+(function() {
+    var form = document.getElementById('vmMigrateForm');
+    var target = document.getElementById('vmMigrateTarget');
+    var liveBtn = document.getElementById('liveMigrateBtn');
+    var coldBtn = document.getElementById('coldMigrateBtn');
+    var liveInput = document.getElementById('vmMigrateLive');
+    var progress = document.getElementById('vmMigProgress');
+
+    target.addEventListener('change', function() {
+        var enabled = !!this.value;
+        liveBtn.disabled = !enabled;
+        coldBtn.disabled = !enabled;
+    });
+
+    function doMigrate(live) {
+        liveInput.value = live ? 'true' : 'false';
+        liveBtn.disabled = true;
+        coldBtn.disabled = true;
+        var label = live ? 'Live migrating...' : 'Cold migrating...';
+        (live ? liveBtn : coldBtn).textContent = label;
+        progress.style.display = 'block';
+        progress.style.background = '#f8f9fa';
+        progress.style.borderColor = '#dee2e6';
+        progress.textContent = (live ? 'Starting live migration...\n' : 'Starting cold migration...\n');
+
+        fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form)
+        }).then(function(response) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            function read() {
+                reader.read().then(function(result) {
+                    if (result.done) return;
+                    var text = decoder.decode(result.value, {stream: true});
+                    progress.textContent += text;
+                    progress.scrollTop = progress.scrollHeight;
+                    if (text.includes('MIGRATION_SUCCESS:')) {
+                        progress.style.background = '#d4edda';
+                        progress.style.borderColor = '#c3e6cb';
+                        liveBtn.textContent = 'Live Migrate';
+                        coldBtn.textContent = 'Cold Migrate';
+                        // Reload page after brief delay so it picks up new host
+                        setTimeout(function() { location.reload(); }, 2000);
+                    } else if (text.includes('MIGRATION_ERROR:')) {
+                        progress.style.background = '#f8d7da';
+                        progress.style.borderColor = '#f5c6cb';
+                        liveBtn.textContent = 'Live Migrate';
+                        coldBtn.textContent = 'Cold Migrate';
+                        liveBtn.disabled = false;
+                        coldBtn.disabled = false;
+                    }
+                    read();
+                });
+            }
+            read();
+        }).catch(function(err) {
+            progress.style.background = '#f8d7da';
+            progress.textContent += '\nFetch error: ' + err;
+            liveBtn.textContent = 'Live Migrate';
+            coldBtn.textContent = 'Cold Migrate';
+            liveBtn.disabled = false;
+            coldBtn.disabled = false;
+        });
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        doMigrate(true);
+    });
+    coldBtn.addEventListener('click', function() {
+        if (!target.value) return;
+        doMigrate(false);
+    });
+})();
+</script>
+{{end}}
 
 {{if .StoragePool}}
 <script>
