@@ -827,6 +827,11 @@ function DiffViewer({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // If Monaco's find widget is open, let Monaco handle Escape to close it
+        const findWidget = editorContainerRef.current?.querySelector(".find-widget.visible");
+        if (findWidget) {
+          return; // Let Monaco close its find widget
+        }
         if (showCommentDialog) {
           setShowCommentDialog(null);
         } else {
@@ -837,6 +842,25 @@ function DiffViewer({
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         saveImmediately();
+        return;
+      }
+
+      // Route Ctrl/Cmd+F to Monaco's find widget instead of browser find
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        if (editorRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          const modifiedEditor = editorRef.current.getModifiedEditor();
+          modifiedEditor.focus();
+          modifiedEditor.trigger("keyboard", "actions.find", null);
+        }
+        return;
+      }
+
+      // When Monaco's find widget is open, let all non-modifier keys pass through
+      // so typing in the find input works (e.g. "." and "," won't trigger nav)
+      const findWidget = editorContainerRef.current?.querySelector(".find-widget.visible");
+      if (findWidget) {
         return;
       }
 
