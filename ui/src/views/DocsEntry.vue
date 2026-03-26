@@ -97,6 +97,7 @@ async function loadDoc(slug: string) {
   await nextTick()
   initCodeCopyButtons()
   initAnchorLinks()
+  scrollToHash()
 }
 
 async function loadAllDocs() {
@@ -145,6 +146,16 @@ async function loadAllDocs() {
   await nextTick()
   initCodeCopyButtons()
   initAnchorLinks()
+  scrollToHash()
+}
+
+function scrollToHash() {
+  const hash = route.hash
+  if (!hash) return
+  const el = document.querySelector(hash)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth' })
+  }
 }
 
 function escapeHtml(s: string): string {

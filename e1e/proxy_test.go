@@ -517,35 +517,23 @@ chmod +x /home/exedev/cgi-bin/setcookie`, box))
 		noGolden(t)
 
 		// The auth_confirm_owner_skip and logout_flow subtests above already created
-		// auth cookies for this box. Verify they appear on the profile page.
+		// auth cookies for this box. Verify they appear in the profile API.
 		client := newClientWithCookies(t, cookies)
-		profileURL := fmt.Sprintf("http://localhost:%d/user", httpPort)
+		profileURL := fmt.Sprintf("http://localhost:%d/api/profile", httpPort)
 		t.Logf("profileURL %q", profileURL)
-		resp, err := client.Get(profileURL)
-		if err != nil {
-			t.Fatalf("failed to get profile page: %v", err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
 
 		boxDomain := fmt.Sprintf("%s.exe.cloud", box)
-		if !strings.Contains(string(body), boxDomain) {
-			t.Fatalf("profile page should show box domain %q in site sessions before deletion", boxDomain)
+
+		if !profileHasSiteSession(t, client, profileURL, boxDomain) {
+			t.Fatalf("profile API should show box domain %q in site sessions before deletion", boxDomain)
 		}
 
 		// Delete the box
 		cleanupBox(t, keyFile, box)
 
-		// Verify the box domain is no longer on the profile page
-		resp, err = client.Get(profileURL)
-		if err != nil {
-			t.Fatalf("failed to get profile page after deletion: %v", err)
-		}
-		body, _ = io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if strings.Contains(string(body), boxDomain) {
-			t.Errorf("profile page should NOT show box domain %q in site sessions after deletion", boxDomain)
+		// Verify the box domain is no longer in the profile API
+		if profileHasSiteSession(t, client, profileURL, boxDomain) {
+			t.Errorf("profile API should NOT show box domain %q in site sessions after deletion", boxDomain)
 		}
 	})
 }
@@ -557,6 +545,33 @@ type proxyExpectation struct {
 	httpCode         int
 	redirectLocation string // Expected Location header for redirects (optional)
 	host             string // Custom host header (default: "<box>.exe.cloud:<port>")
+}
+
+// profileHasSiteSession checks if the /api/profile response includes a site session for the given domain.
+func profileHasSiteSession(t testing.TB, client *http.Client, profileURL, domain string) bool {
+	t.Helper()
+	resp, err := client.Get(profileURL)
+	if err != nil {
+		t.Fatalf("failed to GET %s: %v", profileURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s returned status %d", profileURL, resp.StatusCode)
+	}
+	var profile struct {
+		SiteSessions []struct {
+			Domain string `json:"domain"`
+		} `json:"siteSessions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		t.Fatalf("failed to decode %s: %v", profileURL, err)
+	}
+	for _, s := range profile.SiteSessions {
+		if s.Domain == domain {
+			return true
+		}
+	}
+	return false
 }
 
 func mustParseURL(raw string) *url.URL {

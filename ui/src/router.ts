@@ -3,6 +3,12 @@ import VMList from './views/VMList.vue'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to) {
+    if (to.hash) {
+      return { el: to.hash, behavior: 'smooth' }
+    }
+    return { top: 0 }
+  },
   routes: [
     { path: '/', name: 'vms', component: VMList },
     { path: '/user', name: 'profile', component: () => import('./views/Profile.vue') },
