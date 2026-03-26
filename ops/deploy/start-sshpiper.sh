@@ -1,7 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-EXED_HOST=exed-02
+# Determine exed host based on environment
+if [[ "$(hostname)" == *staging* ]]; then
+    EXED_HOST=exed-staging-01
+else
+    EXED_HOST=exed-02
+fi
 
 # Get SSH host keys from files (placed during setup)
 PRIVATE_KEY=$(cat /home/ubuntu/host_private_key)

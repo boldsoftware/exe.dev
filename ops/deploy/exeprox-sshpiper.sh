@@ -29,8 +29,15 @@ if [ -n "$HOST_CERT_SIG" ]; then
     ARGS+=(--server-cert-data="$HOST_CERT_SIG_B64")
 fi
 
-# Add grpc plugin configuration - connect to exed-02
-ARGS+=(grpc --endpoint=exed-02:2224 --insecure)
+# Determine exed host based on environment
+if [[ "$(hostname)" == *staging* ]]; then
+    EXED_HOST=exed-staging-01
+else
+    EXED_HOST=exed-02
+fi
+
+# Add grpc plugin configuration
+ARGS+=(grpc --endpoint=$EXED_HOST:2224 --insecure)
 
 # Add metrics plugin if tailscale is available
 if command -v tailscale >/dev/null 2>&1; then
