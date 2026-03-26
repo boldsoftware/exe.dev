@@ -396,11 +396,11 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		PortalReturnURL:  returnURL,
 	}
 	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
-		subParams.TrialEnd = time.Now().Add(15 * 24 * time.Hour)
+		subParams.TrialEnd = time.Now().Add(7 * 24 * time.Hour)
 		s.slog().InfoContext(r.Context(), "trial granted at checkout",
 			"user_id", userID,
 			"email", user.Email,
-			"trial_days", 15,
+			"trial_days", 7,
 			"is_gmail", email.IsGmailAddress(user.Email),
 		)
 	}
