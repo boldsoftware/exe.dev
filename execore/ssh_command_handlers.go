@@ -29,6 +29,7 @@ import (
 	"mvdan.cc/sh/v3/pattern"
 	"mvdan.cc/sh/v3/syntax"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/errorz"
@@ -878,6 +879,12 @@ type newBoxDetails struct {
 func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 1 {
 		return cc.Errorf("please specify exactly one VM name to restart, got %d", len(cc.Args))
+	}
+
+	// Check if user's plan grants VM run
+	if !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.VMRun, cc.User.ID) {
+		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
+		return cc.Errorf("Billing Required\r\n\r\nYou need active billing to restart a VM.\r\n\r\nVisit: %s", billingURL)
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
