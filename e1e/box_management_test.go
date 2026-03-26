@@ -180,6 +180,36 @@ func TestVanillaBox(t *testing.T) {
 		pty.WantPrompt()
 	})
 
+	t.Run("ssh_interactive_first_keystroke", func(t *testing.T) {
+		noGolden(t)
+		// Regression test: after exiting an interactive SSH session started
+		// via the REPL, the first keystroke used to be silently eaten by the
+		// x/crypto/ssh internal stdin-copy goroutine.
+		pty := sshToExeDev(t, keyFile)
+		defer pty.Disconnect()
+
+		// Start an interactive SSH session into the box.
+		pty.SendLine("ssh " + boxName)
+		pty.Want("Tip") // "Tip: connecting directly with..." banner
+		pty.Want(boxName)
+		pty.Want("$")
+
+		// Run a command inside the box to confirm the session is live.
+		pty.SendLine("echo alive")
+		pty.Want("alive")
+
+		// Exit the interactive SSH session and return to the REPL.
+		pty.SendLine("exit")
+		pty.WantPrompt()
+
+		// The critical assertion: the REPL must not lose the leading
+		// character. Without the pipeStdin fix, "ssh ..." would arrive
+		// as "sh ..." and fail.
+		pty.SendLine("ssh " + boxName + " echo preserved")
+		pty.Want("preserved")
+		pty.WantPrompt()
+	})
+
 	t.Run("docker", func(t *testing.T) {
 		// Wait for docker to be available. Docker uses socket activation and starts on first use,
 		// but we need to give systemd a bit more time after SSH is ready.

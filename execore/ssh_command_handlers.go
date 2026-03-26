@@ -1681,8 +1681,12 @@ doneParsingSSHFlags:
 			return cc.Errorf("command failed: %v", err)
 		}
 	} else {
-		// Interactive mode - wire up stdin for the shell
-		session.Stdin = cc.SSHSession
+		// Interactive mode — mediate stdin through a pipe so that
+		// when the remote session ends, the x/crypto/ssh internal
+		// io.Copy goroutine doesn't silently eat the next keystroke.
+		stdin, stopStdin := pipeStdin(cc.SSHSession, cc.SSHSession.Push)
+		defer stopStdin()
+		session.Stdin = stdin
 
 		// Get PTY info from the client session and set it up first
 		pty, _ := cc.SSHSession.Pty()

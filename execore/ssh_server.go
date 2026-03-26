@@ -50,12 +50,19 @@ func (m *minimalConnMetadata) RemoteAddr() net.Addr  { return m.remoteAddr }
 func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
 
 // shellSession wraps ssh.Session to implement exemenu.ShellSession with push-back support.
-// It serializes all reads to prevent concurrent calls from splitting data.
+//
+// A background goroutine (readLoop) is the sole reader of the underlying SSH
+// session. All consumer reads go through a buffer protected by a cond var.
+// This lets Push put bytes back and have them immediately visible to any
+// blocked Read call — which is what makes the post-SSH-disconnect keystroke
+// recovery work.
 type shellSession struct {
 	ssh.Session
-	mu     sync.Mutex
-	buf    []byte
-	reader io.Reader // When set, Read() uses this instead of Session
+	mu          sync.Mutex
+	cond        *sync.Cond
+	buf         []byte
+	readErr     error                   // set when readLoop exits
+	ctrlCCancel context.CancelCauseFunc // when set, readLoop detects Ctrl+C
 
 	// clientAddr is the original client's IP address from sshpiper.
 	// This is used for IPQS checks during signup validation.
@@ -78,11 +85,19 @@ type shellSession struct {
 
 func NewSSHShell(s ssh.Session, clientAddr string) *shellSession {
 	shell := &shellSession{Session: s, clientAddr: clientAddr}
+	shell.cond = sync.NewCond(&shell.mu)
 	shell.winCond = sync.NewCond(&shell.winMu)
+	go shell.readLoop()
 	// Close the session when context is done to unblock any pending reads.
 	context.AfterFunc(s.Context(), func() {
 		shell.Close()
-		shell.winCond.Broadcast() // wake any waiters
+		shell.mu.Lock()
+		if shell.readErr == nil {
+			shell.readErr = net.ErrClosed
+		}
+		shell.cond.Broadcast()
+		shell.mu.Unlock()
+		shell.winCond.Broadcast()
 	})
 	return shell
 }
@@ -144,26 +159,105 @@ func (s *shellSession) WaitWindowChange() bool {
 	return true
 }
 
+// readLoopBufCap is the maximum number of bytes readLoop will buffer before
+// blocking, which restores the SSH channel windowing backpressure that the
+// demand-driven model provided. 4096 matches the read chunk size and is
+// generous for interactive use.
+const readLoopBufCap = 4096
+
+// readLoop is the sole reader of the underlying SSH session. It appends
+// incoming bytes to buf and wakes any goroutines blocked in Read.
+func (s *shellSession) readLoop() {
+	tmp := make([]byte, 4096)
+	for {
+		// Wait for buffer space before reading more from the session.
+		s.mu.Lock()
+		for len(s.buf) >= readLoopBufCap && s.readErr == nil {
+			s.cond.Wait()
+		}
+		if s.readErr != nil {
+			s.cond.Broadcast()
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Unlock()
+
+		n, err := s.Session.Read(tmp)
+
+		s.mu.Lock()
+		if n > 0 {
+			if s.ctrlCCancel != nil {
+				var cancel context.CancelCauseFunc
+				for _, b := range tmp[:n] {
+					if b == 3 && s.ctrlCCancel != nil {
+						cancel = s.ctrlCCancel
+						s.ctrlCCancel = nil
+					} else {
+						s.buf = append(s.buf, b)
+					}
+				}
+				if cancel != nil {
+					// Unlock to call cancel — safe because ctrlCCancel is already nil'd and we've finished appending for this read. Push may prepend concurrently, which is fine.
+					s.mu.Unlock()
+					cancel(ctrlc.ErrCanceled)
+					s.mu.Lock()
+				}
+			} else {
+				s.buf = append(s.buf, tmp[:n]...)
+			}
+		}
+		if err != nil {
+			s.readErr = err
+		}
+		if n > 0 || err != nil {
+			s.cond.Broadcast()
+		}
+		s.mu.Unlock()
+
+		if err != nil {
+			return
+		}
+	}
+}
+
 func (s *shellSession) Read(p []byte) (int, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	for len(s.buf) == 0 && s.readErr == nil {
+		s.cond.Wait()
+	}
 	if len(s.buf) > 0 {
 		n := copy(p, s.buf)
 		s.buf = s.buf[n:]
-		s.mu.Unlock()
+		s.cond.Broadcast() // wake readLoop if blocked on backpressure
 		return n, nil
 	}
-	r := s.reader
-	if r == nil {
-		r = s.Session
-	}
-	s.mu.Unlock()
-	return r.Read(p)
+	return 0, s.readErr
 }
 
+// Push prepends data to buf, bypassing readLoopBufCap (only caller is pipeStdin pushBack at teardown).
 func (s *shellSession) Push(data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.buf = append(slices.Clone(data), s.buf...)
+	s.cond.Broadcast()
+}
+
+// DetectCtrlC enables Ctrl+C (0x03) detection in the background reader.
+// Returns a context that cancels when Ctrl+C is detected, and a stop
+// function to disable detection.
+// DetectCtrlC must not be called concurrently or while a previous detection is still active.
+func (s *shellSession) DetectCtrlC(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(parent)
+	s.mu.Lock()
+	s.ctrlCCancel = cancel
+	s.mu.Unlock()
+	return ctx, func() {
+		s.mu.Lock()
+		s.ctrlCCancel = nil
+		s.mu.Unlock()
+		cancel(nil)
+	}
 }
 
 func (s *shellSession) Context() context.Context {
@@ -988,16 +1082,12 @@ func (ss *SSHServer) waitForEmailVerification(s *shellSession, publicKey, email 
 	}
 	fmt.Fprintf(s, "\033[2mWaiting for verification...\033[0m\r\n")
 
-	var r io.Reader
-	var stop func()
-	ctx, r, stop = ctrlc.WithReader(ctx, s.Session)
-	s.mu.Lock()
-	s.reader = r
-	s.mu.Unlock()
+	ctx, stopCtrlC := s.DetectCtrlC(ctx)
+	defer stopCtrlC()
 
 	select {
 	case <-verification.CompleteChan:
-		stop()
+		stopCtrlC()
 		// Check if billing checkout failed or was canceled
 		if verification.Err != nil {
 			fmt.Fprintf(s, "\r\n%s✗ %s%s\r\n", "\033[1;31m", verification.Err.Error(), "\033[0m")
