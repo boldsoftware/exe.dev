@@ -232,6 +232,27 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 
+	// If there are active creation streams, wait for the boxes to appear in the DB.
+	// After creating a VM, the user is redirected to /?filter=<hostname>, but the box
+	// may not have been inserted into the DB yet. Poll until all actively-being-created
+	// boxes appear so the dashboard shows them with status="creating".
+	creatingHostnames := s.getActiveCreationHostnames(userID)
+	deadline := time.Now().Add(5 * time.Second)
+	for len(creatingHostnames) > 0 && time.Now().Before(deadline) {
+		var stillMissing []string
+		for _, hostname := range creatingHostnames {
+			exists, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxWithNameExists, hostname)
+			if err != nil || exists == 0 {
+				stillMissing = append(stillMissing, hostname)
+			}
+		}
+		if len(stillMissing) == 0 {
+			break
+		}
+		creatingHostnames = stillMissing
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	// Get boxes
 	boxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesForUserDashboard, user.UserID)
 	if err != nil {
