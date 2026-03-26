@@ -2,10 +2,11 @@ package execore
 
 import (
 	"bytes"
-	"cmp"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"exe.dev/billing/entitlement"
-	"exe.dev/idea"
 
 	"exe.dev/boxname"
 	"exe.dev/exedb"
@@ -303,103 +303,32 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, 
 	}()
 }
 
-// handleNewBox renders the new box form.
-// Always shows the form - billing is requested when the user clicks "Create VM".
-// Accepts name, prompt, and invite query params to prefill the form (used after billing cancel or from exe.new).
-// Also accepts idea=<shortname> to load an idea template from the DB.
-// Also accepts a cp query param referencing checkout_params for restoring long prompts.
-func (s *Server) handleNewBox(w http.ResponseWriter, r *http.Request) {
-	// Read name, prompt, and invite from query params
-	name := strings.TrimSpace(r.URL.Query().Get("name"))
-	prompt := strings.TrimSpace(r.URL.Query().Get("prompt"))
-	image := strings.TrimSpace(r.URL.Query().Get("image"))
-	inviteCode := strings.TrimSpace(r.URL.Query().Get("invite"))
+// handleAPICheckoutParams returns the stored VM creation parameters for a checkout params token.
+func (s *Server) handleAPICheckoutParams(w http.ResponseWriter, r *http.Request, userID string) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token parameter", http.StatusBadRequest)
+		return
+	}
 
-	// If an idea shortname is provided, look up the template and prefill.
-	ideaSlug := ""
-	if ideaShortname := strings.TrimSpace(r.URL.Query().Get("idea")); ideaShortname != "" {
-		tmpl, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetApprovedTemplateByShortname, ideaShortname)
-		if err == nil {
-			prompt = cmp.Or(prompt, tmpl.Prompt)
-			image = cmp.Or(image, tmpl.Image)
-			if name == "" && tmpl.VMShortname != "" {
-				name = idea.RandomName(tmpl.VMShortname)
-			}
-			ideaSlug = tmpl.Slug
+	cp, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetCheckoutParams, exedb.GetCheckoutParamsParams{
+		Token:  token,
+		UserID: userID,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Checkout params not found", http.StatusNotFound)
+			return
 		}
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
-	// Check if user is logged in (also needed for cp token handling below).
-	userID, err := s.validateAuthCookie(r)
-	isLoggedIn := err == nil
-
-	// Restore VM params from checkout_params if cp token is present.
-	// Requires authentication so that only the user who created the params can read them.
-	// The token is intentionally not deleted here (read-only) so the user can retry checkout.
-	// Stranded tokens from users who never complete checkout are cleaned up on next exed boot.
-	if cpToken := r.URL.Query().Get("cp"); cpToken != "" && isLoggedIn {
-		cp, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetCheckoutParams, exedb.GetCheckoutParamsParams{
-			Token:  cpToken,
-			UserID: userID,
-		})
-		if err == nil {
-			name = cmp.Or(name, cp.VMName)
-			prompt = cmp.Or(prompt, cp.VMPrompt)
-			image = cmp.Or(image, cp.VMImage)
-		}
-	}
-
-	// Use the prefilled name or generate a random suggestion
-	hostnameSuggestion := name
-	if hostnameSuggestion == "" {
-		// Generate random names until we find one that's available
-		// (limit attempts to avoid infinite loop in pathological cases)
-		for range 10 {
-			hostnameSuggestion = boxname.Random()
-			if s.isBoxNameAvailableForUser(r.Context(), hostnameSuggestion, userID) {
-				break
-			}
-		}
-	}
-
-	// Check for error parameter (e.g., redirected back from /create-vm due to VM limit)
-	errorCode := r.URL.Query().Get("error")
-	var errorMessage string
-	if errorCode == "vm_limit" {
-		errorMessage = "You have reached the maximum number of VMs allowed on your plan. Delete an existing VM to create a new one."
-	}
-
-	var showIntegrations bool
-	if isLoggedIn {
-		showIntegrations = s.showIntegrationsNav(r.Context(), userID)
-	}
-
-	data := struct {
-		stage.Env
-		HostnameSuggestion string
-		Prompt             string
-		Image              string
-		InviteCode         string
-		IsLoggedIn         bool
-		ActivePage         string
-		BasicUser          bool
-		IdeaSlug           string
-		ErrorMessage       string
-		ShowIntegrations   bool
-	}{
-		Env:                s.env,
-		HostnameSuggestion: hostnameSuggestion,
-		Prompt:             prompt,
-		Image:              image,
-		InviteCode:         inviteCode,
-		IsLoggedIn:         isLoggedIn,
-		ActivePage:         "",
-		BasicUser:          false,
-		IdeaSlug:           ideaSlug,
-		ErrorMessage:       errorMessage,
-		ShowIntegrations:   showIntegrations,
-	}
-	s.renderTemplate(r.Context(), w, "new.html", data)
+	writeJSONOK(w, map[string]string{
+		"name":   cp.VMName,
+		"prompt": cp.VMPrompt,
+		"image":  cp.VMImage,
+	})
 }
 
 // handleHostnameCheck checks if a hostname is available

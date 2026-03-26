@@ -100,53 +100,6 @@ func cancelUserBilling(t *testing.T, server *Server, userID string) {
 	}
 }
 
-func TestBillingRequiredForNewVM_WebUI(t *testing.T) {
-	t.Parallel()
-	// Test that /new always shows the form, even for users who need billing.
-	// Billing is only checked when the user tries to create a VM via /create-vm.
-	server := newBillingTestServer(t)
-	// Enable billing checks for this test (disabled by default in test env)
-	server.env.SkipBilling = false
-
-	// Create a user without billing info
-	email := "no-billing@example.com"
-	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Set user's created_at to after the billing requirement date (2026-01-06 23:10:00 UTC)
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
-	}
-
-	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
-	}
-
-	// Request /new - should show the form (billing is checked at /create-vm)
-	req := httptest.NewRequest("GET", "/new", nil)
-	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200 (form), got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "Create a New VM") {
-		t.Error("Expected new VM form to be shown")
-	}
-}
-
 func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	t.Parallel()
 	server := newBillingTestServer(t)
@@ -200,70 +153,6 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	}
 	if !strings.Contains(location, "prompt=test") {
 		t.Errorf("Expected prompt param in redirect URL, got %q", location)
-	}
-}
-
-func TestUserWithBillingCanAccessNewVM_WebUI(t *testing.T) {
-	t.Parallel()
-	server := newBillingTestServer(t)
-
-	// Create a user with billing info
-	email := "has-billing@example.com"
-	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Activate billing for this user (simulates completed Stripe checkout).
-	activateUserBilling(t, server, user.UserID)
-
-	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
-	}
-
-	// Request /new - should show the new VM form, not billing required
-	req := httptest.NewRequest("GET", "/new", nil)
-	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if strings.Contains(body, "Billing Required") {
-		t.Error("Did not expect billing required page for user with billing info")
-	}
-	if !strings.Contains(body, "Create a New VM") {
-		t.Error("Expected new VM form to be shown for user with billing info")
-	}
-}
-
-func TestUnauthenticatedUserCanAccessNewPage(t *testing.T) {
-	t.Parallel()
-	server := newBillingTestServer(t)
-
-	// Request /new without authentication - should show the new VM form
-	// (they'll be prompted to log in when they try to create)
-	req := httptest.NewRequest("GET", "/new", nil)
-	req.Host = server.env.WebHost
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if strings.Contains(body, "Billing Required") {
-		t.Error("Did not expect billing required page for unauthenticated user")
-	}
-	if !strings.Contains(body, "Create a New VM") {
-		t.Error("Expected new VM form to be shown for unauthenticated user")
 	}
 }
 
@@ -644,77 +533,6 @@ func TestBillingActivateThenCancelThenReactivate(t *testing.T) {
 	activateUserBilling(t, server, user.UserID)
 	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
 		t.Error("Reactivated user with individual plan should have VMCreate")
-	}
-}
-
-func TestNewPageAlwaysShowsForm_EvenWhenBillingRequired(t *testing.T) {
-	t.Parallel()
-	// Test that /new always shows the form, even for users who need billing.
-	// Billing is only requested when they click "Create VM".
-	server := newBillingTestServer(t)
-	server.env.SkipBilling = false
-
-	// Create a user without billing info
-	email := "new-flow-test@example.com"
-	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Set user's created_at to after the billing requirement date
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
-	}
-
-	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
-	}
-
-	// Request /new - should show the form, NOT redirect to billing
-	req := httptest.NewRequest("GET", "/new", nil)
-	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200 (form), got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "Create a New VM") {
-		t.Error("Expected new VM form to be shown")
-	}
-}
-
-func TestNewPagePrefillsFromQueryParams(t *testing.T) {
-	t.Parallel()
-	// Test that /new prefills name and prompt from query params.
-	// This is used when user cancels Stripe checkout and is redirected back.
-	server := newBillingTestServer(t)
-
-	// Request /new with name and prompt params
-	req := httptest.NewRequest("GET", "/new?name=my-vm&prompt=Build+a+blog", nil)
-	req.Host = server.env.WebHost
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, `value="my-vm"`) {
-		t.Error("Expected hostname to be prefilled with 'my-vm'")
-	}
-	if !strings.Contains(body, "Build a blog") {
-		t.Error("Expected prompt to be prefilled with 'Build a blog'")
 	}
 }
 
@@ -1807,89 +1625,8 @@ func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
 	}
 }
 
-func TestBillingCancelRestoresLongPrompt(t *testing.T) {
-	t.Parallel()
-	// When a user cancels Stripe checkout, they are redirected to /new?cp=<token>.
-	// The cancel handler should restore VM params from checkout_params so the form
-	// is pre-filled, and the token should survive (not be deleted) so the user can retry.
-	server := newBillingTestServer(t)
-	server.env.SkipBilling = false
-
-	email := "cancel-prompt@example.com"
-	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `UPDATE users SET created_at = '2026-01-06 23:10:01' WHERE user_id = ?`, user.UserID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to update user created_at: %v", err)
-	}
-
-	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
-	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
-	}
-
-	longPrompt := strings.Repeat("Set up a comprehensive server with many features. ", 100)
-	vmName := "cancel-test-vm"
-
-	// Step 1: Visit /billing/update to store checkout params and get redirected to Stripe.
-	req := httptest.NewRequest("GET", "/billing/update?name="+vmName+"&prompt="+url.QueryEscape(longPrompt), nil)
-	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("Expected redirect to Stripe, got %d", w.Code)
-	}
-
-	// Step 2: Look up the cp token that was stored.
-	var cpToken string
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		return tx.Conn().QueryRowContext(ctx, `SELECT token FROM checkout_params LIMIT 1`).Scan(&cpToken)
-	})
-	if err != nil {
-		t.Fatalf("Failed to find checkout_params token: %v", err)
-	}
-
-	// Step 3: Simulate cancel by visiting /new?cp=<token> (the cancel URL).
-	req = httptest.NewRequest("GET", "/new?cp="+cpToken, nil)
-	req.Host = server.env.WebHost
-	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-	w = httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("Expected 200 from /new, got %d", w.Code)
-	}
-
-	// Verify the response body contains the VM name and prompt.
-	body := w.Body.String()
-	if !strings.Contains(body, vmName) {
-		t.Errorf("Expected /new response to contain VM name %q", vmName)
-	}
-	if !strings.Contains(body, "Set up a comprehensive server") {
-		t.Errorf("Expected /new response to contain the prompt text")
-	}
-
-	// Step 4: Verify the checkout_params row was NOT deleted (so the user can retry).
-	var count int
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		return tx.Conn().QueryRowContext(ctx, `SELECT count(*) FROM checkout_params WHERE token = ?`, cpToken).Scan(&count)
-	})
-	if err != nil {
-		t.Fatalf("Failed to check checkout_params: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("Expected checkout_params row to survive cancel, but found %d rows", count)
-	}
-}
+// NOTE: TestBillingCancelRestoresLongPrompt was removed (tested old Go template rendering).
+// The cp token restore flow is now tested by TestAPICheckoutParams.
 
 // createUserWithAccount is a test helper that creates a user with an activated billing account.
 // The billingID parameter is ignored; every user now gets a canonical account at signup.

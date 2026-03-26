@@ -126,13 +126,20 @@ const router = useRouter()
 
 const hostname = ref('')
 const prompt = ref((route.query.prompt as string) || '')
-const image = ref('')
+const image = ref((route.query.image as string) || '')
+const inviteCode = ref((route.query.invite as string) || '')
 const errorMessage = ref('')
 const hostnameHint = ref('')
 const hostnameOk = ref(false)
 const submitting = ref(false)
 const mode = ref<'describe' | 'templates'>('describe')
 const drawerOpen = ref(false)
+
+// Show error from redirect (e.g. vm_limit)
+const errorParam = route.query.error as string
+if (errorParam === 'vm_limit') {
+  errorMessage.value = 'You have reached the maximum number of VMs allowed on your plan. Delete an existing VM to create a new one.'
+}
 
 // Ideas
 interface Idea {
@@ -338,6 +345,7 @@ async function createVM() {
     if (prompt.value.trim()) fields.prompt = prompt.value.trim()
     if (image.value.trim()) fields.image = image.value.trim()
     if (ideaSlug.value) fields.idea_slug = ideaSlug.value
+    if (inviteCode.value) fields.invite = inviteCode.value
 
     for (const [k, v] of Object.entries(fields)) {
       const input = document.createElement('input')
@@ -356,8 +364,30 @@ async function createVM() {
 }
 
 onMounted(async () => {
-  // Generate random hostname
-  setHostname(randomBoxName())
+  // Restore VM params from checkout_params token (returned from Stripe billing)
+  const cpToken = route.query.cp as string
+  if (cpToken) {
+    try {
+      const res = await fetch('/api/checkout-params?token=' + encodeURIComponent(cpToken))
+      if (res.ok) {
+        const cp = await res.json()
+        if (cp.name && !route.query.name) hostname.value = cp.name
+        if (cp.prompt && !prompt.value) prompt.value = cp.prompt
+        if (cp.image && !image.value) image.value = cp.image
+      }
+    } catch {
+      // Best effort — if this fails the user can re-enter params
+    }
+  }
+
+  // Use name from query param, or generate random hostname
+  const nameParam = route.query.name as string
+  if (nameParam) {
+    setHostname(nameParam)
+    hostnameTouched = true
+  } else if (!hostname.value) {
+    setHostname(randomBoxName())
+  }
 
   // Load ideas
   try {
@@ -369,8 +399,8 @@ onMounted(async () => {
     // Ideas unavailable, no-op
   }
 
-  // If routed with ?idea=<shortname>, pre-select it
-  const ideaParam = route.query.idea as string
+  // Determine idea shortname: from route param (/new/:shortname) or query (?idea=)
+  const ideaParam = (route.params.shortname as string) || (route.query.idea as string)
   if (ideaParam && ideas.value.length > 0) {
     const idea = ideas.value.find(i => i.slug === ideaParam)
     if (idea) {

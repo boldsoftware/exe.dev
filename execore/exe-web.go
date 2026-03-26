@@ -807,10 +807,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/shell/ws":
 		s.handleWebShellWS(w, r)
 	case "/new":
-		if r.Method == http.MethodGet && s.serveDashboardUI(w, r) {
-			return
-		}
-		s.handleNewBox(w, r)
+		s.serveDashboardUI(w, r)
 		return
 	case "/check-hostname":
 		s.handleHostnameCheck(w, r)
@@ -860,6 +857,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAPIProfile(w, r, userID)
+		return
+	case "/api/checkout-params":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPICheckoutParams(w, r, userID)
 		return
 	case "/api/integrations":
 		if r.Method != http.MethodGet {
@@ -925,14 +934,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.handleIdeaPage(w, r)
 			return
 		}
-		// /new/<shortname> is equivalent to /new?idea=<shortname>
-		if shortname, ok := strings.CutPrefix(path, "/new/"); ok && shortname != "" {
-			q := r.URL.Query()
-			if q.Get("idea") == "" {
-				q.Set("idea", shortname)
-				r.URL.RawQuery = q.Encode()
-			}
-			s.handleNewBox(w, r)
+		// /new/<shortname> serves the Vue SPA which reads the shortname from the route
+		if _, ok := strings.CutPrefix(path, "/new/"); ok {
+			s.serveDashboardUI(w, r)
 			return
 		}
 
