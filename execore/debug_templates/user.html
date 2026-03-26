@@ -235,6 +235,16 @@ table.info th { width: 200px; }
 {{end}}
 </div>
 
+<div class="section">
+<h3>Gift Credits</h3>
+<form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<p><label>Amount (USD):<br><input type="number" name="amount" step="0.01" min="0.01" required placeholder="e.g. 10.00" style="width:100%;"></label></p>
+<p><label>Note (optional):<br><input type="text" name="note" placeholder="Reason for gift" style="width:100%;"></label></p>
+<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Gift Credits</button>
+</form>
+</div>
+
 {{if .HasCredit}}
 <div class="section">
 <h2>LLM Gateway Credit</h2>
@@ -249,13 +259,6 @@ table.info th { width: 200px; }
 <tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
 </table>
-<h3>Gift Credits</h3>
-<form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">
-<input type="hidden" name="user_id" value="{{.UserID}}">
-<p><label>Amount (USD):<br><input type="number" name="amount" step="0.01" min="0.01" required placeholder="e.g. 10.00" style="width:100%;"></label></p>
-<p><label>Note (optional):<br><input type="text" name="note" placeholder="Reason for gift" style="width:100%;"></label></p>
-<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Gift Credits</button>
-</form>
 <h3>Edit Credit</h3>
 <form method="post" action="/debug/users/update-credit" style="max-width: 300px;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
