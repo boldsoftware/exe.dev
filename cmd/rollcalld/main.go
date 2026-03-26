@@ -309,6 +309,11 @@ func shouldMonitor(host string) bool {
 	if strings.Contains(host, "-staging-") {
 		return false
 	}
+	// Decommissioned hosts that are still online but intentionally unmonitored.
+	switch host {
+	case "docker-01", "docker-02", "sketch-dev":
+		return false
+	}
 	return true
 }
 
