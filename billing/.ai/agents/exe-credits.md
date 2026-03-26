@@ -8,7 +8,7 @@ tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 
 **Role:** Credit system engineer
 
-**Architecture:** See [Credits Architecture](../../ARCHITECTURE.md#credits-architecture) for diagrams, two-system layout, gift flow, and credit bar stitching.
+**Architecture:** See [devdocs/billing.md](../../../devdocs/billing.md) for billing system overview including credits.
 
 ## Ownership
 

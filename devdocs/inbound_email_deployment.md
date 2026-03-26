@@ -1,144 +1,82 @@
-# Inbound Email Deployment Checklist
-
-This document describes how to deploy and verify inbound email for exe.dev VMs.
+# Inbound Email Deployment
 
 ## Prerequisites
 
 ### DNS (Automatic)
 
-The following DNS records are served automatically by exens:
-- A record for `mail.exe.xyz` (and `mail.exe-staging.xyz`) points to the lobby IP
-- MX records for `<box>.exe.xyz` point to `mail.exe.xyz` (only for boxes with email enabled)
+Served automatically by exens:
+- A record for `mail.exe.xyz` (and `mail.exe-staging.xyz`) -> lobby IP
+- MX records for `<box>.exe.xyz` -> `mail.exe.xyz` (only for boxes with email enabled)
 
 ### AWS Security Groups
 
-Open the following ports on exed hosts:
+Open on exed hosts:
 - Port 25 (SMTP with STARTTLS)
 - Port 465 (SMTP with implicit TLS)
 
 ### TLS Certificates (Automatic)
 
-maddy uses the existing wildcard certificate managed by exed. No separate ACME setup is required.
-
-exed obtains and renews `*.exe.xyz` (and `*.exe-staging.xyz`) certificates via DNS-01 challenges through exens, storing them at `/home/ubuntu/certs/<domain>`. maddy reads from this same location.
+exed obtains and renews `*.exe.xyz` (and `*.exe-staging.xyz`) certificates via DNS-01 challenges through exens, stored at `/home/ubuntu/certs/<domain>`. maddy reads the same cert files -- no separate ACME setup needed.
 
 ## Deployment
 
-### 1. Deploy exed with new code
+### 1. Deploy exed
 
 ```bash
 ./ops/deploy/deploy-exed-staging.sh  # test on staging first
 ./ops/deploy/deploy-exed-prod.sh
 ```
 
-This will:
-- Run the database migration (adds `email_receive_enabled` column)
-- Start the LMTP server on `/var/run/exed/lmtp.sock`
-- Serve MX and A records for `mail.exe.xyz`
+This starts the LMTP server on `/var/run/exed/lmtp.sock` and serves MX/A records for `mail.{domain}`.
 
 ### 2. Deploy maddy
 
 ```bash
-./ops/deploy/deploy-maddy-staging.sh  # test on staging first
-./ops/deploy/deploy-maddy-prod.sh
+./ops/deploy/deploy-maddy-staging.sh  # staging: exed-staging-01, exe-staging.xyz
+./ops/deploy/deploy-maddy-prod.sh     # prod: exed-02, exe.xyz
 ```
+
+Installs maddy 0.8.2 from GitHub releases, deploys config from `ops/maddy/maddy.conf` (with `{BOX_DOMAIN}` substituted), and starts the systemd service.
 
 ## Verification
 
-### Check DNS resolution
-
 ```bash
+# DNS resolution
 dig MX testvm.exe.xyz @ns1.exe.dev
 dig A mail.exe.xyz @ns1.exe.dev
-```
 
-### Check services
-
-```bash
+# Service status
 ssh ubuntu@exed-02 sudo systemctl status maddy
 ssh ubuntu@exed-02 ls -la /var/run/exed/lmtp.sock
-```
 
-### View logs
-
-```bash
+# Logs
 ssh ubuntu@exed-02 journalctl -fu maddy
 ssh ubuntu@exed-02 journalctl -fu exed | grep -i lmtp
-```
 
-### Test mail delivery
-
-```bash
-# Using swaks (install: apt install swaks)
+# Test delivery
 swaks --to test@vmname.exe.xyz --server mail.exe.xyz
 
-# Or with telnet
-telnet mail.exe.xyz 25
-EHLO test
-MAIL FROM:<test@example.com>
-RCPT TO:<test@vmname.exe.xyz>
-DATA
-Subject: Test
-
-Test message
-.
-QUIT
-```
-
-### Verify TLS certificate
-
-```bash
+# Verify TLS
 openssl s_client -connect mail.exe.xyz:465 -quiet
-```
 
-### Verify delivery
-
-```bash
+# Check delivery
 ssh testvm ls ~/Maildir/new/
 ```
 
 ## Troubleshooting
 
-### LMTP connection refused
-
-Check that exed is running and the socket exists:
-
-```bash
-ls -la /var/run/exed/lmtp.sock
-```
-
-Check that maddy has permission to access the socket (maddy user should be in the ubuntu group).
-
-### TLS certificate issues
-
-maddy uses the cert from `/home/ubuntu/certs/<domain>` managed by exed. Check that:
-
-1. exed is running and has obtained a certificate:
-   ```bash
-   ls -la /home/ubuntu/certs/
-   ```
-
-2. maddy can read the cert (check for permission errors):
-   ```bash
-   journalctl -u maddy | grep -i tls
-   ```
-
-3. The cert is valid:
-   ```bash
-   openssl x509 -in /home/ubuntu/certs/exe.xyz -text -noout | grep -A2 Validity
-   ```
-
-### SPF/DKIM failures
-
-Check maddy logs for authentication results:
-
-```bash
-journalctl -u maddy | grep -i spf
-journalctl -u maddy | grep -i dkim
-```
+| Issue | Check |
+|-------|-------|
+| LMTP connection refused | `ls -la /var/run/exed/lmtp.sock` -- exed must be running. maddy user must be in ubuntu group. |
+| TLS certificate issues | `ls -la /home/ubuntu/certs/` -- exed manages certs. `journalctl -u maddy \| grep -i tls` for maddy errors. `openssl x509 -in /home/ubuntu/certs/exe.xyz -text -noout \| grep -A2 Validity` for expiry. |
+| SPF/DKIM failures | `journalctl -u maddy \| grep -i spf` and `grep -i dkim` |
 
 ## Configuration Files
 
-- `/etc/maddy/maddy.conf` - Main configuration
-- `/etc/default/maddy` - Environment variables
-- `/var/lib/maddy/` - State and queue storage
+| Path | Purpose |
+|------|---------|
+| `/etc/maddy/maddy.conf` | Main configuration |
+| `/etc/default/maddy` | Environment variables (`BOX_DOMAIN`) |
+| `/var/lib/maddy/` | State and queue storage |
+| `ops/maddy/maddy.conf` | Source template (repo) |
+| `ops/maddy/maddy.service` | Systemd unit (repo) |

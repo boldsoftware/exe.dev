@@ -1,23 +1,25 @@
-# Git Industrial Accident Recovery
+# Git History Cleanup Procedure
 
-Most bad commits can be fixed by adding an additional revert commit.
+For commits that must be removed from history (large blobs, sensitive data) rather than reverted.
 
-Sometimes, like committing giant blobs or sensitive data, we want to actually force push to main to remove that commit from history.
+The risk: after a force push, anyone who already fetched the bad commit can accidentally re-introduce it on their next push.
 
-The trouble is that it's really easy to accidentally re-introduce that commit, if others have already fetched it.
-
-If you need to remove a commit from history, follow these steps.
+## Steps
 
 0. Tell the team.
 1. Fix main locally.
-2. Add a new placeholder commit that says that a cleanup happened (`git commit --allow-empty`).
-3. Force push that fixed main branch.
-4. Change the fix SHA in `queue-gate-ancestor` to the SHA of your placeholder commit.
-5. Add the bad commit's subject to `queue-gate-bad-subjects`.
+2. Add a placeholder commit noting the cleanup (`git commit --allow-empty`).
+3. Force push the fixed main branch.
+4. Update `.github/queue-gate-ancestor` to the SHA of your placeholder commit.
+5. Add the bad commit's subject to `.github/queue-gate-bad-subjects`.
 6. Force push to main.
 7. Tell the team.
 
-The gate files you updated prevent accidental reintroduction. Both are fetched live from `origin/main` by CI, so updates take effect immediately for all queue pushes.
+## Gate Files
 
-- `.github/queue-gate-ancestor` — SHA that all queue branches must include as an ancestor.
-- `.github/queue-gate-bad-subjects` — Commit subjects that are blocked (one per line).
+Both are fetched live from `origin/main` by CI (`.github/workflows/queue-main.yml`), so updates take effect immediately for all queue pushes.
+
+| File | Purpose |
+|------|---------|
+| `.github/queue-gate-ancestor` | SHA that all queue branches must include as an ancestor |
+| `.github/queue-gate-bad-subjects` | Commit subjects that are blocked (one per line) |

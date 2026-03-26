@@ -1,6 +1,6 @@
 # Billing Architecture
 
-For the current billing architecture, see [devdocs/BILLING.md](../devdocs/BILLING.md).
+For the current billing architecture, see [devdocs/billing.md](../devdocs/billing.md).
 
 ## Plans and Entitlements
 

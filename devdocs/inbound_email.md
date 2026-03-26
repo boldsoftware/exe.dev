@@ -1,16 +1,14 @@
 # Inbound Email Architecture
 
-This document describes how inbound email works for exe.dev VMs.
-
 ## Overview
 
 ```
-Internet → MX (maddy) → LMTP (exed) → SCP → VM Maildir
+Internet -> MX (maddy) -> LMTP (exed) -> SCP -> VM Maildir
 ```
 
 1. MX records for `*.exe.xyz` point to `mail.exe.xyz`
-2. maddy accepts mail and forwards to exed via LMTP
-3. exed validates the recipient and delivers via SCP to the VM
+2. maddy accepts mail and forwards to exed via LMTP over a Unix socket
+3. exed validates the recipient and delivers to the VM via SCP
 
 ## Components
 
@@ -20,49 +18,60 @@ Internet → MX (maddy) → LMTP (exed) → SCP → VM Maildir
 - Only returned for boxes with `email_receive_enabled=1`
 - Points to `mail.{boxHost}` (e.g., `mail.exe.xyz` for prod, `mail.exe-staging.xyz` for staging)
 
+### maddy (ops/maddy/)
+
+External mail server (v0.8.2) that handles:
+- TLS termination using wildcard certs managed by exed (DNS-01 via exens)
+- SPF/DKIM validation (SPF failures are rejected)
+- Rate limiting (10/s per source, 5 concurrent connections)
+- Forwarding to LMTP socket at `/var/run/exed/lmtp.sock`
+- Ports: 25 (STARTTLS), 465 (implicit TLS)
+
+All recipient validation is deferred to the LMTP server because maddy 0.8.2 lacks the filtering primitives needed to check box existence at RCPT time. See `ops/maddy/maddy.conf` for details.
+
 ### LMTP Server (execore/lmtp.go)
 
-- Listens on Unix socket `/var/run/exed/lmtp.sock`
-- Validates recipients:
-  - Domain must be `*.exe.xyz`
-  - Box must exist
-  - Box must have `email_receive_enabled=1`
-- Returns SMTP error codes:
-  - `550 5.1.1` - mailbox not found / email disabled
-  - `550 5.1.2` - invalid domain
-  - `451 4.3.0` - temporary failure
+Listens on Unix socket `/var/run/exed/lmtp.sock`. Validates recipients in the `Rcpt()` method (before DATA phase) in this order:
+
+1. Parse email syntax
+2. Domain must end with `.{BoxHost}` (e.g., `.exe.xyz`)
+3. Only single-level subdomains (rejects `a.b.exe.xyz`)
+4. Box must exist in DB
+5. Box must have `email_receive_enabled=1`
+
+SMTP error codes:
+- `550 5.1.1` -- mailbox not found or email disabled
+- `550 5.1.2` -- invalid domain
+- `451 4.3.0` -- temporary failure
+- `552 5.3.4` -- message too large (>1MB)
 
 ### Email Delivery
 
-- Prepends `Delivered-To: <recipient>` header to identify the envelope recipient
-- Connects to VM via SSH using stored credentials
-- Atomically writes email to `~/Maildir/new/{hash}.eml` (via temp file in /tmp)
-- Content-addressable filename prevents duplicates
+- Prepends `Delivered-To: <recipient>` header
+- Computes SHA256 of full message (header + body) for content-addressable filename
+- Delivers via SCP to `{email_maildir_path}/new/{hash}.eml`
+- Atomic write prevents duplicates
 
 ### Email Limit Enforcement
 
-After each successful delivery, the LMTP server counts emails in `~/Maildir/new/`. If the count exceeds the configured limit (`stage.Env.MaxMaildirEmails`):
-1. `email_receive_enabled` is set to 0 in the database
-2. An email notification is sent to the VM owner
-3. MX records are no longer served for the box
+After each successful delivery, the LMTP server counts files in `~/Maildir/new/`. If the count exceeds `MaxMaildirEmails`:
 
-Limits per stage:
-- Test: 5
-- Local: 5
-- Staging: 1,000
-- Prod: 1,000
+1. Sets `email_receive_enabled=0` and clears `email_maildir_path` in DB
+2. Sends email notification to the VM owner
+3. MX records stop being served for the box
 
-### maddy (ops/maddy/)
+| Stage | Limit |
+|-------|-------|
+| Test | 5 |
+| Local | 5 |
+| Staging | 1,000 |
+| Prod | 1,000 |
 
-External mail server that handles:
-- TLS termination (ACME via Route53)
-- SPF/DKIM validation
-- Forwarding to LMTP
-
-## Database Schema
+## Database Columns (boxes table)
 
 ```sql
-ALTER TABLE boxes ADD COLUMN email_receive_enabled INTEGER NOT NULL DEFAULT 0;
+email_receive_enabled INTEGER NOT NULL DEFAULT 0
+email_maildir_path TEXT NOT NULL DEFAULT ''
 ```
 
 ## REPL Command
@@ -71,10 +80,7 @@ ALTER TABLE boxes ADD COLUMN email_receive_enabled INTEGER NOT NULL DEFAULT 0;
 share receive-email <vm> [on|off]
 ```
 
-When enabling:
-1. Sets `email_receive_enabled=1` in database
-2. Creates `~/Maildir/new/` on VM
-3. Writes welcome email if first-time setup
+When enabling: sets `email_receive_enabled=1`, creates `~/Maildir/new/` on VM, writes welcome email if first-time setup.
 
 ## Local Testing
 
@@ -93,28 +99,18 @@ Hello
 QUIT
 ```
 
-Check delivery:
-
-```bash
-ssh vmname ls ~/Maildir/new/
-```
-
 ## Debugging
 
-Check exed logs for LMTP errors:
-
 ```bash
+# Check exed LMTP logs
 journalctl -u exed | grep -i lmtp
-```
 
-Verify MX record:
-
-```bash
+# Verify MX record
 dig MX vmname.exe.xyz @ns1.exe.dev
-```
 
-Test SMTP connectivity:
-
-```bash
+# Test SMTP connectivity
 swaks --to test@vmname.exe.xyz --server mail.exe.xyz
+
+# Check delivery
+ssh vmname ls ~/Maildir/new/
 ```

@@ -1,128 +1,110 @@
-We use "slog" for logging and do "structured logging". When possible, instead of interpolating
-strings into your log line, add things as attributes.
+# Logging
 
-Where possible, use *.WarnContext() vs *.Warn(), and so on. Passing along the context
-enables logging to get a "trace_id" to attach to your log line, which helps piece
-together log lines for a request, etc.
+We use `slog` for structured logging. Always prefer structured attributes over string interpolation, and use `*Context()` variants (e.g. `slog.InfoContext(ctx, ...)`) to attach `trace_id` from context.
 
-Following https://stripe.com/blog/canonical-log-lines or https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/,
-it is useful to have a "canonical log line" at the end of an operation. Currently I am aware of the following
-instances of that:
+## Setup
 
-* HTTP Requests (exed)
+`logging.SetupLogger(env, registry, attrs)` configures the default slog logger based on the deployment stage. It chains:
+- A format handler (text, JSON, or tint) based on `LOG_FORMAT` env var or stage config
+- Slack error notifications (if `SLACK_BOT_TOKEN` and stage config are set)
+- OTEL log export (if `OTEL_EXPORTER_OTLP_ENDPOINT` is set)
+- Trace ID injection from context (`tracing.NewHandler`)
+- Log level metrics (if a Prometheus registry is provided)
 
-  "log_type: http_request", body looks like "200: OK".
+## Canonical Log Lines
 
-  Base attributes (all HTTP requests): method, host, uri, local_addr, request_type
-  (proxy|terminal|web|gateway), user_id (when authenticated).
+Following the [canonical log lines](https://stripe.com/blog/canonical-log-lines) pattern, each major operation emits a single wide event at completion, accumulating attributes throughout the request lifecycle.
 
-  Proxy requests additionally have: proxy=true, vm_id, vm_name, vm_owner_user_id,
-  exelet_host, route_port, route_share (public|private), proxy_shelley (port 9999).
+### HTTP Requests (exed)
 
-  Gateway requests (LLM proxy) additionally have: request_type=gateway,
-  llm_model, vm_name, user_id, input_tokens, output_tokens, cache_creation_tokens,
-  cache_read_tokens, cost_usd, remaining_credit_usd, conversation_id, shelley_version.
+`log_type: http_request`, body: `"200: OK"`
 
-  Use `sloghttp.AddCustomAttributes(r, slog.String("key", val))` to add attributes.
+Base attributes: `method`, `host`, `uri`, `local_addr`, `request_type` (proxy|terminal|web|gateway), `user_id`.
 
-* SSH Connections to VMs
+Proxy requests add: `proxy=true`, `vm_id`, `vm_name`, `vm_owner_user_id`, `exelet_host`, `route_port`, `route_share`, `proxy_shelley`.
 
-  "body: SSH Connection to VM", "log_type: vm-ssh-connection"
+Gateway requests (LLM proxy) add: `request_type=gateway`, `llm_model`, `vm_name`, `user_id`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd`, `remaining_credit_usd`, `conversation_id`, `shelley_version`.
 
-  These indicate that we routed a user to a VM via the piper plugin.
-  Attributes: user_id, conn_id, username, remote_addr, local_address,
-  key_fingerprint, vm_name, vm_id, owner_user_id, container_id, instance_state,
-  route (by_name, by_ip_shard, by_team_ip_shard), port, ctrhost, ssh_user, box_host,
-  duration.
+Add attributes: `sloghttp.AddCustomAttributes(r, slog.String("key", val))`
 
-  The piper plugin uses `piperConnLog` (stored in context, like `CommandLog`)
-  to accumulate attributes into a single wide event. Use
-  `getPiperConnLog(ctx).add(...)` to add attributes.
+### HTTP Requests (exeprox)
 
-* SSH Connections to exed shell
+`log_type: http_request` on the exeprox dataset.
 
-  "body: SSH routing to exed shell", "log_type: ssh_proxy_auth"
+Base attributes: `method`, `host`, `uri`, `local_addr`.
 
-  These indicate SSH connections routed to the exed interactive shell
-  (registration, interactive menu, etc.) rather than to a VM.
-  Attributes: user_id, username, remote_addr, local_address, key_fingerprint, duration.
+Proxy requests add: `proxy=true`, `vm_name`, `vm_id`, `vm_owner_user_id`, `exelet_host`, `route_port`, `route_share`.
 
-* SSH Handler Commands
+exeprox generates a `trace_id` for each request via `tracing.HTTPMiddleware` (or uses an incoming `X-Trace-ID` header).
 
-  "body: ssh command completed", "log_type: ssh_command"
+### HTTP Requests (exelet)
 
-  These are emitted at the end of every SSH command execution.
-  Base attributes: command (full command string), command_name (first word),
-  subcommand (first two words), rc (exit code), duration, user_id.
+`log_type: http_request` on the exelet dataset.
 
-  Command handlers add structured attributes via `CommandLogAddAttr(ctx, slog.Attr)`:
-  - new: vm_name, vm_id, exelet_host, image
-  - rm: vm_name (comma-separated if multiple)
-  - rename: vm_name, old_vm_name, new_vm_name, vm_owner_user_id, vm_id
-  - restart: vm_name, vm_id, vm_owner_user_id
-  - resize: vm_name, vm_id, vm_owner_user_id
+Attributes: `method`, `uri`, `vm_name`, `remote_ip`, `original_path`, `new_path`.
 
-  Commands from the web UI include source=web.
+exelet only logs requests to its own HTTP endpoints (e.g. `/_/gateway`). Proxied HTTP traffic to VMs goes over SSH tunnel.
 
-* gRPC calls (exeprox → exed, and exeprox → exelet)
+### SSH Connections to VMs
 
-  "body: started call" / "body: finished call"
+Body: `"SSH Connection to VM"`, `log_type: vm-ssh-connection`
 
-  These are emitted by gRPC logging interceptors on both client and server side.
-  Base attributes: grpc.service, grpc.method, grpc.code, grpc.time_ms,
-  grpc.component ("client" or "server"), grpc.method_type, peer.address.
+Attributes: `user_id`, `conn_id`, `username`, `remote_addr`, `local_address`, `key_fingerprint`, `vm_name`, `vm_id`, `owner_user_id`, `container_id`, `instance_state`, `route`, `port`, `ctrhost`, `ssh_user`, `box_host`, `duration`.
 
-  Key gRPC services and methods for HTTP proxy requests:
-  - exe.proxy.v1.ProxyInfoService / BoxInfo — resolves hostname to VM
-  - exe.proxy.v1.ProxyInfoService / TopLevelCert — fetches TLS cert for custom domains
-  - exe.proxy.v1.ProxyInfoService / UserInfo — resolves VM owner
-  - exe.proxy.v1.ProxyInfoService / CookieInfo — resolves auth cookies
+The piper plugin uses `piperConnLog` (stored in context) to accumulate attributes into a single wide event.
 
-  The client side (exeprox) logs at DEBUG; the server side (exed) logs at INFO.
-  Both sides carry the same trace_id, so filtering by trace_id shows the full
-  client→server round trip.
+Add attributes: `getPiperConnLog(ctx).add(slog.String("key", "val"))`
 
-* gRPC "finished call" (exelet)
+### SSH Connections to exed Shell
 
-  "body: finished call", "log_type: grpc_request"
+Body: `"SSH routing to exed shell"`, `log_type: ssh_proxy_auth`
 
-  These are emitted by the gRPC logging interceptor on the exelet.
-  Base attributes: grpc.service, grpc.method, grpc.code, grpc.time_ms,
-  grpc.component, grpc.method_type, peer.address.
+Attributes: `user_id`, `username`, `remote_addr`, `local_address`, `key_fingerprint`, `duration`.
 
-  Service handlers add: container_id, vm_name (where available via request
-  or response data).
+### SSH Handler Commands
 
-  Use `logging.AddFields(ctx, logging.Fields{"key", val})` (from
-  go-grpc-middleware/v2/interceptors/logging) inside gRPC handlers.
+Body: `"ssh command completed"`, `log_type: ssh_command`
 
-* HTTP Requests (exeprox)
+Base attributes: `command`, `command_name`, `subcommand`, `rc`, `duration`, `user_id`.
 
-  "log_type: http_request" on the exeprox dataset.
+Per-command attributes added via `CommandLogAddAttr(ctx, slog.Attr)`:
+- new: `vm_name`, `vm_id`, `exelet_host`, `image`
+- rm: `vm_name`
+- rename: `vm_name`, `old_vm_name`, `new_vm_name`, `vm_owner_user_id`, `vm_id`
+- restart: `vm_name`, `vm_id`, `vm_owner_user_id`
+- resize: `vm_name`, `vm_id`, `vm_owner_user_id`
 
-  Base attributes: method, host, uri, log_type, local_addr.
+Commands from the web UI include `source=web`.
 
-  Proxy requests additionally have: proxy=true, vm_name, vm_id,
-  vm_owner_user_id, exelet_host, route_port, route_share (public|private).
+### gRPC Calls (exeprox -- exed)
 
-  Note: exeprox generates a trace_id for each request via
-  tracing.HTTPMiddleware (or uses an incoming X-Trace-ID header if present).
+Body: `"started call"` / `"finished call"`
 
-* HTTP Requests (exelet)
+Attributes: `grpc.service`, `grpc.method`, `grpc.code`, `grpc.time_ms`, `grpc.component` ("client" or "server"), `grpc.method_type`, `peer.address`.
 
-  "log_type: http_request" on the exelet dataset.
+Key gRPC methods for HTTP proxy requests:
+- `ProxyInfoService/BoxInfo` — resolves hostname to VM
+- `ProxyInfoService/TopLevelCert` — fetches TLS cert for custom domains
+- `ProxyInfoService/UserInfo` — resolves VM owner
+- `ProxyInfoService/CookieInfo` — resolves auth cookies
 
-  Attributes: method, uri, vm_name, remote_ip, original_path, new_path.
+Client side (exeprox) logs at DEBUG; server side (exed) logs at INFO. Both carry the same `trace_id`.
 
-  Note: exelet only logs requests to its own HTTP endpoints (e.g. /_/gateway).
-  Proxied HTTP traffic to containers goes over the SSH sshpool tunnel.
+### gRPC Calls (exelet)
 
+Body: `"finished call"`, `log_type: grpc_request`
 
-If you want to add some stat to a request, instead of logging it separately,
-use `sloghttp.AddCustomAttributes(r, slog.String("pow_time_ms", timeMs))` or similar.
+Attributes: `grpc.service`, `grpc.method`, `grpc.code`, `grpc.time_ms`, `grpc.component`, `grpc.method_type`, `peer.address`.
 
-For SSH piper connections, use `getPiperConnLog(ctx).add(slog.String("key", "val"))`
-to accumulate attributes that will be included in the canonical log line.
+Handlers add: `container_id`, `vm_name` where available.
 
-For SSH commands, use `CommandLogAddAttr(ctx, slog.String("key", "val"))` to add
-attributes to the canonical "ssh command completed" line.
+Add attributes: `logging.AddFields(ctx, logging.Fields{"key", val})`
+
+## How to Add Attributes
+
+| Context | Method |
+|---------|--------|
+| HTTP request (exed/exeprox/exelet) | `sloghttp.AddCustomAttributes(r, slog.String("key", val))` |
+| SSH piper connection | `getPiperConnLog(ctx).add(slog.String("key", "val"))` |
+| SSH command handler | `CommandLogAddAttr(ctx, slog.String("key", "val"))` |
+| gRPC handler (exelet) | `logging.AddFields(ctx, logging.Fields{"key", val})` |
