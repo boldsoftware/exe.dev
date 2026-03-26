@@ -1341,6 +1341,14 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			s.maybeApplyInviteCode(r.Context(), s.lookupUnusedInviteCode(r.Context(), code), userID)
 		}
 
+		// If a prompt was passed (from the landing page "Start building" form),
+		// redirect to /new with the prompt so the user can create a VM.
+		if prompt := r.URL.Query().Get("prompt"); prompt != "" {
+			newURL := "/new?prompt=" + url.QueryEscape(prompt)
+			http.Redirect(w, r, newURL, http.StatusSeeOther)
+			return
+		}
+
 		// User is already authenticated, handle redirect
 		s.redirectAfterAuth(w, r, userID)
 		return
@@ -1398,11 +1406,20 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// If a prompt was passed (from landing page), set the redirect to /new?prompt=...
+	// so the prompt survives the auth flow.
+	redirectURL := q.Get("redirect")
+	if redirectURL == "" {
+		if prompt := q.Get("prompt"); prompt != "" {
+			redirectURL = "/new?prompt=" + url.QueryEscape(prompt)
+		}
+	}
+
 	// Show authentication form with query parameters
 	data := authFormData{
 		Env:               s.env,
 		SSHCommand:        s.replSSHConnectionCommand(),
-		RedirectURL:       q.Get("redirect"),
+		RedirectURL:       redirectURL,
 		ReturnHost:        returnHost,
 		InviteCode:        inviteCodeStr,
 		InviteCodeValid:   inviteCodeValid,
