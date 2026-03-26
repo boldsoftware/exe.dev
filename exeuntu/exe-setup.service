@@ -1,0 +1,22 @@
+[Unit]
+Description=Run /exe.dev/setup script on first boot
+ConditionPathExists=/exe.dev/setup
+After=network.target
+
+[Service]
+Type=oneshot
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev
+ExecStart=/exe.dev/setup
+ExecStartPost=/usr/bin/sudo /bin/rm -f /exe.dev/setup
+Environment=HOME=/home/exedev
+Environment=USER=exedev
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=exe-setup
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

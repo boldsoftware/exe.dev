@@ -210,6 +210,11 @@ COPY shelley.service /etc/systemd/system/shelley.service
 RUN chmod 644 /etc/systemd/system/shelley.socket /etc/systemd/system/shelley.service && \
     systemctl enable shelley.socket
 
+# Create systemd oneshot service for /exe.dev/setup script
+COPY exe-setup.service /etc/systemd/system/exe-setup.service
+RUN chmod 644 /etc/systemd/system/exe-setup.service && \
+    systemctl enable exe-setup.service
+
 # TODO(crawshaw/philip): This is called init so that exetini decides
 # this wrapper script is an init, and exec's it rather than forking it.
 # It would be better if you could indicate that via an env variable or something.
