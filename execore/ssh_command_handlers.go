@@ -700,6 +700,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if tags := vm.GetTags(); len(tags) > 0 {
 				box["tags"] = tags
 			}
+			if vm.CreatedAt != nil {
+				box["created_at"] = vm.CreatedAt.UTC().Format(time.RFC3339)
+			}
 			vmList = append(vmList, box)
 		}
 
@@ -729,6 +732,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				}
 				if strings.Contains(vm.Image, "exeuntu") {
 					box["shelley_url"] = ss.server.shelleyURL(vm.Name)
+				}
+				if vm.CreatedAt != nil {
+					box["created_at"] = vm.CreatedAt.UTC().Format(time.RFC3339)
 				}
 				teamVMList = append(teamVMList, box)
 			}
@@ -766,10 +772,15 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 					tagStr += " #" + t
 				}
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t\033[36m%s\033[0m\r\n",
+			createdAt := "-"
+			if b.CreatedAt != nil {
+				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[36m%s\033[0m\r\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
+				createdAt,
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
 				tagStr,
@@ -781,10 +792,15 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if strings.Contains(b.Image, "exeuntu") {
 				shelleyURL = ss.server.shelleyURL(b.Name)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t\033[90m%s\033[0m\r\n",
+			createdAt := "-"
+			if b.CreatedAt != nil {
+				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[90m%s\033[0m\r\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
+				createdAt,
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
 				b.CreatorEmail,

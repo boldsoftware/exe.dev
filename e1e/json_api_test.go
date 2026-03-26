@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 )
@@ -153,6 +154,9 @@ func TestExeDevAPI(t *testing.T) {
 	if !strings.HasPrefix(vm0.ShelleyURL, "http") {
 		t.Errorf("expected shelley_url to start with 'http', got %q", vm0.ShelleyURL)
 	}
+	if _, err := time.Parse(time.RFC3339, vm0.CreatedAt); err != nil {
+		t.Errorf("expected created_at to be valid RFC3339, got %q: %v", vm0.CreatedAt, err)
+	}
 	// TODO: check image name
 
 	t.Run("share_show_no_null", func(t *testing.T) {
@@ -268,6 +272,7 @@ type vmListEntry struct {
 	Region     string `json:"region"`
 	HTTPS      string `json:"https_url"`
 	ShelleyURL string `json:"shelley_url"`
+	CreatedAt  string `json:"created_at"`
 }
 
 type vmListOutput struct {
