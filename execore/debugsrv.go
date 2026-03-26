@@ -5384,7 +5384,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				cr.CreditType = *c.CreditType
 			}
 			if c.HourBucket != nil {
-				cr.HourBucket = *c.HourBucket
+				cr.HourBucket = c.HourBucket.Format(time.RFC3339)
 			}
 			if c.StripeEventID != nil {
 				cr.StripeEventID = *c.StripeEventID

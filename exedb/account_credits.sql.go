@@ -90,15 +90,15 @@ ORDER BY id DESC
 `
 
 type ListBillingCreditsForAccountRow struct {
-	ID            int64     `db:"id" json:"id"`
-	AccountID     string    `db:"account_id" json:"account_id"`
-	Amount        int64     `db:"amount" json:"amount"`
-	StripeEventID *string   `db:"stripe_event_id" json:"stripe_event_id"`
-	CreatedAt     time.Time `db:"created_at" json:"created_at"`
-	HourBucket    *string   `db:"hour_bucket" json:"hour_bucket"`
-	CreditType    *string   `db:"credit_type" json:"credit_type"`
-	GiftID        *string   `db:"gift_id" json:"gift_id"`
-	Note          *string   `db:"note" json:"note"`
+	ID            int64      `db:"id" json:"id"`
+	AccountID     string     `db:"account_id" json:"account_id"`
+	Amount        int64      `db:"amount" json:"amount"`
+	StripeEventID *string    `db:"stripe_event_id" json:"stripe_event_id"`
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
+	HourBucket    *time.Time `db:"hour_bucket" json:"hour_bucket"`
+	CreditType    *string    `db:"credit_type" json:"credit_type"`
+	GiftID        *string    `db:"gift_id" json:"gift_id"`
+	Note          *string    `db:"note" json:"note"`
 }
 
 func (q *Queries) ListBillingCreditsForAccount(ctx context.Context, accountID string) ([]ListBillingCreditsForAccountRow, error) {
@@ -179,7 +179,7 @@ func (q *Queries) ListGiftCredits(ctx context.Context, accountID string) ([]List
 
 const useCredits = `-- name: UseCredits :one
 INSERT INTO billing_credits (account_id, amount, hour_bucket, credit_type)
-VALUES (?1, ?2, ?3, ?4)
+VALUES (?1, ?2, strftime('%Y-%m-%d %H:00:00', CURRENT_TIMESTAMP), ?3)
 ON CONFLICT(account_id, hour_bucket, credit_type)
 DO UPDATE SET amount = billing_credits.amount + excluded.amount
 RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM billing_credits WHERE account_id = ?1) AS INTEGER)
@@ -188,19 +188,13 @@ RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM billing_credits WHERE accou
 type UseCreditsParams struct {
 	AccountID  string  `db:"account_id" json:"account_id"`
 	Amount     int64   `db:"amount" json:"amount"`
-	HourBucket *string `db:"hour_bucket" json:"hour_bucket"`
 	CreditType *string `db:"credit_type" json:"credit_type"`
 }
 
 // UseCredits inserts a deduction into the credit ledger and returns the new balance.
 // amount should be negative for deductions. Negative balances are allowed.
 func (q *Queries) UseCredits(ctx context.Context, arg UseCreditsParams) (int64, error) {
-	row := q.queryRow(ctx, q.useCreditsStmt, useCredits,
-		arg.AccountID,
-		arg.Amount,
-		arg.HourBucket,
-		arg.CreditType,
-	)
+	row := q.queryRow(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount, arg.CreditType)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

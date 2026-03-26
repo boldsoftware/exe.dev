@@ -812,11 +812,9 @@ func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity i
 	}
 
 	creditType := "usage"
-	hourBucket := time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:00:00")
 	rem, err := exedb.WithTxRes1(m.DB, ctx, (*exedb.Queries).UseCredits, exedb.UseCreditsParams{
 		AccountID:  billingID,
 		Amount:     unitPrice.Times(-quantity).Microcents(),
-		HourBucket: &hourBucket,
 		CreditType: &creditType,
 	})
 	if err != nil {
