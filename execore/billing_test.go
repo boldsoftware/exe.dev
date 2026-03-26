@@ -2378,3 +2378,74 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 		t.Errorf("total plan rows=%d, want 1 (INSERT OR IGNORE should not duplicate)", len(plans))
 	}
 }
+
+func TestPendingRegistrationDeduplicatesByEmail(t *testing.T) {
+	t.Parallel()
+	server := newBillingTestServer(t)
+	server.env.SkipBilling = false
+
+	email := "dedup-test@example.com"
+
+	// Helper: submit the /auth form and return the pending registration token + account_id.
+	submitAuth := func() (token, accountID string) {
+		t.Helper()
+		form := url.Values{}
+		form.Add("email", email)
+		req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+		req.Host = server.env.WebHost
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, req)
+
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("Expected redirect 303, got %d. Body: %s", w.Code, w.Body.String())
+		}
+		location := w.Header().Get("Location")
+		redirectURL, err := url.Parse(location)
+		if err != nil {
+			t.Fatalf("Failed to parse redirect URL: %v", err)
+		}
+		token = redirectURL.Query().Get("token")
+		if token == "" {
+			t.Fatal("Expected token in redirect URL")
+		}
+
+		var aid string
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.Conn().QueryRowContext(ctx, `SELECT account_id FROM pending_registrations WHERE token = ?`, token).Scan(&aid)
+		})
+		if err != nil {
+			t.Fatalf("Failed to find pending registration: %v", err)
+		}
+		return token, aid
+	}
+
+	// First signup attempt — generates a fresh account_id.
+	_, firstAccountID := submitAuth()
+	if !strings.HasPrefix(firstAccountID, "exe_") {
+		t.Fatalf("Expected exe_ prefix, got %q", firstAccountID)
+	}
+
+	// Second signup attempt (retry) — should reuse the same account_id.
+	_, secondAccountID := submitAuth()
+	if secondAccountID != firstAccountID {
+		t.Errorf("Expected account_id reuse: first=%q, second=%q", firstAccountID, secondAccountID)
+	}
+
+	// Expire all existing pending registrations, then retry — should get a new account_id.
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Conn().ExecContext(ctx, `UPDATE pending_registrations SET expires_at = datetime('now', '-1 hour') WHERE email = ?`, email)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to expire pending registrations: %v", err)
+	}
+
+	_, thirdAccountID := submitAuth()
+	if thirdAccountID == firstAccountID {
+		t.Errorf("After expiry, expected new account_id but got reused %q", thirdAccountID)
+	}
+	if !strings.HasPrefix(thirdAccountID, "exe_") {
+		t.Fatalf("Expected exe_ prefix, got %q", thirdAccountID)
+	}
+}

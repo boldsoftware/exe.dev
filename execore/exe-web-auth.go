@@ -1573,7 +1573,21 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		// Generate the account ID now so it can be used as the Stripe customer ID
 		// and later as the canonical account ID when the user is created.
 		token := generateRegistrationToken()
-		pendingAccountID := "exe_" + crand.Text()[:16]
+
+		// Reuse the account_id from an existing unexpired pending registration
+		// for this email to avoid creating duplicate Stripe customers when a
+		// user retries signup.
+		var pendingAccountID string
+		existing, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUnexpiredPendingRegistrationByEmail, exedb.GetUnexpiredPendingRegistrationByEmailParams{
+			Email:     addr,
+			ExpiresAt: time.Now(),
+		})
+		if err == nil && existing.AccountID != nil {
+			pendingAccountID = *existing.AccountID
+		} else {
+			pendingAccountID = "exe_" + crand.Text()[:16]
+		}
+
 		err = withTx1(s, r.Context(), (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
 			Token:        token,
 			Email:        addr,

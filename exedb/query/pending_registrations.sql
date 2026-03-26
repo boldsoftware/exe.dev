@@ -8,3 +8,8 @@ WHERE token = ?;
 
 -- name: DeletePendingRegistrationByToken :exec
 DELETE FROM pending_registrations WHERE token = ?;
+
+-- name: GetUnexpiredPendingRegistrationByEmail :one
+SELECT * FROM pending_registrations
+WHERE email = ? AND expires_at > ? AND account_id IS NOT NULL
+LIMIT 1;

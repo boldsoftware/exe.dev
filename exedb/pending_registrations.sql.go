@@ -38,6 +38,31 @@ func (q *Queries) GetPendingRegistrationByToken(ctx context.Context, token strin
 	return i, err
 }
 
+const getUnexpiredPendingRegistrationByEmail = `-- name: GetUnexpiredPendingRegistrationByEmail :one
+SELECT token, email, invite_code_id, created_at, expires_at, account_id FROM pending_registrations
+WHERE email = ? AND expires_at > ? AND account_id IS NOT NULL
+LIMIT 1
+`
+
+type GetUnexpiredPendingRegistrationByEmailParams struct {
+	Email     string    `db:"email" json:"email"`
+	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) GetUnexpiredPendingRegistrationByEmail(ctx context.Context, arg GetUnexpiredPendingRegistrationByEmailParams) (PendingRegistration, error) {
+	row := q.queryRow(ctx, q.getUnexpiredPendingRegistrationByEmailStmt, getUnexpiredPendingRegistrationByEmail, arg.Email, arg.ExpiresAt)
+	var i PendingRegistration
+	err := row.Scan(
+		&i.Token,
+		&i.Email,
+		&i.InviteCodeID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.AccountID,
+	)
+	return i, err
+}
+
 const insertPendingRegistration = `-- name: InsertPendingRegistration :exec
 INSERT INTO pending_registrations (token, email, invite_code_id, expires_at, account_id)
 VALUES (?, ?, ?, ?, ?)

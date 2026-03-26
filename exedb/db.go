@@ -606,6 +606,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTemplateRatingStatsStmt, err = db.PrepareContext(ctx, getTemplateRatingStats); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateRatingStats: %w", err)
 	}
+	if q.getUnexpiredPendingRegistrationByEmailStmt, err = db.PrepareContext(ctx, getUnexpiredPendingRegistrationByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUnexpiredPendingRegistrationByEmail: %w", err)
+	}
 	if q.getUserAuthProviderStmt, err = db.PrepareContext(ctx, getUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserAuthProvider: %w", err)
 	}
@@ -2133,6 +2136,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTemplateRatingStatsStmt: %w", cerr)
 		}
 	}
+	if q.getUnexpiredPendingRegistrationByEmailStmt != nil {
+		if cerr := q.getUnexpiredPendingRegistrationByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUnexpiredPendingRegistrationByEmailStmt: %w", cerr)
+		}
+	}
 	if q.getUserAuthProviderStmt != nil {
 		if cerr := q.getUserAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserAuthProviderStmt: %w", cerr)
@@ -3286,6 +3294,7 @@ type Queries struct {
 	getTeamShardCollisionsStmt                 *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
 	getTemplateRatingStatsStmt                 *sql.Stmt
+	getUnexpiredPendingRegistrationByEmailStmt *sql.Stmt
 	getUserAuthProviderStmt                    *sql.Stmt
 	getUserBillingStmt                         *sql.Stmt
 	getUserBillingStatusStmt                   *sql.Stmt
@@ -3670,6 +3679,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamShardCollisionsStmt:                 q.getTeamShardCollisionsStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
 		getTemplateRatingStatsStmt:                 q.getTemplateRatingStatsStmt,
+		getUnexpiredPendingRegistrationByEmailStmt: q.getUnexpiredPendingRegistrationByEmailStmt,
 		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
 		getUserBillingStmt:                         q.getUserBillingStmt,
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
