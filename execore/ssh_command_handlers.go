@@ -563,6 +563,12 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleGameCommand,
 		},
 		{
+			Name:        "top",
+			Hidden:      true,
+			Description: "Live VM resource usage",
+			Handler:     ss.handleTopCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
