@@ -24,12 +24,11 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 		t.Fatalf("GetAccountByUserID: %v", err)
 	}
 
-	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	if err = withTx1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: account.ID,
 		EventType: "active",
 		EventAt:   time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("InsertBillingEvent(active): %v", err)
 	}
 
@@ -62,12 +61,11 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 		{"canceled", time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)},
 		{"active", time.Date(2026, 1, 20, 12, 0, 0, 0, time.UTC)},
 	} {
-		_, err := withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+		if err := withTx1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID: account.ID,
 			EventType: ev.eventType,
 			EventAt:   ev.at,
-		})
-		if err != nil {
+		}); err != nil {
 			t.Fatalf("InsertBillingEvent(%s): %v", ev.eventType, err)
 		}
 	}
@@ -178,12 +176,11 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InsertAccountPlan: %v", err)
 	}
-	_, err = withTxRes1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+	if err = withTx1(s, t.Context(), (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 		AccountID: account.ID,
 		EventType: "active",
 		EventAt:   now,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("InsertBillingEvent: %v", err)
 	}
 

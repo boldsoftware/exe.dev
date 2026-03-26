@@ -395,12 +395,10 @@ func TestGetCreditState(t *testing.T) {
 
 	// Simulate a paid credit by inserting directly (SyncCredits path).
 	stripeEventID := "pi_test_paid"
-	err = exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		return q.InsertPaidCredits(ctx, exedb.InsertPaidCreditsParams{
-			AccountID:     accountID,
-			Amount:        tender.Mint(3000, 0).Microcents(),
-			StripeEventID: &stripeEventID,
-		})
+	err = exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertPaidCredits, exedb.InsertPaidCreditsParams{
+		AccountID:     accountID,
+		Amount:        tender.Mint(3000, 0).Microcents(),
+		StripeEventID: &stripeEventID,
 	})
 	if err != nil {
 		t.Fatalf("insert paid credit: %v", err)

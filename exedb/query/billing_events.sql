@@ -1,4 +1,4 @@
--- name: InsertBillingEvent :execresult
+-- name: InsertBillingEvent :exec
 -- event_at should be a string in Time10 format (YYYY-MM-DD HH:MM:SS.nnnnnnnnn-HH:MM)
 -- to ensure consistent storage and comparison. Use sqlite.FormatTime(t) to format.
 INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at) VALUES (?, ?, ?);

@@ -31,7 +31,7 @@ func activateUserBilling(t *testing.T, server *Server, userID string) string {
 	now := time.Now()
 	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 		// Insert billing event (keeps legacy GetAccountWithBillingStatus working).
-		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+		if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: acct.ID,
 			EventType: "active",
 			EventAt:   now,
@@ -73,7 +73,7 @@ func cancelUserBilling(t *testing.T, server *Server, userID string) {
 	now := time.Now()
 	err = server.withTx(t.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 		// Insert canceled billing event (keeps legacy path working).
-		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+		if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: acct.ID,
 			EventType: "canceled",
 			EventAt:   now,

@@ -513,7 +513,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			}
 			accountID = acct.ID
 			// Insert a billing event to mark the account as paid.
-			if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 				AccountID: acct.ID,
 				EventType: "active",
 				EventAt:   now,
@@ -742,7 +742,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 			return fmt.Errorf("insert account: %w", err)
 		}
 		// Insert the billing event to mark the account as active (paid).
-		if _, err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+		if err := queries.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: billingID,
 			EventType: "active",
 			EventAt:   now,

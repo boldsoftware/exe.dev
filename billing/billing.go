@@ -583,13 +583,10 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 
 		eventAt := time.Unix(event.Created, 0)
 		maxEventAt = max(maxEventAt, eventAt.Unix())
-		err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			_, err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
-				AccountID: sub.Customer.ID,
-				EventType: eventType,
-				EventAt:   sqlite.NormalizeTime(eventAt),
-			})
-			return err
+		err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
+			AccountID: sub.Customer.ID,
+			EventType: eventType,
+			EventAt:   sqlite.NormalizeTime(eventAt),
 		})
 		if err != nil {
 			return since, fmt.Errorf("insert billing event: %w", err)
@@ -745,13 +742,11 @@ func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCred
 		note = "Credit gift from support@exe.dev"
 	}
 
-	return exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		return q.GiftCredits(ctx, exedb.GiftCreditsParams{
-			AccountID: billingID,
-			Amount:    amount.Microcents(),
-			GiftID:    &giftID,
-			Note:      &note,
-		})
+	return exedb.WithTx1(m.DB, ctx, (*exedb.Queries).GiftCredits, exedb.GiftCreditsParams{
+		AccountID: billingID,
+		Amount:    amount.Microcents(),
+		GiftID:    &giftID,
+		Note:      &note,
 	})
 }
 
@@ -935,12 +930,10 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 		// TODO(bmizrany): bulk insert?
 		amount := tender.Mint(intent.Amount, 0)
 		stripeEventID := intent.ID
-		err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			return q.InsertPaidCredits(ctx, exedb.InsertPaidCreditsParams{
-				AccountID:     intent.Customer.ID,
-				Amount:        amount.Microcents(),
-				StripeEventID: &stripeEventID,
-			})
+		err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertPaidCredits, exedb.InsertPaidCreditsParams{
+			AccountID:     intent.Customer.ID,
+			Amount:        amount.Microcents(),
+			StripeEventID: &stripeEventID,
 		})
 		if err != nil {
 			return fmt.Errorf("insert credit ledger entry: %w", err)

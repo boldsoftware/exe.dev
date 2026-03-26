@@ -7,7 +7,6 @@ package exedb
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
@@ -22,7 +21,7 @@ func (q *Queries) GetLatestBillingStatus(ctx context.Context, accountID string) 
 	return event_type, err
 }
 
-const insertBillingEvent = `-- name: InsertBillingEvent :execresult
+const insertBillingEvent = `-- name: InsertBillingEvent :exec
 INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at) VALUES (?, ?, ?)
 `
 
@@ -34,8 +33,9 @@ type InsertBillingEventParams struct {
 
 // event_at should be a string in Time10 format (YYYY-MM-DD HH:MM:SS.nnnnnnnnn-HH:MM)
 // to ensure consistent storage and comparison. Use sqlite.FormatTime(t) to format.
-func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (sql.Result, error) {
-	return q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent, arg.AccountID, arg.EventType, arg.EventAt)
+func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) error {
+	_, err := q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent, arg.AccountID, arg.EventType, arg.EventAt)
+	return err
 }
 
 const listBillingEventsForAccount = `-- name: ListBillingEventsForAccount :many

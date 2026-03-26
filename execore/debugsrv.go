@@ -2548,7 +2548,7 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			return fmt.Errorf("activate account: %w", err)
 		}
-		if _, err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+		if err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
 			AccountID: accountID,
 			EventType: "active",
 			EventAt:   now,
