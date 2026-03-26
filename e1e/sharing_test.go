@@ -82,27 +82,39 @@ func TestBoxSharing(t *testing.T) {
 			httpCode: http.StatusOK,
 		})
 
+		// Check that the shared box appears in the dashboard API
 		client2 := newClientWithCookies(t, guestCookies)
-		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
+		resp, err := client2.Get(fmt.Sprintf("http://localhost:%d/api/dashboard", Env.HTTPPort()))
 		if err != nil {
-			t.Fatalf("failed to get dashboard: %v", err)
+			t.Fatalf("GET /api/dashboard: %v", err)
 		}
 		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("failed to read dashboard: %v", err)
+		var dashData struct {
+			SharedBoxes []struct {
+				Name       string `json:"name"`
+				OwnerEmail string `json:"ownerEmail"`
+			} `json:"sharedBoxes"`
 		}
-		dashboard := string(body)
+		if err := json.NewDecoder(resp.Body).Decode(&dashData); err != nil {
+			t.Fatalf("failed to decode /api/dashboard: %v", err)
+		}
 
-		// Check that the shared box appears in the dashboard
-		if !strings.Contains(dashboard, "Shared with Me") {
-			t.Errorf("Expected 'Shared with me' section in dashboard")
+		// Check that the shared box appears
+		if len(dashData.SharedBoxes) == 0 {
+			t.Errorf("Expected shared boxes in dashboard API response, got none")
 		}
-		if !strings.Contains(dashboard, box) {
-			t.Errorf("Expected box name %s in dashboard", box)
+		found := false
+		for _, sb := range dashData.SharedBoxes {
+			if sb.Name == box {
+				found = true
+				if sb.OwnerEmail != ownerEmail {
+					t.Errorf("Expected owner email %s, got %s", ownerEmail, sb.OwnerEmail)
+				}
+				break
+			}
 		}
-		if !strings.Contains(dashboard, ownerEmail) {
-			t.Errorf("Expected owner email %s in dashboard", ownerEmail)
+		if !found {
+			t.Errorf("Expected box name %s in shared boxes", box)
 		}
 
 		// Owner: Check share status via SSH

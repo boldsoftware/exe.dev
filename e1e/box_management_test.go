@@ -5,6 +5,7 @@ package e1e
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -634,48 +635,75 @@ func TestVanillaBox(t *testing.T) {
 		// Set custom proxy port (8000) and make it public
 		configureProxyRoute(t, keyFile, boxName, 8000, "public")
 
-		// Fetch dashboard and check proxy port display
+		// Fetch dashboard JSON API and check proxy port display
 		client := newClientWithCookies(t, cookies)
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
+		apiURL := fmt.Sprintf("http://localhost:%d/api/dashboard", Env.HTTPPort())
+
+		var data struct {
+			Boxes []struct {
+				Name       string `json:"name"`
+				ProxyPort  int    `json:"proxyPort"`
+				ProxyShare string `json:"proxyShare"`
+			} `json:"boxes"`
+		}
+
+		resp, err := client.Get(apiURL)
 		if err != nil {
-			t.Fatalf("failed to get dashboard: %v", err)
+			t.Fatalf("GET /api/dashboard: %v", err)
 		}
 		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("failed to read dashboard: %v", err)
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			t.Fatalf("failed to decode /api/dashboard: %v", err)
 		}
-		dashboard := string(body)
 
-		// Check that the dashboard shows the correct proxy port (8000) and share setting (public)
-		if !strings.Contains(dashboard, "Port 8000") {
-			t.Errorf("Expected 'Port 8000' in dashboard, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		// Find our box
+		found := false
+		for _, box := range data.Boxes {
+			if box.Name == boxName {
+				found = true
+				if box.ProxyPort != 8000 {
+					t.Errorf("expected proxyPort 8000, got %d", box.ProxyPort)
+				}
+				if box.ProxyShare != "public" {
+					t.Errorf("expected proxyShare \"public\", got %q", box.ProxyShare)
+				}
+				break
+			}
 		}
-		if !strings.Contains(dashboard, "public") {
-			t.Errorf("Expected 'public' share setting in dashboard, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		if !found {
+			t.Fatalf("box %q not found in /api/dashboard response", boxName)
 		}
 
 		// Change to private and port 3000 to test another combination
 		configureProxyRoute(t, keyFile, boxName, 3000, "private")
 
-		// Fetch dashboard again
-		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/", Env.HTTPPort()))
+		// Fetch dashboard API again
+		resp, err = client.Get(apiURL)
 		if err != nil {
-			t.Fatalf("failed to get dashboard after update: %v", err)
+			t.Fatalf("GET /api/dashboard after update: %v", err)
 		}
 		defer resp.Body.Close()
-		body, err = io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("failed to read dashboard after update: %v", err)
+		data.Boxes = nil
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			t.Fatalf("failed to decode /api/dashboard after update: %v", err)
 		}
-		dashboard = string(body)
 
 		// Check the updated values
-		if !strings.Contains(dashboard, "Port 3000") {
-			t.Errorf("Expected 'Port 3000' in dashboard after update, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		found = false
+		for _, box := range data.Boxes {
+			if box.Name == boxName {
+				found = true
+				if box.ProxyPort != 3000 {
+					t.Errorf("expected proxyPort 3000 after update, got %d", box.ProxyPort)
+				}
+				if box.ProxyShare != "private" {
+					t.Errorf("expected proxyShare \"private\" after update, got %q", box.ProxyShare)
+				}
+				break
+			}
 		}
-		if !strings.Contains(dashboard, "private") {
-			t.Errorf("Expected 'private' share setting in dashboard after update, got dashboard content (truncated): %s", truncate(dashboard, 500))
+		if !found {
+			t.Fatalf("box %q not found in /api/dashboard response after update", boxName)
 		}
 	})
 
