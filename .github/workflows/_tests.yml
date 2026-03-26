@@ -157,6 +157,19 @@ jobs:
       - name: Set PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Build UI
+        run: cd ui && pnpm install --frozen-lockfile && pnpm build
+
       - name: Ensure b2 CLI available
         run: |
           if ! command -v b2 >/dev/null 2>&1; then
