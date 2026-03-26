@@ -46,9 +46,9 @@
             <span class="info-value">
               {{ data.inviteCount }} invite{{ data.inviteCount !== 1 ? 's' : '' }} available.
               <form v-if="data.inviteCount > 0" method="POST" action="/invite" style="display: inline;">
-                <button type="submit" class="inline-link">Allocate</button>
+                <button type="submit" class="btn btn-secondary">Allocate</button>
               </form>
-              <a v-else-if="data.canRequestInvites" href="/invite/request" class="inline-link">Request more</a>
+              <a v-else-if="data.canRequestInvites" href="/invite/request" class="btn btn-secondary">Request more</a>
             </span>
           </div>
         </div>
