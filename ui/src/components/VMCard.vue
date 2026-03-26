@@ -477,5 +477,11 @@ function onRowClick(event: MouseEvent) {
   .box-actions {
     gap: 2px;
   }
+  .box-row {
+    padding: 10px 8px;
+  }
+  .box-main {
+    gap: 8px;
+  }
 }
 </style>

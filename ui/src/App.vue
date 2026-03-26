@@ -373,5 +373,8 @@ select:focus {
   .nav-right {
     gap: 2px;
   }
+  .content {
+    padding: 12px 8px;
+  }
 }
 </style>

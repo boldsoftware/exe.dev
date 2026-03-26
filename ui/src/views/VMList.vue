@@ -477,13 +477,14 @@ async function submitPrompt() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .section-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .section-title {
@@ -492,13 +493,14 @@ async function submitPrompt() {
   color: var(--text-color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .new-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   background: var(--btn-bg);
   color: var(--btn-text);
   border: 1px solid var(--btn-border);
@@ -508,6 +510,7 @@ async function submitPrompt() {
   text-decoration: none;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 
 .new-btn:hover {
@@ -520,6 +523,9 @@ async function submitPrompt() {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
+  min-width: 0;
+  max-width: 200px;
 }
 
 .search-icon {
@@ -531,7 +537,7 @@ async function submitPrompt() {
 }
 
 .search-input {
-  padding: 6px 28px 6px 30px;
+  padding: 4px 28px 4px 30px;
   border: 1px solid var(--input-border);
   border-radius: 6px;
   font-size: 13px;
@@ -539,7 +545,8 @@ async function submitPrompt() {
   background: var(--input-bg);
   color: var(--input-text);
   outline: none;
-  width: 200px;
+  width: 100%;
+  min-width: 0;
 }
 
 .search-input:focus {
@@ -650,6 +657,39 @@ async function submitPrompt() {
   background: var(--tag-bg);
   padding: 1px 6px;
   border-radius: 3px;
+}
+
+@media (max-width: 768px) {
+  .section-header {
+    gap: 6px;
+  }
+  .section-left {
+    gap: 6px;
+  }
+  .new-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .search-box {
+    max-width: none;
+  }
+  .boxes-list {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+  .shared-section .boxes-list {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+  .vm-list-page {
+    gap: 16px;
+  }
 }
 
 /* Prompt modal */
