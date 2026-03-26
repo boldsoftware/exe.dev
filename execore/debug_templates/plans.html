@@ -1,0 +1,34 @@
+<!doctype html>
+<html><head><title>Plans &amp; Entitlements</title>
+{{template "base-head"}}
+<style>
+td.granted { color: #28a745; font-weight: bold; text-align: center; }
+td.denied  { color: #ccc; text-align: center; }
+th.plan-col { text-align: center; min-width: 80px; }
+th.plan-col small { display: block; color: #888; font-weight: normal; }
+</style>
+</head><body>
+<h1>Plans &amp; Entitlements</h1>
+<p><a href="/debug">/debug</a> &gt; billing &gt; plans</p>
+
+<table>
+<thead>
+<tr>
+  <th>Entitlement</th>
+  {{range .Plans}}<th class="plan-col">{{.Name}}<small>{{.Version}}</small></th>{{end}}
+</tr>
+</thead>
+<tbody>
+{{$plans := .Plans}}
+{{$wildcard := .WildcardEnt}}
+{{range .Entitlements}}
+{{$ent := .}}
+<tr>
+  <td><code>{{.ID}}</code> &mdash; {{.DisplayName}}</td>
+  {{range $plans}}{{if or (index .Entitlements $ent) (index .Entitlements $wildcard)}}<td class="granted">&#x2713;</td>{{else}}<td class="denied">&mdash;</td>{{end}}{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+
+</body></html>

@@ -38,7 +38,18 @@ li { margin: 1px 0; }
     <li><a href="/debug/teams">teams</a> <span class="json">(<a href="/debug/teams?format=json">json</a>)</span></li>
     <li><a href="/debug/integrations">integrations</a> <span class="json">(<a href="/debug/integrations?format=json">json</a>)</span></li>
     <li><a href="/debug/github-integrations">github-integrations</a></li>
-    <li><a href="/debug/billing?userId=">billing</a> <span class="muted">(append userId)</span></li>
+</ul>
+
+<h3>Billing</h3>
+<ul>
+    <li><a href="/debug/plans">plans &amp; entitlements</a></li>
+    <li>
+        <form action="/debug/billing-jump" method="get" style="display: inline;">
+            <a href="#">user billing</a>
+            <input type="text" name="q" placeholder="email or userId" size="24" style="font: inherit; padding: 1px 4px;">
+            <button type="submit" style="font: inherit; padding: 1px 6px; cursor: pointer;">Go</button>
+        </form>
+    </li>
 </ul>
 
 <h3>Signup &amp; Abuse</h3>

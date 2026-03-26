@@ -77,6 +77,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
 	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanVersions)
 	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanVersionMigrate)
+	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
+	mux.HandleFunc("GET /debug/billing-jump", s.handleDebugBillingJump)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
@@ -5711,6 +5713,50 @@ func (s *Server) handleDebugPlanVersionMigrate(w http.ResponseWriter, r *http.Re
 		"from":     fromPlanID,
 		"to":       toPlanID,
 	})
+}
+
+func (s *Server) handleDebugPlans(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Plans        []entitlement.Plan
+		Entitlements []entitlement.Entitlement
+		WildcardEnt  entitlement.Entitlement
+	}{
+		Plans:        entitlement.AllPlans(),
+		Entitlements: entitlement.AllEntitlements(),
+		WildcardEnt:  entitlement.All,
+	}
+	s.renderDebugTemplate(r.Context(), w, "plans.html", data)
+}
+
+func (s *Server) handleDebugBillingJump(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		http.Error(w, "q parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	if strings.Contains(q, "@") {
+		canonical, err := email.CanonicalizeEmail(q)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid email %q: %v", q, err), http.StatusBadRequest)
+			return
+		}
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserByEmail, &canonical)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, fmt.Sprintf("no user found with email %q", q), http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, fmt.Sprintf("lookup failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(user.UserID), http.StatusFound)
+		return
+	}
+
+	// Treat as userId directly.
+	http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(q), http.StatusFound)
 }
 
 func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {

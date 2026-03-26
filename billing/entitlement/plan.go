@@ -137,6 +137,27 @@ var plans = map[PlanVersion]Plan{
 	},
 }
 
+// AllPlans returns all plans in a stable display order.
+func AllPlans() []Plan {
+	order := []PlanVersion{
+		VersionVIP,
+		VersionTeam,
+		VersionIndividual,
+		VersionFriend,
+		VersionGrandfathered,
+		VersionTrial,
+		VersionBasic,
+		VersionRestricted,
+	}
+	result := make([]Plan, 0, len(order))
+	for _, v := range order {
+		if p, ok := plans[v]; ok {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // GetPlan returns the Plan for a given version and whether it exists.
 func GetPlan(version PlanVersion) (Plan, bool) {
 	p, ok := plans[version]
