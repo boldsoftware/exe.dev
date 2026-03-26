@@ -6,7 +6,6 @@ package execore
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -43,43 +42,6 @@ type WebShellMessage struct {
 	Data string `json:"data,omitempty"`
 	Cols uint16 `json:"cols,omitempty"`
 	Rows uint16 `json:"rows,omitempty"`
-}
-
-// handleWebShell serves the web shell page at /shell
-func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Check authentication
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		// Not authenticated - redirect to login
-		// TODO(philip): We could do user registration here too if we wanted to.
-		scheme := getScheme(r)
-		returnURL := fmt.Sprintf("%s://%s/shell", scheme, r.Host)
-		authURL := fmt.Sprintf("%s://%s/auth?redirect=%s", scheme, r.Host, returnURL)
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Get user info
-	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
-	if err != nil {
-		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
-	}
-
-	// Serve the shell HTML page
-	data := UserPageData{
-		Env:              s.env,
-		User:             user,
-		ActivePage:       "shell",
-		IsLoggedIn:       true,
-		ShowIntegrations: s.showIntegrationsNav(r.Context(), userID),
-	}
-	s.renderTemplate(r.Context(), w, "shell.html", data)
 }
 
 // handleWebShellWS handles websocket connections for the web shell

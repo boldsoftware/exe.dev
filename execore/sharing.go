@@ -49,13 +49,6 @@ import (
 //   - box_share_links: Anonymous shareable links
 //   - user_daily_email_counts: Rate limiting tracker
 
-// SharedBoxDisplayInfo represents a box shared with the user
-type SharedBoxDisplayInfo struct {
-	Name       string
-	OwnerEmail string
-	ProxyURL   string
-}
-
 // generateShareToken generates a cryptographically secure random token for share links
 func generateShareToken() string {
 	return crand.Text()

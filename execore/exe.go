@@ -44,7 +44,6 @@ import (
 	"exe.dev/apns"
 	"exe.dev/billing"
 	"exe.dev/billing/entitlement"
-	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
@@ -100,97 +99,9 @@ const (
 	longOperationTimeout = 30 * time.Minute
 )
 
-// BoxDisplayInfo represents a box with additional display information
-type BoxDisplayInfo struct {
-	exedb.Box
-	SSHCommand      string
-	ProxyURL        string
-	TerminalURL     string
-	ShelleyURL      string
-	VSCodeURL       template.URL
-	ProxyPort       int
-	ProxyShare      string
-	RouteKnown      bool
-	SharedUserCount int64              // Number of users box is shared with (pending + active)
-	ShareLinkCount  int64              // Number of active share links
-	TotalShareCount int64              // Total shares (users + links)
-	SharedEmails    []string           // List of emails box is shared with
-	ShareLinks      []BoxShareLinkInfo // List of share links with URLs
-	DisplayTags     []string           // Parsed tags for display
-}
-
 type BoxShareLinkInfo struct {
 	Token string
 	URL   string
-}
-
-// UserPageData represents the data for the user dashboard page
-type UserPageData struct {
-	stage.Env
-	SSHCommand         string
-	User               exedb.User
-	SSHKeys            []SSHKey
-	Passkeys           []PasskeyInfo
-	Boxes              []BoxDisplayInfo
-	SharedBoxes        []SharedBoxDisplayInfo
-	TeamBoxes          []TeamBoxDisplayInfo    // Team VMs (for team admins)
-	TeamInfo           *TeamDisplayInfo        // Team info (for team members)
-	PendingTeamInvites []PendingTeamInviteInfo // Pending team invites (for users not in a team)
-	CanEnableTeam      bool                    // User can create a team (has billing, not in a team)
-	SiteSessions       []SiteSession
-	ActivePage         string
-	IsLoggedIn         bool
-	// BasicUser is true if the user has no SSH keys, no boxes, and was created for login-with-exe.
-	// These users should only see the profile tab and a "what is exe?" section.
-	BasicUser   bool
-	InviteCount int64
-
-	// Billing information
-	CanRequestInvites bool   // User's plan grants invite:request
-	BillingStatus     string // Billing status: "active", "canceled", "pending", or "" if no account
-	PlanName          string // Human-readable plan name (e.g., "Individual", "Friend")
-	SelfServeBilling  bool   // User manages their own Stripe subscription
-
-	// Credits (staging only)
-	CreditBalance tender.Value
-
-	// Shelley free credits (from llmgateway credit state)
-	ShelleyFreeCreditRemainingPct float64
-	ShelleyCreditsAvailable       float64 // USD remaining
-	ShelleyCreditsMax             float64 // USD ceiling
-	ExtraCreditsUSD               float64 // purchased billing credits in dollars
-	LedgerBalanceUSD              float64 // total billing ledger balance (gifts + purchases - usage)
-	TotalCreditsUSD               float64 // monthly available + extra credits
-	TotalRemainingPct             float64 // remaining / capacity * 100
-	MonthlyAvailableUSD           float64 // monthly portion of available credit (capped at plan max)
-	MonthlyUsedUSD                float64 // monthly used = max - available
-	MonthlyUsedPct                float64 // (used / max) * 100 for monthly allowance bar
-	UsedCreditsUSD                float64 // total used across all pools
-	TotalCapacityUSD              float64 // planMax + bonusGrant + extra
-	UsedBarPct                    float64 // (used / capacity) * 100
-	HasShelleyFreeCreditPct       bool
-	MonthlyCreditsResetAt         string // e.g. "00:00 on 01 Mar"
-	Purchases                     []PurchaseRow
-	Gifts                         []GiftRow
-
-	// Auto-open share modal (from access request email link)
-	ShareVM    string
-	ShareEmail string
-
-	// Integrations
-	IsSudoer           bool
-	Integrations       []IntegrationDisplayInfo // all integrations
-	GitHubIntegrations []IntegrationDisplayInfo // github type only
-	ProxyIntegrations  []IntegrationDisplayInfo // http-proxy type only
-	GitHubAccounts     []GitHubAccountDisplayInfo
-	GitHubAccountsFull []GitHubAccountFullInfo
-	GitHubEnabled      bool     // whether the GitHub App is configured on this server
-	GitHubAppSlug      string   // GitHub App slug for manage link
-	ShowIntegrations   bool     // true if user has integrations, github accounts, or push tokens
-	HasPushTokens      bool     // true if user has registered push tokens (iOS app)
-	IntegrationScheme  string   // "http" or "https" for integration proxy URLs
-	Callout            string   // query param to highlight a UI element (e.g. "add-repo-integration")
-	AllTags            []string // sorted unique tags across all user's VMs
 }
 
 // PurchaseRow represents a credit purchase for the profile page.
@@ -206,17 +117,6 @@ type GiftRow struct {
 	Reason string
 }
 
-// IntegrationDisplayInfo represents an integration for the profile page.
-type IntegrationDisplayInfo struct {
-	Name         string
-	Type         string
-	Target       string   // for http-proxy: the target URL (password redacted)
-	HasHeader    bool     // for http-proxy: whether a header is configured
-	HasBasicAuth bool     // for http-proxy: whether target URL has basic auth
-	Repositories []string // for github: list of repos
-	Attachments  []string // e.g. ["vm:foo", "tag:bar"]
-}
-
 // GitHubAccountDisplayInfo represents a connected GitHub account for the profile page.
 type GitHubAccountDisplayInfo struct {
 	GitHubLogin string // the GitHub username that authorized
@@ -229,61 +129,6 @@ type GitHubAccountFullInfo struct {
 	GitHubLogin    string
 	TargetLogin    string
 	InstallationID int64
-}
-
-// PendingTeamInviteInfo represents a pending team invite shown on the profile page
-type PendingTeamInviteInfo struct {
-	Token     string
-	TeamName  string
-	InvitedBy string
-	ExpiresAt time.Time
-	VMCount   int64
-}
-
-// TeamBoxDisplayInfo represents a team member's box for the dashboard
-type TeamBoxDisplayInfo struct {
-	Name         string
-	CreatorEmail string
-	Status       string
-	ProxyURL     string
-	SSHCommand   string
-	DisplayTags  []string
-}
-
-// TeamDisplayInfo represents team info for the dashboard team section
-type TeamDisplayInfo struct {
-	DisplayName    string
-	Role           string // current user's role in the team
-	IsAdmin        bool   // true if role is admin or billing_owner
-	IsBillingOwner bool   // true if role is billing_owner
-	OnlyMember     bool   // true if team has exactly 1 member (can disable)
-	Members        []TeamMemberDisplayInfo
-	BoxCount       int64 // total VMs across all team members
-	MaxBoxes       int   // effective VM limit for the team
-}
-
-// TeamMemberDisplayInfo represents a team member for the dashboard
-type TeamMemberDisplayInfo struct {
-	Email    string
-	Role     string
-	JoinedAt *time.Time
-}
-
-// SiteSession represents an active session cookie for a site hosted by exe
-type SiteSession struct {
-	Domain     string
-	URL        string     // Full URL with https://
-	LastUsedAt *time.Time // Used by formatVagueTimeAgo in template
-}
-
-// SSHKey represents an SSH key for the user page
-type SSHKey struct {
-	UserID      string
-	PublicKey   string
-	Comment     string
-	Fingerprint string
-	AddedAt     *time.Time
-	LastUsedAt  *time.Time
 }
 
 // EmailVerification represents a pending email verification (in-memory)
