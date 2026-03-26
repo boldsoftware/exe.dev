@@ -641,6 +641,14 @@ function removeAttachModalItem(opt: string) {
   attachModal.attachments = attachModal.attachments.filter(a => a !== opt)
 }
 
+// Close modals on Escape
+function onEscapeKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (attachModal.visible) { closeAttachModal(); return }
+  if (ghModal.visible) { closeGhModal(); return }
+  if (proxyModal.visible) { closeProxyModal(); return }
+}
+
 // Close dropdowns on outside click
 function onDocClick(e: MouseEvent) {
   if (repoComboboxRef.value && !repoComboboxRef.value.contains(e.target as Node)) {
@@ -659,11 +667,13 @@ function onDocClick(e: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onEscapeKey)
   loadIntegrations()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onEscapeKey)
 })
 
 async function reload() {

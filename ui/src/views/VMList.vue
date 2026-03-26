@@ -170,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
@@ -291,7 +291,20 @@ async function loadDashboard() {
   }
 }
 
-onMounted(loadDashboard)
+function onEscapeKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (editorModalOpen.value) { editorModalOpen.value = false; return }
+  if (promptModalOpen.value) { promptModalOpen.value = false; return }
+}
+
+onMounted(() => {
+  loadDashboard()
+  document.addEventListener('keydown', onEscapeKey)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onEscapeKey)
+})
 
 function toggleExpand(name: string) {
   if (expandedBoxes.value.has(name)) {
