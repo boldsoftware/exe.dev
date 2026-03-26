@@ -763,9 +763,6 @@ type CreditState struct {
 func (m *Manager) GetCreditState(ctx context.Context, billingID string) (*CreditState, error) {
 	row, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetCreditState, billingID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &CreditState{}, nil
-		}
 		return nil, fmt.Errorf("get credit state: %w", err)
 	}
 	s := &CreditState{
