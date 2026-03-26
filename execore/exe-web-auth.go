@@ -749,8 +749,11 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		}); err != nil {
 			return fmt.Errorf("insert billing event: %w", err)
 		}
+		// The subscription poller may have already inserted an account_plans
+		// row for this customer ID (it races with the Stripe redirect back
+		// to us), so use INSERT OR IGNORE to tolerate a pre-existing row.
 		changedBy := "stripe:event"
-		if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: billingID,
 			PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
 			StartedAt: now,

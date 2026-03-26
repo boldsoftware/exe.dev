@@ -2449,3 +2449,85 @@ func TestPendingRegistrationDeduplicatesByEmail(t *testing.T) {
 		t.Fatalf("Expected exe_ prefix, got %q", thirdAccountID)
 	}
 }
+
+// TestNewUserBillingSuccess_PollerRace verifies that handleNewUserBillingSuccess
+// succeeds even when the subscription poller has already inserted an account_plans
+// row for the Stripe customer ID. This is the race condition from the screenshot:
+//  1. User completes Stripe checkout → subscription created in Stripe
+//  2. Poller (every 3s) sees customer.subscription.created → syncAccountPlan →
+//     INSERT OR IGNORE into account_plans (no FK enforcement in SQLite)
+//  3. User returns to /billing/success → handleNewUserBillingSuccess tries
+//     INSERT INTO account_plans → UNIQUE constraint violation
+func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := t.Context()
+
+	// The billing ID that VerifyCheckout will return (from fake Stripe).
+	billingID := "cus_test123"
+
+	// Step 1: Create a pending registration (simulates /auth POST for new email).
+	token := "test-token-poller-race"
+	accountID := billingID
+	err := withTx1(server, ctx, (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
+		Token:     token,
+		Email:     "poller-race@example.com",
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+		AccountID: &accountID,
+	})
+	if err != nil {
+		t.Fatalf("InsertPendingRegistration: %v", err)
+	}
+
+	// Step 2: Simulate the subscription poller racing ahead.
+	// The poller inserts an orphaned account_plans row (no accounts row exists yet,
+	// but SQLite FK enforcement is off so this succeeds).
+	now := sqlite.NormalizeTime(time.Now())
+	changedBy := "stripe:event"
+	err = withTx1(server, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
+		AccountID: billingID,
+		PlanID:    string(entitlement.VersionIndividual),
+		StartedAt: now,
+		ChangedBy: &changedBy,
+	})
+	if err != nil {
+		t.Fatalf("Simulating poller InsertAccountPlan: %v", err)
+	}
+
+	// Step 3: Hit /billing/success as the returning user would.
+	req := httptest.NewRequest("GET", "/billing/success?session_id=cs_test_session&token="+token, nil)
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	// Should succeed — NOT a 500 error.
+	// The handler renders a 200 "check your email" page on success.
+	if w.Code == http.StatusInternalServerError {
+		t.Fatalf("handleNewUserBillingSuccess returned 500: %s", w.Body.String())
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify user was created.
+	var userCount int
+	err = server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE email = ?`, "poller-race@example.com").Scan(&userCount)
+	})
+	if err != nil {
+		t.Fatalf("Failed to count users: %v", err)
+	}
+	if userCount != 1 {
+		t.Errorf("Expected 1 user, got %d", userCount)
+	}
+
+	// Verify exactly one active account_plan exists.
+	plan, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, billingID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan: %v", err)
+	}
+	if plan.PlanID != string(entitlement.VersionIndividual) {
+		t.Errorf("plan_id=%q, want %q", plan.PlanID, entitlement.VersionIndividual)
+	}
+}
