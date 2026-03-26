@@ -28,3 +28,18 @@ WHERE box_id = ? AND shared_with_email = ?;
 SELECT COUNT(*) as share_count
 FROM pending_box_shares
 WHERE box_id = ?;
+
+-- name: CountPendingBoxSharesByUser :many
+SELECT pbs.box_id, COUNT(*) as share_count
+FROM pending_box_shares pbs
+JOIN boxes b ON pbs.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY pbs.box_id;
+
+-- name: GetPendingBoxShareEmailsByUser :many
+SELECT pbs.box_id, pbs.shared_with_email
+FROM pending_box_shares pbs
+JOIN boxes b ON pbs.box_id = b.id
+WHERE b.created_by_user_id = ?
+AND b.status != 'failed'
+ORDER BY pbs.box_id, pbs.created_at DESC;

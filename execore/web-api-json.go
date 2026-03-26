@@ -256,8 +256,14 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	// Get boxes
 	boxResults, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetBoxesForUserDashboard, user.UserID)
 	if err != nil {
-		s.slog().ErrorContext(r.Context(), "Failed to get boxes for API dashboard", "error", err)
+		if !errors.Is(r.Context().Err(), context.Canceled) {
+			s.slog().ErrorContext(r.Context(), "Failed to get boxes for API dashboard", "error", err)
+		}
 	}
+
+	// Batch-fetch all sharing data for the user's boxes (3 count queries + 3 list queries)
+	// instead of 6 queries per box (N+1 elimination).
+	pendingCounts, activeShareCounts, linkCounts, pendingEmails, activeEmails, shareLinksAll := s.batchShareData(r.Context(), user.UserID)
 
 	boxes := make([]jsonBoxInfo, 0, len(boxResults))
 	for _, result := range boxResults {
@@ -282,13 +288,22 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 		}
 
 		route := box.GetRoute()
-		sharedUserCount, shareLinkCount, _ := s.countTotalShares(r.Context(), box.ID)
-		sharedEmails := s.getSharedEmails(r.Context(), box.ID)
-		shareLinksRaw := s.getShareLinks(r.Context(), box.ID, result.Name, user.UserID)
+		boxID := int64(box.ID)
+		sharedUserCount := pendingCounts[boxID] + activeShareCounts[boxID]
+		shareLinkCount := linkCounts[boxID]
 
-		shareLinks := make([]jsonShareLink, len(shareLinksRaw))
-		for j, sl := range shareLinksRaw {
-			shareLinks[j] = jsonShareLink{Token: sl.Token, URL: sl.URL}
+		// Merge pending + active share emails for this box
+		var sharedEmails []string
+		sharedEmails = append(sharedEmails, pendingEmails[boxID]...)
+		sharedEmails = append(sharedEmails, activeEmails[boxID]...)
+
+		// Build share links for this box
+		var shareLinks []jsonShareLink
+		for _, sl := range shareLinksAll[boxID] {
+			shareLinks = append(shareLinks, jsonShareLink{
+				Token: sl.Token,
+				URL:   sl.URL,
+			})
 		}
 
 		var shelleyURL string
@@ -314,7 +329,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			ShareLinkCount:  shareLinkCount,
 			TotalShareCount: sharedUserCount + shareLinkCount,
 			SharedEmails:    nonNil(sharedEmails),
-			ShareLinks:      shareLinks,
+			ShareLinks:      nonNil(shareLinks),
 			DisplayTags:     nonNil(box.GetTags()),
 			HasCreationLog:  box.CreationLog != nil && *box.CreationLog != "",
 		})

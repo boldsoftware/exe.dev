@@ -23,6 +23,42 @@ func (q *Queries) CountBoxShares(ctx context.Context, boxID int64) (int64, error
 	return share_count, err
 }
 
+const countBoxSharesByUser = `-- name: CountBoxSharesByUser :many
+SELECT bs.box_id, COUNT(*) as share_count
+FROM box_shares bs
+JOIN boxes b ON bs.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY bs.box_id
+`
+
+type CountBoxSharesByUserRow struct {
+	BoxID      int64 `db:"box_id" json:"box_id"`
+	ShareCount int64 `db:"share_count" json:"share_count"`
+}
+
+func (q *Queries) CountBoxSharesByUser(ctx context.Context, createdByUserID string) ([]CountBoxSharesByUserRow, error) {
+	rows, err := q.query(ctx, q.countBoxSharesByUserStmt, countBoxSharesByUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountBoxSharesByUserRow{}
+	for rows.Next() {
+		var i CountBoxSharesByUserRow
+		if err := rows.Scan(&i.BoxID, &i.ShareCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createBoxShare = `-- name: CreateBoxShare :one
 INSERT INTO box_shares (
     box_id,
@@ -81,6 +117,44 @@ DELETE FROM box_shares WHERE box_id = ?
 func (q *Queries) DeleteBoxSharesByBox(ctx context.Context, boxID int64) error {
 	_, err := q.exec(ctx, q.deleteBoxSharesByBoxStmt, deleteBoxSharesByBox, boxID)
 	return err
+}
+
+const getBoxShareEmailsByUser = `-- name: GetBoxShareEmailsByUser :many
+SELECT bs.box_id, u.email as shared_with_user_email
+FROM box_shares bs
+JOIN boxes b ON bs.box_id = b.id
+JOIN users u ON bs.shared_with_user_id = u.user_id
+WHERE b.created_by_user_id = ?
+AND b.status != 'failed'
+ORDER BY bs.box_id, bs.created_at DESC
+`
+
+type GetBoxShareEmailsByUserRow struct {
+	BoxID               int64  `db:"box_id" json:"box_id"`
+	SharedWithUserEmail string `db:"shared_with_user_email" json:"shared_with_user_email"`
+}
+
+func (q *Queries) GetBoxShareEmailsByUser(ctx context.Context, createdByUserID string) ([]GetBoxShareEmailsByUserRow, error) {
+	rows, err := q.query(ctx, q.getBoxShareEmailsByUserStmt, getBoxShareEmailsByUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBoxShareEmailsByUserRow{}
+	for rows.Next() {
+		var i GetBoxShareEmailsByUserRow
+		if err := rows.Scan(&i.BoxID, &i.SharedWithUserEmail); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getBoxSharesByBoxID = `-- name: GetBoxSharesByBoxID :many

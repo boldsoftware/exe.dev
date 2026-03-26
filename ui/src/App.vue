@@ -49,17 +49,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Toast from 'primevue/toast'
-import { checkAuth } from './api/client'
+import { isAuthenticated } from './api/client'
 
 const route = useRoute()
-const isLoggedIn = ref(true) // assume logged in, flip on 401
-
-onMounted(async () => {
-  isLoggedIn.value = await checkAuth()
-})
+// Auth state is derived from API responses — no separate auth-check request needed.
+const isLoggedIn = isAuthenticated
 </script>
 
 <style>

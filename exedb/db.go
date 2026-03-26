@@ -90,8 +90,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
+	if q.countBoxShareLinksByUserStmt, err = db.PrepareContext(ctx, countBoxShareLinksByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxShareLinksByUser: %w", err)
+	}
 	if q.countBoxSharesStmt, err = db.PrepareContext(ctx, countBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShares: %w", err)
+	}
+	if q.countBoxSharesByUserStmt, err = db.PrepareContext(ctx, countBoxSharesByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxSharesByUser: %w", err)
 	}
 	if q.countBoxesStmt, err = db.PrepareContext(ctx, countBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxes: %w", err)
@@ -113,6 +119,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
+	}
+	if q.countPendingBoxSharesByUserStmt, err = db.PrepareContext(ctx, countPendingBoxSharesByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountPendingBoxSharesByUser: %w", err)
 	}
 	if q.countPendingTeamInvitesForUserStmt, err = db.PrepareContext(ctx, countPendingTeamInvitesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingTeamInvitesForUser: %w", err)
@@ -381,11 +390,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
+	if q.getBoxShareEmailsByUserStmt, err = db.PrepareContext(ctx, getBoxShareEmailsByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxShareEmailsByUser: %w", err)
+	}
 	if q.getBoxShareLinkByTokenAndBoxIDStmt, err = db.PrepareContext(ctx, getBoxShareLinkByTokenAndBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxShareLinkByTokenAndBoxID: %w", err)
 	}
 	if q.getBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxShareLinksByBoxID: %w", err)
+	}
+	if q.getBoxShareLinksByUserStmt, err = db.PrepareContext(ctx, getBoxShareLinksByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxShareLinksByUser: %w", err)
 	}
 	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
@@ -506,6 +521,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getPasskeysByUserIDStmt, err = db.PrepareContext(ctx, getPasskeysByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPasskeysByUserID: %w", err)
+	}
+	if q.getPendingBoxShareEmailsByUserStmt, err = db.PrepareContext(ctx, getPendingBoxShareEmailsByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingBoxShareEmailsByUser: %w", err)
 	}
 	if q.getPendingBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByBoxID: %w", err)
@@ -1294,9 +1312,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countBoxShareLinksStmt: %w", cerr)
 		}
 	}
+	if q.countBoxShareLinksByUserStmt != nil {
+		if cerr := q.countBoxShareLinksByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxShareLinksByUserStmt: %w", cerr)
+		}
+	}
 	if q.countBoxSharesStmt != nil {
 		if cerr := q.countBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countBoxSharesByUserStmt != nil {
+		if cerr := q.countBoxSharesByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxSharesByUserStmt: %w", cerr)
 		}
 	}
 	if q.countBoxesStmt != nil {
@@ -1332,6 +1360,11 @@ func (q *Queries) Close() error {
 	if q.countPendingBoxSharesStmt != nil {
 		if cerr := q.countPendingBoxSharesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countPendingBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countPendingBoxSharesByUserStmt != nil {
+		if cerr := q.countPendingBoxSharesByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countPendingBoxSharesByUserStmt: %w", cerr)
 		}
 	}
 	if q.countPendingTeamInvitesForUserStmt != nil {
@@ -1779,6 +1812,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
 		}
 	}
+	if q.getBoxShareEmailsByUserStmt != nil {
+		if cerr := q.getBoxShareEmailsByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxShareEmailsByUserStmt: %w", cerr)
+		}
+	}
 	if q.getBoxShareLinkByTokenAndBoxIDStmt != nil {
 		if cerr := q.getBoxShareLinkByTokenAndBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxShareLinkByTokenAndBoxIDStmt: %w", cerr)
@@ -1787,6 +1825,11 @@ func (q *Queries) Close() error {
 	if q.getBoxShareLinksByBoxIDStmt != nil {
 		if cerr := q.getBoxShareLinksByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxShareLinksByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxShareLinksByUserStmt != nil {
+		if cerr := q.getBoxShareLinksByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxShareLinksByUserStmt: %w", cerr)
 		}
 	}
 	if q.getBoxSharesByBoxIDStmt != nil {
@@ -1987,6 +2030,11 @@ func (q *Queries) Close() error {
 	if q.getPasskeysByUserIDStmt != nil {
 		if cerr := q.getPasskeysByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPasskeysByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.getPendingBoxShareEmailsByUserStmt != nil {
+		if cerr := q.getPendingBoxShareEmailsByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingBoxShareEmailsByUserStmt: %w", cerr)
 		}
 	}
 	if q.getPendingBoxSharesByBoxIDStmt != nil {
@@ -3170,7 +3218,9 @@ type Queries struct {
 	countAccountsWithoutUserStmt               *sql.Stmt
 	countAllAccountsStmt                       *sql.Stmt
 	countBoxShareLinksStmt                     *sql.Stmt
+	countBoxShareLinksByUserStmt               *sql.Stmt
 	countBoxSharesStmt                         *sql.Stmt
+	countBoxSharesByUserStmt                   *sql.Stmt
 	countBoxesStmt                             *sql.Stmt
 	countBoxesByRegionAndStatusStmt            *sql.Stmt
 	countBoxesForUserStmt                      *sql.Stmt
@@ -3178,6 +3228,7 @@ type Queries struct {
 	countEmailBouncesStmt                      *sql.Stmt
 	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
+	countPendingBoxSharesByUserStmt            *sql.Stmt
 	countPendingTeamInvitesForUserStmt         *sql.Stmt
 	countTeamBoxesStmt                         *sql.Stmt
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
@@ -3267,8 +3318,10 @@ type Queries struct {
 	getBoxIPShardStmt                          *sql.Stmt
 	getBoxOwnerByContainerIDStmt               *sql.Stmt
 	getBoxSSHDetailsStmt                       *sql.Stmt
+	getBoxShareEmailsByUserStmt                *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt         *sql.Stmt
 	getBoxShareLinksByBoxIDStmt                *sql.Stmt
+	getBoxShareLinksByUserStmt                 *sql.Stmt
 	getBoxSharesByBoxIDStmt                    *sql.Stmt
 	getBoxTeamSharesByBoxIDStmt                *sql.Stmt
 	getBoxWithOwnerEmailStmt                   *sql.Stmt
@@ -3309,6 +3362,7 @@ type Queries struct {
 	getPasskeyByCredentialIDStmt               *sql.Stmt
 	getPasskeyChallengeStmt                    *sql.Stmt
 	getPasskeysByUserIDStmt                    *sql.Stmt
+	getPendingBoxShareEmailsByUserStmt         *sql.Stmt
 	getPendingBoxSharesByBoxIDStmt             *sql.Stmt
 	getPendingBoxSharesByEmailStmt             *sql.Stmt
 	getPendingRegistrationByTokenStmt          *sql.Stmt
@@ -3561,7 +3615,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countAccountsWithoutUserStmt:               q.countAccountsWithoutUserStmt,
 		countAllAccountsStmt:                       q.countAllAccountsStmt,
 		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
+		countBoxShareLinksByUserStmt:               q.countBoxShareLinksByUserStmt,
 		countBoxSharesStmt:                         q.countBoxSharesStmt,
+		countBoxSharesByUserStmt:                   q.countBoxSharesByUserStmt,
 		countBoxesStmt:                             q.countBoxesStmt,
 		countBoxesByRegionAndStatusStmt:            q.countBoxesByRegionAndStatusStmt,
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
@@ -3569,6 +3625,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
 		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
+		countPendingBoxSharesByUserStmt:            q.countPendingBoxSharesByUserStmt,
 		countPendingTeamInvitesForUserStmt:         q.countPendingTeamInvitesForUserStmt,
 		countTeamBoxesStmt:                         q.countTeamBoxesStmt,
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
@@ -3658,8 +3715,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
 		getBoxOwnerByContainerIDStmt:               q.getBoxOwnerByContainerIDStmt,
 		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
+		getBoxShareEmailsByUserStmt:                q.getBoxShareEmailsByUserStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:         q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:                q.getBoxShareLinksByBoxIDStmt,
+		getBoxShareLinksByUserStmt:                 q.getBoxShareLinksByUserStmt,
 		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
 		getBoxTeamSharesByBoxIDStmt:                q.getBoxTeamSharesByBoxIDStmt,
 		getBoxWithOwnerEmailStmt:                   q.getBoxWithOwnerEmailStmt,
@@ -3700,6 +3759,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPasskeyByCredentialIDStmt:               q.getPasskeyByCredentialIDStmt,
 		getPasskeyChallengeStmt:                    q.getPasskeyChallengeStmt,
 		getPasskeysByUserIDStmt:                    q.getPasskeysByUserIDStmt,
+		getPendingBoxShareEmailsByUserStmt:         q.getPendingBoxShareEmailsByUserStmt,
 		getPendingBoxSharesByBoxIDStmt:             q.getPendingBoxSharesByBoxIDStmt,
 		getPendingBoxSharesByEmailStmt:             q.getPendingBoxSharesByEmailStmt,
 		getPendingRegistrationByTokenStmt:          q.getPendingRegistrationByTokenStmt,

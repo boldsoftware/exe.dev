@@ -23,6 +23,42 @@ func (q *Queries) CountPendingBoxShares(ctx context.Context, boxID int64) (int64
 	return share_count, err
 }
 
+const countPendingBoxSharesByUser = `-- name: CountPendingBoxSharesByUser :many
+SELECT pbs.box_id, COUNT(*) as share_count
+FROM pending_box_shares pbs
+JOIN boxes b ON pbs.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY pbs.box_id
+`
+
+type CountPendingBoxSharesByUserRow struct {
+	BoxID      int64 `db:"box_id" json:"box_id"`
+	ShareCount int64 `db:"share_count" json:"share_count"`
+}
+
+func (q *Queries) CountPendingBoxSharesByUser(ctx context.Context, createdByUserID string) ([]CountPendingBoxSharesByUserRow, error) {
+	rows, err := q.query(ctx, q.countPendingBoxSharesByUserStmt, countPendingBoxSharesByUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountPendingBoxSharesByUserRow{}
+	for rows.Next() {
+		var i CountPendingBoxSharesByUserRow
+		if err := rows.Scan(&i.BoxID, &i.ShareCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createPendingBoxShare = `-- name: CreatePendingBoxShare :one
 INSERT INTO pending_box_shares (
     box_id,
@@ -72,6 +108,43 @@ type DeletePendingBoxShareByBoxAndEmailParams struct {
 func (q *Queries) DeletePendingBoxShareByBoxAndEmail(ctx context.Context, arg DeletePendingBoxShareByBoxAndEmailParams) error {
 	_, err := q.exec(ctx, q.deletePendingBoxShareByBoxAndEmailStmt, deletePendingBoxShareByBoxAndEmail, arg.BoxID, arg.SharedWithEmail)
 	return err
+}
+
+const getPendingBoxShareEmailsByUser = `-- name: GetPendingBoxShareEmailsByUser :many
+SELECT pbs.box_id, pbs.shared_with_email
+FROM pending_box_shares pbs
+JOIN boxes b ON pbs.box_id = b.id
+WHERE b.created_by_user_id = ?
+AND b.status != 'failed'
+ORDER BY pbs.box_id, pbs.created_at DESC
+`
+
+type GetPendingBoxShareEmailsByUserRow struct {
+	BoxID           int64  `db:"box_id" json:"box_id"`
+	SharedWithEmail string `db:"shared_with_email" json:"shared_with_email"`
+}
+
+func (q *Queries) GetPendingBoxShareEmailsByUser(ctx context.Context, createdByUserID string) ([]GetPendingBoxShareEmailsByUserRow, error) {
+	rows, err := q.query(ctx, q.getPendingBoxShareEmailsByUserStmt, getPendingBoxShareEmailsByUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPendingBoxShareEmailsByUserRow{}
+	for rows.Next() {
+		var i GetPendingBoxShareEmailsByUserRow
+		if err := rows.Scan(&i.BoxID, &i.SharedWithEmail); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getPendingBoxSharesByBoxID = `-- name: GetPendingBoxSharesByBoxID :many

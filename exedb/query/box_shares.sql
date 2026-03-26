@@ -47,3 +47,19 @@ WHERE box_id = ? AND shared_with_user_id = ?;
 SELECT COUNT(*) as share_count
 FROM box_shares
 WHERE box_id = ?;
+
+-- name: CountBoxSharesByUser :many
+SELECT bs.box_id, COUNT(*) as share_count
+FROM box_shares bs
+JOIN boxes b ON bs.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY bs.box_id;
+
+-- name: GetBoxShareEmailsByUser :many
+SELECT bs.box_id, u.email as shared_with_user_email
+FROM box_shares bs
+JOIN boxes b ON bs.box_id = b.id
+JOIN users u ON bs.shared_with_user_id = u.user_id
+WHERE b.created_by_user_id = ?
+AND b.status != 'failed'
+ORDER BY bs.box_id, bs.created_at DESC;

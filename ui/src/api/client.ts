@@ -1,5 +1,10 @@
 // API client for exe.dev dashboard
 // Uses the existing /cmd endpoint which proxies SSH commands
+import { ref } from 'vue'
+
+// Shared reactive auth state. Updated as a side effect of any API call.
+// Starts true (optimistic) and flips to false on 401/403.
+export const isAuthenticated = ref(true)
 
 export interface CmdResult {
   success: boolean
@@ -207,20 +212,13 @@ export interface IntegrationsData {
 async function fetchJSON<T>(url: string): Promise<T> {
   const resp = await fetch(url)
   if (resp.status === 401 || resp.status === 403) {
+    isAuthenticated.value = false
     window.location.href = '/login'
     throw new Error('Session expired')
   }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  isAuthenticated.value = true
   return resp.json()
-}
-
-export async function checkAuth(): Promise<boolean> {
-  try {
-    const resp = await fetch('/api/dashboard')
-    return resp.ok
-  } catch {
-    return false
-  }
 }
 
 export async function fetchDashboard(): Promise<DashboardData> {

@@ -36,3 +36,19 @@ SELECT bsl.*, u.email as created_by_email FROM box_share_links bsl
 JOIN users u ON bsl.created_by_user_id = u.user_id
 WHERE box_id = ?
 ORDER BY created_at DESC;
+
+-- name: CountBoxShareLinksByUser :many
+SELECT bsl.box_id, COUNT(*) as link_count
+FROM box_share_links bsl
+JOIN boxes b ON bsl.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY bsl.box_id;
+
+-- name: GetBoxShareLinksByUser :many
+SELECT bsl.box_id, bsl.share_token, b.name as box_name
+FROM box_share_links bsl
+JOIN boxes b ON bsl.box_id = b.id
+WHERE b.created_by_user_id = sqlc.arg(user_id)
+AND bsl.created_by_user_id = sqlc.arg(user_id)
+AND b.status != 'failed'
+ORDER BY bsl.box_id, bsl.created_at DESC;

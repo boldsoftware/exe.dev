@@ -23,6 +23,42 @@ func (q *Queries) CountBoxShareLinks(ctx context.Context, boxID int64) (int64, e
 	return link_count, err
 }
 
+const countBoxShareLinksByUser = `-- name: CountBoxShareLinksByUser :many
+SELECT bsl.box_id, COUNT(*) as link_count
+FROM box_share_links bsl
+JOIN boxes b ON bsl.box_id = b.id
+WHERE b.created_by_user_id = ? AND b.status != 'failed'
+GROUP BY bsl.box_id
+`
+
+type CountBoxShareLinksByUserRow struct {
+	BoxID     int64 `db:"box_id" json:"box_id"`
+	LinkCount int64 `db:"link_count" json:"link_count"`
+}
+
+func (q *Queries) CountBoxShareLinksByUser(ctx context.Context, createdByUserID string) ([]CountBoxShareLinksByUserRow, error) {
+	rows, err := q.query(ctx, q.countBoxShareLinksByUserStmt, countBoxShareLinksByUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountBoxShareLinksByUserRow{}
+	for rows.Next() {
+		var i CountBoxShareLinksByUserRow
+		if err := rows.Scan(&i.BoxID, &i.LinkCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createBoxShareLink = `-- name: CreateBoxShareLink :one
 INSERT INTO box_share_links (
     box_id,
@@ -172,6 +208,45 @@ func (q *Queries) GetBoxShareLinksByBoxID(ctx context.Context, arg GetBoxShareLi
 			&i.LastUsedAt,
 			&i.UseCount,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoxShareLinksByUser = `-- name: GetBoxShareLinksByUser :many
+SELECT bsl.box_id, bsl.share_token, b.name as box_name
+FROM box_share_links bsl
+JOIN boxes b ON bsl.box_id = b.id
+WHERE b.created_by_user_id = ?1
+AND bsl.created_by_user_id = ?1
+AND b.status != 'failed'
+ORDER BY bsl.box_id, bsl.created_at DESC
+`
+
+type GetBoxShareLinksByUserRow struct {
+	BoxID      int64  `db:"box_id" json:"box_id"`
+	ShareToken string `db:"share_token" json:"share_token"`
+	BoxName    string `db:"box_name" json:"box_name"`
+}
+
+func (q *Queries) GetBoxShareLinksByUser(ctx context.Context, userID string) ([]GetBoxShareLinksByUserRow, error) {
+	rows, err := q.query(ctx, q.getBoxShareLinksByUserStmt, getBoxShareLinksByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBoxShareLinksByUserRow{}
+	for rows.Next() {
+		var i GetBoxShareLinksByUserRow
+		if err := rows.Scan(&i.BoxID, &i.ShareToken, &i.BoxName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

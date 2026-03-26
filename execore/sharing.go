@@ -132,6 +132,9 @@ func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName, userID s
 		CreatedByUserID: userID,
 	})
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return links
+		}
 		s.slog().ErrorContext(ctx, "failed to load share links", "error", err, "box_id", boxID, "box_name", boxName)
 		return links
 	}
@@ -153,6 +156,9 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 	// Get pending shares
 	pendingShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxSharesByBoxID, int64(boxID))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return emails
+		}
 		s.slog().ErrorContext(ctx, "failed to load pending box shares", "error", err, "box_id", boxID)
 	} else {
 		for _, ps := range pendingShares {
@@ -163,6 +169,9 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 	// Get active shares
 	activeShares, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxSharesByBoxID, int64(boxID))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return emails
+		}
 		s.slog().ErrorContext(ctx, "failed to load active box shares", "error", err, "box_id", boxID)
 	} else {
 		for _, as := range activeShares {
@@ -171,6 +180,71 @@ func (s *Server) getSharedEmails(ctx context.Context, boxID int) []string {
 	}
 
 	return emails
+}
+
+// batchShareData fetches all sharing data for a user's boxes in 6 batch queries
+// (instead of 6 queries per box). Returns maps keyed by box ID.
+func (s *Server) batchShareData(ctx context.Context, userID string) (
+	pendingCounts map[int64]int64,
+	activeCounts map[int64]int64,
+	linkCounts map[int64]int64,
+	pendingEmails map[int64][]string,
+	activeEmails map[int64][]string,
+	shareLinks map[int64][]BoxShareLinkInfo,
+) {
+	pendingCounts = make(map[int64]int64)
+	activeCounts = make(map[int64]int64)
+	linkCounts = make(map[int64]int64)
+	pendingEmails = make(map[int64][]string)
+	activeEmails = make(map[int64][]string)
+	shareLinks = make(map[int64][]BoxShareLinkInfo)
+
+	// Count pending shares per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).CountPendingBoxSharesByUser, userID); err == nil {
+		for _, r := range rows {
+			pendingCounts[r.BoxID] = r.ShareCount
+		}
+	}
+
+	// Count active shares per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxSharesByUser, userID); err == nil {
+		for _, r := range rows {
+			activeCounts[r.BoxID] = r.ShareCount
+		}
+	}
+
+	// Count share links per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxShareLinksByUser, userID); err == nil {
+		for _, r := range rows {
+			linkCounts[r.BoxID] = r.LinkCount
+		}
+	}
+
+	// Get pending share emails per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).GetPendingBoxShareEmailsByUser, userID); err == nil {
+		for _, r := range rows {
+			pendingEmails[r.BoxID] = append(pendingEmails[r.BoxID], r.SharedWithEmail)
+		}
+	}
+
+	// Get active share emails per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxShareEmailsByUser, userID); err == nil {
+		for _, r := range rows {
+			activeEmails[r.BoxID] = append(activeEmails[r.BoxID], r.SharedWithUserEmail)
+		}
+	}
+
+	// Get share links per box
+	if rows, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxShareLinksByUser, userID); err == nil {
+		for _, r := range rows {
+			shareLinks[r.BoxID] = append(shareLinks[r.BoxID], BoxShareLinkInfo{
+				Token: r.ShareToken,
+				URL:   fmt.Sprintf("%s?share=%s", s.boxProxyAddress(r.BoxName), r.ShareToken),
+			})
+		}
+	}
+
+	return pendingCounts, activeCounts, linkCounts, pendingEmails, activeEmails, shareLinks
 }
 
 // resolvePendingShares converts pending shares to active shares when a user registers
