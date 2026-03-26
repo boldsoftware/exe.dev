@@ -1,63 +1,24 @@
-# Running e1e Tests
+e1e is end-to-end tests for exe.dev.
 
-## Standard Way (Using Lima VM)
+These are the gold standard tests. Unit tests are great, but don't skip these!
 
-If e1e tests aren't working, check that you can SSH to the test VM:
+e1e tests start real containers and exercise the full stack. They run locally, no special infrastructure required.
 
-```bash
-ssh lima-exe-ctr-tests.local echo "connected"
-```
+Always run e1e tests when editing related code. Do not skip them or claim they need special infrastructure.
 
-Then run tests:
+e1e tests can be slow; targeting particular tests with -run will help.
 
-```bash
-go test -count=1 -run TestName -v ./e1e/...
-```
+## Running Tests (macOS, Lima VM)
 
-## Running with CTR_HOST=localhost (On exe.dev VMs)
+On macOS, e1e tests use a lima VM (`lima-exe-ctr-tests`). If basic tests are failing out of the gate, see ops/setup-lima-hosts.sh.
 
-On exe.dev VMs (or any Linux machine with KVM, ZFS, and cloud-hypervisor), you can run e1e tests without a separate ctr-host by setting `CTR_HOST=localhost`. This runs exelet locally instead of over SSH.
+## Running Tests (exe.dev VM / Linux with CTR_HOST=localhost)
 
-### Prerequisites (auto-bootstrapped)
-
-The test infrastructure will automatically:
-- Install `zfsutils-linux` if missing
-- Create a ZFS pool named "tank" from a sparse file at `/tmp/tank.img`
-- Download `cloud-hypervisor` if missing
-- Start `systemd-udevd` if not running
-- Configure hugepages
-
-### Running Tests
+On exe.dev VMs or Linux with KVM/ZFS/cloud-hypervisor, skip the VM:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 CTR_HOST=localhost go test -count=1 -run TestName -v ./e1e/...
 ```
 
-### Examples
-
-```bash
-# Run a single box management test
-CTR_HOST=localhost go test -count=1 -run TestNewWithEnvVars -v ./e1e/...
-
-# Run all vanilla box subtests
-CTR_HOST=localhost go test -count=1 -run TestVanillaBox -v ./e1e/...
-
-# Run with debug logging
-CTR_HOST=localhost go test -count=1 -run TestVanillaBox -v ./e1e/... -vexed -vexelet
-```
-
-### Cleanup
-
-If tests leave processes running:
-
-```bash
-pkill -f "exed-test" 2>/dev/null || true
-sudo pkill -f "exelet-test" 2>/dev/null || true
-```
-
-### Notes
-
-- Each test run uses isolated ZFS datasets and network bridges (named `e1e-<testRunID>`)
-- The ZFS pool preserves cached container images between runs for faster subsequent tests
-- Test datasets are cleaned up automatically, but the pool and image cache persist
+Prerequisites are auto-bootstrapped (zfsutils-linux, ZFS pool, cloud-hypervisor, systemd-udevd, hugepages).
