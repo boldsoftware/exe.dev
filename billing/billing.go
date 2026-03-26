@@ -638,7 +638,7 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 		}); err != nil {
 			return fmt.Errorf("close existing plan: %w", err)
 		}
-		return q.InsertAccountPlanIgnore(ctx, exedb.InsertAccountPlanIgnoreParams{
+		return q.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: accountID,
 			PlanID:    newPlanID,
 			StartedAt: normalizedAt,

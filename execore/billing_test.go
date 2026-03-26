@@ -2309,3 +2309,72 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 		}
 	}
 }
+
+// TestCreateAccountWithBasicPlanIdempotent verifies that createAccountWithBasicPlan
+// succeeds even when the account already has an active basic plan (e.g. from a
+// prior partial signup attempt). The account_plans table must contain exactly one
+// active row afterward.
+func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Step 1: Create a user and account+plan via the normal path.
+	var userID, accountID string
+	err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = server.createUserRecord(ctx, queries, "idempotent-plan@example.com", false)
+		if err != nil {
+			return err
+		}
+		accountID, err = createAccountWithBasicPlan(ctx, queries, userID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("first createAccountWithBasicPlan: %v", err)
+	}
+
+	// Verify the plan exists.
+	ap, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan after first call: %v", err)
+	}
+	if ap.PlanID != "basic" {
+		t.Fatalf("plan_id=%q, want 'basic'", ap.PlanID)
+	}
+
+	// Step 2: Simulate a retry — insert the same plan again for the same account.
+	// This is what happens when a partial prior attempt left the plan in place.
+	err = server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		now := time.Now()
+		changedBy := "system:signup"
+		return queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
+			AccountID: accountID,
+			PlanID:    "basic",
+			StartedAt: now,
+			ChangedBy: &changedBy,
+		})
+	})
+	if err != nil {
+		t.Fatalf("UpsertAccountPlan (retry) should not fail: %v", err)
+	}
+
+	// Step 3: Verify exactly one active plan row exists.
+	plans, err := withRxRes1(server, ctx, (*exedb.Queries).ListAccountPlanHistory, accountID)
+	if err != nil {
+		t.Fatalf("ListAccountPlanHistory: %v", err)
+	}
+	var activeCount int
+	for _, p := range plans {
+		if p.EndedAt == nil {
+			activeCount++
+		}
+	}
+	if activeCount != 1 {
+		t.Errorf("active plan count=%d, want 1", activeCount)
+	}
+	if len(plans) != 1 {
+		t.Errorf("total plan rows=%d, want 1 (INSERT OR IGNORE should not duplicate)", len(plans))
+	}
+}

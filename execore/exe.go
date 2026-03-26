@@ -3261,7 +3261,7 @@ func createAccountWithBasicPlan(ctx context.Context, queries *exedb.Queries, use
 	}
 	now := sqlite.NormalizeTime(time.Now())
 	changedBy := "system:signup"
-	if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 		AccountID: accountID,
 		PlanID:    string(entitlement.VersionBasic),
 		StartedAt: now,

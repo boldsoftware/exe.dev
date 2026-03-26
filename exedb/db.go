@@ -690,9 +690,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertAccountPlanStmt, err = db.PrepareContext(ctx, insertAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAccountPlan: %w", err)
 	}
-	if q.insertAccountPlanIgnoreStmt, err = db.PrepareContext(ctx, insertAccountPlanIgnore); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertAccountPlanIgnore: %w", err)
-	}
 	if q.insertAppTokenStmt, err = db.PrepareContext(ctx, insertAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAppToken: %w", err)
 	}
@@ -1091,6 +1088,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
+	}
+	if q.upsertAccountPlanStmt, err = db.PrepareContext(ctx, upsertAccountPlan); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertAccountPlan: %w", err)
 	}
 	if q.upsertGitHubInstallationStmt, err = db.PrepareContext(ctx, upsertGitHubInstallation); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertGitHubInstallation: %w", err)
@@ -2261,11 +2261,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertAccountPlanStmt: %w", cerr)
 		}
 	}
-	if q.insertAccountPlanIgnoreStmt != nil {
-		if cerr := q.insertAccountPlanIgnoreStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertAccountPlanIgnoreStmt: %w", cerr)
-		}
-	}
 	if q.insertAppTokenStmt != nil {
 		if cerr := q.insertAppTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAppTokenStmt: %w", cerr)
@@ -2931,6 +2926,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
 		}
 	}
+	if q.upsertAccountPlanStmt != nil {
+		if cerr := q.upsertAccountPlanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertAccountPlanStmt: %w", cerr)
+		}
+	}
 	if q.upsertGitHubInstallationStmt != nil {
 		if cerr := q.upsertGitHubInstallationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertGitHubInstallationStmt: %w", cerr)
@@ -3282,7 +3282,6 @@ type Queries struct {
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
 	insertAccountPlanStmt                      *sql.Stmt
-	insertAccountPlanIgnoreStmt                *sql.Stmt
 	insertAppTokenStmt                         *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
 	insertBillingEventStmt                     *sql.Stmt
@@ -3416,6 +3415,7 @@ type Queries struct {
 	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserEmailStmt                        *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
+	upsertAccountPlanStmt                      *sql.Stmt
 	upsertGitHubInstallationStmt               *sql.Stmt
 	upsertGitHubUserTokenStmt                  *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
@@ -3662,7 +3662,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
 		insertAccountPlanStmt:                      q.insertAccountPlanStmt,
-		insertAccountPlanIgnoreStmt:                q.insertAccountPlanIgnoreStmt,
 		insertAppTokenStmt:                         q.insertAppTokenStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
@@ -3796,6 +3795,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserEmailStmt:                        q.updateUserEmailStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
+		upsertAccountPlanStmt:                      q.upsertAccountPlanStmt,
 		upsertGitHubInstallationStmt:               q.upsertGitHubInstallationStmt,
 		upsertGitHubUserTokenStmt:                  q.upsertGitHubUserTokenStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,

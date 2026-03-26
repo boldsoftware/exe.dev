@@ -465,29 +465,6 @@ func (q *Queries) InsertAccountPlan(ctx context.Context, arg InsertAccountPlanPa
 	return err
 }
 
-const insertAccountPlanIgnore = `-- name: InsertAccountPlanIgnore :exec
-INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
-VALUES (?, ?, ?, ?)
-`
-
-type InsertAccountPlanIgnoreParams struct {
-	AccountID string    `db:"account_id" json:"account_id"`
-	PlanID    string    `db:"plan_id" json:"plan_id"`
-	StartedAt time.Time `db:"started_at" json:"started_at"`
-	ChangedBy *string   `db:"changed_by" json:"changed_by"`
-}
-
-// InsertAccountPlanIgnore inserts an account plan, ignoring conflicts (e.g. from poller replays).
-func (q *Queries) InsertAccountPlanIgnore(ctx context.Context, arg InsertAccountPlanIgnoreParams) error {
-	_, err := q.exec(ctx, q.insertAccountPlanIgnoreStmt, insertAccountPlanIgnore,
-		arg.AccountID,
-		arg.PlanID,
-		arg.StartedAt,
-		arg.ChangedBy,
-	)
-	return err
-}
-
 const listAccountPlanHistory = `-- name: ListAccountPlanHistory :many
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
 FROM account_plans
@@ -571,5 +548,28 @@ type SetAccountParentIDParams struct {
 // Sets the parent_id on a user's account to link them to a team billing owner's account.
 func (q *Queries) SetAccountParentID(ctx context.Context, arg SetAccountParentIDParams) error {
 	_, err := q.exec(ctx, q.setAccountParentIDStmt, setAccountParentID, arg.CreatedBy, arg.ParentID)
+	return err
+}
+
+const upsertAccountPlan = `-- name: UpsertAccountPlan :exec
+INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
+VALUES (?, ?, ?, ?)
+`
+
+type UpsertAccountPlanParams struct {
+	AccountID string    `db:"account_id" json:"account_id"`
+	PlanID    string    `db:"plan_id" json:"plan_id"`
+	StartedAt time.Time `db:"started_at" json:"started_at"`
+	ChangedBy *string   `db:"changed_by" json:"changed_by"`
+}
+
+// UpsertAccountPlan inserts an account plan only if the account has no active plan.
+func (q *Queries) UpsertAccountPlan(ctx context.Context, arg UpsertAccountPlanParams) error {
+	_, err := q.exec(ctx, q.upsertAccountPlanStmt, upsertAccountPlan,
+		arg.AccountID,
+		arg.PlanID,
+		arg.StartedAt,
+		arg.ChangedBy,
+	)
 	return err
 }
