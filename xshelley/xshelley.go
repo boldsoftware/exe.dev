@@ -89,10 +89,12 @@ func getCacheDir() (string, error) {
 			// Fall back to home dir
 			home, err2 := os.UserHomeDir()
 			if err2 != nil {
-				cacheDirErr = fmt.Errorf("failed to find cache directory: %w", err)
-				return
+				// Final fallback for headless environments (e.g. systemd
+				// services) where neither $XDG_CACHE_HOME nor $HOME is set.
+				dir = "/var/cache"
+			} else {
+				dir = filepath.Join(home, ".cache")
 			}
-			dir = filepath.Join(home, ".cache")
 		}
 		cacheDir = filepath.Join(dir, "xshelley")
 	})

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -226,5 +227,35 @@ func TestRetryableGet_ContextCancellation(t *testing.T) {
 	}
 	if elapsed > 1*time.Second {
 		t.Errorf("expected prompt return on cancellation, took %v", elapsed)
+	}
+}
+
+func TestGetCacheDir_FallbackNoHomeNoXDG(t *testing.T) {
+	// Save and clear env vars that getCacheDir depends on.
+	for _, key := range []string{"HOME", "XDG_CACHE_HOME"} {
+		if v, ok := os.LookupEnv(key); ok {
+			t.Cleanup(func() { os.Setenv(key, v) })
+		} else {
+			t.Cleanup(func() { os.Unsetenv(key) })
+		}
+		os.Unsetenv(key)
+	}
+
+	// Reset the sync.Once so getCacheDir re-evaluates.
+	cacheDirOnce = sync.Once{}
+	cacheDir = ""
+	cacheDirErr = nil
+	t.Cleanup(func() {
+		cacheDirOnce = sync.Once{}
+		cacheDir = ""
+		cacheDirErr = nil
+	})
+
+	dir, err := getCacheDir()
+	if err != nil {
+		t.Fatalf("getCacheDir failed: %v", err)
+	}
+	if dir != "/var/cache/xshelley" {
+		t.Errorf("expected /var/cache/xshelley, got %s", dir)
 	}
 }
