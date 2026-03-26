@@ -375,28 +375,29 @@
       </div>
     </div>
 
-    <!-- Attach Modal (for adding attachments to existing integrations) -->
+    <!-- Attach Modal (for managing attachments on existing integrations) -->
     <div v-if="attachModal.visible" class="modal-overlay" @click.self="closeAttachModal">
       <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-label="Attach Integration">
         <div class="modal-header">
-          <h3>Attach {{ attachModal.name }}</h3>
+          <h3>Attach integration '{{ attachModal.name }}'</h3>
           <button class="modal-close" aria-label="Close" @click="closeAttachModal">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-row">
-            <label>Attach to</label>
+            <label>Attached to</label>
             <div class="multi-select" ref="attachModalRef">
-              <div class="multi-select-tags" v-if="attachModal.attachments.length > 0">
-                <span v-for="a in attachModal.attachments" :key="a" class="multi-select-tag">
+              <div class="multi-select-tags" v-if="attachModal.currentAttachments.length > 0">
+                <span v-for="a in attachModal.currentAttachments" :key="a" class="multi-select-tag" :class="{ 'multi-select-tag-removing': attachModal.removing === a }">
                   {{ a }}
-                  <button class="multi-select-tag-remove" @click="removeAttachModalItem(a)">&times;</button>
+                  <button class="multi-select-tag-remove" :disabled="attachModal.removing === a" @click="detachFromModal(a)">&times;</button>
                 </span>
               </div>
+              <div v-if="attachModal.currentAttachments.length === 0" class="attach-empty">Not attached to anything</div>
               <input
                 ref="attachModalInputRef"
                 v-model="attachModalSearch"
                 class="form-input"
-                placeholder="Search VMs, tags..."
+                placeholder="Search VMs, tags to attach..."
                 @focus="attachModalOpen = true"
                 @input="attachModalOpen = true"
               />
@@ -405,28 +406,19 @@
                   v-for="opt in filteredAttachModalOptions"
                   :key="opt"
                   class="attach-option"
-                  @mousedown.prevent="addAttachModalItem(opt)"
+                  @mousedown.prevent="attachFromModal(opt)"
                 >
                   {{ opt }}
                 </div>
               </div>
             </div>
           </div>
-          <div class="cmd-preview">
-            <code>{{ attachBuiltCommand || 'Select an attachment target' }}</code>
-          </div>
-          <div v-if="attachModal.result" class="cmd-result" :class="attachModal.result.success ? 'success' : 'error'">
-            {{ attachModal.result.output || attachModal.result.error }}
+          <div v-if="attachModal.error" class="cmd-result error">
+            {{ attachModal.error }}
           </div>
         </div>
         <div class="modal-footer">
-          <button v-if="attachModal.result?.success" class="btn btn-primary" @click="closeAttachModal">Done</button>
-          <template v-else>
-            <button class="btn btn-secondary" @click="closeAttachModal">Cancel</button>
-            <button class="btn btn-primary" :disabled="!attachBuiltCommand || attachModal.running" @click="runAttachCommand">
-              {{ attachModal.running ? 'Running...' : 'Run' }}
-            </button>
-          </template>
+          <button class="btn btn-secondary" @click="closeAttachModal">Done</button>
         </div>
       </div>
     </div>
@@ -509,14 +501,13 @@ const proxyModal = reactive({
 const proxyAttachSearch = ref('')
 const proxyAttachOpen = ref(false)
 
-// Attach modal (for attaching to existing integrations)
+// Attach modal (for managing attachments on existing integrations)
 const attachModal = reactive({
   visible: false,
   name: '',
-  existingAttachments: [] as string[],
-  attachments: [] as string[],
-  running: false,
-  result: null as { success: boolean; output: string; error: string } | null,
+  currentAttachments: [] as string[],
+  removing: '' as string,
+  error: '',
 })
 
 const attachModalSearch = ref('')
@@ -546,7 +537,7 @@ function filterAttachOptions(search: string, selected: string[]) {
 
 const filteredGhAttachOptions = computed(() => filterAttachOptions(ghAttachSearch.value, ghModal.attachments))
 const filteredProxyAttachOptions = computed(() => filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments))
-const filteredAttachModalOptions = computed(() => filterAttachOptions(attachModalSearch.value, [...attachModal.attachments, ...attachModal.existingAttachments]))
+const filteredAttachModalOptions = computed(() => filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments))
 
 const filteredRepos = computed(() => {
   const q = repoSearch.value.toLowerCase().trim()
@@ -583,15 +574,7 @@ const proxyBuiltCommand = computed(() => {
   return cmd
 })
 
-// Attach modal command builder
-const attachBuiltCommand = computed(() => {
-  if (attachModal.attachments.length === 0) return ''
-  let cmd = `integrations attach ${shellQuote(attachModal.name)}`
-  for (const a of attachModal.attachments) {
-    cmd += ` ${shellQuote(a)}`
-  }
-  return cmd
-})
+
 
 // GitHub attachment helpers
 function addGhAttachment(opt: string) {
@@ -625,20 +608,46 @@ function removeProxyAttachment(opt: string) {
   proxyModal.attachments = proxyModal.attachments.filter(a => a !== opt)
 }
 
-// Attach modal helpers
-function addAttachModalItem(opt: string) {
-  if (!attachModal.attachments.includes(opt)) {
-    attachModal.attachments.push(opt)
-  }
+// Attach modal: immediately attach a spec
+async function attachFromModal(opt: string) {
+  attachModal.error = ''
   attachModalSearch.value = ''
+  const cmd = `integrations attach ${shellQuote(attachModal.name)} ${shellQuote(opt)}`
+  try {
+    const res = await runCommand(cmd)
+    if (res.success) {
+      attachModal.currentAttachments.push(opt)
+      await reload()
+    } else {
+      attachModal.error = res.output || res.error || 'Attach failed'
+    }
+  } catch (err: any) {
+    attachModal.error = err.message || 'Network error'
+  }
   nextTick(() => {
     attachModalInputRef.value?.focus()
     attachModalOpen.value = true
   })
 }
 
-function removeAttachModalItem(opt: string) {
-  attachModal.attachments = attachModal.attachments.filter(a => a !== opt)
+// Attach modal: immediately detach a spec
+async function detachFromModal(spec: string) {
+  attachModal.error = ''
+  attachModal.removing = spec
+  const cmd = `integrations detach ${shellQuote(attachModal.name)} ${shellQuote(spec)}`
+  try {
+    const res = await runCommand(cmd)
+    if (res.success) {
+      attachModal.currentAttachments = attachModal.currentAttachments.filter(a => a !== spec)
+      await reload()
+    } else {
+      attachModal.error = res.output || res.error || 'Detach failed'
+    }
+  } catch (err: any) {
+    attachModal.error = err.message || 'Network error'
+  } finally {
+    attachModal.removing = ''
+  }
 }
 
 // Close modals on Escape
@@ -725,10 +734,9 @@ function attachViaCommand(name: string) {
   const ig = [...(data.value?.githubIntegrations || []), ...(data.value?.proxyIntegrations || [])].find(i => i.name === name)
   attachModal.visible = true
   attachModal.name = name
-  attachModal.existingAttachments = ig?.attachments || []
-  attachModal.attachments = []
-  attachModal.running = false
-  attachModal.result = null
+  attachModal.currentAttachments = [...(ig?.attachments || [])]
+  attachModal.removing = ''
+  attachModal.error = ''
   attachModalSearch.value = ''
   nextTick(() => {
     attachModalInputRef.value?.focus()
@@ -738,22 +746,6 @@ function attachViaCommand(name: string) {
 
 function closeAttachModal() {
   attachModal.visible = false
-  if (attachModal.result?.success) reload()
-}
-
-async function runAttachCommand() {
-  const cmd = attachBuiltCommand.value
-  if (!cmd) return
-  attachModal.running = true
-  attachModal.result = null
-  try {
-    const res = await runCommand(cmd)
-    attachModal.result = { success: !!res.success, output: res.output || '', error: res.error || res.output || '' }
-  } catch (err: any) {
-    attachModal.result = { success: false, output: '', error: err.message || 'Network error' }
-  } finally {
-    attachModal.running = false
-  }
 }
 
 function detachSpec(integrationName: string, spec: string) {
@@ -1345,6 +1337,16 @@ select.form-input {
 
 .multi-select-tag-remove:hover {
   color: var(--danger-color);
+}
+
+.multi-select-tag-removing {
+  opacity: 0.5;
+}
+
+.attach-empty {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  padding: 4px 0;
 }
 
 .attach-dropdown {
