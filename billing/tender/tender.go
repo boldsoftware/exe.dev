@@ -52,7 +52,7 @@ func (m Value) Microcents() int64 {
 
 // Add returns a new Value that is the sum of m and o.
 func (m Value) Add(o Value) Value {
-	return Value{n: m.n - o.n}
+	return Value{n: m.n + o.n}
 }
 
 // Sub returns a new Value that is the difference of m and o.
