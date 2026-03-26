@@ -1174,6 +1174,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.billing.DB = s.db
 	s.billing.Logger = slog
 	s.billing.SlackFeed = s.slackFeed
+	s.billing.OnPlanDowngrade = s.handlePlanDowngrade
 
 	if cfg.Env.BootstrapStripeCatalog {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -2872,6 +2873,46 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 		Status: status,
 		ID:     boxID,
 	})
+}
+
+// handlePlanDowngrade is called by the billing manager when an account's plan
+// is downgraded to basic (canceled subscription, failed payment, expired trial).
+// It stops all running VMs owned by the account.
+func (s *Server) handlePlanDowngrade(ctx context.Context, accountID string) {
+	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByAccountID, accountID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "plan downgrade: failed to get user for account",
+			"account_id", accountID,
+			"error", err,
+		)
+		return
+	}
+
+	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).GetRunningBoxesForUser, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "plan downgrade: failed to list running boxes",
+			"account_id", accountID,
+			"user_id", userID,
+			"error", err,
+		)
+		return
+	}
+
+	for _, box := range boxes {
+		s.slog().InfoContext(ctx, "plan downgrade: stopping VM",
+			"account_id", accountID,
+			"user_id", userID,
+			"box_name", box.Name,
+			"box_id", box.ID,
+		)
+		if err := s.stopBox(ctx, box); err != nil {
+			s.slog().ErrorContext(ctx, "plan downgrade: failed to stop VM",
+				"account_id", accountID,
+				"box_name", box.Name,
+				"error", err,
+			)
+		}
+	}
 }
 
 // stopBox stops a running box via the exelet and updates its status in the database.

@@ -433,6 +433,18 @@ func (q *Queries) GetUserBillingStatus(ctx context.Context, userID string) (GetU
 	return i, err
 }
 
+const getUserIDByAccountID = `-- name: GetUserIDByAccountID :one
+SELECT created_by FROM accounts WHERE id = ?
+`
+
+// Returns the user_id of the account owner.
+func (q *Queries) GetUserIDByAccountID(ctx context.Context, id string) (string, error) {
+	row := q.queryRow(ctx, q.getUserIDByAccountIDStmt, getUserIDByAccountID, id)
+	var created_by string
+	err := row.Scan(&created_by)
+	return created_by, err
+}
+
 const getUserPlanCategory = `-- name: GetUserPlanCategory :one
 SELECT
     CASE
@@ -633,6 +645,46 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 			&i.CreatedAt,
 			&i.ParentID,
 			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpiredStripeTrialPlans = `-- name: ListExpiredStripeTrialPlans :many
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE plan_id = 'trial' AND ended_at IS NULL AND trial_expires_at IS NOT NULL AND trial_expires_at < ?
+  AND (changed_by IS NULL OR changed_by NOT LIKE 'invite:%')
+`
+
+// Returns active Stripe trial plans that have expired (trial_expires_at in the past).
+// Excludes invite-code trials (changed_by starts with 'invite:') which have their own terms.
+func (q *Queries) ListExpiredStripeTrialPlans(ctx context.Context, trialExpiresAt *time.Time) ([]AccountPlan, error) {
+	rows, err := q.query(ctx, q.listExpiredStripeTrialPlansStmt, listExpiredStripeTrialPlans, trialExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccountPlan{}
+	for rows.Next() {
+		var i AccountPlan
+		if err := rows.Scan(
+			&i.AccountID,
+			&i.PlanID,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.TrialExpiresAt,
+			&i.ChangedBy,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -561,6 +561,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getReleasedBoxNameStmt, err = db.PrepareContext(ctx, getReleasedBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetReleasedBoxName: %w", err)
 	}
+	if q.getRunningBoxesForUserStmt, err = db.PrepareContext(ctx, getRunningBoxesForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRunningBoxesForUser: %w", err)
+	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
@@ -659,6 +662,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserEmailCountForDateStmt, err = db.PrepareContext(ctx, getUserEmailCountForDate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserEmailCountForDate: %w", err)
+	}
+	if q.getUserIDByAccountIDStmt, err = db.PrepareContext(ctx, getUserIDByAccountID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserIDByAccountID: %w", err)
 	}
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
@@ -908,6 +914,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
+	}
+	if q.listExpiredStripeTrialPlansStmt, err = db.PrepareContext(ctx, listExpiredStripeTrialPlans); err != nil {
+		return nil, fmt.Errorf("error preparing query ListExpiredStripeTrialPlans: %w", err)
 	}
 	if q.listGiftCreditsStmt, err = db.PrepareContext(ctx, listGiftCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListGiftCredits: %w", err)
@@ -2094,6 +2103,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getReleasedBoxNameStmt: %w", cerr)
 		}
 	}
+	if q.getRunningBoxesForUserStmt != nil {
+		if cerr := q.getRunningBoxesForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRunningBoxesForUserStmt: %w", cerr)
+		}
+	}
 	if q.getSSHHostKeyStmt != nil {
 		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
@@ -2257,6 +2271,11 @@ func (q *Queries) Close() error {
 	if q.getUserEmailCountForDateStmt != nil {
 		if cerr := q.getUserEmailCountForDateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserEmailCountForDateStmt: %w", cerr)
+		}
+	}
+	if q.getUserIDByAccountIDStmt != nil {
+		if cerr := q.getUserIDByAccountIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserIDByAccountIDStmt: %w", cerr)
 		}
 	}
 	if q.getUserIDByEmailStmt != nil {
@@ -2672,6 +2691,11 @@ func (q *Queries) Close() error {
 	if q.listEmailQualityBypassStmt != nil {
 		if cerr := q.listEmailQualityBypassStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
+		}
+	}
+	if q.listExpiredStripeTrialPlansStmt != nil {
+		if cerr := q.listExpiredStripeTrialPlansStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listExpiredStripeTrialPlansStmt: %w", cerr)
 		}
 	}
 	if q.listGiftCreditsStmt != nil {
@@ -3367,6 +3391,7 @@ type Queries struct {
 	getRecentSignupRejectionsStmt              *sql.Stmt
 	getRedirectStmt                            *sql.Stmt
 	getReleasedBoxNameStmt                     *sql.Stmt
+	getRunningBoxesForUserStmt                 *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
@@ -3400,6 +3425,7 @@ type Queries struct {
 	getUserCgroupOverridesByHostStmt           *sql.Stmt
 	getUserDefaultsStmt                        *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
+	getUserIDByAccountIDStmt                   *sql.Stmt
 	getUserIDByEmailStmt                       *sql.Stmt
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserIsLockedOutStmt                     *sql.Stmt
@@ -3483,6 +3509,7 @@ type Queries struct {
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
+	listExpiredStripeTrialPlansStmt            *sql.Stmt
 	listGiftCreditsStmt                        *sql.Stmt
 	listGitHubInstallationsStmt                *sql.Stmt
 	listGitHubUserTokensStmt                   *sql.Stmt
@@ -3763,6 +3790,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getRecentSignupRejectionsStmt:              q.getRecentSignupRejectionsStmt,
 		getRedirectStmt:                            q.getRedirectStmt,
 		getReleasedBoxNameStmt:                     q.getReleasedBoxNameStmt,
+		getRunningBoxesForUserStmt:                 q.getRunningBoxesForUserStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
@@ -3796,6 +3824,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserCgroupOverridesByHostStmt:           q.getUserCgroupOverridesByHostStmt,
 		getUserDefaultsStmt:                        q.getUserDefaultsStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
+		getUserIDByAccountIDStmt:                   q.getUserIDByAccountIDStmt,
 		getUserIDByEmailStmt:                       q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserIsLockedOutStmt:                     q.getUserIsLockedOutStmt,
@@ -3879,6 +3908,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
+		listExpiredStripeTrialPlansStmt:            q.listExpiredStripeTrialPlansStmt,
 		listGiftCreditsStmt:                        q.listGiftCreditsStmt,
 		listGitHubInstallationsStmt:                q.listGitHubInstallationsStmt,
 		listGitHubUserTokensStmt:                   q.listGitHubUserTokensStmt,

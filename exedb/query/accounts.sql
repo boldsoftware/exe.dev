@@ -307,3 +307,15 @@ SELECT COUNT(*) FROM accounts a
 WHERE NOT EXISTS (
     SELECT 1 FROM users u WHERE u.user_id = a.created_by
 );
+
+-- name: ListExpiredStripeTrialPlans :many
+-- Returns active Stripe trial plans that have expired (trial_expires_at in the past).
+-- Excludes invite-code trials (changed_by starts with 'invite:') which have their own terms.
+SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
+FROM account_plans
+WHERE plan_id = 'trial' AND ended_at IS NULL AND trial_expires_at IS NOT NULL AND trial_expires_at < ?
+  AND (changed_by IS NULL OR changed_by NOT LIKE 'invite:%');
+
+-- name: GetUserIDByAccountID :one
+-- Returns the user_id of the account owner.
+SELECT created_by FROM accounts WHERE id = ?;

@@ -607,6 +607,60 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 	return items, nil
 }
 
+const getRunningBoxesForUser = `-- name: GetRunningBoxesForUser :many
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE created_by_user_id = ? AND status = 'running'
+`
+
+// Returns all running boxes owned by a user.
+func (q *Queries) GetRunningBoxesForUser(ctx context.Context, createdByUserID string) ([]Box, error) {
+	rows, err := q.query(ctx, q.getRunningBoxesForUserStmt, getRunningBoxesForUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Box{}
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.Ctrhost,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
+			&i.Routes,
+			&i.SSHServerIdentityKey,
+			&i.SSHAuthorizedKeys,
+			&i.SSHClientPrivateKey,
+			&i.SSHPort,
+			&i.SSHUser,
+			&i.CreationLog,
+			&i.SupportAccessAllowed,
+			&i.Region,
+			&i.EmailReceiveEnabled,
+			&i.EmailMaildirPath,
+			&i.AllocatedCpus,
+			&i.CgroupOverrides,
+			&i.Tags,
+			&i.LockReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserCgroupOverridesByHost = `-- name: GetUserCgroupOverridesByHost :many
 SELECT DISTINCT u.user_id, u.cgroup_overrides
 FROM boxes b
