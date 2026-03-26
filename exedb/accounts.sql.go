@@ -52,6 +52,21 @@ func (q *Queries) CloseAccountPlan(ctx context.Context, arg CloseAccountPlanPara
 	return err
 }
 
+const closeAccountPlansByPlanID = `-- name: CloseAccountPlansByPlanID :exec
+UPDATE account_plans SET ended_at = ?2 WHERE plan_id = ?1 AND ended_at IS NULL
+`
+
+type CloseAccountPlansByPlanIDParams struct {
+	PlanID  string     `db:"plan_id" json:"plan_id"`
+	EndedAt *time.Time `db:"ended_at" json:"ended_at"`
+}
+
+// CloseAccountPlansByPlanID closes all active plans with the given plan_id.
+func (q *Queries) CloseAccountPlansByPlanID(ctx context.Context, arg CloseAccountPlansByPlanIDParams) error {
+	_, err := q.exec(ctx, q.closeAccountPlansByPlanIDStmt, closeAccountPlansByPlanID, arg.PlanID, arg.EndedAt)
+	return err
+}
+
 const countAccountsByBillingStatus = `-- name: CountAccountsByBillingStatus :one
 SELECT COUNT(*) FROM accounts a
 WHERE (
@@ -465,6 +480,29 @@ func (q *Queries) InsertAccountPlan(ctx context.Context, arg InsertAccountPlanPa
 	return err
 }
 
+const insertAccountPlanMigration = `-- name: InsertAccountPlanMigration :exec
+INSERT INTO account_plans (account_id, plan_id, started_at, changed_by)
+VALUES (?, ?, ?, ?)
+`
+
+type InsertAccountPlanMigrationParams struct {
+	AccountID string    `db:"account_id" json:"account_id"`
+	PlanID    string    `db:"plan_id" json:"plan_id"`
+	StartedAt time.Time `db:"started_at" json:"started_at"`
+	ChangedBy *string   `db:"changed_by" json:"changed_by"`
+}
+
+// InsertAccountPlanMigration inserts a new plan row during a plan version migration.
+func (q *Queries) InsertAccountPlanMigration(ctx context.Context, arg InsertAccountPlanMigrationParams) error {
+	_, err := q.exec(ctx, q.insertAccountPlanMigrationStmt, insertAccountPlanMigration,
+		arg.AccountID,
+		arg.PlanID,
+		arg.StartedAt,
+		arg.ChangedBy,
+	)
+	return err
+}
+
 const listAccountPlanHistory = `-- name: ListAccountPlanHistory :many
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
 FROM account_plans
@@ -503,6 +541,37 @@ func (q *Queries) ListAccountPlanHistory(ctx context.Context, accountID string) 
 	return items, nil
 }
 
+const listActiveSubscribersByPlanID = `-- name: ListActiveSubscribersByPlanID :many
+SELECT account_id
+FROM account_plans
+WHERE plan_id = ? AND ended_at IS NULL
+ORDER BY started_at
+`
+
+// ListActiveSubscribersByPlanID returns all account IDs with the given active plan.
+func (q *Queries) ListActiveSubscribersByPlanID(ctx context.Context, planID string) ([]string, error) {
+	rows, err := q.query(ctx, q.listActiveSubscribersByPlanIDStmt, listActiveSubscribersByPlanID, planID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var account_id string
+		if err := rows.Scan(&account_id); err != nil {
+			return nil, err
+		}
+		items = append(items, account_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllAccounts = `-- name: ListAllAccounts :many
 SELECT id, created_by, created_at, parent_id, status FROM accounts
 `
@@ -523,6 +592,43 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 			&i.ParentID,
 			&i.Status,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlanVersionCounts = `-- name: ListPlanVersionCounts :many
+SELECT plan_id, COUNT(*) as cnt
+FROM account_plans
+WHERE ended_at IS NULL
+GROUP BY plan_id
+ORDER BY cnt DESC, plan_id
+`
+
+type ListPlanVersionCountsRow struct {
+	PlanID string `db:"plan_id" json:"plan_id"`
+	Cnt    int64  `db:"cnt" json:"cnt"`
+}
+
+// ListPlanVersionCounts returns all active plan versions with subscriber counts.
+func (q *Queries) ListPlanVersionCounts(ctx context.Context) ([]ListPlanVersionCountsRow, error) {
+	rows, err := q.query(ctx, q.listPlanVersionCountsStmt, listPlanVersionCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlanVersionCountsRow{}
+	for rows.Next() {
+		var i ListPlanVersionCountsRow
+		if err := rows.Scan(&i.PlanID, &i.Cnt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -75,6 +75,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
+	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanVersions)
+	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanVersionMigrate)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
@@ -2565,7 +2567,7 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		changedBy := "debug:add-billing"
 		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    string(entitlement.VersionIndividual),
+			PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		}); err != nil {
@@ -5631,7 +5633,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	// Resolve entitlements from account_plans (walks parent_id for team members).
 	var version entitlement.PlanVersion
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		version = entitlement.PlanVersion(planRow.PlanID)
+		version = entitlement.BasePlan(planRow.PlanID)
 	}
 	if version != "" {
 		for _, ent := range entitlement.AllEntitlements() {
@@ -5657,6 +5659,58 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "billing.html", data); err != nil {
 		s.slog().ErrorContext(ctx, "failed to execute billing template", "error", err)
 	}
+}
+
+func (s *Server) handleDebugPlanVersions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	groups, err := s.billing.ListPlanVersions(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list plan versions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// If a specific plan_id is requested, list the subscribers.
+	selectedPlanID := r.URL.Query().Get("plan_id")
+	var subscribers []string
+	if selectedPlanID != "" {
+		subscribers, err = s.billing.ListSubscribersByPlanVersion(ctx, selectedPlanID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to list subscribers: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"groups":      groups,
+		"selected":    selectedPlanID,
+		"subscribers": subscribers,
+	})
+}
+
+func (s *Server) handleDebugPlanVersionMigrate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	fromPlanID := r.FormValue("from")
+	toPlanID := r.FormValue("to")
+	if fromPlanID == "" || toPlanID == "" {
+		http.Error(w, "'from' and 'to' parameters are required", http.StatusBadRequest)
+		return
+	}
+
+	count, err := s.billing.MigratePlanVersion(ctx, fromPlanID, toPlanID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("migration failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"migrated": count,
+		"from":     fromPlanID,
+		"to":       toPlanID,
+	})
 }
 
 func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {

@@ -66,6 +66,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.closeAccountPlanStmt, err = db.PrepareContext(ctx, closeAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query CloseAccountPlan: %w", err)
 	}
+	if q.closeAccountPlansByPlanIDStmt, err = db.PrepareContext(ctx, closeAccountPlansByPlanID); err != nil {
+		return nil, fmt.Errorf("error preparing query CloseAccountPlansByPlanID: %w", err)
+	}
 	if q.consumeCheckoutParamsStmt, err = db.PrepareContext(ctx, consumeCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query ConsumeCheckoutParams: %w", err)
 	}
@@ -690,6 +693,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertAccountPlanStmt, err = db.PrepareContext(ctx, insertAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAccountPlan: %w", err)
 	}
+	if q.insertAccountPlanMigrationStmt, err = db.PrepareContext(ctx, insertAccountPlanMigration); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAccountPlanMigration: %w", err)
+	}
 	if q.insertAppTokenStmt, err = db.PrepareContext(ctx, insertAppToken); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAppToken: %w", err)
 	}
@@ -822,6 +828,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAccountPlanHistoryStmt, err = db.PrepareContext(ctx, listAccountPlanHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAccountPlanHistory: %w", err)
 	}
+	if q.listActiveSubscribersByPlanIDStmt, err = db.PrepareContext(ctx, listActiveSubscribersByPlanID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListActiveSubscribersByPlanID: %w", err)
+	}
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
@@ -899,6 +908,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listNetActuateIPShardsStmt, err = db.PrepareContext(ctx, listNetActuateIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListNetActuateIPShards: %w", err)
+	}
+	if q.listPlanVersionCountsStmt, err = db.PrepareContext(ctx, listPlanVersionCounts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlanVersionCounts: %w", err)
 	}
 	if q.listSubscriptionEventsStmt, err = db.PrepareContext(ctx, listSubscriptionEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSubscriptionEvents: %w", err)
@@ -1219,6 +1231,11 @@ func (q *Queries) Close() error {
 	if q.closeAccountPlanStmt != nil {
 		if cerr := q.closeAccountPlanStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing closeAccountPlanStmt: %w", cerr)
+		}
+	}
+	if q.closeAccountPlansByPlanIDStmt != nil {
+		if cerr := q.closeAccountPlansByPlanIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing closeAccountPlansByPlanIDStmt: %w", cerr)
 		}
 	}
 	if q.consumeCheckoutParamsStmt != nil {
@@ -2261,6 +2278,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertAccountPlanStmt: %w", cerr)
 		}
 	}
+	if q.insertAccountPlanMigrationStmt != nil {
+		if cerr := q.insertAccountPlanMigrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAccountPlanMigrationStmt: %w", cerr)
+		}
+	}
 	if q.insertAppTokenStmt != nil {
 		if cerr := q.insertAppTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAppTokenStmt: %w", cerr)
@@ -2481,6 +2503,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAccountPlanHistoryStmt: %w", cerr)
 		}
 	}
+	if q.listActiveSubscribersByPlanIDStmt != nil {
+		if cerr := q.listActiveSubscribersByPlanIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listActiveSubscribersByPlanIDStmt: %w", cerr)
+		}
+	}
 	if q.listAllAccountsStmt != nil {
 		if cerr := q.listAllAccountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
@@ -2609,6 +2636,11 @@ func (q *Queries) Close() error {
 	if q.listNetActuateIPShardsStmt != nil {
 		if cerr := q.listNetActuateIPShardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listNetActuateIPShardsStmt: %w", cerr)
+		}
+	}
+	if q.listPlanVersionCountsStmt != nil {
+		if cerr := q.listPlanVersionCountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlanVersionCountsStmt: %w", cerr)
 		}
 	}
 	if q.listSubscriptionEventsStmt != nil {
@@ -3074,6 +3106,7 @@ type Queries struct {
 	clearAccountParentIDStmt                   *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	closeAccountPlanStmt                       *sql.Stmt
+	closeAccountPlansByPlanIDStmt              *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
 	consumeOAuthStateStmt                      *sql.Stmt
 	countAccountsByBillingStatusStmt           *sql.Stmt
@@ -3282,6 +3315,7 @@ type Queries struct {
 	incrementUserEmailCountStmt                *sql.Stmt
 	insertAccountStmt                          *sql.Stmt
 	insertAccountPlanStmt                      *sql.Stmt
+	insertAccountPlanMigrationStmt             *sql.Stmt
 	insertAppTokenStmt                         *sql.Stmt
 	insertAuthCookieStmt                       *sql.Stmt
 	insertBillingEventStmt                     *sql.Stmt
@@ -3326,6 +3360,7 @@ type Queries struct {
 	isUserTeamBillingOwnerStmt                 *sql.Stmt
 	listAWSIPShardsStmt                        *sql.Stmt
 	listAccountPlanHistoryStmt                 *sql.Stmt
+	listActiveSubscribersByPlanIDStmt          *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllGitHubInstallationsWithTokensStmt   *sql.Stmt
@@ -3352,6 +3387,7 @@ type Queries struct {
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listLatitudeIPShardsStmt                   *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
+	listPlanVersionCountsStmt                  *sql.Stmt
 	listSubscriptionEventsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
@@ -3454,6 +3490,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		clearAccountParentIDStmt:                   q.clearAccountParentIDStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		closeAccountPlanStmt:                       q.closeAccountPlanStmt,
+		closeAccountPlansByPlanIDStmt:              q.closeAccountPlansByPlanIDStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
 		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
@@ -3662,6 +3699,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementUserEmailCountStmt:                q.incrementUserEmailCountStmt,
 		insertAccountStmt:                          q.insertAccountStmt,
 		insertAccountPlanStmt:                      q.insertAccountPlanStmt,
+		insertAccountPlanMigrationStmt:             q.insertAccountPlanMigrationStmt,
 		insertAppTokenStmt:                         q.insertAppTokenStmt,
 		insertAuthCookieStmt:                       q.insertAuthCookieStmt,
 		insertBillingEventStmt:                     q.insertBillingEventStmt,
@@ -3706,6 +3744,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		isUserTeamBillingOwnerStmt:                 q.isUserTeamBillingOwnerStmt,
 		listAWSIPShardsStmt:                        q.listAWSIPShardsStmt,
 		listAccountPlanHistoryStmt:                 q.listAccountPlanHistoryStmt,
+		listActiveSubscribersByPlanIDStmt:          q.listActiveSubscribersByPlanIDStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllGitHubInstallationsWithTokensStmt:   q.listAllGitHubInstallationsWithTokensStmt,
@@ -3732,6 +3771,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
+		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
 		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,

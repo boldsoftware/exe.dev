@@ -2220,7 +2220,7 @@ func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
 }
 
 // TestCreateUserRecordCreatesAccountAndPlan verifies that createUserRecord + createAccountWithBasicPlan
-// inserts exactly one account row and one account_plans row with plan_id='basic' and ended_at IS NULL.
+// inserts exactly one account row and one account_plans row with a versioned basic plan_id and ended_at IS NULL.
 func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	t.Parallel()
 
@@ -2255,8 +2255,8 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: expected basic plan after signup, got: %v", err)
 	}
-	if ap.PlanID != "basic" {
-		t.Errorf("initial plan_id=%q, want 'basic'", ap.PlanID)
+	if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+		t.Errorf("initial plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 	if ap.EndedAt != nil {
 		t.Errorf("initial plan ended_at=%v, want nil (plan must be active)", ap.EndedAt)
@@ -2301,8 +2301,8 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("user %d GetActiveAccountPlan: %v", i, err)
 		}
-		if ap.PlanID != "basic" {
-			t.Errorf("user %d: plan=%q, want 'basic'", i, ap.PlanID)
+		if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+			t.Errorf("user %d: plan=%q, want base plan 'basic'", i, ap.PlanID)
 		}
 		if ap.AccountID != acct.ID {
 			t.Errorf("user %d: plan.account_id=%q, want %q", i, ap.AccountID, acct.ID)
@@ -2340,8 +2340,8 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan after first call: %v", err)
 	}
-	if ap.PlanID != "basic" {
-		t.Fatalf("plan_id=%q, want 'basic'", ap.PlanID)
+	if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+		t.Fatalf("plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 
 	// Step 2: Simulate a retry — insert the same plan again for the same account.
@@ -2351,7 +2351,7 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 		changedBy := "system:signup"
 		return queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    "basic",
+			PlanID:    entitlement.VersionedPlanID(entitlement.VersionBasic, "monthly", time.Now()),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})

@@ -1432,14 +1432,15 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 		// Update account_plans if the user has an account.
 		acct, err := q.GetAccountByUserID(ctx, userID)
 		if err == nil {
-			var newPlanID string
+			var basePlan entitlement.PlanVersion
 			switch inviteCode.PlanType {
 			case "free":
-				newPlanID = string(entitlement.VersionFriend)
+				basePlan = entitlement.VersionFriend
 			case "trial":
-				newPlanID = string(entitlement.VersionTrial)
+				basePlan = entitlement.VersionTrial
 			}
-			if newPlanID != "" {
+			if basePlan != "" {
+				newPlanID := entitlement.VersionedPlanID(basePlan, "monthly", time.Now())
 				now := sqlite.NormalizeTime(time.Now())
 				if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 					AccountID: acct.ID,

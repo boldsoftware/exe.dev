@@ -3263,7 +3263,7 @@ func createAccountWithBasicPlan(ctx context.Context, queries *exedb.Queries, use
 	changedBy := "system:signup"
 	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 		AccountID: accountID,
-		PlanID:    string(entitlement.VersionBasic),
+		PlanID:    entitlement.VersionedPlanID(entitlement.VersionBasic, "monthly", time.Now()),
 		StartedAt: now,
 		ChangedBy: &changedBy,
 	}); err != nil {

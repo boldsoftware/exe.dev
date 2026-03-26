@@ -188,6 +188,30 @@ SELECT
     END
 FROM users u WHERE u.user_id = ?1;
 
+-- name: ListPlanVersionCounts :many
+-- ListPlanVersionCounts returns all active plan versions with subscriber counts.
+SELECT plan_id, COUNT(*) as cnt
+FROM account_plans
+WHERE ended_at IS NULL
+GROUP BY plan_id
+ORDER BY cnt DESC, plan_id;
+
+-- name: ListActiveSubscribersByPlanID :many
+-- ListActiveSubscribersByPlanID returns all account IDs with the given active plan.
+SELECT account_id
+FROM account_plans
+WHERE plan_id = ? AND ended_at IS NULL
+ORDER BY started_at;
+
+-- name: CloseAccountPlansByPlanID :exec
+-- CloseAccountPlansByPlanID closes all active plans with the given plan_id.
+UPDATE account_plans SET ended_at = ?2 WHERE plan_id = ?1 AND ended_at IS NULL;
+
+-- name: InsertAccountPlanMigration :exec
+-- InsertAccountPlanMigration inserts a new plan row during a plan version migration.
+INSERT INTO account_plans (account_id, plan_id, started_at, changed_by)
+VALUES (?, ?, ?, ?);
+
 -- name: GetUserBilling :one
 -- GetUserBilling returns a single row with the user's plan category, billing status,
 -- account creation date, billing exemption, and trial end date.

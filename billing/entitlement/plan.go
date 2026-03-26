@@ -1,6 +1,9 @@
 package entitlement
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // PlanVersion identifies a billing plan.
 type PlanVersion string
@@ -140,9 +143,49 @@ func GetPlan(version PlanVersion) (Plan, bool) {
 	return p, ok
 }
 
+// ParsePlanID extracts the base plan, interval, and version from a plan ID.
+// Versioned IDs use the format "{plan}:{interval}:{YYYYMMDD}" (e.g.
+// "individual:monthly:20260325"). Bare legacy IDs ("individual") are
+// handled gracefully: the base plan is the ID itself, interval and version
+// are empty strings.
+//
+// ParsePlanID is the single code path for extracting the base plan from
+// any plan_id value stored in account_plans.
+func ParsePlanID(id string) (plan PlanVersion, interval, version string) {
+	parts := strings.SplitN(id, ":", 3)
+	switch len(parts) {
+	case 3:
+		return PlanVersion(parts[0]), parts[1], parts[2]
+	default:
+		return PlanVersion(id), "", ""
+	}
+}
+
+// FormatPlanID constructs a versioned plan ID from its components.
+// The result has the format "{plan}:{interval}:{version}".
+func FormatPlanID(plan PlanVersion, interval, version string) string {
+	return string(plan) + ":" + interval + ":" + version
+}
+
+// VersionedPlanID returns a versioned plan ID using the given plan, interval,
+// and the provided timestamp formatted as YYYYMMDD.
+func VersionedPlanID(plan PlanVersion, interval string, t time.Time) string {
+	return FormatPlanID(plan, interval, t.UTC().Format("20060102"))
+}
+
+// BasePlan extracts the base PlanVersion from a possibly-versioned plan ID.
+// This is a convenience wrapper around ParsePlanID.
+func BasePlan(id string) PlanVersion {
+	plan, _, _ := ParsePlanID(id)
+	return plan
+}
+
 // GetPlanByID returns the Plan for a given plan ID string and whether it exists.
+// It handles both versioned IDs ("individual:monthly:20260325") and bare
+// legacy IDs ("individual") by extracting the base plan via ParsePlanID.
 func GetPlanByID(id string) (Plan, bool) {
-	return GetPlan(PlanVersion(id))
+	plan := BasePlan(id)
+	return GetPlan(plan)
 }
 
 // PlanName returns the human-readable name for a plan version (e.g., "Individual").

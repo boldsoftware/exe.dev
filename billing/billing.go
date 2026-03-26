@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/errorz"
 	"exe.dev/exedb"
@@ -611,20 +612,26 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 }
 
 // syncAccountPlan updates account_plans when a subscription event is processed.
-// "active" -> close current plan, insert "individual".
-// "canceled" -> close current plan, insert "basic".
+// "active" -> close current plan, insert versioned "individual" plan ID.
+// "canceled" -> close current plan, insert versioned "basic" plan ID.
+//
+// Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
 func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time) error {
-	newPlanID := "basic"
+	basePlan := entitlement.VersionBasic
+	interval := "monthly"
 	if eventType == "active" {
-		newPlanID = "individual"
+		basePlan = entitlement.VersionIndividual
 	}
+	newPlanID := entitlement.VersionedPlanID(basePlan, interval, eventAt)
 
-	// Skip if the active plan already matches — avoids duplicate rows from poller replays.
-	plan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	// Skip if the active plan's base matches — avoids duplicate rows from poller replays.
+	activePlan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("check current plan: %w", err)
 	}
-	if plan.PlanID == newPlanID {
+	// Compare base plans so that both bare ("individual") and versioned
+	// ("individual:monthly:20260325") are treated as equivalent.
+	if err == nil && entitlement.BasePlan(activePlan.PlanID) == basePlan {
 		return nil
 	}
 
@@ -966,4 +973,81 @@ func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[strin
 		result[charge.PaymentIntent.ID] = charge.ReceiptURL
 	}
 	return result, nil
+}
+
+// PlanVersionGroup represents a group of subscribers on the same plan_id version.
+type PlanVersionGroup struct {
+	PlanID   string
+	BasePlan string
+	Interval string
+	Version  string
+	Count    int
+}
+
+// ListPlanVersions returns all active plan versions with subscriber counts,
+// grouped by the full plan_id value in account_plans.
+func (m *Manager) ListPlanVersions(ctx context.Context) ([]PlanVersionGroup, error) {
+	rows, err := exedb.WithRxRes0(m.DB, ctx, (*exedb.Queries).ListPlanVersionCounts)
+	if err != nil {
+		return nil, fmt.Errorf("list plan versions: %w", err)
+	}
+	var groups []PlanVersionGroup
+	for _, row := range rows {
+		g := PlanVersionGroup{
+			PlanID: row.PlanID,
+			Count:  int(row.Cnt),
+		}
+		p, i, v := entitlement.ParsePlanID(g.PlanID)
+		g.BasePlan, g.Interval, g.Version = string(p), i, v
+		groups = append(groups, g)
+	}
+	return groups, nil
+}
+
+// ListSubscribersByPlanVersion returns all account IDs with the given plan_id.
+func (m *Manager) ListSubscribersByPlanVersion(ctx context.Context, planID string) ([]string, error) {
+	return exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListActiveSubscribersByPlanID, planID)
+}
+
+// MigratePlanVersion batch-migrates all active subscribers from one plan_id
+// to another, closing the old plan and inserting the new one within a single
+// transaction. Returns the number of accounts migrated.
+func (m *Manager) MigratePlanVersion(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
+	now := time.Now().UTC()
+	normalizedAt := sqlite.NormalizeTime(now)
+	changedBy := fmt.Sprintf("admin:migrate:%s->%s", fromPlanID, toPlanID)
+
+	// Collect account IDs first.
+	accountIDs, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListActiveSubscribersByPlanID, fromPlanID)
+	if err != nil {
+		return 0, fmt.Errorf("select accounts to migrate: %w", err)
+	}
+	if len(accountIDs) == 0 {
+		return 0, nil
+	}
+
+	// Close all old plans and insert new ones in a single tx.
+	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlansByPlanID(ctx, exedb.CloseAccountPlansByPlanIDParams{
+			PlanID:  fromPlanID,
+			EndedAt: &normalizedAt,
+		}); err != nil {
+			return fmt.Errorf("close old plans: %w", err)
+		}
+		for _, accountID := range accountIDs {
+			if err := q.InsertAccountPlanMigration(ctx, exedb.InsertAccountPlanMigrationParams{
+				AccountID: accountID,
+				PlanID:    toPlanID,
+				StartedAt: normalizedAt,
+				ChangedBy: &changedBy,
+			}); err != nil {
+				return fmt.Errorf("insert new plan for %s: %w", accountID, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+
+	return len(accountIDs), nil
 }

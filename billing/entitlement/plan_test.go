@@ -316,3 +316,177 @@ func TestAllEntitlements(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePlanID(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantPlan PlanVersion
+		wantInt  string
+		wantVer  string
+	}{
+		{
+			name:     "versioned individual monthly",
+			input:    "individual:monthly:20260325",
+			wantPlan: VersionIndividual,
+			wantInt:  "monthly",
+			wantVer:  "20260325",
+		},
+		{
+			name:     "versioned basic monthly",
+			input:    "basic:monthly:20260101",
+			wantPlan: VersionBasic,
+			wantInt:  "monthly",
+			wantVer:  "20260101",
+		},
+		{
+			name:     "versioned team yearly",
+			input:    "team:yearly:20260601",
+			wantPlan: VersionTeam,
+			wantInt:  "yearly",
+			wantVer:  "20260601",
+		},
+		{
+			name:     "bare individual",
+			input:    "individual",
+			wantPlan: VersionIndividual,
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "bare basic",
+			input:    "basic",
+			wantPlan: VersionBasic,
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "bare friend",
+			input:    "friend",
+			wantPlan: VersionFriend,
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "bare vip",
+			input:    "vip",
+			wantPlan: VersionVIP,
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			wantPlan: PlanVersion(""),
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "two parts treated as bare",
+			input:    "individual:monthly",
+			wantPlan: PlanVersion("individual:monthly"),
+			wantInt:  "",
+			wantVer:  "",
+		},
+		{
+			name:     "version with colons in timestamp",
+			input:    "individual:monthly:2026:03:25",
+			wantPlan: VersionIndividual,
+			wantInt:  "monthly",
+			wantVer:  "2026:03:25",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, interval, ver := ParsePlanID(tt.input)
+			if plan != tt.wantPlan {
+				t.Errorf("ParsePlanID(%q) plan = %q, want %q", tt.input, plan, tt.wantPlan)
+			}
+			if interval != tt.wantInt {
+				t.Errorf("ParsePlanID(%q) interval = %q, want %q", tt.input, interval, tt.wantInt)
+			}
+			if ver != tt.wantVer {
+				t.Errorf("ParsePlanID(%q) version = %q, want %q", tt.input, ver, tt.wantVer)
+			}
+		})
+	}
+}
+
+func TestBasePlan(t *testing.T) {
+	tests := []struct {
+		input string
+		want  PlanVersion
+	}{
+		{"individual:monthly:20260325", VersionIndividual},
+		{"basic:monthly:20260101", VersionBasic},
+		{"individual", VersionIndividual},
+		{"basic", VersionBasic},
+		{"friend", VersionFriend},
+		{"vip", VersionVIP},
+	}
+	for _, tt := range tests {
+		got := BasePlan(tt.input)
+		if got != tt.want {
+			t.Errorf("BasePlan(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestGetPlanByIDVersioned(t *testing.T) {
+	// Versioned ID should resolve to the base plan.
+	p, ok := GetPlanByID("individual:monthly:20260325")
+	if !ok {
+		t.Fatal("GetPlanByID(\"individual:monthly:20260325\") = _, false; want true")
+	}
+	if p.Version != VersionIndividual {
+		t.Errorf("GetPlanByID versioned got version %q, want %q", p.Version, VersionIndividual)
+	}
+	if p.LLMGatewayCategory != "has_billing" {
+		t.Errorf("GetPlanByID versioned got category %q, want %q", p.LLMGatewayCategory, "has_billing")
+	}
+
+	// Bare ID should still work.
+	p2, ok2 := GetPlanByID("individual")
+	if !ok2 {
+		t.Fatal("GetPlanByID(\"individual\") = _, false; want true")
+	}
+	if p2.Version != VersionIndividual {
+		t.Errorf("GetPlanByID bare got version %q, want %q", p2.Version, VersionIndividual)
+	}
+}
+
+func TestFormatPlanID(t *testing.T) {
+	got := FormatPlanID(VersionIndividual, "monthly", "20260325")
+	want := "individual:monthly:20260325"
+	if got != want {
+		t.Errorf("FormatPlanID() = %q, want %q", got, want)
+	}
+}
+
+func TestVersionedPlanID(t *testing.T) {
+	ts := time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC)
+	got := VersionedPlanID(VersionIndividual, "monthly", ts)
+	want := "individual:monthly:20260325"
+	if got != want {
+		t.Errorf("VersionedPlanID() = %q, want %q", got, want)
+	}
+}
+
+func TestPlanGrantsWithVersionedID(t *testing.T) {
+	// Verify that using BasePlan on a versioned ID gives correct entitlements.
+	version := BasePlan("individual:monthly:20260325")
+	if !PlanGrants(version, VMCreate) {
+		t.Error("PlanGrants with versioned individual should grant VMCreate")
+	}
+	if !PlanGrants(version, CreditPurchase) {
+		t.Error("PlanGrants with versioned individual should grant CreditPurchase")
+	}
+
+	version2 := BasePlan("basic:monthly:20260325")
+	if PlanGrants(version2, VMCreate) {
+		t.Error("PlanGrants with versioned basic should not grant VMCreate")
+	}
+	if !PlanGrants(version2, LLMUse) {
+		t.Error("PlanGrants with versioned basic should grant LLMUse")
+	}
+}

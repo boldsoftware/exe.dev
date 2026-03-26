@@ -531,7 +531,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			changedBy := "stripe:event"
 			if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 				AccountID: acct.ID,
-				PlanID:    string(entitlement.VersionIndividual),
+				PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
 				StartedAt: now,
 				ChangedBy: &changedBy,
 			}); err != nil {
@@ -752,7 +752,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		changedBy := "stripe:event"
 		if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: billingID,
-			PlanID:    string(entitlement.VersionIndividual),
+			PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		}); err != nil {
