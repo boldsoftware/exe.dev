@@ -7,8 +7,15 @@ VALUES (?, ?, ?, ?, ?);
 
 -- name: UpsertAccountPlan :exec
 -- UpsertAccountPlan inserts an account plan only if the account has no active plan.
-INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
-VALUES (?, ?, ?, ?);
+INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: SetTrialExpiresAt :exec
+-- SetTrialExpiresAt updates trial_expires_at for an active Stripe-managed plan.
+-- Only updates rows where changed_by='stripe:event' to avoid modifying invite trials.
+UPDATE account_plans
+SET trial_expires_at = ?2
+WHERE account_id = ?1 AND ended_at IS NULL AND changed_by = 'stripe:event';
 
 -- name: GetActiveAccountPlan :one
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at

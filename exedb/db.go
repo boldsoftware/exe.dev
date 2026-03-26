@@ -987,6 +987,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setTeamAuthProviderStmt, err = db.PrepareContext(ctx, setTeamAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetTeamAuthProvider: %w", err)
 	}
+	if q.setTrialExpiresAtStmt, err = db.PrepareContext(ctx, setTrialExpiresAt); err != nil {
+		return nil, fmt.Errorf("error preparing query SetTrialExpiresAt: %w", err)
+	}
 	if q.setUserAuthProviderStmt, err = db.PrepareContext(ctx, setUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserAuthProvider: %w", err)
 	}
@@ -2780,6 +2783,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setTeamAuthProviderStmt: %w", cerr)
 		}
 	}
+	if q.setTrialExpiresAtStmt != nil {
+		if cerr := q.setTrialExpiresAtStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setTrialExpiresAtStmt: %w", cerr)
+		}
+	}
 	if q.setUserAuthProviderStmt != nil {
 		if cerr := q.setUserAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserAuthProviderStmt: %w", cerr)
@@ -3445,6 +3453,7 @@ type Queries struct {
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
 	setTeamAuthProviderStmt                    *sql.Stmt
+	setTrialExpiresAtStmt                      *sql.Stmt
 	setUserAuthProviderStmt                    *sql.Stmt
 	setUserBillingExemptionStmt                *sql.Stmt
 	setUserCgroupOverridesStmt                 *sql.Stmt
@@ -3833,6 +3842,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
 		setTeamAuthProviderStmt:                    q.setTeamAuthProviderStmt,
+		setTrialExpiresAtStmt:                      q.setTrialExpiresAtStmt,
 		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,
 		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
 		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,

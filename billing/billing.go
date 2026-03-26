@@ -596,7 +596,13 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 		// Update account_plans to reflect the subscription change.
 		// On "active": close current plan and insert "individual".
 		// On "canceled": close current plan and insert "basic".
-		if err := m.syncAccountPlan(ctx, sub.Customer.ID, eventType, eventAt); err != nil {
+		// For trialing subscriptions, also record when the trial ends.
+		var trialEnd *time.Time
+		if sub.TrialEnd > 0 && sub.Status == stripe.SubscriptionStatusTrialing {
+			t := time.Unix(sub.TrialEnd, 0).UTC()
+			trialEnd = &t
+		}
+		if err := m.syncAccountPlan(ctx, sub.Customer.ID, eventType, eventAt, trialEnd); err != nil {
 			m.slog().WarnContext(ctx, "failed to sync account plan",
 				"account_id", sub.Customer.ID,
 				"event_type", eventType,
@@ -615,8 +621,11 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 // "active" -> close current plan, insert versioned "individual" plan ID.
 // "canceled" -> close current plan, insert versioned "basic" plan ID.
 //
+// When trialEnd is non-nil (trialing subscription), trial_expires_at is written
+// so we can distinguish trialing users from paid ones in queries.
+//
 // Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
-func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time) error {
+func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time) error {
 	basePlan := entitlement.VersionBasic
 	interval := "monthly"
 	if eventType == "active" {
@@ -638,6 +647,13 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	normalizedAt := sqlite.NormalizeTime(eventAt)
 	changedBy := "stripe:event"
 
+	// Normalize trialEnd for SQLite storage if present.
+	var normalizedTrialEnd *time.Time
+	if trialEnd != nil {
+		t := sqlite.NormalizeTime(*trialEnd)
+		normalizedTrialEnd = &t
+	}
+
 	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 			AccountID: accountID,
@@ -646,10 +662,11 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 			return fmt.Errorf("close existing plan: %w", err)
 		}
 		return q.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
-			AccountID: accountID,
-			PlanID:    newPlanID,
-			StartedAt: normalizedAt,
-			ChangedBy: &changedBy,
+			AccountID:      accountID,
+			PlanID:         newPlanID,
+			StartedAt:      normalizedAt,
+			TrialExpiresAt: normalizedTrialEnd,
+			ChangedBy:      &changedBy,
 		})
 	}); err != nil {
 		return fmt.Errorf("sync account plan: %w", err)

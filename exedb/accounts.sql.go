@@ -699,16 +699,35 @@ func (q *Queries) SetAccountParentID(ctx context.Context, arg SetAccountParentID
 	return err
 }
 
+const setTrialExpiresAt = `-- name: SetTrialExpiresAt :exec
+UPDATE account_plans
+SET trial_expires_at = ?2
+WHERE account_id = ?1 AND ended_at IS NULL AND changed_by = 'stripe:event'
+`
+
+type SetTrialExpiresAtParams struct {
+	AccountID      string     `db:"account_id" json:"account_id"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+}
+
+// SetTrialExpiresAt updates trial_expires_at for an active Stripe-managed plan.
+// Only updates rows where changed_by='stripe:event' to avoid modifying invite trials.
+func (q *Queries) SetTrialExpiresAt(ctx context.Context, arg SetTrialExpiresAtParams) error {
+	_, err := q.exec(ctx, q.setTrialExpiresAtStmt, setTrialExpiresAt, arg.AccountID, arg.TrialExpiresAt)
+	return err
+}
+
 const upsertAccountPlan = `-- name: UpsertAccountPlan :exec
-INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, changed_by)
-VALUES (?, ?, ?, ?)
+INSERT OR IGNORE INTO account_plans (account_id, plan_id, started_at, trial_expires_at, changed_by)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type UpsertAccountPlanParams struct {
-	AccountID string    `db:"account_id" json:"account_id"`
-	PlanID    string    `db:"plan_id" json:"plan_id"`
-	StartedAt time.Time `db:"started_at" json:"started_at"`
-	ChangedBy *string   `db:"changed_by" json:"changed_by"`
+	AccountID      string     `db:"account_id" json:"account_id"`
+	PlanID         string     `db:"plan_id" json:"plan_id"`
+	StartedAt      time.Time  `db:"started_at" json:"started_at"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	ChangedBy      *string    `db:"changed_by" json:"changed_by"`
 }
 
 // UpsertAccountPlan inserts an account plan only if the account has no active plan.
@@ -717,6 +736,7 @@ func (q *Queries) UpsertAccountPlan(ctx context.Context, arg UpsertAccountPlanPa
 		arg.AccountID,
 		arg.PlanID,
 		arg.StartedAt,
+		arg.TrialExpiresAt,
 		arg.ChangedBy,
 	)
 	return err
