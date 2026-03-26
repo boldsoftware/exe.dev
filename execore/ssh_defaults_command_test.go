@@ -363,3 +363,158 @@ func TestDefaultsReadNoDefaults(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultsSetupScript(t *testing.T) {
+	db := setupDefaultsTestDB(t)
+
+	server := &Server{log: tslog.Slogger(t), db: db}
+	sshServer := &SSHServer{server: server}
+	sshServer.commands = NewCommandTree(sshServer)
+
+	ctx := context.Background()
+	userID := "test-user-setup-script"
+	createDefaultsTestUser(t, db, userID, "test-setup@example.com")
+
+	user := &exedb.User{UserID: userID, Email: "test-setup@example.com"}
+
+	t.Run("write setup-script with arg", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "new.setup-script", "#!/bin/bash\necho hello"})
+
+		err := sshServer.handleDefaultsWrite(ctx, cc)
+		if err != nil {
+			t.Errorf("handleDefaultsWrite() error = %v", err)
+		}
+
+		defaults, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetUserDefaults, userID)
+		if err != nil {
+			t.Fatalf("GetUserDefaults() error = %v", err)
+		}
+		if defaults.NewSetupScript == nil {
+			t.Fatal("NewSetupScript should not be nil")
+		}
+		if *defaults.NewSetupScript != "#!/bin/bash\necho hello" {
+			t.Errorf("NewSetupScript = %q, want %q", *defaults.NewSetupScript, "#!/bin/bash\necho hello")
+		}
+	})
+
+	t.Run("read setup-script", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "new.setup-script"})
+
+		err := sshServer.handleDefaultsRead(ctx, cc)
+		if err != nil {
+			t.Errorf("handleDefaultsRead() error = %v", err)
+		}
+
+		result := output.String()
+		if !strings.Contains(result, "#!/bin/bash") {
+			t.Errorf("Expected output to contain script, got %q", result)
+		}
+	})
+
+	t.Run("read all defaults includes setup-script", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe"})
+
+		err := sshServer.handleDefaultsRead(ctx, cc)
+		if err != nil {
+			t.Errorf("handleDefaultsRead() error = %v", err)
+		}
+
+		result := output.String()
+		if !strings.Contains(result, "new.setup-script:") {
+			t.Errorf("Expected output to contain 'new.setup-script:', got %q", result)
+		}
+	})
+
+	t.Run("delete setup-script", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "new.setup-script"})
+
+		err := sshServer.handleDefaultsDelete(ctx, cc)
+		if err != nil {
+			t.Errorf("handleDefaultsDelete() error = %v", err)
+		}
+
+		defaults, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetUserDefaults, userID)
+		if err != nil {
+			t.Fatalf("GetUserDefaults() error = %v", err)
+		}
+		if defaults.NewSetupScript != nil {
+			t.Errorf("NewSetupScript should be nil after delete, got %v", *defaults.NewSetupScript)
+		}
+	})
+
+	t.Run("getUserDefaultSetupScript empty when not set", func(t *testing.T) {
+		result := sshServer.getUserDefaultSetupScript(ctx, userID)
+		if result != "" {
+			t.Errorf("getUserDefaultSetupScript() = %q, want empty", result)
+		}
+	})
+
+	t.Run("getUserDefaultSetupScript returns value when set", func(t *testing.T) {
+		script := "#!/bin/bash\necho setup"
+		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.UpsertUserDefaultNewSetupScript(ctx, exedb.UpsertUserDefaultNewSetupScriptParams{
+				UserID:         userID,
+				NewSetupScript: &script,
+			})
+		})
+		if err != nil {
+			t.Fatalf("UpsertUserDefaultNewSetupScript() error = %v", err)
+		}
+
+		result := sshServer.getUserDefaultSetupScript(ctx, userID)
+		if result != script {
+			t.Errorf("getUserDefaultSetupScript() = %q, want %q", result, script)
+		}
+	})
+
+	t.Run("write setup-script rejects oversized value", func(t *testing.T) {
+		output := &MockOutput{}
+		bigScript := strings.Repeat("x", maxSetupScript+1)
+		cc := createTestContext(user, output, []string{"dev.exe", "new.setup-script", bigScript})
+
+		err := sshServer.handleDefaultsWrite(ctx, cc)
+		if err == nil {
+			t.Error("expected error for oversized script")
+		} else if !strings.Contains(err.Error(), "10 KiB") {
+			t.Errorf("expected size limit error, got %v", err)
+		}
+	})
+
+	t.Run("write setup-script without value or stdin errors", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(user, output, []string{"dev.exe", "new.setup-script"})
+
+		err := sshServer.handleDefaultsWrite(ctx, cc)
+		if err == nil {
+			t.Error("expected error when no value and no stdin")
+		} else if !strings.Contains(err.Error(), "usage:") && !strings.Contains(err.Error(), "stdin") {
+			t.Errorf("expected usage/stdin error, got %v", err)
+		}
+	})
+}
+
+func TestDefaultsSetupScriptTruncatedDisplay(t *testing.T) {
+	s := strings.Repeat("a", 100)
+	result := formatTextPtr(&s)
+	if len(result) > 80 {
+		t.Errorf("formatTextPtr should truncate long strings, got len %d", len(result))
+	}
+	if !strings.HasSuffix(result, "...") {
+		t.Errorf("formatTextPtr should end with ..., got %q", result)
+	}
+
+	short := "hello"
+	result = formatTextPtr(&short)
+	if result != "hello" {
+		t.Errorf("formatTextPtr should not truncate short strings, got %q", result)
+	}
+
+	result = formatTextPtr(nil)
+	if result != "(not set)" {
+		t.Errorf("formatTextPtr should return (not set) for nil, got %q", result)
+	}
+}

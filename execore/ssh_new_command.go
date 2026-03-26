@@ -55,6 +55,16 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"
 	exeletOverride := cc.FlagSet.Lookup("exelet").Value.String()
 
+	// Parse --setup-script flag
+	setupScript := cc.FlagSet.Lookup("setup-script").Value.String()
+	if setupScript == "" {
+		// Fall back to user default
+		setupScript = ss.getUserDefaultSetupScript(ctx, cc.User.ID)
+	}
+	if len(setupScript) > maxSetupScript {
+		return cc.Errorf("setup script exceeds 10 KiB limit")
+	}
+
 	// Parse environment variables
 	var envVars []string
 	if envFlag := cc.FlagSet.Lookup("env"); envFlag != nil {
@@ -381,6 +391,19 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 				},
 			},
 			GroupID: cc.User.ID,
+		}
+
+		// Add setup script config if provided
+		if setupScript != "" {
+			createReq.Configs = append(createReq.Configs, &api.Config{
+				Destination: "/exe.dev/setup",
+				Mode:        uint64(0o755),
+				Source: &api.Config_File{
+					File: &api.FileConfig{
+						Data: []byte(setupScript),
+					},
+				},
+			})
 		}
 
 		// Call CreateInstance with WaitForReady(false) so we fail fast

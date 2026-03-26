@@ -85,3 +85,4 @@ sql:
           github_account_login: "GitHubAccountLogin"
           signup_ip_checks: "SignupIPCheck"
           signup_ip_check: "SignupIPCheck"
+          new_setup_script: "NewSetupScript"

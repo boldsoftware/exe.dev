@@ -30,3 +30,13 @@ ON CONFLICT(user_id) DO UPDATE SET
 
 -- name: DeleteUserDefaultGitHubIntegration :exec
 UPDATE user_defaults SET github_integration = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;
+
+-- name: UpsertUserDefaultNewSetupScript :exec
+INSERT INTO user_defaults (user_id, new_setup_script, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    new_setup_script = excluded.new_setup_script,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- name: DeleteUserDefaultNewSetupScript :exec
+UPDATE user_defaults SET new_setup_script = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?;

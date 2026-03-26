@@ -27,6 +27,15 @@ func (q *Queries) DeleteUserDefaultGitHubIntegration(ctx context.Context, userID
 	return err
 }
 
+const deleteUserDefaultNewSetupScript = `-- name: DeleteUserDefaultNewSetupScript :exec
+UPDATE user_defaults SET new_setup_script = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserDefaultNewSetupScript(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteUserDefaultNewSetupScriptStmt, deleteUserDefaultNewSetupScript, userID)
+	return err
+}
+
 const deleteUserDefaultNewVMEmail = `-- name: DeleteUserDefaultNewVMEmail :exec
 UPDATE user_defaults SET new_vm_email = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
 `
@@ -37,7 +46,7 @@ func (q *Queries) DeleteUserDefaultNewVMEmail(ctx context.Context, userID string
 }
 
 const getUserDefaults = `-- name: GetUserDefaults :one
-SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network, github_integration FROM user_defaults WHERE user_id = ?
+SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network, github_integration, new_setup_script FROM user_defaults WHERE user_id = ?
 `
 
 func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefault, error) {
@@ -51,6 +60,7 @@ func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefau
 		&i.GlobalLoadBalancer,
 		&i.AnycastNetwork,
 		&i.GitHubIntegration,
+		&i.NewSetupScript,
 	)
 	return i, err
 }
@@ -88,6 +98,24 @@ type UpsertUserDefaultGitHubIntegrationParams struct {
 
 func (q *Queries) UpsertUserDefaultGitHubIntegration(ctx context.Context, arg UpsertUserDefaultGitHubIntegrationParams) error {
 	_, err := q.exec(ctx, q.upsertUserDefaultGitHubIntegrationStmt, upsertUserDefaultGitHubIntegration, arg.UserID, arg.GitHubIntegration)
+	return err
+}
+
+const upsertUserDefaultNewSetupScript = `-- name: UpsertUserDefaultNewSetupScript :exec
+INSERT INTO user_defaults (user_id, new_setup_script, updated_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+    new_setup_script = excluded.new_setup_script,
+    updated_at = CURRENT_TIMESTAMP
+`
+
+type UpsertUserDefaultNewSetupScriptParams struct {
+	UserID         string  `db:"user_id" json:"user_id"`
+	NewSetupScript *string `db:"new_setup_script" json:"new_setup_script"`
+}
+
+func (q *Queries) UpsertUserDefaultNewSetupScript(ctx context.Context, arg UpsertUserDefaultNewSetupScriptParams) error {
+	_, err := q.exec(ctx, q.upsertUserDefaultNewSetupScriptStmt, upsertUserDefaultNewSetupScript, arg.UserID, arg.NewSetupScript)
 	return err
 }
 

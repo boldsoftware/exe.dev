@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"strconv"
+	"strings"
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -15,6 +17,7 @@ var knownDefaultsKeys = map[string]string{
 	"new-vm-email":       "bool",
 	"anycast-network":    "int",
 	"github-integration": "bool",
+	"new.setup-script":   "text",
 }
 
 // defaultsCommand returns the command definition for the hidden defaults command
@@ -59,14 +62,16 @@ func (ss *SSHServer) handleDefaultsHelp(ctx context.Context, cc *exemenu.Command
 	return nil
 }
 
+// maxSetupScript is the maximum size of a setup script (10 KiB).
+const maxSetupScript = 10 << 10
+
 func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) != 3 {
+	if len(cc.Args) < 2 || len(cc.Args) > 3 {
 		return cc.Errorf("usage: defaults write <domain> <key> <value>")
 	}
 
 	domain := cc.Args[0]
 	key := cc.Args[1]
-	value := cc.Args[2]
 
 	if domain != "dev.exe" {
 		return cc.Errorf("unknown domain %q (expected dev.exe)", domain)
@@ -75,6 +80,34 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 	expectedType, ok := knownDefaultsKeys[key]
 	if !ok {
 		return cc.Errorf("unknown key %q", key)
+	}
+
+	// For text type, value can come from stdin (piped) or as an argument.
+	var value string
+	if expectedType == "text" {
+		if len(cc.Args) == 3 {
+			value = cc.Args[2]
+		} else if cc.IsSSHExec() && cc.SSHSession != nil {
+			// Read from stdin
+			data, err := io.ReadAll(io.LimitReader(cc.SSHSession, maxSetupScript+1))
+			if err != nil {
+				return cc.Errorf("reading from stdin: %v", err)
+			}
+			if len(data) > maxSetupScript {
+				return cc.Errorf("input exceeds 10 KiB limit")
+			}
+			value = strings.TrimSpace(string(data))
+			if value == "" {
+				return cc.Errorf("stdin was empty")
+			}
+		} else {
+			return cc.Errorf("usage: defaults write <domain> <key> <value>\nor pipe via stdin: cat script.sh | ssh exe.dev defaults write dev.exe %s", key)
+		}
+	} else {
+		if len(cc.Args) != 3 {
+			return cc.Errorf("usage: defaults write <domain> <key> <value>")
+		}
+		value = cc.Args[2]
 	}
 
 	switch expectedType {
@@ -128,6 +161,19 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 				})
 			})
 		}
+	case "text":
+		if len(value) > maxSetupScript {
+			return cc.Errorf("value exceeds 10 KiB limit")
+		}
+		switch key {
+		case "new.setup-script":
+			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				return queries.UpsertUserDefaultNewSetupScript(ctx, exedb.UpsertUserDefaultNewSetupScriptParams{
+					UserID:         cc.User.ID,
+					NewSetupScript: &value,
+				})
+			})
+		}
 	}
 
 	return cc.Errorf("unsupported key %q", key)
@@ -153,6 +199,7 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
 		cc.Writeln("anycast-network: %s", formatIntPtr(defaults.AnycastNetwork))
 		cc.Writeln("github-integration: %s", formatBoolPtr(defaults.GitHubIntegration))
+		cc.Writeln("new.setup-script: %s", formatTextPtr(defaults.NewSetupScript))
 		return nil
 	}
 
@@ -165,6 +212,8 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 		cc.Writeln("%s", formatIntPtr(defaults.AnycastNetwork))
 	case "github-integration":
 		cc.Writeln("%s", formatBoolPtr(defaults.GitHubIntegration))
+	case "new.setup-script":
+		cc.Writeln("%s", formatTextPtr(defaults.NewSetupScript))
 	default:
 		return cc.Errorf("unknown key %q", key)
 	}
@@ -201,6 +250,10 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultGitHubIntegration(ctx, cc.User.ID)
 		})
+	case "new.setup-script":
+		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteUserDefaultNewSetupScript(ctx, cc.User.ID)
+		})
 	}
 
 	return nil
@@ -223,6 +276,30 @@ func formatIntPtr(v *int64) string {
 		return "(not set)"
 	}
 	return strconv.FormatInt(*v, 10)
+}
+
+// formatTextPtr formats a *string for display, truncating long values.
+func formatTextPtr(v *string) string {
+	if v == nil {
+		return "(not set)"
+	}
+	s := *v
+	if len(s) > 80 {
+		return s[:77] + "..."
+	}
+	return s
+}
+
+// getUserDefaultSetupScript returns the user's default setup script, or "" if not set.
+func (ss *SSHServer) getUserDefaultSetupScript(ctx context.Context, userID string) string {
+	defaults, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserDefaults, userID)
+	if err != nil {
+		return ""
+	}
+	if defaults.NewSetupScript == nil {
+		return ""
+	}
+	return *defaults.NewSetupScript
 }
 
 // getUserDefaultNewVMEmail returns whether the user wants new-vm-email enabled.
