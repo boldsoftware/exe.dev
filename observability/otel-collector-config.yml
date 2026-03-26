@@ -84,9 +84,6 @@ receivers:
           static_configs:
             - targets:
                 - 'mon:9100'
-                - 'sketch-dev:9100'
-                - 'docker-01:9100'
-                - 'docker-02:9100'
                 - 'ci.crocodile-vector.ts.net:9100'
               labels:
                 stage: 'production'
@@ -148,13 +145,6 @@ receivers:
           static_configs:
             - targets: ["grafana.crocodile-vector.ts.net"]
           metrics_path: '/metrics'
-
-        - job_name: 'skabandd-production'
-          scrape_interval: 60s
-          scheme: https
-          static_configs:
-            - targets: ["sketch-dev.crocodile-vector.ts.net"]
-          metrics_path: '/debug/metrics'
 
         - job_name: 'exed-production'
           scrape_interval: 60s
