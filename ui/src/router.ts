@@ -5,7 +5,7 @@ const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to) {
     if (to.hash) {
-      return { el: to.hash, behavior: 'smooth' }
+      return { el: to.hash, behavior: 'instant' }
     }
     return { top: 0 }
   },

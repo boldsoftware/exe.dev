@@ -154,7 +154,7 @@ function scrollToHash() {
   if (!hash) return
   const el = document.querySelector(hash)
   if (el) {
-    el.scrollIntoView({ behavior: 'smooth' })
+    el.scrollIntoView({ behavior: 'instant' })
   }
 }
 
@@ -232,14 +232,21 @@ function copyMarkdown() {
   })
 }
 
+// Track whether all-docs content is already loaded to avoid re-fetching on hash changes
+const allDocsLoaded = ref(false)
+
 // Handle route changes
 watch(
   () => [route.params.slug, route.name],
   async () => {
     if (route.name === 'docs-all') {
-      await loadAllDocs()
+      if (!allDocsLoaded.value) {
+        await loadAllDocs()
+        allDocsLoaded.value = true
+      }
       return
     }
+    allDocsLoaded.value = false
     if (route.name !== 'docs' && route.name !== 'docs-entry') return
     const slug = route.params.slug as string
     if (slug) {
@@ -259,6 +266,16 @@ watch(
     }
   },
   { immediate: true }
+)
+
+// On hash-only changes within the all-docs page, just scroll
+watch(
+  () => route.hash,
+  () => {
+    if (route.name === 'docs-all' && allDocsLoaded.value) {
+      scrollToHash()
+    }
+  }
 )
 </script>
 
