@@ -17,7 +17,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,56 +27,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	sqlite "modernc.org/sqlite"
 )
-
-func init() {
-	// parse_timestamp(text) -> normalized UTC timestamp
-	// Parses various timestamp formats (including Go's time.String() format)
-	// and returns a SQLite-compatible datetime string.
-	sqlite.MustRegisterScalarFunction("parse_timestamp", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-		if args[0] == nil {
-			return nil, nil
-		}
-		s, ok := args[0].(string)
-		if !ok {
-			return nil, fmt.Errorf("parse_timestamp: expected string, got %T", args[0])
-		}
-
-		// Strip monotonic clock reading if present (e.g., "m=+123.456")
-		// This appears at the end of time.String() output
-		if idx := strings.Index(s, " m="); idx > 0 {
-			s = s[:idx]
-		}
-
-		// Try parsing with various formats
-		formats := []string{
-			time.RFC3339,
-			time.RFC3339Nano,
-			"2006-01-02 15:04:05.999999999-07:00",     // Time10
-			"2006-01-02 15:04:05.999999999 -0700 MST", // Go time.String()
-			"2006-01-02 15:04:05 -0700 MST",           // Go time.String() without subseconds
-			"2006-01-02 15:04:05.999999999",           // Without timezone
-			"2006-01-02 15:04:05.999999",              // Microsecond precision
-			"2006-01-02 15:04:05",                     // SQLite's CURRENT_TIMESTAMP
-			"2006-01-02T15:04:05Z07:00",               // ISO8601
-		}
-
-		var parsedTime time.Time
-		var err error
-		for _, format := range formats {
-			parsedTime, err = time.Parse(format, s)
-			if err == nil {
-				// Return normalized UTC timestamp in YYYY-MM-DD HH:MM:SS
-				// format, matching SQLite's CURRENT_TIMESTAMP output.
-				return parsedTime.UTC().Format("2006-01-02 15:04:05"), nil
-			}
-		}
-
-		// If all formats fail, return NULL so the query can handle it
-		return nil, nil
-	})
-}
 
 // TODO: add instrumentation, so we can measure how long we are waiting
 // for DB connections and see the slow points. E.g. add an HTTP handler.
