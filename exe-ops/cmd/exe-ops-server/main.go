@@ -88,6 +88,9 @@ func main() {
 				log.Info("slack deploy notifications enabled")
 			}
 
+			// Refresh inventory after each deploy so the UI sees updated versions.
+			deployer.OnDeploy(inv.Refresh)
+
 			handler := server.New(uiFS, log, inv, deployer)
 
 			srv := &http.Server{

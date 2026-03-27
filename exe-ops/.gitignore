@@ -3,6 +3,7 @@ bin/
 /exe-ops-server
 /exe-ops-agent
 server/agentbin/binaries/*/exe-ops-agent
+deploy-cache
 
 # SQLite
 *.db

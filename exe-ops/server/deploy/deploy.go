@@ -54,9 +54,12 @@ type deploy struct {
 }
 
 // StepNames returns the deploy steps for a given process, accounting for
-// optional steps like "backup" when PreRestartCmds are configured.
+// optional steps like "service" and "backup" when configured.
 func StepNames(process string) []string {
 	steps := []string{"build", "upload", "install"}
+	if r, ok := Recipes[process]; ok && len(r.ServiceFiles) > 0 {
+		steps = append(steps, "service")
+	}
 	if r, ok := Recipes[process]; ok && len(r.PreRestartCmds) > 0 {
 		steps = append(steps, "backup")
 	}

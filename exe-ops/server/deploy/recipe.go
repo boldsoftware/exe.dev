@@ -51,6 +51,13 @@ type Recipe struct {
 	// Commonly used for database backups. Each entry is passed to
 	// "bash -c" on the remote host.
 	PreRestartCmds []string
+
+	// ServiceFiles maps deploy stage to the repo-relative path of the
+	// systemd service file to install. If a stage is not present in the
+	// map but a "" (empty string) key exists, that entry is used as a
+	// fallback for all stages. When nil or empty, the service file step
+	// is skipped.
+	ServiceFiles map[string]string
 }
 
 func (r Recipe) symlinkName() string {
@@ -77,6 +84,18 @@ func prodDeployAllowed(process string) bool {
 	return false
 }
 
+// serviceFile returns the repo-relative path to the systemd service file
+// for the given stage, or "" if no service file is configured.
+func (r Recipe) serviceFile(stage string) string {
+	if len(r.ServiceFiles) == 0 {
+		return ""
+	}
+	if p, ok := r.ServiceFiles[stage]; ok {
+		return p
+	}
+	return r.ServiceFiles[""]
+}
+
 // Recipes maps process name to its deploy recipe.
 var Recipes = map[string]Recipe{
 	"exeletd": {
@@ -90,14 +109,22 @@ var Recipes = map[string]Recipe{
 		PreBuildCmds: []string{
 			"make exelet-fs exe-init",
 		},
+		ServiceFiles: map[string]string{
+			"staging": "ops/deploy/exelet-staging.service",
+			"global":  "ops/deploy/exelet-prod.service",
+		},
 	},
 	"cgtop": {
 		BuildTarget: "./cmd/cgtop",
 		BinaryName:  "cgtop",
-		RemoteDir:   "/usr/local/bin",
+		SymlinkName: "cgtop.latest",
+		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "cgtop.service",
 		HealthPort:  9090,
 		HealthPath:  "/debug/gitsha",
+		ServiceFiles: map[string]string{
+			"": "ops/deploy/cgtop.service",
+		},
 	},
 	"exeprox": {
 		BuildTarget: "./cmd/exeprox",
@@ -108,6 +135,10 @@ var Recipes = map[string]Recipe{
 		HealthPort:  443,
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
+		ServiceFiles: map[string]string{
+			"staging": "ops/deploy/exeprox-staging.service",
+			"global":  "ops/deploy/exeprox-prod.service",
+		},
 	},
 	"exed": {
 		BuildTarget: "./cmd/exed",
@@ -123,6 +154,10 @@ var Recipes = map[string]Recipe{
 		PreRestartCmds: []string{
 			`sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$(date +%Y%m%d-%H%M%S).sql.zst`,
 		},
+		ServiceFiles: map[string]string{
+			"staging": "ops/deploy/exed-staging.service",
+			"global":  "ops/deploy/exed-prod.service",
+		},
 	},
 	"metricsd": {
 		BuildTarget: "./cmd/metricsd",
@@ -132,6 +167,10 @@ var Recipes = map[string]Recipe{
 		ServiceUnit: "metricsd.service",
 		HealthPort:  21090,
 		HealthPath:  "/debug/gitsha",
+		ServiceFiles: map[string]string{
+			"staging": "ops/deploy/metricsd-staging.service",
+			"global":  "ops/deploy/metricsd-prod.service",
+		},
 	},
 	"exe-ops": {
 		BuildTarget: "./cmd/exe-ops-server",

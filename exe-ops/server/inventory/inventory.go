@@ -36,18 +36,20 @@ type Process struct {
 
 // Inventory polls tailscale status and maintains an in-memory process list.
 type Inventory struct {
-	mu      sync.RWMutex
-	procs   []Process
-	log     *slog.Logger
-	gitRepo *GitRepo
-	client  *http.Client
+	mu       sync.RWMutex
+	procs    []Process
+	refreshC chan struct{} // signals an on-demand refresh
+	log      *slog.Logger
+	gitRepo  *GitRepo
+	client   *http.Client
 }
 
 // New creates a new Inventory service.
 func New(log *slog.Logger, gitRepo *GitRepo) *Inventory {
 	return &Inventory{
-		log:     log,
-		gitRepo: gitRepo,
+		log:      log,
+		gitRepo:  gitRepo,
+		refreshC: make(chan struct{}, 1),
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{
@@ -71,9 +73,21 @@ func (inv *Inventory) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-inv.refreshC:
+			inv.refresh(ctx)
 		case <-ticker.C:
 			inv.refresh(ctx)
 		}
+	}
+}
+
+// Refresh triggers an asynchronous inventory refresh. It is safe to call
+// from any goroutine and returns immediately. If a refresh is already
+// pending the request is coalesced.
+func (inv *Inventory) Refresh() {
+	select {
+	case inv.refreshC <- struct{}{}:
+	default: // refresh already pending
 	}
 }
 

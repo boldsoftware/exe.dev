@@ -36,6 +36,10 @@ type Manager struct {
 	log      *slog.Logger
 	client   *http.Client
 	notifier Notifier // optional; nil = no notifications
+
+	// onDeploy is called after every deploy finishes (success or failure).
+	// Used to trigger an inventory refresh so the UI sees updated versions.
+	onDeploy func()
 }
 
 // NewManager creates a deploy manager.
@@ -67,6 +71,11 @@ func NewManager(ctx context.Context, log *slog.Logger, repoDir, cacheDir string)
 // SetNotifier configures an optional deploy lifecycle notifier (e.g. Slack).
 func (m *Manager) SetNotifier(n Notifier) {
 	m.notifier = n
+}
+
+// OnDeploy registers a callback that fires after every deploy finishes.
+func (m *Manager) OnDeploy(f func()) {
+	m.onDeploy = f
 }
 
 // Request describes a deploy to start.
@@ -186,6 +195,15 @@ func (m *Manager) execute(ctx context.Context, d *deploy) {
 		return
 	}
 
+	// Install the systemd service file from the repo at this SHA.
+	if len(recipe.ServiceFiles) > 0 {
+		d.beginStep("service")
+		err = m.installServiceFile(ctx, d, recipe)
+		if d.stepDone(err) {
+			return
+		}
+	}
+
 	// Run pre-restart commands (e.g. database backup).
 	if len(recipe.PreRestartCmds) > 0 {
 		d.beginStep("backup")
@@ -224,6 +242,9 @@ func (m *Manager) finish(d *deploy) {
 
 	if m.notifier != nil {
 		m.notifier.DeployFinished(d.snapshot())
+	}
+	if m.onDeploy != nil {
+		m.onDeploy()
 	}
 }
 
@@ -456,6 +477,59 @@ func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remoteP
 	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "ln", "-sf", remotePath, symlink)
 }
 
+// installServiceFile extracts the service file from the bare repo at the
+// deploy SHA, copies it to the remote host, and installs it into
+// /etc/systemd/system/ with a daemon-reload.
+func (m *Manager) installServiceFile(ctx context.Context, d *deploy, recipe Recipe) error {
+	repoPath := recipe.serviceFile(d.stage)
+	if repoPath == "" {
+		d.setStepOutput("skipped (no service file for stage " + d.stage + ")")
+		return nil
+	}
+
+	// Extract the file content from the bare repo at the deploy SHA.
+	cmd := exec.CommandContext(ctx, "git", "-C", m.repoDir, "show", d.sha+":"+repoPath)
+	content, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("git show %s:%s: %w", d.sha[:12], repoPath, err)
+	}
+
+	// Write to a temp file for scp.
+	tmp, err := os.CreateTemp("", "service-*")
+	if err != nil {
+		return fmt.Errorf("create temp: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp: %w", err)
+	}
+	tmp.Close()
+
+	user := recipe.remoteUser()
+	remoteTmp := "/tmp/deploy-" + recipe.ServiceUnit
+
+	// SCP the service file to /tmp on the remote host.
+	scp := exec.CommandContext(ctx, "scp",
+		"-o", "StrictHostKeyChecking=no",
+		tmp.Name(), user+"@"+d.dnsName+":"+remoteTmp)
+	if out, err := scp.CombinedOutput(); err != nil {
+		return fmt.Errorf("scp service file: %w\n%s", err, out)
+	}
+
+	// Move into place and reload systemd.
+	remoteDest := "/etc/systemd/system/" + recipe.ServiceUnit
+	if err := m.ssh(ctx, user, d.dnsName, "sudo", "mv", remoteTmp, remoteDest); err != nil {
+		return fmt.Errorf("mv service file: %w", err)
+	}
+	if err := m.ssh(ctx, user, d.dnsName, "sudo", "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("daemon-reload: %w", err)
+	}
+
+	d.setStepOutput(fmt.Sprintf("%s → %s", repoPath, remoteDest))
+	return nil
+}
+
 func (m *Manager) preRestart(ctx context.Context, d *deploy, recipe Recipe) error {
 	user := recipe.remoteUser()
 	for i, cmd := range recipe.PreRestartCmds {
@@ -470,6 +544,9 @@ func (m *Manager) preRestart(ctx context.Context, d *deploy, recipe Recipe) erro
 
 func (m *Manager) restart(ctx context.Context, d *deploy, recipe Recipe) error {
 	d.setStepOutput(recipe.ServiceUnit)
+	if err := m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("daemon-reload: %w", err)
+	}
 	return m.ssh(ctx, recipe.remoteUser(), d.dnsName, "sudo", "systemctl", "restart", recipe.ServiceUnit)
 }
 

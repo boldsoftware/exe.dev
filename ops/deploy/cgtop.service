@@ -1,10 +1,14 @@
 [Unit]
 Description=cgtop cgroup viewer
 After=network.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c 'exec /usr/local/bin/cgtop -http "$(tailscale ip -4):9090"'
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+ExecStart=/bin/bash -c 'exec /home/ubuntu/cgtop.latest -http "$(tailscale ip -4):9090"'
 Restart=always
 RestartSec=5
 StandardOutput=journal
