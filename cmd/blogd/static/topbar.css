@@ -1,13 +1,13 @@
 header {
   padding: 0 24px;
-  padding-top: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #ffffff;
   position: sticky;
   top: 0;
   z-index: 100;
-  font-family: var(--font-mono);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 header .nav-container {
@@ -21,7 +21,7 @@ header .nav-container {
 header .nav-left {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 16px;
 }
 
 header .nav-logo {
@@ -30,30 +30,30 @@ header .nav-logo {
   gap: 8px;
   font-weight: 600;
   font-size: 18px;
-  color: var(--color-text);
+  color: #000000;
   text-decoration: none;
   white-space: nowrap;
 }
 
 header .nav-logo img {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
 }
 
 header .nav-links {
   display: flex;
-  gap: 24px;
+  gap: 20px;
 }
 
 header .nav-links a {
-  color: var(--color-text-secondary);
+  color: #414141;
   text-decoration: none;
-  font-size: var(--text-sm);
+  font-size: 14px;
 }
 
 header .nav-links a:hover {
-  color: var(--color-text);
+  color: #000000;
 }
 
 header .nav-right {
@@ -64,44 +64,43 @@ header .nav-right {
 
 header .btn {
   padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  color: #414141;
   text-decoration: none;
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
+  font-size: 14px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   font-family: inherit;
 }
 
 header .btn:hover {
-  background: var(--color-bg-subtle);
-  border-color: var(--color-border-input);
-  color: var(--color-text);
+  background: #f5f5f5;
+  border-color: #d0d0d0;
 }
 
 header .btn-active {
-  background: var(--color-bg-subtle);
-  color: var(--color-text);
-  border-color: var(--color-border-input);
+  background: #f5f5f5;
+  color: #000000;
+  border-color: #d0d0d0;
   cursor: default;
   font-weight: 500;
 }
 
 header .btn-active:hover {
-  background: var(--color-bg-muted);
-  border-color: var(--color-border-input);
+  background: #f5f5f5;
+  border-color: #d0d0d0;
 }
 
 header .btn-primary {
-  background: var(--color-text);
-  color: var(--color-bg);
-  border-color: var(--color-text);
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
 }
 
 header .btn-primary:hover {
-  opacity: 0.85;
+  background: #333333;
 }
 
 header .btn .btn-text {
@@ -109,18 +108,13 @@ header .btn .btn-text {
 }
 
 @media (max-width: 768px) {
-  header {
-    padding: 0 12px;
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-
+  /* Keep nav-links visible but adjust styling */
   header .nav-links {
     gap: 16px;
   }
 
   header .nav-links a {
-    font-size: var(--text-xs);
+    font-size: 13px;
   }
 
   header .btn .btn-text {
@@ -128,27 +122,68 @@ header .btn .btn-text {
   }
 
   header .btn {
-    padding: 8px 10px;
+    padding: 8px 12px;
   }
 
+  /* Reduce gap between left and right sections on mobile */
   header .nav-left {
-    gap: 12px;
+    gap: 16px;
   }
 
   header .nav-right {
-    gap: 6px;
+    gap: 8px;
+  }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  header {
+    background: #1a1a1a;
+    border-bottom-color: #333;
   }
 
   header .nav-logo {
-    font-size: 16px;
-    min-width: 0;
-    overflow: hidden;
+    color: #f3f4f6;
   }
 
-  header .nav-logo-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 80px;
+  header .nav-links a {
+    color: #9ca3af;
+  }
+
+  header .nav-links a:hover {
+    color: #f3f4f6;
+  }
+
+  header .btn {
+    background: #2a2a2a;
+    border-color: #333;
+    color: #9ca3af;
+  }
+
+  header .btn:hover {
+    background: #333;
+    border-color: #444;
+    color: #f3f4f6;
+  }
+
+  header .btn-active {
+    background: #333;
+    color: #f3f4f6;
+    border-color: #444;
+  }
+
+  header .btn-active:hover {
+    background: #333;
+    border-color: #444;
+  }
+
+  header .btn-primary {
+    background: #f3f4f6;
+    color: #111;
+    border-color: #f3f4f6;
+  }
+
+  header .btn-primary:hover {
+    background: #d1d5db;
   }
 }
