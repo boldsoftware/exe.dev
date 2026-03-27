@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" href="/favicon.ico">
+    <title>LLM Gateway Models - exe.dev</title>
+    <meta name="description" content="Models supported by the exe.dev LLM Gateway">
+    <link rel="canonical" href="https://exe.dev/llm-gateway-models">
+    <link rel="stylesheet" href="/static/common.css">
+    {{template "topbar_style" .}}
+    <style>
+        body { background-color: var(--color-bg); }
+        .main-container { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+        h1 { font-size: 1.5rem; margin-bottom: 8px; }
+        .subtitle { color: var(--color-text-secondary); margin-bottom: 24px; font-size: var(--text-sm); }
+        .subtitle a { color: var(--color-link); }
+        .filter-bar {
+            display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+        }
+        .filter-bar input {
+            flex: 1; min-width: 200px; padding: 6px 10px;
+            border: 1px solid var(--color-border); border-radius: 4px;
+            background: var(--color-bg); color: var(--color-text);
+            font-family: inherit; font-size: var(--text-sm);
+        }
+        .filter-bar select {
+            padding: 6px 10px;
+            border: 1px solid var(--color-border); border-radius: 4px;
+            background: var(--color-bg); color: var(--color-text);
+            font-family: inherit; font-size: var(--text-sm);
+        }
+        .count { font-size: var(--text-sm); color: var(--color-text-secondary); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th {
+            text-align: left; padding: 8px 10px; font-weight: 600;
+            border-bottom: 2px solid var(--color-border);
+            font-size: var(--text-sm); color: var(--color-text-secondary);
+            cursor: pointer; user-select: none; white-space: nowrap;
+        }
+        th:hover { color: var(--color-text); }
+        td { padding: 6px 10px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+        td.model-name {
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 12px; word-break: break-all;
+        }
+        td.type-badge span {
+            display: inline-block; padding: 1px 6px; border-radius: 3px;
+            font-size: 11px; font-weight: 500;
+        }
+        td.type-badge .chat { background: #dbeafe; color: #1e40af; }
+        td.type-badge .embedding { background: #d1fae5; color: #065f46; }
+        td.type-badge .reranker { background: #fef3c7; color: #92400e; }
+        td.curl-cell {
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 11px; color: var(--color-text-secondary);
+            max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            cursor: pointer; position: relative;
+        }
+        td.curl-cell:hover { color: var(--color-text); }
+        .copied-toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+            background: #333; color: #fff; padding: 6px 16px; border-radius: 6px;
+            font-size: 13px; opacity: 0; transition: opacity 0.2s;
+            pointer-events: none; z-index: 100;
+        }
+        .copied-toast.show { opacity: 1; }
+        tr.hidden { display: none; }
+        @media (prefers-color-scheme: dark) {
+            td.type-badge .chat { background: #1e3a5f; color: #93c5fd; }
+            td.type-badge .embedding { background: #064e3b; color: #6ee7b7; }
+            td.type-badge .reranker { background: #78350f; color: #fcd34d; }
+        }
+    </style>
+</head>
+<body>
+    {{template "topbar" .}}
+    <div class="main-container">
+        <h1>LLM Gateway Models</h1>
+        <p class="subtitle">
+            Models available through the <a href="/docs/shelley/llm-gateway">LLM Gateway</a>
+            inside every exe.dev VM.
+        </p>
+        <div class="filter-bar">
+            <input type="text" id="filter" placeholder="Filter models…" autocomplete="off">
+            <select id="provider-filter">
+                <option value="">All providers</option>
+                <option value="Anthropic">Anthropic</option>
+                <option value="Fireworks">Fireworks</option>
+                <option value="OpenAI">OpenAI</option>
+            </select>
+            <select id="type-filter">
+                <option value="">All types</option>
+                <option value="chat">Chat</option>
+                <option value="embedding">Embedding</option>
+                <option value="reranker">Reranker</option>
+            </select>
+            <span class="count" id="count"></span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="provider">Provider</th>
+                    <th data-col="model">Model</th>
+                    <th data-col="type">Type</th>
+                    <th>curl (click to copy)</th>
+                </tr>
+            </thead>
+            <tbody id="models">
+                {{range .Models}}
+                <tr data-provider="{{.Provider}}" data-type="{{.Type}}" data-model="{{.Model}}">
+                    <td>{{.Provider}}</td>
+                    <td class="model-name">{{.Model}}</td>
+                    <td class="type-badge"><span class="{{.Type}}">{{.Type}}</span></td>
+                    <td class="curl-cell" title="Click to copy">{{.Curl}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        <div class="copied-toast" id="toast">Copied!</div>
+    </div>
+    <script>
+    (function() {
+        var filter = document.getElementById('filter');
+        var provSel = document.getElementById('provider-filter');
+        var typeSel = document.getElementById('type-filter');
+        var count = document.getElementById('count');
+        var rows = document.querySelectorAll('#models tr');
+        var toast = document.getElementById('toast');
+
+        function applyFilter() {
+            var text = filter.value.toLowerCase();
+            var prov = provSel.value;
+            var type = typeSel.value;
+            var visible = 0;
+            rows.forEach(function(row) {
+                var show = true;
+                if (text && row.dataset.model.toLowerCase().indexOf(text) === -1) show = false;
+                if (prov && row.dataset.provider !== prov) show = false;
+                if (type && row.dataset.type !== type) show = false;
+                row.classList.toggle('hidden', !show);
+                if (show) visible++;
+            });
+            count.textContent = visible + ' of ' + rows.length + ' models';
+        }
+
+        filter.addEventListener('input', applyFilter);
+        provSel.addEventListener('change', applyFilter);
+        typeSel.addEventListener('change', applyFilter);
+        applyFilter();
+
+        // Click to copy curl
+        document.getElementById('models').addEventListener('click', function(e) {
+            var cell = e.target.closest('.curl-cell');
+            if (!cell) return;
+            navigator.clipboard.writeText(cell.textContent).then(function() {
+                toast.classList.add('show');
+                setTimeout(function() { toast.classList.remove('show'); }, 1200);
+            });
+        });
+    })();
+    </script>
+</body>
+</html>

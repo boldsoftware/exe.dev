@@ -34,6 +34,7 @@ import (
 	"exe.dev/exedebug"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
+	"exe.dev/llmpricing"
 	"exe.dev/metricsbag"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/sshkey"
@@ -732,6 +733,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/about":
 		http.Redirect(w, r, "/docs/what-is-exe", http.StatusTemporaryRedirect)
 		return
+	case "/llm-gateway-models", "/llm-gateway-models/":
+		s.handleLLMGatewayModels(w, r)
+		return
 	case "/pricing":
 		http.Redirect(w, r, "/docs/pricing", http.StatusTemporaryRedirect)
 	case "/usage-pricing":
@@ -1021,6 +1025,79 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleLovePage serves the /love page with testimonials.
+func (s *Server) handleLLMGatewayModels(w http.ResponseWriter, r *http.Request) {
+	type modelRow struct {
+		Provider string
+		Model    string
+		Type     string
+		Curl     string
+	}
+
+	var rows []modelRow
+	for _, gm := range llmpricing.GatewayModels() {
+		rows = append(rows, modelRow{
+			Provider: gatewayProviderLabel(gm.Provider),
+			Model:    gm.Name,
+			Type:     string(gm.Type),
+			Curl:     gatewayCurl(gm),
+		})
+	}
+
+	data := struct {
+		stage.Env
+		IsLoggedIn bool
+		Models     []modelRow
+	}{
+		Env:    s.env,
+		Models: rows,
+	}
+	s.renderTemplate(r.Context(), w, "llm-gateway-models.html", data)
+}
+
+func gatewayProviderLabel(p llmpricing.Provider) string {
+	switch p {
+	case llmpricing.ProviderAnthropic:
+		return "Anthropic"
+	case llmpricing.ProviderOpenAI:
+		return "OpenAI"
+	case llmpricing.ProviderFireworks:
+		return "Fireworks"
+	default:
+		return string(p)
+	}
+}
+
+func gatewayCurl(gm llmpricing.GatewayModel) string {
+	const base = "http://169.254.169.254/gateway/llm/"
+	switch gm.Provider {
+	case llmpricing.ProviderAnthropic:
+		return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -H "anthropic-version: 2023-06-01" -d '{"model": "%s", "max_tokens": 256, "messages": [{"role": "user", "content": "Hello!"}]}'`,
+			base, "anthropic/v1/messages", gm.Name)
+	case llmpricing.ProviderOpenAI:
+		switch gm.Type {
+		case llmpricing.ModelTypeEmbedding:
+			return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -d '{"model": "%s", "input": "Your text here"}'`,
+				base, "openai/v1/embeddings", gm.Name)
+		default:
+			return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -d '{"model": "%s", "messages": [{"role": "user", "content": "Hello!"}]}'`,
+				base, "openai/v1/chat/completions", gm.Name)
+		}
+	case llmpricing.ProviderFireworks:
+		switch gm.Type {
+		case llmpricing.ModelTypeEmbedding:
+			return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -d '{"model": "%s", "input": "Your text here"}'`,
+				base, "fireworks/inference/v1/embeddings", gm.Name)
+		case llmpricing.ModelTypeReranker:
+			return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -d '{"model": "%s", "query": "Your query", "documents": ["doc1", "doc2"]}'`,
+				base, "fireworks/inference/v1/rerank", gm.Name)
+		default:
+			return fmt.Sprintf(`curl %s%s -H "content-type: application/json" -d '{"model": "%s", "messages": [{"role": "user", "content": "Hello!"}]}'`,
+				base, "fireworks/inference/v1/chat/completions", gm.Name)
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
 	approved := ApprovedTestimonials()
 	rand.Shuffle(len(approved), func(i, j int) {

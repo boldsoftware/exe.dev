@@ -2,7 +2,11 @@
 // It maintains an allowlist of supported models with their pricing.
 package llmpricing
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Provider represents an LLM API provider.
 type Provider string
@@ -229,7 +233,7 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		"accounts/fireworks/models/glm-4p7": {Input: 60, Output: 220, CacheRead: 30},
 
 		// Kimi models
-		"accounts/fireworks/models/kimi-k2p5": {Input: 60, Output: 300, CacheRead: 30},
+		"accounts/fireworks/models/kimi-k2p5": {Input: 60, Output: 300, CacheRead: 10},
 
 		// DeepSeek models
 		"accounts/fireworks/models/deepseek-v3p2": {Input: 56, Output: 168, CacheRead: 28},
@@ -260,5 +264,53 @@ func AllowedModels() map[Provider][]string {
 			result[provider] = append(result[provider], model)
 		}
 	}
+	return result
+}
+
+// ModelType classifies how a model is called.
+type ModelType string
+
+const (
+	ModelTypeChat      ModelType = "chat"
+	ModelTypeEmbedding ModelType = "embedding"
+	ModelTypeReranker  ModelType = "reranker"
+)
+
+// GatewayModel describes a single model available through the gateway.
+type GatewayModel struct {
+	Name     string
+	Provider Provider
+	Type     ModelType
+}
+
+// modelType infers the type of a model from its name and pricing.
+func modelType(name string, cost ModelCost) ModelType {
+	if strings.Contains(name, "reranker") {
+		return ModelTypeReranker
+	}
+	if cost.Output == 0 {
+		return ModelTypeEmbedding
+	}
+	return ModelTypeChat
+}
+
+// GatewayModels returns all supported models sorted by provider then name.
+func GatewayModels() []GatewayModel {
+	var result []GatewayModel
+	for provider, models := range allowedModels {
+		for name, cost := range models {
+			result = append(result, GatewayModel{
+				Name:     name,
+				Provider: provider,
+				Type:     modelType(name, cost),
+			})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Provider != result[j].Provider {
+			return result[i].Provider < result[j].Provider
+		}
+		return result[i].Name < result[j].Name
+	})
 	return result
 }
