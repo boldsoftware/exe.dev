@@ -92,7 +92,7 @@ require (
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.47.1-0.20260327154546-19b842914a3f
+	modernc.org/sqlite v1.48.0
 	mvdan.cc/sh/v3 v3.12.0
 	tailscale.com v1.86.5
 )
