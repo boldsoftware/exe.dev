@@ -465,9 +465,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, getIPAbuseFilterDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPAbuseFilterDisabled: %w", err)
 	}
-	if q.getIPShardAndAnycastNetworkByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardAndAnycastNetworkByBoxName); err != nil {
-		return nil, fmt.Errorf("error preparing query GetIPShardAndAnycastNetworkByBoxName: %w", err)
-	}
 	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
@@ -1937,11 +1934,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getIPAbuseFilterDisabledStmt: %w", cerr)
 		}
 	}
-	if q.getIPShardAndAnycastNetworkByBoxNameStmt != nil {
-		if cerr := q.getIPShardAndAnycastNetworkByBoxNameStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getIPShardAndAnycastNetworkByBoxNameStmt: %w", cerr)
-		}
-	}
 	if q.getIPShardByBoxNameStmt != nil {
 		if cerr := q.getIPShardByBoxNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
@@ -3343,7 +3335,6 @@ type Queries struct {
 	getGitHubUserTokenStmt                     *sql.Stmt
 	getHLLSketchStmt                           *sql.Stmt
 	getIPAbuseFilterDisabledStmt               *sql.Stmt
-	getIPShardAndAnycastNetworkByBoxNameStmt   *sql.Stmt
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getIntegrationStmt                         *sql.Stmt
 	getIntegrationByOwnerAndNameStmt           *sql.Stmt
@@ -3740,7 +3731,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getGitHubUserTokenStmt:                     q.getGitHubUserTokenStmt,
 		getHLLSketchStmt:                           q.getHLLSketchStmt,
 		getIPAbuseFilterDisabledStmt:               q.getIPAbuseFilterDisabledStmt,
-		getIPShardAndAnycastNetworkByBoxNameStmt:   q.getIPShardAndAnycastNetworkByBoxNameStmt,
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getIntegrationStmt:                         q.getIntegrationStmt,
 		getIntegrationByOwnerAndNameStmt:           q.getIntegrationByOwnerAndNameStmt,

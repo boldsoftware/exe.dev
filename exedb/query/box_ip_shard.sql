@@ -33,10 +33,3 @@ WHERE s.user_id = ? AND s.ip_shard = ?;
 
 -- name: UpdateBoxIPShardUser :exec
 UPDATE box_ip_shard SET user_id = ? WHERE box_id = ?;
-
--- name: GetIPShardAndAnycastNetworkByBoxName :one
-SELECT s.ip_shard, ud.anycast_network
-FROM box_ip_shard s
-JOIN boxes b ON b.id = s.box_id
-LEFT JOIN user_defaults ud ON ud.user_id = b.created_by_user_id
-WHERE b.name = ?;
