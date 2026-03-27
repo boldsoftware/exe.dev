@@ -813,7 +813,7 @@ def create_vm() -> Path:
         )
         subprocess.run(
             ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", setup_cmds],
-            check=False, capture_output=True, timeout=10)
+            check=False, capture_output=True, timeout=60)
 
     # First-boot provisioning + snapshot creation.
     if not snapshot:
