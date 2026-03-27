@@ -31,7 +31,7 @@ background agent fighting the noble fight against test flakes. There are
 multi-agent orchestrators. There's an "inbox" view that gathers agent
 conversation state from all the VMs and sorts them by recency and annotates
 whether they've been pushed. There's vanilla Claude Code. There's
-[the pi coding agent](https://pi.dev/). There's our own coding agent, Shelley.
+[the pi coding agent](https://pi.dev/). There's our own coding agent, [Shelley](https://exe.dev/shelley).
 
 The only common denominator? We're all using VMs to isolate, try, share,
 iterate, parallelize. So many VMs.
