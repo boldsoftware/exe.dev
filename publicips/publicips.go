@@ -28,7 +28,7 @@ const (
 
 const (
 	// MaxDomainShards is the largest valid shard ID.
-	// Shards map to public IP addresses: sNNN.exe.dev.
+	// Shards map to public IP addresses: naNNN.exe.dev.
 	// MaxDomainShards must match the DB CHECK constraint.
 	// IP shards are 1-based. (The zero value is intentionally invalid.)
 	MaxDomainShards = 1016
@@ -53,11 +53,6 @@ func ShardSub(shard int) string {
 	return fmt.Sprintf("s%03d", shard)
 }
 
-// LatitudeShardSub returns the latitude subdomain label for a shard (e.g. "n007").
-func LatitudeShardSub(shard int) string {
-	return fmt.Sprintf("n%03d", shard)
-}
-
 // NetActuateShardSub returns the NetActuate subdomain label for a shard (e.g. "na007").
 func NetActuateShardSub(shard int) string {
 	return fmt.Sprintf("na%03d", shard)
@@ -66,7 +61,7 @@ func NetActuateShardSub(shard int) string {
 // PublicIP describes a public IPv4 address, associated domain name, and shard.
 type PublicIP struct {
 	IP     netip.Addr
-	Domain string // full domain, e.g. "s007.exe.cloud"
+	Domain string // full domain, e.g. "na007.exe.cloud"
 	Shard  int    // shard number, e.g. 7
 }
 
