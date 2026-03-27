@@ -69,7 +69,6 @@ sql:
           avg_rating: "AvgRating"
           rating_count: "RatingCount"
           vm_shortname: "VMShortname"
-          anycast_network: "AnycastNetwork"
           vm_templates: "VMTemplate"
           template_ratings: "TemplateRating"
           icon_url: "IconURL"

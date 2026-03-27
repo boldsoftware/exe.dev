@@ -291,9 +291,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
 	}
-	if q.deleteUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, deleteUserDefaultAnycastNetwork); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteUserDefaultAnycastNetwork: %w", err)
-	}
 	if q.deleteUserDefaultGitHubIntegrationStmt, err = db.PrepareContext(ctx, deleteUserDefaultGitHubIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserDefaultGitHubIntegration: %w", err)
 	}
@@ -1155,9 +1152,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertTemplateRatingStmt, err = db.PrepareContext(ctx, upsertTemplateRating); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTemplateRating: %w", err)
 	}
-	if q.upsertUserDefaultAnycastNetworkStmt, err = db.PrepareContext(ctx, upsertUserDefaultAnycastNetwork); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertUserDefaultAnycastNetwork: %w", err)
-	}
 	if q.upsertUserDefaultGitHubIntegrationStmt, err = db.PrepareContext(ctx, upsertUserDefaultGitHubIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUserDefaultGitHubIntegration: %w", err)
 	}
@@ -1627,11 +1621,6 @@ func (q *Queries) Close() error {
 	if q.deleteUserStmt != nil {
 		if cerr := q.deleteUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
-		}
-	}
-	if q.deleteUserDefaultAnycastNetworkStmt != nil {
-		if cerr := q.deleteUserDefaultAnycastNetworkStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteUserDefaultAnycastNetworkStmt: %w", cerr)
 		}
 	}
 	if q.deleteUserDefaultGitHubIntegrationStmt != nil {
@@ -3069,11 +3058,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertTemplateRatingStmt: %w", cerr)
 		}
 	}
-	if q.upsertUserDefaultAnycastNetworkStmt != nil {
-		if cerr := q.upsertUserDefaultAnycastNetworkStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertUserDefaultAnycastNetworkStmt: %w", cerr)
-		}
-	}
 	if q.upsertUserDefaultGitHubIntegrationStmt != nil {
 		if cerr := q.upsertUserDefaultGitHubIntegrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertUserDefaultGitHubIntegrationStmt: %w", cerr)
@@ -3237,7 +3221,6 @@ type Queries struct {
 	deleteTeamSSOProviderStmt                  *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
 	deleteUserStmt                             *sql.Stmt
-	deleteUserDefaultAnycastNetworkStmt        *sql.Stmt
 	deleteUserDefaultGitHubIntegrationStmt     *sql.Stmt
 	deleteUserDefaultNewSetupScriptStmt        *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
@@ -3525,7 +3508,6 @@ type Queries struct {
 	upsertSSHHostKeyStmt                       *sql.Stmt
 	upsertTagResolutionStmt                    *sql.Stmt
 	upsertTemplateRatingStmt                   *sql.Stmt
-	upsertUserDefaultAnycastNetworkStmt        *sql.Stmt
 	upsertUserDefaultGitHubIntegrationStmt     *sql.Stmt
 	upsertUserDefaultNewSetupScriptStmt        *sql.Stmt
 	upsertUserDefaultNewVMEmailStmt            *sql.Stmt
@@ -3628,7 +3610,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
 		deleteUserStmt:                             q.deleteUserStmt,
-		deleteUserDefaultAnycastNetworkStmt:        q.deleteUserDefaultAnycastNetworkStmt,
 		deleteUserDefaultGitHubIntegrationStmt:     q.deleteUserDefaultGitHubIntegrationStmt,
 		deleteUserDefaultNewSetupScriptStmt:        q.deleteUserDefaultNewSetupScriptStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
@@ -3916,7 +3897,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertSSHHostKeyStmt:                       q.upsertSSHHostKeyStmt,
 		upsertTagResolutionStmt:                    q.upsertTagResolutionStmt,
 		upsertTemplateRatingStmt:                   q.upsertTemplateRatingStmt,
-		upsertUserDefaultAnycastNetworkStmt:        q.upsertUserDefaultAnycastNetworkStmt,
 		upsertUserDefaultGitHubIntegrationStmt:     q.upsertUserDefaultGitHubIntegrationStmt,
 		upsertUserDefaultNewSetupScriptStmt:        q.upsertUserDefaultNewSetupScriptStmt,
 		upsertUserDefaultNewVMEmailStmt:            q.upsertUserDefaultNewVMEmailStmt,

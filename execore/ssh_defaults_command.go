@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"io"
-	"strconv"
 	"strings"
 
 	"exe.dev/exedb"
@@ -15,7 +14,6 @@ import (
 // knownDefaultsKeys maps key names to their expected type for validation
 var knownDefaultsKeys = map[string]string{
 	"new-vm-email":       "bool",
-	"anycast-network":    "int",
 	"github-integration": "bool",
 	"new.setup-script":   "text",
 }
@@ -143,24 +141,6 @@ func (ss *SSHServer) handleDefaultsWrite(ctx context.Context, cc *exemenu.Comman
 				})
 			})
 		}
-	case "int":
-		intVal, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return cc.Errorf("invalid value %q for %s (expected integer)", value, key)
-		}
-
-		switch key {
-		case "anycast-network":
-			if intVal != 1 && intVal != 2 {
-				return cc.Errorf("invalid value %d for %s (expected 1 or 2)", intVal, key)
-			}
-			return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
-					UserID:         cc.User.ID,
-					AnycastNetwork: &intVal,
-				})
-			})
-		}
 	case "text":
 		if len(value) > maxSetupScript {
 			return cc.Errorf("value exceeds 10 KiB limit")
@@ -197,7 +177,6 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	// If no key specified, show all
 	if len(cc.Args) == 1 {
 		cc.Writeln("new-vm-email: %s", formatBoolPtr(defaults.NewVMEmail))
-		cc.Writeln("anycast-network: %s", formatIntPtr(defaults.AnycastNetwork))
 		cc.Writeln("github-integration: %s", formatBoolPtr(defaults.GitHubIntegration))
 		cc.Writeln("new.setup-script: %s", formatTextPtr(defaults.NewSetupScript))
 		return nil
@@ -208,8 +187,6 @@ func (ss *SSHServer) handleDefaultsRead(ctx context.Context, cc *exemenu.Command
 	switch key {
 	case "new-vm-email":
 		cc.Writeln("%s", formatBoolPtr(defaults.NewVMEmail))
-	case "anycast-network":
-		cc.Writeln("%s", formatIntPtr(defaults.AnycastNetwork))
 	case "github-integration":
 		cc.Writeln("%s", formatBoolPtr(defaults.GitHubIntegration))
 	case "new.setup-script":
@@ -242,10 +219,6 @@ func (ss *SSHServer) handleDefaultsDelete(ctx context.Context, cc *exemenu.Comma
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultNewVMEmail(ctx, cc.User.ID)
 		})
-	case "anycast-network":
-		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeleteUserDefaultAnycastNetwork(ctx, cc.User.ID)
-		})
 	case "github-integration":
 		return ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteUserDefaultGitHubIntegration(ctx, cc.User.ID)
@@ -268,14 +241,6 @@ func formatBoolPtr(v *int64) string {
 		return "false"
 	}
 	return "true"
-}
-
-// formatIntPtr formats an *int64 as an integer string for display
-func formatIntPtr(v *int64) string {
-	if v == nil {
-		return "(not set)"
-	}
-	return strconv.FormatInt(*v, 10)
 }
 
 // formatTextPtr formats a *string for display, truncating long values.

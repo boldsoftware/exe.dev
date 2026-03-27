@@ -9,15 +9,6 @@ import (
 	"context"
 )
 
-const deleteUserDefaultAnycastNetwork = `-- name: DeleteUserDefaultAnycastNetwork :exec
-UPDATE user_defaults SET anycast_network = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
-`
-
-func (q *Queries) DeleteUserDefaultAnycastNetwork(ctx context.Context, userID string) error {
-	_, err := q.exec(ctx, q.deleteUserDefaultAnycastNetworkStmt, deleteUserDefaultAnycastNetwork, userID)
-	return err
-}
-
 const deleteUserDefaultGitHubIntegration = `-- name: DeleteUserDefaultGitHubIntegration :exec
 UPDATE user_defaults SET github_integration = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
 `
@@ -63,24 +54,6 @@ func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefau
 		&i.NewSetupScript,
 	)
 	return i, err
-}
-
-const upsertUserDefaultAnycastNetwork = `-- name: UpsertUserDefaultAnycastNetwork :exec
-INSERT INTO user_defaults (user_id, anycast_network, updated_at)
-VALUES (?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT(user_id) DO UPDATE SET
-    anycast_network = excluded.anycast_network,
-    updated_at = CURRENT_TIMESTAMP
-`
-
-type UpsertUserDefaultAnycastNetworkParams struct {
-	UserID         string `db:"user_id" json:"user_id"`
-	AnycastNetwork *int64 `db:"anycast_network" json:"anycast_network"`
-}
-
-func (q *Queries) UpsertUserDefaultAnycastNetwork(ctx context.Context, arg UpsertUserDefaultAnycastNetworkParams) error {
-	_, err := q.exec(ctx, q.upsertUserDefaultAnycastNetworkStmt, upsertUserDefaultAnycastNetwork, arg.UserID, arg.AnycastNetwork)
-	return err
 }
 
 const upsertUserDefaultGitHubIntegration = `-- name: UpsertUserDefaultGitHubIntegration :exec
