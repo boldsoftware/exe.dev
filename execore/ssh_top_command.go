@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"exe.dev/exemenu"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -22,13 +24,15 @@ const (
 
 // vmUsageRow is one row in the top display, representing a single VM.
 type vmUsageRow struct {
-	Name       string
-	Status     string
-	CPUPercent float64
-	MemBytes   uint64
-	DiskBytes  uint64
-	NetRx      uint64
-	NetTx      uint64
+	Name         string
+	Status       string
+	CPUPercent   float64 // 100% = 1 core
+	MemBytes     uint64  // RSS
+	SwapBytes    uint64
+	DiskBytes    uint64 // actual usage
+	DiskCapacity uint64 // provisioned size
+	NetRx        uint64 // cumulative bytes
+	NetTx        uint64 // cumulative bytes
 }
 
 // topModel is the bubbletea model for the "top" command.
@@ -40,6 +44,14 @@ type topModel struct {
 	quitting  bool
 	startTime time.Time
 	lastPoll  time.Time
+
+	// Previous poll data for computing network rates.
+	prevRows map[string]vmUsageRow
+	prevTime time.Time
+
+	// Computed network rates (bytes/sec) keyed by VM name.
+	netRxRate map[string]float64
+	netTxRate map[string]float64
 
 	// fetchFunc fetches fresh VM usage rows. Injected for testability.
 	fetchFunc func(ctx context.Context) ([]vmUsageRow, error)
@@ -90,9 +102,38 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(topTickCmd(), fetchUsageCmd(m.fetchFunc))
 	case usageMsg:
+		now := time.Now()
+		if msg.err == nil && m.prevRows != nil && !m.prevTime.IsZero() {
+			elapsed := now.Sub(m.prevTime).Seconds()
+			if elapsed > 0 {
+				if m.netRxRate == nil {
+					m.netRxRate = make(map[string]float64)
+					m.netTxRate = make(map[string]float64)
+				}
+				for _, row := range msg.rows {
+					if prev, ok := m.prevRows[row.Name]; ok {
+						if row.NetRx >= prev.NetRx {
+							m.netRxRate[row.Name] = float64(row.NetRx-prev.NetRx) / elapsed
+						}
+						if row.NetTx >= prev.NetTx {
+							m.netTxRate[row.Name] = float64(row.NetTx-prev.NetTx) / elapsed
+						}
+					}
+				}
+			}
+		}
+		// Store current rows for next delta.
+		if msg.err == nil {
+			prev := make(map[string]vmUsageRow, len(msg.rows))
+			for _, row := range msg.rows {
+				prev[row.Name] = row
+			}
+			m.prevRows = prev
+			m.prevTime = now
+		}
 		m.rows = msg.rows
 		m.err = msg.err
-		m.lastPoll = time.Now()
+		m.lastPoll = now
 	}
 	return m, nil
 }
@@ -104,7 +145,7 @@ func (m *topModel) View() string {
 
 	var b strings.Builder
 
-	// Header
+	// Header line
 	elapsed := time.Since(m.startTime).Truncate(time.Second)
 	remaining := (topMaxDuration - elapsed).Truncate(time.Second)
 	if remaining < 0 {
@@ -122,35 +163,105 @@ func (m *topModel) View() string {
 		return b.String()
 	}
 
-	// Column header
-	b.WriteString(fmt.Sprintf("\033[1;37m%-20s %-10s %8s %10s %10s %10s %10s\033[0m\n",
-		"VM", "STATUS", "CPU%", "MEM", "DISK", "NET RX", "NET TX"))
+	// Column header. ANSI-aware padding keeps columns aligned
+	// regardless of color escape code lengths.
+	// CPU% = percent of one core (200% = 2 cores fully used).
+	b.WriteString("\033[1;37m")
+	b.WriteString(ansiPadRight("VM", 20))
+	b.WriteString(" ")
+	b.WriteString(ansiPadRight("STATUS", 10))
+	b.WriteString(" ")
+	b.WriteString(ansiPadLeft("CPU%", 8))
+	b.WriteString(" ")
+	b.WriteString(ansiPadLeft("MEM", 10))
+	b.WriteString(" ")
+	b.WriteString(ansiPadLeft("DISK", 12))
+	b.WriteString(" ")
+	b.WriteString(ansiPadLeft("NET RX", 10))
+	b.WriteString(" ")
+	b.WriteString(ansiPadLeft("NET TX", 10))
+	b.WriteString("\033[0m\n")
 
 	for _, row := range m.rows {
-		// VM name
 		name := row.Name
 		if len(name) > 19 {
 			name = name[:19] + "…"
 		}
 
-		// Status with color
 		statusStr := colorizeStatus(row.Status)
-
-		// CPU% with color gradient
 		cpuStr := colorizeCPU(row.CPUPercent)
+		memStr := colorizeMemory(row.MemBytes + row.SwapBytes)
 
-		// Memory
-		memStr := colorizeMemory(row.MemBytes)
+		// Disk: used/capacity
+		var diskStr string
+		if row.DiskCapacity > 0 {
+			diskStr = fmt.Sprintf("%s/%s", topFmtBytes(row.DiskBytes), topFmtBytes(row.DiskCapacity))
+		} else {
+			diskStr = topFmtBytes(row.DiskBytes)
+		}
 
-		b.WriteString(fmt.Sprintf("%-20s %-21s %8s %10s %10s %10s %10s\n",
-			name, statusStr, cpuStr,
-			memStr,
-			topFmtBytes(row.DiskBytes),
-			topFmtBytes(row.NetRx),
-			topFmtBytes(row.NetTx)))
+		// Network: rates in Mbps (bits per second).
+		var rxStr, txStr string
+		if m.netRxRate != nil {
+			rxStr = fmtNetRate(m.netRxRate[row.Name])
+			txStr = fmtNetRate(m.netTxRate[row.Name])
+		} else {
+			rxStr = "-"
+			txStr = "-"
+		}
+
+		b.WriteString(ansiPadRight(name, 20))
+		b.WriteString(" ")
+		b.WriteString(ansiPadRight(statusStr, 10))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(cpuStr, 8))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(memStr, 10))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(diskStr, 12))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(rxStr, 10))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(txStr, 10))
+		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// ansiPadRight pads s on the right to width visible columns.
+func ansiPadRight(s string, width int) string {
+	visible := ansi.StringWidth(s)
+	if visible >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-visible)
+}
+
+// ansiPadLeft pads s on the left to width visible columns.
+func ansiPadLeft(s string, width int) string {
+	visible := ansi.StringWidth(s)
+	if visible >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-visible) + s
+}
+
+// fmtNetRate formats a bytes-per-second rate as a human-readable bit rate.
+func fmtNetRate(bytesPerSec float64) string {
+	bitsPerSec := bytesPerSec * 8
+	switch {
+	case bitsPerSec >= 1_000_000_000:
+		return fmt.Sprintf("%.1f Gbps", bitsPerSec/1_000_000_000)
+	case bitsPerSec >= 1_000_000:
+		return fmt.Sprintf("%.1f Mbps", bitsPerSec/1_000_000)
+	case bitsPerSec >= 1_000:
+		return fmt.Sprintf("%.0f Kbps", bitsPerSec/1_000)
+	case bitsPerSec == 0:
+		return "-"
+	default:
+		return fmt.Sprintf("%.0f bps", bitsPerSec)
+	}
 }
 
 // colorizeStatus returns a colored status string.
@@ -302,7 +413,9 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 				if u, ok := usageByID[cid]; ok {
 					row.CPUPercent = u.CpuPercent
 					row.MemBytes = u.MemoryBytes
+					row.SwapBytes = u.SwapBytes
 					row.DiskBytes = u.DiskBytes
+					row.DiskCapacity = u.DiskCapacityBytes
 					row.NetRx = u.NetRxBytes
 					row.NetTx = u.NetTxBytes
 				}
@@ -327,6 +440,33 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 	})
 
 	return allRows, nil
+}
+
+// topSessionInput reads one byte at a time from the SSH session.
+// Bubble Tea's alt-screen mode requires single-byte reads to correctly
+// parse key events delivered over the SSH channel.
+type topSessionInput struct {
+	session  io.Reader
+	quitSeen bool
+}
+
+func (t *topSessionInput) Read(p []byte) (int, error) {
+	if t.quitSeen {
+		return 0, io.EOF
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	var buf [1]byte
+	_, err := t.session.Read(buf[:])
+	if err != nil {
+		return 0, err
+	}
+	p[0] = buf[0]
+	if buf[0] == 3 { // ctrl-c
+		t.quitSeen = true
+	}
+	return 1, nil
 }
 
 func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -354,7 +494,7 @@ func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandCo
 		},
 	}
 
-	input := &gameSessionInput{session: cc.SSHSession}
+	input := &topSessionInput{session: cc.SSHSession}
 
 	program := tea.NewProgram(model,
 		tea.WithContext(ctx),

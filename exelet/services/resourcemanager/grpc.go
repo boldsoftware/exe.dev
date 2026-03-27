@@ -64,15 +64,17 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 
 	return &api.GetVMUsageResponse{
 		Usage: &api.VMUsage{
-			ID:          req.VmID,
-			Name:        state.name,
-			CpuSeconds:  state.cpuSeconds,
-			CpuPercent:  state.cpuPercent,
-			MemoryBytes: state.memoryBytes,
-			DiskBytes:   state.diskBytes,
-			NetRxBytes:  state.netRxBytes,
-			NetTxBytes:  state.netTxBytes,
-			Priority:    state.priority,
+			ID:                req.VmID,
+			Name:              state.name,
+			CpuSeconds:        state.cpuSeconds,
+			CpuPercent:        state.cpuPercent,
+			MemoryBytes:       state.memoryBytes,
+			SwapBytes:         state.swapBytes,
+			DiskBytes:         state.diskBytes,
+			DiskCapacityBytes: state.diskVolsizeBytes,
+			NetRxBytes:        state.netRxBytes,
+			NetTxBytes:        state.netTxBytes,
+			Priority:          state.priority,
 		},
 	}, nil
 }
@@ -85,15 +87,17 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 	for id, state := range m.usageState {
 		if err := stream.Send(&api.ListVMUsageResponse{
 			Usage: &api.VMUsage{
-				ID:          id,
-				Name:        state.name,
-				CpuSeconds:  state.cpuSeconds,
-				CpuPercent:  state.cpuPercent,
-				MemoryBytes: state.memoryBytes,
-				DiskBytes:   state.diskBytes,
-				NetRxBytes:  state.netRxBytes,
-				NetTxBytes:  state.netTxBytes,
-				Priority:    state.priority,
+				ID:                id,
+				Name:              state.name,
+				CpuSeconds:        state.cpuSeconds,
+				CpuPercent:        state.cpuPercent,
+				MemoryBytes:       state.memoryBytes,
+				SwapBytes:         state.swapBytes,
+				DiskBytes:         state.diskBytes,
+				DiskCapacityBytes: state.diskVolsizeBytes,
+				NetRxBytes:        state.netRxBytes,
+				NetTxBytes:        state.netTxBytes,
+				Priority:          state.priority,
 			},
 		}); err != nil {
 			return err

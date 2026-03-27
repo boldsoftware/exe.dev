@@ -11,12 +11,16 @@ if ! command -v timeout &>/dev/null; then
     exit 1
 fi
 
+# deps/sshpiper may request a different Go toolchain version via go.mod.
+# Force the currently-installed toolchain so builds work without downloading.
+export GOTOOLCHAIN="go$(go version | awk '{print $3}' | sed 's/^go//')"
+
 # Build sshpiperd if needed
 if [ ! -f "$SSHPIPER_DIR/sshpiperd" ]; then
     (cd "$SSHPIPER_DIR" && go build -o sshpiperd ./cmd/sshpiperd)
 fi
 
-# Build sshpiperd if needed
+# Build metrics plugin if needed
 if [ ! -f "$SSHPIPER_DIR/metrics" ]; then
     (cd "$SSHPIPER_DIR" && go build -o metrics ./plugin/metrics)
 fi

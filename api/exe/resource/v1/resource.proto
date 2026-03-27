@@ -64,13 +64,15 @@ message VMUsage {
   string id = 1;
   string name = 2;
   double cpu_seconds = 3;    // Total CPU time consumed
-  double cpu_percent = 10;   // CPU usage percentage from last poll interval
-  uint64 memory_bytes = 4;   // Current memory usage
-  uint64 disk_bytes = 5;     // Current disk usage
+  double cpu_percent = 10;   // CPU usage percentage from last poll interval (100% = 1 core)
+  uint64 memory_bytes = 4;   // Current RSS memory usage
+  uint64 disk_bytes = 5;     // Current disk usage (compressed)
   uint64 net_rx_bytes = 6;   // Total network received
   uint64 net_tx_bytes = 7;   // Total network transmitted
   int64 last_activity = 8;   // Unix nano timestamp of last detected activity
   VMPriority priority = 9;
+  uint64 swap_bytes = 11;           // Current swap usage
+  uint64 disk_capacity_bytes = 12;  // Provisioned disk capacity (ZFS volsize)
 }
 
 enum VMPriority {

@@ -41,6 +41,33 @@ func TestTopFmtBytes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestFmtNetRate
+// ---------------------------------------------------------------------------
+
+func TestFmtNetRate(t *testing.T) {
+	tests := []struct {
+		name         string
+		bytesPerSec  float64
+		wantContains string
+	}{
+		{"zero", 0, "-"},
+		{"small_bps", 10, "bps"},
+		{"kbps", 10_000, "Kbps"},
+		{"mbps", 1_000_000, "Mbps"},         // 1 MB/s = 8 Mbps
+		{"gbps", 200_000_000, "Gbps"},       // 200 MB/s = 1.6 Gbps
+		{"12_mbps", 1_500_000, "12.0 Mbps"}, // 1.5 MB/s = 12 Mbps
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fmtNetRate(tt.bytesPerSec)
+			if !strings.Contains(got, tt.wantContains) {
+				t.Errorf("fmtNetRate(%v) = %q, want to contain %q", tt.bytesPerSec, got, tt.wantContains)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestColorizeCPU
 // ---------------------------------------------------------------------------
 
@@ -182,13 +209,15 @@ func TestTopModelView(t *testing.T) {
 	t.Run("with_rows", func(t *testing.T) {
 		rows := []vmUsageRow{
 			{
-				Name:       "my-vm",
-				Status:     "running",
-				CPUPercent: 45.2,
-				MemBytes:   1024 * 1024 * 1024, // 1G
-				DiskBytes:  500 * 1024 * 1024,  // 500M
-				NetRx:      2048,
-				NetTx:      4096,
+				Name:         "my-vm",
+				Status:       "running",
+				CPUPercent:   45.2,
+				MemBytes:     1024 * 1024 * 1024,      // 1G RSS
+				SwapBytes:    512 * 1024 * 1024,       // 512M swap
+				DiskBytes:    500 * 1024 * 1024,       // 500M used
+				DiskCapacity: 10 * 1024 * 1024 * 1024, // 10G capacity
+				NetRx:        2048,
+				NetTx:        4096,
 			},
 		}
 		m := newTestModel(rows, nil)
@@ -200,14 +229,41 @@ func TestTopModelView(t *testing.T) {
 		if !strings.Contains(out, "my-vm") {
 			t.Errorf("View() should contain VM name 'my-vm', got %q", out)
 		}
-		if !strings.Contains(out, "1.0G") {
-			t.Errorf("View() should contain memory '1.0G', got %q", out)
+		// MEM should be RSS+swap = 1.5G
+		if !strings.Contains(out, "1.5G") {
+			t.Errorf("View() should show combined RSS+swap memory '1.5G', got %q", out)
 		}
-		if !strings.Contains(out, "500M") {
-			t.Errorf("View() should contain disk '500M', got %q", out)
+		// DISK should show used/capacity
+		if !strings.Contains(out, "500M/10.0G") {
+			t.Errorf("View() should show disk as 'used/capacity' e.g. '500M/10.0G', got %q", out)
 		}
-		if !strings.Contains(out, "2K") {
-			t.Errorf("View() should contain net rx '2K', got %q", out)
+		// NET rates should show "-" on first poll (no previous data)
+		if !strings.Contains(out, "-") {
+			t.Errorf("View() should show '-' for net rates on first poll, got %q", out)
+		}
+	})
+
+	t.Run("with_net_rates", func(t *testing.T) {
+		rows := []vmUsageRow{
+			{
+				Name:       "my-vm",
+				Status:     "running",
+				CPUPercent: 10.0,
+				MemBytes:   100 * 1024 * 1024,
+			},
+		}
+		m := newTestModel(rows, nil)
+		m.netRxRate = map[string]float64{"my-vm": 1_250_000} // 10 Mbps
+		m.netTxRate = map[string]float64{"my-vm": 125_000}   // 1 Mbps
+		out := m.View()
+		if !strings.Contains(out, "Mbps") {
+			t.Errorf("View() with net rates should contain 'Mbps', got %q", out)
+		}
+		if !strings.Contains(out, "10.0 Mbps") {
+			t.Errorf("View() should show '10.0 Mbps' for rx, got %q", out)
+		}
+		if !strings.Contains(out, "1.0 Mbps") {
+			t.Errorf("View() should show '1.0 Mbps' for tx, got %q", out)
 		}
 	})
 
@@ -251,6 +307,31 @@ func TestTopModelUpdate(t *testing.T) {
 		um := updated.(*topModel)
 		if um.err != testErr {
 			t.Errorf("Update(usageMsg) should set err, got %v", um.err)
+		}
+	})
+
+	t.Run("usageMsg_computes_net_rates", func(t *testing.T) {
+		m := newTestModel(nil, nil)
+		// First poll: establish baseline.
+		m.Update(usageMsg{
+			rows: []vmUsageRow{{Name: "vm1", NetRx: 1000, NetTx: 500}},
+		})
+		// Simulate time passing.
+		m.prevTime = time.Now().Add(-5 * time.Second)
+		// Second poll: compute rates.
+		updated, _ := m.Update(usageMsg{
+			rows: []vmUsageRow{{Name: "vm1", NetRx: 6000, NetTx: 3000}},
+		})
+		um := updated.(*topModel)
+		if um.netRxRate == nil {
+			t.Fatal("netRxRate should be non-nil after two polls")
+		}
+		// (6000-1000)/5 = 1000 bytes/sec
+		if rate := um.netRxRate["vm1"]; rate < 900 || rate > 1100 {
+			t.Errorf("netRxRate[vm1] = %v, want ~1000", rate)
+		}
+		if rate := um.netTxRate["vm1"]; rate < 400 || rate > 600 {
+			t.Errorf("netTxRate[vm1] = %v, want ~500", rate)
 		}
 	})
 
@@ -328,7 +409,7 @@ func TestTopModelViewTruncatesLongNames(t *testing.T) {
 	out := m.View()
 
 	// The name should be truncated to 19 chars + ellipsis.
-	truncated := longName[:19] + "…"
+	truncated := longName[:19] + "\u2026"
 	if !strings.Contains(out, truncated) {
 		t.Errorf("View() should truncate long name to %q, got %q", truncated, out)
 	}
@@ -354,12 +435,7 @@ func TestTopModelInit(t *testing.T) {
 // TestFetchUsageCmdTimeout
 // ---------------------------------------------------------------------------
 
-// TestFetchUsageCmdTimeout verifies that fetchUsageCmd creates a context with
-// a timeout and that a slow fetch function gets canceled.
 func TestFetchUsageCmdTimeout(t *testing.T) {
-	// fetchUsageCmd creates a 10s timeout internally. We can't easily test
-	// the exact 10s, but we CAN verify the context it passes is not
-	// context.Background() (i.e., it has a deadline).
 	var gotDeadline bool
 	var gotCtxDone bool
 
@@ -390,8 +466,6 @@ func TestFetchUsageCmdTimeout(t *testing.T) {
 	}
 }
 
-// TestFetchUsageCmdReturnsError verifies that when the fetch function returns
-// an error, it's propagated through the usageMsg.
 func TestFetchUsageCmdReturnsError(t *testing.T) {
 	errorFetch := func(ctx context.Context) ([]vmUsageRow, error) {
 		return nil, errors.New("exelet unreachable")
@@ -409,5 +483,60 @@ func TestFetchUsageCmdReturnsError(t *testing.T) {
 	}
 	if um.rows != nil {
 		t.Errorf("expected nil rows on error, got %+v", um.rows)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestTopViewDiskFormat
+// ---------------------------------------------------------------------------
+
+func TestTopViewDiskFormat(t *testing.T) {
+	t.Run("with_capacity", func(t *testing.T) {
+		rows := []vmUsageRow{{
+			Name:         "vm1",
+			Status:       "running",
+			DiskBytes:    2 * 1024 * 1024 * 1024,
+			DiskCapacity: 20 * 1024 * 1024 * 1024,
+		}}
+		m := newTestModel(rows, nil)
+		out := m.View()
+		if !strings.Contains(out, "2.0G/20.0G") {
+			t.Errorf("View() should show disk as used/capacity, got %q", out)
+		}
+	})
+
+	t.Run("without_capacity", func(t *testing.T) {
+		rows := []vmUsageRow{{
+			Name:      "vm1",
+			Status:    "running",
+			DiskBytes: 500 * 1024 * 1024,
+		}}
+		m := newTestModel(rows, nil)
+		out := m.View()
+		if !strings.Contains(out, "500M") {
+			t.Errorf("View() should show disk usage without capacity, got %q", out)
+		}
+		if strings.Contains(out, "/") {
+			t.Errorf("View() should not show '/' when no capacity, got %q", out)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestTopViewMemShowsRSSPlusSwap
+// ---------------------------------------------------------------------------
+
+func TestTopViewMemShowsRSSPlusSwap(t *testing.T) {
+	rows := []vmUsageRow{{
+		Name:      "vm1",
+		Status:    "running",
+		MemBytes:  1024 * 1024 * 1024, // 1G RSS
+		SwapBytes: 1024 * 1024 * 1024, // 1G swap
+	}}
+	m := newTestModel(rows, nil)
+	out := m.View()
+	// Should show 2.0G (RSS+swap combined)
+	if !strings.Contains(out, "2.0G") {
+		t.Errorf("View() should show combined RSS+swap memory (2.0G), got %q", out)
 	}
 }

@@ -52,7 +52,7 @@ func TestTopCommand(t *testing.T) {
 				// the cgroup stats have actually been collected.
 				if u.Name == boxName && u.MemoryBytes > 0 {
 					found = true
-					t.Logf("VM %s: cpu=%.1f%% mem=%d disk=%d", boxName, u.CpuPercent, u.MemoryBytes, u.DiskBytes)
+					t.Logf("VM %s: cpu=%.1f%% mem=%d swap=%d disk=%d/%d", boxName, u.CpuPercent, u.MemoryBytes, u.SwapBytes, u.DiskBytes, u.DiskCapacityBytes)
 					break
 				}
 			}

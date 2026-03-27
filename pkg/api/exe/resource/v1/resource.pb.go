@@ -447,19 +447,21 @@ func (x *NodeAllocation) GetDiskBytes() uint64 {
 }
 
 type VMUsage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ID            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	CpuSeconds    float64                `protobuf:"fixed64,3,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`      // Total CPU time consumed
-	CpuPercent    float64                `protobuf:"fixed64,10,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`     // CPU usage percentage from last poll interval
-	MemoryBytes   uint64                 `protobuf:"varint,4,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`    // Current memory usage
-	DiskBytes     uint64                 `protobuf:"varint,5,opt,name=disk_bytes,json=diskBytes,proto3" json:"disk_bytes,omitempty"`          // Current disk usage
-	NetRxBytes    uint64                 `protobuf:"varint,6,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`     // Total network received
-	NetTxBytes    uint64                 `protobuf:"varint,7,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`     // Total network transmitted
-	LastActivity  int64                  `protobuf:"varint,8,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"` // Unix nano timestamp of last detected activity
-	Priority      VMPriority             `protobuf:"varint,9,opt,name=priority,proto3,enum=exe.resource.v1.VMPriority" json:"priority,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ID                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	CpuSeconds        float64                `protobuf:"fixed64,3,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`      // Total CPU time consumed
+	CpuPercent        float64                `protobuf:"fixed64,10,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`     // CPU usage percentage from last poll interval (100% = 1 core)
+	MemoryBytes       uint64                 `protobuf:"varint,4,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`    // Current RSS memory usage
+	DiskBytes         uint64                 `protobuf:"varint,5,opt,name=disk_bytes,json=diskBytes,proto3" json:"disk_bytes,omitempty"`          // Current disk usage (compressed)
+	NetRxBytes        uint64                 `protobuf:"varint,6,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`     // Total network received
+	NetTxBytes        uint64                 `protobuf:"varint,7,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`     // Total network transmitted
+	LastActivity      int64                  `protobuf:"varint,8,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"` // Unix nano timestamp of last detected activity
+	Priority          VMPriority             `protobuf:"varint,9,opt,name=priority,proto3,enum=exe.resource.v1.VMPriority" json:"priority,omitempty"`
+	SwapBytes         uint64                 `protobuf:"varint,11,opt,name=swap_bytes,json=swapBytes,proto3" json:"swap_bytes,omitempty"`                           // Current swap usage
+	DiskCapacityBytes uint64                 `protobuf:"varint,12,opt,name=disk_capacity_bytes,json=diskCapacityBytes,proto3" json:"disk_capacity_bytes,omitempty"` // Provisioned disk capacity (ZFS volsize)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *VMUsage) Reset() {
@@ -560,6 +562,20 @@ func (x *VMUsage) GetPriority() VMPriority {
 		return x.Priority
 	}
 	return VMPriority_PRIORITY_NORMAL
+}
+
+func (x *VMUsage) GetSwapBytes() uint64 {
+	if x != nil {
+		return x.SwapBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetDiskCapacityBytes() uint64 {
+	if x != nil {
+		return x.DiskCapacityBytes
+	}
+	return 0
 }
 
 type SetVMPriorityRequest struct {
@@ -1093,7 +1109,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xd3\x02\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xa2\x03\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1110,7 +1126,10 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\fnet_tx_bytes\x18\a \x01(\x04R\n" +
 	"netTxBytes\x12#\n" +
 	"\rlast_activity\x18\b \x01(\x03R\flastActivity\x127\n" +
-	"\bpriority\x18\t \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"d\n" +
+	"\bpriority\x18\t \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\x12\x1d\n" +
+	"\n" +
+	"swap_bytes\x18\v \x01(\x04R\tswapBytes\x12.\n" +
+	"\x13disk_capacity_bytes\x18\f \x01(\x04R\x11diskCapacityBytes\"d\n" +
 	"\x14SetVMPriorityRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x127\n" +
 	"\bpriority\x18\x02 \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"\x17\n" +
