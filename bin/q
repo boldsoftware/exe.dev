@@ -12,6 +12,9 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 
 def run(cmd, *, check=True, capture=True, quiet=False):
@@ -74,6 +77,52 @@ def find_run(branch, commit, timeout=120, interval=2):
             pass
         time.sleep(interval)
     return None
+
+
+BUILDKITE_ORG = "bold-software"
+BUILDKITE_PIPELINE = "exe-kite-queue"
+BUILDKITE_TERMINAL_STATES = {"passed", "failed", "blocked", "canceled", "skipped", "not_run"}
+
+
+def bk_api(path):
+    """Call the Buildkite REST API. Returns parsed JSON, or None on error."""
+    token = os.environ.get("BUILDKITE_API_TOKEN", "")
+    if not token:
+        return None
+    url = f"https://api.buildkite.com/v2/organizations/{BUILDKITE_ORG}/pipelines/{BUILDKITE_PIPELINE}/{path}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except (urllib.error.URLError, json.JSONDecodeError, OSError):
+        return None
+
+
+def find_bk_build(branch, commit, timeout=120, interval=2):
+    """Poll until a Buildkite build appears for the given branch+commit."""
+    branch_enc = urllib.parse.quote(branch, safe="")
+    for _ in range(timeout // interval):
+        data = bk_api(f"builds?branch={branch_enc}&commit={commit}&per_page=1")
+        if data and len(data) > 0:
+            return data[0]
+        time.sleep(interval)
+    return None
+
+
+def poll_bk_build(build_number, interval=10):
+    """Poll a Buildkite build until completion. Returns (state, elapsed_secs, web_url)."""
+    t0 = time.monotonic()
+    while True:
+        data = bk_api(f"builds/{build_number}")
+        state = data.get("state", "") if data else ""
+        elapsed = int(time.monotonic() - t0)
+        if state in BUILDKITE_TERMINAL_STATES:
+            sys.stderr.write("\n")
+            return state, elapsed, (data or {}).get("web_url", "")
+        m, s = divmod(elapsed, 60)
+        sys.stderr.write(f"\rq: running [{m}m{s:02d}s]")
+        sys.stderr.flush()
+        time.sleep(interval)
 
 
 def watch_origin_main(ref, timeout=300, interval=15):
@@ -264,6 +313,10 @@ def main():
                     help="auto-rebase onto origin/main if needed (only if conflict-free)")
     p.add_argument("--no-rebase", action="store_true",
                     help="don't auto-rebase; fail if not fast-forwardable")
+    p.add_argument("--kite", "-k", action="store_true",
+                    help="use Buildkite queue (push to kite-queue-* branch)")
+    p.add_argument("--dry-run", "-n", action="store_true",
+                    help="use Buildkite test-only (push to kite-test-* branch, no merge)")
     p.add_argument("--no-fetch", action="store_true",
                     help="skip fetching origin/main on success")
     p.add_argument("--post-success", default="",
@@ -350,16 +403,67 @@ def main():
         print(stat_out, file=sys.stderr)
 
     # --- Queue branch name ---
+    if args.dry_run:
+        prefix = "kite-test"
+    elif args.kite:
+        prefix = "kite-queue"
+    else:
+        prefix = "queue-main"
+
     user = os.environ.get("USER", "unknown")
     if args.slug:
         subject = git("--no-pager", "log", "--format=%s", "-n", "1", ref)
-        queue_branch = f"queue-main-{user}-{slugify(subject)}"
+        queue_branch = f"{prefix}-{user}-{slugify(subject)}"
     else:
-        queue_branch = f"queue-main-{user}-{branch}"
+        queue_branch = f"{prefix}-{user}-{branch}"
 
     # --- Push ---
     print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
     git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
+
+    # --- Kite: Buildkite monitoring ---
+    if args.kite or args.dry_run:
+        token = os.environ.get("BUILDKITE_API_TOKEN", "")
+        if not token:
+            print("q: set BUILDKITE_API_TOKEN to monitor build progress (read_builds scope)", file=sys.stderr)
+            print("q: https://buildkite.com/user/api-access-tokens/new", file=sys.stderr)
+            if args.dry_run:
+                return
+            # Fall back to watching origin/main for merge
+            if not watch_origin_main(ref, timeout=300):
+                run_post_hook(args.post_failure)
+                raise SystemExit(1)
+            run_post_hook(args.post_success)
+            if not args.no_fetch:
+                git("fetch", "origin", "main", "--quiet", check=False)
+            return
+
+        print("q: waiting for Buildkite build...", file=sys.stderr)
+        build = find_bk_build(queue_branch, commit)
+        if not build:
+            print(f"q: no Buildkite build found for {short} after 120s", file=sys.stderr)
+            raise SystemExit(1)
+
+        web_url = build.get("web_url", "")
+        if web_url:
+            print(f"q: {web_url}", file=sys.stderr)
+
+        state, elapsed, web_url = poll_bk_build(build["number"])
+        m, s = divmod(elapsed, 60)
+
+        if state == "passed":
+            print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+            if not args.dry_run and not args.no_fetch:
+                git("fetch", "origin", "main", "--quiet", check=False)
+            run_post_hook(args.post_success)
+        else:
+            msg = f"q: FAILED ({state}) [{m}m{s}s]"
+            if web_url:
+                msg += f" {web_url}"
+            print(msg, file=sys.stderr)
+            run_post_hook(args.post_failure)
+            raise SystemExit(1)
+        return
 
     # --- Find and monitor the CI run ---
     if not gh_has_actions_access():
