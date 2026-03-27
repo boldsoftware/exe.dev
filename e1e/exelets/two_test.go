@@ -126,39 +126,64 @@ func TestLoadedHost(t *testing.T) {
 
 	t.Logf("after creating two boxes: %v", boxes)
 
-	// Tell the first exelet to report a load of 50.
-
-	client := exelets[0].Client()
-	usageResponse, err := client.GetMachineUsage(t.Context(), &resourceapi.GetMachineUsageRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	usage := usageResponse.Usage
-	usage.LoadAverage = 50
-	_, err = client.SetMachineUsage(t.Context(),
-		&resourceapi.SetMachineUsageRequest{
-			Available: true,
-			Usage:     usage,
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, err := client.SetMachineUsage(t.Context(),
+	// Override usage on both exelets so that exelet[0] appears heavily
+	// loaded and exelet[1] appears idle.  We must also set DiskFree and
+	// MemAvailable to large values because CI VMs have small disks/memory
+	// that would otherwise trigger the "extreme usage" check in
+	// exeletUsageCmp, causing both exelets to compare as equal regardless
+	// of LoadAverage.
+	for i, el := range exelets[:2] {
+		resp, err := el.Client().GetMachineUsage(t.Context(), &resourceapi.GetMachineUsageRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		usage := resp.Usage
+		if i == 0 {
+			usage.LoadAverage = 50
+		} else {
+			usage.LoadAverage = 0
+		}
+		usage.MemAvailable = 64 << 20 // 64 GiB in KiB — well above extreme threshold
+		usage.DiskFree = 100 << 20     // 100 GiB in KiB — well above extreme threshold
+		_, err = el.Client().SetMachineUsage(t.Context(),
 			&resourceapi.SetMachineUsageRequest{
 				Available: true,
+				Usage:     usage,
 			},
 		)
 		if err != nil {
-			t.Errorf("failed to reset usage to default: %v", err)
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		for _, el := range exelets[:2] {
+			_, err := el.Client().SetMachineUsage(t.Context(),
+				&resourceapi.SetMachineUsageRequest{
+					Available: true,
+				},
+			)
+			if err != nil {
+				t.Errorf("failed to reset usage to default: %v", err)
+			}
 		}
 	}()
 
 	// Tell exed to update its view of exelet usage.
 	url := fmt.Sprintf("http://localhost:%d/update-exelet-usage-517c8a904", serverEnv.Exed.HTTPPort)
-	if _, err = http.Get(url); err != nil {
+	if _, err := http.Get(url); err != nil {
 		t.Fatalf("failed to tell exed to update exelet usage: %v", err)
+	}
+
+	// Verify the usage update took effect on both exelets.
+	for i, el := range exelets[:2] {
+		resp, err := el.Client().GetMachineUsage(t.Context(), &resourceapi.GetMachineUsageRequest{})
+		if err != nil {
+			t.Logf("exelet[%d] GetMachineUsage error: %v", i, err)
+		} else if resp.Usage != nil {
+			t.Logf("exelet[%d] addr=%s load=%.1f mem=%d swap=%d disk=%d",
+				i, el.Address, resp.Usage.LoadAverage,
+				resp.Usage.MemAvailable, resp.Usage.SwapFree, resp.Usage.DiskFree)
+		}
 	}
 
 	// Make two new boxes.
@@ -169,6 +194,14 @@ func TestLoadedHost(t *testing.T) {
 
 	boxName3 := makeBox(t, pty3, keyFile3, email3)
 	defer deleteBox(t, boxName3, keyFile3)
+
+	boxes = boxHosts(t)
+	t.Logf("after box3: %v", boxes)
+
+	// Re-trigger usage update before box4 to rule out stale state.
+	if _, err := http.Get(url); err != nil {
+		t.Fatalf("failed second update-exelet-usage: %v", err)
+	}
 
 	email4 := "testloadedhost4" + testinfra.FakeEmailSuffix
 	pty4, _, keyFile4 := registerEmail(t, email4)

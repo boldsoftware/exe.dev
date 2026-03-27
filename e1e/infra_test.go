@@ -467,7 +467,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	// Configure metrics collection for exelet
 	metricsConfig := &testinfra.MetricsConfig{
 		DaemonURL: metricsdInstance.Address,
-		Interval:  20 * time.Second,
+		Interval:  5 * time.Second,
 	}
 
 	// Both exedPort and metadataPort use the exed proxy because infra tests

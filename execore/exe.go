@@ -4389,13 +4389,13 @@ func exeletUsageCmp(a, b *exeletClient) int {
 
 	// Compare network data in megabytes.
 	netA := int64(math.Round(float64(usageA.RxBytesRate))) >> 20
-	netB := int64(math.Round(float64(usageA.RxBytesRate))) >> 20
+	netB := int64(math.Round(float64(usageB.RxBytesRate))) >> 20
 	if r := cmp.Compare(netA, netB); r != 0 {
 		return r
 	}
 
 	netA = int64(math.Round(float64(usageA.TxBytesRate))) >> 20
-	netB = int64(math.Round(float64(usageA.TxBytesRate))) >> 20
+	netB = int64(math.Round(float64(usageB.TxBytesRate))) >> 20
 	if r := cmp.Compare(netA, netB); r != 0 {
 		return r
 	}
