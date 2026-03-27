@@ -636,7 +636,6 @@ done:
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "updateBoxWithContainer succeeded", "boxID", boxID, "box", boxName)
 
 	// Set up automatic routing based on exposed ports
 	proxyPort := 80
@@ -651,40 +650,6 @@ done:
 			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
 		}
 		if err != nil {
-			// Debug: check if the box exists via the writer connection
-			var debugExistsByName int64
-			var debugBoxNames []string
-			var debugBoxByID *exedb.Box
-			ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				debugExistsByName, _ = queries.BoxWithNameExists(ctx, boxName)
-				boxes, listErr := queries.BoxesForUser(ctx, cc.User.ID)
-				if listErr == nil {
-					for _, b := range boxes {
-						debugBoxNames = append(debugBoxNames, fmt.Sprintf("%s(id=%d,status=%s)", b.Name, b.ID, b.Status))
-					}
-				}
-				b, getErr := queries.GetBoxByID(ctx, boxID)
-				if getErr == nil {
-					debugBoxByID = &b
-				}
-				return nil
-			})
-			var debugByIDInfo string
-			if debugBoxByID != nil {
-				debugByIDInfo = fmt.Sprintf("name=%s,user=%s,status=%s", debugBoxByID.Name, debugBoxByID.CreatedByUserID, debugBoxByID.Status)
-			} else {
-				debugByIDInfo = "NOT_FOUND"
-			}
-			slog.ErrorContext(ctx, "auto-routing: getBoxForUserByUserID failed",
-				"box", boxName,
-				"boxID", boxID,
-				"userID", cc.User.ID,
-				"publicKey_set", cc.PublicKey != "",
-				"error", err,
-				"debug_exists_by_name", debugExistsByName,
-				"debug_box_by_id", debugByIDInfo,
-				"debug_user_boxes", debugBoxNames,
-			)
 			return err
 		}
 		route := exedb.Route{
