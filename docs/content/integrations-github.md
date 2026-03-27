@@ -31,12 +31,20 @@ Usage from a VM:
   ssh my-vm 'cd $(mktemp -d) && git clone https://blog.int.exe.xyz/ghuser/blog.git'
 ```
 
-Then from inside the VM:
+Then, from inside the VM:
 
 ```
 git clone https://blog.int.exe.xyz/ghuser/blog.git
 ```
 
-Only the specific repository you configured is accessible through the
-integration, and the credentials never appear inside the VM.
+## Using the `gh` CLI
 
+The integration also supports the GitHub CLI (`gh`). Set `GH_HOST` to the
+integration hostname:
+
+```
+export GH_HOST=blog.int.exe.xyz
+gh repo view ghuser/blog
+gh issue list -R ghuser/blog
+gh pr list -R ghuser/blog
+```

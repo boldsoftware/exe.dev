@@ -252,6 +252,7 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 		} else {
 			cc.Writeln("  git clone %s://%s/%s.git", scheme, intHost, repo)
 		}
+		cc.Writeln("  GH_HOST=%s gh repo view %s", intHost, repo)
 	}
 }
 

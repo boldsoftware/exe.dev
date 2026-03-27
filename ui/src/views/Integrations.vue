@@ -108,9 +108,15 @@
                 {{ ig.attachments.length > 0 ? '+' : '+ attach' }}
               </button>
             </div>
-            <div v-if="ig.repositories.length > 0" class="git-clone-row">
-              <code>git clone {{ integrationScheme }}://{{ ig.name }}.int.{{ boxHost }}/{{ ig.repositories[0] }}.git</code>
-              <CopyButton :text="`git clone ${integrationScheme}://${ig.name}.int.${boxHost}/${ig.repositories[0]}.git`" title="Copy" />
+            <div v-if="ig.repositories.length > 0" class="usage-rows">
+              <div class="usage-row">
+                <code>git clone {{ integrationScheme }}://{{ ig.name }}.int.{{ boxHost }}/{{ ig.repositories[0] }}.git</code>
+                <CopyButton :text="`git clone ${integrationScheme}://${ig.name}.int.${boxHost}/${ig.repositories[0]}.git`" title="Copy" />
+              </div>
+              <div class="usage-row">
+                <code>GH_HOST={{ ig.name }}.int.{{ boxHost }} gh repo view {{ ig.repositories[0] }}</code>
+                <CopyButton :text="`GH_HOST=${ig.name}.int.${boxHost} gh repo view ${ig.repositories[0]}`" title="Copy" />
+              </div>
             </div>
           </div>
           <div class="integration-actions">
@@ -1491,8 +1497,14 @@ select.form-input {
   border-color: var(--text-color-secondary);
 }
 
-/* Git clone row */
-.git-clone-row {
+/* Usage rows */
+.usage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.usage-row {
   font-size: 11px;
   color: var(--text-color-muted);
   display: flex;
@@ -1500,7 +1512,7 @@ select.form-input {
   gap: 4px;
 }
 
-.git-clone-row code {
+.usage-row code {
   background: var(--surface-ground);
   padding: 2px 6px;
   border-radius: 3px;
