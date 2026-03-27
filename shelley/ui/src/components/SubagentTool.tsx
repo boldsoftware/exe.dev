@@ -26,11 +26,18 @@ function SubagentTool({
   // Extract fields from toolInput
   const input =
     typeof toolInput === "object" && toolInput !== null
-      ? (toolInput as { slug?: string; prompt?: string; timeout_seconds?: number; wait?: boolean })
+      ? (toolInput as {
+          slug?: string;
+          prompt?: string;
+          model?: string;
+          timeout_seconds?: number;
+          wait?: boolean;
+        })
       : {};
 
   const slug = input.slug || displayData?.slug || "subagent";
   const prompt = input.prompt || "";
+  const model = input.model || "";
   const wait = input.wait !== false;
   const timeout = input.timeout_seconds || 60;
 
@@ -67,7 +74,8 @@ function SubagentTool({
           {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && <span className="tool-success">✓</span>}
           <span className="tool-command" title={prompt}>
-            Subagent '{slug}' {isRunning ? (wait ? "running..." : "started") : ""}
+            Subagent '{slug}'{model ? ` (${model})` : ""}{" "}
+            {isRunning ? (wait ? "running..." : "started") : ""}
             {displayPrompt && !isRunning && ` ${displayPrompt}`}
           </span>
         </div>
@@ -100,6 +108,7 @@ function SubagentTool({
           <div className="tool-section">
             <div className="tool-label">
               Prompt to '{slug}':
+              {model && <span className="tool-badge subagent-model-badge">{model}</span>}
               {!wait && <span className="tool-badge">fire-and-forget</span>}
               {timeout !== 60 && <span className="tool-badge">timeout: {timeout}s</span>}
             </div>

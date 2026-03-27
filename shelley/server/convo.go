@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -512,12 +513,21 @@ func (cm *ConversationManager) createSystemPrompt(ctx context.Context) (*generat
 // toolDisplayData builds display data from a list of tools.
 func toolDisplayData(tools []*llm.Tool) map[string]any {
 	type toolDesc struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Parameters  json.RawMessage `json:"parameters,omitempty"`
 	}
 	var descs []toolDesc
 	for _, t := range tools {
-		descs = append(descs, toolDesc{Name: t.Name, Description: t.Description})
+		var params json.RawMessage
+		if len(t.InputSchema) > 0 && string(t.InputSchema) != "null" {
+			params = t.InputSchema
+		}
+		descs = append(descs, toolDesc{
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  params,
+		})
 	}
 	return map[string]any{
 		"tools": descs,
