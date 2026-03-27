@@ -4,13 +4,17 @@ trap 'echo "Error at line $LINENO"' ERR
 
 # Shared setup for shelley CI steps.
 # Installs Node.js (via uvx nodeenv), pnpm, and headless-shell.
-# All cached under $HOME/.cache/kite/ for reuse across builds.
+# Each agent slot gets its own cache dir to avoid races.
 #
 # After sourcing, PATH includes node, pnpm, headless-shell, go.
 
-KITE_CACHE="$HOME/.cache/kite"
+# Use the step key (e.g. test-shelley, test-shelley-playwright) so each
+# step gets its own node/pnpm dirs and can npm-install independently.
+SLOT="${BUILDKITE_STEP_KEY:-default}"
+KITE_CACHE="$HOME/.cache/kite/$SLOT"
 NODE_DIR="$KITE_CACHE/node"
 HEADLESS_DIR="$KITE_CACHE/headless-shell"
+mkdir -p "$KITE_CACHE"
 
 export PATH="/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
 
@@ -23,7 +27,7 @@ fi
 if [ ! -x "$NODE_DIR/bin/node" ]; then
     echo "Installing Node.js LTS via nodeenv..."
     rm -rf "$NODE_DIR"
-    uvx nodeenv --node=lts "$NODE_DIR"
+    uvx nodeenv --force --node=lts "$NODE_DIR"
 fi
 export PATH="$NODE_DIR/bin:$PATH"
 echo "node $(node --version)"
