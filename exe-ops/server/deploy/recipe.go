@@ -107,6 +107,9 @@ var Recipes = map[string]Recipe{
 		HealthPort:  443,
 		HealthPath:  "/debug/gitsha",
 		HealthTLS:   true,
+		PreBuildCmds: []string{
+			"make ui",
+		},
 		PreRestartCmds: []string{
 			`sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$(date +%Y%m%d-%H%M%S).sql.zst`,
 		},
