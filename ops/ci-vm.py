@@ -534,11 +534,23 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
     scp_opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 
     # Wait for cloud-init. Exit code 2 = "recoverable error" (tolerable).
-    r = subprocess.run(
-        ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "sudo cloud-init status --wait"],
-    )
-    if r.returncode not in (0, 2):
-        raise RuntimeError(f"cloud-init status exited {r.returncode}")
+    # cloud-init v25.3 can return exit 1 while still running; retry up to 60s.
+    for attempt in range(12):
+        r = subprocess.run(
+            ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "sudo cloud-init status --wait"],
+            capture_output=True, text=True,
+        )
+        if r.returncode in (0, 2):
+            break
+        # If cloud-init is still running, retry after a short sleep.
+        combined = r.stdout + r.stderr
+        if attempt < 11:
+            print(f"cloud-init status exited {r.returncode} (attempt {attempt+1}/12), retrying in 5s...")
+            print(combined.strip())
+            time.sleep(5)
+        else:
+            print(combined.strip())
+            raise RuntimeError(f"cloud-init status exited {r.returncode} after {attempt+1} attempts")
     if r.returncode == 2:
         subprocess.run(
             ["ssh", *ssh_opts, f"{USER_NAME}@{ip}",
