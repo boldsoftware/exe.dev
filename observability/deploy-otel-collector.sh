@@ -6,16 +6,16 @@ set -euo pipefail
 # It will upgrade the collector if a newer version is available.
 #
 # The collector receives OTLP logs and forwards them to:
-# - Honeycomb (separate API keys for staging and production)
 # - JSON files at /var/log/otel/{staging,production,unknown}/
 # - S3 bucket s3://exe.dev-logs/{staging,production,unknown}/
+# - ClickHouse
 #
 # Services should set deployment.environment resource attribute to "staging" or "production"
 # to route logs to the appropriate file.
 #
 # Usage:
 #   ./deploy-otel-collector.sh
-#   (reads API keys from mon:/etc/default/otel-collector, or pass them as env vars)
+#   (reads credentials from mon:/etc/default/otel-collector, or pass them as env vars)
 
 OTEL_PORT_GRPC=4317
 OTEL_PORT_HTTP=4318
@@ -24,17 +24,12 @@ OTEL_CONFIG_PATH=/etc/otel-collector/config.yml
 OTEL_ENV_FILE=/etc/default/otel-collector
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Use provided API keys, or read them from the existing env file on mon
-if [ -z "${HONEYCOMB_API_KEY_STAGING:-}" ] || [ -z "${HONEYCOMB_API_KEY_PRODUCTION:-}" ] || [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
-    echo "API keys not provided locally, reading from mon:${OTEL_ENV_FILE}..."
+# Use provided credentials, or read them from the existing env file on mon
+if [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
+    echo "Credentials not provided locally, reading from mon:${OTEL_ENV_FILE}..."
     REMOTE_ENV=$(ssh ubuntu@mon "sudo cat ${OTEL_ENV_FILE} 2>/dev/null" || true)
     if [ -n "$REMOTE_ENV" ]; then
         eval "$REMOTE_ENV"
-    fi
-    if [ -z "${HONEYCOMB_API_KEY_STAGING:-}" ] || [ -z "${HONEYCOMB_API_KEY_PRODUCTION:-}" ]; then
-        echo "ERROR: Both HONEYCOMB_API_KEY_STAGING and HONEYCOMB_API_KEY_PRODUCTION are required" >&2
-        echo "Provide them as env vars or ensure ${OTEL_ENV_FILE} exists on mon" >&2
-        exit 1
     fi
     if [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
         echo "ERROR: CLICKHOUSE_PASSWORD is required" >&2
@@ -108,11 +103,9 @@ ssh ubuntu@mon "sudo mkdir -p /etc/otel-collector"
 scp "${SCRIPT_DIR}/otel-collector-config.yml" ubuntu@mon:/tmp/otel-collector-config.yml
 ssh ubuntu@mon "sudo mv /tmp/otel-collector-config.yml ${OTEL_CONFIG_PATH} && sudo chmod 644 ${OTEL_CONFIG_PATH}"
 
-# Create environment file with API keys
+# Create environment file with credentials
 echo "Creating environment file..."
 ssh ubuntu@mon "sudo tee ${OTEL_ENV_FILE} > /dev/null" <<EOF
-HONEYCOMB_API_KEY_STAGING=${HONEYCOMB_API_KEY_STAGING}
-HONEYCOMB_API_KEY_PRODUCTION=${HONEYCOMB_API_KEY_PRODUCTION}
 CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
 EOF
 ssh ubuntu@mon "sudo chmod 600 ${OTEL_ENV_FILE}"

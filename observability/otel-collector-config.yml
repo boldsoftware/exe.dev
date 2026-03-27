@@ -1,5 +1,5 @@
 # OpenTelemetry Collector configuration for mon host
-# Receives OTLP logs and forwards to Honeycomb, local JSON files, and S3
+# Receives OTLP logs and forwards to local JSON files, S3, and ClickHouse
 #
 # Client configuration:
 #   Set these environment variables on services sending logs:
@@ -251,16 +251,6 @@ processors:
     timeout: 1s
     send_batch_size: 1024
 
-  # Filter out noisy log lines before sending to Honeycomb
-  filter/honeycomb:
-    logs:
-      exclude:
-        match_type: strict
-        bodies:
-          - "getting instance from config"
-          - "resource manager: activity check"
-          - "desired-state sync: cannot read cgroup file, skipping"
-
   # Filter out noisy log lines before sending to S3
   filter/storage:
     logs:
@@ -276,25 +266,11 @@ connectors:
     error_mode: ignore
     table:
       - statement: route() where resource.attributes["deployment.environment"] == "staging"
-        pipelines: [logs/staging-honeycomb, logs/staging-storage]
+        pipelines: [logs/staging-storage]
       - statement: route() where resource.attributes["deployment.environment"] == "production"
-        pipelines: [logs/production-honeycomb, logs/production-storage]
+        pipelines: [logs/production-storage]
 
 exporters:
-  # Honeycomb exporter for staging
-  otlphttp/honeycomb-staging:
-    endpoint: https://api.honeycomb.io
-    headers:
-      x-honeycomb-team: ${HONEYCOMB_API_KEY_STAGING}
-      x-honeycomb-dataset: exe-logs
-
-  # Honeycomb exporter for production
-  otlphttp/honeycomb-production:
-    endpoint: https://api.honeycomb.io
-    headers:
-      x-honeycomb-team: ${HONEYCOMB_API_KEY_PRODUCTION}
-      x-honeycomb-dataset: exe-logs
-
   # File exporter for JSON logs - staging
   file/staging:
     path: /var/log/otel/staging/logs.json
@@ -421,23 +397,11 @@ service:
       processors: [batch]
       exporters: [routing]
 
-    # Staging Honeycomb: filtered to reduce noise
-    logs/staging-honeycomb:
-      receivers: [routing]
-      processors: [filter/honeycomb]
-      exporters: [otlphttp/honeycomb-staging]
-
     # Staging storage: file + S3
     logs/staging-storage:
       receivers: [routing]
       processors: [filter/storage]
       exporters: [file/staging, awss3/staging, clickhouse]
-
-    # Production Honeycomb: filtered to reduce noise
-    logs/production-honeycomb:
-      receivers: [routing]
-      processors: [filter/honeycomb]
-      exporters: [otlphttp/honeycomb-production]
 
     # Production storage: file + S3
     logs/production-storage:
