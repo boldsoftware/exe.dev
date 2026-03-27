@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { writeFileSync } from 'fs'
 
 export default defineConfig({
   plugins: [vue()],
@@ -12,6 +13,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Restore .gitkeep after emptyOutDir deletes it
+    rollupOptions: {
+      plugins: [{
+        name: 'restore-gitkeep',
+        writeBundle() {
+          writeFileSync(resolve(__dirname, 'dist/.gitkeep'), '')
+        },
+      }],
+    },
   },
   server: {
     port: 8000,
