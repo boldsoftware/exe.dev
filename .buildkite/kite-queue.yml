@@ -1,39 +1,64 @@
-# Kite Queue — lightweight commit queue for testing CI changes.
+# Kite — CI pipeline for kite-* branches.
 #
-# Push to kite-queue-* branches. On success, force-pushes to kite-main.
-# These are temporary branches; it's OK to override them.
+# kite-queue-* branches: run tests, then rebase and push to main.
+# kite-test-*  branches: run tests only.
 #
-# To set up this pipeline in Buildkite:
-#   1. Create a new pipeline "exe-kite-queue" in the bold-software org
-#   2. Set the repository to the exe repo
-#   3. Set branch filter to: kite-queue-*
-#   4. Set the bootstrap command to:
-#      buildkite-agent pipeline upload .buildkite/kite-queue.yml
-#   5. Set the agent queue to: exe-ci
+# Change detection (like GHA queue-main.yml):
+#   shelley/* changed  → run shelley tests
+#   other files changed → run exe tests (checks, unit, e1e)
+#   both changed       → run both
 
 agents:
   queue: exe-ci
 
 steps:
+  - label: ":mag: detect changes"
+    key: detect
+    command: .buildkite/steps/detect-changes.sh
+    timeout_in_minutes: 2
+
   - label: ":white_check_mark: non-e1e checks"
     key: checks
-    command: .buildkite/steps/test-non-e1e-checks.sh
+    depends_on: detect
+    command: |
+      if [ "$(buildkite-agent meta-data get exe_changed)" != "true" ]; then
+        echo "No exe changes, skipping"
+        exit 0
+      fi
+      .buildkite/steps/test-non-e1e-checks.sh
     timeout_in_minutes: 20
 
-  - label: ":go: unit tests"
+  - label: ":go: exe unit tests"
     key: unit-tests
-    command: .buildkite/steps/test-non-e1e-tests.sh
+    depends_on: detect
+    command: |
+      if [ "$(buildkite-agent meta-data get exe_changed)" != "true" ]; then
+        echo "No exe changes, skipping"
+        exit 0
+      fi
+      .buildkite/steps/test-non-e1e-tests.sh
     timeout_in_minutes: 20
 
   - label: ":wrench: build e1e binaries"
     key: build-e1e
-    command: python3 .buildkite/steps/build-e1e-binaries.py
+    depends_on: detect
+    command: |
+      if [ "$(buildkite-agent meta-data get exe_changed)" != "true" ]; then
+        echo "No exe changes, skipping"
+        exit 0
+      fi
+      python3 .buildkite/steps/build-e1e-binaries.py
     timeout_in_minutes: 10
 
   - label: ":rocket: e1e tests"
     key: test-e1e
     depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e.py
+    command: |
+      if [ "$(buildkite-agent meta-data get exe_changed)" != "true" ]; then
+        echo "No exe changes, skipping"
+        exit 0
+      fi
+      python3 .buildkite/steps/test-e1e.py
     timeout_in_minutes: 30
     env:
       VM_DRIVER: cloudhypervisor
@@ -44,21 +69,56 @@ steps:
   - label: ":electric_plug: e1e exelets"
     key: test-exelets
     depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e-exelets.py
+    command: |
+      if [ "$(buildkite-agent meta-data get exe_changed)" != "true" ]; then
+        echo "No exe changes, skipping"
+        exit 0
+      fi
+      python3 .buildkite/steps/test-e1e-exelets.py
     timeout_in_minutes: 15
     env:
       VM_DRIVER: cloudhypervisor
     artifact_paths:
       - "e1e-logs-exelets/**/*"
 
-  - label: ":arrow_right: push to kite-main"
-    key: push-to-kite-main
+  - label: ":robot_face: shelley go + UI checks"
+    key: test-shelley
+    depends_on: detect
+    command: |
+      if [ "$(buildkite-agent meta-data get shelley_changed)" != "true" ]; then
+        echo "No shelley changes, skipping"
+        exit 0
+      fi
+      .buildkite/steps/test-shelley.sh
+    timeout_in_minutes: 20
+
+  - label: ":performing_arts: shelley playwright"
+    key: test-shelley-playwright
+    depends_on: detect
+    command: |
+      if [ "$(buildkite-agent meta-data get shelley_changed)" != "true" ]; then
+        echo "No shelley changes, skipping"
+        exit 0
+      fi
+      .buildkite/steps/test-shelley-playwright.sh
+    timeout_in_minutes: 20
+    artifact_paths:
+      - "shelley/ui/playwright-report/**/*"
+      - "shelley/ui/test-results/**/*"
+
+  - label: ":shipit: rebase and push to main"
+    key: push-to-main
     depends_on:
       - checks
       - unit-tests
       - test-e1e
       - test-exelets
-    command: |
-      echo "All tests passed. Pushing to kite-main..."
-      git push --force origin HEAD:refs/heads/kite-main
+      - test-shelley
+      - test-shelley-playwright
+    branches: "kite-queue-*"
+    command: python3 .buildkite/steps/rebase-and-push.py
     timeout_in_minutes: 5
+    retry:
+      automatic:
+        - exit_status: 1
+          limit: 1
