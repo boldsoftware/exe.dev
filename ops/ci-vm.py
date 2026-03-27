@@ -72,22 +72,25 @@ def sudo(*cmd, **kw):
 def cp_clone(src: Path, dst: Path) -> None:
     """Copy src->dst using reflink when the filesystem supports it."""
     dst.parent.mkdir(parents=True, exist_ok=True)
+    last_err = ""
     for args in [
-        ["cp", "--reflink=always", "-a", str(src), str(dst)],
-        ["cp", "--reflink=auto",   "-a", str(src), str(dst)],
-        ["cp",                     "-a", str(src), str(dst)],
+        ["cp", "--reflink=always", "--sparse=always", "-a", str(src), str(dst)],
+        ["cp", "--reflink=auto",   "--sparse=always", "-a", str(src), str(dst)],
+        ["cp",                     "--sparse=always", "-a", str(src), str(dst)],
     ]:
         r = subprocess.run(args, capture_output=True)
         if r.returncode == 0:
             return
+        last_err = r.stderr.decode(errors="replace").strip()
     for args in [
-        ["sudo", "cp", "--reflink=always", "-a", str(src), str(dst)],
-        ["sudo", "cp",                     "-a", str(src), str(dst)],
+        ["sudo", "cp", "--reflink=always", "--sparse=always", "-a", str(src), str(dst)],
+        ["sudo", "cp",                     "--sparse=always", "-a", str(src), str(dst)],
     ]:
         r = subprocess.run(args, capture_output=True)
         if r.returncode == 0:
             return
-    raise RuntimeError(f"cp_clone failed: {src} -> {dst}")
+        last_err = r.stderr.decode(errors="replace").strip()
+    raise RuntimeError(f"cp_clone failed: {src} -> {dst}: {last_err}")
 
 
 # ── Snapshot / cache helpers ───────────────────────────────────────────────────
@@ -123,7 +126,7 @@ def _base_hash() -> str:
 def _snapshot_paths(s_hash: str, img_dig: str, b_hash: str):
     snap_dir   = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}-{b_hash[:12]}"
     local_base = WORKDIR  / f"ci-base-{s_hash[:12]}-{img_dig[:12]}-{b_hash[:12]}.qcow2"
-    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}-{b_hash[:12]}.qcow2"
+    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}-{b_hash[:12]}.raw"
     return snap_dir, local_base, local_data
 
 
@@ -603,7 +606,7 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
 
     # Save snapshot.
     snap_base = snap_dir / "base.qcow2"
-    snap_data = snap_dir / "data.qcow2"
+    snap_data = snap_dir / "data.raw"
     sudo("mkdir", "-p", str(snap_dir))
     sudo("chmod", "777", str(snap_dir))
 
@@ -699,11 +702,11 @@ def create_vm() -> Path:
 
     snap_dir, local_base, local_data = _snapshot_paths(s_hash, img_dig, b_hash)
     snap_base = snap_dir / "base.qcow2"
-    snap_data = snap_dir / "data.qcow2"
+    snap_data = snap_dir / "data.raw"
     snapshot  = snap_base.exists() and snap_data.exists()
 
     disk      = WORKDIR / f"{NAME}.qcow2"
-    data_disk = WORKDIR / f"{NAME}-data.qcow2"
+    data_disk = WORKDIR / f"{NAME}-data.raw"
     seed      = WORKDIR / f"{NAME}-seed.iso"
     tap       = tap_name_for(NAME)
 
@@ -776,10 +779,9 @@ def create_vm() -> Path:
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 fd.close()
         if data_backing:
-            sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-                 "-b", str(data_backing), str(data_disk))
+            cp_clone(data_backing, data_disk)
         else:
-            sudo("qemu-img", "create", "-f", "qcow2", str(data_disk), f"{DATA_GB}G")
+            sudo("truncate", "-s", f"{DATA_GB}G", str(data_disk))
 
     def make_iso():
         _make_cloud_init_iso(seed, snapshot, ip, mac)
