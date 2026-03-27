@@ -70,7 +70,7 @@
       <div class="section">
         <div class="section-header">
           <h2 class="section-title">Recent Deploys</h2>
-          <router-link to="/deploy" class="view-all-link">View all <i class="pi pi-arrow-right"></i></router-link>
+          <router-link to="/deploy?tab=history" class="view-all-link">View all <i class="pi pi-arrow-right"></i></router-link>
         </div>
         <div v-if="deploys.length === 0" class="empty-state">
           <i class="pi pi-upload"></i>

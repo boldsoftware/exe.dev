@@ -109,10 +109,34 @@
         </div>
 
         <template v-else>
+        <!-- Bulk action bar -->
+        <div v-if="selectedProcs.size > 0" class="bulk-action-bar">
+          <span class="bulk-count">{{ selectedProcs.size }} selected</span>
+          <button
+            class="bulk-deploy-btn"
+            :disabled="deployableSelected.length === 0"
+            @click="confirmBulkDeploy"
+          >
+            <i class="pi pi-upload"></i>
+            Deploy {{ deployableSelected.length > 0 ? `(${deployableSelected.length})` : '' }}
+          </button>
+          <button class="bulk-clear-btn" @click="selectedProcs.clear()">Clear</button>
+        </div>
+
         <div class="table-wrapper">
           <table class="deploy-table">
             <thead>
               <tr>
+                <th class="col-select">
+                  <input
+                    type="checkbox"
+                    class="row-checkbox"
+                    :checked="allVisibleSelected"
+                    :indeterminate="someVisibleSelected && !allVisibleSelected"
+                    @change="toggleSelectAll"
+                    title="Select all"
+                  />
+                </th>
                 <th class="sortable" @click="toggleSort('hostname')">
                   Hostname
                   <i v-if="sortCol === 'hostname'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
@@ -137,7 +161,17 @@
                 v-for="p in filteredProcs"
                 :key="p.hostname + ':' + p.process"
                 class="deploy-row"
+                :class="{ 'row-selected': selectedProcs.has(procKey(p)) }"
+                @click="toggleSelect(p, $event)"
               >
+                <td class="col-select" @click.stop>
+                  <input
+                    type="checkbox"
+                    class="row-checkbox"
+                    :checked="selectedProcs.has(procKey(p))"
+                    @change="toggleSelect(p, $event)"
+                  />
+                </td>
                 <td class="col-hostname">
                   {{ p.hostname }}
                   <button class="copy-btn" title="Copy full domain name" @click.stop="copyDnsName(p.dns_name)">
@@ -180,7 +214,7 @@
                     :class="{ deploying: isDeploying(p) }"
                     :disabled="!canDeploy(p)"
                     :title="deployTitle(p)"
-                    @click="confirmDeploy(p)"
+                    @click.stop="confirmDeploy(p)"
                   >
                     <i v-if="isDeploying(p)" class="pi pi-spin pi-spinner"></i>
                     <i v-else class="pi pi-upload"></i>
@@ -299,7 +333,7 @@
       </div>
     </template>
 
-    <!-- Deploy confirmation modal -->
+    <!-- Deploy confirmation modal (single) -->
     <div v-if="confirmProc" class="modal-overlay" @click.self="closeConfirm">
       <div class="modal-dialog">
         <div class="modal-header">
@@ -369,11 +403,133 @@
         </div>
       </div>
     </div>
+
+    <!-- Bulk deploy confirmation modal -->
+    <div v-if="bulkConfirmProcs" class="modal-overlay" @click.self="closeBulkConfirm">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <span class="modal-title">
+            Deploy <span class="modal-mono">{{ bulkConfirmProcs.length }}</span> targets
+          </span>
+          <button class="modal-close" @click="closeBulkConfirm"><i class="pi pi-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-sha-row">
+            <span class="modal-sha-label">Deploying</span>
+            <span class="modal-sha-value">{{ headSHA.slice(0, 7) }}</span>
+            <span v-if="headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+          </div>
+          <div class="bulk-target-list">
+            <div class="bulk-target-header">Targets</div>
+            <div v-for="p in bulkConfirmProcs" :key="procKey(p)" class="bulk-target-row">
+              <span class="bulk-target-process">{{ p.process }}</span>
+              <i class="pi pi-arrow-right bulk-target-arrow"></i>
+              <span class="bulk-target-host">{{ p.hostname }}</span>
+              <span v-if="p.version" class="bulk-target-version">{{ p.version.slice(0, 7) }}</span>
+              <span v-if="p.commits_behind > 0" class="behind-badge">{{ p.commits_behind }}<i class="pi pi-arrow-down"></i></span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="deploy-btn deploy-btn-cancel" @click="closeBulkConfirm">Cancel</button>
+          <button
+            class="deploy-btn deploy-btn-confirm"
+            @click="doBulkDeploy"
+          >
+            <i class="pi pi-upload"></i>
+            Deploy All ({{ bulkConfirmProcs.length }})
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live deploy progress dialog -->
+    <div v-if="liveDeployVisible" class="modal-overlay" @click.self="liveDeployVisible = false">
+      <div class="modal-dialog live-deploy-dialog">
+        <div class="modal-header">
+          <span class="modal-title">
+            <i v-if="liveDeployAllDone" class="pi" :class="liveDeployAnyFailed ? 'pi-times-circle' : 'pi-check-circle'" :style="{ color: liveDeployAnyFailed ? 'var(--red-400)' : 'var(--green-400)' }"></i>
+            <i v-else class="pi pi-spin pi-spinner"></i>
+            Deploying {{ liveDeployIds.length }} target{{ liveDeployIds.length !== 1 ? 's' : '' }}
+          </span>
+          <button class="modal-close" @click="liveDeployVisible = false" title="Close (deploys continue in background)">
+            <i class="pi pi-times"></i>
+          </button>
+        </div>
+        <div class="live-deploy-content">
+          <!-- Sidebar: node list -->
+          <div v-if="liveDeployIds.length > 1" class="live-deploy-sidebar">
+            <div
+              v-for="id in liveDeployIds"
+              :key="id"
+              class="live-deploy-node"
+              :class="{ active: liveDeploySelected === id, ['node-' + liveDeployStatusOf(id)?.state]: true }"
+              @click="liveDeploySelected = id"
+            >
+              <i v-if="liveDeployStatusOf(id)?.state === 'running' || liveDeployStatusOf(id)?.state === 'pending'" class="pi pi-spin pi-spinner node-icon"></i>
+              <i v-else-if="liveDeployStatusOf(id)?.state === 'done'" class="pi pi-check node-icon node-done"></i>
+              <i v-else-if="liveDeployStatusOf(id)?.state === 'failed'" class="pi pi-times node-icon node-failed"></i>
+              <span class="node-label">
+                <span class="node-process">{{ liveDeployStatusOf(id)?.process }}</span>
+                <span class="node-host">{{ liveDeployStatusOf(id)?.host }}</span>
+              </span>
+            </div>
+          </div>
+          <!-- Main: step detail for selected deploy -->
+          <div class="live-deploy-detail">
+            <template v-if="liveDeploySelectedStatus">
+              <div class="live-detail-header">
+                <span class="live-detail-target">
+                  <span class="modal-mono">{{ liveDeploySelectedStatus.process }}</span>
+                  <i class="pi pi-arrow-right" style="font-size: 0.5rem; color: var(--text-color-muted)"></i>
+                  <span class="modal-mono">{{ liveDeploySelectedStatus.host }}</span>
+                </span>
+                <span class="deploy-card-state" :class="'state-' + liveDeploySelectedStatus.state">{{ liveDeploySelectedStatus.state }}</span>
+              </div>
+              <div class="live-detail-sha">
+                <span class="modal-sha-value">{{ liveDeploySelectedStatus.sha.slice(0, 7) }}</span>
+              </div>
+              <div class="live-steps-list">
+                <div
+                  v-for="step in liveDeploySelectedStatus.steps"
+                  :key="step.name"
+                  class="live-step"
+                  :class="'live-step-' + step.status"
+                >
+                  <div class="live-step-header">
+                    <i v-if="step.status === 'running'" class="pi pi-spin pi-spinner live-step-icon"></i>
+                    <i v-else-if="step.status === 'done'" class="pi pi-check live-step-icon"></i>
+                    <i v-else-if="step.status === 'failed'" class="pi pi-times live-step-icon"></i>
+                    <span v-else class="step-dot"></span>
+                    <span class="live-step-name">{{ step.name }}</span>
+                    <span v-if="step.started_at && step.done_at" class="live-step-duration">{{ stepDuration(step) }}</span>
+                  </div>
+                  <div v-if="step.output" class="live-step-output" :class="{ 'live-step-error': step.status === 'failed' }">{{ step.output }}</div>
+                </div>
+              </div>
+              <div v-if="liveDeploySelectedStatus.error" class="deploy-card-error">{{ liveDeploySelectedStatus.error }}</div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Minimized live deploy indicator (when dialog closed but deploys running) -->
+    <button
+      v-if="liveDeployIds.length > 0 && !liveDeployVisible && !liveDeployAllDone"
+      class="live-deploy-fab"
+      @click="liveDeployVisible = true"
+      :title="`${liveDeployIds.length} deploy(s) in progress — click to view`"
+    >
+      <i class="pi pi-spin pi-spinner"></i>
+      <span>{{ liveDeployIds.length }}</span>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   fetchDeployInventory,
   fetchDeployCommits,
@@ -385,6 +541,159 @@ import {
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops'])
+
+// Multi-select state
+const selectedProcs = reactive(new Set<string>())
+const bulkConfirmProcs = ref<DeployProcess[] | null>(null)
+
+function procKey(p: DeployProcess): string {
+  return p.hostname + ':' + p.process
+}
+
+const deployableSelected = computed(() => {
+  return filteredProcs.value.filter(p =>
+    selectedProcs.has(procKey(p)) && isDeployable(p) && canDeploy(p)
+  )
+})
+
+const allVisibleSelected = computed(() => {
+  if (filteredProcs.value.length === 0) return false
+  return filteredProcs.value.every(p => selectedProcs.has(procKey(p)))
+})
+
+const someVisibleSelected = computed(() => {
+  return filteredProcs.value.some(p => selectedProcs.has(procKey(p)))
+})
+
+function toggleSelect(p: DeployProcess, e: Event) {
+  // Don't toggle when clicking links or buttons inside the row
+  const target = e.target as HTMLElement
+  if (target.closest('a') || target.closest('button.deploy-btn') || target.closest('button.copy-btn')) return
+  const key = procKey(p)
+  if (selectedProcs.has(key)) selectedProcs.delete(key)
+  else selectedProcs.add(key)
+}
+
+function toggleSelectAll() {
+  if (allVisibleSelected.value) {
+    for (const p of filteredProcs.value) selectedProcs.delete(procKey(p))
+  } else {
+    for (const p of filteredProcs.value) selectedProcs.add(procKey(p))
+  }
+}
+
+function confirmBulkDeploy() {
+  const targets = deployableSelected.value
+  if (targets.length === 0) return
+  bulkConfirmProcs.value = targets
+}
+
+function closeBulkConfirm() {
+  bulkConfirmProcs.value = null
+}
+
+// Live deploy progress tracking
+const liveDeployIds = ref<string[]>([])
+const liveDeployVisible = ref(false)
+const liveDeploySelected = ref('')
+let liveDeployPollTimer: ReturnType<typeof setInterval> | null = null
+
+const liveDeployStatuses = computed(() => {
+  const map = new Map<string, DeployStatus>()
+  for (const d of deploys.value) {
+    if (liveDeployIds.value.includes(d.id)) {
+      map.set(d.id, d)
+    }
+  }
+  return map
+})
+
+function liveDeployStatusOf(id: string): DeployStatus | undefined {
+  return liveDeployStatuses.value.get(id)
+}
+
+const liveDeploySelectedStatus = computed(() => {
+  if (!liveDeploySelected.value) return null
+  return liveDeployStatuses.value.get(liveDeploySelected.value) || null
+})
+
+const liveDeployAllDone = computed(() => {
+  if (liveDeployIds.value.length === 0) return false
+  return liveDeployIds.value.every(id => {
+    const s = liveDeployStatuses.value.get(id)
+    return s && (s.state === 'done' || s.state === 'failed')
+  })
+})
+
+const liveDeployAnyFailed = computed(() => {
+  return liveDeployIds.value.some(id => {
+    const s = liveDeployStatuses.value.get(id)
+    return s?.state === 'failed'
+  })
+})
+
+function stepDuration(step: { started_at?: string; done_at?: string }): string {
+  if (!step.started_at || !step.done_at) return ''
+  const ms = new Date(step.done_at).getTime() - new Date(step.started_at).getTime()
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function openLiveDeployDialog(ids: string[]) {
+  liveDeployIds.value = ids
+  liveDeploySelected.value = ids[0] || ''
+  liveDeployVisible.value = true
+}
+
+// Auto-select first failed node when a failure occurs
+watch(liveDeployAnyFailed, (failed) => {
+  if (failed && liveDeployVisible.value) {
+    const failedId = liveDeployIds.value.find(id => liveDeployStatuses.value.get(id)?.state === 'failed')
+    if (failedId) liveDeploySelected.value = failedId
+  }
+})
+
+// Clear live deploy tracking when all are done and dialog is closed
+watch([liveDeployAllDone, liveDeployVisible], ([done, visible]) => {
+  if (done && !visible) {
+    liveDeployIds.value = []
+    liveDeploySelected.value = ''
+  }
+})
+
+async function doBulkDeploy() {
+  const targets = bulkConfirmProcs.value
+  if (!targets || targets.length === 0) return
+  const sha = headSHA.value
+  closeBulkConfirm()
+  selectedProcs.clear()
+
+  const results = await Promise.allSettled(
+    targets.map(p =>
+      startDeploy({
+        stage: p.stage,
+        role: p.role,
+        process: p.process,
+        host: p.hostname,
+        dns_name: p.dns_name,
+        sha,
+      })
+    )
+  )
+
+  const ids: string[] = []
+  for (const r of results) {
+    if (r.status === 'fulfilled') ids.push(r.value.id)
+  }
+
+  const failures = results.filter(r => r.status === 'rejected')
+  if (failures.length > 0) {
+    error.value = `${failures.length} of ${targets.length} deploys failed to start`
+  }
+
+  await loadDeploys()
+  if (ids.length > 0) openLiveDeployDialog(ids)
+}
 
 const procs = ref<DeployProcess[]>([])
 const headSHA = ref('')
@@ -412,7 +721,10 @@ const search = ref('')
 const activeStages = reactive(new Set<string>())
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
-const activeTab = ref<'fleet' | 'versions' | 'history'>('fleet')
+const route = useRoute()
+const validTabs = new Set(['fleet', 'versions', 'history'])
+const initialTab = validTabs.has(route.query.tab as string) ? (route.query.tab as 'fleet' | 'versions' | 'history') : 'fleet'
+const activeTab = ref<'fleet' | 'versions' | 'history'>(initialTab)
 const openDropdown = ref<'stage' | 'role' | 'process' | null>(null)
 
 function toggleDropdown(name: 'stage' | 'role' | 'process') {
@@ -753,7 +1065,7 @@ async function doDeploy(p: DeployProcess) {
   const sha = deploySHA.value
   closeConfirm()
   try {
-    await startDeploy({
+    const status = await startDeploy({
       stage: p.stage,
       role: p.role,
       process: p.process,
@@ -762,6 +1074,7 @@ async function doDeploy(p: DeployProcess) {
       sha,
     })
     await loadDeploys()
+    openLiveDeployDialog([status.id])
   } catch (e: any) {
     error.value = e.message || 'Deploy failed'
   }
@@ -1683,6 +1996,175 @@ a.version-sha:hover {
   color: var(--text-color-secondary);
 }
 
+.col-select {
+  width: 1px;
+  padding-left: 0.75rem !important;
+  padding-right: 0 !important;
+}
+
+.row-checkbox {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--surface-border-bright);
+  border-radius: 3px;
+  background: var(--surface-ground);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.row-checkbox:checked {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.row-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--primary-color-text);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.row-checkbox:indeterminate {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.row-checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 5px;
+  width: 8px;
+  height: 2px;
+  background: var(--primary-color-text);
+}
+
+.deploy-row.row-selected {
+  background: var(--primary-50);
+}
+
+.deploy-row.row-selected:hover {
+  background: var(--primary-50);
+}
+
+/* -- Bulk action bar -- */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--primary-50);
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+}
+
+.bulk-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.bulk-deploy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: var(--primary-color);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.bulk-deploy-btn .pi {
+  font-size: 0.6rem;
+}
+
+.bulk-deploy-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.bulk-deploy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bulk-clear-btn {
+  margin-left: auto;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+}
+
+.bulk-clear-btn:hover {
+  color: var(--text-color);
+}
+
+/* -- Bulk confirm modal targets -- */
+.bulk-target-list {
+  margin-top: 0.75rem;
+}
+
+.bulk-target-header {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-color-muted);
+  margin-bottom: 0.375rem;
+}
+
+.bulk-target-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+}
+
+.bulk-target-process {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.bulk-target-arrow {
+  font-size: 0.5rem;
+  color: var(--text-color-muted);
+}
+
+.bulk-target-host {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-color-secondary);
+}
+
+.bulk-target-version {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
+  margin-left: auto;
+}
+
 .col-actions {
   width: 1px;
   white-space: nowrap;
@@ -2031,5 +2513,230 @@ a.version-sha:hover {
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--surface-border);
+}
+
+/* -- Live deploy progress dialog -- */
+.live-deploy-dialog {
+  width: 720px;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.live-deploy-dialog .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-deploy-dialog .modal-title .pi {
+  font-size: 0.85rem;
+}
+
+.live-deploy-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.live-deploy-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--surface-border);
+  overflow-y: auto;
+  padding: 0.375rem;
+}
+
+.live-deploy-node {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: background 0.1s;
+}
+
+.live-deploy-node:hover {
+  background: var(--surface-hover);
+}
+
+.live-deploy-node.active {
+  background: var(--primary-50);
+}
+
+.node-icon {
+  font-size: 0.6rem;
+  flex-shrink: 0;
+}
+
+.node-done .node-icon,
+.live-deploy-node.node-done .node-icon {
+  color: var(--green-400);
+}
+
+.node-failed .node-icon,
+.live-deploy-node.node-failed .node-icon {
+  color: var(--red-400);
+}
+
+.node-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.node-process {
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-host {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-deploy-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  min-width: 0;
+}
+
+.live-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.live-detail-target {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.live-detail-sha {
+  margin-bottom: 0.75rem;
+}
+
+.live-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.live-step {
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.live-step-running {
+  border-color: var(--primary-color);
+  background: var(--primary-50);
+}
+
+.live-step-done {
+  border-color: var(--surface-border);
+}
+
+.live-step-failed {
+  border-color: var(--red-400);
+  background: var(--red-subtle);
+}
+
+.live-step-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.live-step-icon {
+  font-size: 0.6rem;
+  flex-shrink: 0;
+}
+
+.live-step-running .live-step-icon {
+  color: var(--primary-color);
+}
+
+.live-step-done .live-step-icon {
+  color: var(--green-400);
+}
+
+.live-step-failed .live-step-icon {
+  color: var(--red-400);
+}
+
+.live-step-name {
+  font-weight: 600;
+  color: var(--text-color);
+  text-transform: capitalize;
+}
+
+.live-step-duration {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
+}
+
+.live-step-output {
+  margin-top: 0.25rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-color-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.live-step-error {
+  color: var(--red-400);
+}
+
+/* -- Floating action button for minimized live deploy -- */
+.live-deploy-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.15s;
+}
+
+.live-deploy-fab:hover {
+  opacity: 0.9;
+}
+
+.live-deploy-fab .pi {
+  font-size: 0.75rem;
 }
 </style>
