@@ -133,7 +133,7 @@ func TestSyncAccountPlanInviteTrialUnaffected(t *testing.T) {
 
 	// Simulate an invite-code trial by inserting directly with changed_by=invite:XYZ.
 	now := exesqlite.NormalizeTime(time.Now().UTC().Truncate(time.Second))
-	inviteTrialEnd := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour))
+	inviteTrialEnd := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second))
 	changedBy := "invite:TESTCODE"
 	err := exedb.WithTx1(db, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID:      accountID,
@@ -159,7 +159,7 @@ func TestSyncAccountPlanInviteTrialUnaffected(t *testing.T) {
 	}
 
 	// SetTrialExpiresAt should NOT modify invite trials (it filters by changed_by='stripe:event').
-	newExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(5 * 24 * time.Hour))
+	newExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(5 * 24 * time.Hour).Truncate(time.Second))
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).SetTrialExpiresAt, exedb.SetTrialExpiresAtParams{
 		AccountID:      accountID,
 		TrialExpiresAt: &newExpiry,
@@ -208,7 +208,7 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 
 	// Insert an invite trial plan with trial_expires_at set.
 	inviteChanged := "invite:CODE123"
-	inviteExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour))
+	inviteExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second))
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID:      inviteAcct,
 		PlanID:         "trial:monthly:20260101",
@@ -221,7 +221,7 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 	}
 
 	// Backfill: set trial_expires_at on the Stripe plan.
-	backfillExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(10 * 24 * time.Hour))
+	backfillExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(10 * 24 * time.Hour).Truncate(time.Second))
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).SetTrialExpiresAt, exedb.SetTrialExpiresAtParams{
 		AccountID:      stripeAcct,
 		TrialExpiresAt: &backfillExpiry,

@@ -234,6 +234,17 @@ type DB struct {
 	shutdown func() error
 }
 
+// WithTimeParams appends _time_format=datetime&_timezone=UTC to a DSN,
+// ensuring the driver writes time.Time as "YYYY-MM-DD HH:MM:SS" in UTC.
+// This matches SQLite's CURRENT_TIMESTAMP format for correct comparisons.
+func WithTimeParams(dsn string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "_time_format=datetime&_timezone=UTC"
+}
+
 func New(dataSourceName string, readerCount int) (*DB, error) {
 	if dataSourceName == ":memory:" {
 		return nil, fmt.Errorf(":memory: is not supported (because multiple conns are needed); use a temp file")
@@ -241,7 +252,7 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	// TODO: a caller could override PRAGMA query_only.
 	// Consider opening two *sql.DBs, one configured as read-only,
 	// to ensure read-only transactions are always such.
-	db, err := sql.Open("sqlite", dataSourceName)
+	db, err := sql.Open("sqlite", WithTimeParams(dataSourceName))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.New: %w", err)
 	}

@@ -24,6 +24,7 @@ import (
 	"exe.dev/execore"
 	"exe.dev/exedb"
 	"exe.dev/logging"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"exe.dev/ui"
 	"exe.dev/version"
@@ -76,7 +77,7 @@ func run() error {
 
 	if *preflight {
 		slog.Info("preflight: running migrations", "db", *dbPath)
-		rawDB, err := sql.Open("sqlite", *dbPath)
+		rawDB, err := sql.Open("sqlite", sqlite.WithTimeParams(*dbPath))
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
