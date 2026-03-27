@@ -25,8 +25,7 @@ brew install tailscale coreutils lima node uv zstd
 tailscale up
 ```
 
-The underlying technology: cloud hypervisor, requires linux and requires KVM. There is no software emulation.
-So you need at least an M3 CPU.
+The underlying technology: cloud hypervisor, requires linux and requires KVM. There is no software emulation. So you need at least an M3 CPU.
 
 Once you have that, run:
 
