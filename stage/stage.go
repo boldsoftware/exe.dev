@@ -337,7 +337,7 @@ func Staging() Env {
 		GatewayDev:             false,
 		SkipBanner:             false,
 		BehindTLSProxy:         false,
-		ExedWarnProxy:          false, // make true when using global load balancer
+		ExedWarnProxy:          false,
 
 		ShowHiddenDocs:    false,
 		ShowDocsPreview:   true,
