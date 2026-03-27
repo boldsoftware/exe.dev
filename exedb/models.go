@@ -8,13 +8,6 @@ import (
 	"time"
 )
 
-type AWSIPShard struct {
-	Shard     int64     `db:"shard" json:"shard"`
-	PublicIP  string    `db:"public_ip" json:"public_ip"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
-}
-
 type Account struct {
 	ID        string    `db:"id" json:"id"`
 	CreatedBy string    `db:"created_by" json:"created_by"`
@@ -234,13 +227,6 @@ type HllSketch struct {
 	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
 }
 
-type IPShard struct {
-	Shard     int64     `db:"shard" json:"shard"`
-	PublicIP  string    `db:"public_ip" json:"public_ip"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
-}
-
 type Integration struct {
 	IntegrationID string     `db:"integration_id" json:"integration_id"`
 	OwnerUserID   string     `db:"owner_user_id" json:"owner_user_id"`
@@ -268,13 +254,6 @@ type InviteCode struct {
 type InviteCodePool struct {
 	Code      string     `db:"code" json:"code"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
-}
-
-type LatitudeIPShard struct {
-	Shard     int64     `db:"shard" json:"shard"`
-	PublicIP  string    `db:"public_ip" json:"public_ip"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Migration struct {
@@ -563,14 +542,12 @@ type UserDailyEmailCount struct {
 }
 
 type UserDefault struct {
-	UserID             string     `db:"user_id" json:"user_id"`
-	NewVMEmail         *int64     `db:"new_vm_email" json:"new_vm_email"`
-	CreatedAt          *time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt          *time.Time `db:"updated_at" json:"updated_at"`
-	GlobalLoadBalancer *int64     `db:"global_load_balancer" json:"global_load_balancer"`
-	AnycastNetwork     *int64     `db:"anycast_network" json:"anycast_network"`
-	GitHubIntegration  *int64     `db:"github_integration" json:"github_integration"`
-	NewSetupScript     *string    `db:"new_setup_script" json:"new_setup_script"`
+	UserID            string     `db:"user_id" json:"user_id"`
+	NewVMEmail        *int64     `db:"new_vm_email" json:"new_vm_email"`
+	CreatedAt         *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt         *time.Time `db:"updated_at" json:"updated_at"`
+	GitHubIntegration *int64     `db:"github_integration" json:"github_integration"`
+	NewSetupScript    *string    `db:"new_setup_script" json:"new_setup_script"`
 }
 
 type UserEvent struct {

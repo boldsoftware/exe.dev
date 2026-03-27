@@ -59,8 +59,6 @@ sql:
           pending_ssh_key: "PendingSSHKey"
           next_ssh_key_number: "NextSSHKeyNumber"
           new_vm_email: "NewVMEmail"
-          aws_ip_shard: "AWSIPShard"
-          latitude_ip_shard: "LatitudeIPShard"
           netactuate_ip_shard: "NetActuateIPShard"
           public_ip: "PublicIP"
           vm_name: "VMName"

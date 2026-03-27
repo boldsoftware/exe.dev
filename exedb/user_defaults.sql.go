@@ -37,7 +37,7 @@ func (q *Queries) DeleteUserDefaultNewVMEmail(ctx context.Context, userID string
 }
 
 const getUserDefaults = `-- name: GetUserDefaults :one
-SELECT user_id, new_vm_email, created_at, updated_at, global_load_balancer, anycast_network, github_integration, new_setup_script FROM user_defaults WHERE user_id = ?
+SELECT user_id, new_vm_email, created_at, updated_at, github_integration, new_setup_script FROM user_defaults WHERE user_id = ?
 `
 
 func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefault, error) {
@@ -48,8 +48,6 @@ func (q *Queries) GetUserDefaults(ctx context.Context, userID string) (UserDefau
 		&i.NewVMEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GlobalLoadBalancer,
-		&i.AnycastNetwork,
 		&i.GitHubIntegration,
 		&i.NewSetupScript,
 	)
