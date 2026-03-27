@@ -107,6 +107,7 @@ steps:
       E1E_RUN_FILTER: "^Test[A-Na-n]"
     artifact_paths:
       - "recordings-1.html"
+      - "e1e-results-1.json"
       - "e1e-logs-1/**/*"
 
   - label: ":rocket: e1e tests (O-S)"
@@ -125,6 +126,7 @@ steps:
       E1E_RUN_FILTER: "^Test[O-So-s]"
     artifact_paths:
       - "recordings-2.html"
+      - "e1e-results-2.json"
       - "e1e-logs-2/**/*"
 
   - label: ":rocket: e1e tests (T-Z)"
@@ -143,6 +145,7 @@ steps:
       E1E_RUN_FILTER: "^Test[T-Zt-z]"
     artifact_paths:
       - "recordings-3.html"
+      - "e1e-results-3.json"
       - "e1e-logs-3/**/*"
 
   - label: ":electric_plug: e1e exelets"
@@ -158,6 +161,7 @@ steps:
     env:
       VM_DRIVER: cloudhypervisor
     artifact_paths:
+      - "e1e-results-exelets.json"
       - "e1e-logs-exelets/**/*"
 
   - label: ":robot_face: shelley go + UI checks"

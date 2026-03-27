@@ -10,7 +10,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 
 def run(args, **kwargs):
     print(f"+ {' '.join(args)}", flush=True)
@@ -47,14 +46,11 @@ def main():
     for f in _glob("e1e/golden/*.txt"):
         os.remove(f)
 
-    log_dir = tempfile.mkdtemp()
-    os.environ["E1E_LOG_DIR"] = log_dir
     log_artifact_dir = f"e1e-logs{suffix}"
     os.makedirs(log_artifact_dir, exist_ok=True)
-    if not os.path.exists(f"{log_artifact_dir}/current"):
-        os.symlink(log_dir, f"{log_artifact_dir}/current")
+    os.environ["E1E_LOG_DIR"] = os.path.abspath(log_artifact_dir)
 
-    json_results = tempfile.mktemp(suffix=".json")
+    json_results = f"e1e-results{suffix}.json"
 
     run_filter = os.environ.get("E1E_RUN_FILTER", "")
 
@@ -68,9 +64,6 @@ def main():
     test_result = subprocess.run(cmd, env=env)
 
     _annotate_results(json_results, shard)
-
-    if os.path.exists(json_results):
-        os.remove(json_results)
 
     if not shard:
         print("--- :scroll: Check golden files unchanged", flush=True)

@@ -10,7 +10,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 
 def run(args, **kwargs):
     print(f"+ {' '.join(args)}", flush=True)
@@ -40,13 +39,10 @@ def main():
 
     print("--- :electric_plug: Run exelets tests", flush=True)
 
-    log_dir = tempfile.mkdtemp()
-    os.environ["E1E_LOG_DIR"] = log_dir
     os.makedirs("e1e-logs-exelets", exist_ok=True)
-    if not os.path.exists("e1e-logs-exelets/current"):
-        os.symlink(log_dir, "e1e-logs-exelets/current")
+    os.environ["E1E_LOG_DIR"] = os.path.abspath("e1e-logs-exelets")
 
-    json_results = tempfile.mktemp(suffix=".json")
+    json_results = "e1e-results-exelets.json"
 
     env = {**os.environ, "E1_VM_CONCURRENCY": "10", "GITHUB_ACTIONS": "false"}
     test_result = subprocess.run(
@@ -57,9 +53,6 @@ def main():
     )
 
     _annotate_results(json_results)
-
-    if os.path.exists(json_results):
-        os.remove(json_results)
 
     sys.exit(test_result.returncode)
 
