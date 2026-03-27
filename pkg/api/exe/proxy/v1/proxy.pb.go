@@ -666,7 +666,7 @@ func (x *GetPublicIPsResponse) GetPublicIP() *PublicIP {
 type PublicIP struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	IP            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`         // public IP address
-	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"` // full domain, such "s007.exe.xyz"
+	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"` // full domain, such as "na007.exe.xyz"
 	Shard         int32                  `protobuf:"varint,3,opt,name=shard,proto3" json:"shard,omitempty"`  // shard number
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

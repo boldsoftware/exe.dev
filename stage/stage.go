@@ -3,6 +3,7 @@ package stage
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strings"
@@ -48,10 +49,11 @@ type Env struct {
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
-	UseCobble            bool // whether to start cobble/pebble for local ACME testing
-	DiscoverPublicIPs    bool // whether to attempt to discover public IPs of the server using EC2 metadata service
-	PreloadTailscaleCert bool // whether to preload tailscale cert at startup (has 10s timeout, skip in tests)
-	EnableLMTP           bool // whether to start the LMTP server for inbound email delivery
+	UseCobble            bool       // whether to start cobble/pebble for local ACME testing
+	DiscoverPublicIPs    bool       // whether to attempt to discover public IPs of the server using EC2 metadata service
+	LobbyIP              netip.Addr // public IP for the lobby (ssh exe.dev / exe.xyz apex)
+	PreloadTailscaleCert bool       // whether to preload tailscale cert at startup (has 10s timeout, skip in tests)
+	EnableLMTP           bool       // whether to start the LMTP server for inbound email delivery
 
 	MaxMaildirEmails int // max emails allowed in ~/Maildir/new before auto-disabling receive
 
@@ -114,6 +116,7 @@ func Invalid() Env {
 
 		UseCobble:            false,
 		DiscoverPublicIPs:    false,
+		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           false,
 
@@ -187,6 +190,7 @@ func Local() Env {
 
 		UseCobble:            !onExeBox, // auto-start cobble/pebble for ACME testing (not needed behind proxy)
 		DiscoverPublicIPs:    false,
+		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           true,
 
@@ -253,6 +257,7 @@ func Test() Env {
 
 		UseCobble:            false, // tests start their own cobble/pebble instances as needed
 		DiscoverPublicIPs:    false,
+		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           true,
 
@@ -317,6 +322,7 @@ func Staging() Env {
 
 		UseCobble:            false,
 		DiscoverPublicIPs:    true,
+		LobbyIP:              netip.AddrFrom4([4]byte{100, 22, 218, 249}),
 		PreloadTailscaleCert: true,
 		EnableLMTP:           true,
 
@@ -395,6 +401,7 @@ func Prod() Env {
 
 		UseCobble:            false,
 		DiscoverPublicIPs:    true,
+		LobbyIP:              netip.AddrFrom4([4]byte{52, 35, 87, 134}),
 		PreloadTailscaleCert: true,
 		EnableLMTP:           true,
 

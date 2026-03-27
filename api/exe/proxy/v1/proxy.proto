@@ -186,7 +186,7 @@ message GetPublicIPsResponse {
 // PublicIP is the protobuf version of publicips.PublicIP.
 message PublicIP {
   string ip = 1;     // public IP address
-  string domain = 2; // full domain, such "s007.exe.xyz"
+  string domain = 2; // full domain, such as "na007.exe.xyz"
   int32 shard = 3;   // shard number
 }
 

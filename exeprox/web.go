@@ -310,6 +310,8 @@ func (wp *WebProxy) initShardIPs(ctx context.Context) {
 		return
 	}
 
+	wp.lobbyIP = wp.env.LobbyIP
+
 	if !wp.env.DiscoverPublicIPs {
 		wp.lg().InfoContext(ctx, "using dev IP resolver", "box_host", wp.env.BoxHost)
 		ips, err := publicips.LocalhostIPs(ctx, wp.env.BoxHost, wp.env.NumShards)
@@ -318,8 +320,6 @@ func (wp *WebProxy) initShardIPs(ctx context.Context) {
 			return
 		}
 		wp.publicIPs = ips
-		// For local dev, use 127.21.0.0 as the lobby IP
-		wp.lobbyIP = netip.AddrFrom4([4]byte{127, 21, 0, 0})
 		return
 	}
 
