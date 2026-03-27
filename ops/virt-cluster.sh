@@ -2034,6 +2034,127 @@ cmd_install_deps() {
     log "Dependencies installed. Run '$0 start' to create the cluster."
 }
 
+cmd_install_vnc() {
+    log "Installing VNC/noVNC stack for browser-based remote desktop..."
+
+    if [[ "$(id -u)" -ne 0 ]] && ! sudo -n true 2>/dev/null; then
+        die "This command requires sudo access"
+    fi
+
+    # APT packages
+    local pkgs=(
+        xvfb              # virtual framebuffer
+        x11vnc            # VNC server
+        novnc             # browser-based VNC client
+        websockify        # WebSocket-to-TCP proxy for noVNC
+        openbox           # window manager (needed for keyboard focus)
+        x11-xkb-utils     # setxkbmap
+        xdotool           # X11 automation
+    )
+
+    log "  Installing APT packages..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq "${pkgs[@]}"
+
+    # Google Chrome
+    if ! command -v google-chrome-stable >/dev/null 2>&1; then
+        log "  Installing Google Chrome..."
+        if ! grep -q "dl.google.com/linux/chrome" /etc/apt/sources.list.d/*.list 2>/dev/null; then
+            curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+                | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+                | sudo tee /etc/apt/sources.list.d/google-chrome.list >/dev/null
+            sudo apt-get update -qq
+        fi
+        sudo apt-get install -y -qq google-chrome-stable
+    else
+        log "  Google Chrome already installed"
+    fi
+
+    # Systemd unit files
+    log "  Installing systemd services..."
+
+    sudo tee /etc/systemd/system/xvfb.service >/dev/null <<'UNIT'
+[Unit]
+Description=Xvfb virtual framebuffer
+
+[Service]
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    sudo tee /etc/systemd/system/x11vnc.service >/dev/null <<'UNIT'
+[Unit]
+Description=x11vnc VNC server
+After=xvfb.service
+Requires=xvfb.service
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -nopw -rfbport 5900
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    sudo tee /etc/systemd/system/openbox.service >/dev/null <<'UNIT'
+[Unit]
+Description=Openbox window manager
+After=xvfb.service
+Requires=xvfb.service
+
+[Service]
+Environment=DISPLAY=:99
+ExecStart=/usr/bin/openbox
+Restart=always
+User=exedev
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    sudo tee /etc/systemd/system/novnc.service >/dev/null <<'UNIT'
+[Unit]
+Description=noVNC websocket proxy
+After=x11vnc.service
+Requires=x11vnc.service
+
+[Service]
+ExecStart=/usr/bin/websockify --web=/opt/novnc/ 8000 localhost:5900
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    sudo tee /etc/systemd/system/chromium.service >/dev/null <<'UNIT'
+[Unit]
+Description=Chrome browser
+After=xvfb.service openbox.service
+Requires=xvfb.service openbox.service
+
+[Service]
+Environment=DISPLAY=:99
+ExecStartPre=/usr/bin/setxkbmap -option caps:ctrl_modifier
+ExecStart=/usr/bin/google-chrome-stable --no-first-run --disable-gpu --no-sandbox --disable-dev-shm-usage --window-size=1280,720 --window-position=0,0
+Restart=on-failure
+RestartSec=3
+User=exedev
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now xvfb x11vnc openbox novnc chromium
+
+    log ""
+    log "VNC stack installed. Access via noVNC on port 8000."
+}
+
 case "${1:-}" in
 start) cmd_start ;;
 stop) cmd_stop ;;
@@ -2043,11 +2164,13 @@ deploy) cmd_deploy ;;
 deploy-metrics) cmd_deploy_metrics ;;
 os-upgrade) cmd_os_upgrade ;;
 install-deps) cmd_install_deps ;;
+install-vnc) cmd_install_vnc ;;
 *)
-    echo "Usage: $0 {start|stop|status|destroy|deploy|deploy-metrics|os-upgrade|install-deps}"
+    echo "Usage: $0 {start|stop|status|destroy|deploy|deploy-metrics|os-upgrade|install-deps|install-vnc}"
     echo ""
     echo "Subcommands:"
     echo "  install-deps    Install all host dependencies (apt packages, pnpm, cloud-hypervisor)"
+    echo "  install-vnc     Install VNC/noVNC stack with Chrome for browser-based remote desktop"
     echo "  start           Create and provision the VM cluster (idempotent)"
     echo "  stop            Gracefully stop all VMs (preserves disks)"
     echo "  status          Show cluster status, IPs, and services"
