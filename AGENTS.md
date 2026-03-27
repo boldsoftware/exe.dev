@@ -1,6 +1,6 @@
 - exe.dev is a service users can use to start containers with persistent disks, read README.md and ARCHITECTURE.md for more. the ./cmd/exed binary implements the web and ssh frontend and acts as container controller, instructing ctr-hosts through ssh.
 - be very careful with all text printed in the SSH UI. do *not* change the UI behavior without confirming the change with a human. in general, the service is very sparing with text shown to the user over ssh, adding more ruins the vibe.
-- we have three ways of configuring container hosts: in prod (named exe-ctr-NN in tailscale), locally for macOS dev (lima-exe-ctr and lima-exe-ctr-tests), and in CI (libvirt on metal ubuntu). all the scripts for configuring these are in ops/
+- we have three ways of configuring container hosts: in prod (named exe-ctr-NN in tailscale), locally for macOS dev (lima-exe-ctr and lima-exe-ctr-tests), and in CI (cloud-hypervisor on metal ubuntu). all the scripts for configuring these are in ops/
 - if running inside an exe.dev VM (i.e. /exe.dev exists), you can test the full exed+exelet stack locally with:
   ```
   make exelet

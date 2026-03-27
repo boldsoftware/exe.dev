@@ -43,7 +43,7 @@ jobs:
         id: vm
         run: |
           set -euo pipefail
-          ./ops/ci-vm-start.sh | tee ci-vm-start.log
+          python3 ./ops/ci-vm.py create | tee ci-vm-start.log
           ENVFILE=$(tail -n1 ci-vm-start.log)
           echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
           # shellcheck disable=SC1090
@@ -65,5 +65,5 @@ jobs:
         if: always()
         run: |
           if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
-            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
+            python3 ./ops/ci-vm.py destroy "${{ steps.vm.outputs.envfile }}" || true
           fi

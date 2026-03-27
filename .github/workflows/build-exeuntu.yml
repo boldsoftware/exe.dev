@@ -224,4 +224,9 @@ jobs:
           cache: false
 
       - name: Warm VM snapshot for new exeuntu image
-        run: ./ops/ci-vm-snapshot.sh
+        run: |
+          # ci-vm.py creates snapshots on first boot; trigger a create+destroy cycle
+          # to warm the cache for the new exeuntu image.
+          python3 ./ops/ci-vm.py create | tee ci-vm-start.log
+          ENVFILE=$(tail -n1 ci-vm-start.log)
+          python3 ./ops/ci-vm.py destroy "$ENVFILE"

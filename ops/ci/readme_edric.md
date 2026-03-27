@@ -47,7 +47,7 @@ Runs every 5 minutes during working hours. Pre-warms: git objects (via prefetch 
 
 ## Cleanup cron
 
-Runs every 15 minutes. Destroys VMs running >30 min (timestamp parsed from VM name, not disk mtime), removes orphaned disk images, and prunes old snapshot caches.
+Runs every 15 minutes. Destroys cloud-hypervisor VMs running >30 min (timestamp parsed from pidfile name, not disk mtime), removes orphaned disk images, and prunes old snapshot caches.
 
 ## Disk layout
 
@@ -56,7 +56,7 @@ Runs every 15 minutes. Destroys VMs running >30 min (timestamp parsed from VM na
 /var/lib/libvirt/images   → 100G tmpfs (RAM-backed, in fstab)
 ```
 
-VM snapshot caches live on `/data` (via `$HOME/.cache/exedev/`). Only the active backing images and per-test overlays live on tmpfs. This matters because qemu uses `cache=none` (O_DIRECT), bypassing the kernel page cache — so RAM-backing the WORKDIR gives a large speedup under concurrent load.
+VM snapshot caches live on `/data` (via `$HOME/.cache/exedev/`). Only the active backing images and per-test overlays live on tmpfs. RAM-backing the WORKDIR gives a large speedup under concurrent VM load.
 
 ## Deploy key
 

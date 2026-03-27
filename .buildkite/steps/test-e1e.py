@@ -31,18 +31,11 @@ def main():
     _restore_prebuilt_artifacts()
     _destroy_stale_vms()
 
-    vm_driver = os.environ.get("VM_DRIVER", "")
-    if vm_driver == "cloudhypervisor":
-        print("--- :zap: Using cloud-hypervisor (snapshot handled by ci-vm.py)", flush=True)
-    else:
-        print("--- :camera: Ensure VM snapshot exists", flush=True)
-        run(["./ops/ci-vm-snapshot.sh"])
-
     shard = os.environ.get("E1E_SHARD", "")
     suffix = f"-{shard}" if shard else ""
     run_filter = os.environ.get("E1E_RUN_FILTER", "")
 
-    print(f"--- :rocket: Run e1e tests{' (shard ' + shard + ')' if shard else ''}", flush=True)
+    print(f"--- :rocket: Run e1e tests{' (shard ' + shard + ')' if shard else ''} (includes VM startup)", flush=True)
     # Remove stale golden files so they get freshly regenerated.
     # When sharded, only remove files matching this shard's filter so we
     # don't delete golden files that belong to other shards.
@@ -156,20 +149,6 @@ def _destroy_stale_vms():
         capture_output=True, text=True,
     ).stdout.strip()
 
-    # Clean up stale libvirt VMs.
-    result = subprocess.run(["sudo", "virsh", "list", "--name"], capture_output=True, text=True)
-    if result.returncode == 0:
-        for vm in result.stdout.strip().splitlines():
-            vm = vm.strip()
-            if not vm.startswith("ci-ubuntu-"):
-                continue
-            m = re.search(r"(\d{14})$", vm)
-            ts = m.group(1) if m else ""
-            if not ts or ts < cutoff:
-                print(f"  destroying stale VM: {vm}", flush=True)
-                subprocess.run(["sudo", "virsh", "destroy", vm], capture_output=True)
-
-    # Clean up stale cloud-hypervisor VMs.
     import glob
     for pidfile in glob.glob("/tmp/ch-pid-ci-ubuntu-*"):
         m = re.search(r"(\d{14})", pidfile)

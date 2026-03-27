@@ -7,7 +7,7 @@ Subcommands:
   destroy ENVFILE     Destroy a VM described by ENVFILE.
   run                 Create a VM, block until SIGTERM/SIGINT, then destroy.
 
-Environment variables (same interface as ci-vm-start.sh):
+Environment variables:
   NAME        VM name           (default: ci-ubuntu-USER-TIMESTAMP)
   OUTDIR      envfile directory (default: cwd)
   VCPUS       vCPU count        (default: 4)
@@ -691,7 +691,8 @@ def destroy_vm(envfile: Path) -> None:
 
 def create_vm() -> Path:
     """Create a VM. Returns the envfile path."""
-    print(f"ci-vm.py create  NAME={NAME}", flush=True)
+    t0 = time.monotonic()
+    print(f"══════ ci-vm.py create  NAME={NAME} ══════", flush=True)
     OUTDIR.mkdir(parents=True, exist_ok=True)
     sudo("mkdir", "-p", str(WORKDIR))
 
@@ -846,6 +847,9 @@ def create_vm() -> Path:
     if not snapshot:
         _provision_and_snapshot(
             ip, disk, data_disk, snap_dir, local_base, local_data)
+
+    elapsed = time.monotonic() - t0
+    print(f"══════ VM ready in {elapsed:.1f}s  NAME={NAME}  IP={ip} ══════", flush=True)
 
     # Write envfile.
     envfile = OUTDIR / f"{NAME}.env"

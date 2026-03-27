@@ -64,11 +64,11 @@ type Pool struct {
 
 // Executor abstracts shell commands for testing.
 type Executor interface {
-	// StartVM runs ci-vm-start.sh and returns VM info.
+	// StartVM runs ci-vm.py create and returns VM info.
 	StartVM(ctx context.Context, name, opsDir string) (*VMInfo, error)
-	// DestroyVM runs ci-vm-destroy.sh with the given env file.
+	// DestroyVM runs ci-vm.py destroy with the given env file.
 	DestroyVM(ctx context.Context, envFile, opsDir string) error
-	// DestroyVMByName destroys a VM by name directly via virsh, for cleanup
+	// DestroyVMByName destroys a VM by name, for cleanup
 	// when no env file is available (e.g., creation timed out).
 	DestroyVMByName(ctx context.Context, name, opsDir string)
 }
@@ -76,13 +76,13 @@ type Executor interface {
 type ShellExecutor struct{}
 
 func (e *ShellExecutor) StartVM(ctx context.Context, name, opsDir string) (*VMInfo, error) {
-	script := filepath.Join(opsDir, "ci-vm-start.sh")
+	script := filepath.Join(opsDir, "ci-vm.py")
 	outDir, err := os.MkdirTemp("", "e1ed-vm-")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "bash", script)
+	cmd := exec.CommandContext(ctx, "python3", script, "create")
 	cmd.Dir = filepath.Dir(opsDir) // repo root
 	env := os.Environ()
 	// Ensure HOME is set; systemd may not provide it.
@@ -98,7 +98,7 @@ func (e *ShellExecutor) StartVM(ctx context.Context, name, opsDir string) (*VMIn
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ci-vm-start.sh: %w", err)
+		return nil, fmt.Errorf("ci-vm.py create: %w", err)
 	}
 
 	envFile := filepath.Join(outDir, name+".env")
@@ -106,8 +106,8 @@ func (e *ShellExecutor) StartVM(ctx context.Context, name, opsDir string) (*VMIn
 }
 
 func (e *ShellExecutor) DestroyVM(ctx context.Context, envFile, opsDir string) error {
-	script := filepath.Join(opsDir, "ci-vm-destroy.sh")
-	cmd := exec.CommandContext(ctx, "bash", script, envFile)
+	script := filepath.Join(opsDir, "ci-vm.py")
+	cmd := exec.CommandContext(ctx, "python3", script, "destroy", envFile)
 	cmd.Dir = filepath.Dir(opsDir)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
@@ -120,14 +120,27 @@ func (e *ShellExecutor) DestroyVMByName(ctx context.Context, name, opsDir string
 
 	slog.InfoContext(ctx, "destroying VM by name", "name", name)
 
-	// Best-effort: destroy the domain and clean up its disk images.
-	exec.CommandContext(ctx, "virsh", "destroy", name).Run()
-	exec.CommandContext(ctx, "virsh", "undefine", name, "--nvram").Run()
+	// Best-effort: kill the cloud-hypervisor process and clean up.
+	pidFile := fmt.Sprintf("/tmp/ch-pid-%s", name)
+	if data, err := os.ReadFile(pidFile); err == nil {
+		pid := strings.TrimSpace(string(data))
+		if pid != "" {
+			exec.CommandContext(ctx, "sudo", "kill", "-9", pid).Run()
+		}
+	}
 
+	// Clean up TAP interface.
+	tapName := fmt.Sprintf("vm%s", name) // approximate; ci-vm.py uses sha256
+	exec.CommandContext(ctx, "sudo", "ip", "link", "del", tapName).Run()
+
+	// Clean up disk images and temp files.
 	workdir := "/var/lib/libvirt/images"
 	os.Remove(filepath.Join(workdir, name+".qcow2"))
 	os.Remove(filepath.Join(workdir, name+"-data.qcow2"))
 	os.Remove(filepath.Join(workdir, name+"-seed.iso"))
+	os.Remove(pidFile)
+	os.Remove(fmt.Sprintf("/tmp/ch-%s.log", name))
+	os.Remove(fmt.Sprintf("/tmp/ch-api-%s.sock", name))
 }
 
 func parseEnvFile(path string) (*VMInfo, error) {
@@ -346,7 +359,7 @@ func (p *Pool) createSlot(idx int) {
 	vm, err := p.executor.StartVM(ctx, name, p.opsDir)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to create VM", "slot", idx, "name", name, "err", err)
-		// Best-effort cleanup: the VM may exist in libvirt even though the
+		// Best-effort cleanup: the VM may exist even though the
 		// script failed (e.g., timeout during provisioning).
 		p.executor.DestroyVMByName(context.Background(), name, p.opsDir)
 		// Retry after a delay.

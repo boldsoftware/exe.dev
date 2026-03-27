@@ -142,8 +142,6 @@ jobs:
     runs-on: [self-hosted, linux, x64, libvirt, edric]
     permissions:
       contents: write
-    env:
-      VM_DRIVER: cloudhypervisor
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -207,14 +205,6 @@ jobs:
               sudo rm -f "$pidfile"
             fi
           done
-          # Also clean up any lingering libvirt VMs from before the switch
-          sudo virsh list --name 2>/dev/null | grep ci-ubuntu-$(whoami) | xargs -r -n 1 sudo virsh destroy 2>/dev/null || true
-
-      - name: ensure vm snapshot exists
-        id: vm
-        run: |
-          set -euo pipefail
-          ./ops/ci-vm-snapshot.sh | tee ci-vm-snapshot.log
 
       - name: Run e1e tests
         run: |

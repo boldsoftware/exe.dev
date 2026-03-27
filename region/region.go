@@ -89,7 +89,7 @@ func ParseExeletRegion(host string) (Region, error) {
 		return ByCode("dev")
 	}
 
-	// CI: ubuntu@192.168.122.* (libvirt default network on CI runner)
+	// CI: ubuntu@192.168.122.* (bridge network on CI runner)
 	if strings.HasPrefix(host, "ubuntu@192.168.122.") {
 		return ByCode("ci")
 	}

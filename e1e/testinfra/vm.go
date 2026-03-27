@@ -48,27 +48,14 @@ func StartExeletVM(testRunID string) (string, error) {
 	}
 }
 
-// vmDriver returns the selected VM backend.
-// Set VM_DRIVER=cloudhypervisor to use ci-vm-start.py (cloud-hypervisor direct)
-// instead of the default ci-vm-start.sh (libvirt/QEMU).
-func vmDriver() string {
-	return os.Getenv("VM_DRIVER")
-}
-
-// vmStartCmd returns the start script/program for the current VM driver.
+// vmStartCmd returns the command to create a CI VM.
 func vmStartCmd(srcdir string) *exec.Cmd {
-	if vmDriver() == "cloudhypervisor" {
-		return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "create")
-	}
-	return exec.Command(filepath.Join(srcdir, "ops/ci-vm-start.sh"))
+	return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "create")
 }
 
-// vmDestroyCmd returns the destroy script/program for the current VM driver.
+// vmDestroyCmd returns the command to destroy a CI VM.
 func vmDestroyCmd(srcdir, envFile string) *exec.Cmd {
-	if vmDriver() == "cloudhypervisor" {
-		return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "destroy", envFile)
-	}
-	return exec.Command(filepath.Join(srcdir, "ops/ci-vm-destroy.sh"), envFile)
+	return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "destroy", envFile)
 }
 
 // startLinuxVM starts a VM on Linux to run the exelet.
@@ -79,7 +66,7 @@ func startLinuxVM(testRunID string) (string, error) {
 		prefix = "ci-ubuntu"
 	}
 	name := prefix + "-" + testRunID + "-" + time.Now().Format("20060102150405")
-	outdir, err := os.MkdirTemp("", "ci-vm-start-")
+	outdir, err := os.MkdirTemp("", "ci-vm-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %v", err)
 	}
@@ -100,7 +87,7 @@ func startLinuxVM(testRunID string) (string, error) {
 	cmd.Stderr = os.Stderr
 
 	if err = cmd.Run(); err != nil {
-		return "", fmt.Errorf("ci-vm-start failed (%s): %v\n", vmDriver(), err)
+		return "", fmt.Errorf("ci-vm.py create failed: %v\n", err)
 	}
 
 	envFile := filepath.Join(outdir, name+".env")
@@ -109,7 +96,7 @@ func startLinuxVM(testRunID string) (string, error) {
 		cmd := vmDestroyCmd(srcdir, envFile)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ci-vm-destroy failed: %v\n%s", err, out)
+			fmt.Fprintf(os.Stderr, "ci-vm.py destroy failed: %v\n%s", err, out)
 		}
 	})
 

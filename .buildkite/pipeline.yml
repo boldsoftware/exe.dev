@@ -46,7 +46,6 @@ steps:
     command: python3 .buildkite/steps/test-e1e.py
     timeout_in_minutes: 20
     env:
-      VM_DRIVER: cloudhypervisor
       E1E_SHARD: "1"
       E1E_RUN_FILTER: "^Test[A-Na-n]"
     artifact_paths:
@@ -59,7 +58,6 @@ steps:
     command: python3 .buildkite/steps/test-e1e.py
     timeout_in_minutes: 20
     env:
-      VM_DRIVER: cloudhypervisor
       E1E_SHARD: "2"
       E1E_RUN_FILTER: "^Test[O-So-s]"
     artifact_paths:
@@ -72,7 +70,6 @@ steps:
     command: python3 .buildkite/steps/test-e1e.py
     timeout_in_minutes: 20
     env:
-      VM_DRIVER: cloudhypervisor
       E1E_SHARD: "3"
       E1E_RUN_FILTER: "^Test[T-Zt-z]"
     artifact_paths:
@@ -84,7 +81,5 @@ steps:
     depends_on: build-e1e
     command: python3 .buildkite/steps/test-e1e-exelets.py
     timeout_in_minutes: 15
-    env:
-      VM_DRIVER: cloudhypervisor
     artifact_paths:
       - "e1e-logs-exelets/**/*"

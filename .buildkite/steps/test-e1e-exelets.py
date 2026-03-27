@@ -30,14 +30,7 @@ def main():
     _restore_prebuilt_artifacts()
     _destroy_stale_vms()
 
-    vm_driver = os.environ.get("VM_DRIVER", "")
-    if vm_driver == "cloudhypervisor":
-        print("--- :zap: Using cloud-hypervisor (snapshot handled by ci-vm.py)", flush=True)
-    else:
-        print("--- :camera: Ensure VM snapshot exists", flush=True)
-        run(["./ops/ci-vm-snapshot.sh"])
-
-    print("--- :electric_plug: Run exelets tests", flush=True)
+    print("--- :electric_plug: Run exelets tests (includes VM startup)", flush=True)
 
     os.makedirs("e1e-logs-exelets", exist_ok=True)
     os.environ["E1E_LOG_DIR"] = os.path.abspath("e1e-logs-exelets")
@@ -103,18 +96,6 @@ def _destroy_stale_vms():
         ["date", "-d", "1 hour ago", "+%Y%m%d%H%M%S"],
         capture_output=True, text=True,
     ).stdout.strip()
-
-    result = subprocess.run(["sudo", "virsh", "list", "--name"], capture_output=True, text=True)
-    if result.returncode == 0:
-        for vm in result.stdout.strip().splitlines():
-            vm = vm.strip()
-            if not vm.startswith("ci-ubuntu-"):
-                continue
-            m = re.search(r"(\d{14})$", vm)
-            ts = m.group(1) if m else ""
-            if not ts or ts < cutoff:
-                print(f"  destroying stale VM: {vm}", flush=True)
-                subprocess.run(["sudo", "virsh", "destroy", vm], capture_output=True)
 
     import glob as globmod
     for pidfile in globmod.glob("/tmp/ch-pid-ci-ubuntu-*"):

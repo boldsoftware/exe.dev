@@ -9,15 +9,16 @@ LOG="/var/log/edric-ci-cleanup.log"
 exec >>"$LOG" 2>&1
 echo "=== $(date) === cleanup starting ==="
 
-# Destroy any VMs that have been running for more than 30 minutes.
-# Parse the creation timestamp from the VM name instead of using disk mtime,
-# because running VMs continuously write to their disks keeping mtime fresh.
+# Destroy any cloud-hypervisor VMs that have been running for more than 30 minutes.
+# Parse the creation timestamp from the pidfile name.
 NOW=$(date +%s)
 THRESHOLD=1800
 
-for VM in $(virsh list --name 2>/dev/null | grep -v "^$"); do
+for PIDFILE in /tmp/ch-pid-*; do
+    [[ -f "$PIDFILE" ]] || continue
+    VM=$(basename "$PIDFILE" | sed 's/^ch-pid-//')
+
     # Extract 14-digit timestamp (YYYYMMDDHHMMSS) from end of VM name.
-    # Matches both ci-ubuntu-runnerN-YYYYMMDDHHMMSS and e1e-runnerN-XXXX-YYYYMMDDHHMMSS.
     TS=$(echo "$VM" | grep -oP '\d{14}$' || true)
     if [[ -z "$TS" ]]; then
         continue
@@ -30,19 +31,23 @@ for VM in $(virsh list --name 2>/dev/null | grep -v "^$"); do
 
     AGE=$((NOW - VM_EPOCH))
     if [[ $AGE -gt $THRESHOLD ]]; then
-        echo "Destroying stale VM: $VM (age: ${AGE}s)"
-        virsh destroy "$VM" || true
+        PID=$(cat "$PIDFILE" 2>/dev/null || true)
+        echo "Destroying stale VM: $VM (age: ${AGE}s, PID: $PID)"
+        if [[ -n "$PID" ]] && [[ -d "/proc/$PID" ]]; then
+            kill -9 "$PID" 2>/dev/null || true
+        fi
+        rm -f "$PIDFILE" "/tmp/ch-${VM}.log" "/tmp/ch-api-${VM}.sock"
     fi
 done
 
-# Clean up orphaned disk images (no matching VM running).
-# Match both e1e-runner* and ci-ubuntu-* images.
+# Clean up orphaned disk images (no matching CH process running).
 for IMG in /var/lib/libvirt/images/e1e-runner*.qcow2 /var/lib/libvirt/images/ci-ubuntu-runner*.qcow2; do
     [[ -f "$IMG" ]] || continue
     VM=$(basename "$IMG" .qcow2)
     # Strip -data suffix to get the base VM name
     VM=$(echo "$VM" | sed 's/-data$//')
-    if ! virsh list --name 2>/dev/null | grep -q "^${VM}$"; then
+    PIDFILE="/tmp/ch-pid-${VM}"
+    if [[ ! -f "$PIDFILE" ]]; then
         AGE=$((NOW - $(stat -c %Y "$IMG")))
         if [[ $AGE -gt $THRESHOLD ]]; then
             echo "Removing orphaned image: $IMG (age: ${AGE}s)"
@@ -55,7 +60,8 @@ done
 for ISO in /var/lib/libvirt/images/e1e-runner*-seed.iso /var/lib/libvirt/images/ci-ubuntu-runner*-seed.iso; do
     [[ -f "$ISO" ]] || continue
     VM=$(basename "$ISO" -seed.iso)
-    if ! virsh list --name 2>/dev/null | grep -q "^${VM}$"; then
+    PIDFILE="/tmp/ch-pid-${VM}"
+    if [[ ! -f "$PIDFILE" ]]; then
         echo "Removing orphaned seed ISO: $ISO"
         rm -f "$ISO"
     fi

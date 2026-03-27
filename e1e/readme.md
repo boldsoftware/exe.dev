@@ -29,7 +29,7 @@ go test -v -run TestVanillaBox ./e1e
 
 ## On Linux
 
-The default behavior uses libvirt to start a VM,
+The default behavior uses cloud-hypervisor (via `ops/ci-vm.py`) to start a VM,
 and then uses that as the "ctr-host". However,
 if you set CTR_HOST, you can use that host as a VM.
 A special case is CTR_HOST=localhost

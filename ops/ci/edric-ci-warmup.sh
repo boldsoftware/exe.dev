@@ -112,27 +112,14 @@ for i in $(seq 0 7); do
         fi
     fi
 
-    # 3. VM snapshot (only needed for e1e runners, and only runner0 needs to
-    #    actually create it since the backing images are shared).
-    #    Use flock to prevent concurrent cron invocations from starting multiple
-    #    VMs when the snapshot doesn't exist yet (e.g., after midnight date rollover).
+    # 3. VM snapshot warmup: ci-vm.py creates snapshots on first boot,
+    #    so we trigger a create+destroy cycle to warm the cache.
     if [[ $i -eq 0 && -d "${USER_HOME}/_work/exe/exe/ops" ]]; then
-        # Clean up any VMs left from previous failed snapshot attempts.
-        for VM in $(virsh list --name 2>/dev/null | grep "^ci-ubuntu-${USER}" || true); do
-            echo "Destroying leftover snapshot VM: $VM"
-            virsh destroy "$VM" || true
-        done
-
         if flock -n /tmp/edric-ci-snapshot.lock \
-            su - "$USER" -c "cd ${USER_HOME}/_work/exe/exe && ./ops/ci-vm-snapshot.sh"; then
-            echo "Snapshot creation succeeded"
+            su - "$USER" -c "cd ${USER_HOME}/_work/exe/exe && python3 ./ops/ci-vm.py create | tee /tmp/ci-vm-warmup.log && python3 ./ops/ci-vm.py destroy \$(tail -n1 /tmp/ci-vm-warmup.log)"; then
+            echo "Snapshot warmup succeeded"
         else
-            echo "Snapshot creation failed or skipped (lock held)"
-            # Clean up any VMs left by the failed attempt.
-            for VM in $(virsh list --name 2>/dev/null | grep "^ci-ubuntu-${USER}" || true); do
-                echo "Destroying snapshot VM after failure: $VM"
-                virsh destroy "$VM" || true
-            done
+            echo "Snapshot warmup failed or skipped (lock held)"
         fi
     fi
 

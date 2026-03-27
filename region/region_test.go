@@ -63,7 +63,7 @@ func TestParseExeletRegion(t *testing.T) {
 		{"localhost", "dev", false},
 		{"127.0.0.1:8080", "dev", false},
 		{"127.0.0.1", "dev", false},
-		// CI runner (libvirt default network)
+		// CI runner (bridge network)
 		{"ubuntu@192.168.122.14", "ci", false},
 		{"ubuntu@192.168.122.14:8080", "ci", false},
 		{"tcp://ubuntu@192.168.122.14:44037", "ci", false},

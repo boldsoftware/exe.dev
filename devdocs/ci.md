@@ -51,7 +51,7 @@ runs-on: [self-hosted, libvirt, edric]  # only edric e1e runners
 
 ## How e1e Test Isolation Works
 
-Each e1e runner creates libvirt VMs for testing. Without isolation, the "destroy stale VMs" step would kill other runners' active VMs.
+Each e1e runner creates cloud-hypervisor VMs for testing (via `ops/ci-vm.py`). Without isolation, the "destroy stale VMs" step would kill other runners' active VMs.
 
 **Solution:** The `E1E_VM_PREFIX` environment variable controls the VM name prefix. Each runner's systemd service sets a unique prefix:
 
@@ -61,14 +61,9 @@ edric-1: E1E_VM_PREFIX=e1e-runner1  →  VMs named e1e-runner1-{testid}-{timesta
 ...
 ```
 
-The cleanup step in CI only destroys VMs matching the current runner's prefix:
-```bash
-sudo virsh list --name | grep -E "^${PREFIX}" | xargs -r -n 1 sudo virsh destroy
-```
+The cleanup step in CI only destroys VMs matching the current runner's prefix (by checking `/tmp/ch-pid-*` pidfiles).
 
 This is implemented in `e1e/testinfra/vm.go`. If `E1E_VM_PREFIX` is unset, it defaults to `ci-ubuntu` for backward compatibility.
-
-Similarly, `ops/ci-vm-env.sh` includes `$(whoami)` in the default VM name so that snapshot creation VMs don't collide between concurrent runners.
 
 ## `/tmp` Isolation
 
@@ -101,7 +96,7 @@ Snapshots are cached per-user at `$HOME/.cache/exedev/ci-vm-{hash}-{date}/`. The
 - `exeuntu` container image digest (changes when the base image updates)
 - Date in `YYYYMMDD` format (rotates daily)
 
-When the cache is cold, `ci-vm-snapshot.sh` creates a VM, lets it fully provision, then saves the disk state as a snapshot. Subsequent test runs create lightweight copy-on-write overlays from this snapshot.
+When the cache is cold, `ci-vm.py` creates a VM, lets it fully provision, then saves the disk state as a snapshot. Subsequent test runs create lightweight copy-on-write overlays from this snapshot.
 
 ## Cron Jobs
 
@@ -146,12 +141,12 @@ done
 
 ### Check running VMs
 ```bash
-ssh root@edric sudo virsh list --all
+ssh root@edric 'for f in /tmp/ch-pid-*; do [ -f "$f" ] && echo "$(basename $f): PID $(cat $f)"; done'
 ```
 
 ### Check resource usage during concurrent runs
 ```bash
-ssh root@edric 'uptime && free -h && sudo virsh list'
+ssh root@edric 'uptime && free -h'
 ```
 
 ### View runner logs
@@ -167,7 +162,7 @@ ssh root@edric tail -50 /var/log/edric-ci-cleanup.log
 
 ### Manually destroy all VMs for a runner
 ```bash
-ssh root@edric 'sudo virsh list --name | grep e1e-runner0 | xargs -r -n 1 sudo virsh destroy'
+ssh root@edric 'for f in /tmp/ch-pid-e1e-runner0-*; do [ -f "$f" ] && sudo kill $(cat $f) 2>/dev/null; sudo rm -f $f; done'
 ```
 
 ### Restart a runner service
@@ -189,7 +184,6 @@ The machine can comfortably handle 8 concurrent e1e runners + 8 concurrent non-e
 
 Everything comes back automatically:
 - All 16 systemd runner services are enabled
-- libvirtd is enabled
 - `/data` RAID0 is in fstab
 - `/var/lib/libvirt/images` tmpfs is in fstab (mounts empty on boot)
 
