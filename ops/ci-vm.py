@@ -720,7 +720,7 @@ def create_vm() -> Path:
     def clone_root():
         if snapshot and (not local_base.exists() or _needs_flatten(local_base)):
             tmp = Path(str(local_base) + ".converting")
-            lock = Path("/tmp") / (local_base.name + ".lock")
+            lock = Path("/tmp") / f"{local_base.name}.lock-{os.getenv('USER', 'ci')}"
             fd = open(lock, "w")
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX)
