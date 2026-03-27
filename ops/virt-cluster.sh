@@ -2051,7 +2051,6 @@ cmd_install_vnc() {
     local pkgs=(
         xvfb          # virtual framebuffer
         x11vnc        # VNC server
-        novnc         # browser-based VNC client
         websockify    # WebSocket-to-TCP proxy for noVNC
         openbox       # window manager (needed for keyboard focus)
         x11-xkb-utils # setxkbmap
@@ -2061,6 +2060,23 @@ cmd_install_vnc() {
     log "  Installing APT packages..."
     sudo apt-get update -qq
     sudo apt-get install -y -qq "${pkgs[@]}"
+
+    # noVNC v1.6.0 from GitHub (apt package is too old, no clipboard support)
+    local novnc_version="1.6.0"
+    local novnc_dir="/opt/novnc"
+    if [[ ! -f "${novnc_dir}/.version" ]] || [[ "$(cat "${novnc_dir}/.version")" != "${novnc_version}" ]]; then
+        log "  Installing noVNC v${novnc_version} from GitHub..."
+        local novnc_tar
+        novnc_tar=$(mktemp)
+        curl -fsSL "https://github.com/novnc/noVNC/archive/refs/tags/v${novnc_version}.tar.gz" -o "${novnc_tar}"
+        sudo rm -rf "${novnc_dir}"
+        sudo mkdir -p "${novnc_dir}"
+        sudo tar -xzf "${novnc_tar}" --strip-components=1 -C "${novnc_dir}"
+        echo "${novnc_version}" | sudo tee "${novnc_dir}/.version" >/dev/null
+        rm -f "${novnc_tar}"
+    else
+        log "  noVNC v${novnc_version} already installed"
+    fi
 
     # Google Chrome
     if ! command -v google-chrome-stable >/dev/null 2>&1; then
