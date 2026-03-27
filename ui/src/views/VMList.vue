@@ -195,14 +195,17 @@ const editorURL = computed(() => {
   const box = boxes.value.find(b => b.name === editorBoxName.value)
   if (!box) return ''
   const baseURL = box.vscodeURL || ''
+  // Extract connection string (e.g. boxname@host:port) from the vscode URL
+  const match = baseURL.match(/^vscode:\/\/vscode-remote\/ssh-remote\+([^/]+)/)
+  const connStr = match ? match[1] : box.name
   if (editorChoice.value === 'vscode') {
-    return baseURL.replace(/^vscode:\/\//, 'vscode://') + editorDir.value
+    return `vscode://vscode-remote/ssh-remote+${connStr}${editorDir.value}?windowId=_blank`
   } else if (editorChoice.value === 'cursor') {
-    return baseURL.replace(/^vscode:\/\//, 'cursor://') + editorDir.value
+    return `cursor://vscode-remote/ssh-remote+${connStr}${editorDir.value}?windowId=_blank`
   } else if (editorChoice.value === 'zed') {
-    return `zed://ssh/${box.name}${editorDir.value}`
+    return `zed://ssh/${connStr}${editorDir.value}`
   }
-  return baseURL + editorDir.value
+  return baseURL
 })
 
 const editors = [

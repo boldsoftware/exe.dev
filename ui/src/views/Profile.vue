@@ -773,9 +773,17 @@ async function toggleNewsletter(event: Event) {
   border-bottom: none;
 }
 
+.ssh-key-info {
+  min-width: 0;
+  flex: 1;
+}
+
 .ssh-key-name {
   font-weight: 500;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ssh-key-fp {
@@ -785,13 +793,28 @@ async function toggleNewsletter(event: Event) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 400px;
 }
 
 .ssh-key-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .ssh-key-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .ssh-key-info {
+    width: 100%;
+  }
+
+  .ssh-key-actions {
+    align-self: flex-end;
+  }
 }
 
 
