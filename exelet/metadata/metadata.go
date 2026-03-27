@@ -124,11 +124,19 @@ type integrationCacheKey struct {
 type integrationCacheEntry struct {
 	ok                  bool
 	target              *url.URL
+	routes              []routeEntry // prefix-based routing to alternate targets
 	headers             map[string]string
 	basicAuth           *basicAuthConfig
 	allowedPathPrefixes []string
 	gatewayPath         string // if set, forward to exed at this path instead of proxying externally
 	fetchedAt           time.Time
+}
+
+// routeEntry is a parsed prefix-based routing rule.
+type routeEntry struct {
+	pathPrefix  string
+	stripPrefix string
+	target      *url.URL
 }
 
 type basicAuthConfig struct {
@@ -676,12 +684,27 @@ func (s *Service) integrationHostName(host string) (string, string, bool) {
 	return "", "", false
 }
 
-// pathMatchesPrefixes reports whether the request path matches one of the
-// allowed prefixes. Only git-over-HTTP paths are allowed:
-//   - /owner/repo.git (exact, for git clone)
-//   - /owner/repo.git/ (trailing slash)
-//   - /owner/repo.git/anything (subpath, e.g. /info/refs, /git-upload-pack)
-func pathMatchesPrefixes(path string, prefixes []string) bool {
+// pathMatchesPrefixes reports whether the request path should be allowed
+// through the integration proxy's path filter.
+//
+// A path is allowed if it matches ANY of:
+//  1. A route — the path starts with some route's pathPrefix. Routes
+//     forward to a separate upstream where access is controlled by the
+//     scoped token, so no further path-level filtering is needed.
+//  2. A git-over-HTTP path — the path matches /prefix.git or
+//     /prefix.git/... for one of the allowed prefixes.
+//
+// This function only decides whether the path is allowed. The routing
+// decision (which target gets the request) is made separately in the
+// Rewrite function of handleIntegrationProxy.
+func pathMatchesPrefixes(path string, prefixes []string, routes []routeEntry) bool {
+	// Paths matching a route are allowed — the route target controls access.
+	for _, rt := range routes {
+		if strings.HasPrefix(path, rt.pathPrefix) {
+			return true
+		}
+	}
+	// Git paths: must match /owner/repo.git or /owner/repo.git/...
 	for _, prefix := range prefixes {
 		gitPrefix := prefix + ".git"
 		if path == gitPrefix || strings.HasPrefix(path, gitPrefix+"/") {
@@ -761,10 +784,11 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// If the config specifies allowed path prefixes, reject requests that
-	// don't match. This prevents proxying arbitrary paths (e.g., "/") to
-	// upstream services like github.com.
-	if len(cfg.allowedPathPrefixes) > 0 && !pathMatchesPrefixes(r.URL.Path, cfg.allowedPathPrefixes) {
+	// Path filter: reject requests that don't match an allowed prefix or
+	// route. This prevents proxying arbitrary paths (e.g., "/") to
+	// upstream services like github.com. Routes bypass this filter since
+	// they target a separate upstream with token-scoped access control.
+	if len(cfg.allowedPathPrefixes) > 0 && !pathMatchesPrefixes(r.URL.Path, cfg.allowedPathPrefixes, cfg.routes) {
 		integrationError(w, r, "path does not match any configured repository", http.StatusForbidden)
 		return
 	}
@@ -773,14 +797,30 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	proxy := &httputil.ReverseProxy{
 		Transport: s.integrationTransport(),
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(cfg.target)
-			if r.URL.Path != "" && r.URL.Path != "/" {
-				pr.Out.URL.Path = strings.TrimSuffix(cfg.target.Path, "/") + r.URL.Path
-			} else {
-				pr.Out.URL.Path = cfg.target.Path
+			reqPath := r.URL.Path
+
+			// Routing: check routes first (first match wins),
+			// then fall back to the default target.
+			routed := false
+			for _, rt := range cfg.routes {
+				if strings.HasPrefix(reqPath, rt.pathPrefix) {
+					pr.SetURL(rt.target)
+					pr.Out.URL.Path = strings.TrimPrefix(reqPath, rt.stripPrefix)
+					routed = true
+					break
+				}
 			}
+			if !routed {
+				pr.SetURL(cfg.target)
+				if r.URL.Path != "" && r.URL.Path != "/" {
+					pr.Out.URL.Path = strings.TrimSuffix(cfg.target.Path, "/") + r.URL.Path
+				} else {
+					pr.Out.URL.Path = cfg.target.Path
+				}
+			}
+
 			pr.Out.URL.RawQuery = r.URL.RawQuery
-			pr.Out.Host = cfg.target.Host
+			pr.Out.Host = pr.Out.URL.Host
 			for k, v := range cfg.headers {
 				pr.Out.Header.Set(k, v)
 			}
@@ -883,7 +923,12 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		Headers             map[string]string `json:"headers"`
 		BasicAuth           *basicAuthConfig  `json:"basic_auth"`
 		AllowedPathPrefixes []string          `json:"allowed_path_prefixes"`
-		GatewayPath         string            `json:"gateway_path"`
+		Routes              []struct {
+			PathPrefix  string `json:"path_prefix"`
+			StripPrefix string `json:"strip_prefix"`
+			Target      string `json:"target"`
+		} `json:"routes"`
+		GatewayPath string `json:"gateway_path"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.log.ErrorContext(ctx, "integration config: decode failed", "error", err)
@@ -908,7 +953,7 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		return negative
 	}
 
-	return &integrationCacheEntry{
+	entry := &integrationCacheEntry{
 		ok:                  true,
 		target:              targetURL,
 		headers:             result.Headers,
@@ -916,6 +961,21 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		allowedPathPrefixes: result.AllowedPathPrefixes,
 		fetchedAt:           time.Now(),
 	}
+
+	for _, rt := range result.Routes {
+		rtTarget, err := url.Parse(rt.Target)
+		if err != nil {
+			s.log.ErrorContext(ctx, "integration config: bad route target URL", "error", err, "target", rt.Target)
+			return negative
+		}
+		entry.routes = append(entry.routes, routeEntry{
+			pathPrefix:  rt.PathPrefix,
+			stripPrefix: rt.StripPrefix,
+			target:      rtTarget,
+		})
+	}
+
+	return entry
 }
 
 // integrationTransport returns an http.Transport with a dial guard that

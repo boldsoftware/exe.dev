@@ -508,6 +508,92 @@ func TestMetadataServiceIntegrationProxyPathFilter(t *testing.T) {
 	}
 }
 
+func TestMetadataServiceIntegrationProxyRoutes(t *testing.T) {
+	// Fake exed returns a GitHub-like config with routes pointing to
+	// a real public host. We can't use a local httptest server because
+	// the integration transport blocks loopback. Instead, we verify that
+	// routed paths pass the path filter (not our 403), and blocked paths don't.
+	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_/integration-config" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":                    true,
+			"target":                "https://github.com",
+			"basic_auth":            map[string]string{"user": "x-access-token", "pass": "ghs_testtoken"},
+			"allowed_path_prefixes": []string{"/owner/repo"},
+			"routes": []map[string]string{
+				{"path_prefix": "/api/v3/", "strip_prefix": "/api/v3", "target": "https://api.github.com"},
+				{"path_prefix": "/api/", "strip_prefix": "/api", "target": "https://api.github.com"},
+			},
+		})
+	}))
+	defer fakeExed.Close()
+
+	log := slog.Default()
+	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", "", true, nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	if err := svc.Start(context.Background()); err != nil {
+		t.Fatalf("failed to start service: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	const pathFilterMsg = "path does not match any configured repository"
+
+	// Routed paths should pass path filter.
+	allowedAPIPaths := []string{
+		"/api/v3/repos/owner/repo",
+		"/api/v3/repos/owner/repo/pulls",
+		"/api/graphql",
+		"/api/v3/rate_limit",
+	}
+	for _, path := range allowedAPIPaths {
+		t.Run("allowed:"+path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://myghint.int.exe.cloud"+path, nil)
+			req.Host = "myghint.int.exe.cloud"
+			req.RemoteAddr = "10.42.0.2:12345"
+			rr := httptest.NewRecorder()
+			svc.server.Handler.ServeHTTP(rr, req)
+
+			body := rr.Body.String()
+			if strings.Contains(body, pathFilterMsg) {
+				t.Errorf("path %s: blocked by path filter (should have been proxied)", path)
+			}
+		})
+	}
+
+	// Git paths should also pass the filter.
+	t.Run("allowed:/owner/repo.git/info/refs", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://myghint.int.exe.cloud/owner/repo.git/info/refs", nil)
+		req.Host = "myghint.int.exe.cloud"
+		req.RemoteAddr = "10.42.0.2:12345"
+		rr := httptest.NewRecorder()
+		svc.server.Handler.ServeHTTP(rr, req)
+
+		body := rr.Body.String()
+		if strings.Contains(body, pathFilterMsg) {
+			t.Errorf("git path blocked by path filter")
+		}
+	})
+
+	// Non-API, non-git paths should still be blocked.
+	t.Run("blocked:/other/path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://myghint.int.exe.cloud/other/path", nil)
+		req.Host = "myghint.int.exe.cloud"
+		req.RemoteAddr = "10.42.0.2:12345"
+		rr := httptest.NewRecorder()
+		svc.server.Handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("got status %d, want 403", rr.Code)
+		}
+	})
+}
+
 func TestMetadataServiceIntegrationProxyNotFound(t *testing.T) {
 	// Fake exed returns ok=false (integration not found).
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -641,7 +727,7 @@ func TestPathMatchesPrefixes(t *testing.T) {
 		"/org/other-repo.git/info/refs",
 	}
 	for _, path := range allowed {
-		if !pathMatchesPrefixes(path, prefixes) {
+		if !pathMatchesPrefixes(path, prefixes, nil) {
 			t.Errorf("pathMatchesPrefixes(%q, ...) = false, want true", path)
 		}
 	}
@@ -660,7 +746,7 @@ func TestPathMatchesPrefixes(t *testing.T) {
 		"/owner/repo.gitfoo",
 	}
 	for _, path := range blocked {
-		if pathMatchesPrefixes(path, prefixes) {
+		if pathMatchesPrefixes(path, prefixes, nil) {
 			t.Errorf("pathMatchesPrefixes(%q, ...) = true, want false", path)
 		}
 	}
@@ -668,11 +754,46 @@ func TestPathMatchesPrefixes(t *testing.T) {
 
 func TestPathMatchesPrefixesEmpty(t *testing.T) {
 	// Empty prefixes should match nothing.
-	if pathMatchesPrefixes("/anything", nil) {
+	if pathMatchesPrefixes("/anything", nil, nil) {
 		t.Error("nil prefixes should match nothing")
 	}
-	if pathMatchesPrefixes("/anything", []string{}) {
+	if pathMatchesPrefixes("/anything", []string{}, nil) {
 		t.Error("empty prefixes should match nothing")
+	}
+}
+
+func TestPathMatchesPrefixesWithRoutes(t *testing.T) {
+	prefixes := []string{"/owner/repo", "/org/other-repo"}
+	routes := []routeEntry{
+		{pathPrefix: "/api/v3/", stripPrefix: "/api/v3", target: nil},
+		{pathPrefix: "/api/", stripPrefix: "/api", target: nil},
+	}
+
+	// Paths matching routes should be allowed.
+	allowedAPI := []string{
+		"/api/v3/repos/owner/repo",
+		"/api/v3/repos/owner/repo/pulls",
+		"/api/v3/repos/owner/repo/issues/1",
+		"/api/graphql",
+		"/api/v3/user",
+		"/api/v3/rate_limit",
+	}
+	for _, path := range allowedAPI {
+		if !pathMatchesPrefixes(path, prefixes, routes) {
+			t.Errorf("pathMatchesPrefixes(%q, ..., routes) = false, want true", path)
+		}
+	}
+
+	// Same paths should NOT be allowed without routes.
+	for _, path := range allowedAPI {
+		if pathMatchesPrefixes(path, prefixes, nil) {
+			t.Errorf("pathMatchesPrefixes(%q, ..., nil) = true, want false", path)
+		}
+	}
+
+	// Git paths should still work with routes configured.
+	if !pathMatchesPrefixes("/owner/repo.git/info/refs", prefixes, routes) {
+		t.Error("git path should still be allowed with routes")
 	}
 }
 

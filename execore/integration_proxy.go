@@ -22,6 +22,37 @@ import (
 // integrationConfigResponse is the JSON returned by /_/integration-config.
 // It returns a generic proxy configuration so the exelet can proxy the
 // request without any type-specific logic.
+//
+// The exelet evaluates an incoming request in this order:
+//
+//  1. AllowedPathPrefixes + Routes filtering. If AllowedPathPrefixes is
+//     non-empty, the request path must match at least one of:
+//     (a) a route's PathPrefix (from Routes), OR
+//     (b) a git-over-HTTP path derived from a prefix (/prefix.git/...).
+//     Requests that match neither are rejected with 403.
+//     When AllowedPathPrefixes is empty, all paths are allowed.
+//
+//  2. Routing. Routes are checked in order; the first route whose
+//     PathPrefix matches wins. The route's StripPrefix is removed
+//     from the path and the request is forwarded to the route's Target.
+//     If no route matches, the request goes to the default Target.
+//
+//  3. Credentials. Headers and BasicAuth are applied to every proxied
+//     request regardless of which target it was routed to.
+//
+// For example, a GitHub integration returns:
+//
+//	Target:              "https://github.com"       (git operations)
+//	AllowedPathPrefixes: ["/owner/repo"]
+//	Routes: [
+//	  {PathPrefix: "/api/v3/", StripPrefix: "/api/v3", Target: "https://api.github.com"},
+//	  {PathPrefix: "/api/",    StripPrefix: "/api",    Target: "https://api.github.com"},
+//	]
+//	BasicAuth: {User: "x-access-token", Pass: "<token>"}
+//
+// This routes git clone (/owner/repo.git/...) to github.com,
+// REST API (/api/v3/repos/...) and GraphQL (/api/graphql) to
+// api.github.com, and blocks everything else via the path filter.
 type integrationConfigResponse struct {
 	OK                  bool              `json:"ok"`
 	Target              string            `json:"target,omitempty"`
@@ -29,10 +60,27 @@ type integrationConfigResponse struct {
 	BasicAuth           *basicAuthConfig  `json:"basic_auth,omitempty"`
 	AllowedPathPrefixes []string          `json:"allowed_path_prefixes,omitempty"`
 
+	// Routes defines prefix-based routing to alternate targets.
+	// Checked in order; first match wins. See type-level doc for details.
+	Routes []proxyRoute `json:"routes,omitempty"`
+
 	// GatewayPath, when set, tells the exelet to forward the request to
 	// exed at this path (with X-Exedev-Box) instead of proxying to an
 	// external target.
 	GatewayPath string `json:"gateway_path,omitempty"`
+}
+
+// proxyRoute defines a prefix-based routing rule for integration proxying.
+type proxyRoute struct {
+	// PathPrefix is the request path prefix to match (e.g. "/api/v3/").
+	PathPrefix string `json:"path_prefix"`
+
+	// StripPrefix is removed from the front of the path before forwarding.
+	// For example, StripPrefix="/api/v3" turns "/api/v3/repos/x" into "/repos/x".
+	StripPrefix string `json:"strip_prefix"`
+
+	// Target is the base URL to forward matching requests to.
+	Target string `json:"target"`
 }
 
 type basicAuthConfig struct {
@@ -216,6 +264,10 @@ func (s *Server) buildGitHubProxyConfig(ctx context.Context, ownerUserID, config
 		OK:                  true,
 		Target:              "https://github.com",
 		AllowedPathPrefixes: prefixes,
+		Routes: []proxyRoute{
+			{PathPrefix: "/api/v3/", StripPrefix: "/api/v3", Target: "https://api.github.com"},
+			{PathPrefix: "/api/", StripPrefix: "/api", Target: "https://api.github.com"},
+		},
 		BasicAuth: &basicAuthConfig{
 			User: "x-access-token",
 			Pass: token,
