@@ -24,7 +24,6 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/googleoauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/sqlite"
 	"exe.dev/sshkey"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
@@ -1531,12 +1530,12 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 		case "trial":
 			basePlan = entitlement.CategoryTrial
 			// Trial ends in 1 month
-			t := sqlite.NormalizeTime(time.Now().AddDate(0, 1, 0))
+			t := time.Now().AddDate(0, 1, 0)
 			trialEndsAt = &t
 		}
 
 		if basePlan != "" {
-			now := sqlite.NormalizeTime(time.Now())
+			now := time.Now()
 			changedBy := "invite:" + inviteCode.Code
 			if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 				AccountID:      acct.ID,

@@ -44,7 +44,6 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
 	"exe.dev/region"
-	"exe.dev/sqlite"
 	"exe.dev/stage"
 	"tailscale.com/client/local"
 )
@@ -2530,7 +2529,7 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		accountID = acct.ID
 	}
 
-	now := sqlite.NormalizeTime(time.Now())
+	now := time.Now()
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		// Create account if it doesn't exist yet.
@@ -2660,8 +2659,8 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := sqlite.NormalizeTime(time.Now())
-	trialEnd := sqlite.NormalizeTime(now.AddDate(0, 0, days))
+	now := time.Now().UTC().Truncate(time.Second)
+	trialEnd := now.AddDate(0, 0, days)
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		// Re-enable VM creation if disabled.
@@ -2761,7 +2760,7 @@ func (s *Server) handleDebugAssignEnterprise(w http.ResponseWriter, r *http.Requ
 		accountID = acct.ID
 	}
 
-	now := sqlite.NormalizeTime(time.Now())
+	now := time.Now()
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{

@@ -11,7 +11,6 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/oidcauth"
-	"exe.dev/sqlite"
 )
 
 // getTeamSSOProviderForUser returns the OIDC provider config for a user's team.
@@ -545,7 +544,7 @@ func (s *Server) handleOAuthOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		Provider:      oidcauth.ProviderName,
 		Email:         "",
 		IsNewUser:     true,
-		ExpiresAt:     sqlite.NormalizeTime(time.Now().Add(oidcauth.StateExpiry)),
+		ExpiresAt:     time.Now().Add(oidcauth.StateExpiry),
 		SsoProviderID: params.ssoProviderID,
 	}
 

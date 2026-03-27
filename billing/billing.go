@@ -669,7 +669,7 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 		err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
 			AccountID:     sub.Customer.ID,
 			EventType:     eventType,
-			EventAt:       sqlite.NormalizeTime(eventAt),
+			EventAt:       eventAt,
 			StripeEventID: &stripeEventID,
 		})
 		if err != nil {
@@ -730,22 +730,14 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 		return nil
 	}
 
-	normalizedAt := sqlite.NormalizeTime(eventAt)
 	changedBy := "stripe:event"
-
-	// Normalize trialEnd for SQLite storage if present.
-	var normalizedTrialEnd *time.Time
-	if trialEnd != nil {
-		t := sqlite.NormalizeTime(*trialEnd)
-		normalizedTrialEnd = &t
-	}
 
 	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID:      accountID,
 			PlanID:         newPlanID,
-			At:             normalizedAt,
-			TrialExpiresAt: normalizedTrialEnd,
+			At:             eventAt,
+			TrialExpiresAt: trialEnd,
 			ChangedBy:      changedBy,
 		})
 	}); err != nil {
@@ -1122,7 +1114,6 @@ func (m *Manager) ListSubscribersByPlanCategory(ctx context.Context, planID stri
 // transaction. Returns the number of accounts migrated.
 func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
 	now := time.Now().UTC()
-	normalizedAt := sqlite.NormalizeTime(now)
 	changedBy := fmt.Sprintf("admin:migrate:%s->%s", fromPlanID, toPlanID)
 
 	// Collect account IDs first.
@@ -1138,7 +1129,7 @@ func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID 
 	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		if err := q.CloseAccountPlansByPlanID(ctx, exedb.CloseAccountPlansByPlanIDParams{
 			PlanID:  fromPlanID,
-			EndedAt: &normalizedAt,
+			EndedAt: &now,
 		}); err != nil {
 			return fmt.Errorf("close old plans: %w", err)
 		}
@@ -1146,7 +1137,7 @@ func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID 
 			if err := q.InsertAccountPlanMigration(ctx, exedb.InsertAccountPlanMigrationParams{
 				AccountID: accountID,
 				PlanID:    toPlanID,
-				StartedAt: normalizedAt,
+				StartedAt: now,
 				ChangedBy: &changedBy,
 			}); err != nil {
 				return fmt.Errorf("insert new plan for %s: %w", accountID, err)

@@ -35,7 +35,6 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
-	"exe.dev/sqlite"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
 )
@@ -478,7 +477,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		now := sqlite.NormalizeTime(time.Now())
+		now := time.Now()
 		var accountID string
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 			// Fetch the user's canonical account (created at signup).
@@ -700,7 +699,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	// Create user + account in transaction.
 	// The account ID comes from the Stripe checkout session (billingID) — it was
 	// generated when the checkout session was created and is already the Stripe customer ID.
-	now := sqlite.NormalizeTime(time.Now())
+	now := time.Now()
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error

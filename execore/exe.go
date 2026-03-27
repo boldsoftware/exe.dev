@@ -749,14 +749,14 @@ var bootCleanups = []struct {
 	{
 		name: "old checkout params",
 		fn: func(ctx context.Context, _ *slog.Logger, db *sqlite.DB) error {
-			cutoff := sqlite.NormalizeTime(time.Now().Add(-48 * time.Hour))
+			cutoff := time.Now().Add(-48 * time.Hour)
 			return exedb.WithTx1(db, ctx, (*exedb.Queries).DeleteOldCheckoutParams, cutoff)
 		},
 	},
 	{
 		name: "expired exe1 tokens",
 		fn: func(ctx context.Context, _ *slog.Logger, db *sqlite.DB) error {
-			cutoff := sqlite.NormalizeTime(time.Now())
+			cutoff := time.Now()
 			return exedb.WithTx1(db, ctx, (*exedb.Queries).DeleteExpiredExe1Tokens, cutoff)
 		},
 	},
@@ -3187,7 +3187,7 @@ func createAccountWithBasicPlan(ctx context.Context, queries *exedb.Queries, use
 	}); err != nil {
 		return "", fmt.Errorf("create account: %w", err)
 	}
-	now := sqlite.NormalizeTime(time.Now())
+	now := time.Now()
 	changedBy := "system:signup"
 	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 		AccountID: accountID,

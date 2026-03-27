@@ -31,22 +31,6 @@ import (
 	sqlite "modernc.org/sqlite"
 )
 
-const (
-	// Time10 is the sqlite-compatible time format with nanosecond
-	// precision and time zone offset.
-	Time10 = "2006-01-02 15:04:05.999999999-07:00"
-)
-
-// NormalizeTime strips the monotonic clock reading from a time.Time and converts to UTC.
-// This ensures consistent storage in SQLite and proper timestamp comparisons.
-// The modernc.org/sqlite driver converts time.Time to string using time.String(),
-// which includes the monotonic clock reading (m=+...). We normalize to UTC and
-// strip the monotonic portion to ensure lexicographical comparisons work correctly.
-func NormalizeTime(t time.Time) time.Time {
-	// Round(0) strips the monotonic clock reading
-	return t.UTC().Round(0)
-}
-
 func init() {
 	// parse_timestamp(text) -> normalized UTC timestamp
 	// Parses various timestamp formats (including Go's time.String() format)

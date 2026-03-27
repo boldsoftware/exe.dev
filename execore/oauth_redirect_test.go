@@ -14,7 +14,6 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/googleoauth"
-	"exe.dev/sqlite"
 )
 
 // fakeGoogleTokenServer returns an httptest.Server that mimics Google's token endpoint.
@@ -80,7 +79,7 @@ func TestGoogleOAuthNewUserRedirect(t *testing.T) {
 				Email:       email,
 				IsNewUser:   true,
 				RedirectUrl: &redirectURL,
-				ExpiresAt:   sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 			})
 		})
 		if err != nil {
@@ -124,7 +123,7 @@ func TestGoogleOAuthNewUserRedirect(t *testing.T) {
 				ReturnHost:   &returnHost,
 				RedirectUrl:  &redirectURL,
 				LoginWithExe: true,
-				ExpiresAt:    sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+				ExpiresAt:    time.Now().Add(5 * time.Minute),
 			})
 		})
 		if err != nil {
@@ -168,7 +167,7 @@ func TestGoogleOAuthNewUserRedirect(t *testing.T) {
 				Provider:  googleoauth.ProviderName,
 				Email:     email3,
 				IsNewUser: true,
-				ExpiresAt: sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+				ExpiresAt: time.Now().Add(5 * time.Minute),
 			})
 		})
 		if err != nil {
@@ -225,7 +224,7 @@ func TestGoogleOAuthExistingUserRedirect(t *testing.T) {
 				UserID:      &userID,
 				IsNewUser:   false,
 				RedirectUrl: &redirectURL,
-				ExpiresAt:   sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 			})
 		})
 		if err != nil {
@@ -257,7 +256,7 @@ func TestGoogleOAuthExistingUserRedirect(t *testing.T) {
 				Email:     email,
 				UserID:    &userID,
 				IsNewUser: false,
-				ExpiresAt: sqlite.NormalizeTime(time.Now().Add(5 * time.Minute)),
+				ExpiresAt: time.Now().Add(5 * time.Minute),
 			})
 		})
 		if err != nil {

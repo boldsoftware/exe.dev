@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"exe.dev/exedb"
-	exesqlite "exe.dev/sqlite"
 	"exe.dev/tslog"
 )
 
@@ -36,7 +35,7 @@ func TestSyncAccountPlanTrialExpiresAt(t *testing.T) {
 	if plan.TrialExpiresAt == nil {
 		t.Fatal("trial_expires_at is nil, expected non-nil for trialing subscription")
 	}
-	if !plan.TrialExpiresAt.Equal(exesqlite.NormalizeTime(trialEnd)) {
+	if !plan.TrialExpiresAt.Equal(trialEnd) {
 		t.Errorf("trial_expires_at = %v, want %v", *plan.TrialExpiresAt, trialEnd)
 	}
 	if plan.ChangedBy == nil || *plan.ChangedBy != "stripe:event" {
@@ -132,8 +131,8 @@ func TestSyncAccountPlanInviteTrialUnaffected(t *testing.T) {
 	createTestAccount(t, db, accountID, userID)
 
 	// Simulate an invite-code trial by inserting directly with changed_by=invite:XYZ.
-	now := exesqlite.NormalizeTime(time.Now().UTC().Truncate(time.Second))
-	inviteTrialEnd := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second))
+	now := time.Now().UTC().Truncate(time.Second)
+	inviteTrialEnd := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second)
 	changedBy := "invite:TESTCODE"
 	err := exedb.WithTx1(db, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID:      accountID,
@@ -159,7 +158,7 @@ func TestSyncAccountPlanInviteTrialUnaffected(t *testing.T) {
 	}
 
 	// SetTrialExpiresAt should NOT modify invite trials (it filters by changed_by='stripe:event').
-	newExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(5 * 24 * time.Hour).Truncate(time.Second))
+	newExpiry := time.Now().UTC().Add(5 * 24 * time.Hour).Truncate(time.Second)
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).SetTrialExpiresAt, exedb.SetTrialExpiresAtParams{
 		AccountID:      accountID,
 		TrialExpiresAt: &newExpiry,
@@ -192,7 +191,7 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 	createTestAccount(t, db, stripeAcct, "usr_stripe_bf")
 	createTestAccount(t, db, inviteAcct, "usr_invite_bf")
 
-	now := exesqlite.NormalizeTime(time.Now().UTC().Truncate(time.Second))
+	now := time.Now().UTC().Truncate(time.Second)
 
 	// Insert a Stripe trial plan without trial_expires_at (the pre-fix state).
 	stripeChanged := "stripe:event"
@@ -208,7 +207,7 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 
 	// Insert an invite trial plan with trial_expires_at set.
 	inviteChanged := "invite:CODE123"
-	inviteExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second))
+	inviteExpiry := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second)
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID:      inviteAcct,
 		PlanID:         "trial:monthly:20260101",
@@ -221,7 +220,7 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 	}
 
 	// Backfill: set trial_expires_at on the Stripe plan.
-	backfillExpiry := exesqlite.NormalizeTime(time.Now().UTC().Add(10 * 24 * time.Hour).Truncate(time.Second))
+	backfillExpiry := time.Now().UTC().Add(10 * 24 * time.Hour).Truncate(time.Second)
 	err = exedb.WithTx1(db, ctx, (*exedb.Queries).SetTrialExpiresAt, exedb.SetTrialExpiresAtParams{
 		AccountID:      stripeAcct,
 		TrialExpiresAt: &backfillExpiry,

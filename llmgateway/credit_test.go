@@ -52,7 +52,7 @@ func createBillingAccount(t *testing.T, db *sqlite.DB, userID, accountID string,
 		}
 		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
 			CreatedBy: userID,
-			EventAt:   sqlite.NormalizeTime(now),
+			EventAt:   now,
 		})
 	})
 	if err != nil {

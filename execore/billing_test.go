@@ -2220,7 +2220,7 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	// Step 2: Simulate the subscription poller racing ahead.
 	// The poller inserts an orphaned account_plans row (no accounts row exists yet,
 	// but SQLite FK enforcement is off so this succeeds).
-	now := sqlite.NormalizeTime(time.Now())
+	now := time.Now()
 	changedBy := "stripe:event"
 	err = withTx1(server, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: billingID,

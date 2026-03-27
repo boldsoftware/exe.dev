@@ -7,36 +7,6 @@ import (
 	"time"
 )
 
-func TestNormalizeTime(t *testing.T) {
-	// Create a time with monotonic clock
-	t1 := time.Now()
-
-	// Normalize it
-	t2 := NormalizeTime(t1)
-
-	// Should be equal in wall clock time
-	if !t1.Equal(t2) {
-		t.Errorf("NormalizeTime changed the time: got %v, want %v", t2, t1)
-	}
-
-	// Should be in UTC
-	if t2.Location() != time.UTC {
-		t.Errorf("NormalizeTime not in UTC: got %v", t2.Location())
-	}
-
-	// String representation should not have monotonic clock (m=+...)
-	s := t2.String()
-	if len(s) > 50 && len(s) > len(t1.String()) {
-		t.Errorf("NormalizeTime string suspiciously long: %q", s)
-	}
-	// More importantly, check it doesn't contain the monotonic marker
-	for i := 0; i < len(s)-2; i++ {
-		if s[i:i+2] == "m=" {
-			t.Errorf("NormalizeTime has monotonic clock: %q", s)
-		}
-	}
-}
-
 func TestParseTimestampFunction(t *testing.T) {
 	dsn := filepath.Join(t.TempDir(), "test.db")
 	p, err := New(dsn, 2)
@@ -111,33 +81,35 @@ func TestBillingEventStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Insert two events with different timestamps
+	// Insert two events with different timestamps.
+	// The driver formats these as "YYYY-MM-DD HH:MM:SS" in UTC
+	// thanks to _time_format=datetime&_timezone=UTC in the DSN.
 	t1 := time.Date(2026, 1, 24, 15, 28, 22, 0, time.FixedZone("PST", -8*3600))
 	t2 := time.Date(2026, 1, 24, 15, 28, 48, 0, time.FixedZone("PST", -8*3600))
 
 	err = p.Tx(context.Background(), func(ctx context.Context, tx *Tx) error {
-		// Insert with normalized times
 		_, err := tx.Conn().ExecContext(ctx, "INSERT INTO billing_events (account_id, event_type, event_at) VALUES (?, ?, ?)",
-			"acct1", "active", NormalizeTime(t1))
+			"acct1", "active", t1)
 		if err != nil {
 			return err
 		}
 		_, err = tx.Conn().ExecContext(ctx, "INSERT INTO billing_events (account_id, event_type, event_at) VALUES (?, ?, ?)",
-			"acct1", "canceled", NormalizeTime(t2))
+			"acct1", "canceled", t2)
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Query with parse_timestamp to get the latest
+	// Query ordering by event_at directly — no parse_timestamp needed
+	// since the driver writes canonical format.
 	var eventType string
 	err = p.Rx(context.Background(), func(ctx context.Context, rx *Rx) error {
 		return rx.QueryRow(`
 			SELECT event_type
 			FROM billing_events
 			WHERE account_id = ?
-			ORDER BY parse_timestamp(event_at) DESC
+			ORDER BY event_at DESC
 			LIMIT 1
 		`, "acct1").Scan(&eventType)
 	})
