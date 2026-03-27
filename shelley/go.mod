@@ -91,7 +91,7 @@ require (
 	github.com/gobwas/ws v1.4.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
-	modernc.org/sqlite v1.46.2
+	modernc.org/sqlite v1.48.0
 )
 
 tool (

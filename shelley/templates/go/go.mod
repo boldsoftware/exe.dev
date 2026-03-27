@@ -2,7 +2,7 @@ module srv.exe.dev
 
 go 1.26.1
 
-require modernc.org/sqlite v1.46.2
+require modernc.org/sqlite v1.48.0
 
 require (
 	cel.dev/expr v0.24.0 // indirect
