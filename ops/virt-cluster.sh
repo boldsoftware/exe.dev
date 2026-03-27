@@ -108,8 +108,14 @@ cleanup_jobs() {
 trap 'cleanup_jobs; _restore_tty' EXIT
 trap 'cleanup_jobs; _restore_tty; exit 130' INT TERM
 
-log() { _restore_tty; echo "==> $*"; }
-warn() { _restore_tty; echo "WARN: $*" >&2; }
+log() {
+    _restore_tty
+    echo "==> $*"
+}
+warn() {
+    _restore_tty
+    echo "WARN: $*" >&2
+}
 die() {
     _restore_tty
     echo "ERROR: $*" >&2
@@ -163,17 +169,17 @@ iso_tool() {
 vm_static_ip() {
     local name="$1"
     case "$name" in
-        *-exed)                echo "192.168.122.10" ;;
-        exeprox-local-dev-01)  echo "192.168.122.20" ;;
-        exeprox-local-dev-02)  echo "192.168.122.21" ;;
-        exeprox-local-dev-03)  echo "192.168.122.22" ;;
-        exeprox-local-dev-04)  echo "192.168.122.23" ;;
-        exelet-local-dev-01)   echo "192.168.122.30" ;;
-        exelet-local-dev-02)   echo "192.168.122.31" ;;
-        exelet-local-dev-03)   echo "192.168.122.32" ;;
-        exelet-local-dev-04)   echo "192.168.122.33" ;;
-        *-mon)                 echo "192.168.122.50" ;;
-        *)                     die "No static IP for unknown VM: $name" ;;
+    *-exed) echo "192.168.122.10" ;;
+    exeprox-local-dev-01) echo "192.168.122.20" ;;
+    exeprox-local-dev-02) echo "192.168.122.21" ;;
+    exeprox-local-dev-03) echo "192.168.122.22" ;;
+    exeprox-local-dev-04) echo "192.168.122.23" ;;
+    exelet-local-dev-01) echo "192.168.122.30" ;;
+    exelet-local-dev-02) echo "192.168.122.31" ;;
+    exelet-local-dev-03) echo "192.168.122.32" ;;
+    exelet-local-dev-04) echo "192.168.122.33" ;;
+    *-mon) echo "192.168.122.50" ;;
+    *) die "No static IP for unknown VM: $name" ;;
     esac
 }
 
@@ -339,9 +345,9 @@ delete_tap() {
 
 # ── VM lifecycle (cloud-hypervisor) ──────────────────────────────────────────
 
-vm_pid_file()  { echo "${VM_STATE_DIR}/$1.pid"; }
+vm_pid_file() { echo "${VM_STATE_DIR}/$1.pid"; }
 vm_sock_file() { echo "${VM_STATE_DIR}/$1.sock"; }
-vm_log_file()  { echo "${VM_STATE_DIR}/$1.log"; }
+vm_log_file() { echo "${VM_STATE_DIR}/$1.log"; }
 
 vm_exists() {
     [[ -f "$(vm_pid_file "$1")" ]]
@@ -360,7 +366,7 @@ get_vm_ip() {
     vm_static_ip "$name"
 }
 
-host_ch()     { echo "${CACHE_DIR}/bin/cloud-hypervisor"; }
+host_ch() { echo "${CACHE_DIR}/bin/cloud-hypervisor"; }
 host_ch_remote() { echo "${CACHE_DIR}/bin/ch-remote"; }
 
 create_vm() {
@@ -435,7 +441,7 @@ create_vm() {
         --net "tap=${tap},mac=${mac}" \
         --serial "file=${log_file}" \
         --console off \
-        >> "${log_file}" 2>&1 &
+        >>"${log_file}" 2>&1 &
 
     local sudo_pid=$!
     disown "$sudo_pid"
@@ -451,7 +457,7 @@ create_vm() {
     if [[ -z "$ch_pid" ]]; then
         ch_pid="$sudo_pid"
     fi
-    echo "$ch_pid" > "$(vm_pid_file "$name")"
+    echo "$ch_pid" >"$(vm_pid_file "$name")"
 
     log "VM ${name} started (PID ${ch_pid}, IP $(vm_static_ip "$name"))"
 }
@@ -883,7 +889,7 @@ ensure_base_image() {
         # Find the Linux extended boot partition (type "Linux extended boot")
         # and mount it to extract the kernel and initrd.
         local part_info
-        part_info=$(sudo sfdisk -J "${BASE_IMG}" | \
+        part_info=$(sudo sfdisk -J "${BASE_IMG}" |
             python3 -c 'import json,sys; p=next(p for p in json.load(sys.stdin)["partitiontable"]["partitions"] if p.get("type","") == "BC13C2FF-59E6-4262-A352-B275FD6F7172"); print(p["start"], p["size"])')
         local start_sector size_sectors
         start_sector="${part_info%% *}"
@@ -891,8 +897,8 @@ ensure_base_image() {
 
         local loop_dev
         loop_dev=$(sudo losetup --find --show \
-            --offset $(( start_sector * 512 )) \
-            --sizelimit $(( size_sectors * 512 )) \
+            --offset $((start_sector * 512)) \
+            --sizelimit $((size_sectors * 512)) \
             "${BASE_IMG}")
 
         local mnt="${WORKDIR}/boot-mnt"
@@ -1981,15 +1987,15 @@ cmd_install_deps() {
 
     # APT packages
     local pkgs=(
-        qemu-utils        # qemu-img
-        dnsmasq           # DHCP server for bridge network
-        genisoimage       # cloud-init seed ISO creation
-        sqlite3           # database management
-        socat             # port forwarding
-        iproute2          # ip command for bridge/tap management
-        iptables          # NAT rules
-        curl              # downloading base images
-        openssh-client    # ssh/scp to VMs
+        qemu-utils     # qemu-img
+        dnsmasq        # DHCP server for bridge network
+        genisoimage    # cloud-init seed ISO creation
+        sqlite3        # database management
+        socat          # port forwarding
+        iproute2       # ip command for bridge/tap management
+        iptables       # NAT rules
+        curl           # downloading base images
+        openssh-client # ssh/scp to VMs
     )
 
     log "  Installing APT packages..."
@@ -2043,13 +2049,13 @@ cmd_install_vnc() {
 
     # APT packages
     local pkgs=(
-        xvfb              # virtual framebuffer
-        x11vnc            # VNC server
-        novnc             # browser-based VNC client
-        websockify        # WebSocket-to-TCP proxy for noVNC
-        openbox           # window manager (needed for keyboard focus)
-        x11-xkb-utils     # setxkbmap
-        xdotool           # X11 automation
+        xvfb          # virtual framebuffer
+        x11vnc        # VNC server
+        novnc         # browser-based VNC client
+        websockify    # WebSocket-to-TCP proxy for noVNC
+        openbox       # window manager (needed for keyboard focus)
+        x11-xkb-utils # setxkbmap
+        xdotool       # X11 automation
     )
 
     log "  Installing APT packages..."
@@ -2060,10 +2066,10 @@ cmd_install_vnc() {
     if ! command -v google-chrome-stable >/dev/null 2>&1; then
         log "  Installing Google Chrome..."
         if ! grep -q "dl.google.com/linux/chrome" /etc/apt/sources.list.d/*.list 2>/dev/null; then
-            curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
-                | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
-            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
-                | sudo tee /etc/apt/sources.list.d/google-chrome.list >/dev/null
+            curl -fsSL https://dl.google.com/linux/linux_signing_key.pub |
+                sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" |
+                sudo tee /etc/apt/sources.list.d/google-chrome.list >/dev/null
             sudo apt-get update -qq
         fi
         sudo apt-get install -y -qq google-chrome-stable
