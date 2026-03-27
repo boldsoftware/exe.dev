@@ -489,18 +489,13 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 		return nil, nil
 	}
 
-	row, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardAndAnycastNetworkByBoxName, boxName)
+	ipShard, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardByBoxName, boxName)
 	if err != nil {
 		// No record found
 		return nil, nil
 	}
 
-	var shardSub string
-	if row.AnycastNetwork != nil && *row.AnycastNetwork == 1 {
-		shardSub = publicips.LatitudeShardSub(int(row.IPShard))
-	} else {
-		shardSub = publicips.NetActuateShardSub(int(row.IPShard))
-	}
+	shardSub := publicips.NetActuateShardSub(int(ipShard))
 	target := shardSub + "." + domain + "."
 
 	return []dns.RR{

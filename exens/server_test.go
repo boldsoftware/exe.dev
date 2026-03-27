@@ -1076,109 +1076,6 @@ func TestDNSServerIntegration(t *testing.T) {
 	})
 }
 
-func TestAnycastNetworkCNAMERouting(t *testing.T) {
-	db := newTestDB(t)
-	ctx := context.Background()
-	log := tslog.Slogger(t)
-
-	addBox(t, db)
-	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
-			Shard:    1,
-			PublicIP: "5.6.7.8",
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	server := NewServer(db, log, "exe.xyz", "exe.dev")
-	server.SetNetActuateShardIPs(defaultNAShardIPs)
-
-	t.Run("default routes to NetActuate", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "na001.exe.xyz." {
-			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
-		}
-	})
-
-	t.Run("A record resolves via NetActuate shard", func(t *testing.T) {
-		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 2 {
-			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "na001.exe.xyz." {
-			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
-		}
-		a := rrs[1].(*dns.A)
-		if a.A.String() != "161.210.92.1" {
-			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
-		}
-	})
-
-	// anycast-network=1 overrides to Latitude
-	network1 := int64(1)
-	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
-			UserID:         "test-user",
-			AnycastNetwork: &network1,
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("anycast-network=1 overrides to Latitude", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "n001.exe.xyz." {
-			t.Errorf("expected n001.exe.xyz., got %s", cname.Target)
-		}
-	})
-
-	// Delete anycast_network, should go back to NetActuate (default)
-	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.DeleteUserDefaultAnycastNetwork(ctx, "test-user")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("after deleting anycast-network defaults to NetActuate", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "na001.exe.xyz." {
-			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
-		}
-	})
-}
-
 func TestNetActuateShardA(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -1212,27 +1109,17 @@ func TestNetActuateShardA(t *testing.T) {
 	})
 }
 
-func TestAnycastNetworkCNAME(t *testing.T) {
+func TestBoxCNAMEResolution(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
 	addBox(t, db)
-	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertLatitudeIPShard(ctx, exedb.UpsertLatitudeIPShardParams{
-			Shard:    1,
-			PublicIP: "5.6.7.8",
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
 	server.SetNetActuateShardIPs(defaultNAShardIPs)
 
-	t.Run("without anycast-network set defaults to NetActuate", func(t *testing.T) {
+	t.Run("CNAME", func(t *testing.T) {
 		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
@@ -1246,34 +1133,7 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 		}
 	})
 
-	// Set anycast_network=2 (NetActuate)
-	network := int64(2)
-	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpsertUserDefaultAnycastNetwork(ctx, exedb.UpsertUserDefaultAnycastNetworkParams{
-			UserID:         "test-user",
-			AnycastNetwork: &network,
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("with anycast-network=2", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "na001.exe.xyz." {
-			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
-		}
-	})
-
-	t.Run("A record resolves via netactuate shard", func(t *testing.T) {
+	t.Run("A", func(t *testing.T) {
 		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
@@ -1288,29 +1148,6 @@ func TestAnycastNetworkCNAME(t *testing.T) {
 		a := rrs[1].(*dns.A)
 		if a.A.String() != "161.210.92.1" {
 			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
-		}
-	})
-
-	// Delete anycast_network, should go back to default (NetActuate)
-	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.DeleteUserDefaultAnycastNetwork(ctx, "test-user")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("after deleting anycast-network defaults to NetActuate", func(t *testing.T) {
-		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
-		}
-		cname := rrs[0].(*dns.CNAME)
-		if cname.Target != "na001.exe.xyz." {
-			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
 		}
 	})
 }

@@ -1926,14 +1926,8 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var shardDNS string
-	if row, err := withRxRes1(s, ctx, (*exedb.Queries).GetIPShardAndAnycastNetworkByBoxName, box.Name); err == nil {
-		var shardSub string
-		if row.AnycastNetwork != nil && *row.AnycastNetwork == 1 {
-			shardSub = publicips.LatitudeShardSub(int(row.IPShard))
-		} else {
-			shardSub = publicips.NetActuateShardSub(int(row.IPShard))
-		}
-		shardDNS = shardSub + "." + s.env.BoxHost
+	if ipShard, err := withRxRes1(s, ctx, (*exedb.Queries).GetIPShardByBoxName, box.Name); err == nil {
+		shardDNS = publicips.NetActuateShardSub(int(ipShard)) + "." + s.env.BoxHost
 	}
 
 	// Look up storage pool information if the VM has a container ID
