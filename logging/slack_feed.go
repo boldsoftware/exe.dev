@@ -98,6 +98,24 @@ func (sf *SlackFeed) EmailVerified(ctx context.Context, userID string) {
 	}()
 }
 
+// TrialStarted notifies Slack that user userID started a trial.
+func (sf *SlackFeed) TrialStarted(ctx context.Context, userID string) {
+	go func() {
+		ref, ok := sf.loadUserMessage(userID)
+		if !ok {
+			return
+		}
+		if sf.client == nil {
+			sf.log.InfoContext(ctx, "slack feed channel reaction", "emoji", "hourglass_flowing_sand", "userID", userID)
+			return
+		}
+		err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "hourglass_flowing_sand", ref)
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to feed channel message", "error", err, "userID", userID)
+		}
+	}()
+}
+
 // CreatedVM notifies Slack that user userID has created a VM.
 func (sf *SlackFeed) CreatedVM(ctx context.Context, userID string) {
 	go func() {
@@ -244,6 +262,46 @@ func (sf *SlackFeed) CreditGifted(ctx context.Context, email string, amountUSD f
 		ref := slack.NewRefToMessage(channel, ts)
 		if err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "gift", ref); err != nil {
 			sf.log.WarnContext(ctx, "failed to add reaction to credit gift message", "error", err)
+		}
+	}()
+}
+
+// NewTeam notifies Slack that a new team was created.
+func (sf *SlackFeed) NewTeam(ctx context.Context, billingOwnerEmail string) {
+	message := fmt.Sprintf("new team: `%s`", billingOwnerEmail)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post new team to feed channel", "error", err)
+			return
+		}
+		ref := slack.NewRefToMessage(channel, ts)
+		if err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "busts_in_silhouette", ref); err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to new team message", "error", err)
+		}
+	}()
+}
+
+// TeamDowngrade notifies Slack that a team was downgraded.
+func (sf *SlackFeed) TeamDowngrade(ctx context.Context, billingOwnerEmail string) {
+	message := fmt.Sprintf("team downgrade: `%s`", billingOwnerEmail)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post team downgrade to feed channel", "error", err)
+			return
+		}
+		ref := slack.NewRefToMessage(channel, ts)
+		if err := sf.client.AddReactionContext(context.WithoutCancel(ctx), "bust_in_silhouette", ref); err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to team downgrade message", "error", err)
 		}
 	}()
 }

@@ -946,6 +946,9 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 				// Don't fail registration, just log the error
 			} else {
 				ss.server.slog().InfoContext(ctx, "invite code applied successfully", "code", inviteCode.Code, "user_id", user.UserID, "plan_type", inviteCode.PlanType)
+				if inviteCode.PlanType == "trial" {
+					ss.server.slackFeed.TrialStarted(ctx, user.UserID)
+				}
 			}
 		}
 	}
@@ -1493,6 +1496,9 @@ func (s *Server) maybeApplyInviteCode(ctx context.Context, invite *exedb.InviteC
 		return
 	}
 	s.slog().InfoContext(ctx, "invite code applied for login-with-exe user", "code", invite.Code, "user_id", userID, "plan_type", invite.PlanType)
+	if invite.PlanType == "trial" {
+		s.slackFeed.TrialStarted(ctx, userID)
+	}
 }
 
 // getInviteGiverEmail returns the email of the user who owns the invite code.

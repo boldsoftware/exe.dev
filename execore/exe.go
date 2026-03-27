@@ -1170,9 +1170,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		s.billing = &billing.Manager{}
 	}
 
-	// Wire the billing manager's DB and Logger for credit operations.
+	// Wire the billing manager's DB, Logger, and SlackFeed for credit operations.
 	s.billing.DB = s.db
 	s.billing.Logger = slog
+	s.billing.SlackFeed = s.slackFeed
 
 	if cfg.Env.BootstrapStripeCatalog {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

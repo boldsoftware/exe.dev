@@ -17,6 +17,7 @@ import (
 	"exe.dev/billing/tender"
 	"exe.dev/errorz"
 	"exe.dev/exedb"
+	"exe.dev/logging"
 	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v82"
 	"tailscale.com/syncs"
@@ -91,7 +92,8 @@ type Manager struct {
 	// DB is the database connection for credit ledger operations.
 	DB *sqlite.DB
 
-	Logger *slog.Logger
+	Logger    *slog.Logger
+	SlackFeed *logging.SlackFeed
 
 	priceIDCache syncs.Map[string, func() result.Of[string]]
 
@@ -608,6 +610,10 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 				"event_type", eventType,
 				"error", err,
 			)
+		}
+
+		if sub.Status == stripe.SubscriptionStatusTrialing && m.SlackFeed != nil {
+			m.SlackFeed.TrialStarted(ctx, sub.Customer.ID)
 		}
 	}
 
