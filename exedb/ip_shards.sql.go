@@ -9,15 +9,6 @@ import (
 	"context"
 )
 
-const deleteLatitudeIPShard = `-- name: DeleteLatitudeIPShard :exec
-DELETE FROM latitude_ip_shards WHERE shard = ?
-`
-
-func (q *Queries) DeleteLatitudeIPShard(ctx context.Context, shard int64) error {
-	_, err := q.exec(ctx, q.deleteLatitudeIPShardStmt, deleteLatitudeIPShard, shard)
-	return err
-}
-
 const deleteNetActuateIPShard = `-- name: DeleteNetActuateIPShard :exec
 DELETE FROM netactuate_ip_shards WHERE shard = ?
 `
@@ -25,131 +16,6 @@ DELETE FROM netactuate_ip_shards WHERE shard = ?
 func (q *Queries) DeleteNetActuateIPShard(ctx context.Context, shard int64) error {
 	_, err := q.exec(ctx, q.deleteNetActuateIPShardStmt, deleteNetActuateIPShard, shard)
 	return err
-}
-
-const getLatitudeShardPublicIP = `-- name: GetLatitudeShardPublicIP :one
-SELECT public_ip
-FROM latitude_ip_shards
-WHERE shard = ?
-`
-
-func (q *Queries) GetLatitudeShardPublicIP(ctx context.Context, shard int64) (string, error) {
-	row := q.queryRow(ctx, q.getLatitudeShardPublicIPStmt, getLatitudeShardPublicIP, shard)
-	var public_ip string
-	err := row.Scan(&public_ip)
-	return public_ip, err
-}
-
-const getShardPublicIP = `-- name: GetShardPublicIP :one
-SELECT public_ip
-FROM ip_shards
-WHERE shard = ?
-`
-
-func (q *Queries) GetShardPublicIP(ctx context.Context, shard int64) (string, error) {
-	row := q.queryRow(ctx, q.getShardPublicIPStmt, getShardPublicIP, shard)
-	var public_ip string
-	err := row.Scan(&public_ip)
-	return public_ip, err
-}
-
-const listAWSIPShards = `-- name: ListAWSIPShards :many
-SELECT shard, public_ip, created_at, updated_at FROM aws_ip_shards
-ORDER BY shard
-`
-
-func (q *Queries) ListAWSIPShards(ctx context.Context) ([]AWSIPShard, error) {
-	rows, err := q.query(ctx, q.listAWSIPShardsStmt, listAWSIPShards)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AWSIPShard{}
-	for rows.Next() {
-		var i AWSIPShard
-		if err := rows.Scan(
-			&i.Shard,
-			&i.PublicIP,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listIPShards = `-- name: ListIPShards :many
-SELECT shard, public_ip, created_at, updated_at FROM ip_shards
-ORDER BY shard
-`
-
-func (q *Queries) ListIPShards(ctx context.Context) ([]IPShard, error) {
-	rows, err := q.query(ctx, q.listIPShardsStmt, listIPShards)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []IPShard{}
-	for rows.Next() {
-		var i IPShard
-		if err := rows.Scan(
-			&i.Shard,
-			&i.PublicIP,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLatitudeIPShards = `-- name: ListLatitudeIPShards :many
-SELECT shard, public_ip, created_at, updated_at FROM latitude_ip_shards
-ORDER BY shard
-`
-
-func (q *Queries) ListLatitudeIPShards(ctx context.Context) ([]LatitudeIPShard, error) {
-	rows, err := q.query(ctx, q.listLatitudeIPShardsStmt, listLatitudeIPShards)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []LatitudeIPShard{}
-	for rows.Next() {
-		var i LatitudeIPShard
-		if err := rows.Scan(
-			&i.Shard,
-			&i.PublicIP,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listNetActuateIPShards = `-- name: ListNetActuateIPShards :many
@@ -183,42 +49,6 @@ func (q *Queries) ListNetActuateIPShards(ctx context.Context) ([]NetActuateIPSha
 		return nil, err
 	}
 	return items, nil
-}
-
-const upsertIPShard = `-- name: UpsertIPShard :exec
-INSERT INTO ip_shards (shard, public_ip, updated_at)
-VALUES (?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT (shard) DO UPDATE SET
-    public_ip = excluded.public_ip,
-    updated_at = CURRENT_TIMESTAMP
-`
-
-type UpsertIPShardParams struct {
-	Shard    int64  `db:"shard" json:"shard"`
-	PublicIP string `db:"public_ip" json:"public_ip"`
-}
-
-func (q *Queries) UpsertIPShard(ctx context.Context, arg UpsertIPShardParams) error {
-	_, err := q.exec(ctx, q.upsertIPShardStmt, upsertIPShard, arg.Shard, arg.PublicIP)
-	return err
-}
-
-const upsertLatitudeIPShard = `-- name: UpsertLatitudeIPShard :exec
-INSERT INTO latitude_ip_shards (shard, public_ip, updated_at)
-VALUES (?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT (shard) DO UPDATE SET
-    public_ip = excluded.public_ip,
-    updated_at = CURRENT_TIMESTAMP
-`
-
-type UpsertLatitudeIPShardParams struct {
-	Shard    int64  `db:"shard" json:"shard"`
-	PublicIP string `db:"public_ip" json:"public_ip"`
-}
-
-func (q *Queries) UpsertLatitudeIPShard(ctx context.Context, arg UpsertLatitudeIPShardParams) error {
-	_, err := q.exec(ctx, q.upsertLatitudeIPShardStmt, upsertLatitudeIPShard, arg.Shard, arg.PublicIP)
-	return err
 }
 
 const upsertNetActuateIPShard = `-- name: UpsertNetActuateIPShard :exec

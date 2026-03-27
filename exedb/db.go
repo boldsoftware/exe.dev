@@ -225,9 +225,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteIntegrationStmt, err = db.PrepareContext(ctx, deleteIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteIntegration: %w", err)
 	}
-	if q.deleteLatitudeIPShardStmt, err = db.PrepareContext(ctx, deleteLatitudeIPShard); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteLatitudeIPShard: %w", err)
-	}
 	if q.deleteMobilePendingVMByTokenStmt, err = db.PrepareContext(ctx, deleteMobilePendingVMByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMobilePendingVMByToken: %w", err)
 	}
@@ -489,9 +486,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLatestBillingStatusStmt, err = db.PrepareContext(ctx, getLatestBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestBillingStatus: %w", err)
 	}
-	if q.getLatitudeShardPublicIPStmt, err = db.PrepareContext(ctx, getLatitudeShardPublicIP); err != nil {
-		return nil, fmt.Errorf("error preparing query GetLatitudeShardPublicIP: %w", err)
-	}
 	if q.getLoginCreationDisabledStmt, err = db.PrepareContext(ctx, getLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLoginCreationDisabled: %w", err)
 	}
@@ -578,9 +572,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getSSHKeysForUserByFingerprintStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByFingerprint); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByFingerprint: %w", err)
-	}
-	if q.getShardPublicIPStmt, err = db.PrepareContext(ctx, getShardPublicIP); err != nil {
-		return nil, fmt.Errorf("error preparing query GetShardPublicIP: %w", err)
 	}
 	if q.getShellHistoryStmt, err = db.PrepareContext(ctx, getShellHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query GetShellHistory: %w", err)
@@ -861,9 +852,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.isUserTeamBillingOwnerStmt, err = db.PrepareContext(ctx, isUserTeamBillingOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query IsUserTeamBillingOwner: %w", err)
 	}
-	if q.listAWSIPShardsStmt, err = db.PrepareContext(ctx, listAWSIPShards); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAWSIPShards: %w", err)
-	}
 	if q.listAccountPlanHistoryStmt, err = db.PrepareContext(ctx, listAccountPlanHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAccountPlanHistory: %w", err)
 	}
@@ -930,9 +918,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listGitHubUserTokensNeedingRenewalStmt, err = db.PrepareContext(ctx, listGitHubUserTokensNeedingRenewal); err != nil {
 		return nil, fmt.Errorf("error preparing query ListGitHubUserTokensNeedingRenewal: %w", err)
 	}
-	if q.listIPShardsStmt, err = db.PrepareContext(ctx, listIPShards); err != nil {
-		return nil, fmt.Errorf("error preparing query ListIPShards: %w", err)
-	}
 	if q.listIPShardsForTeamStmt, err = db.PrepareContext(ctx, listIPShardsForTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShardsForTeam: %w", err)
 	}
@@ -941,9 +926,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listIntegrationsByUserStmt, err = db.PrepareContext(ctx, listIntegrationsByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIntegrationsByUser: %w", err)
-	}
-	if q.listLatitudeIPShardsStmt, err = db.PrepareContext(ctx, listLatitudeIPShards); err != nil {
-		return nil, fmt.Errorf("error preparing query ListLatitudeIPShards: %w", err)
 	}
 	if q.listNetActuateIPShardsStmt, err = db.PrepareContext(ctx, listNetActuateIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListNetActuateIPShards: %w", err)
@@ -1154,12 +1136,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertHLLSketchStmt, err = db.PrepareContext(ctx, upsertHLLSketch); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertHLLSketch: %w", err)
-	}
-	if q.upsertIPShardStmt, err = db.PrepareContext(ctx, upsertIPShard); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertIPShard: %w", err)
-	}
-	if q.upsertLatitudeIPShardStmt, err = db.PrepareContext(ctx, upsertLatitudeIPShard); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertLatitudeIPShard: %w", err)
 	}
 	if q.upsertMobilePendingVMStmt, err = db.PrepareContext(ctx, upsertMobilePendingVM); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertMobilePendingVM: %w", err)
@@ -1541,11 +1517,6 @@ func (q *Queries) Close() error {
 	if q.deleteIntegrationStmt != nil {
 		if cerr := q.deleteIntegrationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteIntegrationStmt: %w", cerr)
-		}
-	}
-	if q.deleteLatitudeIPShardStmt != nil {
-		if cerr := q.deleteLatitudeIPShardStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteLatitudeIPShardStmt: %w", cerr)
 		}
 	}
 	if q.deleteMobilePendingVMByTokenStmt != nil {
@@ -1983,11 +1954,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLatestBillingStatusStmt: %w", cerr)
 		}
 	}
-	if q.getLatitudeShardPublicIPStmt != nil {
-		if cerr := q.getLatitudeShardPublicIPStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getLatitudeShardPublicIPStmt: %w", cerr)
-		}
-	}
 	if q.getLoginCreationDisabledStmt != nil {
 		if cerr := q.getLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLoginCreationDisabledStmt: %w", cerr)
@@ -2131,11 +2097,6 @@ func (q *Queries) Close() error {
 	if q.getSSHKeysForUserByFingerprintStmt != nil {
 		if cerr := q.getSSHKeysForUserByFingerprintStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserByFingerprintStmt: %w", cerr)
-		}
-	}
-	if q.getShardPublicIPStmt != nil {
-		if cerr := q.getShardPublicIPStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getShardPublicIPStmt: %w", cerr)
 		}
 	}
 	if q.getShellHistoryStmt != nil {
@@ -2603,11 +2564,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing isUserTeamBillingOwnerStmt: %w", cerr)
 		}
 	}
-	if q.listAWSIPShardsStmt != nil {
-		if cerr := q.listAWSIPShardsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAWSIPShardsStmt: %w", cerr)
-		}
-	}
 	if q.listAccountPlanHistoryStmt != nil {
 		if cerr := q.listAccountPlanHistoryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAccountPlanHistoryStmt: %w", cerr)
@@ -2718,11 +2674,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listGitHubUserTokensNeedingRenewalStmt: %w", cerr)
 		}
 	}
-	if q.listIPShardsStmt != nil {
-		if cerr := q.listIPShardsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listIPShardsStmt: %w", cerr)
-		}
-	}
 	if q.listIPShardsForTeamStmt != nil {
 		if cerr := q.listIPShardsForTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIPShardsForTeamStmt: %w", cerr)
@@ -2736,11 +2687,6 @@ func (q *Queries) Close() error {
 	if q.listIntegrationsByUserStmt != nil {
 		if cerr := q.listIntegrationsByUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIntegrationsByUserStmt: %w", cerr)
-		}
-	}
-	if q.listLatitudeIPShardsStmt != nil {
-		if cerr := q.listLatitudeIPShardsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listLatitudeIPShardsStmt: %w", cerr)
 		}
 	}
 	if q.listNetActuateIPShardsStmt != nil {
@@ -3093,16 +3039,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertHLLSketchStmt: %w", cerr)
 		}
 	}
-	if q.upsertIPShardStmt != nil {
-		if cerr := q.upsertIPShardStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertIPShardStmt: %w", cerr)
-		}
-	}
-	if q.upsertLatitudeIPShardStmt != nil {
-		if cerr := q.upsertLatitudeIPShardStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertLatitudeIPShardStmt: %w", cerr)
-		}
-	}
 	if q.upsertMobilePendingVMStmt != nil {
 		if cerr := q.upsertMobilePendingVMStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertMobilePendingVMStmt: %w", cerr)
@@ -3279,7 +3215,6 @@ type Queries struct {
 	deleteGitHubInstallationStmt               *sql.Stmt
 	deleteGitHubInstallationByTargetStmt       *sql.Stmt
 	deleteIntegrationStmt                      *sql.Stmt
-	deleteLatitudeIPShardStmt                  *sql.Stmt
 	deleteMobilePendingVMByTokenStmt           *sql.Stmt
 	deleteMobilePendingVMByUserAndHostnameStmt *sql.Stmt
 	deleteNetActuateIPShardStmt                *sql.Stmt
@@ -3367,7 +3302,6 @@ type Queries struct {
 	getInviteCodeStatsForUserStmt              *sql.Stmt
 	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestBillingStatusStmt                 *sql.Stmt
-	getLatitudeShardPublicIPStmt               *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
@@ -3397,7 +3331,6 @@ type Queries struct {
 	getSSHKeysForUserStmt                      *sql.Stmt
 	getSSHKeysForUserByCommentStmt             *sql.Stmt
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
-	getShardPublicIPStmt                       *sql.Stmt
 	getShellHistoryStmt                        *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
 	getSiteCookiesForUserStmt                  *sql.Stmt
@@ -3491,7 +3424,6 @@ type Queries struct {
 	isEmailQualityBypassedStmt                 *sql.Stmt
 	isUserTeamAdminStmt                        *sql.Stmt
 	isUserTeamBillingOwnerStmt                 *sql.Stmt
-	listAWSIPShardsStmt                        *sql.Stmt
 	listAccountPlanHistoryStmt                 *sql.Stmt
 	listActiveSubscribersByPlanIDStmt          *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
@@ -3514,11 +3446,9 @@ type Queries struct {
 	listGitHubInstallationsStmt                *sql.Stmt
 	listGitHubUserTokensStmt                   *sql.Stmt
 	listGitHubUserTokensNeedingRenewalStmt     *sql.Stmt
-	listIPShardsStmt                           *sql.Stmt
 	listIPShardsForTeamStmt                    *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
 	listIntegrationsByUserStmt                 *sql.Stmt
-	listLatitudeIPShardsStmt                   *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
 	listSubscriptionEventsStmt                 *sql.Stmt
@@ -3589,8 +3519,6 @@ type Queries struct {
 	upsertGitHubInstallationStmt               *sql.Stmt
 	upsertGitHubUserTokenStmt                  *sql.Stmt
 	upsertHLLSketchStmt                        *sql.Stmt
-	upsertIPShardStmt                          *sql.Stmt
-	upsertLatitudeIPShardStmt                  *sql.Stmt
 	upsertMobilePendingVMStmt                  *sql.Stmt
 	upsertNetActuateIPShardStmt                *sql.Stmt
 	upsertPushTokenStmt                        *sql.Stmt
@@ -3678,7 +3606,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteGitHubInstallationStmt:               q.deleteGitHubInstallationStmt,
 		deleteGitHubInstallationByTargetStmt:       q.deleteGitHubInstallationByTargetStmt,
 		deleteIntegrationStmt:                      q.deleteIntegrationStmt,
-		deleteLatitudeIPShardStmt:                  q.deleteLatitudeIPShardStmt,
 		deleteMobilePendingVMByTokenStmt:           q.deleteMobilePendingVMByTokenStmt,
 		deleteMobilePendingVMByUserAndHostnameStmt: q.deleteMobilePendingVMByUserAndHostnameStmt,
 		deleteNetActuateIPShardStmt:                q.deleteNetActuateIPShardStmt,
@@ -3766,7 +3693,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getInviteCodeStatsForUserStmt:              q.getInviteCodeStatsForUserStmt,
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
-		getLatitudeShardPublicIPStmt:               q.getLatitudeShardPublicIPStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
@@ -3796,7 +3722,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByCommentStmt:             q.getSSHKeysForUserByCommentStmt,
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
-		getShardPublicIPStmt:                       q.getShardPublicIPStmt,
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
@@ -3890,7 +3815,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		isEmailQualityBypassedStmt:                 q.isEmailQualityBypassedStmt,
 		isUserTeamAdminStmt:                        q.isUserTeamAdminStmt,
 		isUserTeamBillingOwnerStmt:                 q.isUserTeamBillingOwnerStmt,
-		listAWSIPShardsStmt:                        q.listAWSIPShardsStmt,
 		listAccountPlanHistoryStmt:                 q.listAccountPlanHistoryStmt,
 		listActiveSubscribersByPlanIDStmt:          q.listActiveSubscribersByPlanIDStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
@@ -3913,11 +3837,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listGitHubInstallationsStmt:                q.listGitHubInstallationsStmt,
 		listGitHubUserTokensStmt:                   q.listGitHubUserTokensStmt,
 		listGitHubUserTokensNeedingRenewalStmt:     q.listGitHubUserTokensNeedingRenewalStmt,
-		listIPShardsStmt:                           q.listIPShardsStmt,
 		listIPShardsForTeamStmt:                    q.listIPShardsForTeamStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
-		listLatitudeIPShardsStmt:                   q.listLatitudeIPShardsStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
 		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
@@ -3988,8 +3910,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertGitHubInstallationStmt:               q.upsertGitHubInstallationStmt,
 		upsertGitHubUserTokenStmt:                  q.upsertGitHubUserTokenStmt,
 		upsertHLLSketchStmt:                        q.upsertHLLSketchStmt,
-		upsertIPShardStmt:                          q.upsertIPShardStmt,
-		upsertLatitudeIPShardStmt:                  q.upsertLatitudeIPShardStmt,
 		upsertMobilePendingVMStmt:                  q.upsertMobilePendingVMStmt,
 		upsertNetActuateIPShardStmt:                q.upsertNetActuateIPShardStmt,
 		upsertPushTokenStmt:                        q.upsertPushTokenStmt,

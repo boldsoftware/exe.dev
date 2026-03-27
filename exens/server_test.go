@@ -39,17 +39,8 @@ func addBox(t *testing.T, db *sqlite.DB) int64 {
 	err := db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 
-		// Add ip_shard
-		err := queries.UpsertIPShard(ctx, exedb.UpsertIPShardParams{
-			Shard:    1,
-			PublicIP: "1.2.3.4",
-		})
-		if err != nil {
-			return err
-		}
-
 		// Add a user (required for box)
-		err = queries.InsertUser(ctx, exedb.InsertUserParams{
+		err := queries.InsertUser(ctx, exedb.InsertUserParams{
 			UserID: "test-user",
 			Email:  "test@example.com",
 			Region: "pdx",
