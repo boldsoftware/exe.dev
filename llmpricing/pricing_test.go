@@ -135,57 +135,57 @@ func TestCalculateCost_Fireworks(t *testing.T) {
 		wantUSD float64
 	}{
 		{
-			name:  "qwen3-coder large model",
-			model: "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+			name:  "glm-5 large model",
+			model: "accounts/fireworks/models/glm-5",
 			usage: Usage{
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			wantUSD: 2.25, // $0.45 + $1.80
+			wantUSD: 4.2, // $1.00 + $3.20
 		},
 		{
-			name:  "llama-8b small model",
-			model: "accounts/fireworks/models/llama-v3p1-8b-instruct",
+			name:  "minimax-m2p5",
+			model: "accounts/fireworks/models/minimax-m2p5",
 			usage: Usage{
 				InputTokens:  10_000_000,
 				OutputTokens: 1_000_000,
 			},
-			wantUSD: 2.2, // $2.00 + $0.20
+			wantUSD: 4.2, // $3.00 + $1.20
 		},
 		{
-			name:  "deepseek-r1",
-			model: "accounts/fireworks/models/deepseek-r1-0528",
+			name:  "deepseek-v3p2",
+			model: "accounts/fireworks/models/deepseek-v3p2",
 			usage: Usage{
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			wantUSD: 11.0, // $3 + $8
+			wantUSD: 2.24, // $0.56 + $1.68
 		},
 		{
-			name:  "qwen3-coder with cache (Fireworks cache is 50% of input)",
-			model: "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+			name:  "glm-5 with cache",
+			model: "accounts/fireworks/models/glm-5",
 			usage: Usage{
 				InputTokens:          500_000, // 500K uncached
 				OutputTokens:         100_000,
 				CacheReadInputTokens: 500_000, // 500K cached
 			},
-			// 500K input @ $0.45 = $0.225
-			// 100K output @ $1.80 = $0.18
-			// 500K cache read @ $0.22 (50% of $0.45) = $0.11
-			wantUSD: 0.515,
+			// 500K input @ $1.00 = $0.50
+			// 100K output @ $3.20 = $0.32
+			// 500K cache read @ $0.50 = $0.25
+			wantUSD: 1.07,
 		},
 		{
-			name:  "deepseek-v3 with cache",
-			model: "accounts/fireworks/models/deepseek-v3-0324",
+			name:  "deepseek-v3p1 with cache",
+			model: "accounts/fireworks/models/deepseek-v3p1",
 			usage: Usage{
 				InputTokens:          200_000,
 				OutputTokens:         100_000,
 				CacheReadInputTokens: 800_000,
 			},
-			// 200K input @ $0.90 = $0.18
-			// 100K output @ $0.90 = $0.09
-			// 800K cache read @ $0.45 = $0.36
-			wantUSD: 0.63,
+			// 200K input @ $0.56 = $0.112
+			// 100K output @ $1.68 = $0.168
+			// 800K cache read @ $0.28 = $0.224
+			wantUSD: 0.504,
 		},
 	}
 
@@ -264,7 +264,7 @@ func TestIsModelAllowed(t *testing.T) {
 		{ProviderOpenAI, "gpt-4o", true},
 		{ProviderOpenAI, "gpt-5.2-codex", true},
 		{ProviderOpenAI, "unknown-model", false},
-		{ProviderFireworks, "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct", true},
+		{ProviderFireworks, "accounts/fireworks/models/glm-5", true},
 		{ProviderFireworks, "unknown-model", false},
 		{"unknown-provider", "any-model", false},
 	}

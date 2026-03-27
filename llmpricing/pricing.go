@@ -220,48 +220,30 @@ var allowedModels = map[Provider]map[string]ModelCost{
 	// Source: https://fireworks.ai/pricing
 	ProviderFireworks: {
 		// Qwen models
-		"accounts/fireworks/models/qwen3-coder-480b-a35b-instruct": {Input: 45, Output: 180, CacheRead: 22},
-		"accounts/fireworks/models/qwen3-235b-a22b":                {Input: 22, Output: 88, CacheRead: 11},
-		"accounts/fireworks/models/qwen3-8b":                       {Input: 5, Output: 20, CacheRead: 2},
-		"accounts/fireworks/models/qwen3-embedding-8b":             {Input: 5, Output: 0},
-		"accounts/fireworks/models/qwen3-reranker-8b":              {Input: 5, Output: 0},
-		"accounts/fireworks/models/qwen3-vl-235b-a22b-thinking":    {Input: 22, Output: 88, CacheRead: 11},
-		"accounts/fireworks/models/qwen2p5-vl-32b-instruct":        {Input: 20, Output: 20, CacheRead: 10},
+		"accounts/fireworks/models/qwen3-8b":           {Input: 5, Output: 20, CacheRead: 2},
+		"accounts/fireworks/models/qwen3-embedding-8b": {Input: 5, Output: 0},
+		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 5, Output: 0},
 
 		// GLM models
-		"accounts/fireworks/models/glm-4p7":     {Input: 60, Output: 220, CacheRead: 30},
-		"accounts/fireworks/models/glm-4p6":     {Input: 55, Output: 219, CacheRead: 27},
-		"accounts/fireworks/models/glm-4p5":     {Input: 55, Output: 219, CacheRead: 27},
-		"accounts/fireworks/models/glm-4p5-air": {Input: 22, Output: 88, CacheRead: 11},
+		"accounts/fireworks/models/glm-5":   {Input: 100, Output: 320, CacheRead: 50},
+		"accounts/fireworks/models/glm-4p7": {Input: 60, Output: 220, CacheRead: 30},
 
 		// Kimi models
-		"accounts/fireworks/models/kimi-k2p5":             {Input: 60, Output: 300, CacheRead: 30},
-		"accounts/fireworks/models/kimi-k2-thinking":      {Input: 60, Output: 250, CacheRead: 30},
-		"accounts/fireworks/models/kimi-k2-instruct":      {Input: 100, Output: 300, CacheRead: 50},
-		"accounts/fireworks/models/kimi-k2-instruct-0905": {Input: 100, Output: 300, CacheRead: 50},
+		"accounts/fireworks/models/kimi-k2p5": {Input: 60, Output: 300, CacheRead: 30},
 
 		// DeepSeek models
-		"accounts/fireworks/models/deepseek-v3p2":    {Input: 56, Output: 168, CacheRead: 28},
-		"accounts/fireworks/models/deepseek-v3p1":    {Input: 56, Output: 168, CacheRead: 28},
-		"accounts/fireworks/models/deepseek-v3-0324": {Input: 90, Output: 90, CacheRead: 45},
-		"accounts/fireworks/models/deepseek-r1-0528": {Input: 300, Output: 800, CacheRead: 150},
+		"accounts/fireworks/models/deepseek-v3p2": {Input: 56, Output: 168, CacheRead: 28},
+		"accounts/fireworks/models/deepseek-v3p1": {Input: 56, Output: 168, CacheRead: 28},
 
 		// MiniMax models
-		"accounts/fireworks/models/minimax-m2":   {Input: 30, Output: 120, CacheRead: 15},
-		"accounts/fireworks/models/minimax-m2p1": {Input: 30, Output: 120, CacheRead: 15},
+		"accounts/fireworks/models/minimax-m2p5": {Input: 30, Output: 120, CacheRead: 3},
 
 		// GPT-OSS models
 		"accounts/fireworks/models/gpt-oss-120b": {Input: 15, Output: 60, CacheRead: 7},
 		"accounts/fireworks/models/gpt-oss-20b":  {Input: 5, Output: 20, CacheRead: 2},
 
 		// Llama models
-		"accounts/fireworks/models/llama-v3p3-70b-instruct":  {Input: 90, Output: 90, CacheRead: 45},
-		"accounts/fireworks/models/llama-v3p1-405b-instruct": {Input: 300, Output: 300, CacheRead: 150},
-		"accounts/fireworks/models/llama-v3p1-70b-instruct":  {Input: 90, Output: 90, CacheRead: 45},
-		"accounts/fireworks/models/llama-v3p1-8b-instruct":   {Input: 20, Output: 20, CacheRead: 10},
-
-		// Mixtral models
-		"accounts/fireworks/models/mixtral-8x22b-instruct": {Input: 90, Output: 90, CacheRead: 45},
+		"accounts/fireworks/models/llama-v3p3-70b-instruct": {Input: 90, Output: 90, CacheRead: 45},
 
 		// Embedding models (no caching)
 		"nomic-ai/nomic-embed-text-v1.5": {Input: 1, Output: 0},
