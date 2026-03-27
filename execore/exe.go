@@ -2361,6 +2361,7 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 // a container (none exists yet) or track the deletion in deleted_boxes.
 func (s *Server) cleanupPreCreatedBox(ctx context.Context, boxID int) error {
 	ctx = context.WithoutCancel(ctx)
+	slog.InfoContext(ctx, "cleanupPreCreatedBox called", "boxID", boxID)
 	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		if err := queries.DeleteBoxIPShard(ctx, boxID); err != nil {
 			return fmt.Errorf("deleting IP shard: %w", err)
@@ -2458,6 +2459,7 @@ func isExeletNotFoundError(err error) bool {
 func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 	// Commit to the whole thing. Avoid partial deletions on client disconnect.
 	ctx = context.WithoutCancel(ctx)
+	slog.InfoContext(ctx, "deleteBox called", "boxID", box.ID, "boxName", box.Name, "userID", box.CreatedByUserID)
 
 	// Delete the instance if it exists
 	if box.ContainerID != nil {

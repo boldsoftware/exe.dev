@@ -636,6 +636,7 @@ done:
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		return err
 	}
+	slog.InfoContext(ctx, "updateBoxWithContainer succeeded", "boxID", boxID, "box", boxName)
 
 	// Set up automatic routing based on exposed ports
 	proxyPort := 80
