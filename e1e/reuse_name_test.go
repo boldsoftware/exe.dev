@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/e1e/testinfra"
 )
 
 // TestReuseDeletedVMName verifies that a VM name can be reused after deletion
@@ -53,6 +55,13 @@ func TestReuseDeletedVMName(t *testing.T) {
 	// Wait for the VM to be fully created and SSH-accessible.
 	waitForSSH(t, host, keyFile)
 
+	// Wait for the web creation goroutine to finish. waitForSSH only
+	// confirms the container's SSH port is up; the background goroutine
+	// in startBoxCreation may still be running (updateBoxWithContainer,
+	// auto-routing, etc). Deleting before it finishes removes the DB row
+	// out from under it, causing "sql: no rows in result set".
+	waitForBoxRunning(t, keyFile, host)
+
 	// 2. Delete the VM via SSH REPL.
 	//    The CreationStream remains in server memory (done=true) because the
 	//    cleanup timer hasn't fired yet (10 min idle timeout, 5 min tick).
@@ -87,6 +96,34 @@ func TestReuseDeletedVMName(t *testing.T) {
 
 	// Clean up.
 	cleanupBox(t, keyFile, host)
+}
+
+// waitForBoxRunning polls "ls --json" until the box reaches "running" status.
+// This ensures the web creation goroutine has finished updateBoxWithContainer.
+func waitForBoxRunning(t *testing.T, keyFile, boxName string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
+	defer cancel()
+	type vmList struct {
+		VMs []struct {
+			Name   string `json:"vm_name"`
+			Status string `json:"status"`
+		} `json:"vms"`
+	}
+	for {
+		result, err := testinfra.RunParseExeDevJSON[vmList](ctx, Env.servers, keyFile, "ls", "--json")
+		if err == nil {
+			for _, vm := range result.VMs {
+				if vm.Name == boxName && vm.Status == "running" {
+					return
+				}
+			}
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("timed out waiting for box %q to reach running status", boxName)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // waitForBoxInLS polls "ls" via the SSH REPL until the given box name appears.
