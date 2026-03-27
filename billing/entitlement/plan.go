@@ -68,7 +68,7 @@ var plans = map[PlanCategory]Plan{
 		},
 	},
 	CategoryTeam: {
-		ID:                 "team",
+		ID:                 "team:monthly:20260106",
 		Available:          true,
 		Category:           CategoryTeam,
 		Name:               "Team",
