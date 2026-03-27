@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"exe.dev/backoff"
 	"exe.dev/exelet/storage"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -809,10 +810,11 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	return nil
 }
 
-// checkAndRecoverStuckVM waits briefly after a VM resume, then probes the
-// SSH proxy to verify the guest is actually responsive. A failed CH snapshot
-// can leave vCPUs in a bad state (RCU stalls, etc.) where the VM appears
-// running but is unresponsive. If the probe fails, escalates to stop/start.
+// checkAndRecoverStuckVM probes the SSH proxy with exponential backoff to
+// verify the guest is actually responsive after a resume. A failed CH
+// snapshot can leave vCPUs in a bad state (RCU stalls, etc.) where the VM
+// appears running but is unresponsive. If all probes fail within the
+// timeout, escalates to stop/start.
 func (s *Service) checkAndRecoverStuckVM(ctx context.Context, instanceID string) {
 	proxyPort, ok := s.proxyManager.GetPort(ctx, instanceID)
 	if !ok {
@@ -821,26 +823,30 @@ func (s *Service) checkAndRecoverStuckVM(ctx context.Context, instanceID string)
 		return
 	}
 
-	// Give the guest a few seconds to stabilize after resume.
-	time.Sleep(5 * time.Second)
-
 	addr := fmt.Sprintf("127.0.0.1:%d", proxyPort)
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-	if err == nil {
-		// Read the SSH banner (e.g., "SSH-2.0-OpenSSH_9.6")
-		conn.SetReadDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
-		buf := make([]byte, 256)
-		n, readErr := conn.Read(buf)
-		conn.Close()
-		if readErr == nil && n > 0 && strings.HasPrefix(string(buf[:n]), "SSH-") {
-			// SSH is responding — VM is healthy
-			return
+	probeCtx, probeCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer probeCancel()
+
+	attempt := 0
+	for range backoff.Loop(probeCtx, 5*time.Second) {
+		attempt++
+
+		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+		if err == nil {
+			conn.SetReadDeadline(time.Now().Add(3 * time.Second)) //nolint:errcheck
+			buf := make([]byte, 256)
+			n, readErr := conn.Read(buf)
+			conn.Close()
+			if readErr == nil && n > 0 && strings.HasPrefix(string(buf[:n]), "SSH-") {
+				// SSH is responding — VM is healthy
+				return
+			}
+			s.log.WarnContext(ctx, "tier migration: proxy connected but no SSH banner",
+				"instance", instanceID, "attempt", attempt, "read_bytes", n, "error", readErr)
+		} else {
+			s.log.WarnContext(ctx, "tier migration: proxy connection failed after resume",
+				"instance", instanceID, "attempt", attempt, "addr", addr, "error", err)
 		}
-		s.log.WarnContext(ctx, "tier migration: proxy connected but no SSH banner",
-			"instance", instanceID, "read_bytes", n, "error", readErr)
-	} else {
-		s.log.WarnContext(ctx, "tier migration: proxy connection failed after resume",
-			"instance", instanceID, "addr", addr, "error", err)
 	}
 
 	s.log.ErrorContext(ctx, "tier migration: VM unresponsive after resume, performing stop/start recovery",
