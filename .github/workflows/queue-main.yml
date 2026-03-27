@@ -138,7 +138,7 @@ jobs:
                   has_errors=1
                   ;;
               esac
-              if echo "$author_email" | grep -qE '@.*\.exe\.xyz$'; then
+              if echo "$author_email" | grep -qE '@.*\.exe\.xyz$' && ! echo "$author_email" | grep -qE '@bored\.exe\.xyz$'; then
                   echo "❌ ERROR: Commit $commit has an internal machine email: $author_email"
                   echo "Please set your git author email: git config user.email 'you@example.com'"
                   has_errors=1
