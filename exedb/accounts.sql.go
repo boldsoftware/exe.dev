@@ -96,6 +96,48 @@ func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, dollar_1 int
 	return count, err
 }
 
+const countAccountsWithoutActivePlan = `-- name: CountAccountsWithoutActivePlan :one
+SELECT COUNT(*) FROM accounts a
+WHERE NOT EXISTS (
+    SELECT 1 FROM account_plans ap
+    WHERE ap.account_id = a.id AND ap.ended_at IS NULL
+)
+`
+
+// CountAccountsWithoutActivePlan counts accounts that have no active (ended_at IS NULL) plan row.
+func (q *Queries) CountAccountsWithoutActivePlan(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countAccountsWithoutActivePlanStmt, countAccountsWithoutActivePlan)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAccountsWithoutUser = `-- name: CountAccountsWithoutUser :one
+SELECT COUNT(*) FROM accounts a
+WHERE NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.user_id = a.created_by
+)
+`
+
+// CountAccountsWithoutUser counts accounts whose created_by user no longer exists.
+func (q *Queries) CountAccountsWithoutUser(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countAccountsWithoutUserStmt, countAccountsWithoutUser)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAllAccounts = `-- name: CountAllAccounts :one
+SELECT COUNT(*) FROM accounts
+`
+
+func (q *Queries) CountAllAccounts(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countAllAccountsStmt, countAllAccounts)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteAccountsByUserID = `-- name: DeleteAccountsByUserID :exec
 DELETE FROM accounts WHERE created_by = ?
 `

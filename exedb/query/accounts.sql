@@ -282,3 +282,21 @@ SELECT
     u.billing_trial_ends_at
 FROM users u
 WHERE u.user_id = ?1;
+
+-- name: CountAllAccounts :one
+SELECT COUNT(*) FROM accounts;
+
+-- name: CountAccountsWithoutActivePlan :one
+-- CountAccountsWithoutActivePlan counts accounts that have no active (ended_at IS NULL) plan row.
+SELECT COUNT(*) FROM accounts a
+WHERE NOT EXISTS (
+    SELECT 1 FROM account_plans ap
+    WHERE ap.account_id = a.id AND ap.ended_at IS NULL
+);
+
+-- name: CountAccountsWithoutUser :one
+-- CountAccountsWithoutUser counts accounts whose created_by user no longer exists.
+SELECT COUNT(*) FROM accounts a
+WHERE NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.user_id = a.created_by
+);

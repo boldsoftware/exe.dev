@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><title>Billing Health</title>
+{{template "base-head"}}
+<style>
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 4px 12px; border-bottom: 1px solid #eee; }
+th { color: #666; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.section { margin-top: 24px; }
+</style>
+</head><body>
+<h1>Billing Health</h1>
+<p><a href="/debug">/debug</a> &gt; billing &gt; health</p>
+
+<div class="section">
+<h2>Accounts</h2>
+<table>
+<tr><th>Total accounts</th><td class="num">{{.TotalAccounts}}</td></tr>
+<tr><th>Active (billing)</th><td class="num">{{.ActiveCount}}</td></tr>
+<tr><th>Canceled (billing)</th><td class="num">{{.CanceledCount}}</td></tr>
+<tr><th>Pending (no billing events)</th><td class="num">{{.PendingCount}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Users</h2>
+<table>
+<tr><th>Dev users (exe.dev)</th><td class="num">{{.DevUsers}}</td></tr>
+<tr><th>Login-with-exe users</th><td class="num">{{.LoginUsers}}</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Active Plans</h2>
+<table>
+<thead><tr><th>Plan ID</th><th>Count</th></tr></thead>
+<tbody>
+{{range .PlanCounts}}
+<tr><td><code>{{.PlanID}}</code></td><td class="num">{{.Count}}</td></tr>
+{{end}}
+{{if not .PlanCounts}}
+<tr><td colspan="2">No active plans.</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>Orphaned</h2>
+<table>
+<tr><th>Accounts without active plan</th><td class="num">{{.NoPlanCount}}</td></tr>
+<tr><th>Accounts without user</th><td class="num">{{.NoUserCount}}</td></tr>
+</table>
+</div>
+
+</body></html>

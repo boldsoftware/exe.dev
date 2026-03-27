@@ -78,6 +78,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countAccountsByBillingStatusStmt, err = db.PrepareContext(ctx, countAccountsByBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAccountsByBillingStatus: %w", err)
 	}
+	if q.countAccountsWithoutActivePlanStmt, err = db.PrepareContext(ctx, countAccountsWithoutActivePlan); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAccountsWithoutActivePlan: %w", err)
+	}
+	if q.countAccountsWithoutUserStmt, err = db.PrepareContext(ctx, countAccountsWithoutUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAccountsWithoutUser: %w", err)
+	}
+	if q.countAllAccountsStmt, err = db.PrepareContext(ctx, countAllAccounts); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAllAccounts: %w", err)
+	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -1254,6 +1263,21 @@ func (q *Queries) Close() error {
 	if q.countAccountsByBillingStatusStmt != nil {
 		if cerr := q.countAccountsByBillingStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countAccountsByBillingStatusStmt: %w", cerr)
+		}
+	}
+	if q.countAccountsWithoutActivePlanStmt != nil {
+		if cerr := q.countAccountsWithoutActivePlanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAccountsWithoutActivePlanStmt: %w", cerr)
+		}
+	}
+	if q.countAccountsWithoutUserStmt != nil {
+		if cerr := q.countAccountsWithoutUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAccountsWithoutUserStmt: %w", cerr)
+		}
+	}
+	if q.countAllAccountsStmt != nil {
+		if cerr := q.countAllAccountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAllAccountsStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -3118,6 +3142,9 @@ type Queries struct {
 	consumeCheckoutParamsStmt                  *sql.Stmt
 	consumeOAuthStateStmt                      *sql.Stmt
 	countAccountsByBillingStatusStmt           *sql.Stmt
+	countAccountsWithoutActivePlanStmt         *sql.Stmt
+	countAccountsWithoutUserStmt               *sql.Stmt
+	countAllAccountsStmt                       *sql.Stmt
 	countBoxShareLinksStmt                     *sql.Stmt
 	countBoxSharesStmt                         *sql.Stmt
 	countBoxesStmt                             *sql.Stmt
@@ -3503,6 +3530,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
 		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
+		countAccountsWithoutActivePlanStmt:         q.countAccountsWithoutActivePlanStmt,
+		countAccountsWithoutUserStmt:               q.countAccountsWithoutUserStmt,
+		countAllAccountsStmt:                       q.countAllAccountsStmt,
 		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                         q.countBoxSharesStmt,
 		countBoxesStmt:                             q.countBoxesStmt,

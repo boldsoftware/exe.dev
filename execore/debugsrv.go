@@ -75,6 +75,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
+	mux.HandleFunc("GET /debug/billing-health", s.handleDebugBillingHealth)
 	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanVersions)
 	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanVersionMigrate)
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
@@ -5726,6 +5727,96 @@ func (s *Server) handleDebugPlans(w http.ResponseWriter, r *http.Request) {
 		WildcardEnt:  entitlement.All,
 	}
 	s.renderDebugTemplate(r.Context(), w, "plans.html", data)
+}
+
+func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	totalAccounts, err := withRxRes0(s, ctx, (*exedb.Queries).CountAllAccounts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count accounts: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	activeCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "active")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count active: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	canceledCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "canceled")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count canceled: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	pendingCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count pending: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	noPlanCount, err := withRxRes0(s, ctx, (*exedb.Queries).CountAccountsWithoutActivePlan)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count no plan: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	noUserCount, err := withRxRes0(s, ctx, (*exedb.Queries).CountAccountsWithoutUser)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count no user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	planCounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListPlanVersionCounts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("list plan counts: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	loginUsers, err := withRxRes0(s, ctx, (*exedb.Queries).CountLoginUsers)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count login users: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	devUsers, err := withRxRes0(s, ctx, (*exedb.Queries).CountDevUsers)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("count dev users: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type planRow struct {
+		PlanID string
+		Count  int64
+	}
+	plans := make([]planRow, len(planCounts))
+	for i, pc := range planCounts {
+		plans[i] = planRow{PlanID: pc.PlanID, Count: pc.Cnt}
+	}
+
+	data := struct {
+		TotalAccounts int64
+		ActiveCount   int64
+		CanceledCount int64
+		PendingCount  int64
+		NoPlanCount   int64
+		NoUserCount   int64
+		LoginUsers    int64
+		DevUsers      int64
+		PlanCounts    []planRow
+	}{
+		TotalAccounts: totalAccounts,
+		ActiveCount:   activeCount,
+		CanceledCount: canceledCount,
+		PendingCount:  pendingCount,
+		NoPlanCount:   noPlanCount,
+		NoUserCount:   noUserCount,
+		LoginUsers:    loginUsers,
+		DevUsers:      devUsers,
+		PlanCounts:    plans,
+	}
+	s.renderDebugTemplate(ctx, w, "billing-health.html", data)
 }
 
 func (s *Server) handleDebugBillingJump(w http.ResponseWriter, r *http.Request) {
