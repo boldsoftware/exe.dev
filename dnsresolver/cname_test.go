@@ -74,11 +74,11 @@ func TestLookupCNAMEPrefersFirstHopWhenMultipleAnswers(t *testing.T) {
 						Class: dnsmessage.ClassINET,
 						TTL:   300,
 					},
-					Body: &dnsmessage.CNAMEResource{CNAME: mustNewName("s001.exe.xyz.")},
+					Body: &dnsmessage.CNAMEResource{CNAME: mustNewName("na001.exe.xyz.")},
 				},
 				{
 					Header: dnsmessage.ResourceHeader{
-						Name:  mustNewName("s001.exe.xyz."),
+						Name:  mustNewName("na001.exe.xyz."),
 						Type:  dnsmessage.TypeA,
 						Class: dnsmessage.ClassINET,
 						TTL:   300,

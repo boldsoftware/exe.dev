@@ -3,7 +3,7 @@
 
 Usage: check_shard_ips.py [domain] [num_shards]
   domain: Base domain to check (default: exe.xyz)
-  num_shards: Number of shards to check (default: 25)
+  num_shards: Number of shards to check (default: 1016)
 """
 
 import socket
@@ -40,7 +40,7 @@ def check_https(hostname: str, timeout: float = 10) -> str | None:
 
 def main():
     base_domain = sys.argv[1] if len(sys.argv) > 1 else "exe.xyz"
-    num_shards = int(sys.argv[2]) if len(sys.argv) > 2 else 25
+    num_shards = int(sys.argv[2]) if len(sys.argv) > 2 else 1016
 
     # Collect all hostnames and their IPs
     hosts_to_ips = {}
@@ -52,9 +52,9 @@ def main():
         sys.exit(1)
     hosts_to_ips[base_domain] = base_ip
 
-    # Check all shards (s001 through sNNN)
+    # Check all shards (na001 through naNNN)
     for i in range(1, num_shards + 1):
-        shard_hostname = f"s{i:03d}.{base_domain}"
+        shard_hostname = f"na{i:03d}.{base_domain}"
         shard_ip = get_ip(shard_hostname)
         if shard_ip is None:
             print(f"ERROR: Failed to resolve {shard_hostname}")
@@ -89,7 +89,7 @@ def main():
     )
     https_errors = []
     for i in range(1, num_shards + 1):
-        shard_hostname = f"s{i:03d}.{base_domain}"
+        shard_hostname = f"na{i:03d}.{base_domain}"
         err = check_https(shard_hostname)
         if err:
             https_errors.append((shard_hostname, err))

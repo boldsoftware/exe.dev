@@ -3,7 +3,7 @@
 // DNS updates without waiting for Route53 propagation.
 //
 // Record sources:
-//   - A records (sNNN.exe.xyz): ip_shards table
+//   - A records (naNNN.exe.xyz): in-memory NetActuate shard IP cache
 //   - CNAME records (vmname.exe.xyz): boxes + box_ip_shard tables
 //   - TXT records (ACME challenges): in-memory map
 package exens
@@ -288,7 +288,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 }
 
 // lookupA handles A record queries.
-// Format: sNNN.{domain} where NNN is a shard number (001-025)
+// Format: naNNN.{domain} where NNN is a shard number (001-1016)
 // For box names, returns the CNAME and chases it to get the A record.
 // For *.xterm.{boxHost} and *.shelley.{boxHost}, returns the box CNAME and A.
 // For *.int.{boxHost} and *.team-int.{boxHost}, returns the metadata IP (169.254.169.254).
@@ -327,18 +327,6 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return s.lookupMetadataA(fqdn, class)
 	}
 
-	// Parse shard from name (e.g., "s001.exe.xyz" -> shard 1)
-	shard, err := parseShardFromName(qname)
-	if err == nil {
-		return s.lookupShardA(ctx, shard, fqdn, class)
-	}
-
-	// Parse latitude shard from name (e.g., "n043.exe.xyz" -> shard 43)
-	latShard, err := parseLatitudeShardFromName(qname)
-	if err == nil {
-		return s.lookupLatitudeShardA(ctx, latShard, fqdn, class)
-	}
-
 	// Parse NetActuate shard from name (e.g., "na043.exe.xyz" -> shard 43)
 	naShard, err := parseNetActuateShardFromName(qname)
 	if err == nil {
@@ -365,49 +353,6 @@ func (s *Server) lookupBoxA(ctx context.Context, qname, fqdn string, class uint1
 	}
 	// Return CNAME followed by the A record
 	return append(cnameRRs, aRRs...), nil
-}
-
-// lookupShardA returns an A record for the given shard number.
-func (s *Server) lookupShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
-	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetShardPublicIP, int64(shard))
-	if err != nil {
-		// No record found is not an error, just return empty
-		return nil, nil
-	}
-
-	ip := net.ParseIP(publicIP)
-	if ip == nil {
-		s.log.WarnContext(ctx, "invalid IP in ip_shards table", "shard", shard, "ip", publicIP)
-		return nil, nil
-	}
-
-	return []dns.RR{
-		&dns.A{
-			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
-			A:   ip.To4(),
-		},
-	}, nil
-}
-
-// lookupLatitudeShardA returns an A record for the given latitude shard number.
-func (s *Server) lookupLatitudeShardA(ctx context.Context, shard int, fqdn string, class uint16) ([]dns.RR, error) {
-	publicIP, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetLatitudeShardPublicIP, int64(shard))
-	if err != nil {
-		return nil, nil
-	}
-
-	ip := net.ParseIP(publicIP)
-	if ip == nil {
-		s.log.WarnContext(ctx, "invalid IP in latitude_ip_shards table", "shard", shard, "ip", publicIP)
-		return nil, nil
-	}
-
-	return []dns.RR{
-		&dns.A{
-			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
-			A:   ip.To4(),
-		},
-	}, nil
 }
 
 // lookupNetActuateShardA returns an A record for the given NetActuate shard number.
@@ -452,7 +397,7 @@ func (s *Server) lookupMetadataA(fqdn string, class uint16) ([]dns.RR, error) {
 }
 
 // lookupCNAME handles CNAME record queries.
-// Format: {boxname}.{domain} -> sNNN.{domain}
+// Format: {boxname}.{domain} -> naNNN.{domain}
 func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
 	// Extract box name (everything before first dot)
 	parts := strings.SplitN(qname, ".", 2)
@@ -478,13 +423,7 @@ func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint
 		return nil, nil
 	}
 
-	// Skip shard names (s001, s002, n001, etc.)
-	if _, err := parseShardFromName(qname); err == nil {
-		return nil, nil
-	}
-	if _, err := parseLatitudeShardFromName(qname); err == nil {
-		return nil, nil
-	}
+	// Skip shard names (na001, na002, etc.)
 	if _, err := parseNetActuateShardFromName(qname); err == nil {
 		return nil, nil
 	}
@@ -600,42 +539,6 @@ func (s *Server) lookupSOA(ctx context.Context, qname, fqdn string, class uint16
 			Minttl:  300,     // 5 minutes (negative cache TTL)
 		},
 	}, nil
-}
-
-// parseShardFromName extracts the shard number from a DNS name.
-// Returns error if the name is not a shard name (e.g., "s001.exe.xyz" -> 1).
-func parseShardFromName(name string) (int, error) {
-	parts := strings.SplitN(name, ".", 2)
-	if len(parts) < 1 {
-		return 0, fmt.Errorf("invalid name")
-	}
-	sub := parts[0]
-	if len(sub) < 4 || sub[0] != 's' {
-		return 0, fmt.Errorf("not a shard name")
-	}
-	shard, err := strconv.Atoi(sub[1:])
-	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {
-		return 0, fmt.Errorf("invalid shard number")
-	}
-	return shard, nil
-}
-
-// parseLatitudeShardFromName extracts the latitude shard number from a DNS name.
-// Returns error if the name is not a latitude shard name (e.g., "n043.exe.xyz" -> 43).
-func parseLatitudeShardFromName(name string) (int, error) {
-	parts := strings.SplitN(name, ".", 2)
-	if len(parts) < 1 {
-		return 0, fmt.Errorf("invalid name")
-	}
-	sub := parts[0]
-	if len(sub) < 4 || sub[0] != 'n' || sub[1] == 'a' {
-		return 0, fmt.Errorf("not a latitude shard name")
-	}
-	shard, err := strconv.Atoi(sub[1:])
-	if err != nil || shard < 1 || shard > publicips.MaxDomainShards {
-		return 0, fmt.Errorf("invalid shard number")
-	}
-	return shard, nil
 }
 
 // parseNetActuateShardFromName extracts the NetActuate shard number from a DNS name.

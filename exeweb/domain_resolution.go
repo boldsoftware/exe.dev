@@ -153,7 +153,7 @@ func (dr *DomainResolver) apexPointsToPublicIP(ips []netip.Addr) bool {
 		if dr.LobbyIP.IsValid() && addr == dr.LobbyIP {
 			return true
 		}
-		// Check shard IPs (s001-s025.exe.xyz)
+		// Check shard IPs (naNNN.exe.xyz)
 		for _, info := range dr.PublicIPs {
 			if addr == info.IP {
 				return true
