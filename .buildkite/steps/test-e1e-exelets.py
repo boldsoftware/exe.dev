@@ -67,7 +67,13 @@ def main():
 def _restore_prebuilt_artifacts():
     print("--- :package: Restore prebuilt artifacts", flush=True)
     goarch = os.environ.get("GOARCH", "amd64")
-    prebuilt = os.environ.get("PREBUILT_DIR", "/tmp/e1e-prebuilt-" + os.environ.get("BUILDKITE_BUILD_ID", "local"))
+    ci_cache = os.environ.get("CI_CACHE", "")
+    build_id = os.environ.get("BUILDKITE_BUILD_ID", "local")
+    if ci_cache:
+        default_prebuilt = f"{ci_cache}/e1e-prebuilt-{build_id}"
+    else:
+        default_prebuilt = f"/tmp/e1e-prebuilt-{build_id}"
+    prebuilt = os.environ.get("PREBUILT_DIR", default_prebuilt)
 
     # Tell the Go test harness where to find prebuilt binaries.
     for name, binary in [("PREBUILT_EXED", "exed"), ("PREBUILT_EXEPROX", "exeprox"),
