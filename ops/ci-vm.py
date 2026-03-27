@@ -752,7 +752,17 @@ def create_vm() -> Path:
 
     def clone_data():
         if snapshot and not local_data.exists():
-            cp_clone(snap_data, local_data)
+            tmp = Path(str(local_data) + ".converting")
+            lock = Path("/tmp") / f"{local_data.name}.lock-{os.getenv('USER', 'ci')}"
+            fd = open(lock, "w")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                if not local_data.exists():
+                    cp_clone(snap_data, tmp)
+                    sudo("mv", str(tmp), str(local_data))
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                fd.close()
         if data_backing:
             sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
                  "-b", str(data_backing), str(data_disk))
