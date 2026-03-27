@@ -42,26 +42,26 @@ type MetricsConfig struct {
 
 // ExeletInstance describes a single running exelet.
 type ExeletInstance struct {
-	Address       string                // e.g., "tcp://192.168.5.15:9080"
-	HTTPAddress   string                // e.g., "http://192.168.5.15:9081"
-	Exited        <-chan struct{}       // closed when Cmd exits
-	Cause         func() error          // why context was canceled
-	Cmd           *exec.Cmd             // SSH command running exelet
-	CmdCancel     context.CancelFunc    // cancel function for exelet context
-	DataDir       string                // temp directory for exelet data (local or remote path)
-	RemoteHost    string                // VM on which exelet is running
-	TunnelCmd1       *exec.Cmd          // SSH tunnel process if using reverse tunnel
-	TunnelCancel1    context.CancelFunc // cancel function for tunnel context
-	TunnelCmd2       *exec.Cmd          // second SSH tunnel
-	TunnelCancel2    context.CancelFunc // second cancel function
-	MetricsTunnel    *exec.Cmd          // SSH tunnel for metricsd
-	MetricsTunnelCxl context.CancelFunc // cancel for metricsd tunnel
-	BridgeName    string                // bridge name for network isolation
-	ZFSDataset    string                // ZFS dataset for storage isolation
-	CoverDir      string                // remote directory for Go coverage artifacts (GOCOVERDIR)
-	Errors        chan string           // exelet errors are sent on this channel
-	Client        func() *client.Client // function returns exelet control client
-	ExepipeErrors chan string           // error from remote exepipe
+	Address          string                // e.g., "tcp://192.168.5.15:9080"
+	HTTPAddress      string                // e.g., "http://192.168.5.15:9081"
+	Exited           <-chan struct{}       // closed when Cmd exits
+	Cause            func() error          // why context was canceled
+	Cmd              *exec.Cmd             // SSH command running exelet
+	CmdCancel        context.CancelFunc    // cancel function for exelet context
+	DataDir          string                // temp directory for exelet data (local or remote path)
+	RemoteHost       string                // VM on which exelet is running
+	TunnelCmd1       *exec.Cmd             // SSH tunnel process if using reverse tunnel
+	TunnelCancel1    context.CancelFunc    // cancel function for tunnel context
+	TunnelCmd2       *exec.Cmd             // second SSH tunnel
+	TunnelCancel2    context.CancelFunc    // second cancel function
+	MetricsTunnel    *exec.Cmd             // SSH tunnel for metricsd
+	MetricsTunnelCxl context.CancelFunc    // cancel for metricsd tunnel
+	BridgeName       string                // bridge name for network isolation
+	ZFSDataset       string                // ZFS dataset for storage isolation
+	CoverDir         string                // remote directory for Go coverage artifacts (GOCOVERDIR)
+	Errors           chan string           // exelet errors are sent on this channel
+	Client           func() *client.Client // function returns exelet control client
+	ExepipeErrors    chan string           // error from remote exepipe
 
 	exepipeCmd        *exec.Cmd // remote exepipe process if there is one
 	testRunID         string    // argument to StartExelet

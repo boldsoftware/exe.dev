@@ -144,7 +144,7 @@ func TestLoadedHost(t *testing.T) {
 			usage.LoadAverage = 0
 		}
 		usage.MemAvailable = 64 << 20 // 64 GiB in KiB — well above extreme threshold
-		usage.DiskFree = 100 << 20     // 100 GiB in KiB — well above extreme threshold
+		usage.DiskFree = 100 << 20    // 100 GiB in KiB — well above extreme threshold
 		_, err = el.Client().SetMachineUsage(t.Context(),
 			&resourceapi.SetMachineUsageRequest{
 				Available: true,
