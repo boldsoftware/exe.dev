@@ -84,7 +84,6 @@ receivers:
           static_configs:
             - targets:
                 - 'mon:9100'
-                - 'ci.crocodile-vector.ts.net:9100'
               labels:
                 stage: 'production'
             - targets:
