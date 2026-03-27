@@ -187,7 +187,7 @@ var (
 
 	FireworksDeepseekV3 = Model{
 		UserName:  "fireworks-deepseek-v3",
-		ModelName: "accounts/fireworks/models/deepseek-v3-0324",
+		ModelName: "accounts/fireworks/models/deepseek-v3p2",
 		URL:       FireworksURL,
 		APIKeyEnv: FireworksAPIKeyEnv,
 	}
@@ -211,20 +211,6 @@ var (
 		ModelName: "devstral-small-latest",
 		URL:       MistralURL,
 		APIKeyEnv: MistralAPIKeyEnv,
-	}
-
-	ZaiGLM45CoderFireworks = Model{
-		UserName:  "zai-glm45-fireworks",
-		ModelName: "accounts/fireworks/models/glm-4p5",
-		URL:       FireworksURL,
-		APIKeyEnv: FireworksAPIKeyEnv,
-	}
-
-	GLM4P6Fireworks = Model{
-		UserName:  "glm-4p6-fireworks",
-		ModelName: "accounts/fireworks/models/glm-4p6",
-		URL:       FireworksURL,
-		APIKeyEnv: FireworksAPIKeyEnv,
 	}
 
 	GLM47Fireworks = Model{
@@ -354,8 +340,6 @@ var ModelsRegistry = []Model{
 	FireworksLlama4Maverick,
 	MistralMedium,
 	DevstralSmall,
-	ZaiGLM45CoderFireworks,
-	GLM4P6Fireworks,
 	GLM47Fireworks,
 	GPTOSS120B,
 	GPTOSS20B,
@@ -742,7 +726,7 @@ func (s *Service) TokenContextWindow() int {
 		return 128000 // 128k for GPT-4o models
 	case "o3-2025-04-16", "o3-mini-2025-04-16":
 		return 200000 // 200k for O3 models
-	case "glm", "zai-glm45-fireworks":
+	case "glm":
 		return 128000
 	case "qwen":
 		return 256000
