@@ -51,6 +51,14 @@ done) &
 pids+=($!)
 names+=("oss tests")
 
+# UI typecheck and build (exe dashboard)
+# make ui runs: pnpm install, vue-tsc --noEmit, vite build
+if [ -f ui/package.json ]; then
+    make ui &
+    pids+=($!)
+    names+=("ui typecheck+build")
+fi
+
 fail=0
 for i in "${!pids[@]}"; do
     if wait "${pids[$i]}"; then

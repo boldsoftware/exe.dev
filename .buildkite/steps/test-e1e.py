@@ -40,10 +40,19 @@ def main():
 
     shard = os.environ.get("E1E_SHARD", "")
     suffix = f"-{shard}" if shard else ""
+    run_filter = os.environ.get("E1E_RUN_FILTER", "")
 
     print(f"--- :rocket: Run e1e tests{' (shard ' + shard + ')' if shard else ''}", flush=True)
     # Remove stale golden files so they get freshly regenerated.
+    # When sharded, only remove files matching this shard's filter so we
+    # don't delete golden files that belong to other shards.
     for f in _glob("e1e/golden/*.txt"):
+        basename = os.path.basename(f).removesuffix(".txt")
+        # Golden files are TestName.txt or TestName_subtest.txt;
+        # the top-level test name is everything before the first underscore.
+        test_name = basename.split("_")[0]
+        if run_filter and not re.match(run_filter, test_name):
+            continue
         os.remove(f)
 
     log_artifact_dir = f"e1e-logs{suffix}"
@@ -51,8 +60,6 @@ def main():
     os.environ["E1E_LOG_DIR"] = os.path.abspath(log_artifact_dir)
 
     json_results = f"e1e-results{suffix}.json"
-
-    run_filter = os.environ.get("E1E_RUN_FILTER", "")
 
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
            "--", "-race", "-timeout=15m", "-failfast"]
@@ -65,13 +72,32 @@ def main():
 
     _annotate_results(json_results, shard)
 
-    if not shard:
-        print("--- :scroll: Check golden files unchanged", flush=True)
+    # Only check golden files if tests passed — if they failed, we deleted
+    # the files before the run and they were never regenerated.
+    if test_result.returncode == 0:
+        print(f"--- :scroll: Check golden files unchanged{' (shard ' + shard + ')' if shard else ''}", flush=True)
         result = subprocess.run(["git", "status", "--porcelain", "e1e/golden/"], capture_output=True, text=True)
-        if result.stdout.strip():
+        changed_lines = result.stdout.strip().splitlines() if result.stdout.strip() else []
+        if run_filter:
+            # Only check golden files matching this shard's test filter.
+            filtered = []
+            for line in changed_lines:
+                # git status --porcelain lines look like: " M e1e/golden/TestFoo.txt"
+                path = line.split()[-1] if line.split() else ""
+                basename = os.path.basename(path).removesuffix(".txt")
+                test_name = basename.split("_")[0]
+                if re.match(run_filter, test_name):
+                    filtered.append(line)
+            changed_lines = filtered
+        if changed_lines:
             print("ERROR: Golden files were modified by tests:", flush=True)
-            run(["git", "status", "--porcelain", "e1e/golden/"])
-            run(["git", "diff", "e1e/golden/"])
+            for line in changed_lines:
+                print(line, flush=True)
+            run(["git", "--no-pager", "diff", "e1e/golden/"])
+
+            # Push changes to a recovery branch
+            _push_golden_recovery_branch()
+
             sys.exit(1)
 
     recording_file = f"recordings{suffix}.html"
@@ -208,6 +234,33 @@ def _annotate_results(json_results, shard):
         ["buildkite-agent", "annotate", "--context", context, "--style", "info"],
         input=annotation, text=True,
     )
+
+
+def _push_golden_recovery_branch():
+    """Push golden file changes to a recovery branch for easy cherry-picking."""
+    build_id = os.environ.get("BUILDKITE_BUILD_ID", "unknown")
+    branch = f"golden-{build_id}"
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import github_token
+        token = github_token.get()
+        github_token.configure_origin(token)
+
+        run(["git", "config", "user.name", "exe CI"])
+        run(["git", "config", "user.email", "ci@exe.dev"])
+        run(["git", "add", "e1e/golden/"])
+        run(["git", "commit", "-m", f"Golden file updates from CI build {build_id}"])
+        result = subprocess.run(
+            ["./bin/retry.sh", "--retry-on", "128", "git", "push", "origin", f"HEAD:refs/heads/{branch}"],
+        )
+        if result.returncode == 0:
+            print(f"\n\U0001f4e6 Golden file changes pushed to branch: {branch}", flush=True)
+            print(f"To apply these changes locally:", flush=True)
+            print(f"  git fetch origin {branch} && git cherry-pick FETCH_HEAD", flush=True)
+        else:
+            print(f"WARNING: Failed to push golden recovery branch", flush=True)
+    except Exception as e:
+        print(f"WARNING: Could not push golden recovery branch: {e}", flush=True)
 
 
 def _has_cmd(name):

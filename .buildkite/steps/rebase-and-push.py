@@ -4,23 +4,24 @@
 All tests have passed at this point. We:
   1. Generate a GitHub App installation token
   2. Configure git to use it
-  3. Rebase onto origin/main
-  4. Push to main
+  3. Sync shelley/main if it has advanced
+  4. Rebase onto origin/main
+  5. Dry-run push to origin/main
+  6. Push to subrepos (shelley, exeuntu, oss)
+  7. Push to origin/main
+  8. Trigger exeuntu build if exeuntu/ changed
+  9. Delete the queue branch
 """
 
-import base64
 import json
 import os
 import subprocess
 import sys
-import tempfile
-import time
 
-# GitHub App config
-APP_CLIENT_ID = "Iv23liu81FFLPs0w9AO8"
-SECRET_NAME = "EXE_COMMIT_QUEUE_APP_PRIVATE_KEY"
-GITHUB_ORG = "boldsoftware"
-GITHUB_REPO = "exe"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import github_token
+
+GITHUB_ORG = github_token.GITHUB_ORG
 
 
 def run(*cmd, check=True, capture=False):
@@ -30,99 +31,134 @@ def run(*cmd, check=True, capture=False):
     return subprocess.run(cmd, check=check)
 
 
-def b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+def sync_shelley(token: str):
+    """If shelley/main has advanced past origin/main, sync those commits."""
+    print("--- :arrows_counterclockwise: Check shelley/main sync", flush=True)
+
+    # Set up shelley remote
+    shelley_url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/shelley.git"
+    result = subprocess.run(["git", "remote", "set-url", "shelley", shelley_url], capture_output=True)
+    if result.returncode != 0:
+        run("git", "remote", "add", "shelley", shelley_url)
+
+    run("./bin/retry.sh", "git", "fetch", "shelley")
+
+    shelley_tree = run("git", "rev-parse", "shelley/main^{tree}", capture=True).stdout.strip()
+    exe_shelley_tree = run("git", "ls-tree", "origin/main", "shelley", "--format", "%(objectname)", capture=True).stdout.strip()
+
+    if shelley_tree != exe_shelley_tree:
+        print("shelley/main has advanced past origin/main; syncing inline...", flush=True)
+        queue_head = run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
+        run("git", "checkout", "--detach", "origin/main")
+        run("./bin/sync-commits-from-shelley.sh", "shelley/main")
+        run("./bin/retry.sh", "--retry-on", "128", "git", "push", "origin", "new-exe-commit:main")
+        run("git", "tag", "-d", "new-exe-commit", check=False)
+        run("./bin/retry.sh", "git", "fetch", "origin", "main")
+        run("git", "checkout", "--detach", queue_head)
+        print("Shelley sync complete; origin/main updated", flush=True)
+    else:
+        print("shelley/main in sync, nothing to do", flush=True)
 
 
-def generate_jwt(pem: str) -> str:
-    """Generate a JWT signed with the GitHub App's private key."""
-    now = int(time.time())
-    header = b64url(json.dumps({"typ": "JWT", "alg": "RS256"}).encode())
-    payload = b64url(json.dumps({
-        "iat": now - 60,
-        "exp": now + 600,
-        "iss": APP_CLIENT_ID,
-    }).encode())
-    signing_input = f"{header}.{payload}"
+def push_to_subrepos(token: str):
+    """Push to subrepos (shelley, exeuntu, oss)."""
+    print("--- :package: Push to subrepos", flush=True)
 
-    # Use openssl to sign (available on CI agents)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as f:
-        f.write(pem)
-        f.flush()
-        proc = subprocess.run(
-            ["openssl", "dgst", "-sha256", "-sign", f.name],
-            input=signing_input.encode(),
-            capture_output=True,
+    # Set up HTTPS remotes with app token
+    for name, repo in [("shelley", "shelley"), ("exeuntu", "exeuntu"), ("oss", "exe.dev")]:
+        url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
+        result = subprocess.run(["git", "remote", "set-url", name, url], capture_output=True)
+        if result.returncode != 0:
+            run("git", "remote", "add", name, url)
+
+    run("bin/push-to-subrepo.sh", "main", "shelley", "shelley")
+    run("bin/push-to-subrepo.sh", "main", "exeuntu", "exeuntu")
+    run("bin/push-to-subrepo.sh", "main", "oss", "oss")
+
+
+def trigger_exeuntu_build(token: str, origin_main_before: str):
+    """Trigger exeuntu build if exeuntu/ or its workflow changed."""
+    print("--- :docker: Check exeuntu trigger", flush=True)
+    changed = run("git", "diff", "--name-only", origin_main_before, "HEAD", capture=True).stdout
+    import re
+    if re.search(r'^(exeuntu/|\.github/workflows/build-exeuntu\.yml$)', changed, re.MULTILINE):
+        print("exeuntu/ changed, triggering build...", flush=True)
+        subject = run("git", "log", "-1", "--pretty=%s", capture=True).stdout.strip()
+        # Use GitHub API to dispatch the workflow
+        r = subprocess.run(
+            ["curl", "-sS", "-X", "POST",
+             "-H", "Accept: application/vnd.github+json",
+             "-H", f"Authorization: Bearer {token}",
+             "-H", "X-GitHub-Api-Version: 2022-11-28",
+             f"https://api.github.com/repos/{GITHUB_ORG}/exe/actions/workflows/build-exeuntu.yml/dispatches",
+             "-d", json.dumps({"ref": "main", "inputs": {"commit_subject": subject}})],
+            capture_output=True, text=True,
         )
-        os.unlink(f.name)
-    if proc.returncode != 0:
-        raise RuntimeError(f"openssl sign failed: {proc.stderr.decode()}")
-    signature = b64url(proc.stdout)
-    return f"{header}.{payload}.{signature}"
+        if r.returncode != 0:
+            print(f"WARNING: Failed to trigger exeuntu build: {r.stderr}", file=sys.stderr)
+        else:
+            print("Exeuntu build triggered.", flush=True)
+    else:
+        print("No exeuntu changes, skipping.", flush=True)
 
 
-def get_installation_token(jwt: str) -> str:
-    """Exchange JWT for an installation access token."""
-    # Find the installation ID for our org
-    r = subprocess.run(
-        ["curl", "-sS",
-         "-H", "Accept: application/vnd.github+json",
-         "-H", f"Authorization: Bearer {jwt}",
-         "-H", "X-GitHub-Api-Version: 2022-11-28",
-         "https://api.github.com/app/installations"],
-        capture_output=True, text=True, check=True,
+def delete_queue_branch(token: str):
+    """Delete the kite-queue-* branch after successful merge."""
+    branch = os.environ.get("BUILDKITE_BRANCH", "")
+    if not branch.startswith("kite-queue-"):
+        return
+
+    print(f"--- :wastebasket: Delete queue branch {branch}", flush=True)
+
+    # Get the SHA of the queue branch on the remote
+    ls_out = run(
+        "./bin/retry.sh", "git", "ls-remote", "origin", branch,
+        capture=True,
+    ).stdout.strip()
+    queue_sha = ls_out.split()[0] if ls_out else ""
+
+    if not queue_sha:
+        print(f"Branch {branch} not found on remote, nothing to delete.", flush=True)
+        return
+
+    # Verify the branch is an ancestor of main
+    run("./bin/retry.sh", "git", "fetch", "origin", "main")
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", queue_sha, "origin/main"],
+        capture_output=True,
     )
-    installations = json.loads(r.stdout)
-    installation_id = None
-    for inst in installations:
-        if inst.get("account", {}).get("login") == GITHUB_ORG:
-            installation_id = inst["id"]
-            break
-    if not installation_id:
-        print(f"Available installations: {json.dumps(installations, indent=2)}", file=sys.stderr)
-        raise RuntimeError(f"No installation found for org {GITHUB_ORG}")
-
-    print(f"Installation ID: {installation_id}", flush=True)
-
-    # Request a token scoped to our repo
-    r = subprocess.run(
-        ["curl", "-sS", "-X", "POST",
-         "-H", "Accept: application/vnd.github+json",
-         "-H", f"Authorization: Bearer {jwt}",
-         "-H", "X-GitHub-Api-Version: 2022-11-28",
-         f"https://api.github.com/app/installations/{installation_id}/access_tokens",
-         "-d", json.dumps({"repositories": [GITHUB_REPO]})],
-        capture_output=True, text=True, check=True,
-    )
-    resp = json.loads(r.stdout)
-    token = resp.get("token")
-    if not token:
-        raise RuntimeError(f"Failed to get token: {r.stdout}")
-    return token
+    if result.returncode == 0:
+        run(
+            "./bin/retry.sh", "--retry-on", "128",
+            "git", "push", f"--force-with-lease={branch}:{queue_sha}",
+            "origin", f":refs/heads/{branch}",
+            check=False,
+        )
+        print(f"Deleted branch {branch}", flush=True)
+    else:
+        print(f"Branch {branch} not yet ancestor of main, skipping delete.", flush=True)
 
 
 def main():
     print("--- :key: Generate GitHub App token", flush=True)
-    pem = run("buildkite-agent", "secret", "get", SECRET_NAME, capture=True).stdout
-    if not pem.strip():
-        print("ERROR: Could not read private key from Buildkite secrets", file=sys.stderr)
-        sys.exit(1)
-
-    jwt = generate_jwt(pem)
-    token = get_installation_token(jwt)
+    token = github_token.get()
+    github_token.configure_origin(token)
     print("Token acquired.", flush=True)
-
-    # Configure git to use the token
-    repo_url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{GITHUB_REPO}.git"
-    run("git", "remote", "set-url", "origin", repo_url)
 
     print("--- :git: Rebase onto origin/main", flush=True)
     run("git", "config", "user.email", "ci@exe.dev")
     run("git", "config", "user.name", "exe CI")
     run("git", "fetch", "origin", "main")
 
+    # Sync shelley/main if it has advanced
+    sync_shelley(token)
+
+    # Re-fetch after potential shelley sync
+    run("./bin/retry.sh", "git", "fetch", "origin", "main")
+
     head_sha = run("git", "rev-parse", "--short", "HEAD", capture=True).stdout.strip()
     main_sha = run("git", "rev-parse", "--short", "origin/main", capture=True).stdout.strip()
+    origin_main_before = run("git", "rev-parse", "origin/main", capture=True).stdout.strip()
     print(f"HEAD: {head_sha}, origin/main: {main_sha}", flush=True)
 
     result = run("git", "rebase", "origin/main", check=False)
@@ -134,13 +170,29 @@ def main():
     new_sha = run("git", "rev-parse", "--short", "HEAD", capture=True).stdout.strip()
     print(f"Rebased: {head_sha} -> {new_sha} (on {main_sha})", flush=True)
 
+    # Dry-run push to fail fast before subrepo pushes
     print("--- :rocket: Push to origin/main", flush=True)
-    result = run("git", "push", "origin", "HEAD:refs/heads/main", check=False)
+    result = run("./bin/retry.sh", "--retry-on", "128", "git", "push", "--dry-run", "origin", "HEAD:main", check=False)
+    if result.returncode != 0:
+        print("ERROR: Dry-run push failed. Someone may have pushed in the meantime.", file=sys.stderr)
+        sys.exit(1)
+
+    # Push to subrepos first (mirrors GHA ordering)
+    push_to_subrepos(token)
+
+    # Push to origin/main
+    result = run("./bin/retry.sh", "--retry-on", "128", "git", "push", "origin", "HEAD:refs/heads/main", check=False)
     if result.returncode != 0:
         print("ERROR: Push failed. Someone may have pushed in the meantime.", file=sys.stderr)
         sys.exit(1)
 
     print("Successfully pushed to main!", flush=True)
+
+    # Trigger exeuntu build if needed
+    trigger_exeuntu_build(token, origin_main_before)
+
+    # Clean up the queue branch
+    delete_queue_branch(token)
 
 
 if __name__ == "__main__":
