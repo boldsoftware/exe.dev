@@ -69,7 +69,7 @@ type Env struct {
 	ShowDocsPreview   bool // whether to display preview docs to all users; true for all stages except prod (sudoers always see them)
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 	SSHCommandUsesAt  bool // whether ssh command logins use "box@host" format instead of "box.host" format
-	AllowDeleteUser   bool // whether the debug delete-user endpoint is enabled; disabled in prod
+	AllowDeleteUser   bool // whether the debug delete-user endpoint is enabled
 	PostSlackFeed     bool // whether to post feed events to Slack; when false, logs them instead
 
 	LogCmdAttr           bool   // whether to include "cmd" attribute in log entries; useful in dev/test, where multiple logs are interwoven, noise in prod
@@ -409,7 +409,7 @@ func Prod() Env {
 		ShowDocsPreview:   false,
 		AutoStartSSHPiper: false,
 		SSHCommandUsesAt:  false,
-		AllowDeleteUser:   false,
+		AllowDeleteUser:   true,
 		PostSlackFeed:     true,
 
 		LogCmdAttr:           false,

@@ -5108,6 +5108,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Name   string
 			Region string
 		}
+		AllowDeleteUser    bool
+		DeleteBlockReasons []string
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5129,6 +5131,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		Boxes:                    boxList,
 		Region:                   user.Region,
 		AllRegions:               region.All(),
+		AllowDeleteUser:          s.env.AllowDeleteUser,
 	}
 
 	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
@@ -5176,6 +5179,32 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditRefreshPerHrOverride = credit.RefreshPerHour
 		data.CreditTotalUsedUSD = credit.TotalUsed
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	// Compute deletion block reasons.
+	if s.env.AllowDeleteUser {
+		var runningCount int
+		for _, b := range boxList {
+			if b.Status == "running" {
+				runningCount++
+			}
+		}
+		if runningCount > 0 {
+			data.DeleteBlockReasons = append(data.DeleteBlockReasons,
+				fmt.Sprintf("User has %d running VM(s) — stop or delete them first", runningCount))
+		}
+		for _, ba := range billingAccounts {
+			if ba.LatestStatus == "active" {
+				data.DeleteBlockReasons = append(data.DeleteBlockReasons,
+					fmt.Sprintf("Billing account %s has an active subscription — cancel it first", ba.AccountID))
+			}
+		}
+		if teamRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID); err == nil {
+			if teamRow.Role == "billing_owner" {
+				data.DeleteBlockReasons = append(data.DeleteBlockReasons,
+					fmt.Sprintf("User is the billing owner of team %q — transfer billing ownership first", teamRow.DisplayName))
+			}
+		}
 	}
 
 	s.renderDebugTemplate(ctx, w, "user.html", data)

@@ -324,6 +324,48 @@ if (vmNames.length > 0) {
 </div>
 {{end}}
 
+{{if .AllowDeleteUser}}
+<div class="section">
+<h2 style="color:#dc3545;">Delete User</h2>
+{{if .DeleteBlockReasons}}
+<p style="font-size:13px;color:#666;">This user cannot be deleted yet:</p>
+<ul style="font-size:13px;color:#dc3545;">
+{{range .DeleteBlockReasons}}<li>{{.}}</li>{{end}}
+</ul>
+<button disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: not-allowed; opacity: 0.5;">Delete User</button>
+{{else}}
+<p style="font-size:13px;color:#666;">Permanently deletes this user and all associated data (VMs, billing accounts, keys, shares, etc). This cannot be undone.</p>
+<button id="deleteUserBtn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Delete User</button>
+<dialog id="deleteUserDialog">
+<form method="post" action="/debug/users/delete">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<p>Type <strong>{{.Email}}</strong> to confirm deletion:</p>
+<input type="text" id="deleteUserConfirm" autocomplete="off" placeholder="{{.Email}}" style="padding: 8px; font-family: inherit; width: 100%; box-sizing: border-box;">
+<p style="display: flex; gap: 8px; margin-top: 12px;">
+<button type="submit" class="confirm-btn-danger" id="deleteUserConfirmBtn" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Delete</button>
+<button type="button" id="deleteUserCancelBtn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; cursor: pointer;">Cancel</button>
+</p>
+</form>
+</dialog>
+<script>
+(function() {
+    document.getElementById('deleteUserBtn').addEventListener('click', function() {
+        document.getElementById('deleteUserConfirm').value = '';
+        document.getElementById('deleteUserConfirmBtn').disabled = true;
+        document.getElementById('deleteUserDialog').showModal();
+    });
+    document.getElementById('deleteUserCancelBtn').addEventListener('click', function() {
+        document.getElementById('deleteUserDialog').close();
+    });
+    document.getElementById('deleteUserConfirm').addEventListener('input', function() {
+        document.getElementById('deleteUserConfirmBtn').disabled = (this.value !== '{{.Email}}');
+    });
+})();
+</script>
+{{end}}
+</div>
+{{end}}
+
 <script>
 $(document).ready(function() {
     {{if .InvitePostSuccessful}}
