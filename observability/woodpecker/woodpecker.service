@@ -1,0 +1,20 @@
+[Unit]
+Description=Woodpecker daily observability report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/exe-woodpecker/observability/woodpecker
+Environment=HOME=/home/exedev
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=WOODPECKER_STATE_DIR=/home/exedev/woodpecker-state
+ExecStart=/home/exedev/exe-woodpecker/observability/woodpecker/woodpecker.sh
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
