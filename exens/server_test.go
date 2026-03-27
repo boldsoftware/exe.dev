@@ -346,7 +346,7 @@ func TestDNSServer(t *testing.T) {
 	ctx := context.Background()
 	log := tslog.Slogger(t)
 
-	// Add test data: ip_shards and boxes
+	// Add test data: boxes
 	addBox(t, db)
 
 	server := NewServer(db, log, "exe.xyz", "exe.dev")
