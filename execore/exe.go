@@ -1174,7 +1174,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.billing.DB = s.db
 	s.billing.Logger = slog
 
-	if !cfg.Env.SkipBilling {
+	if cfg.Env.BootstrapStripeCatalog {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.billing.InstallPrices(ctx); err != nil {

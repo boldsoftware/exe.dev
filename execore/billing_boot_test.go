@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func TestNewServerInstallPricesWhenBillingEnabled(t *testing.T) {
+func TestNewServerBootstrapStripeCatalog(t *testing.T) {
 	env := stage.Test()
-	env.SkipBilling = false
+	env.BootstrapStripeCatalog = true
 
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	s, err := NewServer(ServerConfig{
@@ -46,9 +46,9 @@ func TestNewServerInstallPricesWhenBillingEnabled(t *testing.T) {
 	t.Cleanup(func() { s.Stop() })
 }
 
-func TestNewServerSkipsInstallPricesWhenBillingDisabled(t *testing.T) {
+func TestNewServerSkipsBootstrapStripeCatalog(t *testing.T) {
 	env := stage.Test()
-	env.SkipBilling = true
+	env.BootstrapStripeCatalog = false
 
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	s, err := NewServer(ServerConfig{
