@@ -39,40 +39,53 @@ def main():
         print("--- :camera: Ensure VM snapshot exists", flush=True)
         run(["./ops/ci-vm-snapshot.sh"])
 
-    print("--- :rocket: Run e1e tests", flush=True)
+    shard = os.environ.get("E1E_SHARD", "")
+    suffix = f"-{shard}" if shard else ""
+
+    print(f"--- :rocket: Run e1e tests{' (shard ' + shard + ')' if shard else ''}", flush=True)
     # Remove stale golden files so they get freshly regenerated.
     for f in _glob("e1e/golden/*.txt"):
         os.remove(f)
 
     log_dir = tempfile.mkdtemp()
     os.environ["E1E_LOG_DIR"] = log_dir
-    os.makedirs("e1e-logs", exist_ok=True)
-    os.symlink(log_dir, "e1e-logs/current") if not os.path.exists("e1e-logs/current") else None
+    log_artifact_dir = f"e1e-logs{suffix}"
+    os.makedirs(log_artifact_dir, exist_ok=True)
+    if not os.path.exists(f"{log_artifact_dir}/current"):
+        os.symlink(log_dir, f"{log_artifact_dir}/current")
 
     json_results = tempfile.mktemp(suffix=".json")
 
-    env = {**os.environ, "E1_VM_CONCURRENCY": "10", "GITHUB_ACTIONS": "false"}
-    test_result = subprocess.run(
-        ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
-         "--", "-race", "-timeout=15m", "-failfast", "./e1e"],
-        env=env,
-    )
+    run_filter = os.environ.get("E1E_RUN_FILTER", "")
 
-    _annotate_results(json_results, "")
+    cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
+           "--", "-race", "-timeout=15m", "-failfast"]
+    if run_filter:
+        cmd.extend(["-run", run_filter])
+    cmd.append("./e1e")
+
+    env = {**os.environ, "E1_VM_CONCURRENCY": "12", "GITHUB_ACTIONS": "false"}
+    test_result = subprocess.run(cmd, env=env)
+
+    _annotate_results(json_results, shard)
 
     if os.path.exists(json_results):
         os.remove(json_results)
 
-    print("--- :scroll: Check golden files unchanged", flush=True)
-    result = subprocess.run(["git", "status", "--porcelain", "e1e/golden/"], capture_output=True, text=True)
-    if result.stdout.strip():
-        print("ERROR: Golden files were modified by tests:", flush=True)
-        run(["git", "status", "--porcelain", "e1e/golden/"])
-        run(["git", "diff", "e1e/golden/"])
-        sys.exit(1)
+    if not shard:
+        print("--- :scroll: Check golden files unchanged", flush=True)
+        result = subprocess.run(["git", "status", "--porcelain", "e1e/golden/"], capture_output=True, text=True)
+        if result.stdout.strip():
+            print("ERROR: Golden files were modified by tests:", flush=True)
+            run(["git", "status", "--porcelain", "e1e/golden/"])
+            run(["git", "diff", "e1e/golden/"])
+            sys.exit(1)
 
+    recording_file = f"recordings{suffix}.html"
     print("--- :film_projector: Generate asciinema recordings", flush=True)
-    run(["go", "run", "./cmd/asciinema-viewer", "e1e", "recordings.html"])
+    rec_result = subprocess.run(["go", "run", "./cmd/asciinema-viewer", "e1e", recording_file])
+    if rec_result.returncode != 0:
+        print("WARNING: asciinema recording generation failed (non-fatal)", flush=True)
 
     sys.exit(test_result.returncode)
 

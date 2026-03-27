@@ -48,7 +48,7 @@ def main():
 
     json_results = tempfile.mktemp(suffix=".json")
 
-    env = {**os.environ, "E1_VM_CONCURRENCY": "8", "GITHUB_ACTIONS": "false"}
+    env = {**os.environ, "E1_VM_CONCURRENCY": "10", "GITHUB_ACTIONS": "false"}
     test_result = subprocess.run(
         ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
          "--", "-race", "-count=1", "-timeout=15m", "-failfast",
