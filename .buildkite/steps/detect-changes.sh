@@ -12,19 +12,19 @@ SHELLEY_CHANGED=false
 EXE_CHANGED=false
 
 if [ -z "$CHANGED_FILES" ]; then
-  echo "No files changed vs origin/main, defaulting to exe tests"
-  EXE_CHANGED=true
+    echo "No files changed vs origin/main, defaulting to exe tests"
+    EXE_CHANGED=true
 else
-  while IFS= read -r file; do
-    case "$file" in
-      shelley/*|.github/workflows/shelley-tests.yml)
-        SHELLEY_CHANGED=true
-        ;;
-      *)
-        EXE_CHANGED=true
-        ;;
-    esac
-  done <<< "$CHANGED_FILES"
+    while IFS= read -r file; do
+        case "$file" in
+        shelley/* | .github/workflows/shelley-tests.yml)
+            SHELLEY_CHANGED=true
+            ;;
+        *)
+            EXE_CHANGED=true
+            ;;
+        esac
+    done <<<"$CHANGED_FILES"
 fi
 
 echo "shelley_changed=$SHELLEY_CHANGED"

@@ -32,10 +32,10 @@ make templates
 echo "--- :gear: Verify go generate unchanged"
 go generate ./...
 if [ -n "$(git status --porcelain)" ]; then
-  echo "ERROR: go generate produced uncommitted changes" >&2
-  git status --porcelain >&2
-  git diff >&2
-  exit 1
+    echo "ERROR: go generate produced uncommitted changes" >&2
+    git status --porcelain >&2
+    git diff >&2
+    exit 1
 fi
 
 echo "--- :white_check_mark: go vet"
