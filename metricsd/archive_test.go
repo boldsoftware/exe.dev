@@ -246,7 +246,9 @@ func TestArchiver_WithOnDiskDB(t *testing.T) {
 	srv := NewServer(connector, db, false)
 	defer srv.Close()
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	// Anchor at noon UTC so rows don't spill across day boundaries
+	// regardless of when the test runs.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	var metrics []Metric
 	// Insert 100 rows per day for 5 old days.
 	for d := 3; d <= 7; d++ {
