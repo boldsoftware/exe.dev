@@ -84,8 +84,9 @@ func init() {
 		for _, format := range formats {
 			parsedTime, err = time.Parse(format, s)
 			if err == nil {
-				// Successfully parsed - return normalized UTC timestamp in Time10 format
-				return parsedTime.UTC().Format(Time10), nil
+				// Return normalized UTC timestamp in YYYY-MM-DD HH:MM:SS
+				// format, matching SQLite's CURRENT_TIMESTAMP output.
+				return parsedTime.UTC().Format("2006-01-02 15:04:05"), nil
 			}
 		}
 

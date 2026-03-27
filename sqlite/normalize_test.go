@@ -52,22 +52,22 @@ func TestParseTimestampFunction(t *testing.T) {
 		{
 			// Go time.String() format with monotonic clock
 			input: "2026-01-24 15:28:48.123456789 -0800 PST m=+123.456",
-			want:  "2026-01-24 23:28:48.123456789+00:00",
+			want:  "2026-01-24 23:28:48",
 		},
 		{
 			// Go time.String() format without monotonic clock
 			input: "2026-01-24 15:28:48 -0800 PST",
-			want:  "2026-01-24 23:28:48+00:00",
+			want:  "2026-01-24 23:28:48",
 		},
 		{
-			// SQLite CURRENT_TIMESTAMP format (UTC, no offset)
+			// SQLite CURRENT_TIMESTAMP format (UTC, no offset) — already canonical
 			input: "2026-01-24 23:28:24",
-			want:  "2026-01-24 23:28:24+00:00",
+			want:  "2026-01-24 23:28:24",
 		},
 		{
 			// Time10 format
 			input: "2026-01-24 23:28:24.123456789+00:00",
-			want:  "2026-01-24 23:28:24.123456789+00:00",
+			want:  "2026-01-24 23:28:24",
 		},
 	}
 
