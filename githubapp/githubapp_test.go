@@ -303,16 +303,28 @@ func TestMintInstallationToken(t *testing.T) {
 			t.Errorf("unexpected repositories: %v", reqBody["repositories"])
 		}
 
-		// Verify permissions are scoped to contents:write only.
+		// Verify permissions include contents, issues, pull_requests, and metadata.
 		perms, ok := reqBody["permissions"].(map[string]any)
 		if !ok {
 			t.Fatal("missing permissions in request body")
 		}
-		if perms["contents"] != "write" {
-			t.Errorf("expected contents=write, got %v", perms["contents"])
+		wantPerms := map[string]string{
+			"actions":       "write",
+			"checks":        "read",
+			"contents":      "write",
+			"issues":        "write",
+			"metadata":      "read",
+			"pull_requests": "write",
+			"statuses":      "read",
+			"workflows":     "write",
 		}
-		if len(perms) != 1 {
-			t.Errorf("expected exactly 1 permission, got %d: %v", len(perms), perms)
+		for k, v := range wantPerms {
+			if perms[k] != v {
+				t.Errorf("expected %s=%s, got %v", k, v, perms[k])
+			}
+		}
+		if len(perms) != len(wantPerms) {
+			t.Errorf("expected %d permissions, got %d: %v", len(wantPerms), len(perms), perms)
 		}
 
 		w.WriteHeader(http.StatusCreated)

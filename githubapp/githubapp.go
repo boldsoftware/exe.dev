@@ -438,7 +438,14 @@ func (c *Client) MintInstallationToken(ctx context.Context, installationID int64
 	body, err := json.Marshal(map[string]any{
 		"repositories": repoNames,
 		"permissions": map[string]string{
-			"contents": "write",
+			"actions":       "write",
+			"checks":        "read",
+			"contents":      "write",
+			"issues":        "write",
+			"metadata":      "read",
+			"pull_requests": "write",
+			"statuses":      "read",
+			"workflows":     "write",
 		},
 	})
 	if err != nil {
