@@ -1,0 +1,39 @@
+agents:
+  queue: exe-ci
+
+steps:
+  - label: ":white_check_mark: non-e1e checks"
+    key: checks
+    command: .buildkite/steps/test-non-e1e-checks.sh
+    timeout_in_minutes: 20
+
+  - label: ":go: unit tests"
+    key: unit-tests
+    command: .buildkite/steps/test-non-e1e-tests.sh
+    timeout_in_minutes: 20
+
+  - label: ":wrench: build e1e binaries"
+    key: build-e1e
+    command: python3 .buildkite/steps/build-e1e-binaries.py
+    timeout_in_minutes: 10
+
+  - label: ":rocket: e1e tests"
+    key: test-e1e
+    depends_on: build-e1e
+    command: python3 .buildkite/steps/test-e1e.py
+    timeout_in_minutes: 30
+    env:
+      VM_DRIVER: cloudhypervisor
+    artifact_paths:
+      - "recordings.html"
+      - "e1e-logs/**/*"
+
+  - label: ":electric_plug: e1e exelets"
+    key: test-exelets
+    depends_on: build-e1e
+    command: python3 .buildkite/steps/test-e1e-exelets.py
+    timeout_in_minutes: 15
+    env:
+      VM_DRIVER: cloudhypervisor
+    artifact_paths:
+      - "e1e-logs-exelets/**/*"
