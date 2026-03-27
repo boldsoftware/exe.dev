@@ -990,21 +990,27 @@ func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filenam
 
 // serveDashboardUI serves the Vue SPA index.html for dashboard routes.
 // Returns true if served (dashboardUI is configured), false otherwise.
+// index.html is served with no-cache so browsers always fetch the latest
+// version that references the current content-hashed assets.
 func (s *Server) serveDashboardUI(w http.ResponseWriter, r *http.Request) bool {
 	if s.dashboardUI == nil {
 		return false
 	}
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFileFS(w, r, s.dashboardUI, "index.html")
 	return true
 }
 
 // serveDashboardUIAsset serves a static asset from the embedded dashboard UI.
 // Returns true if served, false otherwise.
+// Vite produces content-hashed filenames, so assets are cached for 1 week.
+// Pre-compressed .gz files are served when the client accepts gzip.
 func (s *Server) serveDashboardUIAsset(w http.ResponseWriter, r *http.Request, assetPath string) bool {
 	if s.dashboardUI == nil {
 		return false
 	}
-	http.ServeFileFS(w, r, s.dashboardUI, assetPath)
+	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	exeweb.ServePrecompressed(w, r, s.dashboardUI, assetPath)
 	return true
 }
 

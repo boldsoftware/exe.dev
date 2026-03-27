@@ -13,6 +13,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    reportCompressedSize: false,
+    target: 'esnext',
     // Restore .gitkeep after emptyOutDir deletes it
     rollupOptions: {
       plugins: [{

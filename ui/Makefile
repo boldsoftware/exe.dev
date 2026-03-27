@@ -29,6 +29,10 @@ $(NODE_BIN)/.corepack-enabled:
 build: $(NODE_BIN)/.corepack-enabled ## Build the Vue dashboard UI
 	pnpm install --frozen-lockfile
 	pnpm build
+	@# Pre-compress assets for serving with Content-Encoding: gzip.
+	@# Vite already content-hashes filenames, so .gz siblings are safe to cache.
+	find dist/assets -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
+		| xargs -P0 gzip -9 -k
 
 dev: $(NODE_BIN)/.corepack-enabled ## Run Vite dev server
 	pnpm dev
