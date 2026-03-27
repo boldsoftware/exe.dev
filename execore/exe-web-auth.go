@@ -531,7 +531,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			changedBy := "stripe:event"
 			if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 				AccountID: acct.ID,
-				PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
+				PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
 				StartedAt: now,
 				ChangedBy: &changedBy,
 			}); err != nil {
@@ -755,7 +755,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		changedBy := "stripe:event"
 		if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: billingID,
-			PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
+			PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		}); err != nil {
@@ -2178,7 +2178,7 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 // TODO: This should eventually be triggered by a Stripe webhook (e.g. subscription.active)
 // instead of being called inline from the checkout callback.
 func giftSignupBonus(ctx context.Context, mgr *billing.Manager, billingID string, logger *slog.Logger) {
-	plan, ok := entitlement.GetPlan(entitlement.VersionIndividual)
+	plan, ok := entitlement.GetPlan(entitlement.CategoryIndividual)
 	if !ok || plan.Quotas.SignupBonusCreditUSD == 0 {
 		return
 	}

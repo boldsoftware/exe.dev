@@ -133,7 +133,7 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 	}
 	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: account.ID,
-		PlanID:    string(entitlement.VersionFriend),
+		PlanID:    string(entitlement.CategoryFriend),
 		StartedAt: time.Now(),
 	})
 	if err != nil {
@@ -170,7 +170,7 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	}
 	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: account.ID,
-		PlanID:    string(entitlement.VersionIndividual),
+		PlanID:    string(entitlement.CategoryIndividual),
 		StartedAt: now,
 	})
 	if err != nil {

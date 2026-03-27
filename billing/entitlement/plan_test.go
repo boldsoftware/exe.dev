@@ -7,53 +7,53 @@ import (
 
 func TestPlanGrants(t *testing.T) {
 	tests := []struct {
-		version PlanVersion
+		version PlanCategory
 		ent     Entitlement
 		want    bool
 	}{
 		// Individual
-		{VersionIndividual, CreditPurchase, true},
-		{VersionIndividual, VMRun, true},
-		{VersionIndividual, VMCreate, true},
-		{VersionIndividual, VMConnect, true},
-		{VersionIndividual, LLMUse, true},
+		{CategoryIndividual, CreditPurchase, true},
+		{CategoryIndividual, VMRun, true},
+		{CategoryIndividual, VMCreate, true},
+		{CategoryIndividual, VMConnect, true},
+		{CategoryIndividual, LLMUse, true},
 
 		// Friend
-		{VersionFriend, VMRun, true},
-		{VersionFriend, VMCreate, true},
-		{VersionFriend, VMConnect, true},
-		{VersionFriend, LLMUse, true},
-		{VersionFriend, CreditPurchase, false},
+		{CategoryFriend, VMRun, true},
+		{CategoryFriend, VMCreate, true},
+		{CategoryFriend, VMConnect, true},
+		{CategoryFriend, LLMUse, true},
+		{CategoryFriend, CreditPurchase, false},
 
 		// Grandfathered
-		{VersionGrandfathered, VMCreate, true},
-		{VersionGrandfathered, VMRun, true},
-		{VersionGrandfathered, CreditPurchase, false},
+		{CategoryGrandfathered, VMCreate, true},
+		{CategoryGrandfathered, VMRun, true},
+		{CategoryGrandfathered, CreditPurchase, false},
 
 		// Invite
-		{VersionTrial, VMCreate, true},
-		{VersionTrial, VMRun, true},
-		{VersionTrial, CreditPurchase, false},
+		{CategoryTrial, VMCreate, true},
+		{CategoryTrial, VMRun, true},
+		{CategoryTrial, CreditPurchase, false},
 
 		// Basic
-		{VersionBasic, LLMUse, true},
-		{VersionBasic, VMCreate, false},
-		{VersionBasic, VMRun, false},
-		{VersionBasic, CreditPurchase, false},
+		{CategoryBasic, LLMUse, true},
+		{CategoryBasic, VMCreate, false},
+		{CategoryBasic, VMRun, false},
+		{CategoryBasic, CreditPurchase, false},
 
 		// Team
-		{VersionTeam, VMCreate, true},
-		{VersionTeam, VMConnect, true},
-		{VersionTeam, VMRun, true},
-		{VersionTeam, LLMUse, true},
-		{VersionTeam, CreditPurchase, true},
+		{CategoryTeam, VMCreate, true},
+		{CategoryTeam, VMConnect, true},
+		{CategoryTeam, VMRun, true},
+		{CategoryTeam, LLMUse, true},
+		{CategoryTeam, CreditPurchase, true},
 
-		// VersionRestricted — grants nothing
-		{VersionRestricted, LLMUse, false},
-		{VersionRestricted, VMCreate, false},
-		{VersionRestricted, VMRun, false},
-		{VersionRestricted, VMConnect, false},
-		{VersionRestricted, CreditPurchase, false},
+		// CategoryRestricted — grants nothing
+		{CategoryRestricted, LLMUse, false},
+		{CategoryRestricted, VMCreate, false},
+		{CategoryRestricted, VMRun, false},
+		{CategoryRestricted, VMConnect, false},
+		{CategoryRestricted, CreditPurchase, false},
 	}
 	for _, tt := range tests {
 		got := PlanGrants(tt.version, tt.ent)
@@ -68,19 +68,19 @@ func TestPlanGrantsWildcard(t *testing.T) {
 		LLMUse, CreditPurchase, VMCreate, VMRun, VMConnect,
 		{"anything:else", "Made Up"},
 	} {
-		if !PlanGrants(VersionVIP, ent) {
-			t.Errorf("PlanGrants(%q, %q) = false, want true (wildcard)", VersionVIP, ent)
+		if !PlanGrants(CategoryVIP, ent) {
+			t.Errorf("PlanGrants(%q, %q) = false, want true (wildcard)", CategoryVIP, ent)
 		}
 	}
 }
 
 func TestPlanGrantsUnknownPlan(t *testing.T) {
-	if PlanGrants(PlanVersion("nonexistent"), LLMUse) {
+	if PlanGrants(PlanCategory("nonexistent"), LLMUse) {
 		t.Error("PlanGrants(nonexistent, llm:use) = true, want false")
 	}
 }
 
-func TestGetPlanVersion(t *testing.T) {
+func TestGetPlanCategory(t *testing.T) {
 	trial := "trial"
 	future := time.Now().Add(24 * time.Hour)
 	past := time.Now().Add(-24 * time.Hour)
@@ -90,79 +90,79 @@ func TestGetPlanVersion(t *testing.T) {
 	tests := []struct {
 		name   string
 		inputs UserPlanInputs
-		want   PlanVersion
+		want   PlanCategory
 	}{
 		{
 			name:   "canceled overrides grandfathered",
 			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", CreatedAt: &oldDate},
-			want:   VersionBasic,
+			want:   CategoryBasic,
 		},
 		{
 			name:   "canceled overrides trial",
 			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", BillingExemption: &trial, BillingTrialEndsAt: &future},
-			want:   VersionBasic,
+			want:   CategoryBasic,
 		},
 		{
 			name:   "friend with overrides is VIP",
 			inputs: UserPlanInputs{Category: "friend", HasExplicitOverrides: true},
-			want:   VersionVIP,
+			want:   CategoryVIP,
 		},
 		{
 			name:   "friend without overrides",
 			inputs: UserPlanInputs{Category: "friend"},
-			want:   VersionFriend,
+			want:   CategoryFriend,
 		},
 		{
 			name:   "has_billing is individual",
 			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active"},
-			want:   VersionIndividual,
+			want:   CategoryIndividual,
 		},
 		{
 			name:   "trial not expired is trial",
 			inputs: UserPlanInputs{Category: "no_billing", BillingExemption: &trial, BillingTrialEndsAt: &future},
-			want:   VersionTrial,
+			want:   CategoryTrial,
 		},
 		{
 			name:   "trial expired falls through",
 			inputs: UserPlanInputs{Category: "no_billing", BillingExemption: &trial, BillingTrialEndsAt: &past, CreatedAt: &newDate},
-			want:   VersionBasic,
+			want:   CategoryBasic,
 		},
 		{
 			name:   "old user is grandfathered",
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate},
-			want:   VersionGrandfathered,
+			want:   CategoryGrandfathered,
 		},
 		{
 			name:   "new user with nothing is basic",
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate},
-			want:   VersionBasic,
+			want:   CategoryBasic,
 		},
 		{
 			name:   "team member covered by billing owner",
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate, TeamBillingActive: true},
-			want:   VersionTeam,
+			want:   CategoryTeam,
 		},
 		{
 			name:   "canceled user on team still basic",
 			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", TeamBillingActive: true},
-			want:   VersionBasic,
+			want:   CategoryBasic,
 		},
 		{
 			name:   "individual with own billing on team resolves to team",
 			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active", TeamBillingActive: true},
-			want:   VersionTeam,
+			want:   CategoryTeam,
 		},
 		{
 			name:   "grandfathered user on team resolves to team",
 			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate, TeamBillingActive: true},
-			want:   VersionTeam,
+			want:   CategoryTeam,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GetPlanVersion(tt.inputs)
+			got := GetPlanCategory(tt.inputs)
 			if got != tt.want {
-				t.Errorf("GetPlanVersion() = %q, want %q", got, tt.want)
+				t.Errorf("GetPlanCategory() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -170,7 +170,7 @@ func TestGetPlanVersion(t *testing.T) {
 
 // TestTeamMemberCanCreateVM exercises the exact bug scenario:
 // a team member with no personal billing whose team billing owner covers them
-// should resolve to VersionTeam and be granted VMCreate.
+// should resolve to CategoryTeam and be granted VMCreate.
 func TestTeamMemberCanCreateVM(t *testing.T) {
 	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	inputs := UserPlanInputs{
@@ -178,9 +178,9 @@ func TestTeamMemberCanCreateVM(t *testing.T) {
 		CreatedAt:         &newDate,
 		TeamBillingActive: true,
 	}
-	version := GetPlanVersion(inputs)
-	if version != VersionTeam {
-		t.Fatalf("GetPlanVersion() = %q, want %q", version, VersionTeam)
+	version := GetPlanCategory(inputs)
+	if version != CategoryTeam {
+		t.Fatalf("GetPlanCategory() = %q, want %q", version, CategoryTeam)
 	}
 	if !PlanGrants(version, VMCreate) {
 		t.Errorf("PlanGrants(%q, VMCreate) = false, want true", version)
@@ -196,9 +196,9 @@ func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 		CreatedAt:         &newDate,
 		TeamBillingActive: false,
 	}
-	version := GetPlanVersion(inputs)
-	if version != VersionBasic {
-		t.Fatalf("GetPlanVersion() = %q, want %q", version, VersionBasic)
+	version := GetPlanCategory(inputs)
+	if version != CategoryBasic {
+		t.Fatalf("GetPlanCategory() = %q, want %q", version, CategoryBasic)
 	}
 	if PlanGrants(version, VMCreate) {
 		t.Errorf("PlanGrants(%q, VMCreate) = true, want false", version)
@@ -207,17 +207,17 @@ func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 
 func TestSignupBonusCreditUSD(t *testing.T) {
 	tests := []struct {
-		version PlanVersion
+		version PlanCategory
 		want    float64
 	}{
-		{VersionIndividual, 100.0},
-		{VersionVIP, 0},
-		{VersionTeam, 0},
-		{VersionFriend, 0},
-		{VersionGrandfathered, 0},
-		{VersionTrial, 0},
-		{VersionBasic, 0},
-		{VersionRestricted, 0},
+		{CategoryIndividual, 100.0},
+		{CategoryVIP, 0},
+		{CategoryTeam, 0},
+		{CategoryFriend, 0},
+		{CategoryGrandfathered, 0},
+		{CategoryTrial, 0},
+		{CategoryBasic, 0},
+		{CategoryRestricted, 0},
 	}
 	for _, tt := range tests {
 		p, ok := plans[tt.version]
@@ -233,7 +233,7 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 // TestAllPlansHaveLLMUse verifies all plans except Restricted grant llm:use.
 func TestAllPlansHaveLLMUse(t *testing.T) {
 	for version, plan := range plans {
-		if version == VersionRestricted {
+		if version == CategoryRestricted {
 			// Restricted grants nothing — explicitly should NOT have LLMUse.
 			if plan.Entitlements[LLMUse] || plan.Entitlements[All] {
 				t.Errorf("plan %q should not grant llm:use", version)
@@ -248,21 +248,21 @@ func TestAllPlansHaveLLMUse(t *testing.T) {
 
 // TestRestrictedPlanGrantsNothing verifies the Restricted plan has an empty entitlements map.
 func TestRestrictedPlanGrantsNothing(t *testing.T) {
-	p, ok := plans[VersionRestricted]
+	p, ok := plans[CategoryRestricted]
 	if !ok {
-		t.Fatal("VersionRestricted not found in plans")
+		t.Fatal("CategoryRestricted not found in plans")
 	}
 	for ent, granted := range p.Entitlements {
 		if granted {
-			t.Errorf("VersionRestricted grants %q, want nothing", ent.ID)
+			t.Errorf("CategoryRestricted grants %q, want nothing", ent.ID)
 		}
 	}
 }
 
 // TestVMRunGranted verifies VMRun is granted to the right plans.
 func TestVMRunGranted(t *testing.T) {
-	shouldGrant := []PlanVersion{VersionVIP, VersionTeam, VersionIndividual, VersionFriend, VersionGrandfathered, VersionTrial}
-	shouldDeny := []PlanVersion{VersionBasic, VersionRestricted}
+	shouldGrant := []PlanCategory{CategoryVIP, CategoryTeam, CategoryIndividual, CategoryFriend, CategoryGrandfathered, CategoryTrial}
+	shouldDeny := []PlanCategory{CategoryBasic, CategoryRestricted}
 
 	for _, v := range shouldGrant {
 		if !PlanGrants(v, VMRun) {
@@ -321,77 +321,77 @@ func TestParsePlanID(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		wantPlan PlanVersion
+		wantPlan PlanCategory
 		wantInt  string
 		wantVer  string
 	}{
 		{
 			name:     "versioned individual monthly",
 			input:    "individual:monthly:20260325",
-			wantPlan: VersionIndividual,
+			wantPlan: CategoryIndividual,
 			wantInt:  "monthly",
 			wantVer:  "20260325",
 		},
 		{
 			name:     "versioned basic monthly",
 			input:    "basic:monthly:20260101",
-			wantPlan: VersionBasic,
+			wantPlan: CategoryBasic,
 			wantInt:  "monthly",
 			wantVer:  "20260101",
 		},
 		{
 			name:     "versioned team yearly",
 			input:    "team:yearly:20260601",
-			wantPlan: VersionTeam,
+			wantPlan: CategoryTeam,
 			wantInt:  "yearly",
 			wantVer:  "20260601",
 		},
 		{
 			name:     "bare individual",
 			input:    "individual",
-			wantPlan: VersionIndividual,
+			wantPlan: CategoryIndividual,
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "bare basic",
 			input:    "basic",
-			wantPlan: VersionBasic,
+			wantPlan: CategoryBasic,
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "bare friend",
 			input:    "friend",
-			wantPlan: VersionFriend,
+			wantPlan: CategoryFriend,
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "bare vip",
 			input:    "vip",
-			wantPlan: VersionVIP,
+			wantPlan: CategoryVIP,
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "empty string",
 			input:    "",
-			wantPlan: PlanVersion(""),
+			wantPlan: PlanCategory(""),
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "two parts treated as bare",
 			input:    "individual:monthly",
-			wantPlan: PlanVersion("individual:monthly"),
+			wantPlan: PlanCategory("individual:monthly"),
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "version with colons in timestamp",
 			input:    "individual:monthly:2026:03:25",
-			wantPlan: VersionIndividual,
+			wantPlan: CategoryIndividual,
 			wantInt:  "monthly",
 			wantVer:  "2026:03:25",
 		},
@@ -415,14 +415,14 @@ func TestParsePlanID(t *testing.T) {
 func TestBasePlan(t *testing.T) {
 	tests := []struct {
 		input string
-		want  PlanVersion
+		want  PlanCategory
 	}{
-		{"individual:monthly:20260325", VersionIndividual},
-		{"basic:monthly:20260101", VersionBasic},
-		{"individual", VersionIndividual},
-		{"basic", VersionBasic},
-		{"friend", VersionFriend},
-		{"vip", VersionVIP},
+		{"individual:monthly:20260325", CategoryIndividual},
+		{"basic:monthly:20260101", CategoryBasic},
+		{"individual", CategoryIndividual},
+		{"basic", CategoryBasic},
+		{"friend", CategoryFriend},
+		{"vip", CategoryVIP},
 	}
 	for _, tt := range tests {
 		got := BasePlan(tt.input)
@@ -438,8 +438,8 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 	if !ok {
 		t.Fatal("GetPlanByID(\"individual:monthly:20260325\") = _, false; want true")
 	}
-	if p.Version != VersionIndividual {
-		t.Errorf("GetPlanByID versioned got version %q, want %q", p.Version, VersionIndividual)
+	if p.Category != CategoryIndividual {
+		t.Errorf("GetPlanByID versioned got category %q, want %q", p.Category, CategoryIndividual)
 	}
 	if p.LLMGatewayCategory != "has_billing" {
 		t.Errorf("GetPlanByID versioned got category %q, want %q", p.LLMGatewayCategory, "has_billing")
@@ -450,25 +450,16 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 	if !ok2 {
 		t.Fatal("GetPlanByID(\"individual\") = _, false; want true")
 	}
-	if p2.Version != VersionIndividual {
-		t.Errorf("GetPlanByID bare got version %q, want %q", p2.Version, VersionIndividual)
+	if p2.Category != CategoryIndividual {
+		t.Errorf("GetPlanByID bare got category %q, want %q", p2.Category, CategoryIndividual)
 	}
 }
 
-func TestFormatPlanID(t *testing.T) {
-	got := FormatPlanID(VersionIndividual, "monthly", "20260325")
-	want := "individual:monthly:20260325"
+func TestPlanID(t *testing.T) {
+	got := PlanID(CategoryIndividual)
+	want := "individual:monthly:20260106"
 	if got != want {
-		t.Errorf("FormatPlanID() = %q, want %q", got, want)
-	}
-}
-
-func TestVersionedPlanID(t *testing.T) {
-	ts := time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC)
-	got := VersionedPlanID(VersionIndividual, "monthly", ts)
-	want := "individual:monthly:20260325"
-	if got != want {
-		t.Errorf("VersionedPlanID() = %q, want %q", got, want)
+		t.Errorf("PlanID(CategoryIndividual) = %q, want %q", got, want)
 	}
 }
 

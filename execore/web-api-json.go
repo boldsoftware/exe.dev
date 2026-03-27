@@ -442,9 +442,9 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	var billingStatus string
 	skipBilling := s.env.SkipBilling
 	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		version := entitlement.PlanVersion(planRow.PlanID)
+		version := entitlement.PlanCategory(planRow.PlanID)
 		planName = entitlement.PlanName(version)
-		selfServeBilling = version == entitlement.VersionIndividual
+		selfServeBilling = version == entitlement.CategoryIndividual
 	}
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {

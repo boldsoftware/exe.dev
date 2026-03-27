@@ -5,25 +5,33 @@ import (
 	"time"
 )
 
-// PlanVersion identifies a billing plan.
-type PlanVersion string
+// PlanCategory identifies a billing plan.
+type PlanCategory string
 
-// Plan version constants.
+// Plan category constants.
 const (
-	VersionVIP           PlanVersion = "vip"
-	VersionTeam          PlanVersion = "team"
-	VersionIndividual    PlanVersion = "individual"
-	VersionFriend        PlanVersion = "friend"
-	VersionGrandfathered PlanVersion = "grandfathered"
-	VersionTrial         PlanVersion = "trial"
-	VersionBasic         PlanVersion = "basic"
-	VersionRestricted    PlanVersion = "restricted"
+	CategoryVIP           PlanCategory = "vip"
+	CategoryTeam          PlanCategory = "team"
+	CategoryIndividual    PlanCategory = "individual"
+	CategoryFriend        PlanCategory = "friend"
+	CategoryGrandfathered PlanCategory = "grandfathered"
+	CategoryTrial         PlanCategory = "trial"
+	CategoryBasic         PlanCategory = "basic"
+	CategoryRestricted    PlanCategory = "restricted"
 )
 
 // Plan describes a billing plan and the entitlements it grants.
 type Plan struct {
-	// Version is the unique identifier for this plan (e.g., "individual", "vip").
-	Version PlanVersion
+	// ID is the stable identifier stored in account_plans.plan_id
+	// (e.g. "individual:monthly:20260106"). For plans without a billing
+	// interval this is the same as string(Category).
+	ID string
+
+	// Category is the base plan identifier (e.g., "individual", "vip").
+	Category PlanCategory
+
+	// Available indicates whether this plan can be assigned to new accounts.
+	Available bool
 
 	// Name is the human-readable display name.
 	Name string
@@ -48,17 +56,21 @@ type PlanQuotas struct {
 	SignupBonusCreditUSD float64
 }
 
-var plans = map[PlanVersion]Plan{
-	VersionVIP: {
-		Version:            VersionVIP,
+var plans = map[PlanCategory]Plan{
+	CategoryVIP: {
+		ID:                 "vip",
+		Available:          true,
+		Category:           CategoryVIP,
 		Name:               "VIP",
 		LLMGatewayCategory: "friend",
 		Entitlements: map[Entitlement]bool{
 			All: true,
 		},
 	},
-	VersionTeam: {
-		Version:            VersionTeam,
+	CategoryTeam: {
+		ID:                 "team",
+		Available:          true,
+		Category:           CategoryTeam,
 		Name:               "Team",
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
@@ -70,8 +82,10 @@ var plans = map[PlanVersion]Plan{
 			VMRun:          true,
 		},
 	},
-	VersionIndividual: {
-		Version:            VersionIndividual,
+	CategoryIndividual: {
+		ID:                 "individual:monthly:20260106",
+		Available:          true,
+		Category:           CategoryIndividual,
 		Name:               "Individual",
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
@@ -87,8 +101,10 @@ var plans = map[PlanVersion]Plan{
 			SignupBonusCreditUSD: 100.0,
 		},
 	},
-	VersionFriend: {
-		Version:            VersionFriend,
+	CategoryFriend: {
+		ID:                 "friend",
+		Available:          true,
+		Category:           CategoryFriend,
 		Name:               "Friend",
 		LLMGatewayCategory: "friend",
 		Entitlements: map[Entitlement]bool{
@@ -98,8 +114,10 @@ var plans = map[PlanVersion]Plan{
 			VMRun:     true,
 		},
 	},
-	VersionGrandfathered: {
-		Version:            VersionGrandfathered,
+	CategoryGrandfathered: {
+		ID:                 "grandfathered",
+		Available:          true,
+		Category:           CategoryGrandfathered,
 		Name:               "Grandfathered",
 		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
@@ -109,8 +127,10 @@ var plans = map[PlanVersion]Plan{
 			VMRun:     true,
 		},
 	},
-	VersionTrial: {
-		Version:            VersionTrial,
+	CategoryTrial: {
+		ID:                 "trial:monthly:20260106",
+		Available:          true,
+		Category:           CategoryTrial,
 		Name:               "Trial",
 		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
@@ -120,8 +140,10 @@ var plans = map[PlanVersion]Plan{
 			VMRun:     true,
 		},
 	},
-	VersionBasic: {
-		Version:            VersionBasic,
+	CategoryBasic: {
+		ID:                 "basic:monthly:20260106",
+		Available:          true,
+		Category:           CategoryBasic,
 		Name:               "Basic",
 		LLMGatewayCategory: "no_billing",
 		Entitlements: map[Entitlement]bool{
@@ -129,8 +151,10 @@ var plans = map[PlanVersion]Plan{
 			VMConnect: true,
 		},
 	},
-	VersionRestricted: {
-		Version:            VersionRestricted,
+	CategoryRestricted: {
+		ID:                 "restricted",
+		Available:          true,
+		Category:           CategoryRestricted,
 		Name:               "Restricted",
 		LLMGatewayCategory: "no_billing",
 		Entitlements:       map[Entitlement]bool{},
@@ -139,15 +163,15 @@ var plans = map[PlanVersion]Plan{
 
 // AllPlans returns all plans in a stable display order.
 func AllPlans() []Plan {
-	order := []PlanVersion{
-		VersionVIP,
-		VersionTeam,
-		VersionIndividual,
-		VersionFriend,
-		VersionGrandfathered,
-		VersionTrial,
-		VersionBasic,
-		VersionRestricted,
+	order := []PlanCategory{
+		CategoryVIP,
+		CategoryTeam,
+		CategoryIndividual,
+		CategoryFriend,
+		CategoryGrandfathered,
+		CategoryTrial,
+		CategoryBasic,
+		CategoryRestricted,
 	}
 	result := make([]Plan, 0, len(order))
 	for _, v := range order {
@@ -158,10 +182,14 @@ func AllPlans() []Plan {
 	return result
 }
 
-// GetPlan returns the Plan for a given version and whether it exists.
-func GetPlan(version PlanVersion) (Plan, bool) {
-	p, ok := plans[version]
-	return p, ok
+// GetPlan returns the Plan for a given category.
+// Returns false if the category is unknown or the plan is not active.
+func GetPlan(cat PlanCategory) (Plan, bool) {
+	p, ok := plans[cat]
+	if !ok || !p.Available {
+		return Plan{}, false
+	}
+	return p, true
 }
 
 // ParsePlanID extracts the base plan, interval, and version from a plan ID.
@@ -172,31 +200,29 @@ func GetPlan(version PlanVersion) (Plan, bool) {
 //
 // ParsePlanID is the single code path for extracting the base plan from
 // any plan_id value stored in account_plans.
-func ParsePlanID(id string) (plan PlanVersion, interval, version string) {
+func ParsePlanID(id string) (plan PlanCategory, interval, version string) {
 	parts := strings.SplitN(id, ":", 3)
 	switch len(parts) {
 	case 3:
-		return PlanVersion(parts[0]), parts[1], parts[2]
+		return PlanCategory(parts[0]), parts[1], parts[2]
 	default:
-		return PlanVersion(id), "", ""
+		return PlanCategory(id), "", ""
 	}
 }
 
-// FormatPlanID constructs a versioned plan ID from its components.
-// The result has the format "{plan}:{interval}:{version}".
-func FormatPlanID(plan PlanVersion, interval, version string) string {
-	return string(plan) + ":" + interval + ":" + version
+// PlanID returns the stable plan ID for a given version.
+// Panics if the version is unknown — all valid versions are in the plan map.
+func PlanID(v PlanCategory) string {
+	p, ok := plans[v]
+	if !ok {
+		panic("unknown plan version: " + string(v))
+	}
+	return p.ID
 }
 
-// VersionedPlanID returns a versioned plan ID using the given plan, interval,
-// and the provided timestamp formatted as YYYYMMDD.
-func VersionedPlanID(plan PlanVersion, interval string, t time.Time) string {
-	return FormatPlanID(plan, interval, t.UTC().Format("20060102"))
-}
-
-// BasePlan extracts the base PlanVersion from a possibly-versioned plan ID.
+// BasePlan extracts the base PlanCategory from a possibly-versioned plan ID.
 // This is a convenience wrapper around ParsePlanID.
-func BasePlan(id string) PlanVersion {
+func BasePlan(id string) PlanCategory {
 	plan, _, _ := ParsePlanID(id)
 	return plan
 }
@@ -211,7 +237,7 @@ func GetPlanByID(id string) (Plan, bool) {
 
 // PlanName returns the human-readable name for a plan version (e.g., "Individual").
 // Returns empty string for unknown plan versions.
-func PlanName(version PlanVersion) string {
+func PlanName(version PlanCategory) string {
 	p, ok := plans[version]
 	if !ok {
 		return ""
@@ -221,7 +247,7 @@ func PlanName(version PlanVersion) string {
 
 // PlanGrants reports whether the given plan version grants the specified entitlement.
 // Returns false for unknown plan versions.
-func PlanGrants(version PlanVersion, ent Entitlement) bool {
+func PlanGrants(version PlanCategory, ent Entitlement) bool {
 	p, ok := plans[version]
 	if !ok {
 		return false
@@ -261,45 +287,45 @@ type UserPlanInputs struct {
 	TeamBillingActive bool
 }
 
-// GetPlanVersion maps existing billing state to a PlanVersion.
-func GetPlanVersion(inputs UserPlanInputs) PlanVersion {
+// GetPlanCategory maps existing billing state to a PlanCategory.
+func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
 	// Canceled users go straight to Basic — canceling overrides
 	// grandfathered status, exemptions, and trial access.
 	if inputs.BillingStatus == "canceled" {
-		return VersionBasic
+		return CategoryBasic
 	}
 
 	// VIP: friend category with explicit overrides.
 	if inputs.Category == "friend" && inputs.HasExplicitOverrides {
-		return VersionVIP
+		return CategoryVIP
 	}
 
 	// Friend: friend category without overrides.
 	if inputs.Category == "friend" {
-		return VersionFriend
+		return CategoryFriend
 	}
 
 	// Team: user is on a team whose billing owner has active billing.
 	if inputs.TeamBillingActive {
-		return VersionTeam
+		return CategoryTeam
 	}
 
 	// Individual: has active billing (not on a team).
 	if inputs.Category == "has_billing" {
-		return VersionIndividual
+		return CategoryIndividual
 	}
 
 	// Trial: trial exemption that hasn't expired.
 	if inputs.BillingExemption != nil && *inputs.BillingExemption == "trial" {
 		if inputs.BillingTrialEndsAt != nil && time.Now().Before(*inputs.BillingTrialEndsAt) {
-			return VersionTrial
+			return CategoryTrial
 		}
 	}
 
 	// Grandfathered: created before the billing-required date.
 	if inputs.CreatedAt != nil && inputs.CreatedAt.Before(billingRequiredDate) {
-		return VersionGrandfathered
+		return CategoryGrandfathered
 	}
 
-	return VersionBasic
+	return CategoryBasic
 }

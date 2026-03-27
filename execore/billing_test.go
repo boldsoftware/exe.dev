@@ -1992,7 +1992,7 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: expected basic plan after signup, got: %v", err)
 	}
-	if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+	if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
 		t.Errorf("initial plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 	if ap.EndedAt != nil {
@@ -2038,7 +2038,7 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("user %d GetActiveAccountPlan: %v", i, err)
 		}
-		if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+		if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
 			t.Errorf("user %d: plan=%q, want base plan 'basic'", i, ap.PlanID)
 		}
 		if ap.AccountID != acct.ID {
@@ -2077,7 +2077,7 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan after first call: %v", err)
 	}
-	if entitlement.BasePlan(ap.PlanID) != entitlement.VersionBasic {
+	if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
 		t.Fatalf("plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 
@@ -2088,7 +2088,7 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 		changedBy := "system:signup"
 		return queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    entitlement.VersionedPlanID(entitlement.VersionBasic, "monthly", time.Now()),
+			PlanID:    entitlement.PlanID(entitlement.CategoryBasic),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})
@@ -2224,7 +2224,7 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	changedBy := "stripe:event"
 	err = withTx1(server, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: billingID,
-		PlanID:    string(entitlement.VersionIndividual),
+		PlanID:    string(entitlement.CategoryIndividual),
 		StartedAt: now,
 		ChangedBy: &changedBy,
 	})
@@ -2264,7 +2264,7 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if plan.PlanID != string(entitlement.VersionIndividual) {
-		t.Errorf("plan_id=%q, want %q", plan.PlanID, entitlement.VersionIndividual)
+	if plan.PlanID != string(entitlement.CategoryIndividual) {
+		t.Errorf("plan_id=%q, want %q", plan.PlanID, entitlement.CategoryIndividual)
 	}
 }

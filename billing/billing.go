@@ -626,12 +626,11 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 //
 // Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
 func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time) error {
-	basePlan := entitlement.VersionBasic
-	interval := "monthly"
+	basePlan := entitlement.CategoryBasic
 	if eventType == "active" {
-		basePlan = entitlement.VersionIndividual
+		basePlan = entitlement.CategoryIndividual
 	}
-	newPlanID := entitlement.VersionedPlanID(basePlan, interval, eventAt)
+	newPlanID := entitlement.PlanID(basePlan)
 
 	// Skip if the active plan's base matches — avoids duplicate rows from poller replays.
 	activePlan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
@@ -992,8 +991,8 @@ func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[strin
 	return result, nil
 }
 
-// PlanVersionGroup represents a group of subscribers on the same plan_id version.
-type PlanVersionGroup struct {
+// PlanCategoryGroup represents a group of subscribers on the same plan_id version.
+type PlanCategoryGroup struct {
 	PlanID   string
 	BasePlan string
 	Interval string
@@ -1001,16 +1000,16 @@ type PlanVersionGroup struct {
 	Count    int
 }
 
-// ListPlanVersions returns all active plan versions with subscriber counts,
+// ListPlanCategorys returns all active plan versions with subscriber counts,
 // grouped by the full plan_id value in account_plans.
-func (m *Manager) ListPlanVersions(ctx context.Context) ([]PlanVersionGroup, error) {
+func (m *Manager) ListPlanCategorys(ctx context.Context) ([]PlanCategoryGroup, error) {
 	rows, err := exedb.WithRxRes0(m.DB, ctx, (*exedb.Queries).ListPlanVersionCounts)
 	if err != nil {
 		return nil, fmt.Errorf("list plan versions: %w", err)
 	}
-	var groups []PlanVersionGroup
+	var groups []PlanCategoryGroup
 	for _, row := range rows {
-		g := PlanVersionGroup{
+		g := PlanCategoryGroup{
 			PlanID: row.PlanID,
 			Count:  int(row.Cnt),
 		}
@@ -1021,15 +1020,15 @@ func (m *Manager) ListPlanVersions(ctx context.Context) ([]PlanVersionGroup, err
 	return groups, nil
 }
 
-// ListSubscribersByPlanVersion returns all account IDs with the given plan_id.
-func (m *Manager) ListSubscribersByPlanVersion(ctx context.Context, planID string) ([]string, error) {
+// ListSubscribersByPlanCategory returns all account IDs with the given plan_id.
+func (m *Manager) ListSubscribersByPlanCategory(ctx context.Context, planID string) ([]string, error) {
 	return exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListActiveSubscribersByPlanID, planID)
 }
 
-// MigratePlanVersion batch-migrates all active subscribers from one plan_id
+// MigratePlanCategory batch-migrates all active subscribers from one plan_id
 // to another, closing the old plan and inserting the new one within a single
 // transaction. Returns the number of accounts migrated.
-func (m *Manager) MigratePlanVersion(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
+func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
 	now := time.Now().UTC()
 	normalizedAt := sqlite.NormalizeTime(now)
 	changedBy := fmt.Sprintf("admin:migrate:%s->%s", fromPlanID, toPlanID)

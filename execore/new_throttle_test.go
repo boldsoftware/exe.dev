@@ -303,7 +303,7 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 		}
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: acct.ID,
-			PlanID:    string(entitlement.VersionGrandfathered),
+			PlanID:    string(entitlement.CategoryGrandfathered),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})
@@ -345,7 +345,7 @@ func TestCheckNewThrottleFreeExemption(t *testing.T) {
 		}
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: acct.ID,
-			PlanID:    string(entitlement.VersionFriend),
+			PlanID:    string(entitlement.CategoryFriend),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})

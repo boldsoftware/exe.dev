@@ -76,8 +76,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
 	mux.HandleFunc("GET /debug/billing-health", s.handleDebugBillingHealth)
-	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanVersions)
-	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanVersionMigrate)
+	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanCategorys)
+	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanCategoryMigrate)
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
 	mux.HandleFunc("GET /debug/billing-jump", s.handleDebugBillingJump)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
@@ -2570,7 +2570,7 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		changedBy := "debug:add-billing"
 		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    entitlement.VersionedPlanID(entitlement.VersionIndividual, "monthly", now.UTC()),
+			PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		}); err != nil {
@@ -5078,7 +5078,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RootSupport                bool
 		VMCreationDisabled         bool
 		PlanName                   string
-		PlanVersion                string
+		PlanCategory               string
 		DiscordID                  string
 		DiscordUsername            string
 		BillingExemption           string
@@ -5142,8 +5142,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:          billingRow.CreatedAt,
 			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
 		}
-		version := entitlement.GetPlanVersion(inputs)
-		data.PlanVersion = string(version)
+		version := entitlement.GetPlanCategory(inputs)
+		data.PlanCategory = string(version)
 		data.PlanName = entitlement.PlanName(version)
 
 	}
@@ -5663,7 +5663,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve entitlements from account_plans (walks parent_id for team members).
-	var version entitlement.PlanVersion
+	var version entitlement.PlanCategory
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		version = entitlement.BasePlan(planRow.PlanID)
 	}
@@ -5693,10 +5693,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleDebugPlanVersions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugPlanCategorys(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	groups, err := s.billing.ListPlanVersions(ctx)
+	groups, err := s.billing.ListPlanCategorys(ctx)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list plan versions: %v", err), http.StatusInternalServerError)
 		return
@@ -5706,7 +5706,7 @@ func (s *Server) handleDebugPlanVersions(w http.ResponseWriter, r *http.Request)
 	selectedPlanID := r.URL.Query().Get("plan_id")
 	var subscribers []string
 	if selectedPlanID != "" {
-		subscribers, err = s.billing.ListSubscribersByPlanVersion(ctx, selectedPlanID)
+		subscribers, err = s.billing.ListSubscribersByPlanCategory(ctx, selectedPlanID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to list subscribers: %v", err), http.StatusInternalServerError)
 			return
@@ -5721,7 +5721,7 @@ func (s *Server) handleDebugPlanVersions(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (s *Server) handleDebugPlanVersionMigrate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugPlanCategoryMigrate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	fromPlanID := r.FormValue("from")
@@ -5731,7 +5731,7 @@ func (s *Server) handleDebugPlanVersionMigrate(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	count, err := s.billing.MigratePlanVersion(ctx, fromPlanID, toPlanID)
+	count, err := s.billing.MigratePlanCategory(ctx, fromPlanID, toPlanID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("migration failed: %v", err), http.StatusInternalServerError)
 		return
