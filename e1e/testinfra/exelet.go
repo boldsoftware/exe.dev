@@ -50,10 +50,12 @@ type ExeletInstance struct {
 	CmdCancel     context.CancelFunc    // cancel function for exelet context
 	DataDir       string                // temp directory for exelet data (local or remote path)
 	RemoteHost    string                // VM on which exelet is running
-	TunnelCmd1    *exec.Cmd             // SSH tunnel process if using reverse tunnel
-	TunnelCancel1 context.CancelFunc    // cancel function for tunnel context
-	TunnelCmd2    *exec.Cmd             // second SSH tunnel
-	TunnelCancel2 context.CancelFunc    // second cancel function
+	TunnelCmd1       *exec.Cmd          // SSH tunnel process if using reverse tunnel
+	TunnelCancel1    context.CancelFunc // cancel function for tunnel context
+	TunnelCmd2       *exec.Cmd          // second SSH tunnel
+	TunnelCancel2    context.CancelFunc // second cancel function
+	MetricsTunnel    *exec.Cmd          // SSH tunnel for metricsd
+	MetricsTunnelCxl context.CancelFunc // cancel for metricsd tunnel
 	BridgeName    string                // bridge name for network isolation
 	ZFSDataset    string                // ZFS dataset for storage isolation
 	CoverDir      string                // remote directory for Go coverage artifacts (GOCOVERDIR)
@@ -403,15 +405,35 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 	}
 
 	// Add metrics flags if configured.
-	// Rewrite localhost to the gateway address so the remote exelet
-	// can reach metricsd running on the test host.
+	// Use localProxyURL so that the remote exelet can reach metricsd
+	// (falls back to an SSH tunnel when direct connectivity is absent).
+	var metricsTunnelCmd *exec.Cmd
+	var metricsTunnelCancel context.CancelFunc
 	if metrics != nil && metrics.DaemonURL != "" {
-		daemonURL := metrics.DaemonURL
-		daemonURL = strings.Replace(daemonURL, "://localhost:", "://"+gateway+":", 1)
-		args = append(args,
-			"--metrics-daemon-url", daemonURL,
-			"--metrics-daemon-interval", metrics.Interval.String(),
-		)
+		metricsPort := 0
+		if idx := strings.LastIndex(metrics.DaemonURL, ":"); idx >= 0 {
+			fmt.Sscanf(metrics.DaemonURL[idx+1:], "%d", &metricsPort)
+		}
+		if metricsPort > 0 {
+			var metricsProxyURL string
+			metricsProxyURL, metricsTunnelCmd, metricsTunnelCancel, err = localProxyURL(ctx, host, gateway, metricsPort, logPorts)
+			if err != nil {
+				return nil, fmt.Errorf("metrics proxy: %w", err)
+			}
+			if metricsTunnelCmd != nil {
+				defer func() {
+					if err != nil {
+						metricsTunnelCancel()
+						metricsTunnelCmd.Process.Kill()
+						metricsTunnelCmd.Wait()
+					}
+				}()
+			}
+			args = append(args,
+				"--metrics-daemon-url", metricsProxyURL,
+				"--metrics-daemon-interval", metrics.Interval.String(),
+			)
+		}
 	}
 
 	if exepipeWaiter != nil {
@@ -485,6 +507,8 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		TunnelCancel1:    tunnelCancel1,
 		TunnelCmd2:       tunnelCmd2,
 		TunnelCancel2:    tunnelCancel2,
+		MetricsTunnel:    metricsTunnelCmd,
+		MetricsTunnelCxl: metricsTunnelCancel,
 		BridgeName:       res.bridgeName,
 		ZFSDataset:       res.zfsDataset,
 		CoverDir:         res.coverDir,
@@ -886,6 +910,13 @@ func (ei *ExeletInstance) Stop(ctx context.Context) string {
 	if ei.TunnelCmd2 != nil && ei.TunnelCmd2.Process != nil {
 		ei.TunnelCmd2.Process.Kill()
 		ei.TunnelCmd2.Wait()
+	}
+	if ei.MetricsTunnelCxl != nil {
+		ei.MetricsTunnelCxl()
+	}
+	if ei.MetricsTunnel != nil && ei.MetricsTunnel.Process != nil {
+		ei.MetricsTunnel.Process.Kill()
+		ei.MetricsTunnel.Wait()
 	}
 
 	// Download the exelet coverage data.

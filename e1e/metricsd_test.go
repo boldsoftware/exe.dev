@@ -20,7 +20,7 @@ func TestMetricsDaemonE2E(t *testing.T) {
 	}
 
 	// Wait for any metrics to appear (from this or other tests).
-	// The exelet sends metrics every 20s in tests.
+	// The exelet sends metrics every 5s in tests.
 	ctx := Env.context(t)
 	deadline := time.Now().Add(30 * time.Second)
 	var count int
