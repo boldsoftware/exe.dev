@@ -142,6 +142,8 @@ jobs:
     runs-on: [self-hosted, linux, x64, libvirt, edric]
     permissions:
       contents: write
+    env:
+      VM_DRIVER: cloudhypervisor
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -187,7 +189,26 @@ jobs:
 
       - name: destroy stale VMs
         run: |
-          sudo virsh list --name | grep ci-ubuntu-$(whoami) | xargs -r -n 1 sudo virsh destroy || true
+          # Kill stale cloud-hypervisor processes (older than 1 hour)
+          for pidfile in /tmp/ch-pid-ci-ubuntu-*; do
+            [ -f "$pidfile" ] || continue
+            pid=$(cat "$pidfile" 2>/dev/null) || continue
+            if [ -d "/proc/$pid" ]; then
+              age=$(( $(date +%s) - $(stat -c %Y "$pidfile") ))
+              if [ "$age" -gt 3600 ]; then
+                echo "Killing stale CH process $pid (age ${age}s)"
+                sudo kill "$pid" 2>/dev/null || true
+                sleep 0.5
+                sudo kill -9 "$pid" 2>/dev/null || true
+              fi
+            fi
+            # Clean up orphaned pidfiles
+            if [ ! -d "/proc/$pid" ]; then
+              sudo rm -f "$pidfile"
+            fi
+          done
+          # Also clean up any lingering libvirt VMs from before the switch
+          sudo virsh list --name 2>/dev/null | grep ci-ubuntu-$(whoami) | xargs -r -n 1 sudo virsh destroy 2>/dev/null || true
 
       - name: ensure vm snapshot exists
         id: vm

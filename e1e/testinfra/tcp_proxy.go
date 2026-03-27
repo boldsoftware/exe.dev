@@ -35,7 +35,7 @@ type TCPProxy struct {
 // The destination address is not set; all incoming connections
 // will delay until it is set by calling [TCPProxy.SetDestPort].
 func NewTCPProxy(ctx context.Context, name string) (*TCPProxy, error) {
-	ln, err := net.ListenTCP("tcp", nil)
+	ln, err := net.ListenTCP("tcp4", nil)
 	if err != nil {
 		return nil, err
 	}

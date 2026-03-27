@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"exe.dev/ctrhosttest"
@@ -49,9 +48,28 @@ func StartExeletVM(testRunID string) (string, error) {
 	}
 }
 
-// startLinuxVMMu ensures exclusivity within a single process.
-// We use a file lock for exclusivity between processes.
-var startLinuxVMMu sync.Mutex
+// vmDriver returns the selected VM backend.
+// Set VM_DRIVER=cloudhypervisor to use ci-vm-start.py (cloud-hypervisor direct)
+// instead of the default ci-vm-start.sh (libvirt/QEMU).
+func vmDriver() string {
+	return os.Getenv("VM_DRIVER")
+}
+
+// vmStartCmd returns the start script/program for the current VM driver.
+func vmStartCmd(srcdir string) *exec.Cmd {
+	if vmDriver() == "cloudhypervisor" {
+		return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "create")
+	}
+	return exec.Command(filepath.Join(srcdir, "ops/ci-vm-start.sh"))
+}
+
+// vmDestroyCmd returns the destroy script/program for the current VM driver.
+func vmDestroyCmd(srcdir, envFile string) *exec.Cmd {
+	if vmDriver() == "cloudhypervisor" {
+		return exec.Command("python3", filepath.Join(srcdir, "ops/ci-vm.py"), "destroy", envFile)
+	}
+	return exec.Command(filepath.Join(srcdir, "ops/ci-vm-destroy.sh"), envFile)
+}
 
 // startLinuxVM starts a VM on Linux to run the exelet.
 // It returns the ssh address for the host.
@@ -74,47 +92,30 @@ func startLinuxVM(testRunID string) (string, error) {
 		return "", err
 	}
 
-	// Running ci-vm-start.sh is not concurrent-safe,
-	// so use a lock. We can't lock the shell script,
-	// as that will make the executable file busy.
-	// Just lock this file.
-	startLinuxVMMu.Lock()
-
-	cleanup, err := flock(filepath.Join(srcdir, "e1e/testinfra/vm.go"))
-	if err != nil {
-		startLinuxVMMu.Unlock()
-		return "", fmt.Errorf("error acquiring ci-vm-start lock: %v", err)
-	}
-
-	cmd := exec.Command(filepath.Join(srcdir, "ops/ci-vm-start.sh"))
+	cmd := vmStartCmd(srcdir)
 	cmd.Env = append(cmd.Environ(),
 		"NAME="+name,
 		"OUTDIR="+outdir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	err = cmd.Run()
-
-	cleanup()
-	startLinuxVMMu.Unlock()
-
-	if err != nil {
-		return "", fmt.Errorf("ops/ci-vm-start.sh failed: %v\n", err)
+	if err = cmd.Run(); err != nil {
+		return "", fmt.Errorf("ci-vm-start failed (%s): %v\n", vmDriver(), err)
 	}
 
 	envFile := filepath.Join(outdir, name+".env")
 
 	AddCleanup(func() {
-		cmd := exec.Command(filepath.Join(srcdir, "ops/ci-vm-destroy.sh"), envFile)
+		cmd := vmDestroyCmd(srcdir, envFile)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ci-vm-destroy.sh failed: %v\n%s", err, out)
+			fmt.Fprintf(os.Stderr, "ci-vm-destroy failed: %v\n%s", err, out)
 		}
 	})
 
 	envVars, err := os.ReadFile(envFile)
 	if err != nil {
-		return "", fmt.Errorf("can't read ci-vm-start.sh environment variables: %v", err)
+		return "", fmt.Errorf("can't read VM envfile: %v", err)
 	}
 
 	var vmUser, vmIP string
@@ -125,7 +126,7 @@ func startLinuxVM(testRunID string) (string, error) {
 		}
 		name, val, ok := strings.Cut(line, "=")
 		if !ok {
-			return "", fmt.Errorf("invalid line in ci-vm-start.sh output: %q", line)
+			return "", fmt.Errorf("invalid line in VM envfile: %q", line)
 		}
 		switch name {
 		case "VM_USER":
@@ -136,12 +137,10 @@ func startLinuxVM(testRunID string) (string, error) {
 	}
 
 	if vmUser == "" || vmIP == "" {
-		return "", fmt.Errorf("VM_USER and/or VM_IP missing from %s created by ci-vm-start.sh:\n%s", envFile, envVars)
+		return "", fmt.Errorf("VM_USER and/or VM_IP missing from %s:\n%s", envFile, envVars)
 	}
 
-	ctrHost := "ssh://" + vmUser + "@" + vmIP
-
-	return ctrHost, nil
+	return "ssh://" + vmUser + "@" + vmIP, nil
 }
 
 // exeRootDir returns the root of the source directory.
