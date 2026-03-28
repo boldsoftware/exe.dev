@@ -37,22 +37,11 @@ func Parse(env stage.Env) (*template.Template, error) {
 				}
 				return s[:4] + "..." + s[len(s)-4:]
 			},
-			"tokenStatus": func(s *string) template.HTML {
-				if s == nil {
+			"tokenStatus": func(t *time.Time) template.HTML {
+				if t == nil {
 					return `<span class="status-unknown">-</span>`
 				}
-				var t time.Time
-				var err error
-				for _, fmt := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05"} {
-					t, err = time.Parse(fmt, *s)
-					if err == nil {
-						break
-					}
-				}
-				if err != nil {
-					return template.HTML(fmt.Sprintf(`<span class="status-unknown">%s</span>`, template.HTMLEscapeString(*s)))
-				}
-				remaining := time.Until(t)
+				remaining := time.Until(*t)
 				ts := t.Format("2006-01-02 15:04")
 				if remaining <= 0 {
 					return template.HTML(fmt.Sprintf(`<span class="status-expired">expired</span> <span title="%s">%s ago</span>`, ts, remaining.Round(time.Minute).Abs()))

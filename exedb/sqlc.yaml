@@ -39,11 +39,11 @@ sql:
             go_type: "bool"
           - column: "github_user_tokens.access_token_expires_at"
             go_type:
-              type: "string"
+              type: "time.Time"
               pointer: true
           - column: "github_user_tokens.refresh_token_expires_at"
             go_type:
-              type: "string"
+              type: "time.Time"
               pointer: true
         rename:
           box_ip_shard: "BoxIPShard"

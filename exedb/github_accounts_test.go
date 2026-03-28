@@ -2,8 +2,8 @@ package exedb_test
 
 import (
 	"context"
-	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/exedb"
 )
@@ -18,13 +18,15 @@ func TestGitHubUserTokenTimestampRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	accessExpiry := time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC)
+	refreshExpiry := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
 	err = queries.UpsertGitHubUserToken(ctx, exedb.UpsertGitHubUserTokenParams{
 		UserID:                userID,
 		GitHubLogin:           "testuser",
 		AccessToken:           "ghu_test",
 		RefreshToken:          "ghr_test",
-		AccessTokenExpiresAt:  strPtr("2026-04-21 09:00:00"),
-		RefreshTokenExpiresAt: strPtr("2026-09-21 09:00:00"),
+		AccessTokenExpiresAt:  &accessExpiry,
+		RefreshTokenExpiresAt: &refreshExpiry,
 	})
 	if err != nil {
 		t.Fatalf("UpsertGitHubUserToken: %v", err)
@@ -40,14 +42,14 @@ func TestGitHubUserTokenTimestampRoundTrip(t *testing.T) {
 	if tok.AccessTokenExpiresAt == nil {
 		t.Fatal("AccessTokenExpiresAt is nil")
 	}
-	if !strings.HasPrefix(*tok.AccessTokenExpiresAt, "2026-04-21") {
-		t.Errorf("AccessTokenExpiresAt = %q, want prefix 2026-04-21", *tok.AccessTokenExpiresAt)
+	if !tok.AccessTokenExpiresAt.Equal(accessExpiry) {
+		t.Errorf("AccessTokenExpiresAt = %v, want %v", tok.AccessTokenExpiresAt, accessExpiry)
 	}
 	if tok.RefreshTokenExpiresAt == nil {
 		t.Fatal("RefreshTokenExpiresAt is nil")
 	}
-	if !strings.HasPrefix(*tok.RefreshTokenExpiresAt, "2026-09-21") {
-		t.Errorf("RefreshTokenExpiresAt = %q, want prefix 2026-09-21", *tok.RefreshTokenExpiresAt)
+	if !tok.RefreshTokenExpiresAt.Equal(refreshExpiry) {
+		t.Errorf("RefreshTokenExpiresAt = %v, want %v", tok.RefreshTokenExpiresAt, refreshExpiry)
 	}
 }
 
@@ -71,11 +73,13 @@ func TestGitHubUserTokenUpdateRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	updateAccessExpiry := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	updateRefreshExpiry := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	err = queries.UpdateGitHubUserToken(ctx, exedb.UpdateGitHubUserTokenParams{
 		AccessToken:           "ghu_new",
 		RefreshToken:          "ghr_new",
-		AccessTokenExpiresAt:  strPtr("2026-05-01 12:00:00"),
-		RefreshTokenExpiresAt: strPtr("2026-11-01 12:00:00"),
+		AccessTokenExpiresAt:  &updateAccessExpiry,
+		RefreshTokenExpiresAt: &updateRefreshExpiry,
 		UserID:                userID,
 		GitHubLogin:           "testuser",
 	})
@@ -93,11 +97,17 @@ func TestGitHubUserTokenUpdateRoundTrip(t *testing.T) {
 	if tok.AccessToken != "ghu_new" {
 		t.Errorf("AccessToken = %q, want ghu_new", tok.AccessToken)
 	}
-	if tok.AccessTokenExpiresAt == nil || !strings.HasPrefix(*tok.AccessTokenExpiresAt, "2026-05-01") {
-		t.Errorf("AccessTokenExpiresAt = %v, want prefix 2026-05-01", tok.AccessTokenExpiresAt)
+	if tok.AccessTokenExpiresAt == nil {
+		t.Fatal("AccessTokenExpiresAt is nil")
 	}
-	if tok.RefreshTokenExpiresAt == nil || !strings.HasPrefix(*tok.RefreshTokenExpiresAt, "2026-11-01") {
-		t.Errorf("RefreshTokenExpiresAt = %v, want prefix 2026-11-01", tok.RefreshTokenExpiresAt)
+	if !tok.AccessTokenExpiresAt.Equal(updateAccessExpiry) {
+		t.Errorf("AccessTokenExpiresAt = %v, want %v", tok.AccessTokenExpiresAt, updateAccessExpiry)
+	}
+	if tok.RefreshTokenExpiresAt == nil {
+		t.Fatal("RefreshTokenExpiresAt is nil")
+	}
+	if !tok.RefreshTokenExpiresAt.Equal(updateRefreshExpiry) {
+		t.Errorf("RefreshTokenExpiresAt = %v, want %v", tok.RefreshTokenExpiresAt, updateRefreshExpiry)
 	}
 }
 
@@ -380,8 +390,8 @@ func TestListGitHubUserTokensNeedingRenewal(t *testing.T) {
 		GitHubLogin:           "testuser",
 		AccessToken:           "ghu_test",
 		RefreshToken:          "ghr_test",
-		AccessTokenExpiresAt:  strPtr("2026-03-30 00:00:00"),
-		RefreshTokenExpiresAt: strPtr("2026-03-30 00:00:00"),
+		AccessTokenExpiresAt:  timePtr(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
+		RefreshTokenExpiresAt: timePtr(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -560,3 +570,5 @@ func TestGitHubDeleteOrphanedTokensKeepsAll(t *testing.T) {
 		t.Fatalf("got %d tokens, want 1", len(tokens))
 	}
 }
+
+func timePtr(t time.Time) *time.Time { return &t }

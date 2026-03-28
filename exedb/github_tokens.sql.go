@@ -156,8 +156,8 @@ type ListAllGitHubInstallationsWithTokensRow struct {
 	AccessToken             string     `db:"access_token" json:"access_token"`
 	RefreshToken            string     `db:"refresh_token" json:"refresh_token"`
 	TokenRenewedAt          *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
-	AccessTokenExpiresAt    *string    `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt   *string    `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	AccessTokenExpiresAt    *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt   *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 }
 
 func (q *Queries) ListAllGitHubInstallationsWithTokens(ctx context.Context) ([]ListAllGitHubInstallationsWithTokensRow, error) {
@@ -207,8 +207,8 @@ type ListAllGitHubUserTokensRow struct {
 	AccessToken           string     `db:"access_token" json:"access_token"`
 	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
 	TokenRenewedAt        *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
-	AccessTokenExpiresAt  *string    `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt *string    `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
 	Email                 string     `db:"email" json:"email"`
 }
@@ -370,12 +370,12 @@ WHERE user_id = ? AND github_login = ?
 `
 
 type UpdateGitHubUserTokenParams struct {
-	AccessToken           string  `db:"access_token" json:"access_token"`
-	RefreshToken          string  `db:"refresh_token" json:"refresh_token"`
-	AccessTokenExpiresAt  *string `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt *string `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
-	UserID                string  `db:"user_id" json:"user_id"`
-	GitHubLogin           string  `db:"github_login" json:"github_login"`
+	AccessToken           string     `db:"access_token" json:"access_token"`
+	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	GitHubLogin           string     `db:"github_login" json:"github_login"`
 }
 
 func (q *Queries) UpdateGitHubUserToken(ctx context.Context, arg UpdateGitHubUserTokenParams) error {
@@ -427,12 +427,12 @@ ON CONFLICT (user_id, github_login) DO UPDATE SET
 `
 
 type UpsertGitHubUserTokenParams struct {
-	UserID                string  `db:"user_id" json:"user_id"`
-	GitHubLogin           string  `db:"github_login" json:"github_login"`
-	AccessToken           string  `db:"access_token" json:"access_token"`
-	RefreshToken          string  `db:"refresh_token" json:"refresh_token"`
-	AccessTokenExpiresAt  *string `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt *string `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	GitHubLogin           string     `db:"github_login" json:"github_login"`
+	AccessToken           string     `db:"access_token" json:"access_token"`
+	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 }
 
 func (q *Queries) UpsertGitHubUserToken(ctx context.Context, arg UpsertGitHubUserTokenParams) error {

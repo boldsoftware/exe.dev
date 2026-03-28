@@ -216,8 +216,8 @@ type GithubUserToken struct {
 	AccessToken           string     `db:"access_token" json:"access_token"`
 	RefreshToken          string     `db:"refresh_token" json:"refresh_token"`
 	TokenRenewedAt        *time.Time `db:"token_renewed_at" json:"token_renewed_at"`
-	AccessTokenExpiresAt  *string    `db:"access_token_expires_at" json:"access_token_expires_at"`
-	RefreshTokenExpiresAt *string    `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
+	AccessTokenExpiresAt  *time.Time `db:"access_token_expires_at" json:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `db:"refresh_token_expires_at" json:"refresh_token_expires_at"`
 	CreatedAt             *time.Time `db:"created_at" json:"created_at"`
 }
 

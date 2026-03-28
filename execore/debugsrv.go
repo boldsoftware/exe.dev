@@ -7932,14 +7932,10 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 		http.Error(w, fmt.Sprintf("user token not found: %v", err), http.StatusNotFound)
 		return
 	}
-	if tok.AccessTokenExpiresAt != nil {
-		if expires, err := parseGitHubTokenExpiry(*tok.AccessTokenExpiresAt); err == nil {
-			if time.Until(expires) > 5*time.Minute {
-				w.WriteHeader(http.StatusOK)
-				fmt.Fprint(w, "OK (already fresh)")
-				return
-			}
-		}
+	if tok.AccessTokenExpiresAt != nil && time.Until(*tok.AccessTokenExpiresAt) > 5*time.Minute {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "OK (already fresh)")
+		return
 	}
 
 	tokenResp, err := s.githubApp.RefreshUserToken(ctx, tok.RefreshToken)

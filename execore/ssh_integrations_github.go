@@ -34,8 +34,8 @@ type GitHubSetup struct {
 	InstallationID        int64
 	AccessToken           string
 	RefreshToken          string
-	AccessTokenExpiresAt  *string
-	RefreshTokenExpiresAt *string
+	AccessTokenExpiresAt  *time.Time
+	RefreshTokenExpiresAt *time.Time
 	Err                   error
 }
 

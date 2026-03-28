@@ -179,14 +179,7 @@ func (s *Server) resolveGitHubTokenWeb(ctx context.Context, userID, githubLogin 
 		return "", fmt.Errorf("no GitHub token for user: %w", err)
 	}
 
-	if tok.AccessTokenExpiresAt == nil {
-		return tok.AccessToken, nil
-	}
-	expires, err := parseGitHubTokenExpiry(*tok.AccessTokenExpiresAt)
-	if err != nil {
-		return "", fmt.Errorf("GitHub access token has unparseable expiry %q", *tok.AccessTokenExpiresAt)
-	}
-	if time.Now().Before(expires) {
+	if tok.AccessTokenExpiresAt == nil || time.Now().Before(*tok.AccessTokenExpiresAt) {
 		return tok.AccessToken, nil
 	}
 
@@ -207,10 +200,8 @@ func (s *Server) resolveGitHubTokenWeb(ctx context.Context, userID, githubLogin 
 	if err != nil {
 		return "", fmt.Errorf("failed to re-read GitHub token: %w", err)
 	}
-	if fresh.AccessTokenExpiresAt != nil {
-		if exp, err := parseGitHubTokenExpiry(*fresh.AccessTokenExpiresAt); err == nil && time.Now().Before(exp) {
-			return fresh.AccessToken, nil
-		}
+	if fresh.AccessTokenExpiresAt != nil && time.Now().Before(*fresh.AccessTokenExpiresAt) {
+		return fresh.AccessToken, nil
 	}
 
 	// Still expired — do the refresh.
@@ -353,17 +344,6 @@ func (s *Server) handleGitHubVerify(w http.ResponseWriter, r *http.Request) {
 		"success":    true,
 		"repo_count": len(repos),
 	})
-}
-
-// parseGitHubTokenExpiry parses a token expiry string stored in the DB.
-// Handles both SQLite format ("2006-01-02 15:04:05") and RFC 3339 ("2006-01-02T15:04:05Z").
-func parseGitHubTokenExpiry(s string) (time.Time, error) {
-	for _, fmt := range []string{"2006-01-02 15:04:05", time.RFC3339} {
-		if t, err := time.Parse(fmt, s); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unrecognized format: %s", s)
 }
 
 // fetchGitHubAccountDisplayInfo loads installations and the user's GitHub login
