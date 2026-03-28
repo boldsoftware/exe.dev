@@ -406,10 +406,42 @@ def add_retry_trailer(count):
     git("commit", "--amend", "-m", new_msg)
 
 
+def _amend_for_ci(ref):
+    """Amend HEAD with a CI-Attempt trailer to produce a new commit SHA."""
+    if ref != "HEAD":
+        print(f"q: remote already at this commit; can't amend (ref is {ref}, not HEAD)",
+              file=sys.stderr)
+        raise SystemExit(1)
+    ts = int(time.time())
+    msg = git("log", "--format=%B", "-n", "1", "HEAD")
+    r = subprocess.run(
+        ["git", "interpret-trailers", "--if-exists=replace",
+         "--trailer", f"CI-Attempt: {ts}"],
+        input=msg, capture_output=True, text=True,
+    )
+    new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\nCI-Attempt: {ts}"
+    git("commit", "--amend", "-m", new_msg)
+    return git("rev-parse", "HEAD")
+
+
 def push_and_monitor(args, commit, short, queue_branch, ref, is_last_attempt):
     """Push to queue branch and monitor CI. Returns True on success."""
     print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
-    git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
+    r = subprocess.run(
+        ["git", "push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr)
+        raise SystemExit(1)
+    output = r.stdout + r.stderr
+    if "Everything up-to-date" in output:
+        print(f"q: {queue_branch} already at {short}, amending to get a fresh SHA",
+              file=sys.stderr)
+        commit = _amend_for_ci(ref)
+        short = commit[:7]
+        print(f"q: pushing {short} to {queue_branch}", file=sys.stderr)
+        git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
 
     # --- Kite: Buildkite monitoring ---
     if args.kite or args.dry_run:
