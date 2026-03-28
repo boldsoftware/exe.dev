@@ -10,8 +10,9 @@ All tests have passed at this point. We:
   6. Dry-run push to origin/main
   7. Push to subrepos (shelley, exeuntu, oss)
   8. Push to origin/main
-  9. Trigger exeuntu build if exeuntu/ changed
-  10. Delete the queue branch
+  9. Notify Slack
+  10. Trigger exeuntu build if exeuntu/ changed
+  11. Delete the queue branch
 """
 
 import json
@@ -101,6 +102,53 @@ def trigger_exeuntu_build(token: str, origin_main_before: str):
             print("Exeuntu build triggered.", flush=True)
     else:
         print("No exeuntu changes, skipping.", flush=True)
+
+
+def notify_slack(origin_main_before: str):
+    """Send Slack notification about the landed commits."""
+    print("--- :slack: Notify Slack", flush=True)
+
+    webhook_url = run("buildkite-agent", "secret", "get", "NTFY_SLACK_WEBHOOK_URL",
+                      capture=True, check=False).stdout.strip()
+    if not webhook_url:
+        print("WARNING: NTFY_SLACK_WEBHOOK_URL secret not available, skipping Slack notification.",
+              file=sys.stderr)
+        return
+
+    main_sha = run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
+    commit_subject = run("git", "log", "-1", "--format=%s", capture=True).stdout.strip()
+    # Use git author name for attribution (resolves to team member in the script).
+    commit_author = run("git", "log", "-1", "--format=%an", capture=True).stdout.strip()
+    branch = os.environ.get("BUILDKITE_BRANCH", "")
+    build_url = os.environ.get("BUILDKITE_BUILD_URL", "")
+    commit_url = f"https://github.com/{GITHUB_ORG}/exe/commit/{main_sha}"
+
+    # Build commit log (same format as GHA: "sha subject" per line).
+    commit_log = run(
+        "git", "log", "--format=%h %s", "--reverse",
+        f"{origin_main_before}..HEAD",
+        capture=True,
+    ).stdout.strip()
+
+    env = os.environ.copy()
+    env["COMMIT_LOG"] = commit_log
+    env["COMMIT_AUTHOR"] = commit_author
+    env["CI_SOURCE"] = "buildkite"
+
+    # Extract actor from branch name (kite-queue-<user>-...).
+    parts = branch.split("-")
+    actor = parts[2] if len(parts) >= 3 else "buildkite"
+
+    result = subprocess.run(
+        ["python3", "bin/slack-notify-queue.py",
+         webhook_url, "success", commit_subject, actor,
+         build_url, commit_url, branch],
+        env=env,
+    )
+    if result.returncode != 0:
+        print("WARNING: Slack notification failed.", file=sys.stderr)
+    else:
+        print("Slack notification sent.", flush=True)
 
 
 def delete_queue_branch(token: str):
@@ -215,6 +263,9 @@ def main():
         sys.exit(1)
 
     print("Successfully pushed to main!", flush=True)
+
+    # Notify Slack
+    notify_slack(origin_main_before)
 
     # Trigger exeuntu build if needed
     trigger_exeuntu_build(token, origin_main_before)
