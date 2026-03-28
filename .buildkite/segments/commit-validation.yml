@@ -1,0 +1,4 @@
+- label: ":clipboard: commit validation"
+  key: commit-validation
+  command: .buildkite/steps/commit-validation.sh
+  timeout_in_minutes: 5

@@ -1,85 +1,10 @@
+# This file mirrors the Buildkite pipeline configuration.
+# The actual entrypoint is configured in the Buildkite UI to run
+# generate-pipeline.py directly, skipping an extra upload step.
 agents:
   queue: exe-ci
 
 steps:
-  - label: ":white_check_mark: non-e1e checks"
-    key: checks
-    command: .buildkite/steps/test-non-e1e-checks.sh
-    timeout_in_minutes: 20
-
-  - label: ":go: unit tests (execore A-H)"
-    key: unit-a
-    command: .buildkite/steps/test-non-e1e-tests.sh
-    timeout_in_minutes: 20
-    env:
-      UNIT_TEST_SHARD: A
-
-  - label: ":go: unit tests (other pkgs)"
-    key: unit-b
-    command: .buildkite/steps/test-non-e1e-tests.sh
-    timeout_in_minutes: 20
-    env:
-      UNIT_TEST_SHARD: B
-
-  - label: ":go: unit tests (execore I-P)"
-    key: unit-c
-    command: .buildkite/steps/test-non-e1e-tests.sh
-    timeout_in_minutes: 20
-    env:
-      UNIT_TEST_SHARD: C
-
-  - label: ":go: unit tests (execore Q-Z)"
-    key: unit-d
-    command: .buildkite/steps/test-non-e1e-tests.sh
-    timeout_in_minutes: 20
-    env:
-      UNIT_TEST_SHARD: D
-
-  - label: ":wrench: build e1e binaries"
-    key: build-e1e
-    command: python3 .buildkite/steps/build-e1e-binaries.py
-    timeout_in_minutes: 10
-
-  - label: ":rocket: e1e tests (A-N)"
-    key: test-e1e-1
-    depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e.py
-    timeout_in_minutes: 20
-    env:
-      E1E_SHARD: "1"
-      E1E_RUN_FILTER: "^Test[A-Na-n]"
-    artifact_paths:
-      - "recordings-1.html"
-      - "e1e-logs-1/**/*"
-
-  - label: ":rocket: e1e tests (O-S)"
-    key: test-e1e-2
-    depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e.py
-    timeout_in_minutes: 20
-    env:
-      E1E_SHARD: "2"
-      E1E_RUN_FILTER: "^Test[O-So-s]"
-    artifact_paths:
-      - "recordings-2.html"
-      - "e1e-logs-2/**/*"
-
-  - label: ":rocket: e1e tests (T-Z)"
-    key: test-e1e-3
-    depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e.py
-    timeout_in_minutes: 20
-    env:
-      E1E_SHARD: "3"
-      E1E_RUN_FILTER: "^Test[T-Zt-z]"
-    artifact_paths:
-      - "recordings-3.html"
-      - "e1e-logs-3/**/*"
-
-  - label: ":electric_plug: e1e exelets"
-    key: test-exelets
-    depends_on: build-e1e
-    command: python3 .buildkite/steps/test-e1e-exelets.py
-    timeout_in_minutes: 15
-    artifact_paths:
-      - "e1e-logs-exelets/**/*"
+  - label: ":pipeline: Generate pipeline"
+    command: python3 .buildkite/steps/generate-pipeline.py | buildkite-agent pipeline upload
+    timeout_in_minutes: 5

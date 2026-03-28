@@ -1,0 +1,4 @@
+- label: ":art: check formatting"
+  key: format
+  command: .buildkite/steps/format-and-push.sh
+  timeout_in_minutes: 10
