@@ -24,6 +24,7 @@ import (
 
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"golang.org/x/sync/errgroup"
 )
 
 // ReplicationConfig configures storage replication for an exelet.
@@ -248,58 +249,15 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		return startExeletLocal(ctx, exeletBinary, exedPort, metadataPort, exepipe, testRunID, logFile, logPorts, replication, metrics, start)
 	}
 
-	// Get the gateway address of the VM.
-	gateway, err := resolveGateway(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	slog.InfoContext(ctx, "resolved default gateway", "addr", gateway)
-
-	exedProxyURL, tunnelCmd1, tunnelCancel1, err := localProxyURL(ctx, host, gateway, exedPort, logPorts)
-	if err != nil {
-		return nil, err
-	}
-	if tunnelCmd1 != nil {
-		defer func() {
-			if err != nil {
-				tunnelCancel1()
-				tunnelCmd1.Process.Kill()
-				tunnelCmd1.Wait()
-			}
-		}()
-	}
-
-	var metadataProxyURL string
-	var tunnelCmd2 *exec.Cmd
-	var tunnelCancel2 context.CancelFunc
-	if metadataPort == exedPort {
-		metadataProxyURL = exedProxyURL
-	} else {
-		metadataProxyURL, tunnelCmd2, tunnelCancel2, err = localProxyURL(ctx, host, gateway, metadataPort, logPorts)
-		if err != nil {
-			return nil, err
-		}
-		if tunnelCmd2 != nil {
-			defer func() {
-				if err != nil {
-					tunnelCancel2()
-					tunnelCmd2.Process.Kill()
-					tunnelCmd2.Wait()
-				}
-			}()
-		}
-	}
-
 	// Use test-run-specific binary name to avoid conflicts with
 	// parallel test runs. This is the name of the binary
 	// on the VM, not on the host running the test.
-
 	remoteExeletPath := "/tmp/exelet-test-" + testRunID
 
 	type remoteBin struct {
 		local, remote string
 	}
-	bins := []remoteBin{
+	binsList := []remoteBin{
 		{
 			local:  exeletBinary,
 			remote: remoteExeletPath,
@@ -309,7 +267,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 	remoteExepipePath := ""
 	if exepipe != nil {
 		remoteExepipePath = "/tmp/exepipe-onvm-" + testRunID
-		bins = append(bins,
+		binsList = append(binsList,
 			remoteBin{
 				local:  exepipe.BinPath,
 				remote: remoteExepipePath,
@@ -317,29 +275,66 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		)
 	}
 
-	// Ensure no existing binaries exist for this test run
-	// (e.g. on failed re-run).
-	for _, bin := range bins {
-		if out, err := sshExec(ctx, host, fmt.Sprintf("rm -rf %s", bin.remote)); err != nil {
-			return nil, fmt.Errorf("failed to remove existing binary %s: %w\n%s", bin.remote, err, out)
-		}
+	// Compute unique resource names for this test run.
+	// Pure computation; do this before launching goroutines.
+	res, err := computeExeletResources(testRunID)
+	if err != nil {
+		return nil, err
+	}
+	slog.InfoContext(ctx, "using isolated resources", "bridge", res.bridgeName, "network", res.networkCIDR, "dataset", res.zfsDataset)
 
-		// Ensure no existing processes exist for this test run only.
-		sshExec(ctx, host, fmt.Sprintf("pkill -f %s", bin.remote))
+	// Run gateway resolution, binary uploads, and ZFS setup in parallel —
+	// all are independent SSH operations to the VM.
+	var (
+		gateway         string
+		hasConnectivity bool
+		exepipeWaiter   *exepipeVMWaiter
+	)
+	g, gctx := errgroup.WithContext(ctx)
 
-		// Upload binary to remote host with unique name.
-		slog.InfoContext(ctx, "uploading binary to remote host", "host", host, "binary", bin.local, "path", bin.remote)
-		if out, err := scpUpload(ctx, bin.local, host, bin.remote); err != nil {
-			return nil, fmt.Errorf("failed to upload exelet: %w\n%s", err, out)
+	// Goroutine 1: resolve gateway and test connectivity.
+	g.Go(func() error {
+		gw, err := resolveGateway(gctx, host)
+		if err != nil {
+			return err
 		}
+		slog.InfoContext(gctx, "resolved default gateway", "addr", gw)
+		gateway = gw
+		// Test connectivity once; all ports share the same network path.
+		hasConnectivity = testRemoteToLocalConnectivity(gctx, host, gw, exedPort)
+		slog.InfoContext(gctx, "remote->local connectivity (cached)", "reachable", hasConnectivity)
+		return nil
+	})
 
-		// Make binary executable
-		if out, err := sshExec(ctx, host, fmt.Sprintf("chmod +x %s", bin.remote)); err != nil {
-			return nil, fmt.Errorf("failed to chmod exelet: %w\n%s", err, out)
+	// Goroutine 2: upload binaries.
+	g.Go(func() error {
+		for _, bin := range binsList {
+			if out, err := sshExec(gctx, host, fmt.Sprintf("rm -rf %s", bin.remote)); err != nil {
+				return fmt.Errorf("failed to remove existing binary %s: %w\n%s", bin.remote, err, out)
+			}
+			// Ignore error from pkill; process may not exist.
+			sshExec(gctx, host, fmt.Sprintf("pkill -f %s", bin.remote))
+			slog.InfoContext(gctx, "uploading binary to remote host", "host", host, "binary", bin.local, "path", bin.remote)
+			if out, err := scpUpload(gctx, bin.local, host, bin.remote); err != nil {
+				return fmt.Errorf("failed to upload exelet: %w\n%s", err, out)
+			}
+			if out, err := sshExec(gctx, host, fmt.Sprintf("chmod +x %s", bin.remote)); err != nil {
+				return fmt.Errorf("failed to chmod exelet: %w\n%s", err, out)
+			}
 		}
+		return nil
+	})
+
+	// Goroutine 3: ZFS setup.
+	g.Go(func() error {
+		return res.setup(gctx, sshExecutor(host), testRunID)
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
-	var exepipeWaiter *exepipeVMWaiter
+	// Start exepipe on VM after binary is uploaded (requires goroutine 2 to finish).
 	if exepipe != nil {
 		exepipeWaiter, err = startExepipeOnVM(ctx, host, remoteExepipePath, exepipeLogFile)
 		if err != nil {
@@ -347,16 +342,80 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		}
 	}
 
-	// Compute unique resource names for this test run
-	res, err := computeExeletResources(testRunID)
-	if err != nil {
-		return nil, err
+	// Parse metrics port early so we can start all SSH tunnels in parallel.
+	var metricsPort int
+	if metrics != nil && metrics.DaemonURL != "" {
+		if idx := strings.LastIndex(metrics.DaemonURL, ":"); idx >= 0 {
+			fmt.Sscanf(metrics.DaemonURL[idx+1:], "%d", &metricsPort)
+		}
 	}
-	slog.InfoContext(ctx, "using isolated resources", "bridge", res.bridgeName, "network", res.networkCIDR, "dataset", res.zfsDataset)
 
-	// Setup ZFS dataset and directories
-	if err := res.setup(ctx, sshExecutor(host), testRunID); err != nil {
-		return nil, err
+	// Set up all SSH tunnels in parallel — they're independent of each other.
+	var (
+		exedProxyURL        string
+		tunnelCmd1          *exec.Cmd
+		tunnelCancel1       context.CancelFunc
+		metadataProxyURL    string
+		tunnelCmd2          *exec.Cmd
+		tunnelCancel2       context.CancelFunc
+		daemonURL           string
+		metricsTunnelCmd    *exec.Cmd
+		metricsTunnelCancel context.CancelFunc
+	)
+	tg, _ := errgroup.WithContext(ctx)
+	tg.Go(func() error {
+		var err error
+		exedProxyURL, tunnelCmd1, tunnelCancel1, err = localProxyURL(ctx, host, gateway, exedPort, logPorts, &hasConnectivity)
+		return err
+	})
+	if metadataPort != exedPort {
+		tg.Go(func() error {
+			var err error
+			metadataProxyURL, tunnelCmd2, tunnelCancel2, err = localProxyURL(ctx, host, gateway, metadataPort, logPorts, &hasConnectivity)
+			return err
+		})
+	}
+	if metricsPort > 0 {
+		tg.Go(func() error {
+			var err error
+			daemonURL, metricsTunnelCmd, metricsTunnelCancel, err = localProxyURL(ctx, host, gateway, metricsPort, logPorts, &hasConnectivity)
+			if err != nil {
+				return fmt.Errorf("metrics proxy: %w", err)
+			}
+			return nil
+		})
+	}
+	killTunnels := func() {
+		for _, tc := range []struct {
+			cmd    *exec.Cmd
+			cancel context.CancelFunc
+		}{
+			{tunnelCmd1, tunnelCancel1},
+			{tunnelCmd2, tunnelCancel2},
+			{metricsTunnelCmd, metricsTunnelCancel},
+		} {
+			if tc.cancel != nil {
+				tc.cancel()
+			}
+			if tc.cmd != nil && tc.cmd.Process != nil {
+				tc.cmd.Process.Kill()
+				tc.cmd.Wait()
+			}
+		}
+	}
+	if tgErr := tg.Wait(); tgErr != nil {
+		killTunnels()
+		return nil, tgErr
+	}
+	defer func() {
+		if err != nil {
+			killTunnels()
+		}
+	}()
+
+	// If metadata uses the same port as exed, share the same URL.
+	if metadataPort == exedPort {
+		metadataProxyURL = exedProxyURL
 	}
 
 	// URL-encode the network CIDR since it contains slashes
@@ -405,35 +464,11 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 	}
 
 	// Add metrics flags if configured.
-	// Use localProxyURL so that the remote exelet can reach metricsd
-	// (falls back to an SSH tunnel when direct connectivity is absent).
-	var metricsTunnelCmd *exec.Cmd
-	var metricsTunnelCancel context.CancelFunc
-	if metrics != nil && metrics.DaemonURL != "" {
-		metricsPort := 0
-		if idx := strings.LastIndex(metrics.DaemonURL, ":"); idx >= 0 {
-			fmt.Sscanf(metrics.DaemonURL[idx+1:], "%d", &metricsPort)
-		}
-		if metricsPort > 0 {
-			var metricsProxyURL string
-			metricsProxyURL, metricsTunnelCmd, metricsTunnelCancel, err = localProxyURL(ctx, host, gateway, metricsPort, logPorts)
-			if err != nil {
-				return nil, fmt.Errorf("metrics proxy: %w", err)
-			}
-			if metricsTunnelCmd != nil {
-				defer func() {
-					if err != nil {
-						metricsTunnelCancel()
-						metricsTunnelCmd.Process.Kill()
-						metricsTunnelCmd.Wait()
-					}
-				}()
-			}
-			args = append(args,
-				"--metrics-daemon-url", metricsProxyURL,
-				"--metrics-daemon-interval", metrics.Interval.String(),
-			)
-		}
+	if daemonURL != "" {
+		args = append(args,
+			"--metrics-daemon-url", daemonURL,
+			"--metrics-daemon-interval", metrics.Interval.String(),
+		)
 	}
 
 	if exepipeWaiter != nil {
@@ -1100,33 +1135,33 @@ func cloneImageVolumesWithExecutor(ctx context.Context, execute cmdExecutor, zfs
 
 	slog.InfoContext(ctx, "cloning image volumes for test isolation", "count", len(volumes), "dataset", zfsDataset)
 
+	// Clone all volumes concurrently — each snapshot+clone pair is independent.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, srcVolume := range volumes {
-		// Extract the sha256:... part from tank/sha256:...
-		// and create tank/e1e-<runID>/sha256:...
-		imageID := strings.TrimPrefix(srcVolume, "tank/")
-		destVolume := zfsDataset + "/" + imageID
-		snapName := "e1e-" + runID
+		srcVolume := srcVolume
+		g.Go(func() error {
+			imageID := strings.TrimPrefix(srcVolume, "tank/")
+			destVolume := zfsDataset + "/" + imageID
+			snapName := "e1e-" + runID
 
-		// Create a snapshot of the source volume
-		snapCmd := fmt.Sprintf("sudo zfs snapshot %s@%s", srcVolume, snapName)
-		if out, err := execute(ctx, snapCmd); err != nil {
-			slog.WarnContext(ctx, "failed to create snapshot for image clone", "src", srcVolume, "error", err, "output", string(out))
-			continue
-		}
+			snapCmd := fmt.Sprintf("sudo zfs snapshot %s@%s", srcVolume, snapName)
+			if out, err := execute(gctx, snapCmd); err != nil {
+				slog.WarnContext(gctx, "failed to create snapshot for image clone", "src", srcVolume, "error", err, "output", string(out))
+				return nil // non-fatal: warn and skip
+			}
 
-		// Clone the snapshot to the test dataset
-		cloneCmd := fmt.Sprintf("sudo zfs clone %s@%s %s", srcVolume, snapName, destVolume)
-		if out, err := execute(ctx, cloneCmd); err != nil {
-			slog.WarnContext(ctx, "failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err, "output", string(out))
-			// Clean up the snapshot we just created
-			execute(ctx, fmt.Sprintf("sudo zfs destroy %s@%s 2>/dev/null || true", srcVolume, snapName))
-			continue
-		}
+			cloneCmd := fmt.Sprintf("sudo zfs clone %s@%s %s", srcVolume, snapName, destVolume)
+			if out, err := execute(gctx, cloneCmd); err != nil {
+				slog.WarnContext(gctx, "failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err, "output", string(out))
+				execute(gctx, fmt.Sprintf("sudo zfs destroy %s@%s 2>/dev/null || true", srcVolume, snapName))
+				return nil // non-fatal: warn and skip
+			}
 
-		slog.DebugContext(ctx, "cloned image volume", "src", srcVolume, "dest", destVolume)
+			slog.DebugContext(gctx, "cloned image volume", "src", srcVolume, "dest", destVolume)
+			return nil
+		})
 	}
-
-	return nil
+	return g.Wait()
 }
 
 // promoteImageVolumesWithExecutor promotes image volumes from a test dataset to the shared cache.
@@ -1222,15 +1257,25 @@ func resolveGateway(ctx context.Context, host string) (string, error) {
 // localProxyURL returns a URL that the exelet can use to reach
 // the local proxy at the given port. It also returns the SSH tunnel
 // command and cancellation function, though they may be nil if not needed.
-func localProxyURL(ctx context.Context, host, gateway string, port int, logPorts bool) (string, *exec.Cmd, context.CancelFunc, error) {
+// localProxyURL returns a URL that the exelet can use to reach
+// the local proxy at the given port. It also returns the SSH tunnel
+// command and cancellation function, though they may be nil if not needed.
+// If knownConnectivity is non-nil, the connectivity test is skipped and its value used directly.
+// Pass a non-nil pointer after the first call to avoid repeated SSH round-trips.
+func localProxyURL(ctx context.Context, host, gateway string, port int, logPorts bool, knownConnectivity ...*bool) (string, *exec.Cmd, context.CancelFunc, error) {
 	// Test if the VM can reach the local proxy.
 	// Usually local->VM and VM->local connectivity works.
 	// However, in some environments, such as coding agents that
 	// operate in containers, this connectivity does NOT work,
 	// and we set up an SSH tunnel for exelet->exed communication
 	// as a band-aid.
-	hasConnectivity := testRemoteToLocalConnectivity(ctx, host, gateway, port)
-	slog.InfoContext(ctx, "test remote->local connectivity", "host", host, "gateway", gateway, "port", port, "reachable", hasConnectivity)
+	var hasConnectivity bool
+	if len(knownConnectivity) > 0 && knownConnectivity[0] != nil {
+		hasConnectivity = *knownConnectivity[0]
+	} else {
+		hasConnectivity = testRemoteToLocalConnectivity(ctx, host, gateway, port)
+		slog.InfoContext(ctx, "test remote->local connectivity", "host", host, "gateway", gateway, "port", port, "reachable", hasConnectivity)
+	}
 
 	// Determine the URL the exelet will use to reach exed.
 	needsTunnel := !hasConnectivity
@@ -1259,10 +1304,10 @@ func localProxyURL(ctx context.Context, host, gateway string, port int, logPorts
 // testRemoteToLocalConnectivity reports whether the remote host can
 // reach the local port via gateway.
 func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, port int) bool {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
 
-	testCmd := fmt.Sprintf("timeout 2 nc -z %s %d 2>/dev/null", gateway, port)
+	testCmd := fmt.Sprintf("timeout 1 nc -z %s %d 2>/dev/null", gateway, port)
 	out, err := sshExec(ctx, host, testCmd)
 	if err != nil {
 		slog.DebugContext(ctx, "no remote to local connectivity", "error", err, "output", out)
@@ -1363,11 +1408,30 @@ func cleanupTestInstances(ctx context.Context, exeletClient *client.Client) {
 }
 
 // sshExec executes a command on remote host and returns combined output.
+// sshControlPath returns an SSH ControlMaster socket path for the given host.
+// Using ControlMaster=auto allows subsequent SSH/SCP connections to the same host
+// to reuse the existing TCP+auth session, saving ~200ms per connection.
+func sshControlPath(host string) string {
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '.' {
+			return r
+		}
+		return '_'
+	}, host)
+	if len(safe) > 60 {
+		safe = safe[len(safe)-60:]
+	}
+	return "/tmp/ssh-mux-exe-" + safe
+}
+
 func sshExec(ctx context.Context, host, command string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath="+sshControlPath(host),
+		"-o", "ControlPersist=60s",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
+		"-o", "LogLevel=ERROR",
 		host, command)
 	return cmd.CombinedOutput()
 }
@@ -1375,9 +1439,12 @@ func sshExec(ctx context.Context, host, command string) ([]byte, error) {
 // scpUpload uploads a file to remote host and returns combined output.
 func scpUpload(ctx context.Context, localPath, host, remotePath string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "scp",
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath="+sshControlPath(host),
+		"-o", "ControlPersist=60s",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
+		"-o", "LogLevel=ERROR",
 		localPath, host+":"+remotePath)
 	return cmd.CombinedOutput()
 }
@@ -1386,6 +1453,9 @@ func scpUpload(ctx context.Context, localPath, host, remotePath string) ([]byte,
 func scpDownloadDir(ctx context.Context, host, remotePath, localPath string) error {
 	cmd := exec.CommandContext(ctx, "scp",
 		"-r",
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath="+sshControlPath(host),
+		"-o", "ControlPersist=60s",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",

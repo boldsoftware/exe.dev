@@ -153,6 +153,21 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		}
 	}
 
+	// Start metricsd concurrently with VM boot — they're independent.
+	type metricsdResult struct {
+		instance *testinfra.MetricsdInstance
+		err      error
+	}
+	metricsdCh := make(chan metricsdResult, 1)
+	go func() {
+		var metricsdLog io.Writer
+		if *flagVerboseMetricsd {
+			metricsdLog = logFileFor("metricsd")
+		}
+		instance, err := testinfra.StartMetricsd(context.Background(), metricsdLog, *flagVerbosePorts)
+		metricsdCh <- metricsdResult{instance, err}
+	}()
+
 	ctrHost, err := testinfra.StartExeletVM(testRunID)
 	if err != nil {
 		if err == testinfra.ErrNoVM && os.Getenv("CI") != "" {
@@ -163,7 +178,13 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		exit(1)
 	}
 
-	env, err := setup(ctrHost)
+	metricsd := <-metricsdCh
+	if metricsd.err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start metricsd: %v\n", metricsd.err)
+		exit(1)
+	}
+
+	env, err := setup(ctrHost, metricsd.instance)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to setup test environment: %v\n", err)
 		slog.Error("test setup failed", "error", err)
@@ -409,7 +430,7 @@ func (e *testEnv) Close() error {
 	return nil
 }
 
-func setup(ctrHost string) (*testEnv, error) {
+func setup(ctrHost string, metricsdInstance *testinfra.MetricsdInstance) (*testEnv, error) {
 	env := &testEnv{}
 
 	// We use a TCP proxy for exed HTTP so that services connect
@@ -422,16 +443,6 @@ func setup(ctrHost string) (*testEnv, error) {
 	go exedHTTPProxy.Serve()
 	if *flagVerbosePorts {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.Port())
-	}
-
-	// Start metricsd before exelet so we can pass its URL to exelet
-	var metricsdLog io.Writer
-	if *flagVerboseMetricsd {
-		metricsdLog = logFileFor("metricsd")
-	}
-	metricsdInstance, err := testinfra.StartMetricsd(context.Background(), metricsdLog, *flagVerbosePorts)
-	if err != nil {
-		return env, fmt.Errorf("failed to start metricsd: %w", err)
 	}
 
 	var exepipe *testinfra.ExepipeInstance

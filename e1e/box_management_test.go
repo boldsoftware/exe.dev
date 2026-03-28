@@ -598,14 +598,14 @@ func TestVanillaBox(t *testing.T) {
 
 		// Try to connect to SSH (port 22) on the gateway. This should fail/timeout.
 		// Use nc with a short timeout to probe the port.
-		_, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "2", gatewayIP, "22").CombinedOutput()
+		_, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "1", gatewayIP, "22").CombinedOutput()
 		if err == nil {
 			t.Errorf("expected SSH connection to gateway %s:22 to be blocked, but it succeeded", gatewayIP)
 		}
 
 		// Try to connect to port 80 on the gateway IP directly. This should also fail.
 		// VMs must use 169.254.169.254 for the metadata service, not the gateway IP.
-		_, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "2", gatewayIP, "80").CombinedOutput()
+		_, err = boxSSHCommand(t, boxName, keyFile, "nc", "-z", "-w", "1", gatewayIP, "80").CombinedOutput()
 		if err == nil {
 			t.Errorf("expected connection to gateway %s:80 to be blocked, but it succeeded", gatewayIP)
 		}

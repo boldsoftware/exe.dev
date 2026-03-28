@@ -16,7 +16,6 @@ import (
 
 // Test that changes are reported via the Changes grpc call.
 func TestProxyChanges(t *testing.T) {
-	t.Parallel()
 	// This test can't run in parallel because other tests
 	// may cause values to be sent on the changes stream.
 
