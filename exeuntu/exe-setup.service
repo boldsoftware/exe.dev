@@ -8,7 +8,7 @@ Type=oneshot
 User=exedev
 Group=exedev
 WorkingDirectory=/home/exedev
-ExecStart=/exe.dev/setup
+ExecStart=/bin/bash -c /exe.dev/setup
 ExecStartPost=/usr/bin/sudo /bin/rm -f /exe.dev/setup
 Environment=HOME=/home/exedev
 Environment=USER=exedev
