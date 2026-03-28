@@ -187,8 +187,9 @@ jobs:
 
       - name: destroy stale VMs
         run: |
-          # Kill stale cloud-hypervisor processes (older than 1 hour)
-          for pidfile in /tmp/ch-pid-ci-ubuntu-*; do
+          # Kill stale cloud-hypervisor processes (older than 1 hour).
+          # Match /tmp/ch-pid-* to cover both e1e-runner* and ci-ubuntu* prefixes.
+          for pidfile in /tmp/ch-pid-*; do
             [ -f "$pidfile" ] || continue
             pid=$(cat "$pidfile" 2>/dev/null) || continue
             if [ -d "/proc/$pid" ]; then
@@ -203,6 +204,27 @@ jobs:
             # Clean up orphaned pidfiles
             if [ ! -d "/proc/$pid" ]; then
               sudo rm -f "$pidfile"
+            fi
+          done
+          # Clean up orphaned disk images and seed ISOs left by dead VMs.
+          # This prevents /var/lib/libvirt/images from filling the disk.
+          for img in /var/lib/libvirt/images/e1e-runner*.qcow2 /var/lib/libvirt/images/e1e-runner*-data.raw /var/lib/libvirt/images/ci-ubuntu-runner*.qcow2; do
+            [ -f "$img" ] || continue
+            vm=$(basename "$img" .qcow2)
+            vm=$(echo "$vm" | sed 's/-data\.raw$//' | sed 's/-data$//')
+            pidfile="/tmp/ch-pid-${vm}"
+            if [ ! -f "$pidfile" ]; then
+              echo "Removing orphaned image: $img"
+              sudo rm -f "$img"
+            fi
+          done
+          for iso in /var/lib/libvirt/images/e1e-runner*-seed.iso /var/lib/libvirt/images/ci-ubuntu-runner*-seed.iso; do
+            [ -f "$iso" ] || continue
+            vm=$(basename "$iso" -seed.iso)
+            pidfile="/tmp/ch-pid-${vm}"
+            if [ ! -f "$pidfile" ]; then
+              echo "Removing orphaned seed ISO: $iso"
+              sudo rm -f "$iso"
             fi
           done
 
