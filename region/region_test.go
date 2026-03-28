@@ -1,6 +1,7 @@
 package region
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -103,5 +104,93 @@ func TestParseExeletRegion(t *testing.T) {
 				t.Errorf("ParseExeletRegion(%q).Code = %q, want %q", tt.host, got.Code, tt.want)
 			}
 		})
+	}
+}
+
+func TestForUser(t *testing.T) {
+	tests := []struct {
+		name    string
+		country string
+		lat     float64
+		lon     float64
+		want    string
+	}{
+		// US east/west split at -100° longitude
+		{"US west coast", "US", 34.05, -118.24, "lax"},    // Los Angeles
+		{"US east coast", "US", 40.71, -74.01, "nyc"},     // New York
+		{"US midwest east", "US", 41.88, -87.63, "nyc"},   // Chicago (east of -100)
+		{"US mountain west", "US", 39.74, -104.99, "lax"}, // Denver (west of -100)
+		{"US no coords", "US", 0, 0, "lax"},               // no coords → lax (non-sticky)
+
+		// Country code mapping — Europe
+		{"Germany", "DE", 0, 0, "fra"},
+		{"France", "FR", 0, 0, "fra"},
+		{"UK", "GB", 0, 0, "lon"},
+		{"Ireland", "IE", 0, 0, "lon"},
+		{"Sweden", "SE", 0, 0, "fra"},
+		{"Poland", "PL", 0, 0, "fra"},
+
+		// Country code mapping — Asia
+		{"Japan", "JP", 0, 0, "tyo"},
+		{"India", "IN", 0, 0, "tyo"},
+		{"Singapore", "SG", 0, 0, "tyo"},
+		{"South Korea", "KR", 0, 0, "tyo"},
+
+		// Canada east/west split (same as US)
+		{"Vancouver", "CA", 49.28, -123.12, "lax"},
+		{"Toronto", "CA", 43.65, -79.38, "nyc"},
+		{"Canada no coords", "CA", 0, 0, "lax"},
+		{"Mexico", "MX", 0, 0, "lax"},
+		{"Brazil", "BR", 0, 0, "nyc"},
+
+		// Country code mapping — Oceania
+		{"Australia", "AU", 0, 0, "syd"},
+		{"New Zealand", "NZ", 0, 0, "syd"},
+
+		// Country code mapping — Africa
+		{"South Africa", "ZA", 0, 0, "fra"},
+		{"Egypt", "EG", 0, 0, "fra"},
+
+		// Middle East
+		{"Israel", "IL", 0, 0, "fra"},
+		{"UAE", "AE", 0, 0, "fra"},
+
+		// Case insensitive
+		{"lowercase country", "gb", 0, 0, "lon"},
+
+		// Unmapped country with coordinates → nearest
+		{"Fiji with coords", "FJ", -17.71, 177.97, "syd"},
+		{"unmapped country near Reykjavík", "XX", 64.15, -21.94, "lon"},
+
+		// No country, no coords → default
+		{"empty everything", "", 0, 0, "pdx"},
+
+		// No country, has coords → nearest
+		{"coords only mid-Atlantic", "", 0, -30, "nyc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ForUser(tt.country, tt.lat, tt.lon)
+			if got.Code != tt.want {
+				t.Errorf("ForUser(%q, %v, %v) = %q, want %q", tt.country, tt.lat, tt.lon, got.Code, tt.want)
+			}
+		})
+	}
+}
+
+func TestCountryMapOnlyActiveRegions(t *testing.T) {
+	for cc, r := range countryToRegion {
+		if !r.Active {
+			t.Errorf("countryToRegion[%q] maps to inactive region %q", cc, r.Code)
+		}
+	}
+}
+
+func TestCountryMapKeysUppercase(t *testing.T) {
+	for cc := range countryToRegion {
+		if cc != strings.ToUpper(cc) {
+			t.Errorf("countryToRegion key %q is not uppercase", cc)
+		}
 	}
 }

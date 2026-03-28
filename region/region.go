@@ -30,18 +30,22 @@ type Region struct {
 	// This will eventually be set to true for all regions.
 	// For now, during the transition to full region support, our primary regions (pdx, lax) allow any user.
 	RequiresUserMatch bool
+
+	// Lat and Lon are the approximate coordinates of the datacenter.
+	Lat float64
+	Lon float64
 }
 
 var allRegions = []Region{
-	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: false},
-	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false},
-	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: true},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: true},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: true},
-	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: true},
-	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: true},
-	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false},
-	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false},
+	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: false, Lat: 45.59, Lon: -122.60},
+	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false, Lat: 33.94, Lon: -118.41},
+	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: true, Lat: 40.71, Lon: -74.01},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: true, Lat: 50.11, Lon: 8.68},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: true, Lat: 35.68, Lon: 139.65},
+	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: true, Lat: -33.87, Lon: 151.21},
+	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: true, Lat: 51.51, Lon: -0.13},
+	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
+	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
 }
 
 // All returns all known regions.
@@ -58,7 +62,7 @@ func ByCode(code string) (Region, error) {
 			return r, nil
 		}
 	}
-	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false}, fmt.Errorf("unknown region code %q", code)
+	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0}, fmt.Errorf("unknown region code %q", code)
 }
 
 // Default returns the default region for new users and VMs.
@@ -113,7 +117,7 @@ func ParseExeletRegion(host string) (Region, error) {
 		}
 	}
 
-	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false}, fmt.Errorf("cannot parse region from exelet host %q", host)
+	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0}, fmt.Errorf("cannot parse region from exelet host %q", host)
 }
 
 func isAllDigits(s string) bool {
@@ -123,4 +127,12 @@ func isAllDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+func mustByCode(code string) Region {
+	r, err := ByCode(code)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
