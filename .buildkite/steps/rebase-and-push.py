@@ -39,9 +39,13 @@ def run(*cmd, check=True, capture=False):
 def setup_subrepo_mirrors(token: str):
     """Maintain git mirrors for subrepos in Buildkite's git-mirrors directory.
 
-    Creates/updates bare mirrors, then registers them as alternates so that
-    subsequent `git fetch <remote>` still talks to GitHub but skips
-    downloading objects already present in the mirror.
+    Creates/updates bare mirrors, then registers them as alternates.
+    After updating each mirror from GitHub, we fetch from the local mirror
+    into the working repo so that remote-tracking refs (e.g. shelley/main)
+    are up-to-date without an extra network round-trip per remote.
+
+    The mirror fetches (network I/O) run in parallel; the local git
+    operations (alternates, remotes, ref updates) run serially.
     """
     mirrors_dir = os.environ.get("BUILDKITE_GIT_MIRRORS_PATH", "/data/buildkite/git-mirrors")
     alternates_file = os.path.join(
@@ -54,37 +58,57 @@ def setup_subrepo_mirrors(token: str):
     if os.path.exists(alternates_file):
         existing = set(open(alternates_file).read().splitlines())
 
+    # Build per-subrepo config and ensure mirrors exist before fetching.
+    mirror_info = []  # [(name, repo, url, mirror_dir, objects_dir), ...]
     for name, repo in SUBREPOS:
         url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
         mirror_dir = os.path.join(mirrors_dir, repo)
         objects_dir = os.path.join(mirror_dir, "objects")
-
+        # Create mirror if it doesn't exist (must be serial; first-time only).
+        needs_fetch = True
         if not os.path.isdir(mirror_dir):
             print(f"Creating mirror for {repo} at {mirror_dir}", flush=True)
             run("git", "clone", "--mirror", url, mirror_dir)
+            needs_fetch = False  # clone already fetched everything
         else:
-            # Rotate the token and update the mirror.
+            # Rotate the token so the parallel fetch uses it.
             subprocess.run(["git", "-C", mirror_dir, "remote", "set-url", "origin", url], capture_output=True)
-            run("./bin/retry.sh", "git", "-C", mirror_dir, "fetch", "--prune", "origin")
+        mirror_info.append((name, repo, url, mirror_dir, objects_dir, needs_fetch))
 
-        # Register mirror objects as an alternate for the working checkout.
+    # Fetch all mirrors from GitHub in parallel (just Popen + wait).
+    procs = []
+    for name, repo, url, mirror_dir, objects_dir, needs_fetch in mirror_info:
+        if not needs_fetch:
+            continue
+        print(f"+ [parallel] git -C {mirror_dir} fetch --prune origin  ({repo})", flush=True)
+        p = subprocess.Popen(["./bin/retry.sh", "git", "-C", mirror_dir, "fetch", "--prune", "origin"])
+        procs.append((repo, p))
+    for repo, p in procs:
+        if p.wait() != 0:
+            raise RuntimeError(f"Failed to fetch mirror for {repo} (exit {p.returncode})")
+
+    # Serial: register alternates, set up remotes, update tracking refs.
+    for name, repo, url, mirror_dir, objects_dir, _needs_fetch in mirror_info:
         if objects_dir not in existing:
             with open(alternates_file, "a") as f:
                 f.write(objects_dir + "\n")
             existing.add(objects_dir)
 
-        # Set up the remote pointing at GitHub (the normal way).
         result = subprocess.run(["git", "remote", "set-url", name, url], capture_output=True)
         if result.returncode != 0:
             run("git", "remote", "add", name, url)
+
+        # Update remote-tracking refs from the local mirror (no network call).
+        run("git", "fetch", mirror_dir,
+            f"+refs/heads/*:refs/remotes/{name}/*",
+            f"+refs/tags/*:refs/tags/*")
 
 
 def sync_shelley(token: str):
     """If shelley/main has advanced past origin/main, sync those commits."""
     print("--- :arrows_counterclockwise: Check shelley/main sync", flush=True)
 
-    # Mirrors already set up; fetch from GitHub (fast due to alternates).
-    run("./bin/retry.sh", "git", "fetch", "shelley")
+    # Remotes already fetched by setup_subrepo_mirrors(); no need to re-fetch.
 
     shelley_tree = run("git", "rev-parse", "shelley/main^{tree}", capture=True).stdout.strip()
     exe_shelley_tree = run("git", "ls-tree", "origin/main", "shelley", "--format", "%(objectname)", capture=True).stdout.strip()
@@ -107,7 +131,9 @@ def push_to_subrepos(token: str):
     """Push to subrepos (shelley, exeuntu, oss)."""
     print("--- :package: Push to subrepos", flush=True)
 
-    # Remotes and mirrors already set up by setup_subrepo_mirrors().
+    # Remotes and mirrors already fetched by setup_subrepo_mirrors();
+    # tell push-to-subrepo.sh to skip its own fetch.
+    os.environ["SKIP_SUBREPO_FETCH"] = "1"
     run("bin/push-to-subrepo.sh", "main", "shelley", "shelley")
     run("bin/push-to-subrepo.sh", "main", "exeuntu", "exeuntu")
     run("bin/push-to-subrepo.sh", "main", "oss", "oss")
@@ -205,8 +231,8 @@ def delete_queue_branch(token: str):
         print(f"Branch {branch} not found on remote, nothing to delete.", flush=True)
         return
 
-    # Verify the branch is an ancestor of main
-    run("./bin/retry.sh", "git", "fetch", "origin", "main")
+    # Verify the branch is an ancestor of main.
+    # We just pushed to origin/main, so our local ref is current.
     result = subprocess.run(
         ["git", "merge-base", "--is-ancestor", queue_sha, "origin/main"],
         capture_output=True,
@@ -267,9 +293,6 @@ def main():
 
     # Sync shelley/main if it has advanced
     sync_shelley(token)
-
-    # Re-fetch after potential shelley sync
-    run("./bin/retry.sh", "git", "fetch", "origin", "main")
 
     head_sha = run("git", "rev-parse", "--short", "HEAD", capture=True).stdout.strip()
     main_sha = run("git", "rev-parse", "--short", "origin/main", capture=True).stdout.strip()
