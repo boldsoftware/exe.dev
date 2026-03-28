@@ -393,6 +393,110 @@ def run_post_hook(command):
         print(f"q: post hook {command!r} exited {r.returncode}", file=sys.stderr)
 
 
+def add_retry_trailer(count):
+    """Amend HEAD to add/update CI-Retries: <count> trailer."""
+    msg = git("log", "--format=%B", "-n", "1", "HEAD")
+    r = subprocess.run(
+        ["git", "interpret-trailers", "--if-exists=replace",
+         "--trailer", f"CI-Retries: {count}"],
+        input=msg, capture_output=True, text=True,
+    )
+    new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\nCI-Retries: {count}"
+    git("commit", "--amend", "-m", new_msg)
+
+
+def push_and_monitor(args, commit, short, queue_branch, ref, is_last_attempt):
+    """Push to queue branch and monitor CI. Returns True on success."""
+    print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
+    git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
+
+    # --- Kite: Buildkite monitoring ---
+    if args.kite or args.dry_run:
+        has_bk_api = os.environ.get("BUILDKITE_API_PROXY", "") or os.environ.get("BUILDKITE_API_TOKEN", "")
+        if not has_bk_api:
+            print("q: set BUILDKITE_API_PROXY or BUILDKITE_API_TOKEN to monitor build progress", file=sys.stderr)
+            if args.dry_run:
+                return True
+            if not watch_origin_main(ref, timeout=300):
+                if is_last_attempt:
+                    run_post_hook(args.post_failure)
+                return False
+            run_post_hook(args.post_success)
+            if not args.no_fetch:
+                git("fetch", "origin", "main", "--quiet", check=False)
+            return True
+
+        print("q: waiting for Buildkite build...", file=sys.stderr)
+        build = find_bk_build(queue_branch, commit)
+        if not build:
+            print(f"q: no Buildkite build found for {short} after 120s", file=sys.stderr)
+            return False
+
+        web_url = build.get("web_url", "")
+        if web_url:
+            print(f"q: {web_url}", file=sys.stderr)
+
+        state, elapsed, build_data = poll_bk_build(build["number"])
+        m, s = divmod(elapsed, 60)
+
+        if state == "passed":
+            print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+            if not args.dry_run and not args.no_fetch:
+                git("fetch", "origin", "main", "--quiet", check=False)
+            run_post_hook(args.post_success)
+            return True
+        else:
+            final_url = build_data.get("web_url", web_url)
+            msg = f"q: FAILED ({state}) [{m}m{s}s]"
+            if final_url:
+                msg += f" {final_url}"
+            print(msg, file=sys.stderr)
+            print_bk_failures(build_data)
+            if is_last_attempt:
+                run_post_hook(args.post_failure)
+            return False
+
+    # --- GitHub Actions ---
+    if not gh_has_actions_access():
+        if not watch_origin_main(ref, timeout=300):
+            if is_last_attempt:
+                run_post_hook(args.post_failure)
+            return False
+        run_post_hook(args.post_success)
+        return True
+
+    print("q: waiting for run...", file=sys.stderr)
+    run_id = find_run(queue_branch, commit)
+    if not run_id:
+        print(f"q: no run found for {short} after 120s", file=sys.stderr)
+        return False
+
+    try:
+        repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+        url = f"https://github.com/{repo}/actions/runs/{run_id}"
+        print(f"q: {url}", file=sys.stderr)
+    except SystemExit:
+        url = None
+
+    conclusion, elapsed = poll_run(run_id)
+    m, s = divmod(elapsed, 60)
+
+    if conclusion == "success":
+        print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+        if not args.no_fetch:
+            git("fetch", "origin", "main", "--quiet", check=False)
+        run_post_hook(args.post_success)
+        return True
+    else:
+        if url:
+            print(f"q: FAILED [{m}m{s}s] {url}", file=sys.stderr)
+        else:
+            print(f"q: FAILED [{m}m{s}s]", file=sys.stderr)
+        if is_last_attempt:
+            run_post_hook(args.post_failure)
+        return False
+
+
 def main():
     email = get_user_email()
     user_defaults = USER_DEFAULTS.get(email, [])
@@ -425,6 +529,8 @@ def main():
                     help="shell command to run after successful CI (e.g. 'say passed')")
     p.add_argument("--post-failure", default="",
                     help="shell command to run after failed CI (e.g. 'say failed')")
+    p.add_argument("--retries", type=int, default=0,
+                    help="retry on CI failure up to N times (busts cache via CI-Retries trailer)")
 
     # Parse user defaults first, then real args on top.
     args = p.parse_args(user_defaults)
@@ -519,94 +625,25 @@ def main():
     else:
         queue_branch = f"{prefix}-{user}-{branch}"
 
-    # --- Push ---
-    print(f"\nq: pushing {short} to {queue_branch}", file=sys.stderr)
-    git("push", "-f", "origin", f"{commit}:refs/heads/{queue_branch}")
+    # --- Retry validation ---
+    max_attempts = 1 + args.retries
+    if args.retries > 0 and ref != "HEAD":
+        print(f"q: --retries requires HEAD (got {ref})", file=sys.stderr)
+        raise SystemExit(1)
 
-    # --- Kite: Buildkite monitoring ---
-    if args.kite or args.dry_run:
-        has_bk_api = os.environ.get("BUILDKITE_API_PROXY", "") or os.environ.get("BUILDKITE_API_TOKEN", "")
-        if not has_bk_api:
-            print("q: set BUILDKITE_API_PROXY or BUILDKITE_API_TOKEN to monitor build progress", file=sys.stderr)
-            if args.dry_run:
-                return
-            # Fall back to watching origin/main for merge
-            if not watch_origin_main(ref, timeout=300):
-                run_post_hook(args.post_failure)
-                raise SystemExit(1)
-            run_post_hook(args.post_success)
-            if not args.no_fetch:
-                git("fetch", "origin", "main", "--quiet", check=False)
+    # --- Push + monitor (with retries) ---
+    for attempt in range(1, max_attempts + 1):
+        if attempt > 1:
+            add_retry_trailer(attempt - 1)
+            commit = git("rev-parse", "HEAD")
+            short = commit[:7]
+            print(f"\nq: retry {attempt - 1}/{args.retries} ({short})", file=sys.stderr)
+
+        is_last = attempt == max_attempts
+        if push_and_monitor(args, commit, short, queue_branch, ref, is_last):
             return
-
-        print("q: waiting for Buildkite build...", file=sys.stderr)
-        build = find_bk_build(queue_branch, commit)
-        if not build:
-            print(f"q: no Buildkite build found for {short} after 120s", file=sys.stderr)
+        if is_last:
             raise SystemExit(1)
-
-        web_url = build.get("web_url", "")
-        if web_url:
-            print(f"q: {web_url}", file=sys.stderr)
-
-        state, elapsed, build_data = poll_bk_build(build["number"])
-        m, s = divmod(elapsed, 60)
-
-        if state == "passed":
-            print(f"q: passed [{m}m{s}s]", file=sys.stderr)
-            if not args.dry_run and not args.no_fetch:
-                git("fetch", "origin", "main", "--quiet", check=False)
-            run_post_hook(args.post_success)
-        else:
-            final_url = build_data.get("web_url", web_url)
-            msg = f"q: FAILED ({state}) [{m}m{s}s]"
-            if final_url:
-                msg += f" {final_url}"
-            print(msg, file=sys.stderr)
-            print_bk_failures(build_data)
-            run_post_hook(args.post_failure)
-            raise SystemExit(1)
-        return
-
-    # --- Find and monitor the CI run ---
-    if not gh_has_actions_access():
-        # Fallback: watch origin/main for the merge
-        if not watch_origin_main(ref, timeout=300):
-            run_post_hook(args.post_failure)
-            raise SystemExit(1)
-        run_post_hook(args.post_success)
-        return
-
-    print("q: waiting for run...", file=sys.stderr)
-    run_id = find_run(queue_branch, commit)
-    if not run_id:
-        print(f"q: no run found for {short} after 120s", file=sys.stderr)
-        raise SystemExit(1)
-
-    # Show run URL
-    try:
-        repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
-        url = f"https://github.com/{repo}/actions/runs/{run_id}"
-        print(f"q: {url}", file=sys.stderr)
-    except SystemExit:
-        url = None
-
-    # --- Poll ---
-    conclusion, elapsed = poll_run(run_id)
-    m, s = divmod(elapsed, 60)
-
-    if conclusion == "success":
-        print(f"q: passed [{m}m{s}s]", file=sys.stderr)
-        if not args.no_fetch:
-            git("fetch", "origin", "main", "--quiet", check=False)
-        run_post_hook(args.post_success)
-    else:
-        if url:
-            print(f"q: FAILED [{m}m{s}s] {url}", file=sys.stderr)
-        else:
-            print(f"q: FAILED [{m}m{s}s]", file=sys.stderr)
-        run_post_hook(args.post_failure)
-        raise SystemExit(1)
 
 
 if __name__ == "__main__":
