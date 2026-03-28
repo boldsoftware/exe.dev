@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -168,7 +169,14 @@ func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request)
 
 	resp, err := s.buildProxyConfig(ctx, box.CreatedByUserID, integration.Type, integration.Config)
 	if err != nil {
-		s.slog().ErrorContext(ctx, "integration config: failed to build proxy config", "error", err)
+		s.slog().ErrorContext(ctx, "integration config: failed to build proxy config",
+			"error", err,
+			"vm_name", vmName,
+			"integration", integrationName,
+			"integration_type", integration.Type,
+			"owner_user_id", box.CreatedByUserID,
+		)
+		sloghttp.AddCustomAttributes(r, slog.String("integration_result", "build_config_error"))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
 		return
@@ -250,7 +258,7 @@ func (s *Server) buildGitHubProxyConfig(ctx context.Context, ownerUserID, config
 
 	token, err := s.mintGitHubToken(ctx, cfg)
 	if err != nil {
-		return integrationConfigResponse{OK: false}, err
+		return integrationConfigResponse{OK: false}, fmt.Errorf("installation_id=%d repos=%v: %w", cfg.InstallationID, cfg.Repositories, err)
 	}
 
 	// Build allowed path prefixes from the configured repositories.

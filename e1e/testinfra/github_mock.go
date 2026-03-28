@@ -281,6 +281,16 @@ func NewMockGitHubServer() *MockGitHubServer {
 			"account": map[string]any{
 				"login": found.Login,
 			},
+			"permissions": map[string]string{
+				"actions":       "write",
+				"checks":        "read",
+				"contents":      "write",
+				"issues":        "write",
+				"metadata":      "read",
+				"pull_requests": "write",
+				"statuses":      "read",
+				"workflows":     "write",
+			},
 		})
 	})
 
