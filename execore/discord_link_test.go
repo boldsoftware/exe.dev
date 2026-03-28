@@ -15,6 +15,7 @@ import (
 )
 
 func TestVerifyDiscordLinkHMAC(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret-key"
 
@@ -89,6 +90,7 @@ func TestVerifyDiscordLinkHMAC(t *testing.T) {
 }
 
 func TestVerifyDiscordLinkHMACNoSecret(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	// discordLinkSecret is empty by default
 
@@ -99,6 +101,7 @@ func TestVerifyDiscordLinkHMACNoSecret(t *testing.T) {
 }
 
 func TestHandleLinkDiscordMissingParams(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret"
 
@@ -136,6 +139,7 @@ func TestHandleLinkDiscordMissingParams(t *testing.T) {
 }
 
 func TestHandleLinkDiscordInvalidHMAC(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret"
 
@@ -159,6 +163,7 @@ func TestHandleLinkDiscordInvalidHMAC(t *testing.T) {
 }
 
 func TestHandleLinkDiscordUnauthenticated(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret"
 
@@ -177,6 +182,7 @@ func TestHandleLinkDiscordUnauthenticated(t *testing.T) {
 }
 
 func TestHandleLinkDiscordSuccess(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret"
 
@@ -231,6 +237,7 @@ func TestHandleLinkDiscordSuccess(t *testing.T) {
 }
 
 func TestHandleLinkDiscordNoInvitesIfAlreadyLinked(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	server.discordLinkSecret = "test-secret"
 

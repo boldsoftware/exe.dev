@@ -12,6 +12,7 @@ import (
 )
 
 func TestRedirectBasic(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -46,6 +47,7 @@ func TestRedirectBasic(t *testing.T) {
 }
 
 func TestRedirectNotFound(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -60,6 +62,7 @@ func TestRedirectNotFound(t *testing.T) {
 }
 
 func TestRedirectExpired(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -93,6 +96,7 @@ func TestRedirectExpired(t *testing.T) {
 }
 
 func TestRedirectBareR(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -108,6 +112,7 @@ func TestRedirectBareR(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	got := server.redirectURL("abc123")
@@ -118,6 +123,7 @@ func TestRedirectURL(t *testing.T) {
 }
 
 func TestRedirectCleanup(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Insert two redirects: one expired, one valid.
@@ -170,6 +176,7 @@ func TestRedirectCleanup(t *testing.T) {
 }
 
 func TestRedirectE2EFullFlow(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 

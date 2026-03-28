@@ -16,6 +16,7 @@ import (
 )
 
 func TestValidateCallbackURI(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		uri     string
 		wantErr bool
@@ -178,6 +179,7 @@ func createTestUserWithAppToken(t *testing.T, s *Server, email string) string {
 }
 
 func TestAppTokenFlowEmailVerification(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "apptest@example.com")
 
@@ -195,6 +197,7 @@ func TestAppTokenFlowEmailVerification(t *testing.T) {
 }
 
 func TestAppTokenAsBearer(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "bearer@example.com")
 
@@ -214,6 +217,7 @@ func TestAppTokenAsBearer(t *testing.T) {
 }
 
 func TestAppTokenOnExecEndpoint(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "exectest@example.com")
 
@@ -241,6 +245,7 @@ func TestAppTokenOnExecEndpoint(t *testing.T) {
 }
 
 func TestAppTokenFlowRejectsHTTPCallback(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -258,6 +263,7 @@ func TestAppTokenFlowRejectsHTTPCallback(t *testing.T) {
 }
 
 func TestAppTokenFlowAlreadyAuthenticated(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	cookieValue := createTestUserWithCookie(t, s, "existing@example.com")
 
@@ -283,6 +289,7 @@ func TestAppTokenFlowAlreadyAuthenticated(t *testing.T) {
 }
 
 func TestCookieNotAcceptedAsBearer(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	cookieValue := createTestUserWithCookie(t, s, "cookie@example.com")
 
@@ -302,6 +309,7 @@ func TestCookieNotAcceptedAsBearer(t *testing.T) {
 }
 
 func TestAppTokenBypassesCmdRestrictions(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "cmdtest@example.com")
 
@@ -325,6 +333,7 @@ func TestAppTokenBypassesCmdRestrictions(t *testing.T) {
 }
 
 func TestAppTokenCapRevokesOldest(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	// Create a user via the normal cookie flow so we have a user ID.
@@ -372,6 +381,7 @@ func TestAppTokenCapRevokesOldest(t *testing.T) {
 }
 
 func TestAppTokenFlowStoresParamsInEmailVerification(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	form := url.Values{}
@@ -408,6 +418,7 @@ func TestAppTokenFlowStoresParamsInEmailVerification(t *testing.T) {
 }
 
 func TestAppTokenVerifyCodeWrongCode(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	port := s.httpPort()
 	const testEmail = "wrongcode@example.com"
@@ -493,6 +504,7 @@ func TestAppTokenVerifyCodeWrongCode(t *testing.T) {
 }
 
 func TestAppTokenCodeEntryDoesNotExposeToken(t *testing.T) {
+	t.Parallel()
 	// The code entry page must not contain the verification token.
 	// The token is a secret that proves email ownership in the link-based flow;
 	// exposing it would let someone skip the code check via /verify-email.

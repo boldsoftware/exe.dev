@@ -18,6 +18,7 @@ func closeTo(a, b, epsilon float64) bool {
 // TestCreditBar_BonusUserSpentHalf verifies a paying user who received the $100
 // bonus and spent $50 sees a unified bar that depletes against the full capacity.
 func TestCreditBar_BonusUserSpentHalf(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 70,
 		planMaxCredit:           20,
@@ -48,6 +49,7 @@ func TestCreditBar_BonusUserSpentHalf(t *testing.T) {
 // TestCreditBar_BonusExhausted verifies that after the bonus is fully consumed,
 // bar capacity still includes the grant and usage is reflected.
 func TestCreditBar_BonusExhausted(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 20,
 		planMaxCredit:           20,
@@ -71,6 +73,7 @@ func TestCreditBar_BonusExhausted(t *testing.T) {
 
 // TestCreditBar_BonusUserNoSpend verifies a fresh bonus user sees 100% bar.
 func TestCreditBar_BonusUserNoSpend(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 120,
 		planMaxCredit:           20,
@@ -92,6 +95,7 @@ func TestCreditBar_BonusUserNoSpend(t *testing.T) {
 
 // TestCreditBar_BonusUserWithExtraCredits verifies capacity includes all pools.
 func TestCreditBar_BonusUserWithExtraCredits(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 70,
 		planMaxCredit:           20,
@@ -116,6 +120,7 @@ func TestCreditBar_BonusUserWithExtraCredits(t *testing.T) {
 // TestCreditBar_CapacityNotInflatedByAvailable verifies that when available
 // exceeds planMax but no bonus is present, capacity stays at planMax.
 func TestCreditBar_CapacityNotInflatedByAvailable(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 70,
 		planMaxCredit:           20,
@@ -137,6 +142,7 @@ func TestCreditBar_CapacityNotInflatedByAvailable(t *testing.T) {
 
 // TestCreditBar_AllCreditsUsed verifies a user who has spent all monthly credit.
 func TestCreditBar_AllCreditsUsed(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 0,
 		planMaxCredit:           20,
@@ -158,6 +164,7 @@ func TestCreditBar_AllCreditsUsed(t *testing.T) {
 
 // TestCreditBar_FreeUserNoBonus verifies a free-tier user with partial usage.
 func TestCreditBar_FreeUserNoBonus(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 15,
 		planMaxCredit:           20,
@@ -177,6 +184,7 @@ func TestCreditBar_FreeUserNoBonus(t *testing.T) {
 
 // TestCreditBar_RegularMode verifies normal (non-bonus) scenarios.
 func TestCreditBar_RegularMode(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		available     float64
@@ -251,6 +259,7 @@ func TestCreditBar_RegularMode(t *testing.T) {
 
 // TestCreditBar_BonusDrainsToZero walks through the full lifecycle.
 func TestCreditBar_BonusDrainsToZero(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		available     float64
@@ -317,6 +326,7 @@ func TestCreditBar_BonusDrainsToZero(t *testing.T) {
 
 // TestCreditBar_TemplateLabels verifies the template renders correct labels.
 func TestCreditBar_TemplateLabels(t *testing.T) {
+	t.Parallel()
 	const tmpl = `<span class="credit-hero-number">{{printf "%.0f" .TotalCreditsUSD}}</span>` +
 		`<span class="credit-hero-label">credits remaining</span>` +
 		`<span class="used">{{printf "%.0f" .UsedCreditsUSD}} used</span>` +
@@ -391,6 +401,7 @@ func TestCreditBar_TemplateLabels(t *testing.T) {
 }
 
 func TestTotalCreditsUSD_NeverNegative(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name                    string
 		shelleyCreditsAvailable float64
@@ -416,6 +427,7 @@ func TestTotalCreditsUSD_NeverNegative(t *testing.T) {
 }
 
 func TestGiftsForUser(t *testing.T) {
+	t.Parallel()
 	t.Run("no bonus no support gift returns nil", func(t *testing.T) {
 		gifts := giftsForUser(0, 0)
 		if gifts != nil {
@@ -498,6 +510,7 @@ func TestGiftsForUser(t *testing.T) {
 }
 
 func TestGiftsTemplateRendering(t *testing.T) {
+	t.Parallel()
 	const tmpl = `{{if .Gifts}}` +
 		`<table>` +
 		`{{range .Gifts}}<tr><td>{{.Amount}}</td><td>{{.Reason}}</td></tr>{{end}}` +
@@ -559,6 +572,7 @@ func TestGiftsTemplateRendering(t *testing.T) {
 }
 
 func TestGiftsFromLedger(t *testing.T) {
+	t.Parallel()
 	t.Run("nil entries returns nil", func(t *testing.T) {
 		gifts := giftsFromLedger(nil)
 		if gifts != nil {
@@ -661,6 +675,7 @@ func TestGiftsFromLedger(t *testing.T) {
 
 // TestCreditBar_WithGiftCredits verifies the bar includes gift credits from ledger.
 func TestCreditBar_WithGiftCredits(t *testing.T) {
+	t.Parallel()
 	bar := computeCreditBar(creditBarInput{
 		shelleyCreditsAvailable: 20,
 		planMaxCredit:           20,
@@ -685,6 +700,7 @@ func TestCreditBar_WithGiftCredits(t *testing.T) {
 
 // TestComputeSupportGift verifies detection of manual DB credit adjustments.
 func TestComputeSupportGift(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		available float64
@@ -762,6 +778,7 @@ func TestComputeSupportGift(t *testing.T) {
 
 // TestCreditBar_WithSupportGift verifies the bar includes support gifts in capacity.
 func TestCreditBar_WithSupportGift(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		available     float64
@@ -842,6 +859,7 @@ func TestCreditBar_WithSupportGift(t *testing.T) {
 // TestCreditBar_SupportGiftEndToEnd simulates the full handler decomposition logic
 // to verify the complete flow from DB values to display values.
 func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name             string
 		shelleyAvailable float64 // DB available_credit (after refresh)
@@ -941,6 +959,7 @@ func TestCreditBar_SupportGiftEndToEnd(t *testing.T) {
 // Paid/Gift:  $10 gift from ledger
 // Paid/Extra: $10 purchased via Stripe
 func TestCreditBar_Matrix(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		// inputs
@@ -1133,6 +1152,7 @@ func TestCreditBar_Matrix(t *testing.T) {
 
 // TestHasSignupGiftInLedger verifies the helper that detects signup gifts.
 func TestHasSignupGiftInLedger(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		entries []billing.GiftEntry
@@ -1193,6 +1213,7 @@ func TestHasSignupGiftInLedger(t *testing.T) {
 // in the billing ledger AND the old BillingUpgradeBonusGranted flag is set,
 // bonusGrantAmount is zeroed to avoid double-counting.
 func TestBonusZeroedWhenSignupGiftInLedger(t *testing.T) {
+	t.Parallel()
 	signupEntry := billing.GiftEntry{
 		GiftID: billing.GiftPrefixSignup + ":acct123",
 		Amount: tender.Mint(10000, 0), // $100
@@ -1292,6 +1313,7 @@ func TestBonusZeroedWhenSignupGiftInLedger(t *testing.T) {
 // is zeroed (because the signup gift is now in the ledger), buildGiftRows does
 // NOT show the old "Welcome bonus" row, but DOES show the signup gift from the ledger.
 func TestBuildGiftRows_SignupGiftNoWelcomeBonus(t *testing.T) {
+	t.Parallel()
 	signupEntry := billing.GiftEntry{
 		GiftID: billing.GiftPrefixSignup + ":acct123",
 		Amount: tender.Mint(10000, 0), // $100
@@ -1325,6 +1347,7 @@ func TestBuildGiftRows_SignupGiftNoWelcomeBonus(t *testing.T) {
 // TestComputeSupportGift_AfterMigration verifies that computeSupportGift still
 // works correctly when bonusGrant is 0 (because the bonus moved to the ledger).
 func TestComputeSupportGift_AfterMigration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		available float64

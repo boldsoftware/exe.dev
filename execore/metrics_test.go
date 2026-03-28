@@ -5,6 +5,7 @@ import (
 )
 
 func TestEntityMetrics(t *testing.T) {
+	t.Parallel()
 	// Use a test server which sets up the database with migrations
 	// Note: s.Stop() is called by the test helper's cleanup
 	s := newTestServer(t)

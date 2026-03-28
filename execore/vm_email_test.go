@@ -600,6 +600,7 @@ func TestVMEmailSend_RateLimiting(t *testing.T) {
 }
 
 func TestCalculateRefreshedVMEmailCredit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		available     float64

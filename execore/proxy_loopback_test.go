@@ -10,6 +10,7 @@ import (
 // of ProxyData produces the same results as the direct in-process
 // implementation for all exercisable methods.
 func TestLoopbackProxyData(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	ctx := t.Context()
 

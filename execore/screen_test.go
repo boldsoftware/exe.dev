@@ -70,6 +70,7 @@ func takeScreenshotWithSize(t testing.TB, name, html string, width, height int) 
 // TestScreenFlow tests the web UI by making HTTP requests and optionally taking screenshots.
 // Run with -scripts.screenshot to capture screenshots of each page.
 func TestScreenFlow(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	jar, err := cookiejar.New(nil)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompletionIntegration(t *testing.T) {
+	t.Parallel()
 	// Create a test SSH server with the real command tree
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := NewSSHServer(server)
@@ -105,6 +106,7 @@ func TestCompletionIntegration(t *testing.T) {
 // The CompleteBoxNames function is tested there with nil container manager
 
 func TestLongestCommonPrefix(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []string
@@ -131,6 +133,7 @@ func TestLongestCommonPrefix(t *testing.T) {
 // CompleteCommand level: first tab expands to common prefix, second tab
 // returns the full completion list.
 func TestTwoTabSequence(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := NewSSHServer(server)
 
@@ -184,6 +187,7 @@ func TestTwoTabSequence(t *testing.T) {
 // TestTwoTabSequenceMidCursor verifies that prefix expansion preserves
 // text after the cursor (mid-line editing).
 func TestTwoTabSequenceMidCursor(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := NewSSHServer(server)
 
@@ -217,6 +221,7 @@ func TestTwoTabSequenceMidCursor(t *testing.T) {
 
 // TestApplySingleCompletion tests the single completion logic
 func TestApplySingleCompletion(t *testing.T) {
+	t.Parallel()
 	server := &Server{}
 	sshServer := NewSSHServer(server)
 

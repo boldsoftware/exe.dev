@@ -8,6 +8,7 @@ import (
 )
 
 func TestIsExtreme(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		usage     *resourceapi.MachineUsage
 		isExtreme bool
@@ -43,6 +44,7 @@ func TestIsExtreme(t *testing.T) {
 }
 
 func TestUsageCmp(t *testing.T) {
+	t.Parallel()
 	pdx, err := region.ByCode("pdx")
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +128,7 @@ func TestUsageCmp(t *testing.T) {
 }
 
 func TestUpdateVMLimits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		memTotalKiB int64
 		wantHard    int32

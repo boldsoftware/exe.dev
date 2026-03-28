@@ -59,6 +59,7 @@ func createTestBillingAccount(t *testing.T, db *exesqlite.DB, accountID, userID 
 }
 
 func TestListGifts_NoGifts(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	gifts, err := m.ListGifts(t.Context(), "acct_test1")
@@ -71,6 +72,7 @@ func TestListGifts_NoGifts(t *testing.T) {
 }
 
 func TestListGifts_WithGifts(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	// Insert two gifts
@@ -109,6 +111,7 @@ func TestListGifts_WithGifts(t *testing.T) {
 }
 
 func TestGiftCredits_Success(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_gift", &billing.GiftCreditsParams{
@@ -134,6 +137,7 @@ func TestGiftCredits_Success(t *testing.T) {
 }
 
 func TestGiftCredits_DefaultNote(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_defnote", &billing.GiftCreditsParams{
@@ -159,6 +163,7 @@ func TestGiftCredits_DefaultNote(t *testing.T) {
 }
 
 func TestGiftCredits_ZeroAmount(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_zero", &billing.GiftCreditsParams{
@@ -172,6 +177,7 @@ func TestGiftCredits_ZeroAmount(t *testing.T) {
 }
 
 func TestGiftCredits_NegativeAmount(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_neg", &billing.GiftCreditsParams{
@@ -185,6 +191,7 @@ func TestGiftCredits_NegativeAmount(t *testing.T) {
 }
 
 func TestGiftCredits_MissingPrefix(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	err := m.GiftCredits(t.Context(), "acct_noid", &billing.GiftCreditsParams{
@@ -196,6 +203,7 @@ func TestGiftCredits_MissingPrefix(t *testing.T) {
 }
 
 func TestGetCreditState_Empty(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	state, err := m.GetCreditState(t.Context(), "acct_empty")
@@ -217,6 +225,7 @@ func TestGetCreditState_Empty(t *testing.T) {
 }
 
 func TestGetCreditState_MixedCredits(t *testing.T) {
+	t.Parallel()
 	m := newGiftTestManager(t)
 
 	// Add a gift
@@ -271,6 +280,7 @@ func TestGetCreditState_MixedCredits(t *testing.T) {
 }
 
 func TestHasSignupGift(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		gifts []billing.GiftEntry
@@ -317,6 +327,7 @@ func TestHasSignupGift(t *testing.T) {
 }
 
 func TestUpgradeBonusLine_WithSignupGift(t *testing.T) {
+	t.Parallel()
 	// When flag is set AND signup gift exists, output should include deprecated note
 	line := upgradeBonusText(true, []billing.GiftEntry{
 		{GiftID: "signup:acct_test"},
@@ -330,6 +341,7 @@ func TestUpgradeBonusLine_WithSignupGift(t *testing.T) {
 }
 
 func TestUpgradeBonusLine_WithoutSignupGift(t *testing.T) {
+	t.Parallel()
 	// When flag is set but NO signup gift, output should show plain "true"
 	line := upgradeBonusText(true, []billing.GiftEntry{
 		{GiftID: "ssh_gift:acct:123"},
@@ -340,6 +352,7 @@ func TestUpgradeBonusLine_WithoutSignupGift(t *testing.T) {
 }
 
 func TestUpgradeBonusLine_FlagNotSet(t *testing.T) {
+	t.Parallel()
 	// When flag is not set, output should show plain "false" regardless of gifts
 	line := upgradeBonusText(false, []billing.GiftEntry{
 		{GiftID: "signup:acct_test"},

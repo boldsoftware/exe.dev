@@ -5,6 +5,7 @@ import (
 )
 
 func TestResolveExelet(t *testing.T) {
+	t.Parallel()
 	client16 := &exeletClient{}
 	client18 := &exeletClient{}
 	clientLax := &exeletClient{}
@@ -68,6 +69,7 @@ func TestResolveExelet(t *testing.T) {
 }
 
 func TestResolveExeletAmbiguous(t *testing.T) {
+	t.Parallel()
 	s := &Server{
 		exeletClients: map[string]*exeletClient{
 			"tcp://myhost:9080": {},
@@ -82,6 +84,7 @@ func TestResolveExeletAmbiguous(t *testing.T) {
 }
 
 func TestExeletHostnames(t *testing.T) {
+	t.Parallel()
 	s := &Server{
 		exeletClients: map[string]*exeletClient{
 			"tcp://exe-ctr-16:9080": {},

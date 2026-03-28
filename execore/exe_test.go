@@ -22,6 +22,7 @@ import (
 )
 
 func TestTokenGeneration(t *testing.T) {
+	t.Parallel()
 	token1 := generateRegistrationToken()
 	token2 := generateRegistrationToken()
 
@@ -35,6 +36,7 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestEmailValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		email string
 		valid bool
@@ -66,6 +68,7 @@ func TestEmailValidation(t *testing.T) {
 }
 
 func TestIsBogusEmailDomain(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		email string
 		bogus bool
@@ -117,6 +120,7 @@ func TestIsBogusEmailDomain(t *testing.T) {
 
 // TestEmailVerificationRequiresPOST tests that email verification requires POST confirmation
 func TestEmailVerificationRequiresPOST(t *testing.T) {
+	t.Parallel()
 	// Create server
 	server := newTestServer(t)
 
@@ -203,6 +207,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 // TestHomePageShowsDashboardAfterEmailVerification tests that after completing
 // email verification, browsing to "/" shows the dashboard (not the landing page).
 func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a test user
@@ -282,6 +287,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 
 // TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
 func TestMetricsEndpoint(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -336,6 +342,7 @@ func TestMetricsEndpoint(t *testing.T) {
 
 // TestSitemapEndpoint tests that /sitemap.xml returns a valid sitemap with the home page and docs.
 func TestSitemapEndpoint(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -399,6 +406,7 @@ func TestSitemapEndpoint(t *testing.T) {
 
 // TestRobotsTxtEndpoint tests that /robots.txt returns a valid robots.txt with sitemap reference.
 func TestRobotsTxtEndpoint(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -436,6 +444,7 @@ func TestRobotsTxtEndpoint(t *testing.T) {
 }
 
 func TestPricingRedirect(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -478,6 +487,7 @@ func TestPricingRedirect(t *testing.T) {
 
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
@@ -537,6 +547,7 @@ func (s *Server) createTestBox(t *testing.T, userID, ctrhost, name, containerID,
 
 // TestMetricsEndpointProtection tests that /metrics is protected by IP restrictions
 func TestMetricsEndpointProtection(t *testing.T) {
+	t.Parallel()
 	// Test the requireLocalAccess decorator directly
 
 	// Create a simple test handler
@@ -629,6 +640,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 
 // TestWebAuthFlowCreatesNewUser tests that the web auth flow creates a new user if they don't exist
 func TestWebAuthFlowCreatesNewUser(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	email := "newuser@example.com"
@@ -686,6 +698,7 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 // TestBasicUserCreatedForLoginWithExe tests that a user created during the
 // login-with-exe flow (with login_with_exe form field) has the flag set.
 func TestBasicUserCreatedForLoginWithExe(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	email := "basicuser@example.com"
@@ -722,6 +735,7 @@ func TestBasicUserCreatedForLoginWithExe(t *testing.T) {
 // TestNormalUserCreatedWithoutFlag tests that a user created during normal
 // web auth (without login_with_exe) does NOT have the login-with-exe flag set.
 func TestNormalUserCreatedWithoutFlag(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	email := "normaluser@example.com"
@@ -756,6 +770,7 @@ func TestNormalUserCreatedWithoutFlag(t *testing.T) {
 
 // TestNewsletterSubscription tests that POST /newsletter-subscribe sets the flag on the user.
 func TestNewsletterSubscription(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a user
@@ -859,6 +874,7 @@ func TestNewsletterSubscription(t *testing.T) {
 
 // TestIsExeletNotFoundError tests detection of "not found" errors from exelet
 func TestIsExeletNotFoundError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		err      error

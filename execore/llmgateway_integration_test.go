@@ -57,6 +57,7 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 // Authentication is now done via X-Exedev-Box header from Tailscale IPs or dev mode.
 
 func TestLLMGatewayIntegrationAuthFlow(t *testing.T) {
+	t.Parallel()
 	// Create exe.Server for full integration
 	server := newTestServer(t)
 
@@ -117,6 +118,7 @@ func TestLLMGatewayIntegrationAuthFlow(t *testing.T) {
 }
 
 func TestLLMGatewayNonDevModeRejectsNonTailscale(t *testing.T) {
+	t.Parallel()
 	// Create exe.Server for full integration
 	server := newTestServer(t)
 

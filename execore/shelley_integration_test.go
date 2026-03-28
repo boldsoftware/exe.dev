@@ -20,6 +20,7 @@ import (
 // TestShelleyStreamParsing tests the SSE stream parsing logic directly
 // by building and running a real Shelley instance
 func TestShelleyStreamParsing(t *testing.T) {
+	t.Parallel()
 	// TODO(philip): Working on this.
 	t.Skip("Skipping integration test that builds and runs shelley")
 
@@ -285,6 +286,7 @@ func parseSSEStream(t *testing.T, body io.Reader) []string {
 
 // TestSSEStreamParsingUnit tests the stream parsing logic with mock data
 func TestSSEStreamParsingUnit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		sseData      string

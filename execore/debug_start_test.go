@@ -127,6 +127,7 @@ func setupMigratedBox(t *testing.T, boxName string, sshPort int32) (*Server, str
 // port (as happens after migrating a stopped VM) fetches the port from the
 // exelet and writes it back to the database.
 func TestDebugStartSyncsSSHPort(t *testing.T) {
+	t.Parallel()
 	const wantSSHPort int32 = 12345
 	server, _, _ := setupMigratedBox(t, "migrated-vm", wantSSHPort)
 	ctx := context.Background()
@@ -168,6 +169,7 @@ func TestDebugStartSyncsSSHPort(t *testing.T) {
 // TestDebugStartPreservesExistingSSHPort verifies that starting a box that
 // already has an SSH port does NOT overwrite it.
 func TestDebugStartPreservesExistingSSHPort(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -237,6 +239,7 @@ func TestDebugStartPreservesExistingSSHPort(t *testing.T) {
 // TestRestartCommandSyncsSSHPort verifies that the SSH "restart" command syncs
 // the SSH port from the exelet when the database has SSHPort=NULL (post-migration).
 func TestRestartCommandSyncsSSHPort(t *testing.T) {
+	t.Parallel()
 	const wantSSHPort int32 = 22345
 	server, _, userID := setupMigratedBox(t, "restart-vm", wantSSHPort)
 	ctx := context.Background()

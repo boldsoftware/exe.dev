@@ -14,6 +14,7 @@ import (
 )
 
 func TestPushTokenRegister(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "push@example.com")
 
@@ -63,6 +64,7 @@ func TestPushTokenRegister(t *testing.T) {
 }
 
 func TestPushTokenRegister_Upsert(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "upsert@example.com")
 	port := s.httpPort()
@@ -102,6 +104,7 @@ func TestPushTokenRegister_Upsert(t *testing.T) {
 }
 
 func TestPushTokenRegister_RejectNonAppToken(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	port := s.httpPort()
 
@@ -123,6 +126,7 @@ func TestPushTokenRegister_RejectNonAppToken(t *testing.T) {
 }
 
 func TestPushTokenRegister_RejectNoAuth(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	port := s.httpPort()
 
@@ -143,6 +147,7 @@ func TestPushTokenRegister_RejectNoAuth(t *testing.T) {
 }
 
 func TestPushTokenRegister_RejectBadHex(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "badhex@example.com")
 
@@ -164,6 +169,7 @@ func TestPushTokenRegister_RejectBadHex(t *testing.T) {
 }
 
 func TestPushTokenDelete(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	appToken := createTestUserWithAppToken(t, s, "delete@example.com")
 	port := s.httpPort()

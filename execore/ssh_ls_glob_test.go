@@ -11,6 +11,7 @@ import (
 )
 
 func TestLsGlobPattern(t *testing.T) {
+	t.Parallel()
 	boxes := []string{"foo", "bar", "baz", "foo-test", "foo-prod", "qux"}
 
 	tests := []struct {
@@ -83,6 +84,7 @@ func TestLsGlobPattern(t *testing.T) {
 }
 
 func TestLsMultipleArgs(t *testing.T) {
+	t.Parallel()
 	boxes := []string{"foo", "bar", "baz", "foo-test", "foo-prod", "qux"}
 
 	tests := []struct {
@@ -140,6 +142,7 @@ func TestLsMultipleArgs(t *testing.T) {
 }
 
 func TestPatternHasMeta(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		pattern string
 		hasMeta bool

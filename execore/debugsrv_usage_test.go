@@ -8,6 +8,7 @@ import (
 )
 
 func TestComputeUsageData(t *testing.T) {
+	t.Parallel()
 	now := time.Now().UTC()
 	metrics := []types.Metric{
 		{Timestamp: now, VMName: "vm-a", DiskSizeBytes: 20e9, DiskUsedBytes: 3e9, DiskLogicalUsedBytes: 5e9, CPUUsedCumulativeSecs: 100, CPUNominal: 2, NetworkTXBytes: 1000, NetworkRXBytes: 500, MemoryNominalBytes: 8e9, MemoryRSSBytes: 4e9, MemorySwapBytes: 1e9, IOReadBytes: 10000, IOWriteBytes: 20000},
@@ -77,6 +78,7 @@ func TestComputeUsageData(t *testing.T) {
 }
 
 func TestComputeUsageData_Empty(t *testing.T) {
+	t.Parallel()
 	points := computeUsageData(nil)
 	if points != nil {
 		t.Errorf("expected nil, got %v", points)
@@ -84,6 +86,7 @@ func TestComputeUsageData_Empty(t *testing.T) {
 }
 
 func TestComputeUsageData_SinglePoint(t *testing.T) {
+	t.Parallel()
 	metrics := []types.Metric{
 		{Timestamp: time.Now(), VMName: "vm-a", DiskSizeBytes: 10e9},
 	}

@@ -12,6 +12,7 @@ import (
 )
 
 func TestExeletDesiredMissingHost(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/exelet-desired", nil)
@@ -26,6 +27,7 @@ func TestExeletDesiredMissingHost(t *testing.T) {
 }
 
 func TestExeletDesiredUnknownHost(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/exelet-desired?host=tcp://unknown:9080", nil)
@@ -40,6 +42,7 @@ func TestExeletDesiredUnknownHost(t *testing.T) {
 }
 
 func TestExeletDesiredEmptyHost(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	addr := "tcp://fake-host:9080"
@@ -69,6 +72,7 @@ func TestExeletDesiredEmptyHost(t *testing.T) {
 }
 
 func TestExeletDesiredWithBoxes(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -162,6 +166,7 @@ func TestExeletDesiredWithBoxes(t *testing.T) {
 }
 
 func TestExeletDesiredNoCpuMaxWhenAllocatedCpusNull(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -222,6 +227,7 @@ func TestExeletDesiredNoCpuMaxWhenAllocatedCpusNull(t *testing.T) {
 }
 
 func TestExeletDesiredSkipsBoxesWithoutContainerID(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -265,6 +271,7 @@ func TestExeletDesiredSkipsBoxesWithoutContainerID(t *testing.T) {
 }
 
 func TestExeletDesiredWithBoxCgroupOverrides(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -353,6 +360,7 @@ func TestExeletDesiredWithBoxCgroupOverrides(t *testing.T) {
 }
 
 func TestExeletDesiredWithUserCgroupOverrides(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -440,6 +448,7 @@ func TestExeletDesiredWithUserCgroupOverrides(t *testing.T) {
 }
 
 func TestExeletDesiredBoxOverrideRemovesCpuMax(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -515,6 +524,7 @@ func TestExeletDesiredBoxOverrideRemovesCpuMax(t *testing.T) {
 }
 
 func TestExeletDesiredGroupDefaultUsesMaxCPUs(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -593,6 +603,7 @@ func TestExeletDesiredGroupDefaultUsesMaxCPUs(t *testing.T) {
 }
 
 func TestExeletDesiredWithIOMaxOverrides(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 

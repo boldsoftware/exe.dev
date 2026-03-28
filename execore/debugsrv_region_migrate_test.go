@@ -18,6 +18,7 @@ import (
 )
 
 func TestHandleDebugUserMigrateRegion(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 	userID := createTestUser(t, server, "migrate-region@example.com")
@@ -57,6 +58,7 @@ func TestHandleDebugUserMigrateRegion(t *testing.T) {
 }
 
 func TestHandleDebugUserMigrateRegionCanonicalizesCode(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 	userID := createTestUser(t, server, "migrate-region-canon@example.com")
@@ -86,6 +88,7 @@ func TestHandleDebugUserMigrateRegionCanonicalizesCode(t *testing.T) {
 }
 
 func TestHandleDebugUserMigrateRegionInvalidRegion(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	userID := createTestUser(t, server, "migrate-region-invalid@example.com")
 
@@ -104,6 +107,7 @@ func TestHandleDebugUserMigrateRegionInvalidRegion(t *testing.T) {
 }
 
 func TestHandleDebugUserMigrateVMs(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -198,6 +202,7 @@ func TestHandleDebugUserMigrateVMs(t *testing.T) {
 }
 
 func TestHandleDebugUserMigrateVMsRequiresConfirmation(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -292,6 +297,7 @@ func TestHandleDebugUserMigrateVMsRequiresConfirmation(t *testing.T) {
 }
 
 func TestRestartSourceVM(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 

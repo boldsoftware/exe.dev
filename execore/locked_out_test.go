@@ -15,6 +15,7 @@ import (
 
 // TestIsUserLockedOut tests the isUserLockedOut helper function directly.
 func TestIsUserLockedOut(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a user
@@ -74,6 +75,7 @@ func TestIsUserLockedOut(t *testing.T) {
 // TestLockedOutUserCannotAddNewSSHKey tests that a locked out user cannot
 // add a new SSH key via device verification (simulates the "new SSH key" registration flow).
 func TestLockedOutUserCannotAddNewSSHKey(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a user with an existing SSH key
@@ -164,6 +166,7 @@ func TestLockedOutUserCannotAddNewSSHKey(t *testing.T) {
 
 // TestLockoutStopsUserBoxes tests that locking out a user stops all their running boxes.
 func TestLockoutStopsUserBoxes(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := t.Context()
 
@@ -240,6 +243,7 @@ func TestLockoutStopsUserBoxes(t *testing.T) {
 // TestDebugVMList tests that /debug/vmlist returns container IDs excluding
 // locked-out users, and supports host filtering.
 func TestDebugVMList(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := t.Context()
 

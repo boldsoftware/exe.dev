@@ -8,6 +8,7 @@ import (
 )
 
 func TestHandleShelleyDownload(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	tests := []struct {
@@ -99,6 +100,7 @@ func TestHandleShelleyDownload(t *testing.T) {
 }
 
 func TestRenderShelleyDownloadPage(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/shelley/download", nil)

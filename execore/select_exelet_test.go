@@ -10,10 +10,12 @@ import (
 )
 
 func TestSelectExeletRequiresUserMatch(t *testing.T) {
+	t.Parallel()
 	pdxRegion, _ := region.ByCode("pdx")
 	tyoRegion, _ := region.ByCode("tyo")
 
 	t.Run("pdx user gets pdx when tyo requires match", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -40,6 +42,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("tyo user can get tyo", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -71,6 +74,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("pdx user gets error when only tyo available", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -91,6 +95,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("non-matching region does not require user match", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -116,6 +121,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("tyo user only gets tyo not pdx", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -151,6 +157,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("tyo user gets error when only pdx available", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -178,6 +185,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("pdx user still gets both pdx and lax", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -205,6 +213,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("affinity skips exelet in RequiresUserMatch region for non-matching user", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -247,6 +256,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("affinity skips exelet when user RequiresUserMatch and exelet is different region", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -296,6 +306,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("preferred exelet skipped when in RequiresUserMatch region for non-matching user", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 
@@ -329,6 +340,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 	})
 
 	t.Run("preferred exelet skipped when user RequiresUserMatch and preferred is different region", func(t *testing.T) {
+		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
 

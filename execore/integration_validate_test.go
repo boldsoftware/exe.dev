@@ -3,6 +3,7 @@ package execore
 import "testing"
 
 func TestValidateIntegrationName(t *testing.T) {
+	t.Parallel()
 	good := []string{
 		"a", "myproxy", "my-proxy", "a1", "test-123", "x",
 	}
@@ -28,6 +29,7 @@ func TestValidateIntegrationName(t *testing.T) {
 }
 
 func TestValidateHTTPHeader(t *testing.T) {
+	t.Parallel()
 	good := []string{
 		"Authorization:Bearer tok",
 		"X-Custom-Auth:secret",
@@ -68,6 +70,7 @@ func TestValidateHTTPHeader(t *testing.T) {
 }
 
 func TestValidateTargetURL(t *testing.T) {
+	t.Parallel()
 	good := []string{
 		"https://example.com",
 		"https://api.example.com/",

@@ -12,6 +12,7 @@ import (
 
 // TestCpCommand_Exists tests that the cp command is registered in the command tree.
 func TestCpCommand_Exists(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -52,6 +53,7 @@ func TestCpCommand_Exists(t *testing.T) {
 
 // TestCpCommand_FlagParsing tests flag parsing for the cp command.
 func TestCpCommand_FlagParsing(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
@@ -185,6 +187,7 @@ func TestCpCommand_FlagParsing(t *testing.T) {
 
 // TestCpCommand_UsageErrors tests that cp command returns proper usage errors.
 func TestCpCommand_UsageErrors(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
@@ -237,6 +240,7 @@ func TestCpCommand_UsageErrors(t *testing.T) {
 
 // TestCpCommand_InvalidFlagErrors tests that cp command handles invalid flags properly.
 func TestCpCommand_InvalidFlagErrors(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
@@ -281,6 +285,7 @@ func TestCpCommand_InvalidFlagErrors(t *testing.T) {
 
 // TestCpCommand_Examples tests that cp command has examples.
 func TestCpCommand_Examples(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -308,6 +313,7 @@ func TestCpCommand_Examples(t *testing.T) {
 
 // TestCpCommand_HelpOutput tests that help for cp command shows relevant info.
 func TestCpCommand_HelpOutput(t *testing.T) {
+	t.Parallel()
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)

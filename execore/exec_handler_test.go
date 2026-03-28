@@ -565,6 +565,7 @@ func TestValidateTokenNamespace(t *testing.T) {
 }
 
 func TestTokenCmdsAllow(t *testing.T) {
+	t.Parallel()
 	t.Run("nil_cmds_uses_default", func(t *testing.T) {
 		// nil cmds should allow default commands
 		if !tokenCmdsAllow(nil, "ls") {

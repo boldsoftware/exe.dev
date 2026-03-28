@@ -15,6 +15,7 @@ import (
 )
 
 func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-one-account@example.com")
 
@@ -42,6 +43,7 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 }
 
 func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
+	t.Parallel()
 	// Tests that a single account with multiple billing events (active -> canceled -> active)
 	// shows the correct latest status on the debug user page.
 	s := newTestServer(t)
@@ -77,6 +79,7 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 // TestDebugBillingEntitlementTablePresent verifies the entitlement table section
 // appears on the debug billing page with one row per entitlement.
 func TestDebugBillingEntitlementTablePresent(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-entitlements@example.com")
 
@@ -100,6 +103,7 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 // TestDebugBillingEntitlementTableBasicUser verifies a Basic plan user has most
 // entitlements denied. Basic grants only llm:use and vm:connect.
 func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-basic-ent@example.com")
 
@@ -115,6 +119,7 @@ func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
 // TestDebugBillingEntitlementTableFriendUser verifies a Friend plan user
 // has most entitlements granted.
 func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-friend-ent@example.com")
 
@@ -152,6 +157,7 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 // TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user
 // has all entitlements granted on the billing page.
 func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "debug-individual-ent@example.com")
 

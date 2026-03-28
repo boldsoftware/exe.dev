@@ -8,6 +8,7 @@ import (
 )
 
 func TestTerminalRouting(t *testing.T) {
+	t.Parallel()
 	s := newUnstartedServer(t)
 	// Test that terminal subdomains are detected correctly
 	tests := []struct {

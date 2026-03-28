@@ -7,6 +7,7 @@ import (
 )
 
 func TestSignupAllowlistPermits(t *testing.T) {
+	t.Parallel()
 	a := &stage.SignupAllowlist{
 		Emails: []string{
 			"josharian@gmail.com",
@@ -56,12 +57,14 @@ func TestSignupAllowlistPermits(t *testing.T) {
 }
 
 func TestSignupAllowlistPermitsNil(t *testing.T) {
+	t.Parallel()
 	if !signupAllowlistPermits(nil, "anyone@anywhere.com") {
 		t.Error("nil allowlist should allow all emails")
 	}
 }
 
 func TestSignupAllowlistPermitsEmpty(t *testing.T) {
+	t.Parallel()
 	a := &stage.SignupAllowlist{}
 	if signupAllowlistPermits(a, "anyone@anywhere.com") {
 		t.Error("empty allowlist should block all emails")

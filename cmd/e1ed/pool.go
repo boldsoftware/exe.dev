@@ -51,15 +51,17 @@ type Slot struct {
 }
 
 type Pool struct {
-	mu       sync.Mutex
-	slots    []*Slot
-	target   int
-	maxIdle  time.Duration
-	opsDir   string // path to ops/ directory (from permanent worktree)
-	wg       sync.WaitGroup
-	stop     chan struct{}
-	claimCh  chan struct{} // signaled when a slot becomes ready
-	executor Executor
+	mu         sync.Mutex
+	slots      []*Slot
+	target     int
+	maxIdle    time.Duration
+	opsDir     string // path to ops/ directory (from permanent worktree)
+	wg         sync.WaitGroup
+	stop       chan struct{}
+	stopCtx    context.Context
+	stopCancel context.CancelFunc
+	claimCh    chan struct{} // signaled when a slot becomes ready
+	executor   Executor
 }
 
 // Executor abstracts shell commands for testing.
@@ -177,14 +179,17 @@ func parseEnvFile(path string) (*VMInfo, error) {
 }
 
 func NewPool(target int, maxIdle time.Duration, opsDir string, executor Executor) *Pool {
+	stopCtx, stopCancel := context.WithCancel(context.Background())
 	p := &Pool{
-		target:   target,
-		maxIdle:  maxIdle,
-		opsDir:   opsDir,
-		slots:    make([]*Slot, target),
-		stop:     make(chan struct{}),
-		claimCh:  make(chan struct{}, target),
-		executor: executor,
+		target:     target,
+		maxIdle:    maxIdle,
+		opsDir:     opsDir,
+		slots:      make([]*Slot, target),
+		stop:       make(chan struct{}),
+		stopCtx:    stopCtx,
+		stopCancel: stopCancel,
+		claimCh:    make(chan struct{}, target),
+		executor:   executor,
 	}
 	for i := range p.slots {
 		p.slots[i] = &Slot{State: SlotCreating}
@@ -219,6 +224,7 @@ func (p *Pool) Start() {
 
 // Stop shuts down the pool, destroying all VMs.
 func (p *Pool) Stop() {
+	p.stopCancel()
 	close(p.stop)
 	p.wg.Wait()
 
@@ -353,7 +359,8 @@ func (p *Pool) createSlot(idx int) {
 
 	// 15 minutes: first-time provisioning builds Cloud Hypervisor via Docker.
 	// Subsequent runs use snapshot cache and complete in ~30s.
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	// Use stopCtx so that pool.Stop() cancels in-flight VM creation.
+	ctx, cancel := context.WithTimeout(p.stopCtx, 15*time.Minute)
 	defer cancel()
 
 	vm, err := p.executor.StartVM(ctx, name, p.opsDir)

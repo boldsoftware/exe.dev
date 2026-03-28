@@ -7,6 +7,7 @@ import (
 )
 
 func TestWriteQRCode(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	writeQRCode(&buf, "https://example.com")
 

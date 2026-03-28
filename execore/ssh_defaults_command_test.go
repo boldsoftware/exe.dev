@@ -12,6 +12,7 @@ import (
 )
 
 func TestDefaultsCommand_Hidden(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -26,6 +27,7 @@ func TestDefaultsCommand_Hidden(t *testing.T) {
 }
 
 func TestDefaultsCommand_SubcommandsExist(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -70,6 +72,7 @@ func createDefaultsTestUser(t *testing.T, db *sqlite.DB, userID, email string) {
 }
 
 func TestDefaultsWriteAndRead(t *testing.T) {
+	t.Parallel()
 	db := setupDefaultsTestDB(t)
 
 	server := &Server{log: tslog.Slogger(t), db: db}
@@ -217,6 +220,7 @@ func TestDefaultsWriteAndRead(t *testing.T) {
 }
 
 func TestDefaultsWriteErrors(t *testing.T) {
+	t.Parallel()
 	db := setupDefaultsTestDB(t)
 
 	server := &Server{log: tslog.Slogger(t), db: db}
@@ -274,6 +278,7 @@ func TestDefaultsWriteErrors(t *testing.T) {
 }
 
 func TestGetUserDefaultNewVMEmail(t *testing.T) {
+	t.Parallel()
 	db := setupDefaultsTestDB(t)
 
 	server := &Server{log: tslog.Slogger(t), db: db}
@@ -337,6 +342,7 @@ func TestGetUserDefaultNewVMEmail(t *testing.T) {
 }
 
 func TestDefaultsReadNoDefaults(t *testing.T) {
+	t.Parallel()
 	db := setupDefaultsTestDB(t)
 
 	server := &Server{log: tslog.Slogger(t), db: db}

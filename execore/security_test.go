@@ -20,6 +20,7 @@ import (
 // TestXSSInEmailVerificationForm tests that template variables in the
 // email verification form are properly escaped to prevent XSS attacks.
 func TestXSSInEmailVerificationForm(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a malicious redirect URL that attempts XSS
@@ -59,6 +60,7 @@ func TestXSSInEmailVerificationForm(t *testing.T) {
 
 // TestXSSInReturnHost tests that return_host is properly escaped.
 func TestXSSInReturnHost(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	xssPayload := `";alert(1);//`
@@ -88,6 +90,7 @@ func TestXSSInReturnHost(t *testing.T) {
 // TestOpenRedirectAfterAuth tests that the redirect after authentication
 // is validated and doesn't allow external redirects.
 func TestOpenRedirectAfterAuth(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a user and get them authenticated
@@ -124,6 +127,7 @@ func TestOpenRedirectAfterAuth(t *testing.T) {
 // TestPasskeyOpenRedirect tests that the passkey login finish endpoint
 // validates redirect_to to prevent open redirect attacks.
 func TestPasskeyOpenRedirect(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		redirectTo       string
@@ -153,6 +157,7 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 
 // TestMagicAuthOpenRedirect tests that handleMagicAuth validates redirect URLs.
 func TestMagicAuthOpenRedirect(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := t.Context()
 
@@ -250,6 +255,7 @@ func TestProxyLoginOpenRedirect(t *testing.T) {
 
 // TestSignupRateLimiting tests that signup endpoints are rate limited.
 func TestSignupRateLimiting(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Use a very long refill interval so no tokens are refilled during
@@ -300,6 +306,7 @@ func TestSignupRateLimiting(t *testing.T) {
 
 // TestSignupPOW tests that proof-of-work is required for new user signups when enabled.
 func TestSignupPOW(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -358,6 +365,7 @@ func TestSignupPOW(t *testing.T) {
 
 // TestSignupPOWDisabled tests that POW is not required when disabled.
 func TestSignupPOWDisabled(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 

@@ -3,6 +3,7 @@ package execore
 import "testing"
 
 func TestShouldSaveToHistory(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		line string
 		want bool
@@ -24,6 +25,7 @@ func TestShouldSaveToHistory(t *testing.T) {
 }
 
 func TestRedactCommand(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		parts []string
 		want  string

@@ -192,6 +192,7 @@ func startFakeMigrationExelet(t *testing.T, srv *fakeLiveMigrationServer) (strin
 }
 
 func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		coldBooted bool
@@ -293,6 +294,7 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 }
 
 func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -365,6 +367,7 @@ func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
 }
 
 func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 
@@ -393,6 +396,7 @@ func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
 }
 
 func TestMigrateBoxColdBootSendsEmail(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	ctx := context.Background()
 

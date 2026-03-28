@@ -12,6 +12,7 @@ import (
 )
 
 func TestHostnameCheck(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Test hostname availability check
@@ -49,6 +50,7 @@ func TestHostnameCheck(t *testing.T) {
 }
 
 func TestInvalidHostname(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Test invalid hostname check
@@ -83,6 +85,7 @@ func TestInvalidHostname(t *testing.T) {
 }
 
 func TestInvalidEmail(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Test invalid email
@@ -101,6 +104,7 @@ func TestInvalidEmail(t *testing.T) {
 }
 
 func TestRunCommandUnauthorized(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Test command without authentication
@@ -117,6 +121,7 @@ func TestRunCommandUnauthorized(t *testing.T) {
 }
 
 func TestRunCommandNotAllowed(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	// Create a user and get auth cookie
@@ -162,6 +167,7 @@ func TestRunCommandNotAllowed(t *testing.T) {
 }
 
 func TestIsCommandAllowed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		command string
 		allowed bool
@@ -205,6 +211,7 @@ func TestIsCommandAllowed(t *testing.T) {
 }
 
 func TestStartBoxCreationReusesDeletedName(t *testing.T) {
+	t.Parallel()
 	// Test that startBoxCreation works after a previous creation stream
 	// for the same hostname is done. This is the fix for:
 	// https://github.com/boldsoftware/exe.dev/issues/167
@@ -242,6 +249,7 @@ func TestStartBoxCreationReusesDeletedName(t *testing.T) {
 }
 
 func TestRemoveCreationStreamIfMatchStalePointer(t *testing.T) {
+	t.Parallel()
 	// Test that removeCreationStreamIfMatch is a no-op when called with a stale pointer.
 	// This is the core safety property: an old stream's cleanup timer cannot
 	// accidentally remove a replacement stream.

@@ -15,6 +15,7 @@ import (
 )
 
 func TestNewThrottleConfig(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	ctx := context.Background()
@@ -42,6 +43,7 @@ func TestNewThrottleConfig(t *testing.T) {
 }
 
 func TestCheckNewThrottleGlobalEnabled(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	ctx := context.Background()
@@ -86,6 +88,7 @@ func TestCheckNewThrottleGlobalEnabled(t *testing.T) {
 }
 
 func TestCheckNewThrottleEmailPatterns(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	ctx := context.Background()
@@ -129,6 +132,7 @@ func TestCheckNewThrottleEmailPatterns(t *testing.T) {
 }
 
 func TestCheckNewThrottleDefaultMessage(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	ctx := context.Background()
@@ -156,6 +160,7 @@ func TestCheckNewThrottleDefaultMessage(t *testing.T) {
 }
 
 func TestCheckNewThrottleEmailPatternDefaultMessage(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	ctx := context.Background()
@@ -183,6 +188,7 @@ func TestCheckNewThrottleEmailPatternDefaultMessage(t *testing.T) {
 }
 
 func TestNewThrottleJSONEndpoint(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 
 	// Set some throttle config
@@ -225,6 +231,7 @@ func TestNewThrottleJSONEndpoint(t *testing.T) {
 }
 
 func TestCheckNewThrottleDisposableEmail(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	ctx := context.Background()
 
@@ -252,6 +259,7 @@ func TestCheckNewThrottleDisposableEmail(t *testing.T) {
 }
 
 func TestCheckNewThrottleStripe(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	s.env.SkipBilling = false
 
@@ -280,6 +288,7 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 // TestCheckNewThrottleGrandfathered verifies that a grandfathered user bypasses the
 // disposable email throttle because their plan grants vm:create.
 func TestCheckNewThrottleGrandfathered(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	s.env.SkipBilling = false
 
@@ -322,6 +331,7 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 // TestCheckNewThrottleFreeExemption verifies that a user on the 'friend' plan
 // bypasses the disposable email throttle because their plan grants vm:create.
 func TestCheckNewThrottleFreeExemption(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	s.env.SkipBilling = false
 
@@ -364,6 +374,7 @@ func TestCheckNewThrottleFreeExemption(t *testing.T) {
 // TestCheckNewThrottleBasicUser verifies that a Basic plan user (no billing, created
 // after cutoff) IS still throttled by disposable email check.
 func TestCheckNewThrottleBasicUser(t *testing.T) {
+	t.Parallel()
 	s := newTestServer(t)
 	s.env.SkipBilling = false
 

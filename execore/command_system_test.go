@@ -54,6 +54,7 @@ func createTestContext(user *exedb.User, output *MockOutput, args []string) *exe
 }
 
 func TestCommandTree_FindCommand(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -114,6 +115,7 @@ func TestCommandTree_FindCommand(t *testing.T) {
 }
 
 func TestCommandContext_HelperMethods(t *testing.T) {
+	t.Parallel()
 	output := &MockOutput{}
 
 	ctx := &exemenu.CommandContext{
@@ -156,6 +158,7 @@ func TestCommandContext_HelperMethods(t *testing.T) {
 }
 
 func TestHelpCommand(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
@@ -225,6 +228,7 @@ func TestHelpCommand(t *testing.T) {
 }
 
 func TestExecuteCommand(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
@@ -281,6 +285,7 @@ func TestExecuteCommand(t *testing.T) {
 }
 
 func TestGetAvailableCommands(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
@@ -309,6 +314,7 @@ func TestGetAvailableCommands(t *testing.T) {
 }
 
 func TestCommandFlagParsing(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
@@ -486,6 +492,7 @@ func TestCommandFlagParsing(t *testing.T) {
 }
 
 func TestSubcommandFlagParsing(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 
 	// Create a custom command tree with subcommands that have flags for testing
@@ -647,6 +654,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 }
 
 func TestFlagParsingErrorHandling(t *testing.T) {
+	t.Parallel()
 	// Create test server and dependencies
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
@@ -723,6 +731,7 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 }
 
 func TestValidateCommand(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		command     *exemenu.Command
@@ -820,6 +829,7 @@ func TestValidateCommand(t *testing.T) {
 }
 
 func TestSSHKeyCommand_SubcommandsExist(t *testing.T) {
+	t.Parallel()
 	sshServer := &SSHServer{}
 	ct := NewCommandTree(sshServer)
 
@@ -913,6 +923,7 @@ func collectCommands(commands []*exemenu.Command, prefix string) []struct {
 }
 
 func TestRequiresSudoCommandsMustBeHidden(t *testing.T) {
+	t.Parallel()
 	ss := &SSHServer{}
 	ct := NewCommandTree(ss)
 
@@ -927,6 +938,7 @@ func TestRequiresSudoCommandsMustBeHidden(t *testing.T) {
 // has been explicitly considered for RequiresSudo. If you add a new command,
 // add it to the appropriate set below.
 func TestRequiresSudoExplicitlySet(t *testing.T) {
+	t.Parallel()
 	ss := &SSHServer{}
 	ct := NewCommandTree(ss)
 
@@ -977,6 +989,7 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 }
 
 func TestValidateCommand_RequiresSudoMustBeHidden(t *testing.T) {
+	t.Parallel()
 	err := exemenu.ValidateCommand(&exemenu.Command{
 		Name:         "bad",
 		RequiresSudo: true,
@@ -1003,6 +1016,7 @@ func TestValidateCommand_RequiresSudoMustBeHidden(t *testing.T) {
 }
 
 func TestSudoCheckerEnforcement(t *testing.T) {
+	t.Parallel()
 	sudoCalled := false
 	tree := &exemenu.CommandTree{
 		Commands: []*exemenu.Command{

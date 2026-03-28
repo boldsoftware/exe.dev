@@ -13,6 +13,7 @@ import (
 )
 
 func TestNewServerBootstrapStripeCatalog(t *testing.T) {
+	t.Parallel()
 	env := stage.Test()
 	env.BootstrapStripeCatalog = true
 
@@ -47,6 +48,7 @@ func TestNewServerBootstrapStripeCatalog(t *testing.T) {
 }
 
 func TestNewServerSkipsBootstrapStripeCatalog(t *testing.T) {
+	t.Parallel()
 	env := stage.Test()
 	env.BootstrapStripeCatalog = false
 

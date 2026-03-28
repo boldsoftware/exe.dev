@@ -3,6 +3,7 @@ package execore
 import "testing"
 
 func TestParseSize(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		input    string
 		expected uint64

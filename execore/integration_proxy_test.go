@@ -5,6 +5,7 @@ import (
 )
 
 func TestBuildHTTPProxyConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("basic", func(t *testing.T) {
 		cfg := `{"target":"https://httpbin.org/anything","header":"X-Custom:secret"}`
 		resp, err := buildHTTPProxyConfig(cfg)

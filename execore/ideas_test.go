@@ -13,6 +13,7 @@ import (
 )
 
 func TestSeedDefaultTemplatesUpdatesExistingTemplatePrompt(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	slug := "zulip-chat"
@@ -72,6 +73,7 @@ func TestSeedDefaultTemplatesUpdatesExistingTemplatePrompt(t *testing.T) {
 }
 
 func TestIdeasRedirect(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/ideas", nil)
 	req.Host = server.env.WebHost
@@ -87,6 +89,7 @@ func TestIdeasRedirect(t *testing.T) {
 }
 
 func TestIdeaSlugPath(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -108,6 +111,7 @@ func TestIdeaSlugPath(t *testing.T) {
 }
 
 func TestIdeaDeployCountIncrement(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -137,6 +141,7 @@ func TestIdeaDeployCountIncrement(t *testing.T) {
 }
 
 func TestIdeaAPIIncludesDeployCount(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -171,6 +176,7 @@ func ideaTestUserCookie(t *testing.T, server *Server) (string, *http.Cookie) {
 }
 
 func TestIdeaRateReturnsUpdatedStats(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -217,6 +223,7 @@ func TestIdeaRateReturnsUpdatedStats(t *testing.T) {
 }
 
 func TestIdeaMyRatings(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -262,6 +269,7 @@ func TestIdeaMyRatings(t *testing.T) {
 }
 
 func TestIdeaSubmitCreatesAndSlackNotifies(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	_, cookie := ideaTestUserCookie(t, server)
 
@@ -326,6 +334,7 @@ func TestIdeaSubmitCreatesAndSlackNotifies(t *testing.T) {
 }
 
 func TestIdeaSubmitRequiresAuth(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 
 	body := strings.NewReader(`{"title":"Test","slug":"test-idea","prompt":"test"}`)
@@ -341,6 +350,7 @@ func TestIdeaSubmitRequiresAuth(t *testing.T) {
 }
 
 func TestIdeaSubmitValidation(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	_, cookie := ideaTestUserCookie(t, server)
 
@@ -372,6 +382,7 @@ func TestIdeaSubmitValidation(t *testing.T) {
 }
 
 func TestIdeaSubmitDuplicateSlug(t *testing.T) {
+	t.Parallel()
 	server := newTestServer(t)
 	if err := server.seedDefaultTemplates(t.Context()); err != nil {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
@@ -393,6 +404,7 @@ func TestIdeaSubmitDuplicateSlug(t *testing.T) {
 }
 
 func TestIdeaRateAllowedForBasicUserWithLLMUseEntitlement(t *testing.T) {
+	t.Parallel()
 	// Basic plan grants LLMUse, so even a non-paying user can rate templates.
 	// This is an intentional expansion from the old userIsPaying check.
 	server := newBillingTestServer(t)
@@ -431,6 +443,7 @@ func TestIdeaRateAllowedForBasicUserWithLLMUseEntitlement(t *testing.T) {
 }
 
 func TestIdeaRateAllowedWithLLMUseEntitlement(t *testing.T) {
+	t.Parallel()
 	// A user with active billing (Individual plan) should have LLMUse
 	// and get 200 from the rate API.
 	server := newBillingTestServer(t)
@@ -470,6 +483,7 @@ func TestIdeaRateAllowedWithLLMUseEntitlement(t *testing.T) {
 }
 
 func TestIdeaPageCanRateRequiresLLMUseEntitlement(t *testing.T) {
+	t.Parallel()
 	// canRate should be false for a user without billing and true for a user with billing.
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false

@@ -12,6 +12,7 @@ import (
 )
 
 func TestLoggerMiddlewareStatusCode(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		handlerFunc    http.HandlerFunc
@@ -98,6 +99,7 @@ func TestLoggerMiddlewareStatusCode(t *testing.T) {
 }
 
 func TestLoggerMiddleware_SkipsMetrics200(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -128,6 +130,7 @@ func TestLoggerMiddleware_SkipsMetrics200(t *testing.T) {
 }
 
 func TestLoggerMiddleware_AddsTraceID(t *testing.T) {
+	t.Parallel()
 	var capturedTraceID string
 
 	// Capture log output using our tracing handler
@@ -161,6 +164,7 @@ func TestLoggerMiddleware_AddsTraceID(t *testing.T) {
 }
 
 func TestLoggerMiddleware_TraceIDIsUnique(t *testing.T) {
+	t.Parallel()
 	seen := make(map[string]bool)
 
 	var buf bytes.Buffer

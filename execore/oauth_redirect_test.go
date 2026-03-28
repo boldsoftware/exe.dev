@@ -50,6 +50,7 @@ func fakeGoogleTokenServer(t *testing.T, email string) *httptest.Server {
 // TestGoogleOAuthNewUserRedirect verifies that redirect/return_host stored in
 // the OAuth state are honored when a new user completes Google OAuth signup.
 func TestGoogleOAuthNewUserRedirect(t *testing.T) {
+	t.Parallel()
 	email := "newgoogleuser@gmail.com"
 
 	tokenServer := fakeGoogleTokenServer(t, email)
@@ -190,6 +191,7 @@ func TestGoogleOAuthNewUserRedirect(t *testing.T) {
 // TestGoogleOAuthExistingUserRedirect verifies that redirect/return_host stored in
 // the OAuth state are honored when an existing user logs in via Google OAuth.
 func TestGoogleOAuthExistingUserRedirect(t *testing.T) {
+	t.Parallel()
 	email := "existinggoogleuser@gmail.com"
 
 	tokenServer := fakeGoogleTokenServer(t, email)
