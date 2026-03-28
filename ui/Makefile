@@ -27,6 +27,18 @@ NODE_BIN     := $(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin
 PNPM         := $(NODE_BIN)/pnpm
 export PATH  := $(CURDIR)/$(NODE_BIN):$(PATH)
 
+# UI build cache: keyed on the git tree hash of ui/.
+# Set UI_CACHE_DIR to override the default cache location.
+UI_TREE_HASH := $(shell git rev-parse HEAD:ui/ 2>/dev/null)
+ifdef UI_CACHE_DIR
+  _UI_CACHE_BASE := $(UI_CACHE_DIR)
+else ifdef CI_CACHE
+  _UI_CACHE_BASE := $(CI_CACHE)/ui-dist-cache
+else
+  _UI_CACHE_BASE := .ui-cache
+endif
+_UI_CACHE_ENTRY := $(_UI_CACHE_BASE)/$(UI_TREE_HASH)
+
 $(NODE_BIN)/.corepack-enabled:
 	@mkdir -p $(NODE_DIR)
 	@if [ ! -f "$@" ]; then \
@@ -44,13 +56,29 @@ $(NODE_BIN)/.corepack-enabled:
 	fi
 	@echo "Node.js v$(NODE_VERSION) ready in $(NODE_BIN)"
 
-build: $(NODE_BIN)/.corepack-enabled ## Build the Vue dashboard UI
+build: ## Build the Vue dashboard UI (with tree-hash cache)
+	@if [ -n "$(UI_TREE_HASH)" ] && [ -d "$(_UI_CACHE_ENTRY)" ]; then \
+		echo "UI cache hit ($(UI_TREE_HASH)), restoring dist/"; \
+		rm -rf dist; \
+		cp -a "$(_UI_CACHE_ENTRY)" dist; \
+	else \
+		$(MAKE) _build; \
+		if [ -n "$(UI_TREE_HASH)" ]; then \
+			echo "Caching UI build ($(UI_TREE_HASH))"; \
+			mkdir -p "$(_UI_CACHE_BASE)"; \
+			rm -rf "$(_UI_CACHE_ENTRY)"; \
+			cp -a dist "$(_UI_CACHE_ENTRY)"; \
+		fi; \
+	fi
+
+_build: $(NODE_BIN)/.corepack-enabled
 	pnpm install --frozen-lockfile
 	pnpm build
 	@# Pre-compress assets for serving with Content-Encoding: gzip.
 	@# Vite already content-hashes filenames, so .gz siblings are safe to cache.
+	@# -n omits the timestamp so output is reproducible.
 	find dist/assets -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
-		| xargs -P0 gzip -9 -k
+		| xargs -P0 gzip -9 -k -n
 
 dev: $(NODE_BIN)/.corepack-enabled ## Run Vite dev server
 	pnpm dev
