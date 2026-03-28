@@ -92,6 +92,9 @@ var reservedSuffixRE = regexp.MustCompile(`-(p|port)?[0-9]+$`)
 // p80, p8080, port8080, port9000 etc are reserved for possible future port subdomains.
 var reservedFullNameRE = regexp.MustCompile(`^(p|port)[0-9]*$`)
 
+// reservedShardRE reserves infrastructure shard names (na0001, na12345, etc).
+var reservedShardRE = regexp.MustCompile(`^na[0-9]+$`)
+
 // nameFormatRE matches valid box name format:
 // starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
 var nameFormatRE = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
@@ -135,6 +138,11 @@ func Valid(name string) error {
 
 	// Reject names that are entirely reserved patterns (e.g., p, p80, p8080)
 	if reservedFullNameRE.MatchString(name) {
+		return errUnavailableName
+	}
+
+	// Reject infrastructure shard names (na0001, na12345, etc)
+	if reservedShardRE.MatchString(name) {
 		return errUnavailableName
 	}
 

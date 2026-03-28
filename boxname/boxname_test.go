@@ -125,6 +125,40 @@ func TestTeamRenameNameAlwaysValid(t *testing.T) {
 	}
 }
 
+func TestReservedShardNames(t *testing.T) {
+	t.Parallel()
+
+	// Shard names like na + digits should be reserved
+	invalidNames := []string{
+		"na001",
+		"na123",
+		"na0001",
+		"na1234",
+		"na12345",
+		"na123456",
+	}
+	for _, name := range invalidNames {
+		if IsValid(name) {
+			t.Errorf("Shard name %q should be reserved", name)
+		}
+	}
+
+	// Names that start with na but have non-digit chars should be fine
+	validNames := []string{
+		"nacho",
+		"natal",
+		"na12b4",
+		"na123x",
+		"navel",
+		"napalm",
+	}
+	for _, name := range validNames {
+		if !IsValid(name) {
+			t.Errorf("Name %q should be valid (not a shard pattern)", name)
+		}
+	}
+}
+
 func TestDrugSpamDenylist(t *testing.T) {
 	t.Parallel()
 	for _, name := range denySubstrings {
