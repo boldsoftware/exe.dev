@@ -130,6 +130,7 @@ type jsonPendingInvite struct {
 type jsonCreditInfo struct {
 	PlanName                string            `json:"planName"`
 	SelfServeBilling        bool              `json:"selfServeBilling"`
+	PaidPlan                bool              `json:"paidPlan"`
 	SkipBilling             bool              `json:"skipBilling"`
 	BillingStatus           string            `json:"billingStatus"`
 	ShelleyCreditsAvailable float64           `json:"shelleyCreditsAvailable"`
@@ -454,12 +455,14 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	// Billing
 	var planName string
 	var selfServeBilling bool
+	var paidPlan bool
 	var billingStatus string
 	skipBilling := s.env.SkipBilling
 	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		version := entitlement.PlanCategory(planRow.PlanID)
+		version := entitlement.BasePlan(planRow.PlanID)
 		planName = entitlement.PlanName(version)
 		selfServeBilling = version == entitlement.CategoryIndividual
+		paidPlan = entitlement.PlanIsPaid(version)
 	}
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {
@@ -578,6 +581,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		Credits: jsonCreditInfo{
 			PlanName:                planName,
 			SelfServeBilling:        selfServeBilling,
+			PaidPlan:                paidPlan,
 			SkipBilling:             skipBilling,
 			BillingStatus:           billingStatus,
 			ShelleyCreditsAvailable: shelleyCreditsAvailable,

@@ -157,11 +157,11 @@
               <span class="info-label">Invoices</span>
               <span class="info-value"><a href="/billing/update?source=profile">View</a></span>
             </div>
-            <div v-else-if="data.credits.billingStatus === 'canceled'" class="info-row">
+            <div v-else-if="data.credits.billingStatus === 'canceled' && !data.credits.paidPlan" class="info-row">
               <span class="info-label">Subscription</span>
               <span class="info-value"><a href="/billing/update?source=profile">Renew</a></span>
             </div>
-            <div v-else-if="!data.credits.selfServeBilling" class="info-row">
+            <div v-else-if="!data.credits.paidPlan" class="info-row">
               <span class="info-label">Subscribe</span>
               <span class="info-value"><a href="/billing/update?source=profile">Upgrade to a paid plan</a></span>
             </div>

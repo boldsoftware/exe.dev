@@ -43,6 +43,9 @@ type Plan struct {
 	// Entitlements is the set of capabilities this plan grants.
 	Entitlements map[Entitlement]bool
 
+	// Paid indicates whether this plan represents active paid billing.
+	Paid bool
+
 	// Quotas contains numeric limits and amounts tied to this plan.
 	Quotas PlanQuotas
 }
@@ -71,6 +74,7 @@ var plans = map[PlanCategory]Plan{
 		ID:                 "team:monthly:20260106",
 		Available:          true,
 		Category:           CategoryTeam,
+		Paid:               true,
 		Name:               "Team",
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
@@ -86,6 +90,7 @@ var plans = map[PlanCategory]Plan{
 		ID:                 "individual:monthly:20260106",
 		Available:          true,
 		Category:           CategoryIndividual,
+		Paid:               true,
 		Name:               "Individual",
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
@@ -243,6 +248,12 @@ func PlanName(version PlanCategory) string {
 		return ""
 	}
 	return p.Name
+}
+
+// PlanIsPaid reports whether the plan represents active paid billing.
+func PlanIsPaid(version PlanCategory) bool {
+	p, ok := plans[version]
+	return ok && p.Paid
 }
 
 // PlanGrants reports whether the given plan version grants the specified entitlement.

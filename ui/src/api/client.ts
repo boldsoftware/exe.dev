@@ -138,6 +138,7 @@ export interface PendingTeamInvite {
 export interface CreditInfo {
   planName: string
   selfServeBilling: boolean
+  paidPlan: boolean
   skipBilling: boolean
   billingStatus: string
   shelleyCreditsAvailable: number
