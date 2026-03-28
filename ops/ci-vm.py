@@ -592,6 +592,19 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
         str(ch_artifact), str(exeletd_bin), str(exeletctl_bin),
         f"{USER_NAME}@{ip}:~/.cache/exedops/")
 
+    # Copy Docker Hub auth into VM for authenticated pulls (avoids rate limits).
+    docker_cfg = Path.home() / ".docker" / "config.json"
+    if docker_cfg.exists():
+        run("scp", *scp_opts, str(docker_cfg), f"{USER_NAME}@{ip}:/tmp/docker-config.json")
+        run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
+            "sudo mkdir -p /root/.docker && sudo mv /tmp/docker-config.json /root/.docker/config.json")
+    elif os.environ.get("BUILDKITE"):
+        raise RuntimeError(
+            "~/.docker/config.json not found. Docker Hub pulls will be rate-limited.\n"
+            "Fix: sudo -u buildkite-agent docker login\n"
+            f"Expected path: {docker_cfg}"
+        )
+
     run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
         "sudo mv ~/setup-cloud-hypervisor.sh ~/setup-exelet.sh /root/ "
         "&& sudo chmod +x /root/setup-cloud-hypervisor.sh /root/setup-exelet.sh")
