@@ -12,6 +12,7 @@ WorkingDirectory=/home/exedev/exe
 ExecStart=/usr/bin/python3 /home/exedev/exe/scripts/agents/bored/bored.py
 Environment=HOME=/home/exedev
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/exedev/.config/bored/env
 
 [Install]
 WantedBy=multi-user.target

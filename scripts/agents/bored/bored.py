@@ -48,12 +48,9 @@ CLAUDE_CMD = ["claude", "--dangerously-skip-permissions", "--model", "opus", "--
 MAX_ITEMS = 10
 RESERVATION_TIMEOUT = 900  # 15 minutes
 COOLDOWN_DURATION = 172800  # 48 hours
-CI_POLL_INTERVAL = 15  # seconds between CI status checks
-CI_FIND_TIMEOUT = 180  # seconds to wait for CI run to appear
-CI_TIMEOUT = 3600  # max seconds to wait for CI run completion
 WORKER_SLEEP = 30  # seconds between worker iterations
 GARDENING_BACKOFF = 600  # seconds to wait after gardening finds nothing
-CLAUDE_TIMEOUT = 86400  # 24h timeout for claude invocations
+CLAUDE_TIMEOUT = 21600  # 6h timeout for claude invocations
 NO_ISSUES = object()  # sentinel: gardening found nothing to work on
 ISSUE_ALREADY_QUEUED = object()  # sentinel: gardening picked an already-queued issue
 APPROVER_AUTHORS = {
@@ -374,75 +371,76 @@ def run_claude(prompt, *, cwd=None, timeout=CLAUDE_TIMEOUT):
     )
 
 
+
 # ---------------------------------------------------------------------------
-# CI queue integration (mirrors bin/q logic)
+# Buildkite CI (used by approve path to merge to main)
 # ---------------------------------------------------------------------------
 
-
-def find_run(branch, commit, timeout=CI_FIND_TIMEOUT, interval=3):
-    """Poll until a workflow run appears for the given branch+commit."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            out = gh(
-                "run", "list",
-                "--repo", CODE_REPO,
-                "--branch", branch,
-                "--workflow", "queue-main.yml",
-                "--limit", "10",
-                "--json", "headSha,databaseId",
-                check=False,
-            )
-            if out:
-                for r in json.loads(out):
-                    if r.get("headSha") == commit:
-                        return r["databaseId"]
-        except (json.JSONDecodeError, KeyError):
-            pass
-        time.sleep(interval)
-    return None
+BUILDKITE_ORG = "bold-software"
+BUILDKITE_PIPELINE = "exe-kite-queue"
+BUILDKITE_TERMINAL_STATES = {"passed", "failed", "blocked", "canceled", "skipped", "not_run"}
+BK_FIND_TIMEOUT = 180
+BK_POLL_INTERVAL = 15
+BK_TIMEOUT = 3600
 
 
-def poll_run(run_id, timeout=CI_TIMEOUT, interval=CI_POLL_INTERVAL):
-    """Poll a run until completion. Returns (conclusion, url)."""
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout:
-        out = gh(
-            "run", "view", str(run_id),
-            "--repo", CODE_REPO,
-            "--json", "status,conclusion,url",
-            check=False,
-        )
-        try:
-            data = json.loads(out)
-        except (json.JSONDecodeError, TypeError):
-            data = {}
-        if data.get("status") == "completed":
-            return data.get("conclusion", "failure"), data.get("url", "")
-        elapsed = int(time.monotonic() - t0)
-        m, s = divmod(elapsed, 60)
-        log.info("CI run %s: running [%dm%02ds]", run_id, m, s)
-        time.sleep(interval)
-    return "timeout", ""
+def bk_api(path):
+    """Call the Buildkite REST API. Returns parsed JSON, or None on error."""
+    token = os.environ.get("BUILDKITE_API_TOKEN", "")
+    if not token:
+        log.error("BUILDKITE_API_TOKEN not set")
+        return None
+    url = f"https://api.buildkite.com/v2/organizations/{BUILDKITE_ORG}/pipelines/{BUILDKITE_PIPELINE}/{path}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+        log.warning("Buildkite API error for %s: %s", path, e)
+        return None
 
 
-def push_and_wait_ci(sha, branch, *, cwd=None):
-    """Push sha to branch, find CI run, poll to completion. Returns (conclusion, url)."""
+def push_and_wait_bk(sha, branch, *, cwd=None):
+    """Push sha to a kite-queue branch, poll Buildkite to completion. Returns (conclusion, url)."""
     git("push", "-f", "origin", f"{sha}:refs/heads/{branch}", cwd=cwd)
-    log.info("pushed %s to %s, waiting for CI run...", sha[:7], branch)
+    log.info("pushed %s to %s, waiting for Buildkite build...", sha[:7], branch)
 
     commit = git("rev-parse", sha, cwd=cwd)
-    run_id = find_run(branch, commit)
-    if not run_id:
-        log.error("no CI run found for %s on %s after %ds", sha[:7], branch, CI_FIND_TIMEOUT)
-        return "no_run", ""
+    branch_enc = urllib.parse.quote(branch, safe="")
+    deadline = time.monotonic() + BK_FIND_TIMEOUT
+    build = None
+    while time.monotonic() < deadline:
+        data = bk_api(f"builds?branch={branch_enc}&commit={commit}&per_page=1")
+        if data and len(data) > 0:
+            build = data[0]
+            break
+        time.sleep(3)
 
-    url = f"https://github.com/{CODE_REPO}/actions/runs/{run_id}"
-    log.info("CI run started: %s", url)
+    if not build:
+        log.error("no Buildkite build found for %s on %s after %ds", sha[:7], branch, BK_FIND_TIMEOUT)
+        return "no_build", ""
 
-    conclusion, run_url = poll_run(run_id)
-    log.info("CI run %s: %s", run_id, conclusion)
-    return conclusion, run_url or url
+    web_url = build.get("web_url", "")
+    log.info("Buildkite build started: %s", web_url)
+
+    # Poll until terminal state
+    build_number = build["number"]
+    t0 = time.monotonic()
+    state = ""
+    while time.monotonic() - t0 < BK_TIMEOUT:
+        data = bk_api(f"builds/{build_number}")
+        state = data.get("state", "") if data else ""
+        if state in BUILDKITE_TERMINAL_STATES:
+            break
+        elapsed = int(time.monotonic() - t0)
+        m, s = divmod(elapsed, 60)
+        log.info("Buildkite build %s: running [%dm%02ds]", build_number, m, s)
+        time.sleep(BK_POLL_INTERVAL)
+
+    final_url = (data or {}).get("web_url", "") if state in BUILDKITE_TERMINAL_STATES else ""
+    log.info("Buildkite build %s: %s", build_number, state)
+    conclusion = "success" if state == "passed" else state
+    return conclusion, final_url or web_url
 
 
 # ---------------------------------------------------------------------------
@@ -586,8 +584,15 @@ def fix_issue(issue_number, wt_path):
 def autorefine(wt_path):
     """Run the autorefine skill in the worktree. Returns the autorefine summary."""
     copy_skills(wt_path)
+    run_ci_script = os.path.join(SCRIPT_DIR, "run-ci.py")
+    ci_instructions = (
+        f". After handling review feedback, run `python3 {run_ci_script}` to verify CI passes. "
+        f"Exit code 0 means passed; exit code 1 means failed (stdout has failure logs). "
+        f"If CI fails, analyze the logs, fix the issue (or just retry if it looks flaky), "
+        f"and re-run CI. The commit is not done until CI passes."
+    )
     try:
-        return run_claude("autorefine", cwd=wt_path)
+        return run_claude("autorefine" + ci_instructions, cwd=wt_path)
     finally:
         skills_dir = os.path.join(wt_path, ".claude", "skills")
         if os.path.isdir(skills_dir):
@@ -600,35 +605,6 @@ def update_commit_message(wt_path, autorefine_summary):
     run_claude(prompt, cwd=wt_path)
 
 
-def ci_qualify(commit_id, wt_path):
-    """Run CI qualification (CI ONLY push). Returns (success, sha, ci_url) or (False, None, url)."""
-    # Capture full message with %B for exact round-trip (%s/%b split loses whitespace)
-    full_message = git("--no-pager", "log", "--format=%B", "-n", "1", "HEAD", cwd=wt_path)
-    subject = full_message.split("\n", 1)[0]
-
-    # Amend with CI ONLY prefix
-    ci_message = "CI ONLY: " + full_message
-    git("commit", "--amend", "-m", ci_message, cwd=wt_path)
-
-    ci_sha = git("rev-parse", "HEAD", cwd=wt_path)
-    branch = f"queue-main-bored-cionly-{commit_id}-{slugify(subject)}"
-
-    conclusion, url = push_and_wait_ci(ci_sha, branch, cwd=wt_path)
-
-    # Clean up the CI-only branch regardless of outcome (CI may have already deleted it)
-    try:
-        git("push", "origin", "--delete", branch, cwd=wt_path)
-    except Exception as e:
-        log.debug("CI-only branch %s already deleted or failed to delete: %s", branch, e)
-
-    if conclusion == "success":
-        # Restore original message exactly
-        git("commit", "--amend", "-m", full_message, cwd=wt_path)
-        final_sha = git("rev-parse", "HEAD", cwd=wt_path)
-        return True, final_sha, url
-    else:
-        return False, None, url
-
 
 def push_hidden_ref(commit_id, sha, wt_path):
     """Push a qualified commit to a hidden ref."""
@@ -636,21 +612,8 @@ def push_hidden_ref(commit_id, sha, wt_path):
     log.info("pushed %s to refs/bored/%s", sha[:7], commit_id)
 
 
-def post_ci_failure(issue_number, ci_url):
-    """Post CI failure to the issue."""
-    body = f"Bored CI qualification failed.\n\nCI run: {ci_url}\n\n{WHENCE}"
-    try:
-        gh(
-            "issue", "comment", str(issue_number),
-            "--repo", ISSUES_REPO,
-            "--body", body,
-        )
-    except Exception as e:
-        log.warning("failed to post CI failure to issue #%d: %s", issue_number, e)
-
-
 def generate_commit():
-    """Full pipeline: gardening -> fix -> refine -> CI qualify. Returns item dict or None."""
+    """Full pipeline: gardening -> fix -> autorefine (incl. CI) -> push. Returns item dict or None."""
     commit_id = gen_id()
     log.info("starting commit generation (id=%s)", commit_id)
 
@@ -697,26 +660,17 @@ def generate_commit():
         log.info("updating commit message")
         update_commit_message(wt_path, autorefine_summary)
 
-        # Capture commit info before CI qualification. The amend/restore cycle
-        # changes the SHA but preserves the tree and message, so these are stable.
+        # Step 5: Push to hidden ref
+        # CI was already run and fixed by autorefine's inner agent.
         subject = git("--no-pager", "log", "--format=%s", "-n", "1", "HEAD", cwd=wt_path)
         body = git("--no-pager", "log", "--format=%b", "-n", "1", "HEAD", cwd=wt_path)
         diff = git("--no-pager", "diff", "origin/main..HEAD", cwd=wt_path)
+        sha = git("rev-parse", "HEAD", cwd=wt_path)
 
-        # Step 5: CI qualification
-        log.info("running CI qualification")
-        passed, sha, ci_url = ci_qualify(commit_id, wt_path)
-
-        if not passed:
-            log.warning("CI qualification failed for issue #%d: %s", issue_number, ci_url)
-            post_ci_failure(issue_number, ci_url)
-            return None
-
-        # Push to hidden ref
         push_hidden_ref(commit_id, sha, wt_path)
 
         github_url = f"https://github.com/{CODE_REPO}/commit/{sha}"
-        log.info("commit %s qualified and pushed (issue #%d)", commit_id, issue_number)
+        log.info("commit %s pushed (issue #%d)", commit_id, issue_number)
 
         return {
             "id": commit_id,
@@ -814,14 +768,14 @@ def _set_approval_trailers(wt_path, user_email):
 
 
 def approve_commit(commit_id, user_email):
-    """Push commit through queue-main for real merge."""
+    """Push commit through kite-queue for real merge."""
     item = db_get_item(commit_id)
     if not item:
         return
 
     # Status already set to "approving" atomically by the handler.
     subject = item["subject"]
-    branch = f"queue-main-bored-{commit_id}-{slugify(subject)}"
+    branch = f"kite-queue-bored-{commit_id}-{slugify(subject)}"
 
     # Check out the commit, add approval trailers, push
     wt_path = None
@@ -836,7 +790,7 @@ def approve_commit(commit_id, user_email):
         # Update hidden ref with trailered commit
         git("push", "-f", "origin", f"{sha}:refs/bored/{commit_id}", cwd=wt_path)
 
-        conclusion, ci_url = push_and_wait_ci(sha, branch, cwd=wt_path)
+        conclusion, ci_url = push_and_wait_bk(sha, branch, cwd=wt_path)
 
         if conclusion == "success":
             log.info("commit %s approved and merged", commit_id)
