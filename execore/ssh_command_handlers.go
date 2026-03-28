@@ -187,7 +187,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
 	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
 	fs.Uint("cpu", 0, "[hidden] number of CPUs (default 2)")
-	fs.String("setup-script", "", "[hidden] setup script to run on first boot (max 10KiB); use /dev/stdin to read from stdin")
+	fs.String("setup-script", "", "[hidden] setup script to run on first boot (max 10KiB); supports \\n for newlines; use /dev/stdin to pipe from stdin")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")

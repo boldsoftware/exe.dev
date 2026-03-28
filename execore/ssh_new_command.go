@@ -57,6 +57,27 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Parse --setup-script flag
 	setupScript := cc.FlagSet.Lookup("setup-script").Value.String()
+	if setupScript == "/dev/stdin" {
+		if !cc.IsSSHExec() {
+			return cc.Errorf("--setup-script=/dev/stdin requires a non-interactive SSH session (e.g., cat script.sh | ssh exe.dev new --setup-script=/dev/stdin)")
+		}
+		data, err := io.ReadAll(io.LimitReader(cc.SSHSession, maxSetupScript+1))
+		if err != nil {
+			return cc.Errorf("reading setup script from stdin: %v", err)
+		}
+		if len(data) > maxSetupScript {
+			return cc.Errorf("--setup-script=/dev/stdin: input exceeds 10 KiB limit")
+		}
+		setupScript = strings.TrimRight(string(data), "\n")
+		if setupScript == "" {
+			return cc.Errorf("--setup-script=/dev/stdin: stdin was empty")
+		}
+	} else {
+		// Interpret C-style escape sequences (\n, \t, \\) so users can
+		// write multi-line scripts inline:
+		//   new --setup-script="#!/bin/bash\necho hi"
+		setupScript = interpretEscapes(setupScript)
+	}
 	if setupScript == "" {
 		// Fall back to user default
 		setupScript = ss.getUserDefaultSetupScript(ctx, cc.User.ID)
@@ -794,4 +815,35 @@ done:
 	}
 
 	return nil
+}
+
+// interpretEscapes replaces C-style escape sequences (\n, \t, \\)
+// in s with their actual characters. This lets users write multi-line
+// strings inline in the shell, e.g. --setup-script="#!/bin/bash\necho hi".
+func interpretEscapes(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				b.WriteByte('\n')
+				i++
+			case 't':
+				b.WriteByte('\t')
+				i++
+			case '\\':
+				b.WriteByte('\\')
+				i++
+			default:
+				b.WriteByte(s[i])
+			}
+		} else {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
 }
