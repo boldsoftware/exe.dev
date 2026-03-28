@@ -24,7 +24,11 @@ SEGMENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "s
 
 def detect_changes():
     """Return (exe_changed, shelley_changed) by diffing against origin/main."""
-    subprocess.run(["git", "fetch", "origin", "main"], check=True)
+    # Buildkite's checkout already fetches origin/main. Only fetch if missing
+    # (e.g. local testing outside Buildkite).
+    if subprocess.run(["git", "rev-parse", "--verify", "origin/main"],
+                      capture_output=True).returncode != 0:
+        subprocess.run(["git", "fetch", "origin", "main"], check=True)
     result = subprocess.run(
         ["git", "diff", "--name-only", "origin/main...HEAD"],
         capture_output=True, text=True, check=True,

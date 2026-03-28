@@ -131,13 +131,13 @@ def main():
 
     # ── Copy artifacts for downstream shards ──
     print("--- :package: Cache build artifacts for shards", flush=True)
-    run(["cp", "-a", "ui/dist", f"{out}/ui-dist"])
+    run(["cp", "--reflink=auto", "-a", "ui/dist", f"{out}/ui-dist"])
     fs_dir = f"exelet/fs/{goarch}"
     if os.path.isdir(fs_dir):
-        run(["cp", "-a", fs_dir, f"{out}/exelet-fs-{goarch}"])
+        run(["cp", "--reflink=auto", "-a", fs_dir, f"{out}/exelet-fs-{goarch}"])
     init_path = "exelet/vmm/cloudhypervisor/exe-init"
     if os.path.isfile(init_path):
-        run(["cp", init_path, f"{out}/exe-init"])
+        run(["cp", "--reflink=auto", init_path, f"{out}/exe-init"])
 
     print(f"--- :white_check_mark: Prebuilt binaries ready ({total:.1f}s)", flush=True)
     run(["ls", "-lh", out])

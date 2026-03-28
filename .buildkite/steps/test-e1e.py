@@ -53,8 +53,10 @@ def main():
     os.environ["E1E_LOG_DIR"] = os.path.abspath(log_artifact_dir)
 
     json_results = f"e1e-results{suffix}.json"
+    junit_results = f"e1e-results{suffix}.xml"
 
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
+           "--junitfile", junit_results,
            "--", "-race", "-timeout=15m", "-failfast"]
     if run_filter:
         cmd.extend(["-run", run_filter])
@@ -64,6 +66,7 @@ def main():
     test_result = subprocess.run(cmd, env=env)
 
     _annotate_results(json_results, shard)
+    _generate_gantt(json_results, shard)
 
     # Only check golden files if tests passed — if they failed, we deleted
     # the files before the run and they were never regenerated.
@@ -122,22 +125,24 @@ def _restore_prebuilt_artifacts():
 
     fs_cache = f"{prebuilt}/exelet-fs-{goarch}"
     if os.path.isdir(fs_cache):
-        os.makedirs("exelet/fs", exist_ok=True)
-        run(["cp", "-a", fs_cache, f"exelet/fs/{goarch}"])
+        fs_dest = f"exelet/fs/{goarch}"
+        os.makedirs(fs_dest, exist_ok=True)
+        # Use "/. " suffix to copy contents into existing dir (not nest).
+        run(["cp", "--reflink=auto", "-a", fs_cache + "/.", fs_dest + "/"])
     else:
         run(["make", "exelet-fs"])
 
     ui_cache = f"{prebuilt}/ui-dist"
     if os.path.isdir(ui_cache):
         os.makedirs("ui", exist_ok=True)
-        run(["cp", "-a", ui_cache, "ui/dist"])
+        run(["cp", "--reflink=auto", "-a", ui_cache, "ui/dist"])
     else:
         run(["make", "ui"])
 
     init_cache = f"{prebuilt}/exe-init"
     if os.path.isfile(init_cache):
         os.makedirs("exelet/vmm/cloudhypervisor", exist_ok=True)
-        run(["cp", init_cache, "exelet/vmm/cloudhypervisor/exe-init"])
+        run(["cp", "--reflink=auto", init_cache, "exelet/vmm/cloudhypervisor/exe-init"])
     else:
         run(["make", "exe-init"])
 
@@ -165,6 +170,20 @@ def _destroy_stale_vms():
             print(f"  killing stale CH VM (PID {pid})", flush=True)
             subprocess.run(["sudo", "kill", pid], capture_output=True)
         subprocess.run(["sudo", "rm", "-f", pidfile])
+
+
+def _generate_gantt(json_results, shard):
+    """Generate a per-test gantt chart HTML artifact."""
+    if not os.path.isfile(json_results):
+        return
+    suffix = f"-{shard}" if shard else ""
+    output = f"test-gantt{suffix}.html"
+    title = f"e1e tests (shard {shard})" if shard else "e1e tests"
+    result = subprocess.run(
+        ["python3", "bin/ci-test-gantt", json_results, output, title],
+    )
+    if result.returncode != 0:
+        print("WARNING: gantt chart generation failed (non-fatal)", flush=True)
 
 
 def _annotate_results(json_results, shard):

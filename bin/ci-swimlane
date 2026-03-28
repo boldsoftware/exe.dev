@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+"""Fetch Buildkite CI build data and generate a Vega-Lite swimlane/gantt chart.
+
+Usage:
+    bin/ci-swimlane [--builds N] [--output FILE] [--json-dir DIR]
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+from datetime import datetime, timezone
+from html import escape as html_escape
+
+
+def parse_iso(ts: str) -> datetime:
+    """Parse an ISO 8601 timestamp string to a timezone-aware datetime."""
+    if ts is None:
+        return None
+    # Handle Z suffix and fractional seconds
+    ts = ts.replace("Z", "+00:00")
+    return datetime.fromisoformat(ts)
+
+
+def fetch_builds(n: int):
+    """Fetch the last N passed builds from Buildkite API."""
+    proxy = os.environ.get("BUILDKITE_API_PROXY", "https://buildkite.int.exe.xyz/")
+    if not proxy.endswith("/"):
+        proxy += "/"
+    url = (
+        f"{proxy}v2/organizations/bold-software/pipelines/exe-kite-queue/builds"
+        f"?per_page={n}&state=passed"
+    )
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def strip_emoji(name: str) -> str:
+    """Strip Buildkite emoji shortcodes like :rocket: from job names."""
+    import re
+    return re.sub(r':[a-z0-9_+-]+:\s*', '', name).strip()
+
+
+def process_build(build: dict) -> dict:
+    """Process a single build into chart-ready data."""
+    build_num = build["number"]
+    created_at = parse_iso(build["created_at"])
+    finished_at = parse_iso(build.get("finished_at"))
+    build_duration = (finished_at - created_at).total_seconds() if finished_at else None
+
+    jobs = []
+    for job in build.get("jobs", []):
+        if job.get("type") != "script":
+            continue
+        name = job.get("name") or "(unnamed)"
+        started = parse_iso(job.get("started_at"))
+        finished = parse_iso(job.get("finished_at"))
+        if started is None or finished is None:
+            continue
+        start_s = (started - created_at).total_seconds()
+        end_s = (finished - created_at).total_seconds()
+        duration = end_s - start_s
+        jobs.append({
+            "job": strip_emoji(name),
+            "start": round(start_s, 1),
+            "end": round(end_s, 1),
+            "duration": round(duration, 1),
+            "state": job.get("state", "unknown"),
+            "build": f"#{build_num}",
+        })
+
+    # Sort by start time for display
+    jobs.sort(key=lambda j: (j["start"], j["end"]))
+
+    # Compute critical path: the chain of non-overlapping jobs that determines total time.
+    # We use a simple greedy approach: find the longest-path through jobs treated as a DAG
+    # where job B depends on job A if B.start >= A.end (within a small tolerance).
+    critical_path = compute_critical_path(jobs)
+    cp_names = {(j["job"], j["start"]) for j in critical_path}
+    for j in jobs:
+        j["critical_path"] = (j["job"], j["start"]) in cp_names
+
+    cp_duration = sum(j["duration"] for j in critical_path) if critical_path else 0
+
+    return {
+        "build_num": build_num,
+        "branch": build.get("branch", ""),
+        "message": (build.get("message") or "").split("\n")[0][:80],
+        "build_duration": round(build_duration, 1) if build_duration else None,
+        "critical_path_duration": round(cp_duration, 1),
+        "created_at": build["created_at"],
+        "jobs": jobs,
+        "web_url": build.get("web_url", ""),
+    }
+
+
+def compute_critical_path(jobs: list) -> list:
+    """Find the critical path — the sequence of jobs whose total duration
+    determines the build's wall-clock time.
+
+    We model this as: which chain of jobs (where each next job starts after
+    the previous ends) has the latest finish time, accounting for both
+    execution time and wait/queue gaps.
+
+    We find the path that reaches the latest endpoint by dynamic programming.
+    """
+    if not jobs:
+        return []
+
+    TOLERANCE = 2.0  # seconds tolerance for dependency detection
+
+    # Sort jobs by end time
+    sorted_jobs = sorted(jobs, key=lambda j: j["end"])
+
+    # dp[i] = (latest_end_achievable ending at job i, predecessor index)
+    n = len(sorted_jobs)
+    dp_end = [0.0] * n
+    dp_pred = [-1] * n
+
+    for i in range(n):
+        # Base case: this job alone
+        dp_end[i] = sorted_jobs[i]["end"]
+        dp_pred[i] = -1
+
+        # Try extending from a previous job
+        for k in range(i):
+            # Job k must finish before job i starts (with tolerance)
+            if sorted_jobs[k]["end"] <= sorted_jobs[i]["start"] + TOLERANCE:
+                candidate = sorted_jobs[i]["end"]  # the end is the same, but we track the chain
+                # We want the chain where the sum of (job durations + gaps) is maximal
+                # Actually, since all chains end at sorted_jobs[i]["end"], we want the chain
+                # that starts earliest (longest wall-clock span)
+                # Simpler: just pick the chain that has the most coverage
+                if dp_end[k] >= dp_end[dp_pred[i]] if dp_pred[i] >= 0 else True:
+                    dp_pred[i] = k
+
+    # The critical path ends at the job with the latest finish time
+    # Find the job with the latest end
+    best_i = max(range(n), key=lambda i: sorted_jobs[i]["end"])
+
+    # Trace back
+    path = []
+    i = best_i
+    while i >= 0:
+        path.append(sorted_jobs[i])
+        i = dp_pred[i]
+    path.reverse()
+    return path
+
+
+def generate_html(builds_data: list, output_path: str):
+    """Generate a self-contained HTML file with Vega-Lite charts."""
+
+    charts_html_parts = []
+    for bd in builds_data:
+        build_num = bd["build_num"]
+        jobs = bd["jobs"]
+        if not jobs:
+            continue
+
+        max_end = max(j["end"] for j in jobs)
+
+        # Assign row order (by start time, already sorted)
+        job_names_ordered = []
+        seen = set()
+        for j in jobs:
+            key = j["job"]
+            if key not in seen:
+                job_names_ordered.append(key)
+                seen.add(key)
+
+        # Build vega-lite data with critical_path field
+        vl_data = []
+        for j in jobs:
+            vl_data.append({
+                "job": j["job"],
+                "start": j["start"],
+                "end": j["end"],
+                "duration": j["duration"],
+                "state": j["state"],
+                "critical_path": j.get("critical_path", False),
+                "label": f"{j['duration']}s",
+            })
+
+        spec = {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "title": {
+                "text": f"Build #{build_num}: {bd['message']}",
+                "subtitle": f"Branch: {bd['branch']} | Total: {bd['build_duration']}s | Critical path: {bd['critical_path_duration']}s",
+                "fontSize": 16,
+                "subtitleFontSize": 12,
+                "anchor": "start",
+            },
+            "width": 900,
+            "height": max(len(job_names_ordered) * 32, 150),
+            "data": {"values": vl_data},
+            "layer": [
+                {
+                    "mark": {
+                        "type": "bar",
+                        "cornerRadiusEnd": 4,
+                        "height": 22,
+                    },
+                    "encoding": {
+                        "x": {
+                            "field": "start",
+                            "type": "quantitative",
+                            "title": "Time (seconds since build created)",
+                            "scale": {"domain": [0, max_end + 5]},
+                        },
+                        "x2": {"field": "end"},
+                        "y": {
+                            "field": "job",
+                            "type": "nominal",
+                            "title": None,
+                            "sort": job_names_ordered,
+                            "axis": {"labelLimit": 250},
+                        },
+                        "color": {
+                            "field": "state",
+                            "type": "nominal",
+                            "scale": {
+                                "domain": ["passed", "failed", "canceled", "timed_out", "running", "unknown"],
+                                "range": ["#2da44e", "#cf222e", "#999", "#e16f24", "#2f81f7", "#888"],
+                            },
+                            "legend": {"title": "State"},
+                        },
+                        "opacity": {
+                            "condition": {"test": "datum.critical_path", "value": 1.0},
+                            "value": 0.5,
+                        },
+                        "stroke": {
+                            "condition": {"test": "datum.critical_path", "value": "#e8a735"},
+                            "value": None,
+                        },
+                        "strokeWidth": {
+                            "condition": {"test": "datum.critical_path", "value": 2.5},
+                            "value": 0,
+                        },
+                        "tooltip": [
+                            {"field": "job", "title": "Job"},
+                            {"field": "start", "title": "Start (s)"},
+                            {"field": "end", "title": "End (s)"},
+                            {"field": "duration", "title": "Duration (s)"},
+                            {"field": "state", "title": "State"},
+                            {"field": "critical_path", "title": "Critical Path"},
+                        ],
+                    },
+                },
+                {
+                    "mark": {
+                        "type": "text",
+                        "align": "left",
+                        "dx": 4,
+                        "fontSize": 11,
+                        "fontWeight": "bold",
+                    },
+                    "encoding": {
+                        "x": {"field": "end", "type": "quantitative"},
+                        "y": {
+                            "field": "job",
+                            "type": "nominal",
+                            "sort": job_names_ordered,
+                        },
+                        "text": {"field": "label", "type": "nominal"},
+                        "color": {
+                            "condition": {"test": "datum.critical_path", "value": "#b37800"},
+                            "value": "#555",
+                        },
+                    },
+                },
+            ],
+            "config": {
+                "view": {"stroke": "transparent"},
+                "axis": {"grid": True, "gridColor": "#eee"},
+                "font": "system-ui, -apple-system, sans-serif",
+            },
+        }
+
+        spec_json = json.dumps(spec)
+        div_id = f"vis-{build_num}"
+
+        cp_jobs = [j for j in jobs if j.get("critical_path")]
+        cp_text = " → ".join(f"{j['job']} ({j['duration']}s)" for j in cp_jobs)
+
+        charts_html_parts.append(f"""
+        <div class="build-card">
+            <div class="build-meta">
+                <a href="{html_escape(bd['web_url'])}" target="_blank" class="build-link">Build #{build_num}</a>
+                <span class="build-timing">Total: <strong>{bd['build_duration']}s</strong></span>
+                <span class="build-timing">Critical path: <strong>{bd['critical_path_duration']}s</strong></span>
+            </div>
+            <div class="critical-path-detail">
+                <span class="cp-label">Critical path:</span> {html_escape(cp_text)}
+            </div>
+            <div id="{div_id}"></div>
+            <script>
+                vegaEmbed('#{div_id}', {spec_json}, {{actions: false, renderer: 'svg'}}).catch(console.error);
+            </script>
+        </div>
+        """)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CI Swimlane — Buildkite Builds</title>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #f6f8fa;
+            color: #1f2328;
+            padding: 24px;
+        }}
+        h1 {{
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }}
+        .header {{
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #d1d9e0;
+        }}
+        .header p {{
+            color: #656d76;
+            font-size: 14px;
+            margin-top: 4px;
+        }}
+        .legend-note {{
+            margin-top: 8px;
+            font-size: 13px;
+            color: #656d76;
+        }}
+        .legend-note .cp-swatch {{
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2.5px solid #e8a735;
+            background: #2da44e;
+            border-radius: 3px;
+            vertical-align: middle;
+            margin-right: 4px;
+        }}
+        .build-card {{
+            background: #fff;
+            border: 1px solid #d1d9e0;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }}
+        .build-meta {{
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 8px;
+        }}
+        .build-link {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #0969da;
+            text-decoration: none;
+        }}
+        .build-link:hover {{ text-decoration: underline; }}
+        .build-timing {{
+            font-size: 13px;
+            color: #656d76;
+            background: #f6f8fa;
+            padding: 2px 8px;
+            border-radius: 12px;
+            border: 1px solid #d1d9e0;
+        }}
+        .build-timing strong {{ color: #1f2328; }}
+        .critical-path-detail {{
+            font-size: 12px;
+            color: #656d76;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }}
+        .cp-label {{
+            font-weight: 600;
+            color: #b37800;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>CI Build Swimlane</h1>
+        <p>Last {len(builds_data)} passed builds from <code>exe-kite-queue</code></p>
+        <div class="legend-note">
+            <span class="cp-swatch"></span> Critical path jobs (full opacity + gold border). Other jobs shown at 50% opacity.
+        </div>
+    </div>
+    {''.join(charts_html_parts)}
+</body>
+</html>"""
+
+    with open(output_path, "w") as f:
+        f.write(html)
+    print(f"Wrote {output_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate CI swimlane chart from Buildkite builds")
+    parser.add_argument("--builds", type=int, default=5, help="Number of builds to fetch (default: 5)")
+    parser.add_argument("--output", default="/tmp/ci-swimlane.html", help="Output HTML file path")
+    parser.add_argument("--json-dir", default=None, help="Directory of gotestsum JSON files for detailed test bars (optional)")
+    args = parser.parse_args()
+
+    print(f"Fetching last {args.builds} passed builds...")
+    raw_builds = fetch_builds(args.builds)
+    print(f"Got {len(raw_builds)} builds")
+
+    builds_data = []
+    for b in raw_builds:
+        bd = process_build(b)
+        print(f"  Build #{bd['build_num']}: {bd['build_duration']}s total, "
+              f"critical path {bd['critical_path_duration']}s, {len(bd['jobs'])} jobs")
+        builds_data.append(bd)
+
+    generate_html(builds_data, args.output)
+    print(f"\nOpen: file://{os.path.abspath(args.output)}")
+
+
+if __name__ == "__main__":
+    main()

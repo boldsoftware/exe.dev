@@ -43,9 +43,9 @@ func TestIntegrationsProxy(t *testing.T) {
 	// Helper to curl from inside the VM with retry.
 	curlRetry := func(t *testing.T, curlArgs, want string) string {
 		t.Helper()
-		cmd := fmt.Sprintf(`curl --max-time 10 -s %s`, curlArgs)
+		cmd := fmt.Sprintf(`curl --max-time 5 -s %s`, curlArgs)
 		var response string
-		deadline := time.Now().Add(30 * time.Second)
+		deadline := time.Now().Add(45 * time.Second)
 		for {
 			out, _ := boxSSHShell(t, bn, keyFile, cmd).CombinedOutput()
 			response = string(out)

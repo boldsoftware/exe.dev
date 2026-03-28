@@ -1,7 +1,6 @@
 package execore
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -115,7 +114,6 @@ func (s *Server) renderShelleyDownloadPage(w http.ResponseWriter, _ *http.Reques
 	fmt.Fprint(w, html)
 }
 
-// getShelleyBinary is a wrapper that calls xshelley.GetShelley
-func getShelleyBinary(ctx context.Context, goarch string) (string, error) {
-	return xshelley.GetShelley(ctx, goarch)
-}
+// getShelleyBinary calls xshelley.GetShelley.
+// It is a variable so tests can replace it with a stub.
+var getShelleyBinary = xshelley.GetShelley

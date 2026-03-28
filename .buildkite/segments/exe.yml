@@ -3,98 +3,125 @@
   command: python3 .buildkite/steps/build-e1e-binaries.py
   timeout_in_minutes: 10
 
+- label: ":camera: ensure VM snapshot"
+  key: ensure-snapshot
+  command: .buildkite/steps/ensure-snapshot.sh
+  timeout_in_minutes: 10
+
 - label: ":white_check_mark: non-e1e checks"
   key: checks
-  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
-  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-checks.sh
   timeout_in_minutes: 20
 
 - label: ":go: unit tests (execore A-H)"
   key: unit-a
-  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
-  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
     UNIT_TEST_SHARD: A
+  artifact_paths:
+    - "unit-results-*.json"
+    - "unit-results-*.xml"
+    - "test-gantt-unit-*.html"
 
 - label: ":go: unit tests (other pkgs)"
   key: unit-b
-  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
-  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
     UNIT_TEST_SHARD: B
+  artifact_paths:
+    - "unit-results-*.json"
+    - "unit-results-*.xml"
+    - "test-gantt-unit-*.html"
 
 - label: ":go: unit tests (execore I-P)"
   key: unit-c
-  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
-  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
     UNIT_TEST_SHARD: C
+  artifact_paths:
+    - "unit-results-*.json"
+    - "unit-results-*.xml"
+    - "test-gantt-unit-*.html"
 
 - label: ":go: unit tests (execore Q-Z)"
   key: unit-d
-  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
-  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
     UNIT_TEST_SHARD: D
+  artifact_paths:
+    - "unit-results-*.json"
+    - "unit-results-*.xml"
+    - "test-gantt-unit-*.html"
 
-- label: ":rocket: e1e tests (A-N)"
+- label: ":rocket: e1e tests (A-K)"
   key: test-e1e-1
-  depends_on: build-e1e
+  depends_on:
+    - build-e1e
+    - ensure-snapshot
   command: python3 .buildkite/steps/test-e1e.py
   timeout_in_minutes: 20
   env:
     VM_DRIVER: cloudhypervisor
     E1E_SHARD: "1"
-    E1E_RUN_FILTER: "^Test[A-Na-n]"
+    E1E_RUN_FILTER: "^Test[A-Ka-k]"
   artifact_paths:
     - "recordings-1.html"
+    - "test-gantt-1.html"
     - "e1e-results-1.json"
+    - "e1e-results-1.xml"
     - "e1e-logs-1/**/*"
 
-- label: ":rocket: e1e tests (O-S)"
+- label: ":rocket: e1e tests (L-R)"
   key: test-e1e-2
-  depends_on: build-e1e
+  depends_on:
+    - build-e1e
+    - ensure-snapshot
   command: python3 .buildkite/steps/test-e1e.py
   timeout_in_minutes: 20
   env:
     VM_DRIVER: cloudhypervisor
     E1E_SHARD: "2"
-    E1E_RUN_FILTER: "^Test[O-So-s]"
+    E1E_RUN_FILTER: "^Test[L-Rl-r]"
   artifact_paths:
     - "recordings-2.html"
+    - "test-gantt-2.html"
     - "e1e-results-2.json"
+    - "e1e-results-2.xml"
     - "e1e-logs-2/**/*"
 
-- label: ":rocket: e1e tests (T-Z)"
+- label: ":rocket: e1e tests (S-Z)"
   key: test-e1e-3
-  depends_on: build-e1e
+  depends_on:
+    - build-e1e
+    - ensure-snapshot
   command: python3 .buildkite/steps/test-e1e.py
   timeout_in_minutes: 20
   env:
     VM_DRIVER: cloudhypervisor
     E1E_SHARD: "3"
-    E1E_RUN_FILTER: "^Test[T-Zt-z]"
+    E1E_RUN_FILTER: "^Test[S-Zs-z]"
   artifact_paths:
     - "recordings-3.html"
+    - "test-gantt-3.html"
     - "e1e-results-3.json"
+    - "e1e-results-3.xml"
     - "e1e-logs-3/**/*"
 
 - label: ":electric_plug: e1e exelets"
   key: test-exelets
-  depends_on: build-e1e
+  depends_on:
+    - build-e1e
+    - ensure-snapshot
   command: python3 .buildkite/steps/test-e1e-exelets.py
   timeout_in_minutes: 15
   env:
     VM_DRIVER: cloudhypervisor
   artifact_paths:
     - "e1e-results-exelets.json"
+    - "test-gantt-exelets.html"
+    - "e1e-results-exelets.xml"
     - "e1e-logs-exelets/**/*"

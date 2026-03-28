@@ -1,14 +1,34 @@
 package execore
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// stubGetShelleyBinary replaces getShelleyBinary with a stub that returns a
+// temporary file instead of hitting the real GitHub API.  The original
+// function is restored via t.Cleanup.
+func stubGetShelleyBinary(t *testing.T) {
+	t.Helper()
+	orig := getShelleyBinary
+	tmpDir := t.TempDir()
+	getShelleyBinary = func(_ context.Context, goarch string) (string, error) {
+		p := filepath.Join(tmpDir, "shelley-"+goarch)
+		if err := os.WriteFile(p, []byte("fake-shelley-"+goarch), 0o755); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+	t.Cleanup(func() { getShelleyBinary = orig })
+}
+
 func TestHandleShelleyDownload(t *testing.T) {
-	t.Parallel()
+	stubGetShelleyBinary(t)
 	s := newTestServer(t)
 
 	tests := []struct {

@@ -2391,6 +2391,9 @@ func TestDoChanConnectFailurePropagates(t *testing.T) {
 				return
 			}
 			acceptCount.Add(1)
+			// Small delay so the connection stays in-flight long enough for
+			// all goroutines to enter the singleflight group.
+			time.Sleep(50 * time.Millisecond)
 			conn.Write([]byte("not-ssh\n"))
 			conn.Close()
 		}
@@ -2411,9 +2414,15 @@ func TestDoChanConnectFailurePropagates(t *testing.T) {
 	}
 	results := make([]chan dialResult, numCallers)
 	ctx := t.Context()
+	// Use a barrier so all goroutines are ready before any start dialing.
+	// This ensures they all enter the singleflight group concurrently.
+	var ready sync.WaitGroup
+	ready.Add(numCallers)
 	for i := range numCallers {
 		results[i] = make(chan dialResult, 1)
 		go func(ch chan dialResult) {
+			ready.Done()
+			ready.Wait()
 			conn, err := pool.DialContext(ctx, "tcp", "127.0.0.1:80", host, config.User, port, signer, config)
 			ch <- dialResult{conn, err}
 		}(results[i])

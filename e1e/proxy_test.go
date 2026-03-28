@@ -127,29 +127,22 @@ chmod +x /home/exedev/cgi-bin/headers
 		})
 
 		t.Run("public_route", func(t *testing.T) {
-			sleepTimes := []time.Duration{
-				0, 100 * time.Millisecond,
-				200 * time.Millisecond, 300 * time.Millisecond, 500 * time.Millisecond,
-				1 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second,
-				2 * time.Second, 2 * time.Second,
-			}
 			var resp *http.Response
 			var body []byte
-			for _, sleepTime := range sleepTimes {
-				time.Sleep(sleepTime)
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
 				var err error
 				resp, err = doProxyRequest(t, box, httpPort)
 				if err != nil {
+					time.Sleep(500 * time.Millisecond)
 					continue
 				}
 				body, err = io.ReadAll(resp.Body)
 				resp.Body.Close()
-				if err != nil || resp.StatusCode != http.StatusOK {
-					continue
-				}
-				if strings.Contains(string(body), "alive") {
+				if err == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(body), "alive") {
 					break
 				}
+				time.Sleep(500 * time.Millisecond)
 			}
 			if resp == nil {
 				t.Fatal("never received HTTP response from proxy")

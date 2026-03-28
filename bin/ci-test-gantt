@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Generate an HTML gantt chart of Go test execution from gotestsum JSON.
+
+Usage:
+    bin/ci-test-gantt INPUT.json OUTPUT.html [TITLE]
+
+Reads gotestsum --jsonfile output, computes per-test start/end times,
+and produces a self-contained HTML file with a Vega-Lite gantt chart.
+"""
+import json
+import sys
+from pathlib import Path
+
+def parse_test_events(json_path: str) -> list[dict]:
+    """Parse gotestsum JSON into per-test timing records."""
+    starts: dict[str, float] = {}  # test_key -> first timestamp
+    results: list[dict] = []
+    t0 = None
+
+    with open(json_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            ev = json.loads(line)
+            action = ev.get("Action", "")
+            test = ev.get("Test", "")
+            pkg = ev.get("Package", "").replace("exe.dev/", "")
+            ts_str = ev.get("Time", "")
+            elapsed = ev.get("Elapsed", 0.0)
+
+            if not ts_str:
+                continue
+            # Parse ISO timestamp to epoch seconds.
+            from datetime import datetime, timezone
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+            if t0 is None:
+                t0 = ts
+
+            if not test:
+                continue
+            key = f"{pkg}.{test}"
+
+            if action == "run":
+                starts[key] = ts - t0
+            elif action in ("pass", "fail", "skip"):
+                # Only top-level tests (no subtests).
+                if "/" in test:
+                    continue
+                start = starts.get(key, (ts - t0) - elapsed)
+                results.append({
+                    "test": test,
+                    "pkg": pkg,
+                    "start": round(start, 2),
+                    "end": round(start + elapsed, 2),
+                    "elapsed": round(elapsed, 2),
+                    "status": action,
+                })
+
+    results.sort(key=lambda r: r["start"])
+    return results
+
+
+def generate_html(results: list[dict], title: str) -> str:
+    """Generate a self-contained HTML page with a Vega-Lite gantt chart."""
+    max_end = max((r["end"] for r in results), default=0)
+    # Assign y positions: stack tests by start time, pack into lanes.
+    # Simple approach: order by start time, label on y axis.
+    data_json = json.dumps(results)
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; }}
+  h2 {{ margin-bottom: 4px; }}
+  .stats {{ color: #666; margin-bottom: 16px; }}
+  #chart {{ width: 100%; }}
+</style>
+</head>
+<body>
+<h2>{title}</h2>
+<p class="stats">
+  {len(results)} tests | wall clock {max_end:.1f}s |
+  sum {sum(r["elapsed"] for r in results):.1f}s |
+  {sum(1 for r in results if r["status"]=="fail")} failed |
+  {sum(1 for r in results if r["status"]=="skip")} skipped
+</p>
+<div id="chart"></div>
+<script>
+const data = {data_json};
+const spec = {{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  width: "container",
+  height: Math.max(300, data.length * 18),
+  data: {{ values: data }},
+  mark: {{ type: "bar", cornerRadiusEnd: 3, tooltip: true }},
+  encoding: {{
+    y: {{
+      field: "test",
+      type: "nominal",
+      sort: {{ field: "start", order: "ascending" }},
+      axis: {{ labelLimit: 300, title: null }}
+    }},
+    x: {{
+      field: "start",
+      type: "quantitative",
+      title: "Time (seconds since test start)"
+    }},
+    x2: {{ field: "end" }},
+    color: {{
+      field: "status",
+      type: "nominal",
+      scale: {{
+        domain: ["pass", "fail", "skip"],
+        range: ["#4caf50", "#f44336", "#9e9e9e"]
+      }}
+    }},
+    tooltip: [
+      {{ field: "test", title: "Test" }},
+      {{ field: "pkg", title: "Package" }},
+      {{ field: "elapsed", title: "Duration (s)", format: ".1f" }},
+      {{ field: "start", title: "Start (s)", format: ".1f" }},
+      {{ field: "status", title: "Status" }}
+    ]
+  }}
+}};
+vegaEmbed('#chart', spec, {{ actions: false }});
+</script>
+</body>
+</html>
+"""
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} INPUT.json OUTPUT.html [TITLE]", file=sys.stderr)
+        sys.exit(1)
+
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
+    title = sys.argv[3] if len(sys.argv) > 3 else Path(input_path).stem
+
+    if not Path(input_path).exists():
+        print(f"Input file not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    results = parse_test_events(input_path)
+    if not results:
+        print(f"No test results found in {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    html = generate_html(results, title)
+    Path(output_path).write_text(html)
+    print(f"Wrote {output_path} ({len(results)} tests)", flush=True)
+
+
+if __name__ == "__main__":
+    main()

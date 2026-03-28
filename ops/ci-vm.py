@@ -297,6 +297,12 @@ def _setup_tap(tap: str) -> None:
     print(f"TAP {tap!r} attached to {BRIDGE!r}", flush=True)
 
 
+def _teardown_tap(tap: str) -> None:
+    """Remove a TAP interface (best-effort)."""
+    subprocess.run(["sudo", "ip", "link", "del", tap],
+                   check=False, capture_output=True)
+
+
 # ── Guest kernel extraction ───────────────────────────────────────────────────
 
 def _extract_guest_kernel(disk: Path) -> tuple[str, str]:
@@ -349,8 +355,32 @@ def _extract_guest_kernel(disk: Path) -> tuple[str, str]:
         mnt.rmdir()
 
 
-def _find_kernel(snap_dir: Path | None, disk: Path | None = None) -> tuple[str, str]:
-    """Return (vmlinuz, initrd) preferring snap_dir kernel, then guest, then host."""
+def _find_product_kernel() -> str | None:
+    """Return path to the product kernel (exelet/kernel) if available.
+
+    This is the same kernel used inside exe.dev VMs: 6.12.x with ZFS,
+    nftables, virtio, and everything built-in.  No initramfs needed.
+    """
+    product = REPO_ROOT / "exelet" / "fs" / "amd64" / "kernel" / "kernel"
+    if product.exists():
+        return str(product)
+    print(f"Product kernel not found at {product}", flush=True)
+    return None
+
+
+def _find_kernel(snap_dir: Path | None, disk: Path | None = None) -> tuple[str, str | None]:
+    """Return (vmlinuz, initrd_or_None).
+
+    Preference order (for snapshot boots):
+      1. Snapshot-cached kernel + initrd
+    For provisioning (snap_dir=None):
+      2. Guest-extracted kernel + initrd
+      3. Host kernel + initrd
+
+    Note: the product kernel (exelet/fs/amd64/kernel/kernel) cannot be used
+    for CI VMs because it lacks CONFIG_IFB (needed by the exelet for
+    bandwidth limiting) and CONFIG_VFAT_FS (needed for /boot/efi mount).
+    """
     if snap_dir is not None:
         snap_vmlinuz = snap_dir / "vmlinuz"
         snap_initrd  = snap_dir / "initrd.img"
@@ -390,25 +420,86 @@ def _launch_ch(disk: Path, data_disk: Path, seed: Path,
     api     = f"/tmp/ch-api-{NAME}.sock"
 
     gateway = f"{BRIDGE_PFX}.1"
+    # Without initramfs (product kernel), root=LABEL= won't resolve;
+    # use /dev/vda1 which is the Ubuntu cloud image root partition.
+    root_dev = "/dev/vda1" if initrd is None else "LABEL=cloudimg-rootfs"
     cmdline = (
-        "console=ttyS0 root=LABEL=cloudimg-rootfs rw"
+        f"console=ttyS0 root={root_dev} rw"
         " systemd.mask=multipathd.service systemd.mask=multipathd.socket"
     )
     if snap_dir is not None:
+        # Kernel boot optimizations for CI snapshot boots:
+        # - quiet/loglevel: suppress console spam (~hundreds of log lines)
+        # - audit=0: disable audit subsystem
+        # - raid=noautodetect: skip MD RAID scanning
+        # - mitigations=off: skip Spectre/Meltdown mitigations (ephemeral CI VMs)
+        # - rd.udev.log_level: quiet initramfs device discovery
         cmdline += (
-            f" ip={ip}::{gateway}:255.255.255.0:{NAME}:ens4:off"
-            " systemd.mask=cloud-init.service"
-            " systemd.mask=cloud-config.service"
-            " systemd.mask=cloud-final.service"
-            " systemd.mask=systemd-sysctl.service"
-            " systemd.mask=systemd-udev-settle.service"
-            " systemd.mask=zfs-share.service"
+            " quiet loglevel=2 audit=0"
+            " raid=noautodetect"
+            " mitigations=off"
+            " rd.udev.log_level=2"
         )
+        # Static IP via kernel cmdline.
+        # Product kernel (no initramfs/udev) uses traditional eth0 naming;
+        # Ubuntu kernel with initramfs uses systemd predictable naming (ens4).
+        iface = "eth0" if initrd is None else "ens4"
+        cmdline += f" ip={ip}::{gateway}:255.255.255.0:{NAME}:{iface}:off"
+        # Mask all services not needed for CI snapshot boots.
+        for svc in [
+            # cloud-init stack (all four services)
+            "cloud-init.service",
+            "cloud-init-local.service",
+            "cloud-config.service",
+            "cloud-final.service",
+            # systemd services not needed in CI
+            "systemd-sysctl.service",
+            "systemd-udev-settle.service",
+            "systemd-pstore.service",
+            # ZFS share (no NFS/SMB exports)
+            "zfs-share.service",
+            # Snap/package management
+            "snapd.service",
+            "snapd.socket",
+            "snapd.seeded.service",
+            "unattended-upgrades.service",
+            # Hardware services irrelevant in a VM
+            "ModemManager.service",
+            "thermald.service",
+            "fwupd.service",
+            "fwupd-refresh.timer",
+            "secureboot-db.service",
+            # VMware guest agents (we use cloud-hypervisor)
+            "open-vm-tools.service",
+            "vgauth.service",
+            # Storage stacks not used
+            "open-iscsi.service",
+            "iscsid.service",
+            "lvm2-monitor.service",
+            # Network dispatcher (static IP via cmdline)
+            "networkd-dispatcher.service",
+            # networkd-wait-online blocks boot when kernel ip= configures
+            # the interface outside of networkd's control
+            "systemd-networkd-wait-online.service",
+            # EFI mount — product kernel lacks CONFIG_VFAT_FS
+            "boot-efi.mount",
+            # Security/boot not needed in ephemeral CI
+            "apparmor.service",
+            "grub-initrd-fallback.service",
+            "ua-reboot-cmds.service",
+            # Plymouth splash (no display)
+            "plymouth-quit-wait.service",
+            "plymouth-quit.service",
+        ]:
+            cmdline += f" systemd.mask={svc}"
 
     ch_args = [
         CH_BIN,
         "--kernel",    vmlinuz,
-        "--initramfs", initrd,
+    ]
+    if initrd is not None:
+        ch_args += ["--initramfs", initrd]
+    ch_args += [
         "--cmdline",   cmdline,
         "--disk",
         f"path={disk}",
@@ -471,7 +562,7 @@ def _wait_ssh(ip: str, timeout: float = 120) -> None:
         )
         if r.returncode == 0:
             return
-        time.sleep(1)
+        time.sleep(0.3)
 
     print(f"SSH auth failed after {timeout:.0f}s", flush=True)
     serial_log = Path(f"/tmp/ch-{NAME}.log")
@@ -529,13 +620,76 @@ def _ensure_cloud_hypervisor_artifacts(vm_arch: str, ch_version: str,
 
 # ── Snapshot creation (first-boot path) ───────────────────────────────────────
 
-def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
-                             snap_dir: Path, local_base: Path,
-                             local_data: Path) -> None:
-    """SSH in, run setup scripts, cache the snapshot."""
+def _ensure_snapshot(snap_dir: Path) -> None:
+    """Ensure a cached VM snapshot exists, building one if necessary.
+
+    Uses a file lock so that parallel CI jobs on the same host coordinate:
+    only one builds the snapshot while the others wait.
+    """
+    snap_base = snap_dir / "base.qcow2"
+    snap_data = snap_dir / "data.raw"
+    if snap_base.exists() and snap_data.exists():
+        return
+
+    lock_path = CACHE_DIR / f"{snap_dir.name}.provision.lock"
+    sudo("mkdir", "-p", str(CACHE_DIR))
+    fd = open(lock_path, "w")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        if snap_base.exists() and snap_data.exists():
+            print(f"Snapshot became available while waiting: {snap_dir}", flush=True)
+            return
+        _build_snapshot(snap_dir)
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        fd.close()
+
+
+def _build_snapshot(snap_dir: Path) -> None:
+    """Boot a temporary VM, provision it, save the snapshot, destroy the VM."""
+    print(f"Building snapshot: {snap_dir.name}", flush=True)
     ssh_opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
     scp_opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 
+    # ── Boot a fresh VM from the base image ──
+    ip  = allocate_ip()
+    mac = mac_for_ip(ip)
+    tap = tap_name_for(NAME + "-snap")
+    disk      = WORKDIR / f"{NAME}-snap.qcow2"
+    data_disk = WORKDIR / f"{NAME}-snap-data.raw"
+    seed      = WORKDIR / f"{NAME}-snap-seed.iso"
+
+    flat_base = WORKDIR / f"{BASE_IMG.stem}-flat.qcow2"
+    if not flat_base.exists():
+        print("Flattening base image for cloud-hypervisor ...", flush=True)
+        tmp = Path(str(flat_base) + ".converting")
+        sudo("qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
+             str(BASE_IMG), str(tmp))
+        sudo("mv", str(tmp), str(flat_base))
+
+    sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
+         "-b", str(flat_base), str(disk), f"{DISK_GB}G")
+    sudo("truncate", "-s", f"{DATA_GB}G", str(data_disk))
+    _make_cloud_init_iso(seed, False, ip, mac)
+    _setup_tap(tap)
+
+    pid = _launch_ch(disk, data_disk, seed, tap, mac, ip, snap_dir=None)
+    try:
+        _wait_ssh(ip, timeout=300)
+        print("SSH ready (snapshot provisioning VM).", flush=True)
+
+        _provision_vm(ip, ssh_opts, scp_opts)
+        _save_snapshot(ip, disk, data_disk, snap_dir, ssh_opts, scp_opts)
+    finally:
+        # Destroy the temporary VM.
+        subprocess.run(["sudo", "kill", str(pid)], capture_output=True)
+        for f in [disk, data_disk, seed]:
+            subprocess.run(["sudo", "rm", "-f", str(f)], capture_output=True)
+        _teardown_tap(tap)
+
+
+def _provision_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
+    """SSH into a fresh VM, run cloud-init and setup scripts."""
     # Wait for cloud-init. Exit code 2 = "recoverable error" (tolerable).
     # cloud-init v25.3 can return exit 1 while still running; retry up to 60s.
     for attempt in range(12):
@@ -545,7 +699,6 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
         )
         if r.returncode in (0, 2):
             break
-        # If cloud-init is still running, retry after a short sleep.
         combined = r.stdout + r.stderr
         if attempt < 11:
             print(f"cloud-init status exited {r.returncode} (attempt {attempt+1}/12), retrying in 5s...")
@@ -617,11 +770,18 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
     run("ssh", *ssh_opts, "-o", "LogLevel=ERROR", f"{USER_NAME}@{ip}",
         "sudo /bin/bash -x /root/setup-exelet.sh")
 
-    # Save snapshot.
-    snap_base = snap_dir / "base.qcow2"
-    snap_data = snap_dir / "data.raw"
-    sudo("mkdir", "-p", str(snap_dir))
-    sudo("chmod", "777", str(snap_dir))
+
+def _save_snapshot(ip: str, disk: Path, data_disk: Path, snap_dir: Path,
+                   ssh_opts: list, scp_opts: list) -> None:
+    """Sync, extract kernel, and save disk images to snap_dir atomically."""
+    staging = Path(str(snap_dir) + ".staging")
+    sudo("rm", "-rf", str(staging))
+    sudo("mkdir", "-p", str(staging))
+    sudo("chmod", "777", str(staging))
+
+    # Export ZFS pool cleanly so the data disk is consistent, then sync.
+    run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
+        "sudo zpool export tank 2>/dev/null || true; sudo sync")
 
     # Extract guest kernel for future snapshot boots.
     print("Extracting kernel/initrd from VM ...", flush=True)
@@ -636,17 +796,20 @@ def _provision_and_snapshot(ip: str, disk: Path, data_disk: Path,
             f"{USER_NAME}@{ip}:/tmp/vmlinuz-{uname_r}",
             f"{USER_NAME}@{ip}:/tmp/initrd.img-{uname_r}",
             str(td_path) + "/")
-        sudo("cp", str(td_path / f"vmlinuz-{uname_r}"),   str(snap_dir / "vmlinuz"))
-        sudo("cp", str(td_path / f"initrd.img-{uname_r}"), str(snap_dir / "initrd.img"))
-    sudo("chmod", "a+r", str(snap_dir / "vmlinuz"), str(snap_dir / "initrd.img"))
-    print(f"Kernel {uname_r} saved to {snap_dir}", flush=True)
+        sudo("cp", str(td_path / f"vmlinuz-{uname_r}"),   str(staging / "vmlinuz"))
+        sudo("cp", str(td_path / f"initrd.img-{uname_r}"), str(staging / "initrd.img"))
+    sudo("chmod", "a+r", str(staging / "vmlinuz"), str(staging / "initrd.img"))
+    print(f"Kernel {uname_r} saved to staging", flush=True)
 
-    cp_clone(disk, snap_base)
-    cp_clone(data_disk, snap_data)
-    sudo("chmod", "a+r", str(snap_base), str(snap_data))
-    cp_clone(snap_base, local_base)
-    cp_clone(snap_data, local_data)
+    cp_clone(disk, staging / "base.qcow2")
+    cp_clone(data_disk, staging / "data.raw")
+    sudo("chmod", "a+r", str(staging / "base.qcow2"), str(staging / "data.raw"))
 
+    # Atomic rename: snap_dir appears fully populated or not at all.
+    sudo("mkdir", "-p", str(snap_dir.parent))
+    if snap_dir.exists():
+        sudo("rm", "-rf", str(snap_dir))
+    sudo("mv", str(staging), str(snap_dir))
     print(f"Snapshot cached at {snap_dir}", flush=True)
 
 
@@ -717,8 +880,11 @@ def create_vm() -> Path:
     snap_dir, local_base, local_data = _snapshot_paths(s_hash, img_dig, b_hash)
     snap_base = snap_dir / "base.qcow2"
     snap_data = snap_dir / "data.raw"
-    snapshot  = snap_base.exists() and snap_data.exists()
 
+    # ── Ensure snapshot exists (builds one if needed) ──
+    _ensure_snapshot(snap_dir)
+
+    # ── Boot from snapshot ──
     disk      = WORKDIR / f"{NAME}.qcow2"
     data_disk = WORKDIR / f"{NAME}-data.raw"
     seed      = WORKDIR / f"{NAME}-seed.iso"
@@ -727,15 +893,6 @@ def create_vm() -> Path:
     ip  = allocate_ip()
     mac = mac_for_ip(ip)
     print(f"Allocated IP: {ip}  MAC: {mac}", flush=True)
-
-    # ── Prepare backing images ──
-    if snapshot:
-        print(f"Snapshot found: {snap_dir}", flush=True)
-        backing      = local_base
-        data_backing = local_data
-    else:
-        backing      = BASE_IMG
-        data_backing = None
 
     def _needs_flatten(img: Path) -> bool:
         r = subprocess.run(
@@ -747,7 +904,7 @@ def create_vm() -> Path:
         return "backing-filename" in info
 
     def clone_root():
-        if snapshot and (not local_base.exists() or _needs_flatten(local_base)):
+        if not local_base.exists() or _needs_flatten(local_base):
             tmp = Path(str(local_base) + ".converting")
             lock = Path("/tmp") / f"{local_base.name}.lock-{os.getenv('USER', 'ci')}"
             fd = open(lock, "w")
@@ -761,26 +918,11 @@ def create_vm() -> Path:
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 fd.close()
-        if not snapshot:
-            flat_base = WORKDIR / f"{BASE_IMG.stem}-flat.qcow2"
-            if not flat_base.exists():
-                print("Flattening base image for cloud-hypervisor ...", flush=True)
-                tmp = Path(str(flat_base) + ".converting")
-                sudo("qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-                     str(BASE_IMG), str(tmp))
-                sudo("mv", str(tmp), str(flat_base))
-            backing_for_disk = flat_base
-        else:
-            backing_for_disk = backing
-        if snapshot:
-            sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-                 "-b", str(backing), str(disk))
-        else:
-            sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-                 "-b", str(backing_for_disk), str(disk), f"{DISK_GB}G")
+        sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
+             "-b", str(local_base), str(disk))
 
     def clone_data():
-        if snapshot and not local_data.exists():
+        if not local_data.exists():
             tmp = Path(str(local_data) + ".converting")
             lock = Path("/tmp") / f"{local_data.name}.lock-{os.getenv('USER', 'ci')}"
             fd = open(lock, "w")
@@ -792,13 +934,10 @@ def create_vm() -> Path:
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 fd.close()
-        if data_backing:
-            cp_clone(data_backing, data_disk)
-        else:
-            sudo("truncate", "-s", f"{DATA_GB}G", str(data_disk))
+        cp_clone(local_data, data_disk)
 
     def make_iso():
-        _make_cloud_init_iso(seed, snapshot, ip, mac)
+        _make_cloud_init_iso(seed, True, ip, mac)
 
     def setup_tap():
         _setup_tap(tap)
@@ -816,37 +955,38 @@ def create_vm() -> Path:
             if exc:
                 raise RuntimeError(f"Parallel task {task!r} failed: {exc}") from exc
 
-    pid = _launch_ch(disk, data_disk, seed, tap, mac, ip,
-                     snap_dir if snapshot else None)
+    pid = _launch_ch(disk, data_disk, seed, tap, mac, ip, snap_dir)
 
-    ssh_timeout = 120 if snapshot else 300
-    print(f"Waiting for SSH at {ip} (timeout={ssh_timeout}s) ...", flush=True)
-    _wait_ssh(ip, timeout=ssh_timeout)
+    print(f"Waiting for SSH at {ip} (timeout=120s) ...", flush=True)
+    _wait_ssh(ip, timeout=120)
     print("SSH ready.", flush=True)
 
     # Post-boot setup for snapshot boots.
-    if snapshot:
-        ssh_opts = ["-o", "StrictHostKeyChecking=no",
-                    "-o", "UserKnownHostsFile=/dev/null",
-                    "-o", "LogLevel=ERROR"]
-        dns_server = f"{BRIDGE_PFX}.1"
-        setup_cmds = (
-            "sudo zpool import -f -N tank 2>/dev/null || true; "
-            "HP=$(awk '/MemTotal/{print int($2/4096)}' /proc/meminfo) && "
-            "echo $HP | sudo tee /proc/sys/vm/nr_hugepages >/dev/null; "
-            f"sudo mkdir -p /etc/systemd/resolved.conf.d && "
-            f"echo -e '[Resolve]\\nDNS={dns_server}' | "
-            f"sudo tee /etc/systemd/resolved.conf.d/ci.conf >/dev/null && "
-            f"sudo systemctl restart systemd-resolved"
-        )
-        subprocess.run(
-            ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", setup_cmds],
-            check=False, capture_output=True, timeout=60)
-
-    # First-boot provisioning + snapshot creation.
-    if not snapshot:
-        _provision_and_snapshot(
-            ip, disk, data_disk, snap_dir, local_base, local_data)
+    ssh_opts = ["-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "LogLevel=ERROR"]
+    dns_server = f"{BRIDGE_PFX}.1"
+    setup_cmds = (
+        "sudo modprobe zfs 2>/dev/null || true; "
+        "sudo zpool import -f -N tank 2>/dev/null || true; "
+        "HP=$(awk '/MemTotal/{print int($2/4096)}' /proc/meminfo) && "
+        "echo $HP | sudo tee /proc/sys/vm/nr_hugepages >/dev/null; "
+        f"sudo mkdir -p /etc/systemd/resolved.conf.d && "
+        f"echo -e '[Resolve]\\nDNS={dns_server}' | "
+        f"sudo tee /etc/systemd/resolved.conf.d/ci.conf >/dev/null && "
+        f"sudo resolvectl dns eth0 {dns_server} 2>/dev/null || "
+        f"sudo resolvectl dns ens4 {dns_server} 2>/dev/null || "
+        f"sudo systemctl restart systemd-resolved"
+    )
+    r = subprocess.run(
+        ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", setup_cmds],
+        capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        print(f"Post-boot setup warning (exit {r.returncode}):", flush=True)
+        if r.stdout.strip():
+            print(r.stdout.strip(), flush=True)
+        if r.stderr.strip():
+            print(r.stderr.strip(), flush=True)
 
     elapsed = time.monotonic() - t0
     print(f"══════ VM ready in {elapsed:.1f}s  NAME={NAME}  IP={ip} ══════", flush=True)
@@ -901,9 +1041,36 @@ def cmd_run():
             destroy_vm(envfile)
 
 
+def cmd_ensure_snapshot():
+    """Ensure the CI snapshot exists, building it if needed.
+
+    This is meant to run as a separate pipeline step so snapshot
+    provisioning overlaps with binary builds.
+    """
+    sudo("mkdir", "-p", str(WORKDIR))
+
+    s_hash  = _setup_hash()
+    img_dig = _image_digest()
+
+    if not BASE_IMG.exists():
+        print("Downloading base image ...", flush=True)
+        sudo("curl", "-L", BASE_URL, "-o", str(BASE_IMG))
+    sidecar = Path(str(BASE_IMG) + ".sha256")
+    if not sidecar.exists():
+        result = subprocess.run(["sha256sum", str(BASE_IMG)], capture_output=True, text=True)
+        sha = result.stdout.split()[0]
+        subprocess.run(["sudo", "tee", str(sidecar)],
+                       input=sha + "\n", text=True, capture_output=True)
+    b_hash = sidecar.read_text().strip()
+
+    snap_dir, _, _ = _snapshot_paths(s_hash, img_dig, b_hash)
+    _ensure_snapshot(snap_dir)
+    print(f"Snapshot ready: {snap_dir}", flush=True)
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: ci-vm.py {create|destroy|run} [args]")
+        sys.exit("usage: ci-vm.py {create|destroy|run|ensure-snapshot} [args]")
 
     cmd = sys.argv[1]
     if cmd == "create":
@@ -912,6 +1079,8 @@ def main():
         cmd_destroy()
     elif cmd == "run":
         cmd_run()
+    elif cmd == "ensure-snapshot":
+        cmd_ensure_snapshot()
     else:
         sys.exit(f"unknown subcommand: {cmd}")
 

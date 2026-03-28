@@ -6,10 +6,12 @@ set -euo pipefail
 has_errors=0
 
 # ---------------------------------------------------------------------------
-# 0. Fetch origin/main to get the latest gate files and merge base.
+# 0. Ensure origin/main is available (Buildkite checkout already fetches it).
 # ---------------------------------------------------------------------------
-echo "--- Fetching origin/main"
-git fetch origin main
+if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    echo "--- Fetching origin/main"
+    git fetch origin main
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Gate files from origin/main
