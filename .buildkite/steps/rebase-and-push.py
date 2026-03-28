@@ -25,6 +25,9 @@ import github_token
 
 GITHUB_ORG = github_token.GITHUB_ORG
 
+# Subrepo remote name -> GitHub repo name.
+SUBREPOS = [("shelley", "shelley"), ("exeuntu", "exeuntu"), ("oss", "exe.dev")]
+
 
 def run(*cmd, check=True, capture=False):
     print(f"+ {' '.join(cmd)}", flush=True)
@@ -33,16 +36,54 @@ def run(*cmd, check=True, capture=False):
     return subprocess.run(cmd, check=check)
 
 
+def setup_subrepo_mirrors(token: str):
+    """Maintain git mirrors for subrepos in Buildkite's git-mirrors directory.
+
+    Creates/updates bare mirrors, then registers them as alternates so that
+    subsequent `git fetch <remote>` still talks to GitHub but skips
+    downloading objects already present in the mirror.
+    """
+    mirrors_dir = os.environ.get("BUILDKITE_GIT_MIRRORS_PATH", "/data/buildkite/git-mirrors")
+    alternates_file = os.path.join(
+        subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True, text=True, check=True).stdout.strip(),
+        "objects", "info", "alternates",
+    )
+
+    # Read existing alternates so we don't duplicate.
+    existing = set()
+    if os.path.exists(alternates_file):
+        existing = set(open(alternates_file).read().splitlines())
+
+    for name, repo in SUBREPOS:
+        url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
+        mirror_dir = os.path.join(mirrors_dir, repo)
+        objects_dir = os.path.join(mirror_dir, "objects")
+
+        if not os.path.isdir(mirror_dir):
+            print(f"Creating mirror for {repo} at {mirror_dir}", flush=True)
+            run("git", "clone", "--mirror", url, mirror_dir)
+        else:
+            # Rotate the token and update the mirror.
+            subprocess.run(["git", "-C", mirror_dir, "remote", "set-url", "origin", url], capture_output=True)
+            run("./bin/retry.sh", "git", "-C", mirror_dir, "fetch", "--prune", "origin")
+
+        # Register mirror objects as an alternate for the working checkout.
+        if objects_dir not in existing:
+            with open(alternates_file, "a") as f:
+                f.write(objects_dir + "\n")
+            existing.add(objects_dir)
+
+        # Set up the remote pointing at GitHub (the normal way).
+        result = subprocess.run(["git", "remote", "set-url", name, url], capture_output=True)
+        if result.returncode != 0:
+            run("git", "remote", "add", name, url)
+
+
 def sync_shelley(token: str):
     """If shelley/main has advanced past origin/main, sync those commits."""
     print("--- :arrows_counterclockwise: Check shelley/main sync", flush=True)
 
-    # Set up shelley remote
-    shelley_url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/shelley.git"
-    result = subprocess.run(["git", "remote", "set-url", "shelley", shelley_url], capture_output=True)
-    if result.returncode != 0:
-        run("git", "remote", "add", "shelley", shelley_url)
-
+    # Mirrors already set up; fetch from GitHub (fast due to alternates).
     run("./bin/retry.sh", "git", "fetch", "shelley")
 
     shelley_tree = run("git", "rev-parse", "shelley/main^{tree}", capture=True).stdout.strip()
@@ -66,13 +107,7 @@ def push_to_subrepos(token: str):
     """Push to subrepos (shelley, exeuntu, oss)."""
     print("--- :package: Push to subrepos", flush=True)
 
-    # Set up HTTPS remotes with app token
-    for name, repo in [("shelley", "shelley"), ("exeuntu", "exeuntu"), ("oss", "exe.dev")]:
-        url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
-        result = subprocess.run(["git", "remote", "set-url", name, url], capture_output=True)
-        if result.returncode != 0:
-            run("git", "remote", "add", name, url)
-
+    # Remotes and mirrors already set up by setup_subrepo_mirrors().
     run("bin/push-to-subrepo.sh", "main", "shelley", "shelley")
     run("bin/push-to-subrepo.sh", "main", "exeuntu", "exeuntu")
     run("bin/push-to-subrepo.sh", "main", "oss", "oss")
@@ -225,6 +260,10 @@ def main():
 
     print("--- :git: Rebase onto origin/main", flush=True)
     run("git", "fetch", "origin", "main")
+
+    # Set up local mirrors for subrepo remotes (reuses Buildkite git-mirrors dir).
+    # Fetches still go to GitHub, but objects already in the mirror are skipped.
+    setup_subrepo_mirrors(token)
 
     # Sync shelley/main if it has advanced
     sync_shelley(token)
