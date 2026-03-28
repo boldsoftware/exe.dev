@@ -370,8 +370,8 @@ def run_formatters(ref):
 # Add your email and preferred defaults here.
 USER_DEFAULTS = {
     "josharian@gmail.com":       ["--no-format"],
-    "philip@bold.dev":           ["--slug"],
-    "philip.zeyliger@gmail.com": ["--slug"],
+    "philip@bold.dev":           ["--slug", "--no-generate"],
+    "philip.zeyliger@gmail.com": ["--slug", "--no-generate"],
 }
 
 
