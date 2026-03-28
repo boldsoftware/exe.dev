@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# format-and-push.sh — Run formatters and commit fixes if needed.
-# The rebase-and-push step will handle pushing.
+# format-and-push.sh — Run formatters and report whether changes are needed.
+# Sets Buildkite metadata "needs_formatting" to "true" or "false".
+# Does NOT commit; the rebase-and-push step handles that.
 set -euo pipefail
 
 export PATH="/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
@@ -11,10 +12,11 @@ source .buildkite/steps/setup-shelley-deps.sh
 ./bin/run_formatters.sh
 
 if ! git diff --quiet; then
-    git config --global user.name "Auto-formatter"
-    git config --global user.email "bot@exe.dev"
-    git add .
-    git commit -m "all: fix formatting"
+    echo "Formatting changes detected"
+    buildkite-agent meta-data set needs_formatting true
+    git diff --stat
+    git checkout -- .
 else
     echo "No formatting changes needed"
+    buildkite-agent meta-data set needs_formatting false
 fi

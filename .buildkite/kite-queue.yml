@@ -194,8 +194,14 @@ steps:
       - "shelley/ui/playwright-report/**/*"
       - "shelley/ui/test-results/**/*"
 
-  - label: ":art: format"
+  - label: ":art: check formatting"
     key: format
+    depends_on: detect
+    command: .buildkite/steps/format-and-push.sh
+    timeout_in_minutes: 10
+
+  - label: ":shipit: rebase and push to main"
+    key: push-to-main
     depends_on:
       - commit-validation
       - checks
@@ -209,15 +215,10 @@ steps:
       - test-exelets
       - test-shelley
       - test-shelley-playwright
-    command: .buildkite/steps/format-and-push.sh
-    timeout_in_minutes: 10
-
-  - label: ":shipit: rebase and push to main"
-    key: push-to-main
-    depends_on: format
+      - format
     branches: "kite-queue-*"
     command: python3 .buildkite/steps/rebase-and-push.py
-    timeout_in_minutes: 5
+    timeout_in_minutes: 10
     retry:
       automatic:
         - exit_status: 1

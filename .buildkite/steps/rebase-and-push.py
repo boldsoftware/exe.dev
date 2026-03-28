@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Rebase the current branch onto origin/main and push.
+"""Rebase and push to main.
 
 All tests have passed at this point. We:
-  1. Generate a GitHub App installation token
-  2. Configure git to use it
-  3. Sync shelley/main if it has advanced
-  4. Rebase onto origin/main
-  5. Dry-run push to origin/main
-  6. Push to subrepos (shelley, exeuntu, oss)
-  7. Push to origin/main
-  8. Trigger exeuntu build if exeuntu/ changed
-  9. Delete the queue branch
+  1. Run formatters and commit changes (if the parallel format step flagged them)
+  2. Generate a GitHub App installation token
+  3. Configure git to use it
+  4. Sync shelley/main if it has advanced
+  5. Rebase onto origin/main
+  6. Dry-run push to origin/main
+  7. Push to subrepos (shelley, exeuntu, oss)
+  8. Push to origin/main
+  9. Trigger exeuntu build if exeuntu/ changed
+  10. Delete the queue branch
 """
 
 import json
@@ -139,15 +140,42 @@ def delete_queue_branch(token: str):
         print(f"Branch {branch} not yet ancestor of main, skipping delete.", flush=True)
 
 
+def maybe_format():
+    """Run formatters and commit if the parallel format check flagged changes."""
+    needs = run(
+        "buildkite-agent", "meta-data", "get", "needs_formatting",
+        capture=True, check=False,
+    )
+    if needs.returncode != 0 or needs.stdout.strip() != "true":
+        print("No formatting needed, skipping.", flush=True)
+        return
+
+    print("Formatting changes detected earlier, re-running formatters...", flush=True)
+    os.environ["PATH"] = f"/usr/local/go/bin:{os.environ.get('HOME', '')}/go/bin:{os.environ.get('HOME', '')}/.local/bin:{os.environ['PATH']}"
+    result = run("bash", "-c", "source .buildkite/steps/setup-shelley-deps.sh && ./bin/run_formatters.sh", check=False)
+    if result.returncode != 0:
+        print("ERROR: Formatting failed.", file=sys.stderr)
+        sys.exit(1)
+
+    if subprocess.run(["git", "diff", "--quiet"]).returncode != 0:
+        run("git", "add", ".")
+        run("git", "commit", "-m", "all: fix formatting")
+    else:
+        print("Formatters ran but produced no diff (race?), continuing.", flush=True)
+
+
 def main():
+    print("--- :art: Check formatting", flush=True)
+    run("git", "config", "user.email", "ci@exe.dev")
+    run("git", "config", "user.name", "exe CI")
+    maybe_format()
+
     print("--- :key: Generate GitHub App token", flush=True)
     token = github_token.get()
     github_token.configure_origin(token)
     print("Token acquired.", flush=True)
 
     print("--- :git: Rebase onto origin/main", flush=True)
-    run("git", "config", "user.email", "ci@exe.dev")
-    run("git", "config", "user.name", "exe CI")
     run("git", "fetch", "origin", "main")
 
     # Sync shelley/main if it has advanced
