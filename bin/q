@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """q — push to a CI queue branch and wait for the run to finish.
 
-Pushes the given ref (default HEAD) to a queue-main-* branch on origin,
-then polls GitHub Actions until the run completes.
+Pushes the given ref (default HEAD) to a queue branch on origin,
+then polls CI until the run completes.
+
+GitHub Actions: pushes to queue-main-* and polls via `gh`.
+Buildkite (--kite): pushes to kite-queue-* and polls via Buildkite API.
+Buildkite (--dry-run): pushes to kite-test-* (tests only, no merge).
+
+Buildkite API access: set BUILDKITE_API_PROXY (e.g. https://buildkite.int.exe.xyz/)
+or BUILDKITE_API_TOKEN for direct access.
 """
 
 import argparse
@@ -85,12 +92,23 @@ BUILDKITE_TERMINAL_STATES = {"passed", "failed", "blocked", "canceled", "skipped
 
 
 def bk_api(path):
-    """Call the Buildkite REST API. Returns parsed JSON, or None on error."""
+    """Call the Buildkite REST API. Returns parsed JSON, or None on error.
+
+    Checks BUILDKITE_API_PROXY first (e.g. https://buildkite.int.exe.xyz/),
+    which injects auth server-side and needs no token. Falls back to
+    BUILDKITE_API_TOKEN for direct api.buildkite.com access.
+    """
+    proxy = os.environ.get("BUILDKITE_API_PROXY", "").rstrip("/")
     token = os.environ.get("BUILDKITE_API_TOKEN", "")
-    if not token:
+    headers = {"Accept": "application/json"}
+    if proxy:
+        url = f"{proxy}/v2/organizations/{BUILDKITE_ORG}/pipelines/{BUILDKITE_PIPELINE}/{path}"
+    elif token:
+        url = f"https://api.buildkite.com/v2/organizations/{BUILDKITE_ORG}/pipelines/{BUILDKITE_PIPELINE}/{path}"
+        headers["Authorization"] = f"Bearer {token}"
+    else:
         return None
-    url = f"https://api.buildkite.com/v2/organizations/{BUILDKITE_ORG}/pipelines/{BUILDKITE_PIPELINE}/{path}"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
@@ -110,7 +128,7 @@ def find_bk_build(branch, commit, timeout=120, interval=2):
 
 
 def poll_bk_build(build_number, interval=10):
-    """Poll a Buildkite build until completion. Returns (state, elapsed_secs, web_url)."""
+    """Poll a Buildkite build until completion. Returns (state, elapsed_secs, build_data)."""
     t0 = time.monotonic()
     while True:
         data = bk_api(f"builds/{build_number}")
@@ -118,11 +136,95 @@ def poll_bk_build(build_number, interval=10):
         elapsed = int(time.monotonic() - t0)
         if state in BUILDKITE_TERMINAL_STATES:
             sys.stderr.write("\n")
-            return state, elapsed, (data or {}).get("web_url", "")
+            return state, elapsed, data or {}
         m, s = divmod(elapsed, 60)
         sys.stderr.write(f"\rq: running [{m}m{s:02d}s]")
         sys.stderr.flush()
         time.sleep(interval)
+
+
+def _strip_bk_ansi(text):
+    """Remove Buildkite timestamps and ANSI escape codes from log text."""
+    # OSC sequences: \x1b_bk;t=NNN\x07  (Buildkite timestamps)
+    text = re.sub(r'\x1b_bk;t=\d+\x07', '', text)
+    # Fallback for plain _bk;t= (seen in .txt endpoint)
+    text = re.sub(r'_bk;t=\d+', '', text)
+    # SGR sequences: \x1b[...m  (colors)
+    text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+    # Any remaining OSC/escape sequences
+    text = re.sub(r'\x1b\x07', '', text)
+    return text
+
+
+# Lines that are Buildkite framing, not useful error context.
+_BK_NOISE_PREFIXES = ('^^^ ', '~~~ ', 'user command error:')
+
+
+def _extract_errors(log_content, max_lines=30):
+    """Extract error/failure lines from a Buildkite job log."""
+    log_content = _strip_bk_ansi(log_content)
+    lines = log_content.splitlines()
+
+    error_lines = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(_BK_NOISE_PREFIXES):
+            continue
+        # Match Go test failures, FAIL lines, error messages, panics
+        if any(pat in stripped for pat in [
+            'FAIL\t', '--- FAIL', 'FAILED',
+            'panic:', 'error:',
+            'not usable:', 'no such file',
+            'DONE ', '=== FAIL',
+        ]):
+            # Grab some context around the error
+            start = max(0, i - 2)
+            for ctx_line in lines[start:i+1]:
+                ctx = ctx_line.strip()
+                if ctx and ctx not in error_lines \
+                        and not ctx.startswith(_BK_NOISE_PREFIXES):
+                    error_lines.append(ctx)
+
+    if not error_lines:
+        # Fallback: last N non-empty lines
+        tail = [l.strip() for l in lines[-max_lines:] if l.strip()
+                and not l.strip().startswith(_BK_NOISE_PREFIXES)]
+        return tail[-max_lines:]
+
+    return error_lines[-max_lines:]
+
+
+def print_bk_failures(build_data):
+    """Fetch and display failure details from a Buildkite build."""
+    jobs = build_data.get("jobs", [])
+    failed_jobs = [j for j in jobs if j.get("state") in ("failed",)]
+    if not failed_jobs:
+        return
+
+    build_number = build_data.get("number", "?")
+    for job in failed_jobs:
+        name = _strip_bk_ansi(job.get("name", "unknown"))
+        web_url = job.get("web_url", "")
+        job_id = job.get("id", "")
+
+        print(f"\nq: \u2500\u2500 {name} \u2500\u2500", file=sys.stderr)
+        if web_url:
+            print(f"q: {web_url}", file=sys.stderr)
+
+        # Fetch the job log
+        if not job_id:
+            continue
+        log_data = bk_api(f"builds/{build_number}/jobs/{job_id}/log")
+        if not log_data or not log_data.get("content"):
+            print("q: (could not fetch log)", file=sys.stderr)
+            continue
+
+        error_lines = _extract_errors(log_data["content"])
+        if error_lines:
+            print("", file=sys.stderr)
+            for line in error_lines:
+                print(f"  {line}", file=sys.stderr)
+            print("", file=sys.stderr)
 
 
 def watch_origin_main(ref, timeout=300, interval=15):
@@ -423,10 +525,9 @@ def main():
 
     # --- Kite: Buildkite monitoring ---
     if args.kite or args.dry_run:
-        token = os.environ.get("BUILDKITE_API_TOKEN", "")
-        if not token:
-            print("q: set BUILDKITE_API_TOKEN to monitor build progress (read_builds scope)", file=sys.stderr)
-            print("q: https://buildkite.com/user/api-access-tokens/new", file=sys.stderr)
+        has_bk_api = os.environ.get("BUILDKITE_API_PROXY", "") or os.environ.get("BUILDKITE_API_TOKEN", "")
+        if not has_bk_api:
+            print("q: set BUILDKITE_API_PROXY or BUILDKITE_API_TOKEN to monitor build progress", file=sys.stderr)
             if args.dry_run:
                 return
             # Fall back to watching origin/main for merge
@@ -448,7 +549,7 @@ def main():
         if web_url:
             print(f"q: {web_url}", file=sys.stderr)
 
-        state, elapsed, web_url = poll_bk_build(build["number"])
+        state, elapsed, build_data = poll_bk_build(build["number"])
         m, s = divmod(elapsed, 60)
 
         if state == "passed":
@@ -457,10 +558,12 @@ def main():
                 git("fetch", "origin", "main", "--quiet", check=False)
             run_post_hook(args.post_success)
         else:
+            final_url = build_data.get("web_url", web_url)
             msg = f"q: FAILED ({state}) [{m}m{s}s]"
-            if web_url:
-                msg += f" {web_url}"
+            if final_url:
+                msg += f" {final_url}"
             print(msg, file=sys.stderr)
+            print_bk_failures(build_data)
             run_post_hook(args.post_failure)
             raise SystemExit(1)
         return

@@ -185,14 +185,25 @@ fi
 
 
 def _cleanup_old_prebuilt(ci_cache, current_build_id):
-    """Remove prebuilt dirs from previous builds."""
+    """Remove prebuilt dirs older than 1 hour.
+
+    Only age-based cleanup: concurrent builds may still be using their
+    prebuilt dirs for running test shards.
+    """
     import glob
     if ci_cache:
         pattern = f"{ci_cache}/e1e-prebuilt-*"
     else:
         pattern = "/tmp/e1e-prebuilt-*"
+    cutoff = time.time() - 3600  # 1 hour ago
     for d in glob.glob(pattern):
-        if current_build_id not in d:
+        if current_build_id in d:
+            continue
+        try:
+            mtime = os.path.getmtime(d)
+        except OSError:
+            continue
+        if mtime < cutoff:
             subprocess.run(["rm", "-rf", d])
 
 
