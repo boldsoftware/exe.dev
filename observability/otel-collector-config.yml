@@ -339,7 +339,7 @@ exporters:
     database: default
     endpoint: https://tumy84t4c1.us-west-2.aws.clickhouse.cloud:8443
     password: "${CLICKHOUSE_OBSERVABILITY_PASSWORD}"
-    username: default
+    username: otel-ingest
     ttl: 87600h
     timeout: 5s
     retry_on_failure:
