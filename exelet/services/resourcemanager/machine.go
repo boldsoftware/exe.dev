@@ -231,10 +231,11 @@ func readDiskInfoDir(ctx context.Context, dir string) (diskInfo, error) {
 	if err := unix.Statfs(dir, &fs); err != nil {
 		return diskInfo{}, err
 	}
-	// Convert from blocks to KiB. Blocks/Bavail are in units of Frsize
-	// (fragment size), not Bsize (preferred I/O size).
-	total := int64(fs.Blocks) * int64(fs.Frsize) / 1024
-	avail := int64(fs.Bavail) * int64(fs.Frsize) / 1024
+	// Convert from blocks to KiB. Blocks/Bavail are in units of the
+	// fundamental block size (Frsize on Linux, Bsize on Darwin).
+	bsz := statfsBlockSize(&fs)
+	total := int64(fs.Blocks) * bsz / 1024
+	avail := int64(fs.Bavail) * bsz / 1024
 	di := diskInfo{
 		diskTotal: int64(total),
 		diskFree:  int64(avail),
