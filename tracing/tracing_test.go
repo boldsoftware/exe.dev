@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestGenerateTraceID(t *testing.T) {
@@ -320,4 +322,97 @@ func TestSetTraceIDHeader_NoTraceID(t *testing.T) {
 	if got != "" {
 		t.Errorf("SetTraceIDHeader() should not set header when no trace_id in context, got %q", got)
 	}
+}
+
+func TestHandlerInjectsOTELTraceID(t *testing.T) {
+	// Capture the context that reaches the inner handler.
+	var innerCtx context.Context
+	inner := slog.NewJSONHandler(&bytes.Buffer{}, nil)
+	capture := &ctxCaptureHandler{Handler: inner}
+
+	handler := NewHandler(capture)
+	logger := slog.New(handler)
+
+	traceID := GenerateTraceID()
+	ctx := ContextWithTraceID(context.Background(), traceID)
+
+	logger.InfoContext(ctx, "test")
+
+	innerCtx = capture.lastCtx
+	sc := trace.SpanContextFromContext(innerCtx)
+	if !sc.HasTraceID() {
+		t.Fatal("inner context should have an OTEL TraceID")
+	}
+	if sc.TraceID().String() != traceID {
+		t.Errorf("OTEL TraceID = %q, want %q", sc.TraceID().String(), traceID)
+	}
+	if !sc.IsSampled() {
+		t.Error("OTEL SpanContext should be sampled")
+	}
+}
+
+func TestHandlerPreservesExistingOTELSpan(t *testing.T) {
+	// If there's already a valid OTEL span in context, don't overwrite it.
+	var innerCtx context.Context
+	inner := slog.NewJSONHandler(&bytes.Buffer{}, nil)
+	capture := &ctxCaptureHandler{Handler: inner}
+
+	handler := NewHandler(capture)
+	logger := slog.New(handler)
+
+	// Create a context with both our custom trace_id and a real OTEL span context.
+	customTraceID := GenerateTraceID()
+
+	otelTraceID := GenerateTraceID()
+	var tid trace.TraceID
+	b, _ := hex.DecodeString(otelTraceID)
+	copy(tid[:], b)
+	var sid trace.SpanID
+	sid[0] = 0x01 // non-zero so it's valid
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: trace.FlagsSampled,
+	})
+
+	ctx := ContextWithTraceID(context.Background(), customTraceID)
+	ctx = trace.ContextWithSpanContext(ctx, sc)
+
+	logger.InfoContext(ctx, "test")
+
+	innerCtx = capture.lastCtx
+	got := trace.SpanContextFromContext(innerCtx)
+	if got.TraceID().String() != otelTraceID {
+		t.Errorf("OTEL TraceID should be preserved: got %q, want %q", got.TraceID().String(), otelTraceID)
+	}
+}
+
+func TestHandlerSkipsInvalidTraceID(t *testing.T) {
+	// Non-hex or wrong-length trace_id should not inject OTEL context.
+	var innerCtx context.Context
+	inner := slog.NewJSONHandler(&bytes.Buffer{}, nil)
+	capture := &ctxCaptureHandler{Handler: inner}
+
+	handler := NewHandler(capture)
+	logger := slog.New(handler)
+
+	ctx := ContextWithTraceID(context.Background(), "not-a-valid-hex-trace")
+	logger.InfoContext(ctx, "test")
+
+	innerCtx = capture.lastCtx
+	sc := trace.SpanContextFromContext(innerCtx)
+	if sc.HasTraceID() {
+		t.Error("should not have OTEL TraceID for invalid custom trace_id")
+	}
+}
+
+// ctxCaptureHandler captures the context passed to Handle.
+type ctxCaptureHandler struct {
+	slog.Handler
+	lastCtx context.Context
+}
+
+func (h *ctxCaptureHandler) Handle(ctx context.Context, r slog.Record) error {
+	h.lastCtx = ctx
+	return h.Handler.Handle(ctx, r)
 }

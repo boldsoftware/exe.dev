@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // GenerateTraceID generates a random 16-byte trace ID and returns it as a hex string.
@@ -32,11 +34,12 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 // Handle adds trace_id from context if present, then calls the underlying handler.
+// It also injects an OTEL SpanContext so that the otelslog bridge populates
+// the native OTLP TraceID field (not just a log attribute).
 func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
-	if traceID := ctx.Value("trace_id"); traceID != nil {
-		if tid, ok := traceID.(string); ok {
-			r.AddAttrs(slog.String("trace_id", tid))
-		}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		r.AddAttrs(slog.String("trace_id", tid))
+		ctx = contextWithOTELTraceID(ctx, tid)
 	}
 	return h.handler.Handle(ctx, r)
 }
@@ -104,4 +107,26 @@ func SetTraceIDHeader(ctx context.Context, header http.Header) {
 	if traceID := TraceIDFromContext(ctx); traceID != "" {
 		header.Set(TraceIDHeader, traceID)
 	}
+}
+
+// contextWithOTELTraceID injects our custom trace_id as an OTEL SpanContext
+// into the context. This lets the otelslog bridge populate the native OTLP
+// TraceID field so that Honeycomb/Grafana can correlate logs by trace.
+// If the trace_id isn't a valid 32-hex-char string, the context is returned unchanged.
+func contextWithOTELTraceID(ctx context.Context, traceID string) context.Context {
+	// Only inject if there isn't already a valid OTEL span in context.
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		return ctx
+	}
+	var tid trace.TraceID
+	b, err := hex.DecodeString(traceID)
+	if err != nil || len(b) != 16 {
+		return ctx
+	}
+	copy(tid[:], b)
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		TraceFlags: trace.FlagsSampled,
+	})
+	return trace.ContextWithSpanContext(ctx, sc)
 }
