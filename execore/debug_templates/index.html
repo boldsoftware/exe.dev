@@ -20,8 +20,37 @@ li { margin: 1px 0; }
 </p>
 
 <div style="margin-bottom: 10px;">
-    <form action="/debug/jump" method="get" class="jump"><input type="text" name="q" placeholder="I'm feeling lucky" size="28"><button type="submit">Go</button></form>
+    <form action="/debug/jump" method="get" class="jump" id="jump-form"><input type="text" name="q" placeholder="I'm feeling lucky" size="28"><button type="submit">Go</button><span id="jump-error" style="color:#c00;margin-left:8px;display:none;"></span></form>
 </div>
+<script>
+document.getElementById('jump-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var q = this.q.value.trim();
+    if (!q) return;
+    var errEl = document.getElementById('jump-error');
+    errEl.style.display = 'none';
+    var btn = this.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = '...';
+    fetch('/debug/jump?q=' + encodeURIComponent(q)).then(function(resp) {
+        if (resp.redirected || resp.ok) {
+            window.location = resp.url;
+            return;
+        }
+        return resp.text().then(function(text) {
+            errEl.textContent = text.trim();
+            errEl.style.display = 'inline';
+            btn.disabled = false;
+            btn.textContent = 'Go';
+        });
+    }).catch(function(err) {
+        errEl.textContent = 'request failed';
+        errEl.style.display = 'inline';
+        btn.disabled = false;
+        btn.textContent = 'Go';
+    });
+});
+</script>
 
 <h3>Infrastructure</h3>
 <ul>
