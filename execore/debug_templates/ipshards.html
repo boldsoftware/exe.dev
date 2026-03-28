@@ -52,6 +52,30 @@
         </td>
       </tr>
       {{end}}
+      <tr>
+        <td>
+          <form method="POST" action="/debug/ipshards/netactuate" class="ip-form" id="add-shard-form"></form>
+            <input
+              type="number"
+              name="shard"
+              min="1"
+              max="1016"
+              class="ip"
+              placeholder="shard #"
+              form="add-shard-form"
+            />
+        </td>
+        <td>
+            <input
+              type="text"
+              name="ip"
+              class="ip"
+              placeholder="1.2.3.4"
+              form="add-shard-form"
+            />
+            <button type="submit" form="add-shard-form">Add</button>
+        </td>
+      </tr>
     </table>
   </body>
 </html>
