@@ -22,19 +22,28 @@ func (q *Queries) GetLatestBillingStatus(ctx context.Context, accountID string) 
 }
 
 const insertBillingEvent = `-- name: InsertBillingEvent :exec
-INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at) VALUES (?, ?, ?)
+INSERT OR IGNORE INTO billing_events (account_id, event_type, event_at, stripe_event_id) VALUES (?, ?, ?, ?)
 `
 
 type InsertBillingEventParams struct {
-	AccountID string    `db:"account_id" json:"account_id"`
-	EventType string    `db:"event_type" json:"event_type"`
-	EventAt   time.Time `db:"event_at" json:"event_at"`
+	AccountID     string    `db:"account_id" json:"account_id"`
+	EventType     string    `db:"event_type" json:"event_type"`
+	EventAt       time.Time `db:"event_at" json:"event_at"`
+	StripeEventID *string   `db:"stripe_event_id" json:"stripe_event_id"`
 }
 
 // event_at should be a string in Time10 format (YYYY-MM-DD HH:MM:SS.nnnnnnnnn-HH:MM)
 // to ensure consistent storage and comparison. Use sqlite.FormatTime(t) to format.
+// stripe_event_id provides idempotent dedup for Stripe-sourced events;
+// NULL for non-Stripe inserts (checkout, debug), which still dedup via
+// the (account_id, event_type, event_at) unique index.
 func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) error {
-	_, err := q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent, arg.AccountID, arg.EventType, arg.EventAt)
+	_, err := q.exec(ctx, q.insertBillingEventStmt, insertBillingEvent,
+		arg.AccountID,
+		arg.EventType,
+		arg.EventAt,
+		arg.StripeEventID,
+	)
 	return err
 }
 
@@ -44,15 +53,23 @@ FROM billing_events WHERE account_id = ?
 ORDER BY id DESC
 `
 
-func (q *Queries) ListBillingEventsForAccount(ctx context.Context, accountID string) ([]BillingEvent, error) {
+type ListBillingEventsForAccountRow struct {
+	ID        int64     `db:"id" json:"id"`
+	AccountID string    `db:"account_id" json:"account_id"`
+	EventType string    `db:"event_type" json:"event_type"`
+	EventAt   time.Time `db:"event_at" json:"event_at"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListBillingEventsForAccount(ctx context.Context, accountID string) ([]ListBillingEventsForAccountRow, error) {
 	rows, err := q.query(ctx, q.listBillingEventsForAccountStmt, listBillingEventsForAccount, accountID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BillingEvent{}
+	items := []ListBillingEventsForAccountRow{}
 	for rows.Next() {
-		var i BillingEvent
+		var i ListBillingEventsForAccountRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.AccountID,

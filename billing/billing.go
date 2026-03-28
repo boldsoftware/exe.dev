@@ -591,10 +591,12 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 
 		eventAt := time.Unix(event.Created, 0)
 		maxEventAt = max(maxEventAt, eventAt.Unix())
+		stripeEventID := event.ID
 		err := exedb.WithTx1(m.DB, ctx, (*exedb.Queries).InsertBillingEvent, exedb.InsertBillingEventParams{
-			AccountID: sub.Customer.ID,
-			EventType: eventType,
-			EventAt:   sqlite.NormalizeTime(eventAt),
+			AccountID:     sub.Customer.ID,
+			EventType:     eventType,
+			EventAt:       sqlite.NormalizeTime(eventAt),
+			StripeEventID: &stripeEventID,
 		})
 		if err != nil {
 			return since, fmt.Errorf("insert billing event: %w", err)
