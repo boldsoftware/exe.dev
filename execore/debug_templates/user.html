@@ -235,6 +235,18 @@ table.info th { width: 200px; }
 {{end}}
 </div>
 
+{{if .CanGrantTrial}}
+<div class="section">
+<h2>Grant Trial</h2>
+<p style="font-size:13px;color:#666;">Grants a trial plan to this user. Also re-enables VM creation if it was disabled.</p>
+<form method="post" action="/debug/users/grant-trial" style="display: flex; gap: 8px; align-items: center;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<label style="font-size:13px;">Days: <input type="number" name="days" value="30" min="1" max="365" required style="width: 80px; padding: 8px;"></label>
+<button type="submit" style="padding: 8px 16px; background: #28a745; color: white; border: none; cursor: pointer;">Grant Trial</button>
+</form>
+</div>
+{{end}}
+
 <div class="section">
 <h3>Gift Credits</h3>
 <form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">

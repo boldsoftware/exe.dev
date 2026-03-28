@@ -90,6 +90,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
 	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
 	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
+	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
@@ -2585,6 +2586,157 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		"account_id", accountID)
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleDebugGrantTrial grants a trial to an existing user.
+// This is the admin equivalent of applying a trial invite code post-facto.
+// It sets billing_exemption='trial', updates account_plans, and re-enables
+// VM creation if it was disabled (e.g. by a false-positive IPQS flag).
+func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the user.
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check current plan to prevent downgrades. Fail closed: any billing
+	// lookup error other than "no row" is a hard stop.
+	billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("failed to check billing: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err == nil {
+		inputs := entitlement.UserPlanInputs{
+			Category:           billingRow.Category,
+			BillingStatus:      billingRow.BillingStatus,
+			BillingExemption:   billingRow.BillingExemption,
+			CreatedAt:          billingRow.CreatedAt,
+			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
+			// TeamBillingActive and HasExplicitOverrides are not populated here.
+			// Team users may be misclassified as Basic; the GetTeamForUser check
+			// below catches them separately.
+		}
+		cat := entitlement.GetPlanCategory(inputs)
+		switch cat {
+		case entitlement.CategoryBasic:
+			// GetPlanCategory maps canceled → CategoryBasic; reject those explicitly.
+			if billingRow.BillingStatus == "canceled" {
+				http.Error(w, "user has canceled billing; trial cannot override canceled status", http.StatusBadRequest)
+				return
+			}
+		case entitlement.CategoryRestricted:
+			// Restricted users can be granted a trial.
+		case entitlement.CategoryTrial:
+			if billingRow.BillingTrialEndsAt != nil && time.Now().Before(*billingRow.BillingTrialEndsAt) {
+				http.Error(w, fmt.Sprintf("user already has an active trial ending %s", billingRow.BillingTrialEndsAt.Format("2006-01-02")), http.StatusBadRequest)
+				return
+			}
+			// Note: expired trials resolve to CategoryBasic via GetPlanCategory, not here.
+		default:
+			http.Error(w, fmt.Sprintf("user already has %s plan; granting a trial would be a downgrade", cat), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse duration.
+	daysStr := r.FormValue("days")
+	if daysStr == "" {
+		daysStr = "30"
+	}
+	days, err := strconv.Atoi(daysStr)
+	if err != nil || days < 1 || days > 365 {
+		http.Error(w, "days must be between 1 and 365", http.StatusBadRequest)
+		return
+	}
+
+	// Reject team members — granting an individual trial would create an
+	// orphan account and conflicting billing state.
+	_, teamErr := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID)
+	if teamErr != nil && !errors.Is(teamErr, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("failed to check team membership: %v", teamErr), http.StatusInternalServerError)
+		return
+	}
+	if teamErr == nil {
+		http.Error(w, "user is a team member; grant trials to individual users only", http.StatusBadRequest)
+		return
+	}
+
+	now := sqlite.NormalizeTime(time.Now())
+	trialEnd := sqlite.NormalizeTime(now.AddDate(0, 0, days))
+
+	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		// Set billing exemption on user, preserving existing invite ID.
+		exemption := "trial"
+		if err := q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
+			BillingExemption:     &exemption,
+			BillingTrialEndsAt:   &trialEnd,
+			SignedUpWithInviteID: user.SignedUpWithInviteID,
+			UserID:               userID,
+		}); err != nil {
+			return fmt.Errorf("set billing exemption: %w", err)
+		}
+
+		// Re-enable VM creation if disabled.
+		if user.NewVmCreationDisabled {
+			if err := q.SetUserNewVMCreationDisabled(ctx, exedb.SetUserNewVMCreationDisabledParams{
+				NewVmCreationDisabled: false,
+				UserID:                userID,
+			}); err != nil {
+				return fmt.Errorf("enable VM creation: %w", err)
+			}
+		}
+
+		// Get or create account.
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		var accountID string
+		if errors.Is(err, sql.ErrNoRows) {
+			accountID = "exe_" + crand.Text()[:16]
+			if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+				ID:        accountID,
+				CreatedBy: userID,
+			}); err != nil {
+				return fmt.Errorf("insert account: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("get account: %w", err)
+		} else {
+			accountID = acct.ID
+		}
+
+		// Update account plan to trial.
+		if err := replaceAccountPlan(ctx, q, accountID, now, entitlement.CategoryTrial, &trialEnd, "debug:grant-trial"); err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to grant trial: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "trial granted via debug page",
+		"user_id", userID,
+		"email", user.Email,
+		"trial_days", days,
+		"trial_ends_at", trialEnd)
+	s.slackFeed.TrialStarted(ctx, userID)
+
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 
 func ptrStr(s *string) string {
@@ -5102,6 +5254,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Name   string
 			Region string
 		}
+		CanGrantTrial      bool
 		AllowDeleteUser    bool
 		DeleteBlockReasons []string
 	}{
@@ -5126,6 +5279,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		Region:                   user.Region,
 		AllRegions:               region.All(),
 		AllowDeleteUser:          s.env.AllowDeleteUser,
+		CanGrantTrial:            true, // default true; overridden below if billing exists
 	}
 
 	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
@@ -5139,7 +5293,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		version := entitlement.GetPlanCategory(inputs)
 		data.PlanCategory = string(version)
 		data.PlanName = entitlement.PlanName(version)
-
+		data.CanGrantTrial = version == entitlement.CategoryBasic || version == entitlement.CategoryRestricted
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {
