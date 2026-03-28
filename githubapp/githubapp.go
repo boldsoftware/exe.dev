@@ -349,14 +349,7 @@ func (c *Client) RefreshUserToken(ctx context.Context, refreshToken string) (*To
 // GetInstallationAccount returns the login of the account (user or org) where
 // the given installation is installed. Requires App JWT authentication.
 func (c *Client) GetInstallationAccount(ctx context.Context, installationID int64) (string, error) {
-	now := time.Now()
-	claims := jwt.RegisteredClaims{
-		Issuer:    fmt.Sprintf("%d", c.AppID),
-		IssuedAt:  jwt.NewNumericDate(now.Add(-10 * time.Second)),
-		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	signed, err := token.SignedString(c.PrivateKey)
+	signed, err := c.signJWT()
 	if err != nil {
 		return "", fmt.Errorf("signing JWT: %w", err)
 	}
@@ -408,8 +401,90 @@ type InstallationAccessToken struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// desiredPermissions are the permissions we ideally want for installation tokens.
+// When minting a token, we intersect these with the installation's actual granted
+// permissions to avoid 422 errors from requesting ungrated permissions.
+var desiredPermissions = map[string]string{
+	"actions":       "write",
+	"checks":        "read",
+	"contents":      "write",
+	"issues":        "write",
+	"metadata":      "read",
+	"pull_requests": "write",
+	"statuses":      "read",
+	"workflows":     "write",
+}
+
+// permissionLevel returns a numeric level for comparing permission values.
+// Higher means more access. Unknown values return 0.
+func permissionLevel(v string) int {
+	switch v {
+	case "read":
+		return 1
+	case "write":
+		return 2
+	case "admin":
+		return 3
+	default:
+		return 0
+	}
+}
+
+// GetInstallationPermissions returns the permissions granted to the given
+// installation. Requires App JWT authentication.
+func (c *Client) GetInstallationPermissions(ctx context.Context, installationID int64) (map[string]string, error) {
+	signed, err := c.signJWT()
+	if err != nil {
+		return nil, err
+	}
+
+	u := fmt.Sprintf("%s/app/installations/%d", c.apiURL(), installationID)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+signed)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("installation lookup failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return nil, fmt.Errorf("reading installation response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("installation lookup returned %d: %s", resp.StatusCode, body)
+	}
+
+	var inst struct {
+		Permissions map[string]string `json:"permissions"`
+	}
+	if err := json.Unmarshal(body, &inst); err != nil {
+		return nil, fmt.Errorf("parsing installation response: %w", err)
+	}
+	return inst.Permissions, nil
+}
+
+// signJWT creates a signed JWT for App-level API authentication.
+func (c *Client) signJWT() (string, error) {
+	now := time.Now()
+	claims := jwt.RegisteredClaims{
+		Issuer:    fmt.Sprintf("%d", c.AppID),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-10 * time.Second)),
+		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(c.PrivateKey)
+}
+
 // MintInstallationToken creates a new installation access token scoped to the given repositories.
 // Each entry in repoFullNames should be "owner/repo"; only the repo name (after the slash) is sent to GitHub.
+// It queries the installation's actual permissions and only requests the intersection with
+// our desired set, avoiding 422 errors when users haven't granted all permissions.
 func (c *Client) MintInstallationToken(ctx context.Context, installationID int64, repoFullNames []string) (*InstallationAccessToken, error) {
 	var repoNames []string
 	for _, fullName := range repoFullNames {
@@ -423,30 +498,42 @@ func (c *Client) MintInstallationToken(ctx context.Context, installationID int64
 		return nil, fmt.Errorf("at least one repository is required")
 	}
 
-	now := time.Now()
-	claims := jwt.RegisteredClaims{
-		Issuer:    fmt.Sprintf("%d", c.AppID),
-		IssuedAt:  jwt.NewNumericDate(now.Add(-10 * time.Second)),
-		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+	// Fetch the installation's actual granted permissions.
+	grantedPerms, err := c.GetInstallationPermissions(ctx, installationID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching installation permissions: %w", err)
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	signed, err := token.SignedString(c.PrivateKey)
+
+	// Intersect desired permissions with what's actually granted.
+	// For each desired permission, only include it if the installation
+	// has granted at least that level of access.
+	perms := make(map[string]string)
+	for name, desiredLevel := range desiredPermissions {
+		grantedLevel, ok := grantedPerms[name]
+		if !ok {
+			continue
+		}
+		// Request the lesser of what we want and what's granted.
+		if permissionLevel(grantedLevel) >= permissionLevel(desiredLevel) {
+			perms[name] = desiredLevel
+		} else {
+			perms[name] = grantedLevel
+		}
+	}
+
+	// contents + metadata are the minimum for git operations.
+	if perms["contents"] == "" {
+		return nil, fmt.Errorf("installation does not grant contents permission (has: %v)", grantedPerms)
+	}
+
+	signed, err := c.signJWT()
 	if err != nil {
 		return nil, fmt.Errorf("signing JWT: %w", err)
 	}
 
 	body, err := json.Marshal(map[string]any{
 		"repositories": repoNames,
-		"permissions": map[string]string{
-			"actions":       "write",
-			"checks":        "read",
-			"contents":      "write",
-			"issues":        "write",
-			"metadata":      "read",
-			"pull_requests": "write",
-			"statuses":      "read",
-			"workflows":     "write",
-		},
+		"permissions":  perms,
 	})
 	if err != nil {
 		return nil, err

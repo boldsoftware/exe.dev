@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -270,14 +271,7 @@ func TestMintInstallationToken(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.URL.Path != "/app/installations/12345/access_tokens" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-
-		// Verify JWT.
+		// Verify JWT on all requests.
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
 			t.Fatal("missing Authorization header")
@@ -294,44 +288,66 @@ func TestMintInstallationToken(t *testing.T) {
 			t.Errorf("expected iss=42, got %s", iss)
 		}
 
-		// Verify body.
-		body, _ := io.ReadAll(r.Body)
-		var reqBody map[string]any
-		json.Unmarshal(body, &reqBody)
-		repos, ok := reqBody["repositories"].([]any)
-		if !ok || len(repos) != 1 || repos[0] != "empty" {
-			t.Errorf("unexpected repositories: %v", reqBody["repositories"])
-		}
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/app/installations/12345":
+			// Return installation with all permissions granted.
+			json.NewEncoder(w).Encode(map[string]any{
+				"permissions": map[string]string{
+					"actions":       "write",
+					"checks":        "read",
+					"contents":      "write",
+					"issues":        "write",
+					"metadata":      "read",
+					"pull_requests": "write",
+					"statuses":      "read",
+					"workflows":     "write",
+				},
+			})
 
-		// Verify permissions include contents, issues, pull_requests, and metadata.
-		perms, ok := reqBody["permissions"].(map[string]any)
-		if !ok {
-			t.Fatal("missing permissions in request body")
-		}
-		wantPerms := map[string]string{
-			"actions":       "write",
-			"checks":        "read",
-			"contents":      "write",
-			"issues":        "write",
-			"metadata":      "read",
-			"pull_requests": "write",
-			"statuses":      "read",
-			"workflows":     "write",
-		}
-		for k, v := range wantPerms {
-			if perms[k] != v {
-				t.Errorf("expected %s=%s, got %v", k, v, perms[k])
+		case r.Method == "POST" && r.URL.Path == "/app/installations/12345/access_tokens":
+			// Verify body.
+			body, _ := io.ReadAll(r.Body)
+			var reqBody map[string]any
+			json.Unmarshal(body, &reqBody)
+			repos, ok := reqBody["repositories"].([]any)
+			if !ok || len(repos) != 1 || repos[0] != "empty" {
+				t.Errorf("unexpected repositories: %v", reqBody["repositories"])
 			}
-		}
-		if len(perms) != len(wantPerms) {
-			t.Errorf("expected %d permissions, got %d: %v", len(wantPerms), len(perms), perms)
-		}
 
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]any{
-			"token":      "ghs_mock_installation_token",
-			"expires_at": "2099-01-01T00:00:00Z",
-		})
+			// Verify permissions include contents, issues, pull_requests, and metadata.
+			perms, ok := reqBody["permissions"].(map[string]any)
+			if !ok {
+				t.Fatal("missing permissions in request body")
+			}
+			wantPerms := map[string]string{
+				"actions":       "write",
+				"checks":        "read",
+				"contents":      "write",
+				"issues":        "write",
+				"metadata":      "read",
+				"pull_requests": "write",
+				"statuses":      "read",
+				"workflows":     "write",
+			}
+			for k, v := range wantPerms {
+				if perms[k] != v {
+					t.Errorf("expected %s=%s, got %v", k, v, perms[k])
+				}
+			}
+			if len(perms) != len(wantPerms) {
+				t.Errorf("expected %d permissions, got %d: %v", len(wantPerms), len(perms), perms)
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "ghs_mock_installation_token",
+				"expires_at": "2099-01-01T00:00:00Z",
+			})
+
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	defer srv.Close()
 
@@ -342,6 +358,146 @@ func TestMintInstallationToken(t *testing.T) {
 	}
 	if iat.Token != "ghs_mock_installation_token" {
 		t.Errorf("expected ghs_mock_installation_token, got %s", iat.Token)
+	}
+}
+
+func TestMintInstallationTokenPartialPermissions(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/app/installations/99999":
+			// Installation with only contents and metadata.
+			json.NewEncoder(w).Encode(map[string]any{
+				"permissions": map[string]string{
+					"contents": "write",
+					"metadata": "read",
+				},
+			})
+
+		case r.Method == "POST" && r.URL.Path == "/app/installations/99999/access_tokens":
+			body, _ := io.ReadAll(r.Body)
+			var reqBody map[string]any
+			json.Unmarshal(body, &reqBody)
+
+			perms, ok := reqBody["permissions"].(map[string]any)
+			if !ok {
+				t.Fatal("missing permissions in request body")
+			}
+			// Should only request the two permissions that are granted.
+			if len(perms) != 2 {
+				t.Errorf("expected 2 permissions, got %d: %v", len(perms), perms)
+			}
+			if perms["contents"] != "write" {
+				t.Errorf("expected contents=write, got %v", perms["contents"])
+			}
+			if perms["metadata"] != "read" {
+				t.Errorf("expected metadata=read, got %v", perms["metadata"])
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "ghs_partial_token",
+				"expires_at": "2099-01-01T00:00:00Z",
+			})
+
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{AppID: 42, PrivateKey: key, APIURL: srv.URL}
+	iat, err := c.MintInstallationToken(context.Background(), 99999, []string{"owner/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iat.Token != "ghs_partial_token" {
+		t.Errorf("expected ghs_partial_token, got %s", iat.Token)
+	}
+}
+
+func TestMintInstallationTokenNoContents(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Installation with no contents permission.
+		json.NewEncoder(w).Encode(map[string]any{
+			"permissions": map[string]string{
+				"metadata": "read",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{AppID: 42, PrivateKey: key, APIURL: srv.URL}
+	_, err = c.MintInstallationToken(context.Background(), 99999, []string{"owner/repo"})
+	if err == nil {
+		t.Fatal("expected error when contents permission is missing")
+	}
+	if !strings.Contains(err.Error(), "contents permission") {
+		t.Errorf("expected error about contents permission, got: %v", err)
+	}
+}
+
+func TestMintInstallationTokenDowngradePermission(t *testing.T) {
+	// If installation grants contents:read but we want contents:write,
+	// we should request contents:read.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/app/installations/88888":
+			json.NewEncoder(w).Encode(map[string]any{
+				"permissions": map[string]string{
+					"contents": "read",
+					"metadata": "read",
+					"issues":   "read", // we want write but only read is granted
+				},
+			})
+
+		case r.Method == "POST" && r.URL.Path == "/app/installations/88888/access_tokens":
+			body, _ := io.ReadAll(r.Body)
+			var reqBody map[string]any
+			json.Unmarshal(body, &reqBody)
+
+			perms := reqBody["permissions"].(map[string]any)
+			if perms["contents"] != "read" {
+				t.Errorf("expected contents=read (downgraded), got %v", perms["contents"])
+			}
+			if perms["issues"] != "read" {
+				t.Errorf("expected issues=read (downgraded), got %v", perms["issues"])
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "ghs_downgraded_token",
+				"expires_at": "2099-01-01T00:00:00Z",
+			})
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{AppID: 42, PrivateKey: key, APIURL: srv.URL}
+	iat, err := c.MintInstallationToken(context.Background(), 88888, []string{"owner/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iat.Token != "ghs_downgraded_token" {
+		t.Errorf("expected ghs_downgraded_token, got %s", iat.Token)
 	}
 }
 
