@@ -46,8 +46,6 @@ RAM_MB     = int(os.environ.get("RAM_MB",        "16384"))
 DISK_GB    = int(os.environ.get("DISK_GB",       "80"))
 DATA_GB    = int(os.environ.get("DATA_DISK_GB",  "100"))
 WORKDIR    = Path(os.environ.get("WORKDIR",      "/var/lib/libvirt/images"))
-BASE_IMG   = Path(os.environ.get("BASE_IMG",     "/var/lib/libvirt/images/ubuntu-24.04-base.qcow2"))
-BASE_URL   = os.environ.get("BASE_IMG_URL",      "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img")
 SSH_PUBKEY = Path(os.environ.get("SSH_PUBKEY",   str(Path.home() / ".ssh/id_ed25519.pub")))
 USER_NAME  = os.environ.get("USER_NAME",         "ubuntu")
 CACHE_DIR  = Path(os.environ.get("EXEDEV_CACHE", "/data/ci-snapshots"))
@@ -116,17 +114,10 @@ def _image_digest() -> str:
     return (d.split(":")[-1] if ":" in d else d)[:20]
 
 
-def _base_hash() -> str:
-    sidecar = Path(str(BASE_IMG) + ".sha256")
-    if sidecar.exists():
-        return sidecar.read_text().strip()
-    return "nobaseimg"
-
-
-def _snapshot_paths(s_hash: str, img_dig: str, b_hash: str):
-    snap_dir   = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}-{b_hash[:12]}"
-    local_base = WORKDIR  / f"ci-base-{s_hash[:12]}-{img_dig[:12]}-{b_hash[:12]}.qcow2"
-    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}-{b_hash[:12]}.raw"
+def _snapshot_paths(s_hash: str, img_dig: str):
+    snap_dir   = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}"
+    local_base = WORKDIR  / f"ci-base-{s_hash[:12]}-{img_dig[:12]}.qcow2"
+    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}.raw"
     return snap_dir, local_base, local_data
 
 
@@ -158,128 +149,6 @@ def tap_name_for(name: str) -> str:
     return f"vm{h[:13]}"
 
 
-# ── Cloud-init ISO ─────────────────────────────────────────────────────────────
-
-def _cloud_init_user_data(pubkey: str, snapshot: bool) -> str:
-    """Generate cloud-init user-data as JSON (valid YAML)."""
-    if snapshot:
-        config = {
-            "hostname": NAME,
-            "ssh_authorized_keys": [pubkey],
-            "users": ["default"],
-            "write_files": [{
-                "path": "/home/ubuntu/.ssh/authorized_keys",
-                "content": pubkey + "\n",
-                "owner": "ubuntu:ubuntu",
-                "permissions": "0600",
-                "defer": True,
-            }],
-            "package_update": False,
-            "bootcmd": [
-                ["bash", "-c", "zpool import -f -N tank 2>/dev/null || true"],
-            ],
-        }
-    else:
-        config = {
-            "hostname": NAME,
-            "ssh_authorized_keys": [pubkey],
-            "users": ["default"],
-            "write_files": [{
-                "path": "/home/ubuntu/.ssh/authorized_keys",
-                "content": pubkey + "\n",
-                "owner": "ubuntu:ubuntu",
-                "permissions": "0600",
-                "defer": True,
-            }],
-            "package_update": False,
-            "packages": [
-                "zfsutils-linux",
-                "socat",
-                "iptables",
-            ],
-            "runcmd": [
-                "systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true",
-                "systemctl mask apt-daily.service apt-daily-upgrade.service || true",
-                "systemctl disable --now motd-news.timer || true",
-                "systemctl mask motd-news.service || true",
-                "systemctl disable fwupd.service fwupd-refresh.timer || true",
-                "mkdir -p /local && chmod 755 /local",
-                # Hugepages for inner CH VMs
-                "HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)\n"
-                "echo \"$HUGEPAGE_TARGET\" > /proc/sys/vm/nr_hugepages\n"
-                "mkdir -p /etc/sysctl.d\n"
-                "echo \"vm.nr_hugepages=$HUGEPAGE_TARGET\" > /etc/sysctl.d/90-exe-hugepages.conf",
-                # vsock modules for CH
-                "modprobe vhost_vsock || true",
-                "modprobe vsock || true",
-                "echo -e 'vhost_vsock\nvsock' > /etc/modules-load.d/cloud-hypervisor.conf",
-                # ZFS pool on data disk
-                "if ! zpool list tank >/dev/null 2>&1; then\n"
-                "  zpool create -f -m none tank /dev/vdb\n"
-                "  zfs create -o mountpoint=/data tank/data\n"
-                "fi",
-                # Remove stale DHCP netplan
-                "rm -f /etc/netplan/60-dhcp-mac.yaml",
-                # Speed up networkd-wait-online
-                "mkdir -p /etc/systemd/system/systemd-networkd-wait-online.service.d\n"
-                "printf '[Service]\\nExecStart=\\nExecStart=/lib/systemd/systemd-networkd-wait-online --any\\n'"
-                " > /etc/systemd/system/systemd-networkd-wait-online.service.d/override.conf",
-            ],
-            "bootcmd": [
-                ["bash", "-c", "rm -f /etc/machine-id /var/lib/dbus/machine-id; systemd-machine-id-setup"],
-                ["bash", "-c", "rm -rf /var/lib/systemd/networkd/*"],
-                "if [ -b /dev/vdb ]; then\n"
-                "  if zpool import 2>/dev/null | grep -q 'pool: tank'; then\n"
-                "    zpool import -f -N tank\n"
-                "    zpool reguid tank\n"
-                "  fi\n"
-                "fi",
-            ],
-        }
-    return "#cloud-config\n" + json.dumps(config, indent=2) + "\n"
-
-
-def _cloud_init_network_config(ip: str, mac: str) -> str:
-    """Generate cloud-init network-config as JSON."""
-    gateway = f"{BRIDGE_PFX}.1"
-    config = {
-        "version": 2,
-        "ethernets": {
-            "id0": {
-                "match": {"macaddress": mac},
-                "dhcp4": False,
-                "dhcp6": False,
-                "addresses": [f"{ip}/24"],
-                "routes": [{"to": "default", "via": gateway}],
-                "nameservers": {"addresses": [gateway]},
-            }
-        }
-    }
-    return json.dumps(config, indent=2) + "\n"
-
-
-def _make_cloud_init_iso(dest: Path, snapshot: bool, ip: str, mac: str) -> None:
-    pubkey = SSH_PUBKEY.read_text().strip()
-
-    user_data      = _cloud_init_user_data(pubkey, snapshot)
-    network_config = _cloud_init_network_config(ip, mac)
-    meta_data      = json.dumps({"instance-id": NAME, "local-hostname": NAME}) + "\n"
-
-    with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        (td / "user-data").write_text(user_data)
-        (td / "meta-data").write_text(meta_data)
-        (td / "network-config").write_text(network_config)
-
-        files = [td / "user-data", td / "meta-data", td / "network-config"]
-        for tool in ("genisoimage", "mkisofs"):
-            if shutil.which(tool):
-                sudo(tool, "-output", dest, "-volid", "cidata",
-                     "-joliet", "-rock", *files)
-                return
-    raise RuntimeError("Neither genisoimage nor mkisofs found on PATH")
-
-
 # ── TAP / bridge setup ─────────────────────────────────────────────────────────
 
 def _setup_tap(tap: str) -> None:
@@ -303,58 +172,6 @@ def _teardown_tap(tap: str) -> None:
                    check=False, capture_output=True)
 
 
-# ── Guest kernel extraction ───────────────────────────────────────────────────
-
-def _extract_guest_kernel(disk: Path) -> tuple[str, str]:
-    """Extract vmlinuz and initrd from a qcow2 disk image via qemu-nbd.
-
-    Needed for first boot: the host kernel version may not match the guest's
-    /lib/modules, so kernel modules (iptables, netfilter) would fail to load.
-    """
-    cache = WORKDIR / "guest-kernel"
-    vmlinuz = cache / "vmlinuz"
-    initrd  = cache / "initrd.img"
-    if vmlinuz.exists() and initrd.exists():
-        return str(vmlinuz), str(initrd)
-
-    sudo("mkdir", "-p", str(cache))
-    print(f"Extracting guest kernel from {disk} ...", flush=True)
-
-    flat = WORKDIR / f"{BASE_IMG.stem}-flat.qcow2"
-    src = flat if flat.exists() else disk
-
-    nbd_dev = "/dev/nbd0"
-    sudo("modprobe", "nbd", "max_part=16")
-    sudo("qemu-nbd", "--connect", nbd_dev, "--read-only", str(src))
-    sudo("partprobe", nbd_dev)
-    time.sleep(1)
-    mnt = Path(tempfile.mkdtemp(prefix="guest-kernel-"))
-    try:
-        import glob as _glob
-        partitions = sorted(_glob.glob(f"{nbd_dev}p*"))
-        for part in partitions:
-            try:
-                sudo("mount", "-o", "ro", part, str(mnt))
-            except subprocess.CalledProcessError:
-                continue
-            try:
-                for prefix in (mnt / "boot", mnt):
-                    vmlinuz_files = sorted(_glob.glob(str(prefix / "vmlinuz-*")))
-                    initrd_files  = sorted(_glob.glob(str(prefix / "initrd.img-*")))
-                    if vmlinuz_files and initrd_files:
-                        sudo("cp", vmlinuz_files[-1], str(vmlinuz))
-                        sudo("cp", initrd_files[-1], str(initrd))
-                        print(f"Guest kernel: {Path(vmlinuz_files[-1]).name} (from {part})", flush=True)
-                        return str(vmlinuz), str(initrd)
-            finally:
-                sudo("umount", str(mnt))
-
-        raise RuntimeError(f"No kernel found in any partition of {src}: tried {partitions}")
-    finally:
-        sudo("qemu-nbd", "--disconnect", nbd_dev)
-        mnt.rmdir()
-
-
 def _find_product_kernel() -> str | None:
     """Return path to the product kernel (exelet/kernel) if available.
 
@@ -368,53 +185,28 @@ def _find_product_kernel() -> str | None:
     return None
 
 
-def _find_kernel(snap_dir: Path | None, disk: Path | None = None) -> tuple[str, str | None]:
+def _find_kernel(snap_dir: Path) -> tuple[str, str | None]:
     """Return (vmlinuz, initrd_or_None).
 
-    Preference order (for snapshot boots):
-      1. Snapshot-cached kernel + initrd
-    For provisioning (snap_dir=None):
-      2. Guest-extracted kernel + initrd
-      3. Host kernel + initrd
-
-    Note: the product kernel (exelet/fs/amd64/kernel/kernel) cannot be used
-    for CI VMs because it lacks CONFIG_IFB (needed by the exelet for
-    bandwidth limiting) and CONFIG_VFAT_FS (needed for /boot/efi mount).
+    Looks for snapshot-cached kernel with or without initrd.
+    Docker-based snapshots have product kernel (no initrd).
     """
-    if snap_dir is not None:
-        snap_vmlinuz = snap_dir / "vmlinuz"
-        snap_initrd  = snap_dir / "initrd.img"
-        if snap_vmlinuz.exists() and snap_initrd.exists():
-            return str(snap_vmlinuz), str(snap_initrd)
-        print(f"Warning: kernel not found in {snap_dir}, falling back", flush=True)
-
-    if disk is not None:
-        try:
-            return _extract_guest_kernel(disk)
-        except Exception as e:
-            print(f"Warning: could not extract guest kernel: {e}", flush=True)
-
-    uname = os.uname().release
-    for vmlinuz in (f"/boot/vmlinuz-{uname}", "/boot/vmlinuz"):
-        if Path(vmlinuz).exists():
-            break
-    else:
-        raise RuntimeError("Could not locate vmlinuz")
-    for initrd in (f"/boot/initrd.img-{uname}", "/boot/initrd.img"):
-        if Path(initrd).exists():
-            break
-    else:
-        raise RuntimeError("Could not locate initrd.img")
-    return vmlinuz, initrd
+    snap_vmlinuz = snap_dir / "vmlinuz"
+    snap_initrd  = snap_dir / "initrd.img"
+    if snap_vmlinuz.exists() and snap_initrd.exists():
+        return str(snap_vmlinuz), str(snap_initrd)
+    if snap_vmlinuz.exists():
+        return str(snap_vmlinuz), None
+    raise RuntimeError(f"Kernel not found in snapshot: {snap_dir}")
 
 
 # ── VM launch ──────────────────────────────────────────────────────────────────
 
-def _launch_ch(disk: Path, data_disk: Path, seed: Path,
+def _launch_ch(disk: Path, data_disk: Path,
                tap: str, mac: str, ip: str,
-               snap_dir: Path | None) -> int:
+               snap_dir: Path) -> int:
     """Start cloud-hypervisor in the background; return its PID."""
-    vmlinuz, initrd = _find_kernel(snap_dir, disk=disk if snap_dir is None else None)
+    vmlinuz, initrd = _find_kernel(snap_dir)
     log     = f"/tmp/ch-{NAME}.log"
     pidfile = f"/tmp/ch-pid-{NAME}"
     api     = f"/tmp/ch-api-{NAME}.sock"
@@ -427,71 +219,70 @@ def _launch_ch(disk: Path, data_disk: Path, seed: Path,
         f"console=ttyS0 root={root_dev} rw"
         " systemd.mask=multipathd.service systemd.mask=multipathd.socket"
     )
-    if snap_dir is not None:
-        # Kernel boot optimizations for CI snapshot boots:
-        # - quiet/loglevel: suppress console spam (~hundreds of log lines)
-        # - audit=0: disable audit subsystem
-        # - raid=noautodetect: skip MD RAID scanning
-        # - mitigations=off: skip Spectre/Meltdown mitigations (ephemeral CI VMs)
-        # - rd.udev.log_level: quiet initramfs device discovery
-        cmdline += (
-            " quiet loglevel=2 audit=0"
-            " raid=noautodetect"
-            " mitigations=off"
-            " rd.udev.log_level=2"
-        )
-        # Static IP via kernel cmdline.
-        # Product kernel (no initramfs/udev) uses traditional eth0 naming;
-        # Ubuntu kernel with initramfs uses systemd predictable naming (ens4).
-        iface = "eth0" if initrd is None else "ens4"
-        cmdline += f" ip={ip}::{gateway}:255.255.255.0:{NAME}:{iface}:off"
-        # Mask all services not needed for CI snapshot boots.
-        for svc in [
-            # cloud-init stack (all four services)
-            "cloud-init.service",
-            "cloud-init-local.service",
-            "cloud-config.service",
-            "cloud-final.service",
-            # systemd services not needed in CI
-            "systemd-sysctl.service",
-            "systemd-udev-settle.service",
-            "systemd-pstore.service",
-            # ZFS share (no NFS/SMB exports)
-            "zfs-share.service",
-            # Snap/package management
-            "snapd.service",
-            "snapd.socket",
-            "snapd.seeded.service",
-            "unattended-upgrades.service",
-            # Hardware services irrelevant in a VM
-            "ModemManager.service",
-            "thermald.service",
-            "fwupd.service",
-            "fwupd-refresh.timer",
-            "secureboot-db.service",
-            # VMware guest agents (we use cloud-hypervisor)
-            "open-vm-tools.service",
-            "vgauth.service",
-            # Storage stacks not used
-            "open-iscsi.service",
-            "iscsid.service",
-            "lvm2-monitor.service",
-            # Network dispatcher (static IP via cmdline)
-            "networkd-dispatcher.service",
-            # networkd-wait-online blocks boot when kernel ip= configures
-            # the interface outside of networkd's control
-            "systemd-networkd-wait-online.service",
-            # EFI mount — product kernel lacks CONFIG_VFAT_FS
-            "boot-efi.mount",
-            # Security/boot not needed in ephemeral CI
-            "apparmor.service",
-            "grub-initrd-fallback.service",
-            "ua-reboot-cmds.service",
-            # Plymouth splash (no display)
-            "plymouth-quit-wait.service",
-            "plymouth-quit.service",
-        ]:
-            cmdline += f" systemd.mask={svc}"
+    # Kernel boot optimizations for CI snapshot boots:
+    # - quiet/loglevel: suppress console spam (~hundreds of log lines)
+    # - audit=0: disable audit subsystem
+    # - raid=noautodetect: skip MD RAID scanning
+    # - mitigations=off: skip Spectre/Meltdown mitigations (ephemeral CI VMs)
+    # - rd.udev.log_level: quiet initramfs device discovery
+    cmdline += (
+        " quiet loglevel=2 audit=0"
+        " raid=noautodetect"
+        " mitigations=off"
+        " rd.udev.log_level=2"
+    )
+    # Static IP via kernel cmdline.
+    # Product kernel (no initramfs/udev) uses traditional eth0 naming;
+    # Ubuntu kernel with initramfs uses systemd predictable naming (ens4).
+    iface = "eth0" if initrd is None else "ens4"
+    cmdline += f" ip={ip}::{gateway}:255.255.255.0:{NAME}:{iface}:off"
+    # Mask all services not needed for CI snapshot boots.
+    for svc in [
+        # cloud-init stack (all four services)
+        "cloud-init.service",
+        "cloud-init-local.service",
+        "cloud-config.service",
+        "cloud-final.service",
+        # systemd services not needed in CI
+        "systemd-sysctl.service",
+        "systemd-udev-settle.service",
+        "systemd-pstore.service",
+        # ZFS share (no NFS/SMB exports)
+        "zfs-share.service",
+        # Snap/package management
+        "snapd.service",
+        "snapd.socket",
+        "snapd.seeded.service",
+        "unattended-upgrades.service",
+        # Hardware services irrelevant in a VM
+        "ModemManager.service",
+        "thermald.service",
+        "fwupd.service",
+        "fwupd-refresh.timer",
+        "secureboot-db.service",
+        # VMware guest agents (we use cloud-hypervisor)
+        "open-vm-tools.service",
+        "vgauth.service",
+        # Storage stacks not used
+        "open-iscsi.service",
+        "iscsid.service",
+        "lvm2-monitor.service",
+        # Network dispatcher (static IP via cmdline)
+        "networkd-dispatcher.service",
+        # networkd-wait-online blocks boot when kernel ip= configures
+        # the interface outside of networkd's control
+        "systemd-networkd-wait-online.service",
+        # EFI mount — product kernel lacks CONFIG_VFAT_FS
+        "boot-efi.mount",
+        # Security/boot not needed in ephemeral CI
+        "apparmor.service",
+        "grub-initrd-fallback.service",
+        "ua-reboot-cmds.service",
+        # Plymouth splash (no display)
+        "plymouth-quit-wait.service",
+        "plymouth-quit.service",
+    ]:
+        cmdline += f" systemd.mask={svc}"
 
     ch_args = [
         CH_BIN,
@@ -504,7 +295,6 @@ def _launch_ch(disk: Path, data_disk: Path, seed: Path,
         "--disk",
         f"path={disk}",
         f"path={data_disk}",
-        f"path={seed},readonly=on",
         "--net",       f"tap={tap},mac={mac}",
         "--cpus",      f"boot={VCPUS}",
         "--memory",    f"size={RAM_MB}M",
@@ -618,7 +408,7 @@ def _ensure_cloud_hypervisor_artifacts(vm_arch: str, ch_version: str,
         shutil.rmtree(str(tmp_dir), ignore_errors=True)
 
 
-# ── Snapshot creation (first-boot path) ───────────────────────────────────────
+# ── Snapshot creation ──────────────────────────────────────────────────────────
 
 def _ensure_snapshot(snap_dir: Path) -> None:
     """Ensure a cached VM snapshot exists, building one if necessary.
@@ -633,6 +423,8 @@ def _ensure_snapshot(snap_dir: Path) -> None:
 
     lock_path = CACHE_DIR / f"{snap_dir.name}.provision.lock"
     sudo("mkdir", "-p", str(CACHE_DIR))
+    sudo("touch", str(lock_path))
+    sudo("chmod", "666", str(lock_path))
     fd = open(lock_path, "w")
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -646,76 +438,216 @@ def _ensure_snapshot(snap_dir: Path) -> None:
 
 
 def _build_snapshot(snap_dir: Path) -> None:
-    """Boot a temporary VM, provision it, save the snapshot, destroy the VM."""
-    print(f"Building snapshot: {snap_dir.name}", flush=True)
+    """Build a snapshot using Docker-based rootfs + product kernel."""
+    product_kernel = _find_product_kernel()
+    if not product_kernel:
+        raise RuntimeError("Product kernel not found. Cannot build snapshot.")
+    docker_ctx = SCRIPT_DIR / "ci-rootfs"
+    if not docker_ctx.exists():
+        raise RuntimeError(f"Docker rootfs context not found: {docker_ctx}")
+    if not shutil.which("docker"):
+        raise RuntimeError("Docker is required to build snapshots")
+    _build_docker_snapshot(snap_dir, product_kernel)
+
+
+# ── Docker-based snapshot (product kernel) ─────────────────────────────────────
+
+def _build_docker_rootfs(ssh_pubkey: str) -> Path:
+    """Build a CI VM rootfs via Docker and return path to the qcow2 image.
+
+    The image is cached based on a hash of the Dockerfile + SSH pubkey.
+    """
+    docker_ctx = SCRIPT_DIR / "ci-rootfs"
+    dockerfile = docker_ctx / "Dockerfile"
+
+    # Cache key based on Dockerfile content
+    h = hashlib.sha256()
+    h.update(dockerfile.read_bytes())
+    h.update(ssh_pubkey.encode())
+    cache_key = h.hexdigest()[:16]
+    cached = WORKDIR / f"ci-rootfs-{cache_key}.qcow2"
+    if cached.exists():
+        print(f"Docker rootfs cache hit: {cached}", flush=True)
+        return cached
+
+    print("Building Docker rootfs ...", flush=True)
+    t0 = time.monotonic()
+    image_tag = f"exe-ci-rootfs:{cache_key}"
+
+    sudo("docker", "build", "--network=host",
+         "-t", image_tag, str(docker_ctx))
+
+    # Export container filesystem
+    container = f"exe-ci-rootfs-export-{os.getpid()}"
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        try:
+            sudo("docker", "create", "--name", container, image_tag, "/bin/true")
+            tarball = td / "rootfs.tar"
+            with open(tarball, "w") as f:
+                subprocess.run(
+                    ["sudo", "docker", "export", container],
+                    stdout=f, check=True)
+        finally:
+            subprocess.run(["sudo", "docker", "rm", container],
+                           capture_output=True)
+
+        # Create raw disk with single ext4 partition
+        raw = td / "disk.raw"
+        sudo("truncate", "-s", f"{DISK_GB}G", str(raw))
+        subprocess.run(
+            ["sudo", "sfdisk", str(raw)],
+            input=",,L\n", text=True, check=True, capture_output=True)
+
+        # Set up loop device
+        loop = subprocess.check_output(
+            ["sudo", "losetup", "--find", "--show", "--partscan", str(raw)],
+            text=True).strip()
+        part = f"{loop}p1"
+        try:
+            for _ in range(40):
+                if Path(part).exists():
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError(f"Partition {part} not found")
+
+            sudo("mkfs.ext4", "-L", "cloudimg-rootfs", "-q", part)
+            mnt = td / "mnt"
+            sudo("mkdir", "-p", str(mnt))
+            sudo("mount", part, str(mnt))
+            try:
+                sudo("tar", "xf", str(tarball), "-C", str(mnt))
+                fstab = "LABEL=cloudimg-rootfs / ext4 defaults 0 1\n"
+                subprocess.run(
+                    ["sudo", "tee", str(mnt / "etc" / "fstab")],
+                    input=fstab, text=True, check=True, capture_output=True)
+                ssh_dir = mnt / "home" / "ubuntu" / ".ssh"
+                sudo("mkdir", "-p", str(ssh_dir))
+                subprocess.run(
+                    ["sudo", "tee", str(ssh_dir / "authorized_keys")],
+                    input=ssh_pubkey + "\n", text=True, check=True,
+                    capture_output=True)
+                sudo("chmod", "700", str(ssh_dir))
+                sudo("chmod", "600", str(ssh_dir / "authorized_keys"))
+                sudo("chown", "-R", "1000:1000", str(ssh_dir))
+                # Docker manages /etc/hosts and /etc/resolv.conf during
+                # build so we write them after extraction.
+                hosts = "127.0.0.1 localhost\n127.0.1.1 ci-vm\n"
+                subprocess.run(
+                    ["sudo", "tee", str(mnt / "etc" / "hosts")],
+                    input=hosts, text=True, check=True,
+                    capture_output=True)
+                sudo("rm", "-f", str(mnt / "etc" / "resolv.conf"))
+                sudo("ln", "-s",
+                     "/run/systemd/resolve/stub-resolv.conf",
+                     str(mnt / "etc" / "resolv.conf"))
+            finally:
+                sudo("umount", str(mnt))
+        finally:
+            sudo("losetup", "-d", loop)
+
+        # Convert to qcow2
+        tmp_qcow2 = Path(str(cached) + ".converting")
+        sudo("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
+             str(raw), str(tmp_qcow2))
+        sudo("mv", str(tmp_qcow2), str(cached))
+
+    dt = time.monotonic() - t0
+    print(f"Docker rootfs built in {dt:.1f}s: {cached}", flush=True)
+    return cached
+
+
+def _build_docker_snapshot(snap_dir: Path, product_kernel: str) -> None:
+    """Build a snapshot using Docker rootfs + product kernel.
+
+    Much faster than cloud-init: no cloud-init wait, no apt-get during
+    provision, product kernel boots without initramfs, no kernel extraction.
+    """
+    print(f"Building Docker-based snapshot: {snap_dir.name}", flush=True)
+    t0 = time.monotonic()
     ssh_opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
     scp_opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 
-    # ── Boot a fresh VM from the base image ──
+    ssh_pubkey = SSH_PUBKEY.read_text().strip()
+    rootfs = _build_docker_rootfs(ssh_pubkey)
+
     ip  = allocate_ip()
     mac = mac_for_ip(ip)
     tap = tap_name_for(NAME + "-snap")
     disk      = WORKDIR / f"{NAME}-snap.qcow2"
     data_disk = WORKDIR / f"{NAME}-snap-data.raw"
-    seed      = WORKDIR / f"{NAME}-snap-seed.iso"
 
-    flat_base = WORKDIR / f"{BASE_IMG.stem}-flat.qcow2"
-    if not flat_base.exists():
-        print("Flattening base image for cloud-hypervisor ...", flush=True)
-        tmp = Path(str(flat_base) + ".converting")
-        sudo("qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-             str(BASE_IMG), str(tmp))
-        sudo("mv", str(tmp), str(flat_base))
-
+    # Create overlay disk backed by the rootfs
     sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-         "-b", str(flat_base), str(disk), f"{DISK_GB}G")
+         "-b", str(rootfs), str(disk), f"{DISK_GB}G")
     sudo("truncate", "-s", f"{DATA_GB}G", str(data_disk))
-    _make_cloud_init_iso(seed, False, ip, mac)
     _setup_tap(tap)
 
-    pid = _launch_ch(disk, data_disk, seed, tap, mac, ip, snap_dir=None)
-    try:
-        _wait_ssh(ip, timeout=300)
-        print("SSH ready (snapshot provisioning VM).", flush=True)
+    # Launch CH with product kernel (no initrd).
+    log     = f"/tmp/ch-{NAME}.log"
+    pidfile = f"/tmp/ch-pid-{NAME}"
+    api     = f"/tmp/ch-api-{NAME}.sock"
+    gateway = f"{BRIDGE_PFX}.1"
+    cmdline = (
+        f"console=ttyS0 root=/dev/vda1 rw"
+        f" ip={ip}::{gateway}:255.255.255.0:{NAME}:eth0:off"
+        " systemd.mask=multipathd.service systemd.mask=multipathd.socket"
+    )
+    ch_args = [
+        CH_BIN,
+        "--kernel",    product_kernel,
+        "--cmdline",   cmdline,
+        "--disk",
+        f"path={disk}",
+        f"path={data_disk}",
+        "--net",       f"tap={tap},mac={mac}",
+        "--cpus",      f"boot={VCPUS}",
+        "--memory",    f"size={RAM_MB}M",
+        "--api-socket", api,
+        "--serial",    f"file={log}",
+        "--console",   "off",
+    ]
 
-        _provision_vm(ip, ssh_opts, scp_opts)
-        _save_snapshot(ip, disk, data_disk, snap_dir, ssh_opts, scp_opts)
+    quoted = " ".join(shlex.quote(str(a)) for a in ch_args)
+    shell  = f"nohup {quoted} >> {shlex.quote(log)} 2>&1 & echo $! > {shlex.quote(pidfile)}"
+    sudo("bash", "-c", shell)
+
+    for _ in range(20):
+        try:
+            pid = int(Path(pidfile).read_text().strip())
+            print(f"cloud-hypervisor PID: {pid}", flush=True)
+            break
+        except (OSError, ValueError):
+            time.sleep(0.1)
+    else:
+        raise RuntimeError(f"cloud-hypervisor did not write PID to {pidfile}")
+
+    try:
+        _wait_ssh(ip, timeout=120)
+        dt_boot = time.monotonic() - t0
+        print(f"SSH ready (Docker snapshot VM) in {dt_boot:.1f}s.", flush=True)
+
+        _provision_docker_vm(ip, ssh_opts, scp_opts)
+        _save_docker_snapshot(ip, disk, data_disk, snap_dir,
+                              product_kernel, ssh_opts)
     finally:
-        # Destroy the temporary VM.
         subprocess.run(["sudo", "kill", str(pid)], capture_output=True)
-        for f in [disk, data_disk, seed]:
+        for f in [disk, data_disk]:
             subprocess.run(["sudo", "rm", "-f", str(f)], capture_output=True)
         _teardown_tap(tap)
 
+    dt = time.monotonic() - t0
+    print(f"Docker snapshot built in {dt:.1f}s", flush=True)
 
-def _provision_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
-    """SSH into a fresh VM, run cloud-init and setup scripts."""
-    # Wait for cloud-init. Exit code 2 = "recoverable error" (tolerable).
-    # cloud-init v25.3 can return exit 1 while still running; retry up to 60s.
-    for attempt in range(12):
-        r = subprocess.run(
-            ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "sudo cloud-init status --wait"],
-            capture_output=True, text=True,
-        )
-        if r.returncode in (0, 2):
-            break
-        combined = r.stdout + r.stderr
-        if attempt < 11:
-            print(f"cloud-init status exited {r.returncode} (attempt {attempt+1}/12), retrying in 5s...")
-            print(combined.strip())
-            time.sleep(5)
-        else:
-            print(combined.strip())
-            raise RuntimeError(f"cloud-init status exited {r.returncode} after {attempt+1} attempts")
-    if r.returncode == 2:
-        subprocess.run(
-            ["ssh", *ssh_opts, f"{USER_NAME}@{ip}",
-             "sudo cloud-init status --long; sudo cat /var/log/cloud-init-output.log | tail -50"],
-        )
 
+def _provision_docker_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
+    """Provision a Docker-based VM: install CH + exelet, create ZFS pool, preload images.
+
+    Skips cloud-init wait and apt installs (everything baked into Docker rootfs).
+    """
     vm_arch_raw = subprocess.check_output(
-        ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "uname -m"], text=True,
-    ).strip()
+        ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "uname -m"], text=True).strip()
     vm_arch = {"x86_64": "amd64", "aarch64": "arm64"}.get(vm_arch_raw, vm_arch_raw)
 
     ch_version = os.environ.get("CLOUD_HYPERVISOR_VERSION", "48.0")
@@ -745,7 +677,7 @@ def _provision_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
         str(ch_artifact), str(exeletd_bin), str(exeletctl_bin),
         f"{USER_NAME}@{ip}:~/.cache/exedops/")
 
-    # Copy Docker Hub auth into VM for authenticated pulls (avoids rate limits).
+    # Copy Docker Hub auth for authenticated pulls.
     docker_cfg = Path.home() / ".docker" / "config.json"
     if docker_cfg.exists():
         run("scp", *scp_opts, str(docker_cfg), f"{USER_NAME}@{ip}:/tmp/docker-config.json")
@@ -754,13 +686,34 @@ def _provision_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
     elif os.environ.get("BUILDKITE"):
         raise RuntimeError(
             "~/.docker/config.json not found. Docker Hub pulls will be rate-limited.\n"
-            "Fix: sudo -u buildkite-agent docker login\n"
-            f"Expected path: {docker_cfg}"
-        )
+            f"Fix: sudo -u buildkite-agent docker login\nExpected path: {docker_cfg}")
 
     run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
         "sudo mv ~/setup-cloud-hypervisor.sh ~/setup-exelet.sh /root/ "
         "&& sudo chmod +x /root/setup-cloud-hypervisor.sh /root/setup-exelet.sh")
+
+    # Set up ZFS pool (normally done by cloud-init runcmd).
+    run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
+        "sudo udevadm settle --timeout=5 2>/dev/null || true; "
+        "sudo zpool create -f -m none tank /dev/vdb 2>/dev/null || { "
+        "  echo 'Whole-disk zpool failed, partitioning manually...'; "
+        "  echo ',,L' | sudo sfdisk /dev/vdb; "
+        "  sudo udevadm trigger --subsystem-match=block; "
+        "  sudo udevadm settle --timeout=5; "
+        "  sudo zpool create -f -m none tank /dev/vdb1; "
+        "}; "
+        "sudo zfs create -o mountpoint=/data tank/data")
+
+    # Hugepages and DNS.
+    gateway = f"{BRIDGE_PFX}.1"
+    run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
+        "HP=$(awk '/MemTotal/{print int($2/4096)}' /proc/meminfo) && "
+        "echo $HP | sudo tee /proc/sys/vm/nr_hugepages >/dev/null; "
+        f"sudo mkdir -p /etc/systemd/resolved.conf.d && "
+        f"printf '[Resolve]\\nDNS={gateway}\\n' | "
+        f"sudo tee /etc/systemd/resolved.conf.d/ci.conf >/dev/null && "
+        "sudo systemctl restart systemd-resolved && "
+        "for i in $(seq 1 20); do getent hosts github.com >/dev/null 2>&1 && break; sleep 0.5; done")
 
     print("Running setup-cloud-hypervisor.sh ...", flush=True)
     run("ssh", *ssh_opts, "-o", "LogLevel=ERROR", f"{USER_NAME}@{ip}",
@@ -771,41 +724,28 @@ def _provision_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
         "sudo /bin/bash -x /root/setup-exelet.sh")
 
 
-def _save_snapshot(ip: str, disk: Path, data_disk: Path, snap_dir: Path,
-                   ssh_opts: list, scp_opts: list) -> None:
-    """Sync, extract kernel, and save disk images to snap_dir atomically."""
+def _save_docker_snapshot(ip: str, disk: Path, data_disk: Path,
+                          snap_dir: Path, product_kernel: str,
+                          ssh_opts: list) -> None:
+    """Save a Docker-based snapshot: disk images + product kernel."""
     staging = Path(str(snap_dir) + ".staging")
     sudo("rm", "-rf", str(staging))
     sudo("mkdir", "-p", str(staging))
-    sudo("chmod", "777", str(staging))
+    sudo("chmod", "755", str(staging))
 
-    # Export ZFS pool cleanly so the data disk is consistent, then sync.
+    # Export ZFS pool cleanly.
     run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
         "sudo zpool export tank 2>/dev/null || true; sudo sync")
 
-    # Extract guest kernel for future snapshot boots.
-    print("Extracting kernel/initrd from VM ...", flush=True)
-    uname_r = subprocess.check_output(
-        ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", "uname -r"], text=True).strip()
-    with tempfile.TemporaryDirectory() as td:
-        td_path = Path(td)
-        run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
-            f"sudo cp /boot/vmlinuz-{uname_r} /boot/initrd.img-{uname_r} /tmp/"
-            f" && sudo chmod a+r /tmp/vmlinuz-{uname_r} /tmp/initrd.img-{uname_r}")
-        run("scp", *scp_opts,
-            f"{USER_NAME}@{ip}:/tmp/vmlinuz-{uname_r}",
-            f"{USER_NAME}@{ip}:/tmp/initrd.img-{uname_r}",
-            str(td_path) + "/")
-        sudo("cp", str(td_path / f"vmlinuz-{uname_r}"),   str(staging / "vmlinuz"))
-        sudo("cp", str(td_path / f"initrd.img-{uname_r}"), str(staging / "initrd.img"))
-    sudo("chmod", "a+r", str(staging / "vmlinuz"), str(staging / "initrd.img"))
-    print(f"Kernel {uname_r} saved to staging", flush=True)
+    # Copy product kernel to snapshot dir (no initrd needed).
+    sudo("cp", product_kernel, str(staging / "vmlinuz"))
+    sudo("chmod", "a+r", str(staging / "vmlinuz"))
 
     cp_clone(disk, staging / "base.qcow2")
     cp_clone(data_disk, staging / "data.raw")
     sudo("chmod", "a+r", str(staging / "base.qcow2"), str(staging / "data.raw"))
 
-    # Atomic rename: snap_dir appears fully populated or not at all.
+    # Atomic rename.
     sudo("mkdir", "-p", str(snap_dir.parent))
     if snap_dir.exists():
         sudo("rm", "-rf", str(snap_dir))
@@ -838,7 +778,7 @@ def destroy_vm(envfile: Path) -> None:
         subprocess.run(["sudo", "ip", "link", "del", tap],
                        check=False, capture_output=True)
 
-    for key in ("VM_DISK", "VM_DATA_DISK", "VM_SEED"):
+    for key in ("VM_DISK", "VM_DATA_DISK"):
         path = env.get(key, "")
         if path:
             subprocess.run(["sudo", "rm", "-f", path],
@@ -866,18 +806,7 @@ def create_vm() -> Path:
     s_hash  = _setup_hash()
     img_dig = _image_digest()
 
-    if not BASE_IMG.exists():
-        print("Downloading base image ...", flush=True)
-        sudo("curl", "-L", BASE_URL, "-o", str(BASE_IMG))
-    sidecar = Path(str(BASE_IMG) + ".sha256")
-    if not sidecar.exists():
-        result = subprocess.run(["sha256sum", str(BASE_IMG)], capture_output=True, text=True)
-        sha = result.stdout.split()[0]
-        subprocess.run(["sudo", "tee", str(sidecar)],
-                       input=sha + "\n", text=True, capture_output=True)
-    b_hash = sidecar.read_text().strip()
-
-    snap_dir, local_base, local_data = _snapshot_paths(s_hash, img_dig, b_hash)
+    snap_dir, local_base, local_data = _snapshot_paths(s_hash, img_dig)
     snap_base = snap_dir / "base.qcow2"
     snap_data = snap_dir / "data.raw"
 
@@ -887,7 +816,6 @@ def create_vm() -> Path:
     # ── Boot from snapshot ──
     disk      = WORKDIR / f"{NAME}.qcow2"
     data_disk = WORKDIR / f"{NAME}-data.raw"
-    seed      = WORKDIR / f"{NAME}-seed.iso"
     tap       = tap_name_for(NAME)
 
     ip  = allocate_ip()
@@ -936,17 +864,13 @@ def create_vm() -> Path:
                 fd.close()
         cp_clone(local_data, data_disk)
 
-    def make_iso():
-        _make_cloud_init_iso(seed, True, ip, mac)
-
     def setup_tap():
         _setup_tap(tap)
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         futs = {
             pool.submit(clone_root): "clone_root",
             pool.submit(clone_data): "clone_data",
-            pool.submit(make_iso):   "make_iso",
             pool.submit(setup_tap):  "setup_tap",
         }
         for fut in as_completed(futs):
@@ -955,7 +879,7 @@ def create_vm() -> Path:
             if exc:
                 raise RuntimeError(f"Parallel task {task!r} failed: {exc}") from exc
 
-    pid = _launch_ch(disk, data_disk, seed, tap, mac, ip, snap_dir)
+    pid = _launch_ch(disk, data_disk, tap, mac, ip, snap_dir)
 
     print(f"Waiting for SSH at {ip} (timeout=120s) ...", flush=True)
     _wait_ssh(ip, timeout=120)
@@ -1001,7 +925,6 @@ def create_vm() -> Path:
         f"VM_PID={pid}\n"
         f"VM_DISK={disk}\n"
         f"VM_DATA_DISK={data_disk}\n"
-        f"VM_SEED={seed}\n"
     )
     print(str(envfile), flush=True)
     return envfile
@@ -1052,18 +975,7 @@ def cmd_ensure_snapshot():
     s_hash  = _setup_hash()
     img_dig = _image_digest()
 
-    if not BASE_IMG.exists():
-        print("Downloading base image ...", flush=True)
-        sudo("curl", "-L", BASE_URL, "-o", str(BASE_IMG))
-    sidecar = Path(str(BASE_IMG) + ".sha256")
-    if not sidecar.exists():
-        result = subprocess.run(["sha256sum", str(BASE_IMG)], capture_output=True, text=True)
-        sha = result.stdout.split()[0]
-        subprocess.run(["sudo", "tee", str(sidecar)],
-                       input=sha + "\n", text=True, capture_output=True)
-    b_hash = sidecar.read_text().strip()
-
-    snap_dir, _, _ = _snapshot_paths(s_hash, img_dig, b_hash)
+    snap_dir, _, _ = _snapshot_paths(s_hash, img_dig)
     _ensure_snapshot(snap_dir)
     print(f"Snapshot ready: {snap_dir}", flush=True)
 

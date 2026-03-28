@@ -434,7 +434,7 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		"--data-dir", res.dataDir,
 		"--runtime-address", "cloudhypervisor:///" + res.dataDir + "/runtime",
 		"--storage-manager-address", "zfs:///" + res.dataDir + "/storage?dataset=" + res.zfsDataset,
-		"--network-manager-address", `"nat:///` + res.dataDir + `/network?bridge=` + res.bridgeName + `&network=` + encodedNetwork + `"`,
+		"--network-manager-address", `"nat:///` + res.dataDir + `/network?bridge=` + res.bridgeName + `&network=` + encodedNetwork + `&disable_bandwidth=true"`,
 		"--proxy-port-min", strconv.Itoa(res.proxyPortMin),
 		"--proxy-port-max", strconv.Itoa(res.proxyPortMax),
 		"--resource-manager-interval", "5s",

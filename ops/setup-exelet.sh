@@ -71,12 +71,26 @@ done
 
 echo "exeletd is ready"
 
-# Load images into storage manager
+# Load images into storage manager in parallel
+pids=()
 for image in "${IMAGES[@]}"; do
-    if ! "$EXELET_CTL" storage fs load "$image"; then
-        echo "WARNING: Failed to load $image (may be rate limited)"
-    fi
+    (
+        if ! "$EXELET_CTL" storage fs load "$image"; then
+            echo "WARNING: Failed to load $image (may be rate limited)"
+            exit 1
+        fi
+    ) &
+    pids+=($!)
 done
+# Wait for all image loads; fail if all failed
+failed=0
+for pid in "${pids[@]}"; do
+    wait "$pid" || failed=$((failed + 1))
+done
+if [ "$failed" -eq "${#IMAGES[@]}" ]; then
+    echo "ERROR: All image loads failed"
+    exit 1
+fi
 
 # Teardown bootstrap exelet
 echo "Stopping exeletd..."
