@@ -1,10 +1,19 @@
+- label: ":wrench: build e1e binaries"
+  key: build-e1e
+  command: python3 .buildkite/steps/build-e1e-binaries.py
+  timeout_in_minutes: 10
+
 - label: ":white_check_mark: non-e1e checks"
   key: checks
+  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-checks.sh
   timeout_in_minutes: 20
 
 - label: ":go: unit tests (execore A-H)"
   key: unit-a
+  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -12,6 +21,8 @@
 
 - label: ":go: unit tests (other pkgs)"
   key: unit-b
+  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -19,6 +30,8 @@
 
 - label: ":go: unit tests (execore I-P)"
   key: unit-c
+  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -26,15 +39,12 @@
 
 - label: ":go: unit tests (execore Q-Z)"
   key: unit-d
+  # depends_on build-e1e to avoid starving the build of resources, not a real dependency
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
     UNIT_TEST_SHARD: D
-
-- label: ":wrench: build e1e binaries"
-  key: build-e1e
-  command: python3 .buildkite/steps/build-e1e-binaries.py
-  timeout_in_minutes: 10
 
 - label: ":rocket: e1e tests (A-N)"
   key: test-e1e-1

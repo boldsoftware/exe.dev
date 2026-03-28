@@ -9,9 +9,9 @@ from YAML segments in .buildkite/segments/:
   - format.yml             (always)
   - push.yml               (only for kite-queue-* branches)
 
-The segments are plain YAML lists of steps. push.yml uses placeholder
-strings __ALL_DEPS__ and __ALL_DEPS_PLUS_PUSH__ which are replaced with
-the actual dependency lists at generation time.
+The segments are plain YAML lists of steps. push.yml uses the placeholder
+string __ALL_DEPS__ which is replaced with the actual dependency list at
+generation time.
 """
 
 import os
@@ -100,10 +100,6 @@ def main():
         push_text = load_segment("push.yml")
         push_text = push_text.replace(
             "__ALL_DEPS__", "\n" + deps_yaml(all_keys),
-        )
-        push_text = push_text.replace(
-            "__ALL_DEPS_PLUS_PUSH__",
-            "\n" + deps_yaml(all_keys + ["push-to-main"]),
         )
         segments.append(push_text)
 
