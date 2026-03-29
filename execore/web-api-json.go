@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
+	"exe.dev/region"
 	"exe.dev/stage"
 )
 
@@ -80,7 +82,34 @@ type jsonDashboardData struct {
 type jsonUserInfo struct {
 	Email                string `json:"email"`
 	Region               string `json:"region"`
+	RegionDisplay        string `json:"regionDisplay"`
 	NewsletterSubscribed bool   `json:"newsletterSubscribed"`
+}
+
+func regionDisplay(code string) string {
+	if code == "" {
+		return ""
+	}
+	r, err := region.ByCode(code)
+	if err != nil {
+		slog.Warn("unknown region code", "code", code)
+		return ""
+	}
+	return r.Display
+}
+
+func newJSONUserInfo(user exedb.User) jsonUserInfo {
+	return jsonUserInfo{
+		Email:         user.Email,
+		Region:        user.Region,
+		RegionDisplay: regionDisplay(user.Region),
+	}
+}
+
+func newJSONUserInfoWithNewsletter(user exedb.User) jsonUserInfo {
+	info := newJSONUserInfo(user)
+	info.NewsletterSubscribed = user.NewsletterSubscribed
+	return info
 }
 
 type jsonSSHKey struct {
@@ -375,7 +404,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 
 	writeJSONOK(w, jsonDashboardData{
-		User:              jsonUserInfo{Email: user.Email, Region: user.Region},
+		User:              newJSONUserInfo(user),
 		Boxes:             boxes,
 		SharedBoxes:       sharedBoxes,
 		TeamBoxes:         teamBoxes,
@@ -577,7 +606,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 
 	profile := jsonProfileData{
-		User:               jsonUserInfo{Email: user.Email, Region: user.Region, NewsletterSubscribed: user.NewsletterSubscribed},
+		User:               newJSONUserInfoWithNewsletter(user),
 		SSHKeys:            nonNil(sshKeys),
 		Passkeys:           nonNil(passkeys),
 		SiteSessions:       nonNil(siteSessions),

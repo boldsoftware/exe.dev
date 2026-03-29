@@ -31,7 +31,10 @@
           </div>
           <div class="info-row">
             <span class="info-label">Region</span>
-            <span class="info-value">{{ data.user.region }}</span>
+            <span class="info-value">
+              {{ data.user.region.toUpperCase() }}<template v-if="data.user.regionDisplay"> ({{ data.user.regionDisplay }})</template>
+              &ensp;<button class="btn btn-secondary" @click="showRegionModal = true">Change</button>
+            </span>
           </div>
           <div class="info-row">
             <span class="info-label">Newsletter</span>
@@ -322,6 +325,18 @@
       </section>
     </template>
 
+    <!-- Region Change Modal -->
+    <div v-if="showRegionModal" class="modal-overlay" @click.self="showRegionModal = false">
+      <div class="modal-box">
+        <div class="modal-title">Change Region</div>
+        <p class="modal-text">Email <a href="mailto:support@exe.dev">support@exe.dev</a> to change your region.</p>
+        <p class="modal-text"><a href="/docs/regions">View all regions</a></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="showRegionModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Command Modal -->
     <CommandModal
       :visible="modal.visible"
@@ -351,6 +366,7 @@ const deletingPasskeys = ref<Set<number>>(new Set())
 const passkeyError = ref('')
 const passkeySupported = ref(typeof window !== 'undefined' && window.PublicKeyCredential !== undefined)
 const newsletterStatus = ref('')
+const showRegionModal = ref(false)
 
 // Team creation
 const teamName = ref('')
@@ -717,6 +733,43 @@ async function toggleNewsletter(event: Event) {
 
 .info-value {
   color: var(--text-color);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 360px;
+  width: 90%;
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.modal-text {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  margin-bottom: 8px;
+}
+
+.modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .inline-link {

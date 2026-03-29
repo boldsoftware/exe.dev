@@ -51,15 +51,17 @@ func generateRegionDoc() string {
 	buf.WriteString(`---
 # DO NOT EDIT; rebuild with go run ./cmd/genregiondocs
 title: "Regions"
-description: "Available regions for exe.dev VMs"
+description: "Available exe.dev regions"
 subheading: "2. Features"
 suborder: 10
-published: false
+published: true
 ---
 
 # Regions
 
-exe.dev VMs can be deployed in multiple regions around the world.
+Each account is associated with a region. All of that account's VMs are hosted in that region.
+
+The lobby (main exe.dev server) is located in the United States for all accounts.
 
 `)
 
@@ -68,8 +70,12 @@ exe.dev VMs can be deployed in multiple regions around the world.
 		if !r.Active {
 			continue
 		}
-		fmt.Fprintf(&buf, "- **%s**: %s\n", r.Code, r.Display)
+		fmt.Fprintf(&buf, "- **%s**: %s\n", strings.ToUpper(r.Code), r.Display)
 	}
+
+	buf.WriteString(`
+The PDX region is not accepting new accounts; LAX is the nearest substitute. Accounts associated with PDX may have some VMs located in LAX.
+`)
 
 	return buf.String()
 }

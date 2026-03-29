@@ -161,3 +161,23 @@ func TestAPIDashboardBatchShareData(t *testing.T) {
 type DashboardData struct {
 	Boxes []jsonBoxInfo `json:"boxes"`
 }
+
+func TestRegionDisplay(t *testing.T) {
+	tests := []struct {
+		code string
+		want string
+	}{
+		{"pdx", "Oregon, USA"},
+		{"fra", "Frankfurt, Germany"},
+		{"", ""},
+		{"bogus", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			got := regionDisplay(tt.code)
+			if got != tt.want {
+				t.Errorf("regionDisplay(%q) = %q, want %q", tt.code, got, tt.want)
+			}
+		})
+	}
+}

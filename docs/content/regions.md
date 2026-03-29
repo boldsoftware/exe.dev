@@ -1,20 +1,24 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/genregiondocs
 title: "Regions"
-description: "Available regions for exe.dev VMs"
+description: "Available exe.dev regions"
 subheading: "2. Features"
 suborder: 10
-published: false
+published: true
 ---
 
 # Regions
 
-exe.dev VMs can be deployed in multiple regions around the world.
+Each account is associated with a region. All of that account's VMs are hosted in that region.
 
-- **pdx**: Oregon, USA
-- **lax**: Los Angeles, USA
-- **nyc**: New York, USA
-- **fra**: Frankfurt, Germany
-- **tyo**: Tokyo, Japan
-- **syd**: Sydney, Australia
-- **lon**: London, UK
+The lobby (main exe.dev server) is located in the United States for all accounts.
+
+- **PDX**: Oregon, USA
+- **LAX**: Los Angeles, USA
+- **NYC**: New York, USA
+- **FRA**: Frankfurt, Germany
+- **TYO**: Tokyo, Japan
+- **SYD**: Sydney, Australia
+- **LON**: London, UK
+
+The PDX region is not accepting new accounts; LAX is the nearest substitute. Accounts associated with PDX may have some VMs located in LAX.

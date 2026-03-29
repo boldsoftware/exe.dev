@@ -163,6 +163,7 @@ export interface CreditInfo {
 export interface UserInfo {
   email: string
   region: string
+  regionDisplay: string
   newsletterSubscribed: boolean
 }
 
