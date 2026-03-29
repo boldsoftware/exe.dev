@@ -255,11 +255,121 @@ func cmdWait(cmd *exec.Cmd) error {
 	return err
 }
 
+const (
+	// progressMaxBytes is the maximum bytes of output kept in the progress tail buffer.
+	progressMaxBytes = 10 * 1024
+	// progressInterval is how often we report progress to the UI.
+	progressInterval = 500 * time.Millisecond
+)
+
+// progressWriter wraps a bytes.Buffer and periodically reports the tail of output.
+type progressWriter struct {
+	buf      bytes.Buffer
+	mu       sync.Mutex
+	progress llm.ToolProgressFunc
+	toolID   string
+	toolName string
+	ctx      context.Context
+	cancel   context.CancelFunc
+	done     chan struct{}
+}
+
+func newProgressWriter(ctx context.Context, progress llm.ToolProgressFunc, toolID, toolName string) *progressWriter {
+	pCtx, cancel := context.WithCancel(ctx)
+	pw := &progressWriter{
+		progress: progress,
+		toolID:   toolID,
+		toolName: toolName,
+		ctx:      pCtx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
+	go pw.reportLoop()
+	return pw
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+	return pw.buf.Write(p)
+}
+
+// tail returns the last progressMaxBytes of accumulated output.
+func (pw *progressWriter) tail() string {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+	b := pw.buf.Bytes()
+	if len(b) > progressMaxBytes {
+		b = b[len(b)-progressMaxBytes:]
+	}
+	return string(b)
+}
+
+func (pw *progressWriter) reportLoop() {
+	defer close(pw.done)
+	ticker := time.NewTicker(progressInterval)
+	defer ticker.Stop()
+	lastReported := ""
+	for {
+		select {
+		case <-pw.ctx.Done():
+			// Final report
+			if t := pw.tail(); t != lastReported {
+				pw.progress(llm.ToolProgress{
+					ToolUseID: pw.toolID,
+					ToolName:  pw.toolName,
+					Output:    t,
+				})
+			}
+			return
+		case <-ticker.C:
+			t := pw.tail()
+			if t != lastReported {
+				lastReported = t
+				pw.progress(llm.ToolProgress{
+					ToolUseID: pw.toolID,
+					ToolName:  pw.toolName,
+					Output:    t,
+				})
+			}
+		}
+	}
+}
+
+func (pw *progressWriter) stop() {
+	pw.cancel()
+	<-pw.done
+}
+
+// String returns the accumulated output as a string.
+func (pw *progressWriter) String() string {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+	return pw.buf.String()
+}
+
 func (b *BashTool) executeBash(ctx context.Context, req bashInput, timeout time.Duration) (string, error) {
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	output := new(bytes.Buffer)
+	// Check if there's a progress callback for streaming output
+	progressFn := GetToolProgress(ctx)
+	toolID, _ := ctx.Value(toolUseIDCtxKey).(string)
+
+	var output io.Writer
+	var getOutput func() string
+
+	if progressFn != nil && toolID != "" {
+		pw := newProgressWriter(execCtx, progressFn, toolID, bashName)
+		defer pw.stop()
+		output = pw
+		getOutput = pw.String
+	} else {
+		buf := new(bytes.Buffer)
+		output = buf
+		getOutput = buf.String
+	}
+
 	cmd := b.makeBashCommand(execCtx, req.Command, output)
 	cmd.Env = append(cmd.Env, `GIT_SEQUENCE_EDITOR=echo "To do an interactive rebase, run it in a tmux session." && exit 1`)
 	if err := cmd.Start(); err != nil {
@@ -268,7 +378,7 @@ func (b *BashTool) executeBash(ctx context.Context, req bashInput, timeout time.
 
 	err := cmdWait(cmd)
 
-	out, formatErr := formatForegroundBashOutput(output.String())
+	out, formatErr := formatForegroundBashOutput(getOutput())
 	if formatErr != nil {
 		return "", formatErr
 	}

@@ -746,7 +746,8 @@ func truncateForError(data string, maxLen int) string {
 }
 
 // parseSSEStream reads an SSE stream and assembles the complete response.
-func parseSSEStream(r io.Reader) (*response, error) {
+// If onStream is non-nil, it is called with each text/thinking delta as it arrives.
+func parseSSEStream(r io.Reader, onStream func(llm.StreamDelta)) (*response, error) {
 	var (
 		resp        *response
 		contents    []content // indexed by content block index
@@ -804,11 +805,17 @@ func parseSSEStream(r io.Reader) (*response, error) {
 					c.Text = new(string)
 				}
 				*c.Text += delta.Text
+				if onStream != nil {
+					onStream(llm.StreamDelta{Type: "text", Text: delta.Text, Index: event.Index})
+				}
 			case "thinking_delta":
 				if c.Thinking == nil {
 					c.Thinking = new(string)
 				}
 				*c.Thinking += delta.Thinking
+				if onStream != nil {
+					onStream(llm.StreamDelta{Type: "thinking", Text: delta.Thinking, Index: event.Index})
+				}
 			case "input_json_delta":
 				// Accumulate raw JSON for tool_use input
 				c.ToolInput = append(c.ToolInput, []byte(delta.PartialJSON)...)
@@ -935,7 +942,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
-			response, err := parseSSEStream(resp.Body)
+			response, err := parseSSEStream(resp.Body, ir.OnStream)
 			resp.Body.Close()
 			if err != nil {
 				// Stream parse errors might be transient (connection reset, etc.)

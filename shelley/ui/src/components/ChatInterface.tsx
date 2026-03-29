@@ -5,6 +5,7 @@ import {
   StreamResponse,
   LLMContent,
   ConversationListUpdate,
+  ToolProgress,
   isDistillStatusMessage,
   isQueuedMessage,
 } from "../types";
@@ -254,6 +255,7 @@ interface CoalescedToolCallProps {
   hasResult?: boolean;
   display?: unknown;
   onCommentTextChange?: (text: string) => void;
+  streamingOutput?: string;
 }
 
 // Map tool names to their specialized components.
@@ -295,6 +297,7 @@ const CoalescedToolCall = React.memo(function CoalescedToolCall({
   hasResult,
   display,
   onCommentTextChange,
+  streamingOutput,
 }: CoalescedToolCallProps) {
   // Calculate execution time if available
   let executionTime = "";
@@ -320,6 +323,7 @@ const CoalescedToolCall = React.memo(function CoalescedToolCall({
       executionTime,
       display,
       ...(toolName === "patch" && onCommentTextChange ? { onCommentTextChange } : {}),
+      ...(streamingOutput !== undefined ? { streamingOutput } : {}),
     };
     return <ToolComponent {...props} />;
   }
@@ -804,6 +808,10 @@ function ChatInterface({
   }, [messages]);
 
   const [contextWindowSize, setContextWindowSize] = useState(0);
+  // Tool progress: maps tool_use_id -> partial output
+  const [toolProgress, setToolProgress] = useState<Record<string, ToolProgress>>({});
+  // Streaming LLM text: accumulated text from stream deltas
+  const [streamingText, setStreamingText] = useState("");
   const [orchestratorMode, setOrchestratorMode] = useState(false);
   const [subagentBackend, setSubagentBackend] = useState<"shelley" | "claude-cli" | "codex-cli">(
     "shelley",
@@ -963,12 +971,16 @@ function ChatInterface({
   useEffect(() => {
     if (conversationId) {
       setAgentWorking(false);
+      setToolProgress({});
+      setStreamingText("");
       loadMessages();
       setupMessageStream();
     } else {
       // No conversation yet, show empty state
       setMessages([]);
       setContextWindowSize(0);
+      setToolProgress({});
+      setStreamingText("");
       if (loadingProgressDelayRef.current) {
         clearTimeout(loadingProgressDelayRef.current);
         loadingProgressDelayRef.current = null;
@@ -1330,6 +1342,39 @@ function ChatInterface({
         // Merge new messages without losing existing ones.
         // If no new messages (e.g., only conversation/slug update or heartbeat), keep existing list.
         if (incomingMessages.length > 0) {
+          // Clear streaming state when actual messages arrive
+          // Tool results replace tool progress; agent messages replace streaming text
+          for (const msg of incomingMessages) {
+            if (msg.type === "tool" || msg.type === "user") {
+              // Tool result message arrived - clear any tool progress for tools in this message
+              try {
+                const llmData = msg.llm_data
+                  ? typeof msg.llm_data === "string"
+                    ? JSON.parse(msg.llm_data)
+                    : msg.llm_data
+                  : null;
+                if (llmData?.Content) {
+                  const toolIds = llmData.Content.filter((c: { Type: number }) => c.Type === 6) // tool_result
+                    .map((c: { ToolUseID?: string }) => c.ToolUseID)
+                    .filter(Boolean);
+                  if (toolIds.length > 0) {
+                    setToolProgress((prev) => {
+                      const next = { ...prev };
+                      for (const id of toolIds) delete next[id];
+                      return next;
+                    });
+                  }
+                }
+              } catch {
+                /* ignore parse errors */
+              }
+            }
+            if (msg.type === "agent") {
+              // Agent message arrived - clear streaming text
+              setStreamingText("");
+            }
+          }
+
           setMessages((prev) => {
             const byId = new Map<string, Message>();
             for (const m of prev) byId.set(m.message_id, m);
@@ -1381,6 +1426,23 @@ function ChatInterface({
         // Dispatch notification events to registered handlers
         if (streamResponse.notification_event) {
           handleNotificationEvent(streamResponse.notification_event);
+        }
+
+        // Handle tool progress (partial output from running tools)
+        if (streamResponse.tool_progress) {
+          const progress = streamResponse.tool_progress;
+          setToolProgress((prev) => ({
+            ...prev,
+            [progress.tool_use_id]: progress,
+          }));
+        }
+
+        // Handle LLM streaming text deltas
+        if (streamResponse.stream_delta) {
+          const delta = streamResponse.stream_delta;
+          if (delta.type === "text") {
+            setStreamingText((prev) => prev + delta.text);
+          }
         }
 
         if (typeof streamResponse.context_window_size === "number") {
@@ -1609,6 +1671,7 @@ function ChatInterface({
       setSending(true);
       setError(null);
       setAgentWorking(true);
+      setStreamingText("");
 
       // If no conversation ID, this is the first message - validate cwd first
       if (!conversationId && onFirstMessage) {
@@ -1932,6 +1995,7 @@ function ChatInterface({
             onOpenDiffViewer={handleOpenDiffViewer}
             onCommentTextChange={setDiffCommentText}
             onCancelQueued={isQueuedMessage(item.message) ? cancelQueuedMessages : undefined}
+            toolProgress={toolProgress}
           />
         );
       } else if (item.type === "tool") {
@@ -1947,6 +2011,7 @@ function ChatInterface({
             hasResult={item.hasResult}
             display={item.display}
             onCommentTextChange={setDiffCommentText}
+            streamingOutput={item.toolUseId ? toolProgress[item.toolUseId]?.output : undefined}
           />
         );
       }
@@ -1956,10 +2021,24 @@ function ChatInterface({
     // Find system prompt message to render at the top (exclude distill status messages)
     const systemMessage = messages.find((m) => m.type === "system" && !isDistillStatusMessage(m));
 
+    // Streaming text preview: show when agent is generating text
+    const streamingPreview =
+      streamingText && agentWorking ? (
+        <div key="streaming-preview" className="message message-agent streaming-message">
+          <div className="message-content" data-testid="message-content">
+            <div className="whitespace-pre-wrap break-words">
+              {streamingText}
+              <span className="streaming-cursor">▊</span>
+            </div>
+          </div>
+        </div>
+      ) : null;
+
     return [
       <ModelBar key="model-bar" model={currentConversation?.model} models={models} />,
       systemMessage && <SystemPromptView key="system-prompt" message={systemMessage} />,
       ...rendered,
+      streamingPreview,
     ];
   };
 

@@ -7,6 +7,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"shelley.exe.dev/version"
@@ -115,22 +117,70 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := base.RoundTrip(req)
 
 	// Record the request if we have a recorder
-	if t.Recorder != nil {
-		var responseBody []byte
-		var statusCode int
+	if t.Recorder != nil && resp == nil {
+		// Transport-level error (DNS failure, connection refused, etc.) — no response to stream.
+		t.Recorder(req.Context(), req.URL.String(), requestBody, nil, 0, err, time.Since(start))
+	}
+	if t.Recorder != nil && resp != nil {
+		contentType := resp.Header.Get("Content-Type")
+		isStreaming := strings.HasPrefix(contentType, "text/event-stream")
 
-		if resp != nil {
-			statusCode = resp.StatusCode
-			// Read and restore the response body
-			responseBody, _ = io.ReadAll(resp.Body)
+		if isStreaming {
+			// For SSE streams, wrap the body so we record after the caller
+			// finishes reading. This avoids buffering the entire stream
+			// upfront, which would destroy real-time streaming.
+			rb := &recordingBody{
+				ReadCloser: resp.Body,
+				ctx:        req.Context(),
+				url:        req.URL.String(),
+				reqBody:    requestBody,
+				statusCode: resp.StatusCode,
+				start:      start,
+				recorder:   t.Recorder,
+			}
+			resp.Body = rb
+		} else {
+			// For non-streaming responses, read the entire body and record immediately.
+			responseBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+			t.Recorder(req.Context(), req.URL.String(), requestBody, responseBody, resp.StatusCode, err, time.Since(start))
 		}
-
-		t.Recorder(req.Context(), req.URL.String(), requestBody, responseBody, statusCode, err, time.Since(start))
 	}
 
 	return resp, err
+}
+
+// recordingBody wraps an io.ReadCloser to accumulate the response body
+// as it is read, then calls the recorder when Close is called.
+// This allows SSE streams to be read in real-time while still recording
+// the full response body for the database.
+type recordingBody struct {
+	io.ReadCloser
+	ctx        context.Context
+	url        string
+	reqBody    []byte
+	buf        bytes.Buffer
+	statusCode int
+	start      time.Time
+	recorder   Recorder
+	once       sync.Once
+}
+
+func (rb *recordingBody) Read(p []byte) (int, error) {
+	n, err := rb.ReadCloser.Read(p)
+	if n > 0 {
+		rb.buf.Write(p[:n])
+	}
+	return n, err
+}
+
+func (rb *recordingBody) Close() error {
+	err := rb.ReadCloser.Close()
+	rb.once.Do(func() {
+		rb.recorder(rb.ctx, rb.url, rb.reqBody, rb.buf.Bytes(), rb.statusCode, nil, time.Since(rb.start))
+	})
+	return err
 }
 
 // NewClient creates an http.Client with Shelley headers and optional recording.

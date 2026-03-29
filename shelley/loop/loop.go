@@ -35,6 +35,14 @@ type Config struct {
 	// If set, this is called at end of turn to check for git state changes.
 	// If nil, Config.WorkingDir is used as a static value.
 	GetWorkingDir func() string
+	// OnToolProgress is called when a tool reports progress (partial output).
+	OnToolProgress llm.ToolProgressFunc
+	// OnStreamDelta is called when the LLM streams a partial content delta.
+	OnStreamDelta func(llm.StreamDelta)
+	// OnStreamDone is called when a streaming LLM response completes,
+	// before the assistant message is recorded. Use this to flush any
+	// buffered stream deltas so they reach the UI before the full message.
+	OnStreamDone func()
 }
 
 // Loop manages a conversation turn with an LLM including tool execution and message recording.
@@ -53,6 +61,9 @@ type Loop struct {
 	onGitStateChange GitStateChangeFunc
 	getWorkingDir    func() string
 	lastGitState     *gitstate.GitState
+	onToolProgress   llm.ToolProgressFunc
+	onStreamDelta    func(llm.StreamDelta)
+	onStreamDone     func()
 }
 
 // NewLoop creates a new Loop instance with the provided configuration
@@ -81,6 +92,9 @@ func NewLoop(config Config) *Loop {
 		onGitStateChange: config.OnGitStateChange,
 		getWorkingDir:    config.GetWorkingDir,
 		lastGitState:     initialGitState,
+		onToolProgress:   config.OnToolProgress,
+		onStreamDelta:    config.OnStreamDelta,
+		onStreamDone:     config.OnStreamDone,
 	}
 }
 
@@ -233,6 +247,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 			Messages: messages,
 			Tools:    tools,
 			System:   system,
+			OnStream: l.onStreamDelta,
 		}
 
 		// Insert missing tool results if the previous message had tool_use blocks
@@ -268,6 +283,12 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 			time.Sleep(time.Second * time.Duration(attempt)) // Simple backoff
 		}
 		cancel()
+
+		// Flush any buffered stream deltas before recording the message,
+		// so the UI sees the streaming text before the full message replaces it.
+		if l.onStreamDone != nil {
+			l.onStreamDone()
+		}
 
 		if err != nil {
 			// Record the error as a message so it can be displayed in the UI
@@ -451,11 +472,15 @@ func (l *Loop) executeToolCalls(ctx context.Context, content []llm.Content) erro
 			continue
 		}
 
-		// Execute the tool with working directory set in context
+		// Execute the tool with working directory and progress callback set in context
 		toolCtx := ctx
 		if l.workingDir != "" {
 			toolCtx = claudetool.WithWorkingDir(ctx, l.workingDir)
 		}
+		if l.onToolProgress != nil {
+			toolCtx = claudetool.WithToolProgress(toolCtx, l.onToolProgress)
+		}
+		toolCtx = claudetool.WithToolUseID(toolCtx, c.ID)
 		startTime := time.Now()
 		result := tool.Run(toolCtx, c.ToolInput)
 		endTime := time.Now()

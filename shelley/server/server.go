@@ -75,6 +75,10 @@ type StreamResponse struct {
 	Heartbeat bool `json:"heartbeat,omitempty"`
 	// NotificationEvent is set when a notification-worthy event occurs (e.g. agent finished).
 	NotificationEvent *notifications.Event `json:"notification_event,omitempty"`
+	// ToolProgress is set when a running tool reports partial output.
+	ToolProgress *llm.ToolProgress `json:"tool_progress,omitempty"`
+	// StreamDelta is set when the LLM streams partial text content.
+	StreamDelta *llm.StreamDelta `json:"stream_delta,omitempty"`
 }
 
 // LLMProvider is an interface for getting LLM services

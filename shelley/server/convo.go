@@ -801,6 +801,11 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		toolSet = claudetool.NewToolSet(processCtx, toolSetConfig)
 	}
 
+	// streamFlusher batches LLM stream deltas and flushes them periodically
+	// to avoid overwhelming the subpub channel (buffer=10) with hundreds
+	// of individual deltas per second from the Anthropic SSE stream.
+	sf := newStreamFlusher(cm.subpub, 50*time.Millisecond)
+
 	loopInstance := loop.NewLoop(loop.Config{
 		LLM:           service,
 		History:       history,
@@ -813,6 +818,13 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		OnGitStateChange: func(ctx context.Context, state *gitstate.GitState) {
 			cm.recordGitStateChange(ctx, state)
 		},
+		OnToolProgress: func(progress llm.ToolProgress) {
+			cm.subpub.Broadcast(StreamResponse{
+				ToolProgress: &progress,
+			})
+		},
+		OnStreamDelta: sf.Push,
+		OnStreamDone:  sf.Flush,
 	})
 
 	cm.mu.Lock()

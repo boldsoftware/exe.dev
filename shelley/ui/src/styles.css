@@ -1276,6 +1276,73 @@ button {
   color: var(--error-text);
 }
 
+.bash-tool-streaming {
+  max-height: 300px;
+  overflow-y: auto;
+  border-color: var(--accent-primary);
+  background: var(--bg-base);
+}
+
+/* Compact streaming preview shown below the header while a tool is running */
+.bash-tool-preview {
+  padding: 0 1rem 0.75rem;
+}
+
+.bash-tool-preview-code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  border: 1px solid var(--accent-primary);
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  max-height: 10rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bash-tool-preview-more {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--accent-primary);
+  padding: 0.25rem 0 0;
+  font-family: var(--font-mono);
+}
+
+.bash-tool-preview-more:hover {
+  text-decoration: underline;
+}
+
+/* Streaming cursor animation */
+.streaming-cursor {
+  animation: blink 1s step-end infinite;
+  color: var(--accent-primary);
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Streaming message preview */
+.streaming-message {
+  opacity: 0.85;
+}
+
+.streaming-message .message-content {
+  min-height: 1.5em;
+}
+
 /* Patch Tool */
 .patch-tool {
   background: var(--gray-100);

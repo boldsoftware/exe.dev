@@ -73,6 +73,20 @@ export interface NotificationEvent extends Omit<NotificationEventForTS, "type"> 
   type: NotificationEventType;
 }
 
+// ToolProgress represents partial output from a running tool.
+export interface ToolProgress {
+  tool_use_id: string;
+  tool_name: string;
+  output: string;
+}
+
+// StreamDelta represents a partial text delta from the LLM.
+export interface StreamDelta {
+  type: string; // "text" or "thinking"
+  text: string;
+  index: number;
+}
+
 // StreamResponse represents the streaming response format
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
@@ -80,6 +94,8 @@ export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   conversation_list_update?: ConversationListUpdate;
   heartbeat?: boolean;
   notification_event?: NotificationEvent;
+  tool_progress?: ToolProgress;
+  stream_delta?: StreamDelta;
 }
 
 // Link represents a custom link that can be added to the UI

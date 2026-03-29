@@ -214,3 +214,56 @@ func TestTransportWithoutRecorder(t *testing.T) {
 		t.Errorf("Status code = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
+
+func TestTransportRecordsStreamingResponseOnClose(t *testing.T) {
+	// Create a test server that returns an SSE stream
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: chunk1\n\n"))
+		w.Write([]byte("data: chunk2\n\n"))
+		w.Write([]byte("data: chunk3\n\n"))
+	}))
+	defer server.Close()
+
+	var (
+		recordedRespBody []byte
+		recorderCalled   bool
+	)
+
+	recorder := func(ctx context.Context, url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration) {
+		recorderCalled = true
+		recordedRespBody = responseBody
+	}
+
+	client := NewClient(nil, recorder)
+
+	req, _ := http.NewRequest("POST", server.URL, strings.NewReader("test"))
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	// Recorder should NOT have been called yet (streaming)
+	if recorderCalled {
+		t.Fatal("Recorder was called before body was read — streaming is broken")
+	}
+
+	// Read the body incrementally
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	// Now the recorder should have been called
+	if !recorderCalled {
+		t.Fatal("Recorder was not called after body close")
+	}
+
+	want := "data: chunk1\n\ndata: chunk2\n\ndata: chunk3\n\n"
+	if string(body) != want {
+		t.Errorf("Body = %q, want %q", string(body), want)
+	}
+
+	if string(recordedRespBody) != want {
+		t.Errorf("Recorded body = %q, want %q", string(recordedRespBody), want)
+	}
+}

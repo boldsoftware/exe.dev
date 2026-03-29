@@ -7,6 +7,7 @@ import {
   LLMMessage,
   LLMContent,
   Usage,
+  ToolProgress,
   isDistillStatusMessage,
   isQueuedMessage,
 } from "../types";
@@ -59,6 +60,7 @@ interface MessageProps {
   onOpenDiffViewer?: (commit: string, cwd?: string) => void;
   onCommentTextChange?: (text: string) => void;
   onCancelQueued?: () => void;
+  toolProgress?: Record<string, ToolProgress>;
 }
 
 // Copy icon for the commit hash copy button
@@ -254,6 +256,7 @@ const Message = React.memo(function Message({
   onOpenDiffViewer,
   onCommentTextChange,
   onCancelQueued,
+  toolProgress,
 }: MessageProps) {
   const { markdownMode } = useMarkdown();
 
@@ -504,7 +507,15 @@ const Message = React.memo(function Message({
 
         // Use specialized component for bash tool
         if (content.ToolName === "bash") {
-          return <BashTool toolInput={content.ToolInput} isRunning={true} />;
+          return (
+            <BashTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+              streamingOutput={
+                content.ID && toolProgress ? toolProgress[content.ID]?.output : undefined
+              }
+            />
+          );
         }
         // Use specialized component for patch tool
         if (content.ToolName === "patch") {

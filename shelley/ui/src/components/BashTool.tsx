@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { LLMContent } from "../types";
 
 // Display data from the bash tool backend
@@ -16,7 +16,13 @@ interface BashToolProps {
   hasError?: boolean;
   executionTime?: string;
   display?: unknown;
+
+  // Streaming output from tool progress
+  streamingOutput?: string;
 }
+
+/** Max lines shown in the streaming preview before "Show more" is needed. */
+const PREVIEW_LINES = 5;
 
 function BashTool({
   toolInput,
@@ -25,8 +31,33 @@ function BashTool({
   hasError,
   executionTime,
   display,
+  streamingOutput,
 }: BashToolProps) {
+  // Details panel (command, full output) — collapsed by default, stays collapsed after completion.
   const [isExpanded, setIsExpanded] = useState(false);
+  // Streaming preview — expanded to show full streaming output (beyond PREVIEW_LINES).
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const previewRef = React.useRef<HTMLPreElement>(null);
+  const expandedStreamRef = React.useRef<HTMLPreElement>(null);
+
+  // Collapse details when tool completes (if we auto-expanded for streaming,
+  // the user sees the preview instead, so the details panel should close).
+  const prevRunning = React.useRef(isRunning);
+  React.useEffect(() => {
+    if (prevRunning.current && !isRunning) {
+      setIsExpanded(false);
+      setPreviewExpanded(false);
+    }
+    prevRunning.current = isRunning;
+  }, [isRunning]);
+
+  // Auto-scroll streaming output to bottom (whichever ref is active).
+  React.useEffect(() => {
+    const el = previewRef.current ?? expandedStreamRef.current;
+    if (el && streamingOutput) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [streamingOutput]);
 
   // Extract working directory from display data
   const displayData: BashDisplayData | null =
@@ -63,6 +94,17 @@ function BashTool({
 
   const displayCommand = truncateCommand(command);
   const isComplete = !isRunning && toolResult !== undefined;
+
+  // Compute streaming preview: show last N lines by default.
+  const { visibleStreaming, hasMoreLines, lineCount } = useMemo(() => {
+    if (!streamingOutput) return { visibleStreaming: "", hasMoreLines: false, lineCount: 0 };
+    const lines = streamingOutput.split("\n");
+    return {
+      visibleStreaming: previewExpanded ? streamingOutput : lines.slice(-PREVIEW_LINES).join("\n"),
+      hasMoreLines: lines.length > PREVIEW_LINES,
+      lineCount: lines.length,
+    };
+  }, [streamingOutput, previewExpanded]);
 
   return (
     <div
@@ -108,6 +150,26 @@ function BashTool({
         </button>
       </div>
 
+      {/* Streaming preview — shown below header while running, outside the details panel */}
+      {isRunning && streamingOutput && !isExpanded && (
+        <div className="bash-tool-preview">
+          <pre ref={previewRef} className="bash-tool-preview-code">
+            {visibleStreaming}
+          </pre>
+          {hasMoreLines && !previewExpanded && (
+            <button
+              className="bash-tool-preview-more"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewExpanded(true);
+              }}
+            >
+              Show all {lineCount} lines
+            </button>
+          )}
+        </div>
+      )}
+
       {isExpanded && (
         <div className="bash-tool-details">
           {displayData?.workingDir && (
@@ -120,6 +182,15 @@ function BashTool({
             <div className="bash-tool-label">Command:</div>
             <pre className="bash-tool-code">{command}</pre>
           </div>
+
+          {isRunning && streamingOutput && (
+            <div className="bash-tool-section">
+              <div className="bash-tool-label">Output (streaming):</div>
+              <pre ref={expandedStreamRef} className="bash-tool-code bash-tool-streaming">
+                {streamingOutput}
+              </pre>
+            </div>
+          )}
 
           {isComplete && (
             <div className="bash-tool-section">

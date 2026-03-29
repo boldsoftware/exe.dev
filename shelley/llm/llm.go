@@ -69,11 +69,24 @@ const (
 	ErrorTypeLLMRequest ErrorType = "llm_request" // LLM request failed
 )
 
+// StreamDelta represents a partial content update during streaming.
+type StreamDelta struct {
+	// Type is the kind of delta: "text", "thinking", "tool_input"
+	Type string `json:"type"`
+	// Text is the delta text content
+	Text string `json:"text"`
+	// Index is the content block index in the response
+	Index int `json:"index"`
+}
+
 type Request struct {
 	Messages   []Message
 	ToolChoice *ToolChoice
 	Tools      []*Tool
 	System     []SystemContent
+	// OnStream is called with each streaming delta as the LLM generates content.
+	// If nil, no streaming callbacks are made. The full response is still returned from Do.
+	OnStream func(StreamDelta) `json:"-"`
 }
 
 // Message represents a message in the conversation.
@@ -130,6 +143,19 @@ type Tool struct {
 	// ctx contains extra (rarely used) tool call information; retrieve it with ToolCallInfoFromContext.
 	Run func(ctx context.Context, input json.RawMessage) ToolOut `json:"-"`
 }
+
+// ToolProgress represents a progress update from a running tool.
+type ToolProgress struct {
+	// ToolUseID is the tool_use block ID this progress belongs to.
+	ToolUseID string `json:"tool_use_id"`
+	// ToolName is the name of the tool generating progress.
+	ToolName string `json:"tool_name"`
+	// Output is the last chunk of output (tail of output, max ~10KB).
+	Output string `json:"output"`
+}
+
+// ToolProgressFunc is called by tools to report progress during execution.
+type ToolProgressFunc func(ToolProgress)
 
 // ToolOut represents the output of a tool run.
 type ToolOut struct {
