@@ -6,14 +6,41 @@ Usage:
 
 Reads gotestsum --jsonfile output, computes per-test start/end times,
 and produces a self-contained HTML file with a Vega-Lite gantt chart.
+
+Parses VM_SLOTS_ACQUIRED markers to separate queue wait from execution.
 """
 import json
+import re
 import sys
 from pathlib import Path
+
+
+def parse_go_duration(s):
+    """Parse a Go time.Duration string (e.g. '1m30.5s', '500ms', '2.5s') to seconds."""
+    total = 0.0
+    # Order matters: match longer units first (ms before m, µs/us before s)
+    for m in re.finditer(r'([\d.]+)(ms|µs|us|ns|h|m|s)', s):
+        val = float(m.group(1))
+        unit = m.group(2)
+        if unit == 'h':
+            total += val * 3600
+        elif unit == 'm':
+            total += val * 60
+        elif unit == 's':
+            total += val
+        elif unit == 'ms':
+            total += val / 1000
+        elif unit in ('µs', 'us'):
+            total += val / 1_000_000
+        elif unit == 'ns':
+            total += val / 1_000_000_000
+    return total
+
 
 def parse_test_events(json_path: str) -> list[dict]:
     """Parse gotestsum JSON into per-test timing records."""
     starts: dict[str, float] = {}  # test_key -> first timestamp
+    vm_waits: dict[str, float] = {}  # test_key -> seconds spent waiting for VM slots
     results: list[dict] = []
     t0 = None
 
@@ -28,11 +55,11 @@ def parse_test_events(json_path: str) -> list[dict]:
             pkg = ev.get("Package", "").replace("exe.dev/", "")
             ts_str = ev.get("Time", "")
             elapsed = ev.get("Elapsed", 0.0)
+            output = ev.get("Output", "")
 
             if not ts_str:
                 continue
-            # Parse ISO timestamp to epoch seconds.
-            from datetime import datetime, timezone
+            from datetime import datetime
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
             if t0 is None:
                 t0 = ts
@@ -41,6 +68,15 @@ def parse_test_events(json_path: str) -> list[dict]:
                 continue
             key = f"{pkg}.{test}"
 
+            # Parse VM_SLOTS_ACQUIRED markers from output events
+            if action == "output" and "VM_SLOTS_ACQUIRED" in output:
+                m = re.search(r'waited=([\d.]+(?:h|m|s|ms|µs|us|ns)+)', output)
+                if m:
+                    wait_secs = parse_go_duration(m.group(1))
+                    top_test = test.split("/")[0]
+                    top_key = f"{pkg}.{top_test}"
+                    vm_waits[top_key] = vm_waits.get(top_key, 0) + wait_secs
+
             if action == "run":
                 starts[key] = ts - t0
             elif action in ("pass", "fail", "skip"):
@@ -48,12 +84,16 @@ def parse_test_events(json_path: str) -> list[dict]:
                 if "/" in test:
                     continue
                 start = starts.get(key, (ts - t0) - elapsed)
+                wait = round(vm_waits.get(key, 0), 2)
+                exec_time = round(max(elapsed - wait, 0), 2)
                 results.append({
                     "test": test,
                     "pkg": pkg,
                     "start": round(start, 2),
                     "end": round(start + elapsed, 2),
                     "elapsed": round(elapsed, 2),
+                    "wait": wait,
+                    "exec": exec_time,
                     "status": action,
                 })
 
@@ -64,9 +104,49 @@ def parse_test_events(json_path: str) -> list[dict]:
 def generate_html(results: list[dict], title: str) -> str:
     """Generate a self-contained HTML page with a Vega-Lite gantt chart."""
     max_end = max((r["end"] for r in results), default=0)
-    # Assign y positions: stack tests by start time, pack into lanes.
-    # Simple approach: order by start time, label on y axis.
-    data_json = json.dumps(results)
+
+    # Build two-segment data: wait portion + exec portion for each test
+    segments = []
+    for r in results:
+        if r["wait"] > 0.1:  # Only show wait segment if significant
+            segments.append({
+                "test": r["test"],
+                "pkg": r["pkg"],
+                "start": r["start"],
+                "end": round(r["start"] + r["wait"], 2),
+                "elapsed": r["elapsed"],
+                "phase": "queued",
+                "status": r["status"],
+                "wait": r["wait"],
+                "exec": r["exec"],
+            })
+            segments.append({
+                "test": r["test"],
+                "pkg": r["pkg"],
+                "start": round(r["start"] + r["wait"], 2),
+                "end": r["end"],
+                "elapsed": r["elapsed"],
+                "phase": r["status"],
+                "status": r["status"],
+                "wait": r["wait"],
+                "exec": r["exec"],
+            })
+        else:
+            segments.append({
+                "test": r["test"],
+                "pkg": r["pkg"],
+                "start": r["start"],
+                "end": r["end"],
+                "elapsed": r["elapsed"],
+                "phase": r["status"],
+                "status": r["status"],
+                "wait": r["wait"],
+                "exec": r["exec"],
+            })
+
+    data_json = json.dumps(segments)
+    total_wait = sum(r["wait"] for r in results)
+    tests_that_waited = sum(1 for r in results if r["wait"] > 0.1)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -89,7 +169,8 @@ def generate_html(results: list[dict], title: str) -> str:
   {len(results)} tests | wall clock {max_end:.1f}s |
   sum {sum(r["elapsed"] for r in results):.1f}s |
   {sum(1 for r in results if r["status"]=="fail")} failed |
-  {sum(1 for r in results if r["status"]=="skip")} skipped
+  {sum(1 for r in results if r["status"]=="skip")} skipped |
+  {tests_that_waited} tests queued (total wait {total_wait:.1f}s)
 </p>
 <div id="chart"></div>
 <script>
@@ -97,7 +178,7 @@ const data = {data_json};
 const spec = {{
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
   width: "container",
-  height: Math.max(300, data.length * 18),
+  height: Math.max(300, {len(results)} * 18),
   data: {{ values: data }},
   mark: {{ type: "bar", cornerRadiusEnd: 3, tooltip: true }},
   encoding: {{
@@ -114,17 +195,20 @@ const spec = {{
     }},
     x2: {{ field: "end" }},
     color: {{
-      field: "status",
+      field: "phase",
       type: "nominal",
       scale: {{
-        domain: ["pass", "fail", "skip"],
-        range: ["#4caf50", "#f44336", "#9e9e9e"]
-      }}
+        domain: ["pass", "fail", "skip", "queued"],
+        range: ["#4caf50", "#f44336", "#9e9e9e", "#ff9800"]
+      }},
+      legend: {{ title: "Phase" }}
     }},
     tooltip: [
       {{ field: "test", title: "Test" }},
       {{ field: "pkg", title: "Package" }},
-      {{ field: "elapsed", title: "Duration (s)", format: ".1f" }},
+      {{ field: "elapsed", title: "Total (s)", format: ".1f" }},
+      {{ field: "wait", title: "Queue wait (s)", format: ".1f" }},
+      {{ field: "exec", title: "Execution (s)", format: ".1f" }},
       {{ field: "start", title: "Start (s)", format: ".1f" }},
       {{ field: "status", title: "Status" }}
     ]

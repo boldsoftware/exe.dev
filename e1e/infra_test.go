@@ -933,7 +933,10 @@ func (p *vmPool) reserve(t *testing.T, n int) {
 		panic(fmt.Sprintf("test %s: context done waiting for %d VM slots (capacity=%d): %v",
 			t.Name(), n, p.cap, err))
 	}
-	t.Logf("reserved %d VM slot(s) (%v)", n, time.Since(start).Round(time.Millisecond))
+	wait := time.Since(start).Round(time.Millisecond)
+	// Structured marker for CI tooling to separate queue wait from test execution.
+	// Format: "VM_SLOTS_ACQUIRED slots=N waited=<duration>"
+	t.Logf("VM_SLOTS_ACQUIRED slots=%d waited=%v", n, wait)
 	t.Cleanup(func() {
 		p.sem.Release(int64(n))
 	})

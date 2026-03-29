@@ -38,7 +38,8 @@ def main():
     json_results = "e1e-results-exelets.json"
     junit_results = "e1e-results-exelets.xml"
 
-    env = {**os.environ, "E1_VM_CONCURRENCY": "10", "GITHUB_ACTIONS": "false"}
+    vm_concurrency = os.environ.get("E1E_EXELETS_VM_CONCURRENCY", os.environ.get("E1E_VM_CONCURRENCY", "10"))
+    env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
     test_result = subprocess.run(
         ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
          "--junitfile", junit_results,

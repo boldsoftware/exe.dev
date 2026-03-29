@@ -284,11 +284,12 @@ so the dashboard is only accessible from localhost. No changes needed.
 - **`make protos`** runs Docker inside the CI job. The `buildkite-agent` user
   needs to be in the `docker` group *and* the agent must be restarted after
   adding the group.
-- **`E1_VM_CONCURRENCY=8`**: The test semaphore defaults to 3. Set to 8 (or
-  higher) to match the host's capacity. Each VM slot uses ~4 vCPUs and 16 GiB
-  RAM; 8 concurrent VMs = 32 vCPUs + 128 GiB. The six e1e shards (A–F) each
-  run 8 concurrent VMs; peaks are staggered in practice so this stays within
-  the machine's 48 vCPUs / 377 GiB capacity.
+- **VM concurrency**: The pipeline generator sets `E1E_VM_CONCURRENCY=12` per
+  e1e shard (5 shards by default). The exelets step runs with 10 VMs. Each VM
+  slot uses ~2–4 vCPUs and ~4 GiB RAM; with 5 shards × 12 VMs + exelets × 10,
+  peak concurrent VMs can reach ~70 but are staggered in practice so this
+  stays within the machine's 48 vCPUs / 377 GiB capacity. Tune via commit
+  trailers (E1E-Shards, E1E-VM-Concurrency) or env vars.
 - **Golden files**: If e1e tests modify golden files, the job fails with a diff.
   On GitHub Actions the diff is pushed to a recovery branch. On Buildkite, just
   run the tests locally, commit the updated golden files, and re-push.

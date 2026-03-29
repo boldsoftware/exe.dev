@@ -62,7 +62,11 @@ def main():
         cmd.extend(["-run", run_filter])
     cmd.append("./e1e")
 
-    env = {**os.environ, "E1_VM_CONCURRENCY": "12", "GITHUB_ACTIONS": "false"}
+    vm_concurrency = os.environ.get("E1E_VM_CONCURRENCY", "12")
+    env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
+    gomaxprocs = os.environ.get("E1E_GOMAXPROCS", "")
+    if gomaxprocs:
+        env["GOMAXPROCS"] = gomaxprocs
     test_result = subprocess.run(cmd, env=env)
 
     _annotate_results(json_results, shard)
@@ -194,6 +198,7 @@ def _annotate_results(json_results, shard):
         return
 
     tests = {}
+    vm_waits = {}  # test_key -> seconds spent waiting for VM slots
     pkg_stats = {}
     with open(json_results) as f:
         for line in f:
@@ -205,6 +210,17 @@ def _annotate_results(json_results, shard):
             test = ev.get("Test", "")
             pkg = ev.get("Package", "").replace("exe.dev/", "")
             elapsed = ev.get("Elapsed", 0.0)
+            output = ev.get("Output", "")
+
+            # Parse VM_SLOTS_ACQUIRED markers
+            if action == "output" and "VM_SLOTS_ACQUIRED" in output and test:
+                m = re.search(r'waited=([\d.]+(?:h|m|s|ms|µs|us|ns)+)', output)
+                if m:
+                    val = _parse_go_duration(m.group(1))
+                    top_test = test.split("/")[0]
+                    top_key = f"{pkg}.{top_test}"
+                    vm_waits[top_key] = vm_waits.get(top_key, 0) + val
+
             if test and action in ("pass", "fail", "skip") and "/" not in test:
                 tests[f"{pkg}.{test}"] = (elapsed, action)
                 if pkg not in pkg_stats:
@@ -215,11 +231,16 @@ def _annotate_results(json_results, shard):
 
     label = f"shard {shard}" if shard else "all tests"
     lines = [f"**e1e timing ({label})** — top 20 slowest\n"]
-    lines.append("| Test | Duration | Status |")
-    lines.append("|------|----------|--------|")
+    lines.append("| Test | Total | Queue wait | Exec | Status |")
+    lines.append("|------|-------|------------|------|--------|")
     for name, (elapsed, action) in sorted(tests.items(), key=lambda x: -x[1][0])[:20]:
         icon = {"pass": "✅", "fail": "❌"}.get(action, "⏭️")
-        lines.append(f"| `{name}` | {elapsed:.1f}s | {icon} |")
+        wait = vm_waits.get(name, 0)
+        exec_time = max(elapsed - wait, 0)
+        wait_str = f"{wait:.1f}s" if wait > 0.1 else "-"
+        lines.append(f"| `{name}` | {elapsed:.1f}s | {wait_str} | {exec_time:.1f}s | {icon} |")
+    total_wait = sum(vm_waits.values())
+    lines.append(f"\n*Total queue wait across all tests: {total_wait:.1f}s*\n")
     lines.append("\n**Package summary**\n")
     lines.append("| Package | Pass | Fail | Skip | Wall time |")
     lines.append("|---------|------|------|------|-----------|")
@@ -259,6 +280,21 @@ def _push_golden_recovery_branch():
             print(f"WARNING: Failed to push golden recovery branch", flush=True)
     except Exception as e:
         print(f"WARNING: Could not push golden recovery branch: {e}", flush=True)
+
+
+def _parse_go_duration(s):
+    """Parse a Go time.Duration string (e.g. '1m30.5s', '500ms') to seconds."""
+    total = 0.0
+    for m in re.finditer(r'([\d.]+)(ms|µs|us|ns|h|m|s)', s):
+        val = float(m.group(1))
+        unit = m.group(2)
+        if unit == 'h': total += val * 3600
+        elif unit == 'm': total += val * 60
+        elif unit == 's': total += val
+        elif unit == 'ms': total += val / 1000
+        elif unit in ('µs', 'us'): total += val / 1_000_000
+        elif unit == 'ns': total += val / 1_000_000_000
+    return total
 
 
 def _has_cmd(name):
