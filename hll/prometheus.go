@@ -1,7 +1,6 @@
 package hll
 
 import (
-	"slices"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,24 +28,6 @@ func NewCollector(tracker *Tracker, events []string) *Collector {
 			nil,
 		),
 	}
-}
-
-// SetEvents updates the list of events to track.
-// This allows adding new event types at runtime.
-func (c *Collector) SetEvents(events []string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.events = events
-}
-
-// AddEvent adds a new event type to track if not already present.
-func (c *Collector) AddEvent(event string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if slices.Contains(c.events, event) {
-		return
-	}
-	c.events = append(c.events, event)
 }
 
 // Describe implements prometheus.Collector.

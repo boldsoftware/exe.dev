@@ -154,40 +154,6 @@ func TestPrometheusCollector(t *testing.T) {
 	}
 }
 
-func TestCollectorAddEvent(t *testing.T) {
-	tracker := NewTracker(nil)
-	defer tracker.Close()
-
-	collector := NewCollector(tracker, []string{"proxy"})
-	collector.AddEvent("web-visit")
-	collector.AddEvent("proxy") // Should not duplicate
-
-	tracker.NoteEvent("proxy", "user1")
-	tracker.NoteEvent("web-visit", "user1")
-
-	registry := prometheus.NewRegistry()
-	if err := collector.Register(registry); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-
-	families, err := registry.Gather()
-	if err != nil {
-		t.Fatalf("Gather: %v", err)
-	}
-
-	// Should have metrics for both events x both periods = 4 metrics
-	var metricCount int
-	for _, fam := range families {
-		if fam.GetName() == "unique_users" {
-			metricCount = len(fam.GetMetric())
-		}
-	}
-
-	if metricCount != 4 {
-		t.Errorf("expected 4 unique_users metrics (2 events x 2 periods), got %d", metricCount)
-	}
-}
-
 func TestMemoryStorage(t *testing.T) {
 	ctx := context.Background()
 	storage := NewMemoryStorage()
