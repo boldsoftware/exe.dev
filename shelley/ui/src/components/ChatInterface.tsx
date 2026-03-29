@@ -98,10 +98,13 @@ function ContextUsageBar({
   // Auto-open popup when hitting 100k tokens (once per conversation).
   // Only auto-open at end of turn (when agent is not working) so we don't
   // interrupt the user while the agent is plugging away.
+  // Skip auto-open on mobile where the popup is too intrusive.
   useEffect(() => {
+    const isMobile = window.innerWidth <= 768;
     if (
       showLongConversationWarning &&
       !agentWorking &&
+      !isMobile &&
       conversationId &&
       hasAutoOpenedRef.current !== conversationId
     ) {
