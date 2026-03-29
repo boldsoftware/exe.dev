@@ -3,8 +3,6 @@
 package idea
 
 import (
-	"fmt"
-	"math/rand/v2"
 	"regexp"
 
 	"exe.dev/exedb"
@@ -29,17 +27,6 @@ var Categories = []Category{
 
 // ValidSlugRe matches a valid template slug.
 var ValidSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$`)
-
-// suffixWords matches the JS list in new.js.
-var suffixWords = []string{
-	"alpha", "bravo", "delta", "echo", "fox", "gold", "hawk", "jade", "kilo",
-	"lima", "nova", "oak", "pine", "rain", "sky", "star", "tide", "wolf", "zen",
-}
-
-// RandomName returns shortname + "-" + 3-digit number + "-" + random suffix, e.g. "openclaw-472-wolf".
-func RandomName(shortname string) string {
-	return shortname + "-" + fmt.Sprintf("%03d", rand.IntN(1000)) + "-" + suffixWords[rand.IntN(len(suffixWords))]
-}
 
 // JSON is the API representation of a template.
 type JSON struct {
