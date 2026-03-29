@@ -47,11 +47,6 @@ func DefaultRoute() Route {
 	}
 }
 
-// DefaultRouteJSON returns the default route as JSON.
-func DefaultRouteJSON() string {
-	return RouteJSON(DefaultRoute())
-}
-
 // RouteJSON returns the given route as a JSON string.
 func RouteJSON(route Route) string {
 	data, err := json.Marshal(route)
