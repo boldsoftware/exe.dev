@@ -2556,20 +2556,13 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("insert billing event: %w", err)
 		}
 		// Upgrade account plan to individual.
-		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
-			AccountID: accountID,
-			EndedAt:   &now,
-		}); err != nil {
-			return fmt.Errorf("close existing plan: %w", err)
-		}
-		changedBy := "debug:add-billing"
-		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID: accountID,
 			PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
-			StartedAt: now,
-			ChangedBy: &changedBy,
+			At:        now,
+			ChangedBy: "debug:add-billing",
 		}); err != nil {
-			return fmt.Errorf("insert individual plan: %w", err)
+			return fmt.Errorf("replace account plan: %w", err)
 		}
 		return nil
 	})
@@ -2718,7 +2711,13 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Update account plan to trial.
-		if err := replaceAccountPlan(ctx, q, accountID, now, entitlement.CategoryTrial, &trialEnd, "debug:grant-trial"); err != nil {
+		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      accountID,
+			PlanID:         entitlement.PlanID(entitlement.CategoryTrial),
+			At:             now,
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      "debug:grant-trial",
+		}); err != nil {
 			return err
 		}
 

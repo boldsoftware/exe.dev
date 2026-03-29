@@ -522,20 +522,13 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			}
 			// Upgrade the account plan to 'individual'.
 			// The poller's syncAccountPlan will be a no-op since the plan already matches.
-			if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
-				AccountID: acct.ID,
-				EndedAt:   &now,
-			}); err != nil {
-				return fmt.Errorf("close existing plan: %w", err)
-			}
-			changedBy := "stripe:event"
-			if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			if err := queries.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 				AccountID: acct.ID,
 				PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
-				StartedAt: now,
-				ChangedBy: &changedBy,
+				At:        now,
+				ChangedBy: "stripe:event",
 			}); err != nil {
-				return fmt.Errorf("insert individual plan: %w", err)
+				return fmt.Errorf("replace account plan: %w", err)
 			}
 			return nil
 		})

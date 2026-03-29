@@ -1535,7 +1535,13 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			if basePlan != "" {
 				now := sqlite.NormalizeTime(time.Now())
 				changedBy := "invite:" + inviteCode.Code
-				if err := replaceAccountPlan(ctx, q, acct.ID, now, basePlan, trialEndsAt, changedBy); err != nil {
+				if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+					AccountID:      acct.ID,
+					PlanID:         entitlement.PlanID(basePlan),
+					At:             now,
+					TrialExpiresAt: trialEndsAt,
+					ChangedBy:      changedBy,
+				}); err != nil {
 					return fmt.Errorf("failed to apply invite: %w", err)
 				}
 			}
@@ -1543,26 +1549,6 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 
 		return nil
 	})
-}
-
-// replaceAccountPlan closes any existing plan for the account and inserts a new one.
-func replaceAccountPlan(ctx context.Context, q *exedb.Queries, accountID string, now time.Time, category entitlement.PlanCategory, trialEnd *time.Time, changedBy string) error {
-	if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
-		AccountID: accountID,
-		EndedAt:   &now,
-	}); err != nil {
-		return fmt.Errorf("failed to close existing plan: %w", err)
-	}
-	if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
-		AccountID:      accountID,
-		PlanID:         entitlement.PlanID(category),
-		StartedAt:      now,
-		TrialExpiresAt: trialEnd,
-		ChangedBy:      &changedBy,
-	}); err != nil {
-		return fmt.Errorf("failed to insert %s plan: %w", category, err)
-	}
-	return nil
 }
 
 // isLoginWithExeOnly reports whether the user was created solely through the

@@ -2224,7 +2224,7 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	changedBy := "stripe:event"
 	err = withTx1(server, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: billingID,
-		PlanID:    string(entitlement.CategoryIndividual),
+		PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
 		StartedAt: now,
 		ChangedBy: &changedBy,
 	})
@@ -2264,7 +2264,8 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if plan.PlanID != string(entitlement.CategoryIndividual) {
-		t.Errorf("plan_id=%q, want %q", plan.PlanID, entitlement.CategoryIndividual)
+	wantPlanID := entitlement.PlanID(entitlement.CategoryIndividual)
+	if plan.PlanID != wantPlanID {
+		t.Errorf("plan_id=%q, want %q", plan.PlanID, wantPlanID)
 	}
 }

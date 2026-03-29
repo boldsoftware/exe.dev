@@ -665,18 +665,12 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	}
 
 	if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
-			AccountID: accountID,
-			EndedAt:   &normalizedAt,
-		}); err != nil {
-			return fmt.Errorf("close existing plan: %w", err)
-		}
-		return q.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID:      accountID,
 			PlanID:         newPlanID,
-			StartedAt:      normalizedAt,
+			At:             normalizedAt,
 			TrialExpiresAt: normalizedTrialEnd,
-			ChangedBy:      &changedBy,
+			ChangedBy:      changedBy,
 		})
 	}); err != nil {
 		return fmt.Errorf("sync account plan: %w", err)
