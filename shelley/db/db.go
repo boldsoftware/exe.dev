@@ -377,6 +377,21 @@ func (db *DB) UpdateConversationSlug(ctx context.Context, conversationID, slug s
 	return &conversation, err
 }
 
+// ClearConversationSlug removes the slug from a conversation.
+func (db *DB) ClearConversationSlug(ctx context.Context, conversationID string) (*generated.Conversation, error) {
+	var conversation generated.Conversation
+	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		q := generated.New(tx.Conn())
+		var err error
+		conversation, err = q.UpdateConversationSlug(ctx, generated.UpdateConversationSlugParams{
+			Slug:           nil,
+			ConversationID: conversationID,
+		})
+		return err
+	})
+	return &conversation, err
+}
+
 // UpdateConversationCwd updates the working directory for a conversation
 func (db *DB) UpdateConversationCwd(ctx context.Context, conversationID, cwd string) error {
 	return db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {

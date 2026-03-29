@@ -815,25 +815,27 @@ func TestDistillReplaceConversationMissingSource(t *testing.T) {
 func TestDistillReplaceConversationNoSlug(t *testing.T) {
 	h := NewTestHarness(t)
 
-	// Create a source conversation WITHOUT a slug
+	// Create a source conversation and wait for the response to complete.
 	h.NewConversation("echo hello world", "")
 	h.WaitResponse()
 	sourceConvID := h.convID
 
-	// Source conversation initially has no slug (slug is generated async by the LLM).
-	// Wait a moment for the slug to potentially be generated.
+	// The predictable model generates a slug asynchronously. Wait for it,
+	// then explicitly clear it so we deterministically test the no-slug path.
 	time.Sleep(200 * time.Millisecond)
+	_, err := h.db.ClearConversationSlug(context.Background(), sourceConvID)
+	if err != nil {
+		t.Fatalf("failed to clear source slug: %v", err)
+	}
 
-	// Get whatever slug was generated (or lack thereof)
+	// Confirm the source has no slug.
 	sourceConvBefore, err := h.db.GetConversationByID(context.Background(), sourceConvID)
 	if err != nil {
 		t.Fatalf("failed to get source conversation: %v", err)
 	}
-	sourceSlugBefore := "unknown"
 	if sourceConvBefore.Slug != nil {
-		sourceSlugBefore = *sourceConvBefore.Slug
+		t.Fatalf("expected source slug to be nil after clearing, got %q", *sourceConvBefore.Slug)
 	}
-	t.Logf("Source slug before distill-replace: %q", sourceSlugBefore)
 
 	// Call the distill-replace endpoint
 	reqBody := DistillReplaceRequest{
@@ -865,7 +867,6 @@ func TestDistillReplaceConversationNoSlug(t *testing.T) {
 		}
 		for _, msg := range msgs {
 			if msg.Type == string(db.MessageTypeUser) && msg.LlmData != nil {
-				// Distillation produced a message, we're done waiting
 				goto done
 			}
 		}
@@ -874,16 +875,14 @@ func TestDistillReplaceConversationNoSlug(t *testing.T) {
 	t.Fatal("timed out waiting for distilled user message")
 done:
 
-	// Verify the new conversation got the source's slug
+	// The new conversation should have gotten its own generated slug (not
+	// transferred from source, since source had none).
 	newConv, err := h.db.GetConversationByID(context.Background(), newConvID)
 	if err != nil {
 		t.Fatalf("failed to get new conversation: %v", err)
 	}
-	if sourceConvBefore.Slug != nil {
-		// Source had a slug: new conv should take it
-		if newConv.Slug == nil || *newConv.Slug != sourceSlugBefore {
-			t.Fatalf("expected new conv slug %q, got %v", sourceSlugBefore, newConv.Slug)
-		}
+	if newConv.Slug == nil {
+		t.Fatal("expected new conversation to have a generated slug")
 	}
 
 	// Verify source is archived and parented
