@@ -138,6 +138,12 @@ func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, strin
 	}
 
 	for _, instance := range instances {
+		// Skip instances that are not actively using an IP. Stale config
+		// files can linger briefly during deletion; only RUNNING and
+		// STARTING instances have a valid IP lease.
+		if instance.State != api.VMState_RUNNING && instance.State != api.VMState_STARTING {
+			continue
+		}
 		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil {
 			if instance.VMConfig.NetworkInterface.IP != nil {
 				// Extract IP from CIDR notation (e.g., "10.42.0.2/16" -> "10.42.0.2")

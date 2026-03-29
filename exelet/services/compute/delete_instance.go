@@ -59,6 +59,13 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
 		}
 
+		// Remove instance config dir immediately after vmm.Delete so that
+		// the freed IP is no longer discoverable via GetInstanceByIP /
+		// listInstances while the remaining cleanup proceeds.
+		if err := os.RemoveAll(s.getInstanceDir(instance.ID)); err != nil {
+			return nil, status.Errorf(codes.Internal, "error removing instance state dir: %s", err)
+		}
+
 		// stop and remove SSH proxy (needs mutex for service-level resources)
 		s.mu.Lock()
 		if _, err := s.proxyManager.StopProxy(ctx, instance.ID); err != nil {
@@ -88,11 +95,6 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 		}
 		if err := storageMgr.Delete(ctx, instance.ID); err != nil {
 			return nil, status.Errorf(codes.Internal, "error removing instance fs: %s", err)
-		}
-
-		// remove instance data
-		if err := os.RemoveAll(s.getInstanceDir(instance.ID)); err != nil {
-			return nil, status.Errorf(codes.Internal, "error removing instance state dir: %s", err)
 		}
 
 		// TODO: publish event
