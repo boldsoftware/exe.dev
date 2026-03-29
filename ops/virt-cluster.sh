@@ -2115,7 +2115,7 @@ After=xvfb.service
 Requires=xvfb.service
 
 [Service]
-ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -nopw -rfbport 5900
+ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -nopw -rfbport 5900 -noxrecord -xkb
 Restart=always
 
 [Install]
@@ -2161,7 +2161,7 @@ Requires=xvfb.service openbox.service
 [Service]
 Environment=DISPLAY=:99
 ExecStartPre=/usr/bin/setxkbmap -option caps:ctrl_modifier
-ExecStart=/usr/bin/google-chrome-stable --no-first-run --disable-gpu --no-sandbox --disable-dev-shm-usage --window-size=1280,720 --window-position=0,0
+ExecStart=/usr/bin/google-chrome-stable --no-first-run --disable-gpu --no-sandbox --disable-dev-shm-usage --window-size=1280,720 --window-position=0,0 --disable-infobars --disable-notifications --disable-popup-blocking --disable-background-networking --noerrdialogs --disable-session-crashed-bubble --disable-translate --disable-features=TranslateUI --password-store=basic --disable-save-password-bubble --disable-component-update
 Restart=on-failure
 RestartSec=3
 User=exedev
@@ -2169,6 +2169,56 @@ User=exedev
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+    # Openbox config: prevent dialogs/notifications from stealing focus
+    local ob_conf_dir="/home/exedev/.config/openbox"
+    sudo -u exedev mkdir -p "${ob_conf_dir}"
+    sudo -u exedev tee "${ob_conf_dir}/rc.xml" >/dev/null <<'OBXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc"
+        xmlns:xi="http://www.w3.org/2001/XInclude">
+<resistance>
+  <strength>10</strength>
+  <screen_edge_strength>20</screen_edge_strength>
+</resistance>
+<focus>
+  <focusNew>no</focusNew>
+  <followMouse>no</followMouse>
+  <focusLast>yes</focusLast>
+  <underMouse>no</underMouse>
+  <focusDelay>200</focusDelay>
+  <raiseOnFocus>no</raiseOnFocus>
+</focus>
+<placement>
+  <policy>Smart</policy>
+  <center>yes</center>
+  <monitor>Primary</monitor>
+  <primaryMonitor>1</primaryMonitor>
+</placement>
+<desktops>
+  <number>1</number>
+</desktops>
+<applications>
+  <application class="Google-chrome">
+    <focus>yes</focus>
+    <fullscreen>yes</fullscreen>
+    <maximized>true</maximized>
+  </application>
+  <application class="Google-chrome-stable">
+    <focus>yes</focus>
+  </application>
+  <application type="dialog">
+    <focus>no</focus>
+  </application>
+  <application type="splash">
+    <focus>no</focus>
+  </application>
+  <application type="notification">
+    <focus>no</focus>
+  </application>
+</applications>
+</openbox_config>
+OBXML
 
     sudo systemctl daemon-reload
     sudo systemctl enable --now xvfb x11vnc openbox novnc chromium
