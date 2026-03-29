@@ -61,7 +61,9 @@ esac
 
 # shellcheck disable=SC2086
 JSON_OUT="unit-results-${UNIT_TEST_SHARD:-all}.json"
-go tool gotestsum --format testname --jsonfile "$JSON_OUT" --junitfile "unit-results-${UNIT_TEST_SHARD:-all}.xml" -- -race -count=1 ${RUN_FILTER:+$RUN_FILTER} $PKGS
+XML_OUT="unit-results-${UNIT_TEST_SHARD:-all}.xml"
+go tool gotestsum --format testname --jsonfile "$JSON_OUT" --junitfile "$XML_OUT" -- -race -count=1 ${RUN_FILTER:+$RUN_FILTER} $PKGS
 TEST_EXIT=$?
 python3 bin/ci-test-gantt "$JSON_OUT" "test-gantt-unit-${UNIT_TEST_SHARD:-all}.html" "unit tests (shard ${UNIT_TEST_SHARD:-all})" 2>/dev/null || true
+.buildkite/steps/upload-test-analytics.sh "$XML_OUT" || true
 exit $TEST_EXIT

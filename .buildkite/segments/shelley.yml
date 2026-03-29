@@ -2,6 +2,8 @@
   key: test-shelley
   command: .buildkite/steps/test-shelley.sh
   timeout_in_minutes: 20
+  artifact_paths:
+    - "shelley-results.xml"
 
 - label: ":performing_arts: shelley playwright"
   key: test-shelley-playwright

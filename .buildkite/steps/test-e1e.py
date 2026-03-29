@@ -106,6 +106,8 @@ def main():
     if rec_result.returncode != 0:
         print("WARNING: asciinema recording generation failed (non-fatal)", flush=True)
 
+    _upload_test_analytics(junit_results)
+
     sys.exit(test_result.returncode)
 
 
@@ -295,6 +297,19 @@ def _parse_go_duration(s):
         elif unit in ('µs', 'us'): total += val / 1_000_000
         elif unit == 'ns': total += val / 1_000_000_000
     return total
+
+
+def _upload_test_analytics(junit_file):
+    """Upload JUnit XML to Buildkite Test Analytics."""
+    if os.environ.get("BUILDKITE") != "true":
+        return
+    if not os.path.isfile(junit_file):
+        return
+    result = subprocess.run(
+        [".buildkite/steps/upload-test-analytics.sh", junit_file],
+    )
+    if result.returncode != 0:
+        print("WARNING: Test analytics upload failed (non-fatal)", flush=True)
 
 
 def _has_cmd(name):
