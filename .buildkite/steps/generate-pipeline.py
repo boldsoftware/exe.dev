@@ -43,9 +43,11 @@ TEST_LETTER_COUNTS = [
 
 def detect_changes():
     """Return (exe_changed, shelley_changed) by diffing against origin/main."""
-    if subprocess.run(["git", "rev-parse", "--verify", "origin/main"],
-                      capture_output=True).returncode != 0:
-        subprocess.run(["git", "fetch", "origin", "main"], check=True)
+    # Always fetch origin/main to ensure it's up-to-date. The CI checkout
+    # only fetches the specific commit SHA, leaving origin/main stale from
+    # a previous build. A stale origin/main causes the diff to include
+    # unrelated files, defeating the shelley-only optimization.
+    subprocess.run(["git", "fetch", "origin", "main"], check=True)
     result = subprocess.run(
         ["git", "diff", "--name-only", "origin/main...HEAD"],
         capture_output=True, text=True, check=True,
