@@ -87,3 +87,28 @@ ssh-key rename <old-name> <new-name>
 **Options:**
 - `--json`: output in JSON format
 
+### ssh-key generate-api-key
+
+Generate an API key for the exe.dev HTTPS API or for a specific VM
+
+**Usage:**
+```
+ssh-key generate-api-key [--label=NAME] [--vm=VMNAME] [--cmds=CMD1,CMD2] [--exp=30d]
+```
+
+**Options:**
+- `--cmds`: comma-separated list of allowed commands (empty = defaults)
+- `--exp`: expiry duration (e.g. 30d, 1y) or 'never'
+- `--json`: output in JSON format
+- `--label`: label for this token's SSH key
+- `--vm`: scope key to a VM (authenticates to its HTTPS endpoints instead of exe.dev commands)
+
+**Examples:**
+```
+# Generate a key for the exe.dev API (lobby commands like ls, new, whoami):
+ssh-key generate-api-key --label=ci --cmds=ls,new --exp=90d
+
+# Generate a key scoped to a VM (authenticates to its HTTPS proxy):
+ssh-key generate-api-key --vm=my-vm --label=deploy
+```
+

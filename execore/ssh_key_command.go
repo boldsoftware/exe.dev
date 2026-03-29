@@ -168,6 +168,20 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeSSHKeyName,
 			},
+			{
+				Name:        "generate-api-key",
+				Description: "Generate an API key for the exe.dev HTTPS API or for a specific VM",
+				Usage:       "ssh-key generate-api-key [--label=NAME] [--vm=VMNAME] [--cmds=CMD1,CMD2] [--exp=30d]",
+				Handler:     ss.handleSSHKeyGenerateAPIKeyCmd,
+				FlagSetFunc: generateAPIKeyFlags,
+				Examples: []string{
+					"# Generate a key for the exe.dev API (lobby commands like ls, new, whoami):",
+					"ssh-key generate-api-key --label=ci --cmds=ls,new --exp=90d",
+					"",
+					"# Generate a key scoped to a VM (authenticates to its HTTPS proxy):",
+					"ssh-key generate-api-key --vm=my-vm --label=deploy",
+				},
+			},
 		},
 	}
 }
