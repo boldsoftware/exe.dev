@@ -27,6 +27,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/andybalholm/brotli"
+
 	"exe.dev/billing"
 	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
@@ -327,11 +329,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(boxes); err != nil {
-		s.slog().InfoContext(ctx, "Failed to encode boxes", "error", err)
-	}
+	writeJSONBrotli(w, r, boxes, s.slog(), ctx)
 }
 
 // handleDebugBoxFlushProxyCache flushes all exeprox caches for a box
@@ -2203,11 +2201,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			usersJSON = append(usersJSON, ui)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(usersJSON); err != nil {
-			s.slog().InfoContext(ctx, "Failed to encode users", "error", err)
-		}
+		writeJSONBrotli(w, r, usersJSON, s.slog(), ctx)
 		return
 	}
 
@@ -2736,6 +2730,25 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 	s.slackFeed.TrialStarted(ctx, userID)
 
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
+// writeJSONBrotli encodes v as JSON and brotli-compresses the response if the
+// client advertises br support. This is used for large debug JSON payloads.
+func writeJSONBrotli(w http.ResponseWriter, r *http.Request, v any, logger *slog.Logger, ctx context.Context) {
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "br") {
+		w.Header().Set("Content-Encoding", "br")
+		br := brotli.NewWriter(w)
+		if err := json.NewEncoder(br).Encode(v); err != nil {
+			logger.InfoContext(ctx, "failed to encode JSON", "error", err)
+		}
+		if err := br.Close(); err != nil {
+			logger.InfoContext(ctx, "failed to close brotli writer", "error", err)
+		}
+		return
+	}
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		logger.InfoContext(ctx, "failed to encode JSON", "error", err)
+	}
 }
 
 func ptrStr(s *string) string {
