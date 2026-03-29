@@ -256,3 +256,32 @@ func TestResolveTeamShardCollisions_NoCollision(t *testing.T) {
 		t.Errorf("bob shard changed: got %d, want 2", bobShard)
 	}
 }
+
+func TestParseTeamID(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"tm_abc123", "tm_abc123", false},
+		{"abc123", "tm_abc123", false},
+		{"tm_IGM6MO7UZM7DX", "tm_IGM6MO7UZM7DX", false},
+		{"tm_LQIZNYARG2SJ5", "tm_LQIZNYARG2SJ5", false},
+		{"tm_mixed_Case_123", "tm_mixed_Case_123", false},
+		{"tm_", "", true},
+		{"", "", true},
+		{"tm_has spaces", "", true},
+		{"tm_has-dashes", "", true},
+	}
+	for _, tt := range tests {
+		got, err := parseTeamID(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseTeamID(%q): err=%v, wantErr=%v", tt.input, err, tt.wantErr)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("parseTeamID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}

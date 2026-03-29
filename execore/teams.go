@@ -21,8 +21,8 @@ import (
 	"exe.dev/oidcauth"
 )
 
-// validTeamSlug matches one or more lowercase alphanumeric/underscore characters.
-var validTeamSlug = regexp.MustCompile(`^[a-z0-9_]+$`)
+// validTeamSlug matches one or more alphanumeric/underscore characters.
+var validTeamSlug = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // parseTeamID normalizes a team identifier to the canonical "tm_" prefixed form.
 // Accepts either "foo" or "tm_foo" and returns "tm_foo".
@@ -33,7 +33,7 @@ func parseTeamID(raw string) (string, error) {
 		return "", fmt.Errorf("team ID cannot be empty")
 	}
 	if !validTeamSlug.MatchString(slug) {
-		return "", fmt.Errorf("team ID %q must contain only lowercase letters, numbers, and underscores", raw)
+		return "", fmt.Errorf("team ID %q must contain only letters, numbers, and underscores", raw)
 	}
 	return "tm_" + slug, nil
 }
