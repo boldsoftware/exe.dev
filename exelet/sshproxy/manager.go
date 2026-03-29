@@ -210,22 +210,3 @@ func (m *socatManager) RecoverProxies(ctx context.Context, instances []*api.Inst
 
 	return nil
 }
-
-// MarkPortAllocated marks a port as allocated (for port allocator integration)
-func (m *socatManager) MarkPortAllocated(instanceID string, port int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ports[instanceID] = port
-}
-
-// GetAllocatedPorts returns all currently allocated ports
-func (m *socatManager) GetAllocatedPorts() []int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	ports := make([]int, 0, len(m.ports))
-	for _, port := range m.ports {
-		ports = append(ports, port)
-	}
-	return ports
-}
