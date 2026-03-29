@@ -705,6 +705,7 @@ async function toggleNewsletter(event: Event) {
 
 .info-row {
   display: flex;
+  align-items: center;
   gap: 8px;
   font-size: 13px;
 }
@@ -854,11 +855,13 @@ async function toggleNewsletter(event: Event) {
 .passkey-name-input {
   padding: 6px 10px;
   border: 1px solid var(--surface-border);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12px;
   font-family: inherit;
   flex: 1;
   max-width: 300px;
+  height: 30px;
+  box-sizing: border-box;
 }
 
 .passkey-error {
@@ -1040,6 +1043,8 @@ async function toggleNewsletter(event: Event) {
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s;
+  height: 30px;
+  box-sizing: border-box;
 }
 
 .btn-small {

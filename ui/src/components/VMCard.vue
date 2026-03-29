@@ -256,7 +256,9 @@ function onRowClick(event: MouseEvent) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: var(--btn-bg);
   border: 1px solid var(--btn-border);
   border-radius: 4px;
@@ -264,6 +266,7 @@ function onRowClick(event: MouseEvent) {
   color: var(--btn-text);
   text-decoration: none;
   transition: all 0.15s;
+  box-sizing: border-box;
 }
 
 .action-btn:hover {
@@ -274,8 +277,8 @@ function onRowClick(event: MouseEvent) {
 }
 
 .expand-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 
 /* Expanded details */
