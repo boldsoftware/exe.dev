@@ -998,6 +998,11 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("VM failed to start, current state: %s", finalState.String())
 	}
 
+	// Update DB status so the dashboard reflects the running state immediately.
+	if err := ss.server.updateBoxStatus(restartCtx, box.ID, "running"); err != nil {
+		ss.server.slog().ErrorContext(restartCtx, "failed to update box status after restart", "box", boxName, "error", err)
+	}
+
 	// Sync SSH port from exelet if the DB doesn't have one
 	// (e.g. after migrating a stopped instance, the exelet allocates a new port on start).
 	if box.SSHPort == nil && verifyResp.Instance != nil && verifyResp.Instance.SSHPort != 0 {
