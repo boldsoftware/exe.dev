@@ -63,10 +63,16 @@ def main():
     # 2. Build UI (Node.js + Vite, ~3-6s)
     ui_proc = subprocess.Popen(["bash", "-c", "make ui"])
 
+    # When E1E_COVERAGE is set, build exed and exeprox with coverage instrumentation.
+    coverage = os.environ.get("E1E_COVERAGE", "") == "true"
+    cover_flags = ["-cover", "-covermode=atomic", "-coverpkg=exe.dev/..."] if coverage else []
+    if coverage:
+        print("  coverage mode: building exed+exeprox with -cover", flush=True)
+
     # 4. Go binaries that don't depend on UI or exelet-fs — start immediately
     go_procs = {}
     go_procs["exeprox"] = subprocess.Popen(
-        ["go", "build", "-race", "-o", f"{out}/exeprox", "./cmd/exeprox"])
+        ["go", "build", "-race"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"])
     go_procs["sshpiperd"] = subprocess.Popen(
         ["go", "build", "-race", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
         cwd="deps/sshpiper")
@@ -104,12 +110,12 @@ def main():
             timings["exe-init"] = time.monotonic() - t0
 
     # Build exeletd after exelet-fs + exe-init (it embeds the fs directory).
-    # Build with -cover so downstream tests get exelet coverage data.
+    # In coverage mode, build with -cover so downstream tests get exelet coverage data.
     if not failed:
         t_exeletd = time.monotonic()
+        exeletd_cmd = ["go", "build"] + cover_flags + ["-ldflags=-s -w", "-o", f"{out}/exeletd", "./cmd/exelet"]
         exeletd_result = subprocess.run(
-            ["go", "build", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...",
-             "-ldflags=-s -w", "-o", f"{out}/exeletd", "./cmd/exelet"],
+            exeletd_cmd,
             env={**os.environ, "GOOS": "linux", "CGO_ENABLED": "0"})
         if exeletd_result.returncode != 0:
             print("  FAILED: exeletd", file=sys.stderr, flush=True)
@@ -131,7 +137,7 @@ def main():
     # 5. Build exed (depends on ui/dist being present)
     t_exed = time.monotonic()
     exed_result = subprocess.run(
-        ["go", "build", "-race", "-o", f"{out}/exed", "./cmd/exed"])
+        ["go", "build", "-race"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"])
     if exed_result.returncode != 0:
         print("  FAILED: exed", file=sys.stderr, flush=True)
         sys.exit(1)

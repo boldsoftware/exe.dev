@@ -15,6 +15,10 @@ e1e shard steps are generated dynamically based on environment variables:
   E1E_GOMAXPROCS      — GOMAXPROCS for e1e tests (default: unset / Go default)
   E1E_EXELETS_VM_CONCURRENCY — VMs for exelets step (default 10)
 
+Coverage mode (commit trailer "Coverage: true" or env E1E_COVERAGE=true):
+  Builds exed/exeprox with -cover, collects coverage from all test steps,
+  and adds a final merge-coverage step that produces a combined report.
+
 The segments are plain YAML lists of steps. push.yml uses the placeholder
 string __ALL_DEPS__ which is replaced with the actual dependency list at
 generation time.
@@ -148,7 +152,7 @@ def split_letters(n_shards):
     return shards
 
 
-def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency):
+def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, coverage=False):
     """Generate YAML text for e1e shard steps + exelets step."""
     shards = split_letters(n_shards)
     lines = []
@@ -172,12 +176,16 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
         lines.append(f'    E1E_VM_CONCURRENCY: "{vm_concurrency}"')
         if gomaxprocs:
             lines.append(f'    E1E_GOMAXPROCS: "{gomaxprocs}"')
+        if coverage:
+            lines.append(f'    E1E_COVERAGE: "true"')
         lines.append(f'  artifact_paths:')
         lines.append(f'    - "recordings-{shard_num}.html"')
         lines.append(f'    - "test-gantt-{shard_num}.html"')
         lines.append(f'    - "e1e-results-{shard_num}.json"')
         lines.append(f'    - "e1e-results-{shard_num}.xml"')
         lines.append(f'    - "e1e-logs-{shard_num}/**/*"')
+        if coverage:
+            lines.append(f'    - "coverage-e1e-{shard_num}.txt"')
         lines.append('')
 
     # Exelets step
@@ -191,11 +199,15 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
     lines.append('  env:')
     lines.append('    VM_DRIVER: cloudhypervisor')
     lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
+    if coverage:
+        lines.append(f'    E1E_COVERAGE: "true"')
     lines.append('  artifact_paths:')
     lines.append('    - "e1e-results-exelets.json"')
     lines.append('    - "test-gantt-exelets.html"')
     lines.append('    - "e1e-results-exelets.xml"')
     lines.append('    - "e1e-logs-exelets/**/*"')
+    if coverage:
+        lines.append('    - "coverage-exelets.txt"')
 
     return '\n'.join(lines)
 
@@ -221,6 +233,65 @@ def read_commit_trailers():
     return trailers
 
 
+def _inject_coverage_env(segment_text):
+    """Add E1E_COVERAGE: "true" to relevant steps in the segment.
+
+    Injects into steps that have an env: block, and adds an env: block
+    to the build-e1e step (which builds the binaries with/without coverage).
+    """
+    lines = segment_text.splitlines()
+    result = []
+    in_step_key = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Track current step key.
+        if stripped.startswith('key:'):
+            in_step_key = stripped.split(':', 1)[1].strip()
+
+        result.append(line)
+
+        # Inject after existing env: blocks.
+        if stripped == 'env:':
+            indent = len(line) - len(line.lstrip())
+            result.append(f"{' ' * indent}  E1E_COVERAGE: \"true\"")
+
+        # For build-e1e (no env: block), add one after command: line.
+        if in_step_key == 'build-e1e' and stripped.startswith('command:'):
+            indent = len(line) - len(line.lstrip())
+            result.append(f"{' ' * indent}env:")
+            result.append(f"{' ' * indent}  E1E_COVERAGE: \"true\"")
+
+        i += 1
+    return '\n'.join(result)
+
+
+def generate_coverage_merge_step(all_test_keys):
+    """Generate a step that merges all coverage profiles.
+
+    all_test_keys: list of step keys to depend on (unit + e1e + exelets).
+    """
+    lines = [
+        '- label: ":bar_chart: merge coverage"',
+        '  key: merge-coverage',
+        '  allow_dependency_failure: true',
+        '  depends_on:',
+    ]
+    for key in all_test_keys:
+        lines.append(f'    - {key}')
+    lines += [
+        '  command: python3 .buildkite/steps/merge-coverage.py',
+        '  timeout_in_minutes: 10',
+        '  artifact_paths:',
+        '    - "coverage-merged.txt"',
+        '    - "coverage-summary.txt"',
+        '    - "coverage-report.html"',
+    ]
+    return '\n'.join(lines)
+
+
 def main():
     exe_changed, shelley_changed = detect_changes()
 
@@ -233,12 +304,14 @@ def main():
     vm_concurrency = trailers.get("e1e-vm-concurrency", os.environ.get("E1E_VM_CONCURRENCY", "12"))
     gomaxprocs = trailers.get("e1e-gomaxprocs", os.environ.get("E1E_GOMAXPROCS", ""))
     exelets_vm_concurrency = trailers.get("e1e-exelets-vm-concurrency", os.environ.get("E1E_EXELETS_VM_CONCURRENCY", "10"))
+    coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
           f"is_queue={is_queue} branch={branch} "
           f"e1e_shards={n_shards} vm_concurrency={vm_concurrency} "
           f"gomaxprocs={gomaxprocs or '(default)'} "
-          f"exelets_vm_concurrency={exelets_vm_concurrency}",
+          f"exelets_vm_concurrency={exelets_vm_concurrency} "
+          f"coverage={coverage}",
           file=sys.stderr)
 
     # Assemble step segments
@@ -249,9 +322,12 @@ def main():
 
     # Conditional: exe tests
     if exe_changed:
-        segments.append(load_segment("exe.yml"))
+        exe_segment = load_segment("exe.yml")
+        if coverage:
+            exe_segment = _inject_coverage_env(exe_segment)
+        segments.append(exe_segment)
         # Generate e1e steps dynamically
-        segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency))
+        segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, coverage=coverage))
 
     # Conditional: shelley tests
     if shelley_changed:
@@ -259,6 +335,14 @@ def main():
 
     # Always: formatting
     segments.append(load_segment("format.yml"))
+
+    # Coverage: add merge step that depends on all test steps.
+    if coverage and exe_changed:
+        # Collect keys of all test steps that produce coverage.
+        test_keys = collect_step_keys("\n".join(segments))
+        # Filter to only test step keys (unit-*, test-e1e-*, test-exelets).
+        coverage_deps = [k for k in test_keys if k.startswith("unit-") or k.startswith("test-e1e-") or k == "test-exelets"]
+        segments.append(generate_coverage_merge_step(coverage_deps))
 
     # Collect all step keys for dependency lists
     all_text = "\n".join(segments)

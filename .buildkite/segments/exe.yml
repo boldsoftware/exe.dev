@@ -23,6 +23,7 @@
     - "unit-results-*.json"
     - "unit-results-*.xml"
     - "test-gantt-unit-*.html"
+    - "coverage-unit-*.txt"
 
 - label: ":go: unit tests (other pkgs)"
   key: unit-b
@@ -34,6 +35,7 @@
     - "unit-results-*.json"
     - "unit-results-*.xml"
     - "test-gantt-unit-*.html"
+    - "coverage-unit-*.txt"
 
 - label: ":go: unit tests (execore I-P)"
   key: unit-c
@@ -45,6 +47,7 @@
     - "unit-results-*.json"
     - "unit-results-*.xml"
     - "test-gantt-unit-*.html"
+    - "coverage-unit-*.txt"
 
 - label: ":go: unit tests (execore Q-Z)"
   key: unit-d
@@ -56,6 +59,7 @@
     - "unit-results-*.json"
     - "unit-results-*.xml"
     - "test-gantt-unit-*.html"
+    - "coverage-unit-*.txt"
 
 # e1e shard steps and exelets step are generated dynamically
 # by generate-pipeline.py based on E1E_SHARDS / E1E_VM_CONCURRENCY env vars.

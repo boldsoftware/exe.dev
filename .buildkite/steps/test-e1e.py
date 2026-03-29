@@ -107,6 +107,7 @@ def main():
         print("WARNING: asciinema recording generation failed (non-fatal)", flush=True)
 
     _upload_test_analytics(junit_results)
+    _collect_coverage(shard)
 
     sys.exit(test_result.returncode)
 
@@ -295,6 +296,27 @@ def _parse_go_duration(s):
         elif unit in ('µs', 'us'): total += val / 1_000_000
         elif unit == 'ns': total += val / 1_000_000_000
     return total
+
+
+def _collect_coverage(shard):
+    """Collect coverage data from e1e test run and upload as artifact.
+
+    The e1e test infra writes coverage data to temp dirs for exed, exeprox,
+    and exelet. The test harness merges them into a text profile at e1e.cover.
+    We upload that profile as an artifact for the merge-coverage step.
+    """
+    if os.environ.get("E1E_COVERAGE", "") != "true":
+        return
+    suffix = f"-{shard}" if shard else ""
+    cover_file = "e1e.cover"
+    if not os.path.isfile(cover_file):
+        # The coverage file is written relative to the repo root (parent of e1e/)
+        # by infra_test.go's Close() method.
+        print(f"WARNING: coverage file {cover_file} not found", flush=True)
+        return
+    dest = f"coverage-e1e{suffix}.txt"
+    run(["cp", cover_file, dest])
+    print(f"Coverage profile saved as {dest}", flush=True)
 
 
 def _upload_test_analytics(junit_file):

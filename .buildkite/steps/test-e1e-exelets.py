@@ -51,6 +51,7 @@ def main():
     _annotate_results(json_results)
     _generate_gantt(json_results)
     _upload_test_analytics(junit_results)
+    _collect_coverage()
 
     sys.exit(test_result.returncode)
 
@@ -169,6 +170,19 @@ def _annotate_results(json_results):
         ["buildkite-agent", "annotate", "--context", "e1e-timing-exelets", "--style", "info"],
         input="\n".join(lines), text=True,
     )
+
+
+def _collect_coverage():
+    """Collect coverage data from exelets test run and upload as artifact."""
+    if os.environ.get("E1E_COVERAGE", "") != "true":
+        return
+    cover_file = "e1e.cover"
+    if not os.path.isfile(cover_file):
+        print(f"WARNING: coverage file {cover_file} not found", flush=True)
+        return
+    dest = "coverage-exelets.txt"
+    run(["cp", cover_file, dest])
+    print(f"Coverage profile saved as {dest}", flush=True)
 
 
 def _upload_test_analytics(junit_file):
