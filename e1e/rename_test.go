@@ -223,6 +223,10 @@ func TestRename(t *testing.T) {
 	// preventing a security vulnerability where an attacker could snatch the old name
 	// and use lingering cookies from the original owner.
 	t.Run("CookieInvalidation", func(t *testing.T) {
+		// Re-verify SSH connectivity to box2 — prior subtests may have
+		// taken long enough for the connection to go stale.
+		waitForSSH(t, box2, keyFile)
+
 		// Create index.html and start HTTP server on box2
 		serveIndex(t, box2, keyFile, "alive")
 		configureProxyRoute(t, keyFile, box2, 8080, "private")
