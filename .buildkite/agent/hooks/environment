@@ -1,0 +1,16 @@
+#!/bin/bash
+# Buildkite agent environment hook for exe-ci-01.
+# Installed at /etc/buildkite-agent/hooks/environment
+
+export HOME=/data/buildkite
+export GOPATH="$HOME/go"
+export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:$HOME/.local/bin:$HOME/go/bin"
+# CI caches default to ~/.cache/ subdirectories. No CI_CACHE or EXEDEV_CACHE override needed
+# since HOME is on the ZFS data volume.
+
+# SSH multiplexing for GitHub. The buildkite agent makes 3 SSH connections to
+# github.com per checkout (mirror fetch, clone, working-copy fetch). With
+# ControlMaster, only the first pays the SSH handshake cost; the rest reuse
+# the connection. With spawn=16 agents, the shared socket path means most
+# checkouts hit an already-warm connection. Saves ~2s per build.
+export GIT_SSH_COMMAND="ssh -o ControlMaster=auto -o ControlPath=/tmp/ssh-mux-buildkite-%r@%h:%p -o ControlPersist=300 -o ServerAliveInterval=60"
