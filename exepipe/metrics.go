@@ -42,19 +42,3 @@ func newMetrics(registry *prometheus.Registry) *metrics {
 	registry.MustRegister(m.sessionsTotal, m.sessionsInFlight, m.bytesTotal)
 	return m
 }
-
-// StartSession records a new session.
-func (m *metrics) StartSession(typ string) {
-	m.sessionsTotal.WithLabelValues(typ).Inc()
-	m.sessionsInFlight.WithLabelValues(typ).Inc()
-}
-
-// StopSession records that a session has stopped.
-func (m *metrics) StopSession(typ string) {
-	m.sessionsInFlight.WithLabelValues(typ).Dec()
-}
-
-// AddBytes increments the bytes counter.
-func (m *metrics) AddBytes(typ string, n int) {
-	m.bytesTotal.WithLabelValues(typ).Add(float64(n))
-}
