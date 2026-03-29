@@ -107,21 +107,28 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	// Use a test ID to avoid name collisions.
-	testRunID := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
-	exeletTestRunIDs = []string{testRunID}
+	// Use test IDs to avoid name collisions.
+	testRunID1 := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
+	testRunID2 := fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
+	exeletTestRunIDs = []string{testRunID1, testRunID2}
 
-	// Start one exelet as part of setting up other services.
-	exeletHost, err := testinfra.StartExeletVM(testRunID)
-	if err != nil {
-		if err == testinfra.ErrNoVM && os.Getenv("CI") != "" {
-			fmt.Printf("skipping tests in CI: %v\n", err)
-			return
-		}
-		fmt.Fprintln(os.Stderr, err)
-		exit(1)
+	// Boot both VMs concurrently with binary building. Most exelets tests
+	// need 2 exelets, so pre-booting the 2nd VM avoids a ~10s delay when
+	// the first test calls ensureExeletCount(2).
+	type vmResult struct {
+		host string
+		err  error
 	}
-	exeletHosts = []string{exeletHost}
+	vm1Ch := make(chan vmResult, 1)
+	vm2Ch := make(chan vmResult, 1)
+	go func() {
+		h, err := testinfra.StartExeletVM(testRunID1)
+		vm1Ch <- vmResult{h, err}
+	}()
+	go func() {
+		h, err := testinfra.StartExeletVM(testRunID2)
+		vm2Ch <- vmResult{h, err}
+	}()
 
 	exedHTTPProxy, err := testinfra.NewTCPProxy(context.Background(), "exedHTTPProxy")
 	if err != nil {
@@ -137,7 +144,8 @@ func TestMain(m *testing.M) {
 	}
 	go exeproxHTTPProxy.Serve()
 
-	bins, exeletBin, err := testinfra.BuildAll(context.Background(), testRunID)
+	// Build binaries concurrently with VM boot.
+	bins, exeletBin, err := testinfra.BuildAll(context.Background(), testRunID1)
 	exeletBinary = exeletBin
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "building binaries failed: %v\n", err)
@@ -147,11 +155,23 @@ func TestMain(m *testing.M) {
 		os.Remove(exeletBinary)
 	})
 
-	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, exeletHost, exedHTTPProxy.Port(), exeproxHTTPProxy.Port(), nil, testRunID, exeletLogFile, exepipeLogFile, false, nil, nil)
+	// Wait for VM1 (needed for server startup).
+	vm1 := <-vm1Ch
+	if vm1.err != nil {
+		if vm1.err == testinfra.ErrNoVM && os.Getenv("CI") != "" {
+			fmt.Printf("skipping tests in CI: %v\n", vm1.err)
+			return
+		}
+		fmt.Fprintln(os.Stderr, vm1.err)
+		exit(1)
+	}
+
+	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, vm1.host, exedHTTPProxy.Port(), exeproxHTTPProxy.Port(), nil, testRunID1, exeletLogFile, exepipeLogFile, false, nil, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "starting exelet failed: %v\n", err)
 		exit(1)
 	}
+	exeletHosts = []string{vm1.host}
 	exelets = []*testinfra.ExeletInstance{exelet}
 
 	serverEnv, err = testinfra.StartServers(context.Background(),
@@ -172,6 +192,20 @@ func TestMain(m *testing.M) {
 	}
 
 	exeproxHTTPProxy.SetDestPort(serverEnv.Exeprox.HTTPPort)
+
+	// Wait for VM2 and start its exelet (most tests need 2 exelets).
+	vm2 := <-vm2Ch
+	if vm2.err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start second VM: %v\n", vm2.err)
+		exit(1)
+	}
+	exelet2, err := testinfra.StartExelet(context.Background(), exeletBinary, vm2.host, serverEnv.ExedHTTPProxy.Port(), exeproxHTTPProxy.Port(), nil, testRunID2, exeletLogFile, exepipeLogFile, false, nil, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "starting second exelet failed: %v\n", err)
+		exit(1)
+	}
+	exeletHosts = append(exeletHosts, vm2.host)
+	exelets = append(exelets, exelet2)
 
 	m.Run()
 }

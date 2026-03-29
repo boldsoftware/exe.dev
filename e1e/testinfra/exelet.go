@@ -1472,7 +1472,23 @@ var buildExeletBinaryMu sync.Mutex
 
 // BuildExeletBinary builds exelet locally for Linux and returns path to binary.
 // The binary is built with coverage instrumentation via "make exelet-coverage".
+// If PREBUILT_EXELET is set, it returns that path directly (coverage will not
+// be available for the exelet in that case — this is an acceptable trade-off
+// for CI speed since the main e1e shards already get coverage from their own
+// exelet builds).
 func BuildExeletBinary(ctx context.Context, testRunID string) (string, error) {
+	if prebuilt := os.Getenv("PREBUILT_EXELET"); prebuilt != "" {
+		st, err := os.Stat(prebuilt)
+		if err != nil {
+			return "", fmt.Errorf("PREBUILT_EXELET not usable: %w", err)
+		}
+		if st.IsDir() {
+			return "", fmt.Errorf("PREBUILT_EXELET points to a directory, need a file: %s", prebuilt)
+		}
+		slog.InfoContext(ctx, "using prebuilt exelet (coverage unavailable)", "path", prebuilt)
+		return prebuilt, nil
+	}
+
 	binPath := filepath.Join(os.TempDir(), "exelet-test-"+testRunID)
 
 	// Set working directory to project root (parent of e1e directory)

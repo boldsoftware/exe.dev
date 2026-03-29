@@ -88,8 +88,9 @@ def _restore_prebuilt_artifacts():
 
     init_cache = f"{prebuilt}/exe-init"
     if os.path.isfile(init_cache):
-        os.makedirs("exelet/vmm/cloudhypervisor", exist_ok=True)
-        run(["cp", "--reflink=auto", init_cache, "exelet/vmm/cloudhypervisor/exe-init"])
+        init_dest = f"exelet/fs/{goarch}/rovol/bin/exe-init"
+        os.makedirs(os.path.dirname(init_dest), exist_ok=True)
+        run(["cp", "--reflink=auto", init_cache, init_dest])
     else:
         run(["make", "exe-init"])
 

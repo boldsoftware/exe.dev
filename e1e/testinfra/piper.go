@@ -26,9 +26,22 @@ type SSHPiperdInstance struct {
 }
 
 // BuildSSHPiperd builds the sshpiperd binary and returns the path.
+// If PREBUILT_SSHPIPERD is set, it returns that path directly.
 func BuildSSHPiperd(ctx context.Context) (string, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "building sshpiperd")
+
+	if prebuilt := os.Getenv("PREBUILT_SSHPIPERD"); prebuilt != "" {
+		st, err := os.Stat(prebuilt)
+		if err != nil {
+			return "", fmt.Errorf("PREBUILT_SSHPIPERD not usable: %w", err)
+		}
+		if st.IsDir() {
+			return "", fmt.Errorf("PREBUILT_SSHPIPERD points to a directory, need a file: %s", prebuilt)
+		}
+		slog.InfoContext(ctx, "using prebuilt sshpiperd", "path", prebuilt)
+		return prebuilt, nil
+	}
 
 	bin, err := os.CreateTemp("", "sshpiperd-test")
 	if err != nil {

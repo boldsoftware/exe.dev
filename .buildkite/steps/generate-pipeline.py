@@ -28,14 +28,15 @@ import sys
 
 SEGMENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "segments")
 
-# Letters that have e1e tests with approximate test counts.
-# Used to balance shards by test count rather than just letter count.
+# Letters that have e1e tests with approximate execution time weights (seconds).
+# Used to balance shards by execution time rather than just test count.
 # Update these when test distribution changes significantly.
+# Last updated: 2026-03-29 from build #282 timing data.
 TEST_LETTER_COUNTS = [
-    ("A", 1), ("B", 5), ("C", 3), ("D", 4), ("E", 29), ("F", 0),
-    ("G", 3), ("H", 6), ("I", 25), ("J", 0), ("K", 0), ("L", 7),
-    ("M", 5), ("N", 19), ("O", 0), ("P", 15), ("Q", 0), ("R", 15),
-    ("S", 29), ("T", 22), ("U", 4), ("V", 10), ("W", 5), ("X", 0),
+    ("A", 0), ("B", 12), ("C", 43), ("D", 8), ("E", 57), ("F", 0),
+    ("G", 4), ("H", 24), ("I", 80), ("J", 0), ("K", 0), ("L", 41),
+    ("M", 13), ("N", 68), ("O", 0), ("P", 88), ("Q", 0), ("R", 187),
+    ("S", 147), ("T", 276), ("U", 29), ("V", 58), ("W", 2), ("X", 0),
     ("Y", 0), ("Z", 0),
 ]
 

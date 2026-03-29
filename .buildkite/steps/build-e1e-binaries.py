@@ -3,7 +3,8 @@
 
 Builds everything in parallel where possible:
   - exelet-fs restore, exe-init build, UI build all start immediately
-  - Go binary builds (exed, exeprox, sshpiperd, exeletd) start immediately
+  - Go binary builds (exeprox, sshpiperd) start immediately
+  - exeletd waits for exelet-fs + exe-init (it embeds the fs via //go:embed)
   - exed links against ui/dist, so it waits for UI to finish
 
 Artifacts are placed in ~/.cache/ci/e1e-prebuilt-{BUILD_ID}/ and shared
@@ -62,16 +63,15 @@ def main():
     # 2. Build UI (Node.js + Vite, ~3-6s)
     ui_proc = subprocess.Popen(["bash", "-c", "make ui"])
 
-    # 4. Go binaries that don't depend on UI — start immediately
+    # 4. Go binaries that don't depend on UI or exelet-fs — start immediately
     go_procs = {}
     go_procs["exeprox"] = subprocess.Popen(
         ["go", "build", "-race", "-o", f"{out}/exeprox", "./cmd/exeprox"])
     go_procs["sshpiperd"] = subprocess.Popen(
         ["go", "build", "-race", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
         cwd="deps/sshpiper")
-    go_procs["exeletd"] = subprocess.Popen(
-        ["go", "build", "-o", f"{out}/exeletd", "./cmd/exelet"],
-        env={**os.environ, "GOOS": "linux", "CGO_ENABLED": "0"})
+    # Note: exeletd is built later — it embeds exelet/fs via //go:embed,
+    # so exelet-fs + exe-init must complete first.
 
     # ── Wait for tasks, tracking timing ──
     timings = {}
@@ -103,6 +103,20 @@ def main():
         else:
             timings["exe-init"] = time.monotonic() - t0
 
+    # Build exeletd after exelet-fs + exe-init (it embeds the fs directory).
+    # Build with -cover so downstream tests get exelet coverage data.
+    if not failed:
+        t_exeletd = time.monotonic()
+        exeletd_result = subprocess.run(
+            ["go", "build", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...",
+             "-ldflags=-s -w", "-o", f"{out}/exeletd", "./cmd/exelet"],
+            env={**os.environ, "GOOS": "linux", "CGO_ENABLED": "0"})
+        if exeletd_result.returncode != 0:
+            print("  FAILED: exeletd", file=sys.stderr, flush=True)
+            failed = True
+        else:
+            timings["exeletd"] = time.monotonic() - t0
+
     # Wait for UI — exed needs ui/dist
     if ui_proc.wait() != 0:
         print("  FAILED: ui", file=sys.stderr, flush=True)
@@ -132,7 +146,7 @@ def main():
     fs_dir = f"exelet/fs/{goarch}"
     if os.path.isdir(fs_dir):
         run(["cp", "--reflink=auto", "-a", fs_dir, f"{out}/exelet-fs-{goarch}"])
-    init_path = "exelet/vmm/cloudhypervisor/exe-init"
+    init_path = f"exelet/fs/{goarch}/rovol/bin/exe-init"
     if os.path.isfile(init_path):
         run(["cp", "--reflink=auto", init_path, f"{out}/exe-init"])
 
