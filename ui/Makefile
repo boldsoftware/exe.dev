@@ -57,13 +57,13 @@ $(NODE_BIN)/.corepack-enabled:
 	@echo "Node.js v$(NODE_VERSION) ready in $(NODE_BIN)"
 
 build: ## Build the Vue dashboard UI (with tree-hash cache)
-	@if [ -n "$(UI_TREE_HASH)" ] && [ -d "$(_UI_CACHE_ENTRY)" ]; then \
+	@if [ -n "$(UI_TREE_HASH)" ] && [ -f "$(_UI_CACHE_ENTRY)/index.html" ]; then \
 		echo "UI cache hit ($(UI_TREE_HASH)), restoring dist/"; \
 		rm -rf dist; \
 		cp -a "$(_UI_CACHE_ENTRY)" dist; \
 	else \
-		$(MAKE) _build; \
-		if [ -n "$(UI_TREE_HASH)" ]; then \
+		$(MAKE) _build || exit 1; \
+		if [ -n "$(UI_TREE_HASH)" ] && [ -f dist/index.html ]; then \
 			echo "Caching UI build ($(UI_TREE_HASH))"; \
 			mkdir -p "$(_UI_CACHE_BASE)"; \
 			rm -rf "$(_UI_CACHE_ENTRY)"; \

@@ -102,6 +102,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/{hostname}/clear-tier-migrations", s.handleDebugExeletClearTierMigrations)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-tier-migration", s.handleDebugExeletCancelTierMigration)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-all-pending-tier-migrations", s.handleDebugExeletCancelAllPendingTierMigrations)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/update-user-cgroup-parents", s.handleDebugExeletUpdateUserCgroupParents)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
@@ -3550,6 +3551,94 @@ func (s *Server) handleDebugExeletCancelAllPendingTierMigrations(w http.Response
 	if errors > 0 {
 		result += fmt.Sprintf(", %d errors", errors)
 	}
+
+	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugExeletUpdateUserCgroupParents updates the cgroup parent for all instances
+// on the exelet to use the owner's user ID as the group.
+func (s *Server) handleDebugExeletUpdateUserCgroupParents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, ec := s.resolveExelet(hostname)
+	if ec == nil {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	// Get all boxes on this host from the DB to map container IDs to user IDs.
+	boxes, err := s.getBoxesByHost(ctx, address)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get boxes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Build a map of container ID -> user ID.
+	containerToUser := make(map[string]string)
+	for _, box := range boxes {
+		if box.ContainerID != nil && *box.ContainerID != "" {
+			containerToUser[*box.ContainerID] = box.CreatedByUserID
+		}
+	}
+
+	// List all running instances on the exelet.
+	listCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	stream, err := ec.client.ListInstances(listCtx, &computeapi.ListInstancesRequest{})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list instances: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type instanceUserPair struct {
+		instanceID string
+		userID     string
+	}
+	var pairs []instanceUserPair
+	var skipped int
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		inst := resp.Instance
+		userID, ok := containerToUser[inst.ID]
+		if !ok {
+			skipped++
+			continue
+		}
+		pairs = append(pairs, instanceUserPair{instanceID: inst.ID, userID: userID})
+	}
+
+	// Call SetInstanceGroup for each instance.
+	var updated, errors int
+	for _, p := range pairs {
+		setCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := ec.client.SetInstanceGroup(setCtx, &computeapi.SetInstanceGroupRequest{
+			ID:      p.instanceID,
+			GroupID: p.userID,
+		})
+		cancel()
+		if err != nil {
+			errors++
+			s.slog().ErrorContext(ctx, "set instance group failed",
+				"address", address, "instance", p.instanceID, "user", p.userID, "error", err)
+		} else {
+			updated++
+		}
+	}
+
+	result := fmt.Sprintf("updated cgroup parents for %d instance(s)", updated)
+	if skipped > 0 {
+		result += fmt.Sprintf(", %d skipped (no matching box)", skipped)
+	}
+	if errors > 0 {
+		result += fmt.Sprintf(", %d error(s)", errors)
+	}
+
+	s.slog().InfoContext(ctx, "update user cgroup parents completed",
+		"address", address, "updated", updated, "skipped", skipped, "errors", errors)
 
 	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
 }
