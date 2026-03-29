@@ -354,7 +354,9 @@ func (ss *SSHServer) Stop() error {
 		ss.ln.Close()
 	}
 	if ss.srv != nil {
-		return ss.srv.Close()
+		// srv.Close() will also try to close the listener; ignore the
+		// double-close error since we already closed it above.
+		ss.srv.Close()
 	}
 	return nil
 }
