@@ -676,7 +676,12 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 		return fmt.Errorf("sync account plan: %w", err)
 	}
 
-	if basePlan == entitlement.CategoryBasic && m.OnPlanDowngrade != nil {
+	// Only fire the downgrade callback when an existing non-basic plan was
+	// closed — not when inserting basic for an account with no prior plan
+	// (e.g. Stripe customer with no account_plans row). The early return
+	// above already skips accounts that are already basic, so reaching here
+	// with basePlan==basic means we transitioned from a real plan.
+	if basePlan == entitlement.CategoryBasic && m.OnPlanDowngrade != nil && err == nil {
 		m.OnPlanDowngrade(ctx, accountID)
 	}
 
