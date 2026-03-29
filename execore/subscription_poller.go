@@ -44,10 +44,6 @@ func (p *SubscriptionPoller) poll() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	// Trial expiry runs less frequently — every 30 seconds is plenty.
-	trialTicker := time.NewTicker(30 * time.Second)
-	defer trialTicker.Stop()
-
 	for {
 		nextSince, err := p.billing.SyncSubscriptions(p.ctx, since)
 		if err != nil {
@@ -59,19 +55,6 @@ func (p *SubscriptionPoller) poll() {
 				"error", err)
 		} else {
 			since = nextSince
-		}
-
-		// Check for expired trial plans on the trial ticker.
-		select {
-		case <-trialTicker.C:
-			if n, err := p.billing.ExpireTrialPlans(p.ctx); err != nil {
-				if !errors.Is(err, context.Canceled) {
-					p.log.ErrorContext(p.ctx, "failed to expire trial plans", "error", err)
-				}
-			} else if n > 0 {
-				p.log.InfoContext(p.ctx, "expired trial plans", "count", n)
-			}
-		default:
 		}
 
 		select {

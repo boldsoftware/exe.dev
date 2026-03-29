@@ -689,49 +689,6 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	return nil
 }
 
-// ExpireTrialPlans finds active trial plans that have expired and transitions
-// them to basic. Returns the number of plans expired.
-func (m *Manager) ExpireTrialPlans(ctx context.Context) (int, error) {
-	now := sqlite.NormalizeTime(time.Now())
-	expired, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListExpiredStripeTrialPlans, &now)
-	if err != nil {
-		return 0, fmt.Errorf("list expired trials: %w", err)
-	}
-
-	count := 0
-	changedBy := "trial:expired"
-	for _, plan := range expired {
-		if err := exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
-				AccountID: plan.AccountID,
-				EndedAt:   &now,
-			}); err != nil {
-				return fmt.Errorf("close expired trial: %w", err)
-			}
-			return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
-				AccountID: plan.AccountID,
-				PlanID:    "basic",
-				StartedAt: now,
-				ChangedBy: &changedBy,
-			})
-		}); err != nil {
-			m.slog().ErrorContext(ctx, "failed to expire trial plan",
-				"account_id", plan.AccountID,
-				"error", err,
-			)
-			continue
-		}
-		count++
-		m.slog().InfoContext(ctx, "trial plan expired",
-			"account_id", plan.AccountID,
-		)
-		if m.OnPlanDowngrade != nil {
-			m.OnPlanDowngrade(ctx, plan.AccountID)
-		}
-	}
-	return count, nil
-}
-
 // SubscriptionEvents returns subscription events for an account, ordered by time.
 func (m *Manager) SubscriptionEvents(ctx context.Context, billingID string) ([]SubscriptionEvent, error) {
 	rows, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListSubscriptionEvents, billingID)

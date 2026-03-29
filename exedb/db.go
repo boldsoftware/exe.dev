@@ -915,9 +915,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listEmailQualityBypassStmt, err = db.PrepareContext(ctx, listEmailQualityBypass); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailQualityBypass: %w", err)
 	}
-	if q.listExpiredStripeTrialPlansStmt, err = db.PrepareContext(ctx, listExpiredStripeTrialPlans); err != nil {
-		return nil, fmt.Errorf("error preparing query ListExpiredStripeTrialPlans: %w", err)
-	}
 	if q.listGiftCreditsStmt, err = db.PrepareContext(ctx, listGiftCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListGiftCredits: %w", err)
 	}
@@ -2693,11 +2690,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listEmailQualityBypassStmt: %w", cerr)
 		}
 	}
-	if q.listExpiredStripeTrialPlansStmt != nil {
-		if cerr := q.listExpiredStripeTrialPlansStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listExpiredStripeTrialPlansStmt: %w", cerr)
-		}
-	}
 	if q.listGiftCreditsStmt != nil {
 		if cerr := q.listGiftCreditsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listGiftCreditsStmt: %w", cerr)
@@ -3509,7 +3501,6 @@ type Queries struct {
 	listBoxIDsForUserStmt                      *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
-	listExpiredStripeTrialPlansStmt            *sql.Stmt
 	listGiftCreditsStmt                        *sql.Stmt
 	listGitHubInstallationsStmt                *sql.Stmt
 	listGitHubUserTokensStmt                   *sql.Stmt
@@ -3908,7 +3899,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
-		listExpiredStripeTrialPlansStmt:            q.listExpiredStripeTrialPlansStmt,
 		listGiftCreditsStmt:                        q.listGiftCreditsStmt,
 		listGitHubInstallationsStmt:                q.listGitHubInstallationsStmt,
 		listGitHubUserTokensStmt:                   q.listGitHubUserTokensStmt,
