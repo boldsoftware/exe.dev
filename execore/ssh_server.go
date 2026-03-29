@@ -270,6 +270,7 @@ type SSHServer struct {
 
 	srvMu   sync.Mutex
 	srv     *ssh.Server
+	ln      net.Listener // stored so Stop can close it even if Serve hasn't registered it yet
 	stopped bool
 
 	commands *exemenu.CommandTree
@@ -290,8 +291,11 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 	// Initialize the gliderlabs SSH server
 	ss.srvMu.Lock()
 	if ss.stopped {
+		ss.srvMu.Unlock()
+		ln.Close()
 		return errors.New("starting closed SSH server")
 	}
+	ss.ln = ln
 	ss.srv = &ssh.Server{
 		Addr:             ln.Addr().String(),
 		Handler:          ss.handleSession,
@@ -344,6 +348,11 @@ func (ss *SSHServer) Stop() error {
 	}
 	ss.stopped = true
 
+	// Close the listener directly in case Serve hasn't registered it
+	// with the gliderlabs server yet (race between Start and Stop).
+	if ss.ln != nil {
+		ss.ln.Close()
+	}
 	if ss.srv != nil {
 		return ss.srv.Close()
 	}
