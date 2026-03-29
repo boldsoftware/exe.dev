@@ -2881,6 +2881,14 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 func (s *Server) handlePlanDowngrade(ctx context.Context, accountID string) {
 	userID, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByAccountID, accountID)
 	if err != nil {
+		// Orphan Stripe customers with no accounts row are expected —
+		// the poller replays events for customers that never completed signup.
+		if errors.Is(err, sql.ErrNoRows) {
+			s.slog().DebugContext(ctx, "plan downgrade: skipping, no account row",
+				"account_id", accountID,
+			)
+			return
+		}
 		s.slog().ErrorContext(ctx, "plan downgrade: failed to get user for account",
 			"account_id", accountID,
 			"error", err,
