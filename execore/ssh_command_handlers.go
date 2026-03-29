@@ -54,7 +54,7 @@ const shelleyPreamble = `
 The user has just created this VM, and wants to do the following with it.
 `
 
-const shelleyDefaultModel = "claude-opus-4.6"
+const shelleyDefaultModel = "claude-opus-4-6"
 
 // makeShelleyConfig generates the shelley.json config for a box.
 func (ss *SSHServer) makeShelleyConfig(boxName string) ([]byte, error) {
@@ -376,6 +376,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		ss.integrationsCommand(),
 		ss.teamCommand(),
 		ss.shelleyCommand(),
+		ss.promptCommand(),
 		{
 			Name:        "browser",
 			Description: "Generate a magic link to log in to the website",

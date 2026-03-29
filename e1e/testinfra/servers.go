@@ -34,6 +34,7 @@ type ServerEnv struct {
 	Email                *EmailServer
 	Metricsd             *MetricsdInstance
 	GitHubMock           *MockGitHubServer
+	AnthropicMock        *MockAnthropicServer
 }
 
 // PrebuiltBinaries holds paths to pre-built binaries for the servers.
@@ -177,6 +178,11 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 	os.Setenv("EXE_GITHUB_APP_ID", TestGitHubAppID)
 	os.Setenv("EXE_GITHUB_APP_PRIVATE_KEY", TestGitHubAppPrivateKeyPEM)
 
+	// Start mock Anthropic server for prompt command tests.
+	anthropicMock := NewMockAnthropicServer()
+	env.AnthropicMock = anthropicMock
+	os.Setenv("ANTHROPIC_BASE_URL", anthropicMock.URL())
+
 	var exeletAddrs []string
 	for _, exelet := range exelets {
 		exeletAddrs = append(exeletAddrs, exelet.Address)
@@ -297,6 +303,9 @@ func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
 
 	if env.GitHubMock != nil {
 		env.GitHubMock.Close()
+	}
+	if env.AnthropicMock != nil {
+		env.AnthropicMock.Close()
 	}
 
 	if env.Metricsd != nil {
