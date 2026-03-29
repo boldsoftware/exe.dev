@@ -82,14 +82,14 @@ ssh "$HOST" 'set -euo pipefail
 '
 
 # --- Ensure cache symlinks ---
-# Each runner's go-build and exedev caches live on /data (larger disk).
-# Symlink ~/.cache/{go-build,exedev} -> /data/runnerN/{go-build,exedev}.
+# Each runner's go-build and ci-snapshots caches live on /data (larger disk).
+# Symlink ~/.cache/{go-build,ci-snapshots} -> /data/runnerN/{go-build,ci-snapshots}.
 echo "--- Ensuring cache symlinks ---"
 ssh "$HOST" 'set -euo pipefail
     for i in $(seq 0 7); do
         USER="runner${i}"
         USER_HOME="/home/${USER}"
-        for DIR in go-build exedev; do
+        for DIR in go-build ci-snapshots; do
             TARGET="/data/${USER}/${DIR}"
             LINK="${USER_HOME}/.cache/${DIR}"
             mkdir -p "$TARGET"

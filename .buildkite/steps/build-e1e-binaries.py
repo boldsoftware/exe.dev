@@ -6,8 +6,8 @@ Builds everything in parallel where possible:
   - Go binary builds (exed, exeprox, sshpiperd, exeletd) start immediately
   - exed links against ui/dist, so it waits for UI to finish
 
-Artifacts are placed in $CI_CACHE/e1e-prebuilt-{BUILD_ID}/ (ZFS) or
-/tmp/e1e-prebuilt-{BUILD_ID}/ (fallback) and shared with downstream shards.
+Artifacts are placed in ~/.cache/ci/e1e-prebuilt-{BUILD_ID}/ and shared
+with downstream shards.  Override the cache root via CI_CACHE env var.
 """
 
 import os
@@ -39,15 +39,12 @@ def main():
         os.environ["PATH"] = os.environ.get("HOME", "") + "/.local/bin:" + os.environ["PATH"]
         run(["./bin/retry.sh", "uv", "tool", "install", "b2"])
 
-    ci_cache = os.environ.get("CI_CACHE", "")
+    ci_cache = os.environ.get("CI_CACHE", os.path.join(os.environ.get("HOME", "/tmp"), ".cache", "ci"))
     goarch = os.environ.get("GOARCH", "amd64")
     build_id = os.environ.get("BUILDKITE_BUILD_ID", "local")
 
     # Output dir for prebuilt binaries — on same ZFS filesystem as builds.
-    if ci_cache:
-        out = f"{ci_cache}/e1e-prebuilt-{build_id}"
-    else:
-        out = f"/tmp/e1e-prebuilt-{build_id}"
+    out = f"{ci_cache}/e1e-prebuilt-{build_id}"
     subprocess.run(["rm", "-rf", out])
     os.makedirs(out, exist_ok=True)
 
@@ -162,7 +159,7 @@ CURRENT_HASH=$(git rev-parse HEAD:exelet/kernel)$(git rev-parse HEAD:exelet/rovo
 CACHE_TAR="{ci_cache}/exelet-fs-{goarch}-$CURRENT_HASH.tar.gz"
 FS_DIR="exelet/fs/{goarch}"
 
-if [ -n "{ci_cache}" ] && [ -f "$CACHE_TAR" ]; then
+if [ -f "$CACHE_TAR" ]; then
     echo "Restoring exelet-fs from cache ($CURRENT_HASH)..."
     rm -rf "$FS_DIR"/*
     mkdir -p "$FS_DIR"
@@ -174,7 +171,7 @@ else
     # Cache the tarball for future builds. Exclude exe-init and exe-ssh which
     # are rebuilt from source each time (and may be written by the parallel
     # exe-init build racing with this tar).
-    if [ -n "{ci_cache}" ] && [ -d "$FS_DIR/kernel" ] && [ ! -f "$CACHE_TAR" ]; then
+    if [ -d "$FS_DIR/kernel" ] && [ ! -f "$CACHE_TAR" ]; then
         echo "Caching exelet-fs tarball..."
         tar czf "$CACHE_TAR.tmp" -C "$FS_DIR" --exclude='rovol/bin/exe-init' --exclude='rovol/bin/exe-ssh' .
         mv "$CACHE_TAR.tmp" "$CACHE_TAR"
@@ -191,10 +188,7 @@ def _cleanup_old_prebuilt(ci_cache, current_build_id):
     prebuilt dirs for running test shards.
     """
     import glob
-    if ci_cache:
-        pattern = f"{ci_cache}/e1e-prebuilt-*"
-    else:
-        pattern = "/tmp/e1e-prebuilt-*"
+    pattern = f"{ci_cache}/e1e-prebuilt-*"
     cutoff = time.time() - 3600  # 1 hour ago
     for d in glob.glob(pattern):
         if current_build_id in d:

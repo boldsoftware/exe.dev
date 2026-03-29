@@ -56,7 +56,7 @@ Runs every 15 minutes. Destroys cloud-hypervisor VMs running >30 min (timestamp 
 /var/lib/libvirt/images   → 100G tmpfs (RAM-backed, in fstab)
 ```
 
-VM snapshot caches live on `/data` (via `$HOME/.cache/exedev/`). Only the active backing images and per-test overlays live on tmpfs. RAM-backing the WORKDIR gives a large speedup under concurrent VM load.
+VM snapshot caches live on `/data` (via `$HOME/.cache/ci-snapshots/`). Only the active backing images and per-test overlays live on tmpfs. RAM-backing the WORKDIR gives a large speedup under concurrent VM load.
 
 ## Deploy key
 

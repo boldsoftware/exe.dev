@@ -73,7 +73,7 @@ done
 # dirs (~5.5GB each) all with today's mtime, so mtime-based cleanup
 # doesn't kick in fast enough.
 for USER_HOME in /home/runner*; do
-    CACHE="${USER_HOME}/.cache/exedev"
+    CACHE="${USER_HOME}/.cache/ci-snapshots"
     [[ -d "$CACHE" ]] || continue
     # List ci-vm-* dirs newest first, skip the 2 newest, remove the rest.
     find "$CACHE" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null |

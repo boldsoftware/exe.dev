@@ -34,8 +34,7 @@ sudo ln -sf /data/libvirt/images /var/lib/libvirt/images
 sudo systemctl start libvirtd
 ```
 
-CI snapshot cache lives at `/data/ci-snapshots` (set by `EXEDEV_CACHE` or default
-in `ops/ci-vm-env.sh`).
+CI snapshot cache lives at `~/.cache/ci-snapshots` (override with `EXEDEV_CACHE` env var).
 
 ## 2. Package installation
 
@@ -112,9 +111,11 @@ plugins-path="/etc/buildkite-agent/plugins"
 
 ```bash
 #!/bin/bash
-export HOME="${HOME:-/var/lib/buildkite-agent}"
-export GOPATH="${GOPATH:-$HOME/go}"
+export HOME=/data/buildkite
+export GOPATH="$HOME/go"
 export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:$HOME/.local/bin:$HOME/go/bin"
+# CI caches default to ~/.cache/ subdirectories. No CI_CACHE or EXEDEV_CACHE override needed
+# since HOME is on the ZFS data volume.
 ```
 
 ```bash
