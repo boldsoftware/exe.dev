@@ -410,6 +410,57 @@ def _ensure_cloud_hypervisor_artifacts(vm_arch: str, ch_version: str,
 
 # ── Snapshot creation ──────────────────────────────────────────────────────────
 
+def _touch_last_used(snap_dir: Path) -> None:
+    """Mark a snapshot as recently used."""
+    marker = snap_dir / "last-used"
+    try:
+        marker.touch()
+    except OSError:
+        # snap_dir is root-owned; use sudo.
+        sudo("touch", str(marker))
+
+
+def _cleanup_stale_snapshots(current_snap_dir: Path, max_age_hours: int = 72) -> None:
+    """Remove snapshot dirs not used in the last max_age_hours.
+
+    Skips the current snapshot and any snapshot whose lock is held
+    (i.e. currently being built by another agent).
+    """
+    if not CACHE_DIR.exists():
+        return
+    cutoff = time.time() - max_age_hours * 3600
+    for entry in CACHE_DIR.iterdir():
+        if not entry.is_dir() or not entry.name.startswith("ci-vm-"):
+            continue
+        if entry == current_snap_dir:
+            continue
+        # Determine last-used time: prefer the marker file, fall back to mtime.
+        marker = entry / "last-used"
+        try:
+            ts = marker.stat().st_mtime if marker.exists() else entry.stat().st_mtime
+        except OSError:
+            continue
+        if ts >= cutoff:
+            continue
+        # Skip if another agent is actively building this snapshot.
+        lock_path = CACHE_DIR / f"{entry.name}.provision.lock"
+        if lock_path.exists():
+            try:
+                fd = open(lock_path, "w")
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                fd.close()
+            except (OSError, BlockingIOError):
+                # Lock is held — skip.
+                continue
+        age_h = (time.time() - ts) / 3600
+        print(f"Removing stale snapshot: {entry.name} (unused {age_h:.0f}h)", flush=True)
+        sudo("rm", "-rf", str(entry))
+        # Clean up the lock file too.
+        if lock_path.exists():
+            sudo("rm", "-f", str(lock_path))
+
+
 def _ensure_snapshot(snap_dir: Path) -> None:
     """Ensure a cached VM snapshot exists, building one if necessary.
 
@@ -419,6 +470,8 @@ def _ensure_snapshot(snap_dir: Path) -> None:
     snap_base = snap_dir / "base.qcow2"
     snap_data = snap_dir / "data.raw"
     if snap_base.exists() and snap_data.exists():
+        _touch_last_used(snap_dir)
+        _cleanup_stale_snapshots(snap_dir)
         return
 
     lock_path = CACHE_DIR / f"{snap_dir.name}.provision.lock"
@@ -430,11 +483,15 @@ def _ensure_snapshot(snap_dir: Path) -> None:
         fcntl.flock(fd, fcntl.LOCK_EX)
         if snap_base.exists() and snap_data.exists():
             print(f"Snapshot became available while waiting: {snap_dir}", flush=True)
+            _touch_last_used(snap_dir)
             return
         _build_snapshot(snap_dir)
+        _touch_last_used(snap_dir)
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         fd.close()
+
+    _cleanup_stale_snapshots(snap_dir)
 
 
 def _build_snapshot(snap_dir: Path) -> None:
