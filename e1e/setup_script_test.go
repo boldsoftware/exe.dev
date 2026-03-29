@@ -307,9 +307,18 @@ func TestSetupScriptExecutesEndToEnd(t *testing.T) {
 		t.Fatal("setup script did not execute: /tmp/setup-marker not found after 15s")
 	}
 
-	// Verify the setup script file was deleted
-	cmd := boxSSHCommand(t, boxName, keyFile, "test", "-f", "/exe.dev/setup")
-	if err := cmd.Run(); err == nil {
+	// Verify the setup script file was deleted (ExecStartPost runs after ExecStart,
+	// so there's a small window after the marker appears but before the file is removed).
+	var deleted bool
+	for range 30 {
+		cmd := boxSSHCommand(t, boxName, keyFile, "test", "-f", "/exe.dev/setup")
+		if err := cmd.Run(); err != nil {
+			deleted = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if !deleted {
 		t.Error("/exe.dev/setup still exists after execution; expected it to be deleted")
 	}
 
