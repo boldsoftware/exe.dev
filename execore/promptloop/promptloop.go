@@ -201,7 +201,7 @@ var tools = []Tool{
 	},
 	{
 		Name:        "suggest_command",
-		Description: "Suggest an exe.dev command for the user to run. Use for commands that create, delete, or modify resources: new, rm, restart, rename, cp, resize, etc. The user must approve before execution.",
+		Description: "Suggest an exe.dev command for the user to run. Use for commands that create, delete, or modify resources: new, rm, restart, rename, ssh, cp, resize, etc. The user will be shown the command and must approve before execution. After the user accepts and the command runs, the result is returned to you — do NOT repeat what happened or say you 'suggested' it; the user already saw the execution.",
 		InputSchema: ToolInputSchema{
 			Type: "object",
 			Properties: map[string]Property{
@@ -415,13 +415,13 @@ func processToolCalls(ctx context.Context, cfg Config, blocks []ContentBlock) []
 				if answer == "y" || answer == "yes" {
 					out, exitCode := cfg.Dispatcher.Dispatch(ctx, cmd)
 					if exitCode != 0 {
-						result = fmt.Sprintf("Command failed (exit code %d):\n%s", exitCode, truncateOutput(out, 10000))
+						result = fmt.Sprintf("The user approved and the command ran but failed (exit code %d):\n%s", exitCode, truncateOutput(out, 10000))
 						isError = true
 					} else {
-						result = fmt.Sprintf("Command executed successfully.\nOutput:\n%s", truncateOutput(out, 10000))
+						result = fmt.Sprintf("The user approved and the command ran successfully. Output:\n%s", truncateOutput(out, 10000))
 					}
 				} else {
-					result = "User declined to run this command."
+					result = "The user declined to run this command."
 				}
 			}
 			cfg.Output.WriteToolResult("suggest_command", result, isError)

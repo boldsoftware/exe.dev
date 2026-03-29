@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	gliderssh "github.com/gliderlabs/ssh"
 
 	"exe.dev/execore/promptloop"
 	"exe.dev/exemenu"
@@ -61,7 +62,9 @@ func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.Comman
 		"You are an expert assistant for exe.dev, a cloud VM service. "+
 			"You help the user manage their VMs via exe.dev commands. "+
 			"Be concise and helpful. Use the exe_command tool to run read-only commands (ls, help, whoami, etc). "+
-			"Use suggest_command for commands that modify state (new, rm, restart, cp, rename, resize). "+
+			"Use suggest_command for commands that modify state (new, rm, restart, ssh, cp, rename, resize). "+
+			"When suggest_command succeeds, the user already saw the command execute and its output — "+
+			"just summarize the result or move on; do not say you \"suggested\" or \"recommended\" the command. "+
 			"The user's email is %s.",
 		cc.User.Email,
 	)
@@ -89,17 +92,37 @@ func (d *commandTreeDispatcher) Dispatch(ctx context.Context, command string) (s
 
 	// Create a new CommandContext that captures output to a buffer.
 	var buf bytes.Buffer
+	filtered := exemenu.NewANSIFilterWriter(&buf)
 	cc := &exemenu.CommandContext{
-		User:      d.cc.User,
-		PublicKey: d.cc.PublicKey,
-		Output:    exemenu.NewANSIFilterWriter(&buf),
-		ForceJSON: true,
-		Logger:    d.cc.Logger,
+		User:       d.cc.User,
+		PublicKey:  d.cc.PublicKey,
+		Output:     filtered,
+		SSHSession: &bufferShellSession{buf: filtered, ctx: ctx},
+		ForceJSON:  true,
+		Logger:     d.cc.Logger,
 	}
 
 	exitCode := d.ss.commands.ExecuteCommand(ctx, cc, parts)
 	return buf.String(), exitCode
 }
+
+// bufferShellSession is a minimal ShellSession implementation that captures
+// output to a buffer. It's used by the prompt loop dispatcher so that commands
+// like "ssh" that require an SSHSession can run in non-interactive exec mode.
+type bufferShellSession struct {
+	buf *exemenu.ANSIFilterWriter
+	ctx context.Context
+}
+
+func (b *bufferShellSession) Read([]byte) (int, error)    { return 0, fmt.Errorf("not interactive") }
+func (b *bufferShellSession) Write(p []byte) (int, error) { return b.buf.Write(p) }
+func (b *bufferShellSession) Close() error                { return nil }
+func (b *bufferShellSession) Push([]byte)                 {}
+func (b *bufferShellSession) Context() context.Context    { return b.ctx }
+func (b *bufferShellSession) Environ() []string           { return nil }
+func (b *bufferShellSession) User() string                { return "" }
+func (b *bufferShellSession) Pty() (gliderssh.Pty, bool)  { return gliderssh.Pty{}, false }
+func (b *bufferShellSession) WaitWindowChange() bool      { return false }
 
 // terminalOutput adapts the exemenu terminal for promptloop.Output.
 type terminalOutput struct {

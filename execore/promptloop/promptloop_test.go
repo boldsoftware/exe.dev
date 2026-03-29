@@ -171,7 +171,7 @@ func TestSuggestCommandApproved(t *testing.T) {
 	if !ok {
 		t.Fatal("expected string content in tool result")
 	}
-	if !strings.Contains(resultStr, "executed successfully") {
+	if !strings.Contains(resultStr, "ran successfully") {
 		t.Fatalf("expected success message, got: %s", resultStr)
 	}
 }
