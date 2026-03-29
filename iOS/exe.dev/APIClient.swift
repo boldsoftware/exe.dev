@@ -248,6 +248,26 @@ final class APIClient: Sendable {
         }
     }
 
+    // MARK: - SSH Exec
+
+    /// Execute an SSH command via POST /exec and return the raw output.
+    func exec(_ command: String) async throws -> Data {
+        var request = URLRequest(url: URL(string: "\(baseURL)/exec")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data(command.utf8)
+        addAuth(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.checkStatus(response)
+        return data
+    }
+
+    /// Execute an SSH command and decode the JSON response.
+    func execJSON<T: Decodable>(_ command: String) async throws -> T {
+        let data = try await exec(command)
+        return try Self.decoder.decode(T.self, from: data)
+    }
+
     // MARK: - Helpers
 
     private func addAuth(_ request: inout URLRequest) {

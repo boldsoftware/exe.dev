@@ -13,6 +13,7 @@ struct ChannelListView: View {
     @State private var showingNewVM = false
     @State private var pollingTask: Task<Void, Never>?
     @State private var creationWatchTask: Task<Void, Never>?
+    @State private var cpSource: StoredVM?
 
     private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
     private var runningVMs: [StoredVM] { allVMs.filter { $0.isRunning && !$0.isCreating } }
@@ -108,6 +109,15 @@ struct ChannelListView: View {
                 }
             }
         }
+        .sheet(item: $cpSource) { sourceVM in
+            CopyVMView(api: api, sourceVMName: sourceVM.vmName) { newName in
+                Task {
+                    await syncEngine.insertCreatingVM(hostname: newName)
+                    selectedVMName = newName
+                    watchCreation(hostname: newName)
+                }
+            }
+        }
     }
 
     private var vmList: some View {
@@ -162,6 +172,15 @@ struct ChannelListView: View {
         }
         .tag(vm.vmName)
         .disabled(!vm.isRunning && !vm.isCreating)
+        .contextMenu {
+            if vm.isRunning {
+                Button {
+                    cpSource = vm
+                } label: {
+                    Label("Copy VM...", systemImage: "doc.on.doc")
+                }
+            }
+        }
     }
 
     private func loadVMs() async {

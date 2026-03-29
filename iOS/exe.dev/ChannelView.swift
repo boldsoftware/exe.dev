@@ -52,13 +52,6 @@ struct ChannelView: View {
 
             InputBarView(viewModel: viewModel)
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { viewModel.newConversation() }) {
-                    Image(systemName: "square.and.pencil")
-                }
-            }
-        }
         .task { await viewModel.loadLatestConversation() }
         .onDisappear { viewModel.onDisappear() }
     }

@@ -383,9 +383,12 @@ class TerminalViewModel {
         connection = conn
         isConnected = true
 
-        // Send initial resize after a brief delay.
+        // Send initial resize after a brief delay to ensure the WebSocket
+        // is established. The server uses this resize to trigger its
+        // needsExtraResize logic on dtach reattach, which forces the
+        // terminal program to redraw the screen.
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: .milliseconds(500))
             guard let self, self.generation == gen else { return }
             conn.sendResize(cols: self.emulator.cols, rows: self.emulator.rows)
         }
@@ -483,6 +486,15 @@ struct VMTerminalView: View {
         }
         .onDisappear {
             viewModel.disconnect()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // iOS suspends WebSockets in the background without triggering
+            // onDisappear. Reconnect when the app comes back to foreground
+            // so dtach reattaches and the server's needsExtraResize redraws
+            // the screen.
+            if viewModel.isConnected {
+                viewModel.connect(vmName: vm.vmName, token: token)
+            }
         }
     }
 }

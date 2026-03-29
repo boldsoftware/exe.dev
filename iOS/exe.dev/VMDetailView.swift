@@ -8,6 +8,7 @@ struct VMDetailView: View {
 
     @State private var selectedTab = 0
     @State private var channelViewModel: ChannelViewModel
+    @State private var showingShare = false
 
     init(vm: StoredVM, api: APIClient, syncEngine: SyncEngine, token: String?) {
         self.vm = vm
@@ -60,6 +61,20 @@ struct VMDetailView: View {
         }
         .navigationTitle("# \(vm.vmName)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showingShare = true } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                Button { channelViewModel.newConversation() } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+            }
+        }
+        .sheet(isPresented: $showingShare) {
+            ShareView(viewModel: ShareViewModel(vmName: vm.vmName, api: api))
+                .presentationDetents([.medium, .large])
+        }
         .task {
             await syncEngine.markVMAsRead(vmName: vm.vmName)
         }
