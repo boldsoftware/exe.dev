@@ -13,7 +13,6 @@
       </span>
       <div class="box-actions">
         <template v-if="box.status !== 'pending'">
-          <CopyButton :text="box.sshCommand" title="Copy SSH command" />
           <a :href="box.proxyURL" class="action-btn" target="_blank" rel="noopener noreferrer" title="HTTPS" @click.stop>
             <i class="pi pi-globe" style="font-size: 12px;"></i>
           </a>
