@@ -27,6 +27,7 @@ type jsonBoxInfo struct {
 	Image           string          `json:"image"`
 	Region          string          `json:"region"`
 	CreatedAt       string          `json:"createdAt"`
+	UpdatedAt       string          `json:"updatedAt"`
 	SSHCommand      string          `json:"sshCommand"`
 	ProxyURL        string          `json:"proxyURL"`
 	TerminalURL     string          `json:"terminalURL"`
@@ -225,6 +226,13 @@ func formatTimePtr(t *time.Time) *string {
 	return &s
 }
 
+func formatRFC3339(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
 // handleAPIDashboard returns JSON data for the VM list page.
 func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
@@ -318,6 +326,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			Image:           result.Image,
 			Region:          result.Region,
 			CreatedAt:       result.CreatedAt.Format("Jan 2, 2006 15:04 MST"),
+			UpdatedAt:       formatRFC3339(result.UpdatedAt),
 			SSHCommand:      s.boxSSHConnectionCommand(result.Name),
 			ProxyURL:        s.boxProxyAddress(result.Name),
 			TerminalURL:     s.xtermURL(result.Name, r.TLS != nil),

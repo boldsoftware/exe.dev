@@ -7,15 +7,18 @@
         <router-link to="/new" class="new-btn">+ New</router-link>
         <button class="new-btn" @click="promptModalOpen = true">✨ Prompt</button>
       </div>
-      <div class="search-box">
-        <i class="pi pi-search search-icon"></i>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Filter VMs..."
-          class="search-input"
-        />
-        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">&times;</button>
+      <div class="section-right">
+        <ViewPopover v-model="viewOptions" />
+        <div class="search-box">
+          <i class="pi pi-search search-icon"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Filter VMs..."
+            class="search-input"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">&times;</button>
+        </div>
       </div>
     </div>
 
@@ -31,21 +34,46 @@
     </div>
 
     <!-- VM List -->
-    <div v-else-if="filteredBoxes.length > 0" class="boxes-list">
-      <VMCard
-        v-for="box in filteredBoxes"
-        :key="box.name"
-        :box="box"
-        :expanded="expandedBoxes.has(box.name)"
-        @toggle="toggleExpand(box.name)"
-        @action="handleAction"
-      />
-    </div>
-    <div v-else-if="!loading && boxes.length === 0" class="empty-state">
+    <template v-if="!loading && !loadError && sortedBoxes.length > 0">
+      <!-- Ungrouped -->
+      <template v-if="viewOptions.group === 'none'">
+        <div class="boxes-list">
+          <VMCard
+            v-for="box in sortedBoxes"
+            :key="box.name"
+            :box="box"
+            :expanded="expandedBoxes.has(box.name)"
+            @toggle="toggleExpand(box.name)"
+            @action="handleAction"
+          />
+        </div>
+      </template>
+      <!-- Grouped by tag -->
+      <template v-else>
+        <div v-for="group in groupedBoxes" :key="group.label" class="group-section">
+          <button class="group-header" @click="toggleGroup(group.label)">
+            <span class="group-tag" :class="{ untagged: group.label === 'Untagged' }">{{ group.label }}</span>
+            <span class="group-count">{{ group.boxes.length }}</span>
+            <i :class="collapsedGroups.has(group.label) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'" class="group-chevron"></i>
+          </button>
+          <div v-if="!collapsedGroups.has(group.label)" class="boxes-list">
+            <VMCard
+              v-for="box in group.boxes"
+              :key="box.name"
+              :box="box"
+              :expanded="expandedBoxes.has(box.name)"
+              @toggle="toggleExpand(box.name)"
+              @action="handleAction"
+            />
+          </div>
+        </div>
+      </template>
+    </template>
+    <div v-else-if="!loading && !loadError && boxes.length === 0" class="empty-state">
       <p>No VMs yet. Create one with:</p>
       <code class="ssh-cmd">{{ sshCommand }} new --name=myname</code>
     </div>
-    <div v-else-if="!loading && filteredBoxes.length === 0" class="empty-state">
+    <div v-else-if="!loading && !loadError && sortedBoxes.length === 0" class="empty-state">
       <p>No VMs match "{{ searchQuery }}"</p>
     </div>
 
@@ -176,6 +204,8 @@ import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
+import ViewPopover from '../components/ViewPopover.vue'
+import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
 
 const loading = ref(true)
 const loadError = ref('')
@@ -185,6 +215,37 @@ const teamBoxes = ref<TeamBoxInfo[]>([])
 const searchQuery = ref(new URLSearchParams(window.location.search).get('filter') || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
+
+// View options (sort, order, group) — persisted to localStorage
+const STORAGE_KEY = 'exe-vm-view-options'
+function loadViewOptions(): ViewOptions {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      // Validate fields
+      if (['updatedAt', 'createdAt', 'name'].includes(parsed.sort) &&
+          ['none', 'tag'].includes(parsed.group)) {
+        return parsed as ViewOptions
+      }
+    }
+  } catch { /* ignore */ }
+  return { sort: 'updatedAt', group: 'none' }
+}
+const viewOptions = ref<ViewOptions>(loadViewOptions())
+watch(viewOptions, (v) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(v))
+}, { deep: true })
+
+// Collapsed groups state
+const collapsedGroups = ref(new Set<string>())
+function toggleGroup(label: string) {
+  if (collapsedGroups.value.has(label)) {
+    collapsedGroups.value.delete(label)
+  } else {
+    collapsedGroups.value.add(label)
+  }
+}
 
 // Editor picker state
 const editorModalOpen = ref(false)
@@ -259,6 +320,73 @@ const filteredBoxes = computed(() => {
     b.name.toLowerCase().includes(q) ||
     (b.displayTags || []).some(t => t.toLowerCase().includes(tagQ))
   )
+})
+
+// Apply sorting to filtered boxes
+const sortedBoxes = computed(() => {
+  const list = [...filteredBoxes.value]
+  const { sort } = viewOptions.value
+  // Last used and Created sort descending (newest first); Name sorts ascending (A-Z)
+  const dir = sort === 'name' ? 1 : -1
+
+  list.sort((a, b) => {
+    let cmp = 0
+    if (sort === 'name') {
+      cmp = a.name.localeCompare(b.name)
+    } else if (sort === 'createdAt') {
+      // createdAt is a human-readable string; use the raw ISO field if present, else fall back
+      const ta = new Date(a.createdAt).getTime() || 0
+      const tb = new Date(b.createdAt).getTime() || 0
+      cmp = ta - tb
+    } else {
+      // updatedAt (last used)
+      const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+      const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+      cmp = ta - tb
+    }
+    return cmp * dir
+  })
+  return list
+})
+
+// Group boxes by tag
+interface BoxGroup {
+  label: string
+  boxes: BoxInfo[]
+}
+
+const groupedBoxes = computed<BoxGroup[]>(() => {
+  const sorted = sortedBoxes.value
+  if (viewOptions.value.group !== 'tag') {
+    return [{ label: 'All', boxes: sorted }]
+  }
+
+  const tagMap = new Map<string, BoxInfo[]>()
+  const untagged: BoxInfo[] = []
+
+  for (const box of sorted) {
+    const tags = box.displayTags || []
+    if (tags.length === 0) {
+      untagged.push(box)
+    } else {
+      // Use the first tag as the primary grouping tag
+      const primary = tags[0]
+      if (!tagMap.has(primary)) tagMap.set(primary, [])
+      tagMap.get(primary)!.push(box)
+    }
+  }
+
+  // Sort groups alphabetically
+  const groups: BoxGroup[] = [...tagMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([label, boxes]) => ({ label: '#' + label, boxes }))
+
+  // Untagged last
+  if (untagged.length > 0) {
+    groups.push({ label: 'Untagged', boxes: untagged })
+  }
+
+  return groups
 })
 
 async function loadDashboard() {
@@ -538,6 +666,12 @@ async function submitPrompt() {
   text-decoration: none;
 }
 
+.section-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .search-box {
   position: relative;
   display: flex;
@@ -557,6 +691,8 @@ async function submitPrompt() {
 
 .search-input {
   padding: 4px 28px 4px 30px;
+  height: 30px;
+  box-sizing: border-box;
   border: 1px solid var(--input-border);
   border-radius: 6px;
   font-size: 13px;
@@ -688,6 +824,9 @@ async function submitPrompt() {
   .new-btn {
     padding: 4px 8px;
     font-size: 12px;
+  }
+  .section-right {
+    gap: 6px;
   }
   .search-box {
     max-width: none;
@@ -891,5 +1030,55 @@ async function submitPrompt() {
 .prompt-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Group sections */
+.group-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  transition: color 0.15s;
+}
+
+.group-header:hover {
+  color: var(--text-color);
+}
+
+.group-tag {
+  font-weight: 600;
+  color: var(--text-color-muted);
+  background: var(--tag-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.group-tag.untagged {
+  background: none;
+  padding: 2px 0;
+  color: var(--text-color-muted);
+}
+
+.group-count {
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+
+.group-chevron {
+  font-size: 10px;
+  color: var(--text-color-muted);
 }
 </style>

@@ -42,6 +42,7 @@ export interface BoxInfo {
   image: string
   region: string
   createdAt: string
+  updatedAt: string
   sshCommand: string
   proxyURL: string
   terminalURL: string
