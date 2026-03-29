@@ -117,6 +117,7 @@ func Run(args []string) {
 		fmt.Fprintf(fs.Output(), "  chat     Send a message (new or existing conversation)\n")
 		fmt.Fprintf(fs.Output(), "  read     Read conversation messages\n")
 		fmt.Fprintf(fs.Output(), "  list     List conversations\n")
+		fmt.Fprintf(fs.Output(), "  search   Search conversations by content\n")
 		fmt.Fprintf(fs.Output(), "  archive  Archive a conversation\n")
 		fmt.Fprintf(fs.Output(), "  help     Print detailed help\n")
 	}
@@ -147,6 +148,8 @@ func Run(args []string) {
 		cmdRead(cc, subArgs[1:])
 	case "list":
 		cmdList(cc, subArgs[1:])
+	case "search":
+		cmdSearch(cc, subArgs[1:])
 	case "archive":
 		cmdArchive(cc, subArgs[1:])
 	case "help":
@@ -428,6 +431,69 @@ func cmdList(cc *clientConfig, args []string) {
 	}
 }
 
+func cmdSearch(cc *clientConfig, args []string) {
+	fs := flag.NewFlagSet("client search", flag.ExitOnError)
+	limit := fs.Int("limit", 20, "Maximum number of results")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage: shelley client search [flags] QUERY\n\n")
+		fmt.Fprintf(fs.Output(), "Search conversations by slug and message content.\n\n")
+		fmt.Fprintf(fs.Output(), "Flags:\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if fs.NArg() == 0 {
+		fs.Usage()
+		os.Exit(1)
+	}
+	query := strings.Join(fs.Args(), " ")
+
+	client, baseURL, err := cc.newHTTPClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	params := fmt.Sprintf("?q=%s&search_content=true&limit=%d", url.QueryEscape(query), *limit)
+	req, err := cc.newRequest("GET", baseURL+"/api/conversations"+params, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		os.Exit(1)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error: HTTP %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	var conversations []json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&conversations); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, conv := range conversations {
+		var c struct {
+			ConversationID string  `json:"conversation_id"`
+			Slug           *string `json:"slug"`
+			CreatedAt      string  `json:"created_at"`
+			UpdatedAt      string  `json:"updated_at"`
+			Working        bool    `json:"working"`
+			Model          *string `json:"model"`
+		}
+		if json.Unmarshal(conv, &c) == nil {
+			json.NewEncoder(os.Stdout).Encode(c)
+		}
+	}
+}
+
 func cmdArchive(cc *clientConfig, args []string) {
 	fs := flag.NewFlagSet("client archive", flag.ExitOnError)
 	fs.Parse(args)
@@ -558,6 +624,10 @@ Subcommands:
 
   list [-archived] [-limit N] [-q QUERY]
       List conversations as JSON lines.
+
+  search [-limit N] QUERY
+      Search conversations by slug and message content.
+      Prints matching conversations as JSON lines.
 
   archive CONVERSATION_ID
       Archive a conversation.
