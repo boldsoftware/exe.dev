@@ -515,8 +515,11 @@ async function submitPrompt() {
 .new-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   padding: 4px 10px;
+  height: 30px;
+  box-sizing: border-box;
   background: var(--btn-bg);
   color: var(--btn-text);
   border: 1px solid var(--btn-border);
