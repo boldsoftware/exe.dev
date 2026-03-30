@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -773,8 +772,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/usage-pricing":
 		s.serveStaticFile(w, r, "usage-pricing.html")
 		return
-	case "/love":
-		s.handleLovePage(w, r)
 	case "/jobs":
 		s.serveStaticFile(w, r, "jobs.html")
 	case "/presskit":
@@ -1056,7 +1053,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 }
 
-// handleLovePage serves the /love page with testimonials.
 func (s *Server) handleLLMGatewayModels(w http.ResponseWriter, r *http.Request) {
 	type modelRow struct {
 		Provider string
@@ -1128,21 +1124,6 @@ func gatewayCurl(gm llmpricing.GatewayModel) string {
 		}
 	}
 	return ""
-}
-
-func (s *Server) handleLovePage(w http.ResponseWriter, r *http.Request) {
-	approved := ApprovedTestimonials()
-	rand.Shuffle(len(approved), func(i, j int) {
-		approved[i], approved[j] = approved[j], approved[i]
-	})
-	data := struct {
-		Testimonials []Testimonial
-	}{
-		Testimonials: approved,
-	}
-	if err := s.renderTemplate(r.Context(), w, "love.html", data); err != nil {
-		return
-	}
 }
 
 // handleSitemap serves the sitemap.xml for search engines.
