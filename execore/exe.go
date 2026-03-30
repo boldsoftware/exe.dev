@@ -186,12 +186,14 @@ type ipqsIPResult struct {
 type ipAbuseCacheEntry struct {
 	result   ipqsIPResult
 	bodyJSON string
+	err      error
 	cachedAt time.Time
 }
 
 const (
 	ipAbuseCacheMaxEntries = 32000
 	ipAbuseCacheTTL        = 24 * time.Hour
+	ipAbuseCacheFailureTTL = 5 * time.Second
 
 	// ipAbuseAllowUSBypass allows US-based IPs to bypass the abuse check during US business hours.
 	ipAbuseAllowUSBypass = true
@@ -3554,13 +3556,16 @@ func (s *Server) recordSignupIPCheck(ctx context.Context, p signupValidationPara
 }
 
 // ipqsLookupIP performs an IPQS IP lookup, using the cache when available.
-// Returns the result and raw JSON response body (empty string for cached results).
+// Returns the result and raw JSON response body. For cached failures, result is zero and err is the cached error.
 func (s *Server) ipqsLookupIP(ctx context.Context, ip string) (ipqsIPResult, string, error) {
 	if s.ipqsAPIKey == "" {
 		return ipqsIPResult{}, "", fmt.Errorf("IPQS API key not configured")
 	}
-	if result, body, ok := s.cachedIPLookup(ip); ok {
-		return result, body, nil
+	if result, body, err, ok := s.cachedIPLookup(ip); ok {
+		if err != nil {
+			s.slog().WarnContext(ctx, "returning cached IPQS failure", "ip", ip, "error", err)
+		}
+		return result, body, err
 	}
 
 	// Call IPQS IP API with a timeout
@@ -3570,18 +3575,24 @@ func (s *Server) ipqsLookupIP(ctx context.Context, ip string) (ipqsIPResult, str
 	url := fmt.Sprintf("https://www.ipqualityscore.com/api/json/ip/%s/%s", s.ipqsAPIKey, ip)
 	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
 	if err != nil {
-		return ipqsIPResult{}, "", fmt.Errorf("create IPQS IP request: %w", err)
+		err = fmt.Errorf("create IPQS IP request: %w", err)
+		s.cacheIPLookup(ip, ipqsIPResult{}, "", err)
+		return ipqsIPResult{}, "", err
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ipqsIPResult{}, "", fmt.Errorf("IPQS IP request: %w", err)
+		err = fmt.Errorf("IPQS IP request: %w", err)
+		s.cacheIPLookup(ip, ipqsIPResult{}, "", err)
+		return ipqsIPResult{}, "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ipqsIPResult{}, "", fmt.Errorf("read IPQS IP response: %w", err)
+		err = fmt.Errorf("read IPQS IP response: %w", err)
+		s.cacheIPLookup(ip, ipqsIPResult{}, "", err)
+		return ipqsIPResult{}, "", err
 	}
 
 	var apiResp struct {
@@ -3589,14 +3600,18 @@ func (s *Server) ipqsLookupIP(ctx context.Context, ip string) (ipqsIPResult, str
 		ipqsIPResult
 	}
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return ipqsIPResult{}, "", fmt.Errorf("parse IPQS IP response: %w", err)
+		err = fmt.Errorf("parse IPQS IP response: %w", err)
+		s.cacheIPLookup(ip, ipqsIPResult{}, "", err)
+		return ipqsIPResult{}, "", err
 	}
 
 	if !apiResp.Success {
-		return ipqsIPResult{}, "", fmt.Errorf("IPQS IP returned unsuccessful response")
+		err := fmt.Errorf("IPQS IP returned unsuccessful response")
+		s.cacheIPLookup(ip, ipqsIPResult{}, "", err)
+		return ipqsIPResult{}, "", err
 	}
 
-	s.cacheIPLookup(ip, apiResp.ipqsIPResult, string(body))
+	s.cacheIPLookup(ip, apiResp.ipqsIPResult, string(body), nil)
 	return apiResp.ipqsIPResult, string(body), nil
 }
 
@@ -3681,24 +3696,35 @@ func isUSBusinessHours(t time.Time) bool {
 	return t.In(tzEastern).Hour() >= 7 && t.In(tzPacific).Hour() < 20
 }
 
-// cachedIPLookup returns the cached IPQS lookup result for ip.
-func (s *Server) cachedIPLookup(ip string) (ipqsIPResult, string, bool) {
+// cachedIPLookup returns (result, body, cachedErr, hit) for ip.
+// When hit is true and cachedErr is non-nil, the entry represents a cached IPQS failure.
+// Failures are cached with a shorter TTL to avoid repeated timeouts during IPQS outages.
+func (s *Server) cachedIPLookup(ip string) (ipqsIPResult, string, error, bool) {
 	s.ipAbuseCacheMu.Lock()
 	defer s.ipAbuseCacheMu.Unlock()
 	entry, ok := s.ipAbuseCache[ip]
 	if !ok {
-		return ipqsIPResult{}, "", false
+		return ipqsIPResult{}, "", nil, false
 	}
-	if time.Since(entry.cachedAt) >= ipAbuseCacheTTL {
+	ttl := ipAbuseCacheTTL
+	if entry.err != nil {
+		ttl = ipAbuseCacheFailureTTL
+	}
+	if time.Since(entry.cachedAt) >= ttl {
 		delete(s.ipAbuseCache, ip)
-		return ipqsIPResult{}, "", false
+		return ipqsIPResult{}, "", nil, false
 	}
-	return entry.result, entry.bodyJSON, true
+	return entry.result, entry.bodyJSON, entry.err, true
 }
 
 // cacheIPLookup stores an IPQS lookup result in the cache.
 // Uses random replacement when the cache is full.
-func (s *Server) cacheIPLookup(ip string, result ipqsIPResult, bodyJSON string) {
+// Context cancellation and deadline errors are not cached — a client disconnect
+// or a short caller-imposed timeout should not suppress fresh lookups for the same IP.
+func (s *Server) cacheIPLookup(ip string, result ipqsIPResult, bodyJSON string, err error) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
 	s.ipAbuseCacheMu.Lock()
 	defer s.ipAbuseCacheMu.Unlock()
 
@@ -3719,6 +3745,7 @@ func (s *Server) cacheIPLookup(ip string, result ipqsIPResult, bodyJSON string) 
 	s.ipAbuseCache[ip] = ipAbuseCacheEntry{
 		result:   result,
 		bodyJSON: bodyJSON,
+		err:      err,
 		cachedAt: time.Now(),
 	}
 }
