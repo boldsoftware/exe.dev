@@ -416,8 +416,22 @@
         <div class="modal-body">
           <div class="modal-sha-row">
             <span class="modal-sha-label">Deploying</span>
-            <span class="modal-sha-value">{{ headSHA.slice(0, 7) }}</span>
-            <span v-if="headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+            <span class="modal-sha-value">{{ bulkDeploySHA.slice(0, 7) }}</span>
+            <span v-if="!bulkCustomSHA && headSubject" class="modal-sha-subject">{{ headSubject }}</span>
+            <span v-if="bulkCustomSHA" class="modal-sha-custom-badge">custom</span>
+          </div>
+          <div class="modal-custom-sha">
+            <label class="modal-custom-sha-label" for="bulk-custom-sha">Custom SHA</label>
+            <input
+              id="bulk-custom-sha"
+              v-model="bulkCustomSHA"
+              type="text"
+              class="modal-custom-sha-input"
+              placeholder="paste full 40-char SHA to override"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <span v-if="bulkCustomSHA && !isValidSHA(bulkCustomSHA)" class="modal-custom-sha-error">must be 40 hex characters</span>
           </div>
           <div class="bulk-target-list">
             <div class="bulk-target-header">Targets</div>
@@ -434,6 +448,7 @@
           <button class="deploy-btn deploy-btn-cancel" @click="closeBulkConfirm">Cancel</button>
           <button
             class="deploy-btn deploy-btn-confirm"
+            :disabled="bulkCustomSHA !== '' && !isValidSHA(bulkCustomSHA)"
             @click="doBulkDeploy"
           >
             <i class="pi pi-upload"></i>
@@ -590,6 +605,7 @@ function confirmBulkDeploy() {
 
 function closeBulkConfirm() {
   bulkConfirmProcs.value = null
+  bulkCustomSHA.value = ''
 }
 
 // Live deploy progress tracking
@@ -664,7 +680,7 @@ watch([liveDeployAllDone, liveDeployVisible], ([done, visible]) => {
 async function doBulkDeploy() {
   const targets = bulkConfirmProcs.value
   if (!targets || targets.length === 0) return
-  const sha = headSHA.value
+  const sha = bulkDeploySHA.value
   closeBulkConfirm()
   selectedProcs.clear()
 
@@ -703,9 +719,15 @@ const confirmProc = ref<DeployProcess | null>(null)
 const confirmCommits = ref<DeployCommit[]>([])
 const confirmLoading = ref(false)
 const customSHA = ref('')
+const bulkCustomSHA = ref('')
 
 const deploySHA = computed(() => {
   if (customSHA.value && isValidSHA(customSHA.value)) return customSHA.value
+  return headSHA.value
+})
+
+const bulkDeploySHA = computed(() => {
+  if (bulkCustomSHA.value && isValidSHA(bulkCustomSHA.value)) return bulkCustomSHA.value
   return headSHA.value
 })
 
