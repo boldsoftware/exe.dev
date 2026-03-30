@@ -5,6 +5,7 @@ import Security
 @Observable
 final class AuthManager: NSObject {
     private(set) var isAuthenticated: Bool = false
+    private(set) var token: String?
 
     private static let service = "dev.exe.app-token"
     private static let account = "app-token"
@@ -13,10 +14,9 @@ final class AuthManager: NSObject {
 
     override init() {
         super.init()
-        isAuthenticated = Self.loadToken() != nil
+        token = Self.loadToken()
+        isAuthenticated = token != nil
     }
-
-    var token: String? { Self.loadToken() }
 
     func signIn() {
         let urlString = "\(baseURL)/auth?response_mode=app_token&callback_uri=exedev-app://auth"
@@ -37,15 +37,17 @@ final class AuthManager: NSObject {
 
     func handleCallback(url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let token = components.queryItems?.first(where: { $0.name == "token" })?.value
+              let newToken = components.queryItems?.first(where: { $0.name == "token" })?.value
         else { return }
 
-        Self.saveToken(token)
+        Self.saveToken(newToken)
+        token = newToken
         isAuthenticated = true
     }
 
     func signOut() {
         Self.deleteToken()
+        token = nil
         isAuthenticated = false
     }
 

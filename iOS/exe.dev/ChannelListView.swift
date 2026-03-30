@@ -12,10 +12,11 @@ struct ChannelListView: View {
     @State private var selectedVMName: String?
     @State private var showingNewVM = false
     @State private var pollingTask: Task<Void, Never>?
-    @State private var creationWatchTask: Task<Void, Never>?
+    @State private var creationPollingTask: Task<Void, Never>?
     @State private var cpSource: StoredVM?
 
     private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
+    private var creatingVMNames: [String] { creatingVMs.map(\.vmName).sorted() }
     private var runningVMs: [StoredVM] { allVMs.filter { $0.isRunning && !$0.isCreating } }
     private var stoppedVMs: [StoredVM] { allVMs.filter { !$0.isRunning && !$0.isCreating } }
 
@@ -82,9 +83,15 @@ struct ChannelListView: View {
         .task {
             await loadVMs()
             startPolling()
+            updateCreationPolling(for: creatingVMNames)
         }
         .onDisappear {
             pollingTask?.cancel()
+            creationPollingTask?.cancel()
+            creationPollingTask = nil
+        }
+        .onChange(of: creatingVMNames) { _, newNames in
+            updateCreationPolling(for: newNames)
         }
         .overlay(alignment: .bottomTrailing) {
             Button {
@@ -105,7 +112,6 @@ struct ChannelListView: View {
                     // Insert placeholder immediately so it appears in the list.
                     await syncEngine.insertCreatingVM(hostname: hostname)
                     selectedVMName = hostname
-                    watchCreation(hostname: hostname)
                 }
             }
         }
@@ -114,7 +120,6 @@ struct ChannelListView: View {
                 Task {
                     await syncEngine.insertCreatingVM(hostname: newName)
                     selectedVMName = newName
-                    watchCreation(hostname: newName)
                 }
             }
         }
@@ -206,17 +211,20 @@ struct ChannelListView: View {
         }
     }
 
-    /// Polls VM list every 2s until the given hostname is running (or 5 minutes elapse).
-    private func watchCreation(hostname: String) {
-        creationWatchTask?.cancel()
-        creationWatchTask = Task {
-            for _ in 0..<150 {
+    private func updateCreationPolling(for names: [String]) {
+        guard !names.isEmpty else {
+            creationPollingTask?.cancel()
+            creationPollingTask = nil
+            return
+        }
+
+        guard creationPollingTask == nil else { return }
+
+        creationPollingTask = Task.detached(priority: .utility) { [api, syncEngine] in
+            while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 if Task.isCancelled { break }
                 try? await syncEngine.refreshVMs(api: api)
-                if let vm = allVMs.first(where: { $0.vmName == hostname }), vm.isRunning {
-                    break
-                }
             }
         }
     }

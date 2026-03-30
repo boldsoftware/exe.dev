@@ -41,9 +41,18 @@ final class ChannelViewModel {
             forName: .syncEngineDidSave,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             MainActor.assumeIsolated {
-                self?.fetchMessages()
+                guard let self, self.shouldRefresh(for: notification) else { return }
+                self.fetchMessages()
+            }
+        }
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
             }
         }
     }
@@ -232,6 +241,28 @@ final class ChannelViewModel {
         isWorking = (try? modelContext.fetch(convDescriptor).first?.working) ?? false
 
         reconcilePendingMessages()
+    }
+
+    private func shouldRefresh(for notification: Notification) -> Bool {
+        guard let conversationID else { return false }
+        guard let userInfo = notification.userInfo,
+              let kindRaw = userInfo[SyncEngineSaveNotificationUserInfoKey.kind] as? String,
+              let kind = SyncEngineSaveNotificationKind(rawValue: kindRaw)
+        else {
+            return true
+        }
+
+        switch kind {
+        case .vms:
+            return false
+        case .conversation:
+            guard let changedConversationID =
+                userInfo[SyncEngineSaveNotificationUserInfoKey.conversationID] as? String
+            else {
+                return true
+            }
+            return changedConversationID == conversationID
+        }
     }
 
     /// Remove pending messages that the server has confirmed via SSE.

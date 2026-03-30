@@ -143,12 +143,14 @@ private struct MessageListView: View {
                 proxy.scrollTo("bottom")
             }
             .onChange(of: viewModel.messages.count) { old, new in
-                if new > old {
+                if new > old && isAtBottom {
                     proxy.scrollTo("bottom")
                 }
             }
             .onChange(of: viewModel.isWorking) {
-                proxy.scrollTo("bottom")
+                if isAtBottom {
+                    proxy.scrollTo("bottom")
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 if isAtBottom {

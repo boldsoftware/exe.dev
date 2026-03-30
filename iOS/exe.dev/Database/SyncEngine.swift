@@ -5,9 +5,23 @@ extension Notification.Name {
     static let syncEngineDidSave = Notification.Name("SyncEngineDidSave")
 }
 
+enum SyncEngineSaveNotificationKind: String {
+    case vms
+    case conversation
+}
+
+enum SyncEngineSaveNotificationUserInfoKey {
+    static let kind = "kind"
+    static let conversationID = "conversationID"
+}
+
 @ModelActor
 actor SyncEngine {
     private var streamTasks: [String: Task<Void, Never>] = [:]
+    private enum SaveNotificationKind: Sendable {
+        case vms
+        case conversation(String)
+    }
 
     // MARK: - VM Sync
 
@@ -33,7 +47,7 @@ actor SyncEngine {
             }
         }
 
-        try saveAndNotify()
+        try saveAndNotify(kind: .vms)
     }
 
     // MARK: - Conversation Load
@@ -53,7 +67,7 @@ actor SyncEngine {
             }
         }
 
-        try saveAndNotify()
+        try saveAndNotify(kind: .conversation(conversationID))
     }
 
     // MARK: - Cached Conversation Lookup
@@ -75,7 +89,7 @@ actor SyncEngine {
 
         streamTasks[conversationID] = Task {
             let lastSeq = lastSequenceID(for: conversationID)
-            let stream = api.streamConversation(
+            let stream = await api.streamConversation(
                 shelleyURL: shelleyURL,
                 conversationID: conversationID,
                 lastSequenceID: lastSeq
@@ -96,7 +110,7 @@ actor SyncEngine {
                     if event.heartbeat == true {
                         if let working = pendingWorking {
                             updateWorking(conversationID: conversationID, working: working)
-                            try saveAndNotify()
+                            try saveAndNotify(kind: .conversation(conversationID))
                             pendingWorking = nil
                         }
                         continue
@@ -114,7 +128,7 @@ actor SyncEngine {
                             updateWorking(conversationID: conversationID, working: working)
                             pendingWorking = nil
                         }
-                        try saveAndNotify()
+                        try saveAndNotify(kind: .conversation(conversationID))
                         pending.removeAll(keepingCapacity: true)
                         lastFlush = now
                     }
@@ -126,7 +140,7 @@ actor SyncEngine {
                     if let working = pendingWorking {
                         updateWorking(conversationID: conversationID, working: working)
                     }
-                    try? saveAndNotify()
+                    try? saveAndNotify(kind: .conversation(conversationID))
                 }
             } catch {
                 if !Task.isCancelled {
@@ -163,7 +177,7 @@ actor SyncEngine {
         }
         let placeholder = StoredVM(creating: hostname)
         modelContext.insert(placeholder)
-        try? saveAndNotify()
+        try? saveAndNotify(kind: .vms)
     }
 
     // MARK: - Unread Tracking
@@ -193,7 +207,7 @@ actor SyncEngine {
                 vm.unreadCount = count
             }
         }
-        try? saveAndNotify()
+        try? saveAndNotify(kind: .vms)
     }
 
     func markVMAsRead(vmName: String) {
@@ -201,19 +215,31 @@ actor SyncEngine {
         if let vm = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
             vm.lastViewedAt = Date()
             vm.unreadCount = 0
-            try? saveAndNotify()
+            try? saveAndNotify(kind: .vms)
         }
     }
 
     // MARK: - Private Helpers
 
-    private func saveAndNotify() throws {
+    private func saveAndNotify(kind: SaveNotificationKind) throws {
         try modelContext.save()
-        postSaveNotification()
+        postSaveNotification(kind: kind)
     }
 
-    nonisolated private func postSaveNotification() {
-        NotificationCenter.default.post(name: Notification.Name("SyncEngineDidSave"), object: nil)
+    nonisolated private func postSaveNotification(kind: SaveNotificationKind) {
+        var userInfo: [String: Any] = [:]
+        switch kind {
+        case .vms:
+            userInfo["kind"] = SyncEngineSaveNotificationKind.vms.rawValue
+        case .conversation(let conversationID):
+            userInfo["kind"] = SyncEngineSaveNotificationKind.conversation.rawValue
+            userInfo["conversationID"] = conversationID
+        }
+        NotificationCenter.default.post(
+            name: Notification.Name("SyncEngineDidSave"),
+            object: nil,
+            userInfo: userInfo
+        )
     }
 
     private func lastSequenceID(for conversationID: String) -> Int64? {

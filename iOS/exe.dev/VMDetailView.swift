@@ -35,29 +35,7 @@ struct VMDetailView: View {
             .padding(.vertical, 6)
             .disabled(vm.isCreating)
 
-            ZStack {
-                if vm.isCreating {
-                    VMCreatingView(vmName: vm.vmName)
-                } else {
-                    ChannelView(viewModel: channelViewModel)
-                        .environment(\.openURL, OpenURLAction { url in
-                            if isVMProxyURL(url) {
-                                selectedTab = 1
-                                return .handled
-                            }
-                            return .systemAction
-                        })
-                        .environment(\.authToken, token)
-                }
-
-                if selectedTab == 1, !vm.isCreating, let url = URL(string: vm.httpsURL) {
-                    VMWebView(url: url, token: token)
-                }
-
-                if selectedTab == 2, !vm.isCreating {
-                    VMTerminalView(vm: vm, token: token)
-                }
-            }
+            selectedContent
         }
         .navigationTitle("# \(vm.vmName)")
         .navigationBarTitleDisplayMode(.inline)
@@ -78,20 +56,42 @@ struct VMDetailView: View {
         .task {
             await syncEngine.markVMAsRead(vmName: vm.vmName)
         }
-        .task(id: vm.isCreating) {
-            // Poll aggressively while the VM is being created.
-            guard vm.isCreating else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                if Task.isCancelled { break }
-                try? await syncEngine.refreshVMs(api: api)
-            }
-        }
         .onChange(of: vm.shelleyURL) { _, newURL in
             if let newURL, channelViewModel.shelleyURL == nil {
                 channelViewModel.shelleyURL = newURL
-                Task { await channelViewModel.loadLatestConversation() }
+                if selectedTab == 0 {
+                    Task { await channelViewModel.loadLatestConversation() }
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var selectedContent: some View {
+        if vm.isCreating {
+            VMCreatingView(vmName: vm.vmName)
+        } else if selectedTab == 0 {
+            ChannelView(viewModel: channelViewModel)
+                .environment(\.openURL, OpenURLAction { url in
+                    if isVMProxyURL(url) {
+                        selectedTab = 1
+                        return .handled
+                    }
+                    return .systemAction
+                })
+                .environment(\.authToken, token)
+        } else if selectedTab == 1 {
+            if let url = URL(string: vm.httpsURL) {
+                VMWebView(url: url, token: token)
+            } else {
+                ContentUnavailableView(
+                    "Web Unavailable",
+                    systemImage: "globe",
+                    description: Text("This VM does not have a valid web URL.")
+                )
+            }
+        } else {
+            VMTerminalView(vm: vm, token: token)
         }
     }
 
