@@ -53,6 +53,7 @@ COPY landlock.conf configs/fragments/landlock.conf
 COPY wireguard.conf configs/fragments/wireguard.conf
 COPY ebpf.conf configs/fragments/ebpf.conf
 COPY devmapper.conf configs/fragments/devmapper.conf
+COPY psi.conf configs/fragments/psi.conf
 COPY build-kernel.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/build-kernel.sh && \

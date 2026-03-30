@@ -65,6 +65,9 @@ scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packagi
 echo "Applying devmapper config fragment..."
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/devmapper.conf
 
+echo "Applying PSI config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/psi.conf
+
 make olddefconfig
 
 # Build kernel
@@ -108,6 +111,14 @@ if grep -q "CONFIG_WIREGUARD=y" "/output/config-${KERNEL_VERSION}-nftables"; the
     echo "✓ WireGuard enabled in kernel config"
 else
     echo "✗ WireGuard NOT enabled - build failed" >&2
+    exit 1
+fi
+
+# Verify PSI is enabled
+if grep -q "CONFIG_PSI=y" "/output/config-${KERNEL_VERSION}-nftables"; then
+    echo "✓ PSI enabled in kernel config"
+else
+    echo "✗ PSI NOT enabled - build failed" >&2
     exit 1
 fi
 
