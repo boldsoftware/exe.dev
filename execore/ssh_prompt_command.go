@@ -74,7 +74,6 @@ func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.Comman
 		Dispatcher:   dispatcher,
 		Output:       output,
 		SystemPrompt: systemPrompt,
-		ModelName:    shelleyDefaultModel,
 	}, initialPrompt)
 }
 
