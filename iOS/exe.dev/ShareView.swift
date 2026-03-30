@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Share Data Models
 
-struct ShareInfo: Decodable {
+nonisolated struct ShareInfo: Decodable {
     let vmName: String
     let status: String // "public" or "private"
     let port: Int
@@ -15,7 +15,7 @@ struct ShareInfo: Decodable {
     }
 }
 
-struct ShareLink: Decodable, Identifiable {
+nonisolated struct ShareLink: Decodable, Identifiable {
     let token: String
     let createdAt: String
     let useCount: Int

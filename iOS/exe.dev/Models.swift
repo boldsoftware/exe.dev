@@ -3,7 +3,7 @@ import SwiftData
 
 // MARK: - VM List (from POST /exec with body "ls --json")
 
-struct VMListResponse: Decodable {
+nonisolated struct VMListResponse: Decodable {
     let vms: [VM]
     let teamVMs: [VM]?
 
@@ -13,7 +13,7 @@ struct VMListResponse: Decodable {
     }
 }
 
-struct VM: Identifiable, Decodable {
+nonisolated struct VM: Identifiable, Decodable {
     let vmName: String
     let sshDest: String
     let status: String
@@ -41,7 +41,7 @@ struct VM: Identifiable, Decodable {
 
 // MARK: - Conversations
 
-struct Conversation: Identifiable, Decodable {
+nonisolated struct Conversation: Identifiable, Decodable {
     let conversationID: String
     let slug: String?
     let userInitiated: Bool
@@ -66,7 +66,7 @@ struct Conversation: Identifiable, Decodable {
     }
 }
 
-struct ConversationWithState: Identifiable, Decodable {
+nonisolated struct ConversationWithState: Identifiable, Decodable {
     let conversationID: String
     let slug: String?
     let userInitiated: Bool
@@ -94,7 +94,7 @@ struct ConversationWithState: Identifiable, Decodable {
 
 // MARK: - Messages
 
-struct ShelleyMessage: Identifiable, Decodable {
+nonisolated struct ShelleyMessage: Identifiable, Decodable {
     let messageID: String
     let conversationID: String
     let sequenceID: Int64
@@ -183,6 +183,31 @@ struct ShelleyMessage: Identifiable, Decodable {
     var toolUseID: String? {
         parsed?.content.first { $0.type == 5 }?.toolUseID
     }
+
+    /// Extracts tool result text from a message containing tool_result content blocks.
+    var toolResultText: String? {
+        guard let msg = parsed else { return nil }
+        for block in msg.content where block.type == 6 {
+            if let text = block.text, !text.isEmpty { return text }
+        }
+        return nil
+    }
+
+    /// Extracts a screenshot relative URL from displayData (e.g. "/api/read?path=...").
+    /// displayData is JSON like: [{"tool_name":"browser","display":{"type":"screenshot","url":"..."}}]
+    var screenshotPath: String? {
+        guard let displayData, let data = displayData.data(using: .utf8),
+              let entries = try? JSONDecoder().decode([[String: AnyCodable]].self, from: data)
+        else { return nil }
+        for entry in entries {
+            guard let display = entry["display"]?.value as? [String: AnyCodable],
+                  let type = display["type"]?.value as? String, type == "screenshot",
+                  let url = display["url"]?.value as? String
+            else { continue }
+            return url
+        }
+        return nil
+    }
 }
 
 // MARK: - LLM Message Format
@@ -193,7 +218,7 @@ struct ShelleyMessage: Identifiable, Decodable {
 //   Text=2, Thinking=3, RedactedThinking=4, ToolUse=5, ToolResult=6
 // We handle both numbering schemes for robustness.
 
-struct LLMMessage: Decodable {
+nonisolated struct LLMMessage: Decodable {
     let role: Int // 0=user, 1=assistant
     let content: [LLMContentBlock]
     let endOfTurn: Bool?
@@ -205,7 +230,7 @@ struct LLMMessage: Decodable {
     }
 }
 
-struct LLMContentBlock: Decodable {
+nonisolated struct LLMContentBlock: Decodable {
     let id: String?
     let type: Int       // 2=text, 3=thinking, 5=tool_use, 6=tool_result
     let text: String?
@@ -230,7 +255,7 @@ struct LLMContentBlock: Decodable {
 }
 
 // Wrapper to decode arbitrary JSON values we don't need to inspect deeply
-struct AnyCodable: Decodable {
+nonisolated struct AnyCodable: Decodable {
     let value: Any
 
     init(from decoder: Decoder) throws {
@@ -247,7 +272,7 @@ struct AnyCodable: Decodable {
 
 // MARK: - Stream Response (SSE)
 
-struct StreamResponse: Decodable {
+nonisolated struct StreamResponse: Decodable {
     let messages: [ShelleyMessage]?
     let conversation: Conversation?
     let conversationState: ConversationState?
@@ -260,7 +285,7 @@ struct StreamResponse: Decodable {
     }
 }
 
-struct ConversationState: Decodable {
+nonisolated struct ConversationState: Decodable {
     let conversationID: String?
     let working: Bool
     let model: String?
@@ -273,7 +298,7 @@ struct ConversationState: Decodable {
 
 // MARK: - Chat Request
 
-struct ChatRequest: Encodable {
+nonisolated struct ChatRequest: Encodable {
     let message: String
     let model: String?
     let cwd: String?
@@ -281,7 +306,7 @@ struct ChatRequest: Encodable {
 
 // MARK: - Chat Response
 
-struct ChatResponse: Decodable {
+nonisolated struct ChatResponse: Decodable {
     let status: String
     let conversationID: String?
 
@@ -293,7 +318,7 @@ struct ChatResponse: Decodable {
 
 // MARK: - VM Creation
 
-struct HostnameCheckResponse: Decodable {
+nonisolated struct HostnameCheckResponse: Decodable {
     let valid: Bool
     let available: Bool
     let message: String?
@@ -433,59 +458,10 @@ struct HostnameCheckResponse: Decodable {
     var displayText: String
     var isToolUse: Bool
     var toolName: String?
-
-    /// Parses llmData on demand to extract tool input details.
-    var toolInputSummary: String? {
-        guard let llmData, let data = llmData.data(using: .utf8),
-              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data),
-              let block = msg.content.first(where: { $0.type == 5 }),
-              let input = block.toolInput,
-              let dict = input.value as? [String: AnyCodable] else { return nil }
-        for key in ["command", "pattern", "file_path", "path", "query", "url"] {
-            if let val = dict[key], let str = val.value as? String, !str.isEmpty {
-                return str
-            }
-        }
-        let parts = dict.compactMap { k, v -> String? in
-            guard let s = v.value as? String, !s.isEmpty else { return nil }
-            return "\(k): \(s)"
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n")
-    }
-
-    /// The tool_use ID, used to match against tool_result messages.
-    var toolUseID: String? {
-        guard let llmData, let data = llmData.data(using: .utf8),
-              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data) else { return nil }
-        return msg.content.first { $0.type == 5 }?.toolUseID
-    }
-
-    /// Extracts tool result text from a message containing tool_result content blocks.
-    var toolResultText: String? {
-        guard let llmData, let data = llmData.data(using: .utf8),
-              let msg = try? JSONDecoder().decode(LLMMessage.self, from: data) else { return nil }
-        // tool_result content blocks (type 6) have text in the "text" field.
-        for block in msg.content where block.type == 6 {
-            if let text = block.text, !text.isEmpty { return text }
-        }
-        return nil
-    }
-
-    /// Extracts a screenshot relative URL from displayData (e.g. "/api/read?path=...").
-    /// displayData is JSON like: [{"tool_name":"browser","display":{"type":"screenshot","url":"..."}}]
-    var screenshotPath: String? {
-        guard let displayData, let data = displayData.data(using: .utf8),
-              let entries = try? JSONDecoder().decode([[String: AnyCodable]].self, from: data)
-        else { return nil }
-        for entry in entries {
-            guard let display = entry["display"]?.value as? [String: AnyCodable],
-                  let type = display["type"]?.value as? String, type == "screenshot",
-                  let url = display["url"]?.value as? String
-            else { continue }
-            return url
-        }
-        return nil
-    }
+    var toolInputSummary: String?
+    var toolUseID: String?
+    var toolResultText: String?
+    var screenshotPath: String?
 
     init(from msg: ShelleyMessage) {
         self.messageID = msg.messageID
@@ -501,6 +477,10 @@ struct HostnameCheckResponse: Decodable {
         self.displayText = msg.displayText
         self.isToolUse = msg.isToolUse
         self.toolName = msg.toolName
+        self.toolInputSummary = msg.toolInputSummary
+        self.toolUseID = msg.toolUseID
+        self.toolResultText = msg.toolResultText
+        self.screenshotPath = msg.screenshotPath
     }
 
     func update(from msg: ShelleyMessage) {
@@ -514,5 +494,9 @@ struct HostnameCheckResponse: Decodable {
         self.displayText = msg.displayText
         self.isToolUse = msg.isToolUse
         self.toolName = msg.toolName
+        self.toolInputSummary = msg.toolInputSummary
+        self.toolUseID = msg.toolUseID
+        self.toolResultText = msg.toolResultText
+        self.screenshotPath = msg.screenshotPath
     }
 }
