@@ -671,6 +671,58 @@ func TestGiftsFromLedger(t *testing.T) {
 			t.Errorf("amount = %q, want '10.50'", gifts[0].Amount)
 		}
 	})
+
+	t.Run("date field is populated with correct format", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(1000, 0), // $10.00
+				Note:      "Date test gift",
+				GiftID:    "debug_gift:abc:date",
+				CreatedAt: time.Date(2026, 3, 30, 14, 30, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 1 {
+			t.Fatalf("expected 1 gift, got %d", len(gifts))
+		}
+		// Verify Date field is populated
+		if gifts[0].Date == "" {
+			t.Error("Date field is empty, expected populated date")
+		}
+		// Verify date format is "02 Jan 2006" (e.g., "30 Mar 2026")
+		wantDate := "30 Mar 2026"
+		if gifts[0].Date != wantDate {
+			t.Errorf("Date = %q, want %q", gifts[0].Date, wantDate)
+		}
+	})
+
+	t.Run("multiple gifts have correct dates", func(t *testing.T) {
+		entries := []billing.GiftEntry{
+			{
+				Amount:    tender.Mint(500, 0),
+				Note:      "First gift",
+				GiftID:    "debug_gift:abc:1",
+				CreatedAt: time.Date(2025, 12, 25, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				Amount:    tender.Mint(1000, 0),
+				Note:      "Second gift",
+				GiftID:    "debug_gift:abc:2",
+				CreatedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+		}
+		gifts := giftsFromLedger(entries)
+		if len(gifts) != 2 {
+			t.Fatalf("expected 2 gifts, got %d", len(gifts))
+		}
+		// Verify both dates are populated with correct format
+		if gifts[0].Date != "25 Dec 2025" {
+			t.Errorf("first gift Date = %q, want '25 Dec 2025'", gifts[0].Date)
+		}
+		if gifts[1].Date != "01 Jan 2026" {
+			t.Errorf("second gift Date = %q, want '01 Jan 2026'", gifts[1].Date)
+		}
+	})
 }
 
 // TestCreditBar_WithGiftCredits verifies the bar includes gift credits from ledger.

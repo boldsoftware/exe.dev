@@ -190,6 +190,7 @@ type jsonPurchaseRow struct {
 type jsonGiftRow struct {
 	Amount string `json:"amount"`
 	Reason string `json:"reason"`
+	Date   string `json:"date"`
 }
 
 type jsonProfileData struct {
@@ -598,7 +599,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	giftRows := buildGiftRows(bonusGrantAmount, giftEntries)
 	jsonGifts := make([]jsonGiftRow, len(giftRows))
 	for i, g := range giftRows {
-		jsonGifts[i] = jsonGiftRow{Amount: g.Amount, Reason: g.Reason}
+		jsonGifts[i] = jsonGiftRow{Amount: g.Amount, Reason: g.Reason, Date: g.Date}
 	}
 
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)

@@ -134,6 +134,7 @@ func giftsFromLedger(gifts []billing.GiftEntry) []GiftRow {
 		rows = append(rows, GiftRow{
 			Amount: amount,
 			Reason: reason,
+			Date:   g.CreatedAt.Format("02 Jan 2006"),
 		})
 	}
 	return rows

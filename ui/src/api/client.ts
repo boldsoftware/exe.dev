@@ -157,7 +157,7 @@ export interface CreditInfo {
   monthlyCreditsResetAt: string
   ledgerBalanceUSD: number
   purchases: { amount: string; date: string; receiptURL: string }[]
-  gifts: { amount: string; reason: string }[]
+  gifts: { amount: string; reason: string; date: string }[]
 }
 
 export interface UserInfo {

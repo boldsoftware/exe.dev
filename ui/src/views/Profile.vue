@@ -163,6 +163,9 @@
                     >
                       Receipt ↗
                     </a>
+                    <span v-else-if="slotProps.data.type === 'Gift' && slotProps.data.details">
+                      {{ slotProps.data.details }}
+                    </span>
                   </template>
                 </Column>
               </DataTable>
@@ -411,9 +414,9 @@ const transactionHistory = computed(() => {
   const gifts = (data.value.credits.gifts || []).map(g => ({
     type: 'Gift',
     amount: g.amount,
-    date: '', // Gifts don't have dates in the current structure
+    date: g.date || '',
     details: g.reason,
-    rawDate: new Date(0) // Default to epoch for sorting
+    rawDate: g.date ? new Date(g.date) : new Date(0)
   }))
   
   // Combine and sort by date (newest first)

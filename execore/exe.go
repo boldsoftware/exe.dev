@@ -115,6 +115,7 @@ type PurchaseRow struct {
 type GiftRow struct {
 	Amount string
 	Reason string
+	Date   string
 }
 
 // GitHubAccountDisplayInfo represents a connected GitHub account for the profile page.
