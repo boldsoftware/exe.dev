@@ -6,13 +6,53 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="icon" href="/favicon.ico">
     <title>exe.dev - Love</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.1" integrity="sha384-NIEnmBZDJa6zQwZWLtsVZJlPYu8tc0CNul8EMJ0WMxf4ZpsKsOfKjtEToHNCoIOH" crossorigin="anonymous"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/common.css">
+    <link rel="stylesheet" href="/static/simple.css">
     <style>
-      body {
-        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      body.love-page {
+        min-height: 100dvh;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        padding: 0;
+      }
+      .love-nav {
+        display: flex;
+        justify-content: space-between;
+        padding: 16px 24px;
+      }
+      .love-nav a {
+        color: var(--color-text-muted);
+      }
+      .love-nav a:hover {
+        color: var(--color-text-secondary);
+        text-decoration: none;
+      }
+      .love-main {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 32px 16px;
+      }
+      .love-content {
+        max-width: 42rem;
+        margin: 0 auto;
+        padding: 0 16px;
+        text-align: center;
+      }
+      .love-footer {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        padding: 16px 24px;
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+      }
+      .love-footer a {
+        color: inherit;
+      }
+      .love-footer a:hover {
+        text-decoration: underline;
       }
       @keyframes fadeIn {
         from { opacity: 0; }
@@ -24,63 +64,87 @@
       }
       .testimonial {
         animation: fadeIn 0.5s ease-out forwards;
+        font-size: var(--text-sm);
+        color: var(--color-text-secondary);
+        line-height: 1.6;
+      }
+      @media (min-width: 640px) {
+        .testimonial {
+          font-size: var(--text-base);
+        }
       }
       .testimonial.fading {
         animation: fadeOut 0.5s ease-out forwards;
       }
       .attribution {
         margin-top: 1rem;
-        color: #6b7280;
+        color: var(--color-text-muted);
       }
       .source-link {
         display: inline-block;
         vertical-align: middle;
         margin-left: 0.25rem;
-        color: #9ca3af;
+        color: var(--color-text-muted);
         transition: color 0.2s;
       }
       .source-link:hover {
-        color: #4b5563;
-      }
-      @media (prefers-color-scheme: dark) {
-        .attribution { color: #9ca3af; }
-        .source-link { color: #6b7280; }
-        .source-link:hover { color: #d1d5db; }
+        color: var(--color-text-secondary);
       }
       .source-link svg {
         width: 0.875rem;
         height: 0.875rem;
       }
+      .dot-nav {
+        margin-top: 2rem;
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      .testimonial-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        padding: 0;
+      }
+      .testimonial-dot {
+        background: var(--color-border);
+      }
+      .testimonial-dot.active {
+        background: var(--color-text-secondary);
+      }
     </style>
   </head>
-  <body class="min-h-dvh grid grid-rows-[auto_1fr_auto] bg-white dark:bg-zinc-950 text-gray-900 dark:text-gray-100">
-    <nav class="flex justify-between px-6 py-4">
-      <a href="/" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">exe.dev</a>
+  <body class="love-page">
+    <nav class="love-nav">
+      <a href="/">exe.dev</a>
     </nav>
-    <main class="flex flex-col justify-center items-center px-4 py-8">
-      <div class="max-w-2xl mx-auto px-4 text-center">
-        <div id="testimonial-container" class="testimonial text-sm sm:text-base text-gray-700 dark:text-gray-300 leading-relaxed">
+    <main class="love-main">
+      <div class="love-content">
+        <div id="testimonial-container" class="testimonial">
           {{if .Testimonials}}
-          <p class="text-gray-500">Loading...</p>
+          <p class="text-muted">Loading...</p>
           {{else}}
-          <p class="text-gray-500">No testimonials yet.</p>
+          <p class="text-muted">No testimonials yet.</p>
           {{end}}
         </div>
         {{if gt (len .Testimonials) 1}}
-        <div class="mt-8 flex justify-center gap-2">
+        <div class="dot-nav">
           {{range $i, $t := .Testimonials}}
-          <button class="testimonial-dot w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors{{if eq $i 0}} !bg-gray-600 dark:!bg-gray-300{{end}}" data-index="{{$i}}"></button>
+          <button class="testimonial-dot{{if eq $i 0}} active{{end}}" data-index="{{$i}}"></button>
           {{end}}
         </div>
         {{end}}
       </div>
     </main>
-    <footer class="text-sm text-gray-400 min-w-full py-4 px-6 flex justify-center gap-4">
-        <a href="/docs/what-is-exe" class="hover:underline">About</a>
+    <footer class="love-footer">
+        <a href="/docs/what-is-exe">About</a>
         <span>&bull;</span>
-        <a href="https://blog.exe.dev" class="hover:underline">Blog</a>
+        <a href="https://blog.exe.dev">Blog</a>
         <span>&bull;</span>
-        <a href="https://discord.gg/jc9WQUfaxf" class="hover:underline">Discord</a>
+        <a href="https://discord.gg/jc9WQUfaxf">Discord</a>
     </footer>
     {{if .Testimonials}}
     <script>
@@ -122,10 +186,7 @@
           container.innerHTML = renderTestimonial(testimonials[currentIndex]);
           container.classList.remove('fading');
           dots.forEach((dot, i) => {
-            dot.classList.toggle('!bg-gray-600', i === currentIndex);
-            dot.classList.toggle('dark:!bg-gray-300', i === currentIndex);
-            dot.classList.toggle('bg-gray-300', i !== currentIndex);
-            dot.classList.toggle('dark:bg-gray-600', i !== currentIndex);
+            dot.classList.toggle('active', i === currentIndex);
           });
         }, 500);
       }

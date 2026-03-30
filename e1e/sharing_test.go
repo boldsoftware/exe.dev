@@ -5,12 +5,10 @@ package e1e
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1171,29 +1169,28 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 
 	pageContent := f.confirmPageBody
 
-	// Verify confirmation page shows "CONFIRM LOGIN"
-	if !strings.Contains(pageContent, "CONFIRM LOGIN") {
-		f.t.Errorf("confirmation page should show 'CONFIRM LOGIN', got: %s", pageContent[:min(500, len(pageContent))])
+	// Parse the Vue page data from window.__PAGE__ JSON
+	pageData := testinfra.ExtractPageJSON([]byte(pageContent))
+	if pageData == nil {
+		f.t.Fatalf("confirmation page should be a Vue page with window.__PAGE__ data, got: %s", pageContent[:min(500, len(pageContent))])
 	}
 
 	// Verify the site domain is shown (hostname without port)
 	hostname := strings.Split(f.returnHost, ":")[0]
-	if !strings.Contains(pageContent, hostname) {
-		f.t.Errorf("confirmation page should show hostname %q", hostname)
+	if siteDomain, _ := pageData["siteDomain"].(string); siteDomain != hostname {
+		f.t.Errorf("confirmation page siteDomain should be %q, got %q", hostname, siteDomain)
 	}
 
-	// Verify user email is shown
-	if !strings.Contains(pageContent, f.email) {
-		f.t.Errorf("confirmation page should show user email %q", f.email)
+	// Verify user email is present
+	if userEmail, _ := pageData["userEmail"].(string); userEmail != f.email {
+		f.t.Errorf("confirmation page userEmail should be %q, got %q", f.email, userEmail)
 	}
 
-	// Extract the Continue URL
-	confirmURLRe := regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"[^>]*>Continue<`)
-	matches := confirmURLRe.FindStringSubmatch(pageContent)
-	if len(matches) < 2 {
-		f.t.Fatalf("could not find Continue URL in confirmation page")
+	// Extract the Continue URL from page data
+	continueURL, _ := pageData["confirmUrl"].(string)
+	if continueURL == "" {
+		f.t.Fatalf("could not find confirmUrl in confirmation page data")
 	}
-	continueURL := html.UnescapeString(matches[1])
 
 	f.t.Logf("Step 6: Confirmation page verified, clicking Continue: %s", continueURL)
 

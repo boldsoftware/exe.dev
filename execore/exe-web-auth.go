@@ -36,7 +36,6 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
 	"exe.dev/sqlite"
-	"exe.dev/stage"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
 )
@@ -246,25 +245,6 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	isWelcome := verification != nil || isNewUser
 
 	// Send success response (for SSH registrations or standalone verifications)
-	data := struct {
-		stage.Env
-		SSHCommand   string
-		Source       string
-		Email        string
-		HasPasskeys  bool
-		NeedsBilling bool
-		BillingToken string
-		IsWelcome    bool
-	}{
-		Env:          s.env,
-		SSHCommand:   s.replSSHConnectionCommand(),
-		Source:       source,
-		Email:        verifiedEmail,
-		HasPasskeys:  hasPasskeys,
-		NeedsBilling: false,
-		BillingToken: "",
-		IsWelcome:    isWelcome,
-	}
 	s.slog().InfoContext(r.Context(), "email verified page shown",
 		"user_id", verifiedUserID,
 		"email", verifiedEmail,
@@ -273,7 +253,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		"has_passkeys", hasPasskeys,
 		"is_gmail", email.IsGmailAddress(verifiedEmail),
 	)
-	s.renderTemplate(r.Context(), w, "email-verified.html", data)
+	s.renderPage(r.Context(), w, "pages/email-verified.html", EmailVerifiedPage{
+		Email:       verifiedEmail,
+		IsWelcome:   isWelcome,
+		Source:      source,
+		HasPasskeys: hasPasskeys,
+	})
 }
 
 // handleBillingUpdate manages billing for authenticated users.
@@ -580,14 +565,10 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For exemenu, show the success page
-	data := struct {
-		WebHost string
-		Source  string
-	}{
+	s.renderPage(r.Context(), w, "pages/billing-success.html", BillingSuccessPage{
 		WebHost: s.env.WebHost,
 		Source:  source,
-	}
-	s.renderTemplate(r.Context(), w, "billing-success.html", data)
+	})
 }
 
 // handleNewUserBillingSubscribe handles billing subscription for new (unauthenticated) users.
@@ -1142,14 +1123,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleLoggedOut displays a logged out confirmation page
 func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
-	data := struct {
-		stage.Env
-		MainDomain string
-	}{
-		Env:        s.env,
-		MainDomain: s.env.WebHost,
-	}
-	_ = s.renderTemplate(r.Context(), w, "proxy-logged-out.html", data)
+	_ = s.renderPage(r.Context(), w, "pages/proxy-logged-out.html", ProxyLoggedOutPage{
+		WebHost: s.env.WebHost,
+	})
 }
 
 func setExeAuthCookie(w http.ResponseWriter, r *http.Request, cookieValue string) {
@@ -1229,20 +1205,13 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	// Non-owner: show confirmation page so user can confirm sharing their email with the site
 	userEmail, _ := withRxRes1(s, r.Context(), (*exedb.Queries).GetEmailByUserID, magicSecret.UserID)
 
-	data := struct {
-		WebHost    string
-		UserEmail  string
-		SiteDomain string
-		CancelURL  string
-		ConfirmURL string
-	}{
+	s.renderPage(r.Context(), w, "pages/login-confirmation.html", LoginConfirmationPage{
 		WebHost:    s.env.WebHost,
 		UserEmail:  userEmail,
 		SiteDomain: hostname,
 		CancelURL:  "/",
 		ConfirmURL: magicURL,
-	}
-	s.renderTemplate(r.Context(), w, "login-confirmation.html", data)
+	})
 }
 
 // handleAuthCallback handles authentication callbacks with magic tokens
@@ -1409,22 +1378,22 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Show authentication form with query parameters
-	data := authFormData{
-		Env:               s.env,
-		SSHCommand:        s.replSSHConnectionCommand(),
-		RedirectURL:       redirectURL,
-		ReturnHost:        returnHost,
-		InviteCode:        inviteCodeStr,
-		InviteCodeValid:   inviteCodeValid,
-		InviteCodeInvalid: inviteCodeInvalid,
-		InvitePlanType:    invitePlanType,
-		TeamInvite:        teamInviteToken,
-		TeamInviteName:    teamInviteName,
-		TeamInviteEmail:   teamInviteEmail,
-		ResponseMode:      flow.ResponseMode,
-		CallbackURI:       flow.CallbackURI,
-	}
-	s.renderTemplate(r.Context(), w, "auth-form.html", data)
+	s.renderPage(r.Context(), w, "pages/auth-form.html", AuthFormPage{
+		FormAction:      "/auth",
+		WebHost:         s.env.WebHost,
+		SSHCommand:      s.replSSHConnectionCommand(),
+		Redirect:        redirectURL,
+		ReturnHost:      returnHost,
+		Invite:          inviteCodeStr,
+		InviteValid:     inviteCodeValid,
+		InviteInvalid:   inviteCodeInvalid,
+		InvitePlanType:  invitePlanType,
+		TeamInvite:      teamInviteToken,
+		TeamInviteName:  teamInviteName,
+		TeamInviteEmail: teamInviteEmail,
+		ResponseMode:    flow.ResponseMode,
+		CallbackURI:     flow.CallbackURI,
+	})
 }
 
 // verifySignupPOW verifies the proof-of-work submitted with a signup request.
@@ -1461,38 +1430,22 @@ func (s *Server) showPOWInterstitial(w http.ResponseWriter, r *http.Request, ema
 		return
 	}
 
-	data := struct {
-		stage.Env
-		Email         string
-		POWToken      string
-		POWDifficulty int
-		Redirect      string
-		ReturnHost    string
-		LoginWithExe  bool
-		InviteCode    string
-		Hostname      string
-		Prompt        string
-		Image         string
-		TeamInvite    string
-		ResponseMode  string
-		CallbackURI   string
-	}{
-		Env:           s.env,
+	s.renderPage(r.Context(), w, "pages/auth-pow.html", AuthPowPage{
+		FormAction:    "/auth",
 		Email:         email,
-		POWToken:      token,
-		POWDifficulty: s.signupPOW.GetDifficulty(),
+		PowToken:      token,
+		PowDifficulty: s.signupPOW.GetDifficulty(),
 		Redirect:      r.FormValue("redirect"),
 		ReturnHost:    r.FormValue("return_host"),
 		LoginWithExe:  r.FormValue("login_with_exe") == "1",
-		InviteCode:    r.FormValue("invite"),
+		Invite:        r.FormValue("invite"),
 		Hostname:      r.FormValue("hostname"),
 		Prompt:        r.FormValue("prompt"),
 		Image:         r.FormValue("image"),
 		TeamInvite:    r.FormValue("team_invite"),
 		ResponseMode:  r.FormValue("response_mode"),
 		CallbackURI:   r.FormValue("callback_uri"),
-	}
-	s.renderTemplate(r.Context(), w, "auth-pow.html", data)
+	})
 }
 
 // handleAuthEmailSubmission handles the email form submission for web auth
@@ -1872,18 +1825,12 @@ The %s team`, verifyEmailURL, webHost)
 
 // showAppTokenCodeEntry renders the code entry page for the app token email flow.
 func (s *Server) showAppTokenCodeEntry(w http.ResponseWriter, r *http.Request, email, devCode, errorMsg string) {
-	data := struct {
-		stage.Env
-		Email   string
-		DevCode string
-		Error   string
-	}{
-		Env:     s.env,
-		Email:   email,
-		DevCode: devCode,
-		Error:   errorMsg,
-	}
-	s.renderTemplate(r.Context(), w, "app-token-code-entry.html", data)
+	s.renderPage(r.Context(), w, "pages/app-token-code-entry.html", AppTokenCodeEntryPage{
+		FormAction: "/auth/verify-code",
+		Email:      email,
+		DevCode:    devCode,
+		Error:      errorMsg,
+	})
 }
 
 // handleAppTokenVerifyCode handles POST /auth/verify-code.
@@ -1971,39 +1918,20 @@ func (s *Server) handleAppTokenVerifyCode(w http.ResponseWriter, r *http.Request
 // showAuthError displays an authentication error page
 func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, command string) {
 	traceID := tracing.TraceIDFromContext(r.Context())
-	data := struct {
-		stage.Env
-		Message     string
-		Command     string
-		QueryString string
-		TraceID     string
-	}{
-		Env:         s.env,
+	w.WriteHeader(http.StatusBadRequest)
+	s.renderPage(r.Context(), w, "pages/auth-error.html", AuthErrorPage{
 		Message:     message,
 		Command:     command,
 		QueryString: r.URL.RawQuery,
 		TraceID:     traceID,
-	}
-
-	w.WriteHeader(http.StatusBadRequest)
-	s.renderTemplate(r.Context(), w, "auth-error.html", data)
+	})
 }
 
 // showAuthEmailSent displays the email sent confirmation page
 func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email, devURL string) {
-	data := struct {
-		stage.Env
-		Email       string
-		QueryString string
-		DevURL      string // Development-only URL for easy testing
-	}{
-		Env:         s.env,
-		Email:       email,
-		QueryString: r.URL.RawQuery,
-		DevURL:      devURL,
-	}
-
-	s.renderTemplate(r.Context(), w, "email-sent.html", data)
+	s.renderPage(r.Context(), w, "pages/email-sent.html", EmailSentPage{
+		DevURL: devURL,
+	})
 }
 
 // checkSignupRateLimit checks if the request should be rate limited.
@@ -2130,14 +2058,9 @@ func (s *Server) handleLinkDiscord(w http.ResponseWriter, r *http.Request) {
 	sloghttp.AddCustomAttributes(r, slog.Int("invites_added", invitesAdded))
 
 	// Show success page
-	data := struct {
-		stage.Env
-		DiscordUsername string
-	}{
-		Env:             s.env,
+	s.renderPage(ctx, w, "pages/discord-linked.html", DiscordLinkedPage{
 		DiscordUsername: discordUsername,
-	}
-	s.renderTemplate(ctx, w, "discord-linked.html", data)
+	})
 }
 
 // verifyDiscordLinkHMAC verifies the HMAC signature for Discord account linking.

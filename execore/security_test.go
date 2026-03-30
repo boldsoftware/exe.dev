@@ -19,12 +19,16 @@ import (
 
 // TestXSSInEmailVerificationForm tests that template variables in the
 // email verification form are properly escaped to prevent XSS attacks.
+// Page data is JSON-serialized inside a <script> tag as window.__PAGE__.
+// json.Marshal escapes <, >, & as unicode escapes, and " as \".
+// Single quotes don't need escaping in JSON strings (they can't break
+// out of a double-quoted JSON value).
 func TestXSSInEmailVerificationForm(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	// Create a malicious redirect URL that attempts XSS
-	xssPayload := "';alert(document.cookie);//"
+	// Create a malicious redirect URL that attempts XSS via script injection
+	xssPayload := `<script>alert(document.cookie)</script>`
 
 	// Store the verification in memory so showEmailVerificationForm can find it
 	token := "test-token-xss"
@@ -44,21 +48,20 @@ func TestXSSInEmailVerificationForm(t *testing.T) {
 
 	body := w.Body.String()
 
-	// The XSS payload should NOT appear unescaped in JavaScript context
-	// If vulnerable, the raw payload would appear allowing script injection
-	// If fixed with | js, special chars are escaped as unicode
-	if strings.Contains(body, "'redirect': '"+xssPayload) {
-		t.Errorf("XSS vulnerability: redirect parameter not escaped in JavaScript context")
+	// json.Marshal escapes < and > as \u003c and \u003e, preventing script injection.
+	// The raw <script> tag must NOT appear in the output.
+	if strings.Contains(body, "<script>alert(") {
+		t.Errorf("XSS vulnerability: script tag not escaped in JSON output")
 	}
 
-	// Check that the payload doesn't appear in a way that could execute
-	// The single quote should be escaped as \u0027 or similar
-	if strings.Contains(body, "';alert(") {
-		t.Errorf("XSS vulnerability: single quote not escaped, payload could break out of string")
+	// Verify the payload is present but properly escaped
+	if !strings.Contains(body, `\u003cscript\u003e`) {
+		t.Errorf("Expected JSON-escaped script tag in output, body: %s", body[:min(500, len(body))])
 	}
 }
 
 // TestXSSInReturnHost tests that return_host is properly escaped.
+// With JSON serialization, double quotes in values are escaped as \" by json.Marshal.
 func TestXSSInReturnHost(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -81,9 +84,15 @@ func TestXSSInReturnHost(t *testing.T) {
 
 	body := w.Body.String()
 
-	// The double quote should be escaped to prevent breaking out of the string
-	if strings.Contains(body, `";alert(1)`) {
-		t.Errorf("XSS vulnerability: return_host parameter not escaped, double quote allows breakout")
+	// json.Marshal escapes double quotes as \", so the raw payload can't break out.
+	// The unescaped double quote must NOT appear in JSON context.
+	if strings.Contains(body, `"return_host":"";alert(1)`) {
+		t.Errorf("XSS vulnerability: return_host double quote not escaped in JSON")
+	}
+
+	// Verify the value is properly JSON-escaped (\" for the double quote)
+	if !strings.Contains(body, `\"`) {
+		t.Errorf("Expected escaped double quote in JSON output, body: %s", body[:min(500, len(body))])
 	}
 }
 
@@ -329,13 +338,16 @@ func TestSignupPOW(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Without POW: got status %d, want %d", w.Code, http.StatusOK)
 	}
-	// Interstitial should contain the POW token and "Verifying"
+	// Vue page should contain the POW data in window.__PAGE__ JSON
 	body := w.Body.String()
-	if !strings.Contains(body, "Verifying") {
-		t.Errorf("Expected interstitial page with 'Verifying', got: %s", body[:min(200, len(body))])
+	if !strings.Contains(body, "window.__PAGE__") {
+		t.Errorf("Expected POW page with window.__PAGE__, got: %s", body[:min(200, len(body))])
 	}
-	if !strings.Contains(body, "pow_token") {
-		t.Errorf("Expected interstitial page with pow_token field")
+	if !strings.Contains(body, "powToken") {
+		t.Errorf("Expected POW page with powToken in page data")
+	}
+	if !strings.Contains(body, "powDifficulty") {
+		t.Errorf("Expected POW page with powDifficulty in page data")
 	}
 
 	// Now get a fresh token and solve it

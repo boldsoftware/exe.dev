@@ -7,6 +7,8 @@ import ToastService from 'primevue/toastservice'
 import App from './App.vue'
 import router from './router'
 import 'primeicons/primeicons.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/600.css'
 
 const ExePreset = definePreset(Aura, {
   semantic: {

@@ -7,30 +7,23 @@
   <link rel="icon" href="/favicon.ico">
   <meta name="color-scheme" content="light dark">
   <title>Access required</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.1" integrity="sha384-NIEnmBZDJa6zQwZWLtsVZJlPYu8tc0CNul8EMJ0WMxf4ZpsKsOfKjtEToHNCoIOH" crossorigin="anonymous"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style type="text/tailwindcss">
-    @theme {
-      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-    }
-  </style>
+  <link rel="stylesheet" href="/static/common.css">
+  <link rel="stylesheet" href="/static/simple.css">
   <meta name="robots" content="noindex">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Cache-Control" content="no-store">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 </head>
-<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
-  <main class="w-full max-w-2xl">
-    <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
-    <h1 class="text-4xl font-semibold mb-4">You need access</h1>
-    <p class="text-zinc-500 text-lg mb-8">Ask the owner to let you in.</p>
+<body class="page">
+  <main class="page-content">
+    <p class="text-secondary text-lg mb-3">{{.Email}}</p>
+    <h1 class="heading-lg mb-4">You need access</h1>
+    <p class="text-secondary text-lg mb-8">Ask the owner to let you in.</p>
     <form method="POST" action="/__exe.dev/request-access">
       <textarea name="message" placeholder="Message (optional)" rows="3"
-        class="w-full text-lg border-2 border-zinc-300 dark:border-zinc-600 p-3 bg-transparent focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 resize-none"></textarea>
-      <button type="submit" class="mt-6 px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-lg hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">Request access</button>
+        class="input w-full" style="font-size: 1.125rem; resize: none; border-width: 2px;"></textarea>
+      <button type="submit" class="btn-primary mt-6" style="font-size: 1.125rem;">Request access</button>
     </form>
   </main>
 </body>

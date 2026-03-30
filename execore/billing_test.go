@@ -1059,8 +1059,8 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "Check Your Email") && !strings.Contains(body, "check your email") {
-		t.Errorf("Expected 'check your email' page for existing user. Body: %s", body[:min(500, len(body))])
+	if !strings.Contains(body, "window.__PAGE__") {
+		t.Errorf("Expected email-sent page (window.__PAGE__) for existing user. Body: %s", body[:min(500, len(body))])
 	}
 }
 
@@ -1162,8 +1162,8 @@ func TestLoginWithExeSkipsBilling(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "Check Your Email") && !strings.Contains(body, "check your email") {
-		t.Errorf("Expected 'check your email' page. Body: %s", body[:min(500, len(body))])
+	if !strings.Contains(body, "window.__PAGE__") {
+		t.Errorf("Expected email-sent page (window.__PAGE__). Body: %s", body[:min(500, len(body))])
 	}
 }
 

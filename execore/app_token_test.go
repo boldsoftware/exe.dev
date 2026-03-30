@@ -106,13 +106,13 @@ func createTestUserWithAppToken(t *testing.T, s *Server, email string) string {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	// Should show the code entry page.
+	// Should show the code entry page (Vue SFC with window.__PAGE__ containing email).
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
 	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "Enter Code") && !strings.Contains(bodyStr, "verify-code") {
-		t.Fatalf("expected code entry page, got: %s", bodyStr[:min(200, len(bodyStr))])
+	if !strings.Contains(bodyStr, "window.__PAGE__") || !strings.Contains(bodyStr, email) {
+		t.Fatalf("expected code entry page with email in page data, got: %s", bodyStr[:min(200, len(bodyStr))])
 	}
 
 	// Retrieve the verification code from DB.

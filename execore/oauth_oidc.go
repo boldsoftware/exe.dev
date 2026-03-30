@@ -223,9 +223,7 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
 		}
-		s.renderTemplate(ctx, w, "oauth-ssh-success.html", struct {
-			Email string
-		}{Email: oauthState.Email})
+		s.renderPage(ctx, w, "pages/oauth-ssh-success.html", nil)
 		return
 	}
 
@@ -318,9 +316,7 @@ func (s *Server) handleOIDCExistingUser(w http.ResponseWriter, r *http.Request, 
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
 		}
-		s.renderTemplate(ctx, w, "oauth-ssh-success.html", struct {
-			Email string
-		}{Email: oauthState.Email})
+		s.renderPage(ctx, w, "pages/oauth-ssh-success.html", nil)
 		return
 	}
 

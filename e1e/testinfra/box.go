@@ -207,6 +207,7 @@ var actionRe = regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
 
 // ExtractFormFields extracts all input fields from HTML into url.Values.
 // It handles both name-before-value and value-before-name orderings.
+// For Vue pages that use window.__PAGE__ JSON, it also extracts fields from the JSON data.
 func ExtractFormFields(htmlBody []byte) url.Values {
 	formData := url.Values{}
 	for _, match := range hiddenRe.FindAllSubmatch(htmlBody, -1) {
@@ -222,15 +223,55 @@ func ExtractFormFields(htmlBody []byte) url.Values {
 			formData.Set(name, value)
 		}
 	}
+	// For Vue pages: extract fields from window.__PAGE__ JSON data.
+	// JSON field names match form parameter names, so no mapping needed.
+	if len(formData) == 0 {
+		if pageData := ExtractPageJSON(htmlBody); pageData != nil {
+			for k, v := range pageData {
+				switch val := v.(type) {
+				case string:
+					if val != "" {
+						formData.Set(k, val)
+					}
+				case bool:
+					if val {
+						formData.Set(k, "1")
+					}
+				}
+			}
+		}
+	}
 	return formData
+}
+
+// pageJSONRe matches window.__PAGE__={...} in a <script> tag.
+var pageJSONRe = regexp.MustCompile(`window\.__PAGE__=({[^<]+})`)
+
+// ExtractPageJSON extracts the JSON data from a Vue page's window.__PAGE__ script tag.
+func ExtractPageJSON(htmlBody []byte) map[string]any {
+	match := pageJSONRe.FindSubmatch(htmlBody)
+	if len(match) < 2 {
+		return nil
+	}
+	var data map[string]any
+	if err := json.Unmarshal(match[1], &data); err != nil {
+		return nil
+	}
+	return data
 }
 
 // ExtractFormAction extracts the form action from HTML.
 // Returns defaultPath if no action is found.
+// For Vue pages, reads the formAction field from window.__PAGE__ JSON data.
 func ExtractFormAction(htmlBody []byte, defaultPath string) string {
 	actionMatch := actionRe.FindSubmatch(htmlBody)
 	if len(actionMatch) >= 2 {
 		return string(actionMatch[1])
+	}
+	if pageData := ExtractPageJSON(htmlBody); pageData != nil {
+		if action, ok := pageData["formAction"].(string); ok && action != "" {
+			return action
+		}
 	}
 	return defaultPath
 }

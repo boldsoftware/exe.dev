@@ -218,9 +218,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderTemplate(r.Context(), w, "github-connected.html", struct {
-		GitHubLogin string
-	}{
+	s.renderPage(r.Context(), w, "pages/github-connected.html", GithubConnectedPage{
 		GitHubLogin: login,
 	})
 }

@@ -7,26 +7,19 @@
   <link rel="icon" href="/favicon.ico">
   <meta name="color-scheme" content="light dark">
   <title>Service Unavailable</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.1" integrity="sha384-NIEnmBZDJa6zQwZWLtsVZJlPYu8tc0CNul8EMJ0WMxf4ZpsKsOfKjtEToHNCoIOH" crossorigin="anonymous"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style type="text/tailwindcss">
-    @theme {
-      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-    }
-  </style>
+  <link rel="stylesheet" href="/static/common.css">
+  <link rel="stylesheet" href="/static/simple.css">
   <meta name="robots" content="noindex">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Cache-Control" content="no-store">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 </head>
-<body class="font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-950 min-h-screen flex items-center justify-center p-12">
-  <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6">Service Unavailable</h1>
-    <p class="text-zinc-500">This service is temporarily unavailable. Please try again later.</p>
-    {{if .TraceID}}<p class="text-zinc-400 dark:text-zinc-600 text-sm mt-6">trace: {{.TraceID}}</p>{{end}}
+<body class="page">
+  <main class="page-content">
+    <h1 class="heading-lg mb-6">Service Unavailable</h1>
+    <p class="text-secondary">This service is temporarily unavailable. Please try again later.</p>
+    {{if .TraceID}}<p class="text-muted mt-6" style="font-size: var(--text-sm);">trace: {{.TraceID}}</p>{{end}}
   </main>
 </body>
 </html>

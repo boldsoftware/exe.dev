@@ -142,14 +142,17 @@ func TestWebInviteCodeAlreadyUsed(t *testing.T) {
 		t.Fatalf("failed to read response body: %v", err)
 	}
 
-	// Should show the error message
-	if !strings.Contains(string(body), "Invalid or already used invite code") {
-		t.Errorf("expected error message for used invite code, got: %s", string(body))
+	// Should show invite invalid in page data (Vue page with window.__PAGE__ JSON)
+	pageData := testinfra.ExtractPageJSON(body)
+	if pageData == nil {
+		t.Fatalf("expected Vue page with window.__PAGE__ data, got: %s", string(body))
 	}
-
-	// Should NOT include the invite code in a hidden field
-	if strings.Contains(string(body), `name="invite"`) {
-		t.Error("should not include invite hidden field for invalid code")
+	if pageData["inviteInvalid"] != true {
+		t.Errorf("expected inviteInvalid=true in page data, got %v", pageData["inviteInvalid"])
+	}
+	// inviteValid should not be set for invalid codes
+	if pageData["inviteValid"] == true {
+		t.Error("inviteValid should not be true for already-used invite code")
 	}
 }
 
@@ -395,13 +398,16 @@ func TestInviteCodePassthrough(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", resp.StatusCode)
 	}
-	// Valid invite code should show acceptance message
-	if !strings.Contains(string(body), "Invite code accepted") {
-		t.Errorf("expected 'Invite code accepted' message for valid invite code")
+	// Valid invite code should be in the page data (Vue page with window.__PAGE__ JSON)
+	pageData := testinfra.ExtractPageJSON(body)
+	if pageData == nil {
+		t.Fatalf("expected Vue page with window.__PAGE__ data")
 	}
-	// The form should include the invite hidden field for valid codes
-	if !strings.Contains(string(body), `name="invite"`) {
-		t.Errorf("expected invite hidden field for valid code")
+	if pageData["inviteValid"] != true {
+		t.Errorf("expected inviteValid=true in page data, got %v", pageData["inviteValid"])
+	}
+	if pageData["invite"] != inviteCode {
+		t.Errorf("expected invite=%q in page data, got %v", inviteCode, pageData["invite"])
 	}
 }
 

@@ -77,6 +77,7 @@ ui/.ui-cache/
 ui/node_modules/
 ui/dist/
 !ui/dist/.gitkeep
+ui/pages/
 
 # Python
 __pycache__/

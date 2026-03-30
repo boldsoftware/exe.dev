@@ -13,7 +13,6 @@ import (
 	"exe.dev/googleoauth"
 	"exe.dev/sqlite"
 	"exe.dev/sshkey"
-	"exe.dev/stage"
 )
 
 // shouldUseGoogleOAuth determines if the given auth context requires Google OAuth.
@@ -241,9 +240,7 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
 		}
-		s.renderTemplate(ctx, w, "oauth-ssh-success.html", struct {
-			Email string
-		}{Email: oauthState.Email})
+		s.renderPage(ctx, w, "pages/oauth-ssh-success.html", nil)
 		return
 	}
 
@@ -333,22 +330,6 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	data := struct {
-		stage.Env
-		SSHCommand   string
-		Source       string
-		Email        string
-		HasPasskeys  bool
-		NeedsBilling bool
-		BillingToken string
-		IsWelcome    bool
-	}{
-		Env:        s.env,
-		SSHCommand: s.replSSHConnectionCommand(),
-		Source:     "web",
-		Email:      oauthState.Email,
-		IsWelcome:  true,
-	}
 	s.slog().InfoContext(ctx, "email verified page shown",
 		"user_id", userID,
 		"email", oauthState.Email,
@@ -357,7 +338,11 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 		"has_passkeys", false,
 		"is_gmail", email.IsGmailAddress(oauthState.Email),
 	)
-	s.renderTemplate(ctx, w, "email-verified.html", data)
+	s.renderPage(ctx, w, "pages/email-verified.html", EmailVerifiedPage{
+		Email:     oauthState.Email,
+		IsWelcome: true,
+		Source:    "web",
+	})
 }
 
 // handleGoogleOAuthExistingUser handles Google OAuth callback for existing users.
@@ -377,9 +362,7 @@ func (s *Server) handleGoogleOAuthExistingUser(w http.ResponseWriter, r *http.Re
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
 		}
-		s.renderTemplate(ctx, w, "oauth-ssh-success.html", struct {
-			Email string
-		}{Email: oauthState.Email})
+		s.renderPage(ctx, w, "pages/oauth-ssh-success.html", nil)
 		return
 	}
 

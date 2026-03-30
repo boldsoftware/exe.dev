@@ -139,27 +139,28 @@ func TestScreenFlow(t *testing.T) {
 		screenshotMobile("index", body)
 	})
 
-	// Test 1: Auth form page
+	// Test 1: Auth form page (Vue SFC — check for window.__PAGE__ data)
 	t.Run("auth_form", func(t *testing.T) {
 		status, body := get("/auth")
 		if status != 200 {
 			t.Errorf("GET /auth: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "Login (or create an account)") {
-			t.Errorf("GET /auth: expected 'Login (or create an account)' in body")
+		if !strings.Contains(body, "window.__PAGE__") {
+			t.Errorf("GET /auth: expected window.__PAGE__ in body")
 		}
 		screenshot("auth_form", body)
 	})
 
-	// Test 2: Submit email for auth
+	// Test 2: Submit email for auth (Vue SFC — renders email-sent page)
 	email := "screentest@example.com"
 	t.Run("auth_submit", func(t *testing.T) {
 		status, body, _ := post("/auth", url.Values{"email": {email}})
 		if status != 200 {
 			t.Errorf("POST /auth: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "Check Your Email") {
-			t.Errorf("POST /auth: expected 'Check Your Email' in body")
+		// Vue page: just verify we got a valid HTML response (content is rendered client-side)
+		if !strings.Contains(body, "<html") {
+			t.Errorf("POST /auth: expected HTML response")
 		}
 		screenshot("email_sent", body)
 	})
@@ -186,23 +187,26 @@ func TestScreenFlow(t *testing.T) {
 			t.Fatalf("Failed to create verification token: %v", err)
 		}
 
-		// GET verification form
+		// GET verification form (Vue SFC — check for window.__PAGE__ with token)
 		status, body := get("/verify-email?token=" + token)
 		if status != 200 {
 			t.Errorf("GET /verify-email: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "CONFIRM LOGIN") {
-			t.Errorf("GET /verify-email: expected 'CONFIRM LOGIN' in body")
+		if !strings.Contains(body, "window.__PAGE__") {
+			t.Errorf("GET /verify-email: expected window.__PAGE__ in body")
+		}
+		if !strings.Contains(body, token) {
+			t.Errorf("GET /verify-email: expected token in page data")
 		}
 		screenshot("email_verification_form", body)
 
-		// POST to complete verification
+		// POST to complete verification (Vue SFC — renders email-verified page)
 		status, body, _ = post("/verify-email", url.Values{"token": {token}})
 		if status != 200 {
 			t.Errorf("POST /verify-email: expected 200, got %d", status)
 		}
-		if !strings.Contains(body, "Email Verified") {
-			t.Errorf("POST /verify-email: expected 'Email Verified' in body")
+		if !strings.Contains(body, "window.__PAGE__") {
+			t.Errorf("POST /verify-email: expected window.__PAGE__ in body")
 		}
 		screenshot("email_verified", body)
 	})
@@ -215,20 +219,17 @@ func TestScreenFlow(t *testing.T) {
 		}
 	})
 
-	// Test 5: Proxy logged out page
+	// Test 5: Proxy logged out page (Vue SFC — test via renderPage)
 	t.Run("proxy_logged_out", func(t *testing.T) {
-		// Use httptest to test the template directly
 		rec := httptest.NewRecorder()
-
-		data := struct {
-			WebHost string
-		}{
-			WebHost: server.env.WebHost,
-		}
-		server.renderTemplate(context.Background(), rec, "proxy-logged-out.html", data)
-
+		server.renderPage(context.Background(), rec, "pages/proxy-logged-out.html", map[string]any{
+			"webHost": server.env.WebHost,
+		})
 		if rec.Code != 200 {
-			t.Errorf("proxy-logged-out template: expected 200, got %d", rec.Code)
+			t.Errorf("proxy-logged-out page: expected 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "window.__PAGE__") {
+			t.Errorf("proxy-logged-out page: expected window.__PAGE__ in body")
 		}
 		screenshot("proxy_logged_out", rec.Body.String())
 	})
@@ -287,27 +288,24 @@ func TestScreenFlow(t *testing.T) {
 		screenshot("terminal_access_denied", rec.Body.String())
 	})
 
-	// Test 8: Login confirmation page
+	// Test 8: Login confirmation page (Vue SFC — test via renderPage)
 	t.Run("login_confirmation", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-
-		data := struct {
-			WebHost    string
-			UserEmail  string
-			SiteDomain string
-			CancelURL  string
-			ConfirmURL string
-		}{
-			WebHost:    server.env.WebHost,
-			UserEmail:  email,
-			SiteDomain: "example.com",
-			CancelURL:  "/cancel",
-			ConfirmURL: "/confirm",
-		}
-		server.renderTemplate(context.Background(), rec, "login-confirmation.html", data)
-
+		server.renderPage(context.Background(), rec, "pages/login-confirmation.html", map[string]any{
+			"webHost":    server.env.WebHost,
+			"userEmail":  email,
+			"siteDomain": "example.com",
+			"cancelURL":  "/cancel",
+			"confirmURL": "/confirm",
+		})
 		if rec.Code != 200 {
-			t.Errorf("login-confirmation template: expected 200, got %d", rec.Code)
+			t.Errorf("login-confirmation page: expected 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "window.__PAGE__") {
+			t.Errorf("login-confirmation page: expected window.__PAGE__ in body")
+		}
+		if !strings.Contains(rec.Body.String(), email) {
+			t.Errorf("login-confirmation page: expected email in page data")
 		}
 		screenshot("login_confirmation", rec.Body.String())
 	})

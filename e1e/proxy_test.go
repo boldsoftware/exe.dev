@@ -5,13 +5,11 @@ package e1e
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,8 +17,6 @@ import (
 	"exe.dev/e1e/testinfra"
 	"exe.dev/stage"
 )
-
-var confirmURLRe = regexp.MustCompile(`href="([^"]*__exe\.dev/auth[^"]*)"`)
 
 func TestHTTPProxy(t *testing.T) {
 	t.Parallel()
@@ -1076,23 +1072,23 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 			if resp.StatusCode == exp.httpCode {
 				return
 			}
-			// Handle confirmation page for non-owners (200 OK with CONFIRM LOGIN page)
+			// Handle confirmation page for non-owners (200 OK Vue page with confirmUrl)
 			if resp.StatusCode == http.StatusOK {
 				body, _ := io.ReadAll(resp.Body)
 				resp.Body.Close()
-				if strings.Contains(string(body), "CONFIRM LOGIN") {
-					// Extract Continue URL from confirmation page
-					matches := confirmURLRe.FindStringSubmatch(string(body))
-					if len(matches) < 2 {
-						t.Fatalf("could not find Continue URL in confirmation page")
+				pageData := testinfra.ExtractPageJSON(body)
+				if pageData != nil {
+					confirmURL, _ := pageData["confirmUrl"].(string)
+					if confirmURL == "" {
+						t.Fatalf("confirmation page missing confirmUrl in page data")
 						return
 					}
-					u, err = url.Parse(html.UnescapeString(matches[1]))
+					u, err = url.Parse(confirmURL)
 					if err != nil {
-						t.Fatalf("failed to parse Continue URL: %v", err)
+						t.Fatalf("failed to parse confirmUrl: %v", err)
 						return
 					}
-					t.Logf("Confirmation page shown, following Continue URL: %s", u.String())
+					t.Logf("Confirmation page shown, following confirmUrl: %s", u.String())
 				} else {
 					t.Errorf("expected confirmation page or redirect, got 200 with unexpected body")
 					return
@@ -1221,17 +1217,19 @@ func followAuthDance(t *testing.T, client *http.Client, initReq *http.Request, r
 			if err != nil {
 				t.Fatalf("followAuthDance: reading body: %v", err)
 			}
-			if !strings.Contains(string(body), "CONFIRM LOGIN") {
-				// Not a confirm page — reconstruct the response for the caller.
+			pageData := testinfra.ExtractPageJSON(body)
+			if pageData == nil {
+				// Not a Vue page — reconstruct the response for the caller.
 				resp.Body = io.NopCloser(strings.NewReader(string(body)))
 				return resp
 			}
-			// Extract Continue URL from confirmation page.
-			m := confirmURLRe.FindStringSubmatch(string(body))
-			if len(m) < 2 {
-				t.Fatal("followAuthDance: no Continue URL in confirmation page")
+			confirmURL, _ := pageData["confirmUrl"].(string)
+			if confirmURL == "" {
+				// Vue page but no confirmUrl — not a confirm page.
+				resp.Body = io.NopCloser(strings.NewReader(string(body)))
+				return resp
 			}
-			u, err := currentBase.Parse(html.UnescapeString(m[1]))
+			u, err := currentBase.Parse(confirmURL)
 			if err != nil {
 				t.Fatalf("followAuthDance: bad Continue URL: %v", err)
 			}

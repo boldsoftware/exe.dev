@@ -14,7 +14,6 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
-	"exe.dev/stage"
 )
 
 const (
@@ -219,20 +218,12 @@ func (s *Server) completeAuthWithAppToken(w http.ResponseWriter, r *http.Request
 		hasPasskeys = true
 	}
 
-	data := struct {
-		stage.Env
-		Email       string
-		CallbackURL string
-		IsWelcome   bool
-		HasPasskeys bool
-	}{
-		Env:         s.env,
+	s.renderPage(ctx, w, "pages/app-token-success.html", AppTokenSuccessPage{
 		Email:       email,
 		CallbackURL: callbackURL.String(),
 		IsWelcome:   isNewUser,
 		HasPasskeys: hasPasskeys,
-	}
-	s.renderTemplate(ctx, w, "app-token-success.html", data)
+	})
 	return true
 }
 

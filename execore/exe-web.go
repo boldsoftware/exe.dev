@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -397,6 +398,37 @@ func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, temp
 	}
 	_, err := w.Write(buf.Bytes())
 	return err
+}
+
+// renderPage serves a Vue page from the dashboard UI build with JSON data injected.
+// The pagePath is relative to the dist root (e.g. "pages/device-verified.html").
+// Data is serialized as JSON and injected as window.__PAGE__ before </head>.
+func (s *Server) renderPage(ctx context.Context, w http.ResponseWriter, pagePath string, data any) error {
+	if s.dashboardUI == nil {
+		http.Error(w, "Dashboard UI not built", http.StatusInternalServerError)
+		return fmt.Errorf("dashboard UI not available")
+	}
+	htmlBytes, err := fs.ReadFile(s.dashboardUI, pagePath)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "Failed to read page", "error", err, "page", pagePath)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+	html := string(htmlBytes)
+	if data != nil {
+		jsonBytes, err := json.Marshal(data)
+		if err != nil {
+			s.slog().ErrorContext(ctx, "Failed to marshal page data", "error", err, "page", pagePath)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return err
+		}
+		scriptTag := fmt.Sprintf(`<script>window.__PAGE__=%s</script>`, jsonBytes)
+		html = strings.Replace(html, "</head>", scriptTag+"</head>", 1)
+	}
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, writeErr := io.WriteString(w, html)
+	return writeErr
 }
 
 // isRequestOnMainPort checks that the request came in on the main HTTP/HTTPS port.
@@ -1189,7 +1221,7 @@ func (s *Server) handleKnownHosts(w http.ResponseWriter, r *http.Request) {
 
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
-	pendingKey, verification, err := s.lookUpDeviceVerification(r.Context(), token)
+	pendingKey, _, err := s.lookUpDeviceVerification(r.Context(), token)
 	switch {
 	case errors.Is(err, errExpiredToken), errors.Is(err, sql.ErrNoRows):
 		http.Error(w, "invalid or expired verification token", http.StatusNotFound)
@@ -1203,23 +1235,12 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	data := struct {
-		stage.Env
-		SSHCommand  string
-		Email       string
-		PublicKey   string
-		Token       string
-		PairingCode string
-	}{
-		Env:         s.env,
-		SSHCommand:  s.replSSHConnectionCommand(),
-		Email:       pendingKey.UserEmail,
-		PublicKey:   pendingKey.PublicKey,
-		Token:       token,
-		PairingCode: verification.PairingCode,
-	}
-
-	s.renderTemplate(r.Context(), w, "device-verification.html", data)
+	s.renderPage(r.Context(), w, "pages/device-verification.html", DeviceVerificationPage{
+		FormAction: "/verify-device",
+		Email:      pendingKey.UserEmail,
+		PublicKey:  pendingKey.PublicKey,
+		Token:      token,
+	})
 }
 
 // handleDeviceVerificationHTTP handles web-based device verification
@@ -1339,16 +1360,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	verification.Close()
 	s.deleteEmailVerification(verification)
 
-	data := struct {
-		stage.Env
-		SSHCommand string
-		PublicKey  string
-	}{
-		Env:        s.env,
-		SSHCommand: s.replSSHConnectionCommand(),
-		PublicKey:  pendingKey.PublicKey,
-	}
-	s.renderTemplate(r.Context(), w, "device-verified.html", data)
+	s.renderPage(r.Context(), w, "pages/device-verified.html", nil)
 }
 
 var (
@@ -1410,27 +1422,14 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 	code = strings.TrimSpace(code)
 
-	// Prepare template data
-	data := struct {
-		stage.Env
-		Token       string
-		RedirectURL string
-		ReturnHost  string
-		Email       string
-		PairingCode string
-		Source      string
-	}{
-		Env:         s.env,
-		Token:       token,
-		RedirectURL: q.Get("redirect"),
-		ReturnHost:  q.Get("return_host"),
-		Email:       email,
-		PairingCode: code,
-		Source:      source,
-	}
-
-	// Render template
-	s.renderTemplate(r.Context(), w, "email-verification-form.html", data)
+	s.renderPage(r.Context(), w, "pages/email-verification-form.html", EmailVerificationFormPage{
+		FormAction: "/verify-email",
+		Token:      token,
+		Redirect:   q.Get("redirect"),
+		ReturnHost: q.Get("return_host"),
+		Email:      email,
+		Source:     source,
+	})
 }
 
 func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string, qc QualityCheck, inviterEmail string) (*exedb.User, error) {

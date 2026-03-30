@@ -20,7 +20,6 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"exe.dev/stage"
 )
 
 // creationStreamIdleTimeout is how long to keep a creation stream after last access
@@ -461,39 +460,18 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
-	data := authFormData{
-		Env:               s.env,
-		SSHCommand:        s.replSSHConnectionCommand(),
-		BoxName:           hostname,
-		Prompt:            prompt,
-		Image:             image,
-		InviteCode:        inviteCodeStr,
-		InviteCodeValid:   inviteCodeValid,
-		InviteCodeInvalid: inviteCodeInvalid,
-		InvitePlanType:    invitePlanType,
-	}
-
-	s.renderTemplate(r.Context(), w, "auth-form.html", data)
-}
-
-type authFormData struct {
-	stage.Env
-	RedirectURL       string
-	ReturnHost        string
-	LoginWithExe      bool
-	SSHCommand        string
-	BoxName           string
-	Prompt            string
-	Image             string
-	InviteCode        string
-	InviteCodeValid   bool   // true if invite code is valid and unused
-	InviteCodeInvalid bool   // true if invite code was provided but is invalid or already used
-	InvitePlanType    string // "free" or "trial" if valid
-	TeamInvite        string // team invite token (passed as hidden field)
-	TeamInviteName    string // team display name (shown in UI)
-	TeamInviteEmail   string // email from the invite (pre-fills input)
-	ResponseMode      string // app_token for iOS auth flow
-	CallbackURI       string // custom scheme callback URI for app_token flow
+	s.renderPage(r.Context(), w, "pages/auth-form.html", AuthFormPage{
+		FormAction:     "/auth",
+		WebHost:        s.env.WebHost,
+		SSHCommand:     s.replSSHConnectionCommand(),
+		Hostname:       hostname,
+		Prompt:         prompt,
+		Image:          image,
+		Invite:         inviteCodeStr,
+		InviteValid:    inviteCodeValid,
+		InviteInvalid:  inviteCodeInvalid,
+		InvitePlanType: invitePlanType,
+	})
 }
 
 // sseEvent writes a named SSE event with data

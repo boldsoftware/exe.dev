@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"exe.dev/billing"
 	"exe.dev/billing/stripetest"
@@ -21,6 +22,40 @@ import (
 
 // testSSHPubKey is a valid SSH public key for use in tests.
 const testSSHPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmvM4PVNt905k8sp9UYnPzlFgR8J6k64U3qIFkJvvy8 test@example.com"
+
+// testDashboardUI returns a minimal fs.FS containing stub HTML for all Vue pages.
+// Each stub has a </head> marker so renderPage can inject window.__PAGE__ data.
+func testDashboardUI() fstest.MapFS {
+	pages := []string{
+		"app-token-code-entry",
+		"app-token-success",
+		"auth-error",
+		"auth-form",
+		"auth-pow",
+		"billing-success",
+		"device-verification",
+		"device-verified",
+		"discord-linked",
+		"email-sent",
+		"email-verification-form",
+		"email-verified",
+		"github-connected",
+		"login-confirmation",
+		"oauth-ssh-success",
+		"proxy-logged-out",
+	}
+	fs := fstest.MapFS{}
+	for _, name := range pages {
+		fs["pages/"+name+".html"] = &fstest.MapFile{
+			Data: []byte("<!DOCTYPE html><html><head></head><body><div id=\"app\"></div></body></html>"),
+		}
+	}
+	// Also include the main index.html for the SPA.
+	fs["index.html"] = &fstest.MapFile{
+		Data: []byte("<!DOCTYPE html><html><head></head><body><div id=\"app\"></div></body></html>"),
+	}
+	return fs
+}
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
@@ -72,7 +107,7 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 		MetricsRegistry: registry,
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
-		DashboardUI:     nil,
+		DashboardUI:     testDashboardUI(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing test server: %v", err)
@@ -222,7 +257,7 @@ func newUnstartedServer(t testing.TB) *Server {
 		MetricsRegistry: registry,
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
-		DashboardUI:     nil,
+		DashboardUI:     testDashboardUI(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
