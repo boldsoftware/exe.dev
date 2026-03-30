@@ -673,10 +673,8 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			ti.OnlyMember = len(members) == 1
 			for _, m := range members {
 				mdi := jsonTeamMember{Email: m.Email, Role: m.Role}
-				if t, err := time.Parse("2006-01-02 15:04:05", m.JoinedAt); err == nil {
-					s := t.Format(time.RFC3339)
-					mdi.JoinedAt = &s
-				}
+				s := m.JoinedAt.Format(time.RFC3339)
+				mdi.JoinedAt = &s
 				ti.Members = append(ti.Members, mdi)
 			}
 		}

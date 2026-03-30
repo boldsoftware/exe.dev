@@ -6741,7 +6741,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			ti := teamInfo{
 				TeamID:      t.TeamID,
 				DisplayName: t.DisplayName,
-				CreatedAt:   t.CreatedAt,
+				CreatedAt:   t.CreatedAt.Format(time.RFC3339),
 				MemberCount: t.MemberCount,
 				Members:     []memberInfo{},
 			}
@@ -6772,7 +6772,7 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 						UserID:       m.UserID,
 						Email:        m.Email,
 						Role:         m.Role,
-						JoinedAt:     m.JoinedAt,
+						JoinedAt:     m.JoinedAt.Format(time.RFC3339),
 						AuthProvider: ptrStr(m.AuthProvider),
 					}
 					if vmCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, m.UserID); err == nil {

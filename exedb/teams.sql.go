@@ -314,11 +314,11 @@ WHERE bts.box_id = ?
 `
 
 type GetBoxTeamSharesByBoxIDRow struct {
-	BoxID     int64  `db:"box_id" json:"box_id"`
-	TeamID    string `db:"team_id" json:"team_id"`
-	SharedBy  string `db:"shared_by" json:"shared_by"`
-	CreatedAt string `db:"created_at" json:"created_at"`
-	TeamName  string `db:"team_name" json:"team_name"`
+	BoxID     int64     `db:"box_id" json:"box_id"`
+	TeamID    string    `db:"team_id" json:"team_id"`
+	SharedBy  string    `db:"shared_by" json:"shared_by"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	TeamName  string    `db:"team_name" json:"team_name"`
 }
 
 func (q *Queries) GetBoxTeamSharesByBoxID(ctx context.Context, boxID int64) ([]GetBoxTeamSharesByBoxIDRow, error) {
@@ -531,11 +531,11 @@ WHERE tm.user_id = ?
 `
 
 type GetTeamForUserRow struct {
-	TeamID      string  `db:"team_id" json:"team_id"`
-	DisplayName string  `db:"display_name" json:"display_name"`
-	Limits      *string `db:"limits" json:"limits"`
-	CreatedAt   string  `db:"created_at" json:"created_at"`
-	Role        string  `db:"role" json:"role"`
+	TeamID      string    `db:"team_id" json:"team_id"`
+	DisplayName string    `db:"display_name" json:"display_name"`
+	Limits      *string   `db:"limits" json:"limits"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	Role        string    `db:"role" json:"role"`
 }
 
 func (q *Queries) GetTeamForUser(ctx context.Context, userID string) (GetTeamForUserRow, error) {
@@ -564,11 +564,11 @@ type GetTeamMemberByEmailParams struct {
 }
 
 type GetTeamMemberByEmailRow struct {
-	TeamID    string `db:"team_id" json:"team_id"`
-	UserID    string `db:"user_id" json:"user_id"`
-	Role      string `db:"role" json:"role"`
-	CreatedAt string `db:"created_at" json:"created_at"`
-	Email     string `db:"email" json:"email"`
+	TeamID    string    `db:"team_id" json:"team_id"`
+	UserID    string    `db:"user_id" json:"user_id"`
+	Role      string    `db:"role" json:"role"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	Email     string    `db:"email" json:"email"`
 }
 
 func (q *Queries) GetTeamMemberByEmail(ctx context.Context, arg GetTeamMemberByEmailParams) (GetTeamMemberByEmailRow, error) {
@@ -593,11 +593,11 @@ ORDER BY CASE tm.role WHEN 'billing_owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END
 `
 
 type GetTeamMembersRow struct {
-	Role         string  `db:"role" json:"role"`
-	JoinedAt     string  `db:"joined_at" json:"joined_at"`
-	UserID       string  `db:"user_id" json:"user_id"`
-	Email        string  `db:"email" json:"email"`
-	AuthProvider *string `db:"auth_provider" json:"auth_provider"`
+	Role         string    `db:"role" json:"role"`
+	JoinedAt     time.Time `db:"joined_at" json:"joined_at"`
+	UserID       string    `db:"user_id" json:"user_id"`
+	Email        string    `db:"email" json:"email"`
+	AuthProvider *string   `db:"auth_provider" json:"auth_provider"`
 }
 
 func (q *Queries) GetTeamMembers(ctx context.Context, teamID string) ([]GetTeamMembersRow, error) {
@@ -829,10 +829,10 @@ ORDER BY t.created_at DESC
 `
 
 type ListAllTeamsRow struct {
-	TeamID      string `db:"team_id" json:"team_id"`
-	DisplayName string `db:"display_name" json:"display_name"`
-	CreatedAt   string `db:"created_at" json:"created_at"`
-	MemberCount int64  `db:"member_count" json:"member_count"`
+	TeamID      string    `db:"team_id" json:"team_id"`
+	DisplayName string    `db:"display_name" json:"display_name"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	MemberCount int64     `db:"member_count" json:"member_count"`
 }
 
 func (q *Queries) ListAllTeams(ctx context.Context) ([]ListAllTeamsRow, error) {

@@ -143,10 +143,10 @@ type BoxShareLink struct {
 }
 
 type BoxTeamShare struct {
-	BoxID     int64  `db:"box_id" json:"box_id"`
-	TeamID    string `db:"team_id" json:"team_id"`
-	SharedBy  string `db:"shared_by" json:"shared_by"`
-	CreatedAt string `db:"created_at" json:"created_at"`
+	BoxID     int64     `db:"box_id" json:"box_id"`
+	TeamID    string    `db:"team_id" json:"team_id"`
+	SharedBy  string    `db:"shared_by" json:"shared_by"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
 type CheckoutParam struct {
@@ -488,18 +488,18 @@ type TagResolutionHistory struct {
 }
 
 type Team struct {
-	TeamID       string  `db:"team_id" json:"team_id"`
-	DisplayName  string  `db:"display_name" json:"display_name"`
-	Limits       *string `db:"limits" json:"limits"`
-	CreatedAt    string  `db:"created_at" json:"created_at"`
-	AuthProvider *string `db:"auth_provider" json:"auth_provider"`
+	TeamID       string    `db:"team_id" json:"team_id"`
+	DisplayName  string    `db:"display_name" json:"display_name"`
+	Limits       *string   `db:"limits" json:"limits"`
+	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+	AuthProvider *string   `db:"auth_provider" json:"auth_provider"`
 }
 
 type TeamMember struct {
-	TeamID    string `db:"team_id" json:"team_id"`
-	UserID    string `db:"user_id" json:"user_id"`
-	Role      string `db:"role" json:"role"`
-	CreatedAt string `db:"created_at" json:"created_at"`
+	TeamID    string    `db:"team_id" json:"team_id"`
+	UserID    string    `db:"user_id" json:"user_id"`
+	Role      string    `db:"role" json:"role"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
 type TeamSsoProvider struct {
