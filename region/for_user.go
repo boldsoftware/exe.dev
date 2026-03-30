@@ -21,7 +21,7 @@ func ForUser(countryCode string, lat, lon float64) Region {
 		if lon != 0 {
 			return mustByCode("nyc")
 		}
-		// No coordinates available; default to lax (non-sticky) rather than nyc (sticky).
+		// No coordinates available; default to lax (RequiresUserMatch=false) rather than nyc (RequiresUserMatch=true).
 		return mustByCode("lax")
 	}
 
@@ -41,11 +41,12 @@ func ForUser(countryCode string, lat, lon float64) Region {
 
 // nearest returns the active region whose datacenter is closest to (lat, lon).
 func nearest(lat, lon float64) Region {
-	best := Default()
+	def := Default()
+	best := def // always overwritten by the loop below; initialized to def as zero value
 	bestDist := math.MaxFloat64
 	for _, r := range allRegions {
-		if !r.Active {
-			continue
+		if !r.Active || r.Code == def.Code {
+			continue // Default region excluded from new-user routing; see ForUser
 		}
 		d := haversine(lat, lon, r.Lat, r.Lon)
 		if d < bestDist {
