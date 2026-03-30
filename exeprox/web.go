@@ -297,11 +297,9 @@ func (wp *WebProxy) start(ctx context.Context, cancel context.CancelFunc) error 
 	return nil
 }
 
-// initShardIPS builds the mapping from local IPs to public IP info.
-// If env.DiscoverPublicIPs is true, we use ExeproxData to fetch
-// the EC2 metadata and IP shard tables from the exed database.
-// If env.DiscoverPublicIPs is false, we are testing and use
-// 127.21.0.x where x is the shard number.
+// initShardIPs builds the mapping from local IPs to public IP info.
+// If env.DiscoverPublicIPs is true, we fetch shard IPs from exed via gRPC.
+// If env.DiscoverPublicIPs is false, we use 127.21.0.x where x is the shard number.
 func (wp *WebProxy) initShardIPs(ctx context.Context) {
 	defer wp.logIPResolver()
 
@@ -323,13 +321,12 @@ func (wp *WebProxy) initShardIPs(ctx context.Context) {
 		return
 	}
 
-	ips, lobbyIP, err := wp.exeproxData().PublicIPs(ctx)
+	ips, err := wp.exeproxData().PublicIPs(ctx)
 	if err != nil {
 		wp.lg().ErrorContext(ctx, "public IP discovery failed", "error", err)
 		return
 	}
 	wp.publicIPs = ips
-	wp.lobbyIP = lobbyIP
 }
 
 // logIPResolvre logs the public IPs.

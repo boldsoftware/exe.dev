@@ -40,8 +40,7 @@ type ExeproxData interface {
 
 	// PublicIPs returns a map of private (local address) IPs
 	// to public IP / domain / shard.
-	// It also returns the IP of the lobby, aka ssh exe.dev.
-	PublicIPs(context.Context) (map[netip.Addr]publicips.PublicIP, netip.Addr, error)
+	PublicIPs(context.Context) (map[netip.Addr]publicips.PublicIP, error)
 
 	// CertForDomain returns the wildcard cert for a subdomain.
 	CertForDomain(ctx context.Context, serverName string) (*tls.Certificate, error)
@@ -215,10 +214,10 @@ func (ged *grpcExeproxData) UserInfo(ctx context.Context, userID string) (userDa
 }
 
 // PublicIPs fetches the public IPs using a grpc client.
-func (ged *grpcExeproxData) PublicIPs(ctx context.Context) (map[netip.Addr]publicips.PublicIP, netip.Addr, error) {
+func (ged *grpcExeproxData) PublicIPs(ctx context.Context) (map[netip.Addr]publicips.PublicIP, error) {
 	stream, err := ged.client.GetPublicIPs(ctx, &proxyapi.GetPublicIPsRequest{})
 	if err != nil {
-		return nil, netip.Addr{}, err
+		return nil, err
 	}
 
 	m := make(map[netip.Addr]publicips.PublicIP)
@@ -228,17 +227,17 @@ func (ged *grpcExeproxData) PublicIPs(ctx context.Context) (map[netip.Addr]publi
 			break
 		}
 		if err != nil {
-			return nil, netip.Addr{}, err
+			return nil, err
 		}
 
 		privateIP, err := netip.ParseAddr(resp.Addr)
 		if err != nil {
-			return nil, netip.Addr{}, err
+			return nil, err
 		}
 
 		publicIP, err := netip.ParseAddr(resp.PublicIP.IP)
 		if err != nil {
-			return nil, netip.Addr{}, err
+			return nil, err
 		}
 
 		m[privateIP] = publicips.PublicIP{
@@ -248,16 +247,7 @@ func (ged *grpcExeproxData) PublicIPs(ctx context.Context) (map[netip.Addr]publi
 		}
 	}
 
-	resp, err := ged.client.GetLobbyIP(ctx, &proxyapi.GetLobbyIPRequest{})
-	if err != nil {
-		return nil, netip.Addr{}, err
-	}
-	lobbyIP, err := netip.ParseAddr(resp.IP)
-	if err != nil {
-		return nil, netip.Addr{}, err
-	}
-
-	return m, lobbyIP, nil
+	return m, nil
 }
 
 // CertForDomain gets the wildcard certificate for a subdomain.

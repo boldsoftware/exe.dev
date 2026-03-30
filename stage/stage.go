@@ -50,7 +50,7 @@ type Env struct {
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
 	UseCobble            bool       // whether to start cobble/pebble for local ACME testing
-	DiscoverPublicIPs    bool       // whether to attempt to discover public IPs of the server using EC2 metadata service
+	DiscoverPublicIPs    bool       // whether to load public shard IPs from the database (true in prod/staging, false in dev/test)
 	LobbyIP              netip.Addr // public IP for the lobby (ssh exe.dev / exe.xyz apex)
 	PreloadTailscaleCert bool       // whether to preload tailscale cert at startup (has 10s timeout, skip in tests)
 	EnableLMTP           bool       // whether to start the LMTP server for inbound email delivery
