@@ -170,47 +170,22 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 		}
 	}
 
-	// Apply connection limits and bandwidth limits in the background.
-	// This allows the gRPC server to start faster.
+	// Apply connection limits, bandwidth limits, and recover proxies/processes
+	// in the background. These are all defensive measures — existing VMs and
+	// their proxies continue running across exelet restarts. Doing this in the
+	// background lets the gRPC server start immediately instead of blocking
+	// for minutes at scale (800 VMs × ~700ms per bandwidth setup = ~9 min).
+	go s.applyStartupNetworkLimits(ctx, instances)
 	go func() {
-		for _, i := range instances {
-			// Skip stopped instances - they don't have TAP devices
-			if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
-				continue
-			}
-
-			if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
-				ipStr := i.VMConfig.NetworkInterface.IP.IPV4
-				ip, _, err := net.ParseCIDR(ipStr)
-				if err != nil {
-					s.log.WarnContext(ctx, "failed to parse instance IP", "instance", i.ID, "ip", ipStr, "error", err)
-					continue
-				}
-				if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
-					s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
-				}
-			}
-			// Apply bandwidth limit to existing TAP device
-			if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, i.ID); err != nil {
-				s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", i.ID, "error", err)
-			}
+		if err := s.proxyManager.RecoverProxies(ctx, instances); err != nil {
+			s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
 		}
-		s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))
 	}()
-
-	// Recover existing SSH proxies from disk
-	// This will find existing socat processes and adopt them, or restart dead ones
-	if err := s.proxyManager.RecoverProxies(ctx, instances); err != nil {
-		s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
-		// Don't fail startup, continue
-	}
-
-	// Recover existing VMM processes (cloud-hypervisor and virtiofsd)
-	// This will adopt any still-running processes and clean up stale metadata
-	if err := s.vmm.RecoverProcesses(ctx); err != nil {
-		s.log.WarnContext(ctx, "failed to recover VMM processes", "error", err)
-		// Don't fail startup, continue
-	}
+	go func() {
+		if err := s.vmm.RecoverProcesses(ctx); err != nil {
+			s.log.WarnContext(ctx, "failed to recover VMM processes", "error", err)
+		}
+	}()
 
 	// Start boot log rotation
 	interval := s.config.BootLogRotationInterval
@@ -228,6 +203,46 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 	s.stopLogRotation = s.vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
 
 	return instances, nil
+}
+
+// applyStartupNetworkLimits applies connection limits and bandwidth limits to
+// all running VMs. Uses a small worker pool to parallelize across VMs — each VM
+// operates on its own tap/ifb interfaces with no cross-VM dependencies. The
+// concurrency is kept low (4 workers) to avoid CPU spikes from overwhelming
+// the kernel's netlink and xtables subsystems.
+func (s *Service) applyStartupNetworkLimits(ctx context.Context, instances []*api.Instance) {
+	const maxWorkers = 4
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
+	for _, i := range instances {
+		if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{} // acquire worker slot
+		go func(inst *api.Instance) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+				ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
+				ip, _, err := net.ParseCIDR(ipStr)
+				if err != nil {
+					s.log.WarnContext(ctx, "failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
+				} else if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
+					s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "ip", ip.String(), "error", err)
+				}
+			}
+			if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
+				s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))
 }
 
 // reconcileIPLeases loads current instances and releases any orphaned IPAM leases.
