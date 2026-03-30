@@ -750,6 +750,15 @@ func (s *PredictableService) makeToolSmorgasbordResponse(inputTokens uint64) *ll
 		ToolInput: json.RawMessage(llmInput),
 	})
 
+	// browser: screencast_stop action (tests screencast UI widget)
+	screencastInput, _ := json.Marshal(map[string]string{"action": "screencast_stop"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_screencast_%d", (baseNano+14)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser",
+		ToolInput: json.RawMessage(screencastInput),
+	})
+
 	return &llm.Response{
 		ID:         fmt.Sprintf("pred-smorgasbord-%d", baseNano),
 		Type:       "message",

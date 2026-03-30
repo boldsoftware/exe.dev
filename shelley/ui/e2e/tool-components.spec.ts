@@ -55,7 +55,7 @@ test.describe('Tool Component Verification', () => {
 
     // All tool results are already in the DB; wait for the UI to render them.
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 14,
       undefined,
       { timeout: 30000 },
     );
@@ -131,6 +131,11 @@ test.describe('Tool Component Verification', () => {
     await expect(llmTool.first()).toBeVisible();
     await expect(llmTool.locator('.tool-emoji').filter({ hasText: '🤖' }).first()).toBeVisible();
 
+    // Verify browser screencast_stop tool uses BrowserScreencastTool component (has screencast-tool class with 🎬 emoji)
+    const screencastTool = page.locator('.screencast-tool').first();
+    await expect(screencastTool).toBeVisible();
+    await expect(screencastTool.locator('.screencast-tool-emoji').first()).toBeVisible();
+
     // CRITICAL: Verify that GenericTool (gear emoji ⚙️) is NOT used for any of these tools
     // We check that NO tool has the generic gear icon
     const genericToolGearEmojis = page.locator('.tool-emoji').filter({ hasText: '⚙️' });
@@ -185,7 +190,7 @@ test.describe('Tool Component Verification', () => {
     await page.waitForLoadState('domcontentloaded');
 
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 14,
       undefined,
       { timeout: 30000 },
     );
@@ -243,7 +248,7 @@ test.describe('Tool Component Verification', () => {
     await page.waitForLoadState('domcontentloaded');
 
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 13,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 14,
       undefined,
       { timeout: 30000 },
     );

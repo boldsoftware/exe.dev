@@ -57,7 +57,7 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clean and enforce prefix restriction
 	clean := filepath.Clean(p)
-	if !(strings.HasPrefix(clean, browse.ScreenshotDir+"/") || strings.HasPrefix(clean, browse.ConsoleLogsDir+"/")) {
+	if !(strings.HasPrefix(clean, browse.ScreenshotDir+"/") || strings.HasPrefix(clean, browse.ConsoleLogsDir+"/") || strings.HasPrefix(clean, browse.ScreencastDir+"/")) {
 		http.Error(w, "path not allowed", http.StatusForbidden)
 		return
 	}
@@ -80,6 +80,8 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/webp")
 	case ".svg":
 		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".mp4":
+		w.Header().Set("Content-Type", "video/mp4")
 	case ".json":
 		w.Header().Set("Content-Type", "application/json")
 	default:

@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/tracing"
 	"github.com/chromedp/chromedp"
@@ -85,6 +88,8 @@ type BrowseTools struct {
 	traceEvents     []json.RawMessage
 	traceCompleteCh chan struct{}
 	traceMutex      sync.Mutex
+	// Screencast state
+	screencast screencastState
 }
 
 // NewBrowseTools creates a new set of browser automation tools.
@@ -214,6 +219,45 @@ func (b *BrowseTools) idleShutdown() {
 // then releases the lock to call the cancel functions (which may block
 // waiting for the chrome process to exit).
 func (b *BrowseTools) closeBrowserLocked() {
+	// Stop any active screencast before tearing down the browser.
+	// Extract state under lock, then do cleanup without holding it.
+	b.screencast.mu.Lock()
+	scActive := b.screencast.active
+	var scStopCh, scStopped chan struct{}
+	var scFfmpegIn io.WriteCloser
+	var scFfmpegCmd *exec.Cmd
+	if scActive {
+		b.screencast.active = false
+		if b.screencast.stopTimer != nil {
+			b.screencast.stopTimer.Stop()
+			b.screencast.stopTimer = nil
+		}
+		scStopCh = b.screencast.stopCh
+		scStopped = b.screencast.stopped
+		scFfmpegIn = b.screencast.ffmpegIn
+		scFfmpegCmd = b.screencast.ffmpegCmd
+		b.screencast.stopCh = nil
+		b.screencast.stopped = nil
+		b.screencast.ffmpegIn = nil
+		b.screencast.ffmpegCmd = nil
+	}
+	b.screencast.mu.Unlock()
+
+	if scActive {
+		if scStopCh != nil {
+			close(scStopCh)
+		}
+		if scStopped != nil {
+			<-scStopped
+		}
+		if scFfmpegIn != nil {
+			scFfmpegIn.Close()
+		}
+		if scFfmpegCmd != nil {
+			scFfmpegCmd.Wait()
+		}
+	}
+
 	if b.idleTimer != nil {
 		b.idleTimer.Stop()
 		b.idleTimer = nil
@@ -278,6 +322,8 @@ func (b *BrowseTools) handleBrowserEvent(ev any) {
 		if enabled {
 			b.captureNetworkFinished(e)
 		}
+	case *page.EventScreencastFrame:
+		b.handleScreencastFrame(e)
 	case *tracing.EventDataCollected:
 		b.traceMutex.Lock()
 		if b.tracingActive {
@@ -587,6 +633,19 @@ func (b *BrowseTools) CombinedTool() *llm.Tool {
 
 - action: "clear_console_logs"
   Clear all captured browser console logs.
+  No additional parameters.
+
+- action: "screencast_start"
+  Start recording a screencast. Frames are piped directly into ffmpeg to produce an MP4 file.
+  Auto-stops after 30 minutes or 10000 frames. Requires ffmpeg to be installed.
+  Parameters: format (string, "jpeg" or "png", default "jpeg"), quality (integer, 0-100, default 60), max_width (integer, default 1280), max_height (integer, default 720), every_nth_frame (integer, default 1)
+
+- action: "screencast_stop"
+  Stop the screencast recording. Returns the output MP4 file path and frame count.
+  No additional parameters.
+
+- action: "screencast_status"
+  Check if a screencast is active and how many frames have been captured.
   No additional parameters.`
 
 	schema := `{
@@ -595,7 +654,7 @@ func (b *BrowseTools) CombinedTool() *llm.Tool {
 			"action": {
 				"type": "string",
 				"description": "The browser action to perform",
-				"enum": ["navigate", "eval", "resize", "screenshot", "console_logs", "clear_console_logs"]
+				"enum": ["navigate", "eval", "resize", "screenshot", "console_logs", "clear_console_logs", "screencast_start", "screencast_stop", "screencast_status"]
 			},
 			"url": {
 				"type": "string",
@@ -628,6 +687,26 @@ func (b *BrowseTools) CombinedTool() *llm.Tool {
 			"timeout": {
 				"type": "string",
 				"description": "Timeout as a Go duration string (default: 15s)"
+			},
+			"format": {
+				"type": "string",
+				"description": "Image format for screencast frames: 'jpeg' or 'png' (screencast_start action, default 'jpeg')"
+			},
+			"quality": {
+				"type": "integer",
+				"description": "Image quality 0-100 for screencast frames (screencast_start action, default 60)"
+			},
+			"max_width": {
+				"type": "integer",
+				"description": "Maximum frame width in pixels (screencast_start action, default 1280)"
+			},
+			"max_height": {
+				"type": "integer",
+				"description": "Maximum frame height in pixels (screencast_start action, default 720)"
+			},
+			"every_nth_frame": {
+				"type": "integer",
+				"description": "Capture every Nth frame (screencast_start action, default 1)"
 			}
 		},
 		"required": ["action"]
@@ -666,15 +745,20 @@ func (b *BrowseTools) ReadImageTool() *llm.Tool {
 
 // combinedInput is the unified input for the combined browser tool.
 type combinedInput struct {
-	Action     string `json:"action"`
-	URL        string `json:"url,omitempty"`
-	Expression string `json:"expression,omitempty"`
-	Await      *bool  `json:"await,omitempty"`
-	Width      int    `json:"width,omitempty"`
-	Height     int    `json:"height,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
-	Selector   string `json:"selector,omitempty"`
-	Timeout    string `json:"timeout,omitempty"`
+	Action        string `json:"action"`
+	URL           string `json:"url,omitempty"`
+	Expression    string `json:"expression,omitempty"`
+	Await         *bool  `json:"await,omitempty"`
+	Width         int    `json:"width,omitempty"`
+	Height        int    `json:"height,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
+	Selector      string `json:"selector,omitempty"`
+	Timeout       string `json:"timeout,omitempty"`
+	Format        string `json:"format,omitempty"`
+	Quality       int64  `json:"quality,omitempty"`
+	MaxWidth      int64  `json:"max_width,omitempty"`
+	MaxHeight     int64  `json:"max_height,omitempty"`
+	EveryNthFrame int64  `json:"every_nth_frame,omitempty"`
 }
 
 func (b *BrowseTools) combinedRun() func(context.Context, json.RawMessage) llm.ToolOut {
@@ -697,6 +781,41 @@ func (b *BrowseTools) combinedRun() func(context.Context, json.RawMessage) llm.T
 			return b.recentConsoleLogsRun(ctx, m)
 		case "clear_console_logs":
 			return b.clearConsoleLogsRun(ctx, m)
+		case "screencast_start":
+			sessionID, err := b.screencastStart(input.Format, input.Quality, input.MaxWidth, input.MaxHeight, input.EveryNthFrame)
+			if err != nil {
+				return llm.ErrorToolOut(err)
+			}
+			return llm.ToolOut{LLMContent: llm.TextContent(fmt.Sprintf(
+				"Screencast recording to %s (session %s).\nAuto-stops after %v or %d frames. Use screencast_stop to finish.",
+				filepath.Join(ScreencastDir, sessionID+".mp4"), sessionID, ScreencastMaxDuration, ScreencastMaxFrames))}
+		case "screencast_stop":
+			sessionID, outputPath, frameCount, duration, err := b.screencastStop()
+			if err != nil {
+				return llm.ErrorToolOut(err)
+			}
+			display := map[string]any{
+				"type":        "screencast",
+				"session_id":  sessionID,
+				"url":         "/api/read?path=" + url.QueryEscape(outputPath),
+				"path":        outputPath,
+				"frame_count": frameCount,
+				"duration":    duration.Round(time.Millisecond).String(),
+			}
+			return llm.ToolOut{
+				LLMContent: llm.TextContent(fmt.Sprintf(
+					"Screencast stopped (session %s). %d frames captured over %v.\nMP4 saved to: %s",
+					sessionID, frameCount, duration.Round(time.Millisecond), outputPath)),
+				Display: display,
+			}
+		case "screencast_status":
+			active, sessionID, frameCount, elapsed := b.screencastStatus()
+			if !active {
+				return llm.ToolOut{LLMContent: llm.TextContent("No active screencast.")}
+			}
+			return llm.ToolOut{LLMContent: llm.TextContent(fmt.Sprintf(
+				"Screencast active (session %s): %d frames captured, running for %v",
+				sessionID, frameCount, elapsed.Round(time.Millisecond)))}
 		default:
 			return llm.ErrorfToolOut("unknown action: %q", input.Action)
 		}

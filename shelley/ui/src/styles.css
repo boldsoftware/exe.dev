@@ -1738,6 +1738,134 @@ button {
   color: var(--error-text);
 }
 
+/* Screencast Tool */
+.screencast-tool {
+  background: var(--gray-100);
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+
+.screencast-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.screencast-tool-header:hover {
+  background: var(--gray-200);
+}
+
+.screencast-tool-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.screencast-tool-emoji {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.screencast-tool-emoji.running {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.screencast-tool-label {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.screencast-tool-toggle {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.screencast-tool-success {
+  color: var(--green-600);
+  font-weight: bold;
+  margin-left: 0.25rem;
+}
+
+.screencast-tool-error {
+  color: var(--error-text);
+  font-weight: bold;
+  margin-left: 0.25rem;
+}
+
+.screencast-tool-details {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.screencast-tool-section {
+  margin-top: 0.5rem;
+}
+
+.screencast-tool-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.screencast-tool-status {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.screencast-tool-video-container {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background: var(--bg-base);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.screencast-tool-video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+}
+
+.screencast-tool-output {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--gray-200);
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.screencast-tool-error-message {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--error-text);
+}
+
 /* Output Iframe Tool */
 .output-iframe-tool {
   background: var(--gray-100);

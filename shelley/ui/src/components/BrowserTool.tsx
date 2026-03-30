@@ -4,6 +4,7 @@ import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
 import BrowserResizeTool from "./BrowserResizeTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import BrowserScreencastTool from "./BrowserScreencastTool";
 import ScreenshotTool from "./ScreenshotTool";
 import GenericTool from "./GenericTool";
 
@@ -44,6 +45,10 @@ function BrowserTool(props: BrowserToolProps) {
       return <BrowserConsoleLogsTool toolName="browser_recent_console_logs" {...props} />;
     case "clear_console_logs":
       return <BrowserConsoleLogsTool toolName="browser_clear_console_logs" {...props} />;
+    case "screencast_start":
+    case "screencast_stop":
+    case "screencast_status":
+      return <BrowserScreencastTool {...props} />;
     default:
       return <GenericTool toolName={`browser (${action || "unknown"})`} {...props} />;
   }
