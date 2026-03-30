@@ -201,6 +201,10 @@ type Content struct {
 	// Display is content to be displayed to the user, copied from ToolOut
 	Display any
 
+	// DisplayImageURL is set by the API layer when serving conversation data.
+	// It replaces the base64 Data with a URL to the image endpoint.
+	DisplayImageURL string
+
 	Cache bool
 }
 

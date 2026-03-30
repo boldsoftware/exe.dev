@@ -37,6 +37,7 @@ export interface LLMContent {
   ToolError?: boolean;
   // Other fields from Go struct
   MediaType?: string;
+  DisplayImageURL?: string;
   Thinking?: string;
   Data?: string;
   Signature?: string;

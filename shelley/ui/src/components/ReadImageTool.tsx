@@ -45,15 +45,10 @@ function ReadImageTool({
 
   const filename = getPath(toolInput) || getId(toolInput) || "image";
 
-  // Build image URL from the base64 data in toolResult
-  // The read_image tool returns [text description, image content with Data and MediaType]
-  let imageUrl: string | undefined = undefined;
-  if (toolResult && toolResult.length >= 2) {
-    const imageContent = toolResult[1];
-    if (imageContent?.Data && imageContent?.MediaType) {
-      imageUrl = `data:${imageContent.MediaType};base64,${imageContent.Data}`;
-    }
-  }
+  // Build image URL from the tool result's image content.
+  // The server replaces inline base64 data with a URL to /api/message/{id}/image/...
+  const imageUrl =
+    toolResult && toolResult.length >= 2 ? toolResult[1]?.DisplayImageURL : undefined;
 
   const isComplete = !isRunning && toolResult !== undefined;
 

@@ -113,6 +113,9 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 }
 
 // toAPIMessages converts database messages to API messages.
+// Image data is stripped from llm_data and replaced with URLs to
+// /api/message/{id}/image endpoints to avoid sending large base64
+// blobs to clients.
 func toAPIMessages(messages []generated.Message) []APIMessage {
 	apiMessages := make([]APIMessage, len(messages))
 	for i, msg := range messages {
@@ -129,7 +132,7 @@ func toAPIMessages(messages []generated.Message) []APIMessage {
 			ConversationID: msg.ConversationID,
 			SequenceID:     msg.SequenceID,
 			Type:           msg.Type,
-			LlmData:        msg.LlmData,
+			LlmData:        stripImageDataFromLLMData(msg.LlmData, msg.MessageID),
 			UserData:       msg.UserData,
 			UsageData:      msg.UsageData,
 			CreatedAt:      msg.CreatedAt,
@@ -290,11 +293,12 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/git/file-diff/", gzipHandler(http.HandlerFunc(s.handleGitFileDiff)))
 	mux.Handle("/api/git/commit-messages", gzipHandler(http.HandlerFunc(s.handleGitCommitMessages)))
 	mux.Handle("/api/git/amend-message", http.HandlerFunc(s.handleGitAmendMessage))
-	mux.Handle("/api/git/create-worktree", http.HandlerFunc(s.handleGitCreateWorktree)) // Small response
-	mux.HandleFunc("/api/upload", s.handleUpload)                                       // Binary uploads
-	mux.HandleFunc("/api/read", s.handleRead)                                           // Serves images
-	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile))                  // Small response
-	mux.HandleFunc("/api/exec-ws", s.handleExecWS)                                      // Websocket for shell commands
+	mux.Handle("/api/git/create-worktree", http.HandlerFunc(s.handleGitCreateWorktree))                            // Small response
+	mux.HandleFunc("/api/upload", s.handleUpload)                                                                  // Binary uploads
+	mux.HandleFunc("/api/read", s.handleRead)                                                                      // Serves images from disk
+	mux.HandleFunc("GET /api/message/{message_id}/image/{content_index}/{toolresult_index}", s.handleMessageImage) // Serves images from DB
+	mux.Handle("/api/write-file", http.HandlerFunc(s.handleWriteFile))                                             // Small response
+	mux.HandleFunc("/api/exec-ws", s.handleExecWS)                                                                 // Websocket for shell commands
 
 	// Custom models API
 	mux.Handle("/api/custom-models", http.HandlerFunc(s.handleCustomModels))

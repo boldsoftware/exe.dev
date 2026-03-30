@@ -691,7 +691,6 @@ const Message = React.memo(function Message({
               toolResult={content.ToolResult}
               hasError={hasError}
               executionTime={executionTime}
-              display={content.Display}
             />
           );
         }
@@ -827,7 +826,6 @@ const Message = React.memo(function Message({
               toolResult={content.ToolResult}
               hasError={hasError}
               executionTime={executionTime}
-              display={content.Display}
             />
           );
         }
@@ -903,6 +901,7 @@ const Message = React.memo(function Message({
         // For unknown content types, show the type and try to display useful content
         const displayText = content.Text || content.Data || "";
         const hasMediaType = content.MediaType;
+        const mediaImageUrl = content.DisplayImageURL;
         const hasOtherData = Object.keys(content).some(
           (key) => key !== "Type" && key !== "ID" && content[key as keyof typeof content],
         );
@@ -919,9 +918,9 @@ const Message = React.memo(function Message({
                 <div className="text-xs text-secondary msg-media-type-label">
                   Media Type: {content.MediaType}
                 </div>
-                {content.MediaType?.startsWith("image/") && content.Data && (
+                {content.MediaType?.startsWith("image/") && mediaImageUrl && (
                   <img
-                    src={`data:${content.MediaType};base64,${content.Data}`}
+                    src={mediaImageUrl}
                     alt="Tool output image"
                     className="rounded border msg-media-image"
                   />
