@@ -676,9 +676,16 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 		return fmt.Errorf("sync account plan: %w", err)
 	}
 
-	if basePlan == entitlement.CategoryBasic && m.OnPlanDowngrade != nil {
-		m.OnPlanDowngrade(ctx, accountID)
-	}
+	// TODO: OnPlanDowngrade is disabled. The subscription poller replays
+	// 60 days of Stripe events on every deploy, and stale cancellation
+	// events from old subscriptions can fire the downgrade callback for
+	// customers who have a current active subscription (different sub ID).
+	// This caused 81 paying users' VMs to be stopped on 2026-03-29.
+	// Re-enable once syncAccountPlan is subscription-aware or the poller
+	// persists its cursor.
+	// if basePlan == entitlement.CategoryBasic && m.OnPlanDowngrade != nil {
+	// 	m.OnPlanDowngrade(ctx, accountID)
+	// }
 
 	return nil
 }
