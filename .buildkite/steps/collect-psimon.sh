@@ -22,7 +22,7 @@ if [ -z "${START_TS}" ] && [ -n "${BUILDKITE_BUILD_ID:-}" ]; then
     START_TS=$(buildkite-agent meta-data get psimon-start 2>/dev/null || true)
 fi
 if [ -z "${START_TS}" ]; then
-    START_TS=$(( $(date +%s) - 3600 ))
+    START_TS=$(($(date +%s) - 3600))
     echo "WARNING: Could not determine build start time, using now-1h" >&2
 fi
 END_TS=$(date +%s)
@@ -31,7 +31,7 @@ echo "Querying psimon: start=${START_TS} end=${END_TS}" >&2
 curl -sf "${PSIMON_URL}/query?start=${START_TS}&end=${END_TS}" -o psimon-pressure.html
 
 if [ -s psimon-pressure.html ]; then
-    echo "Saved psimon-pressure.html ($(wc -c < psimon-pressure.html) bytes)" >&2
+    echo "Saved psimon-pressure.html ($(wc -c <psimon-pressure.html) bytes)" >&2
 else
     echo "WARNING: psimon returned empty response" >&2
     rm -f psimon-pressure.html
