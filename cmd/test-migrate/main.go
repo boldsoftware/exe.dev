@@ -11,7 +11,7 @@ import (
 
 	"exe.dev/exedb"
 
-	_ "modernc.org/sqlite"
+	_ "exe.dev/sqlite"
 )
 
 func main() {
