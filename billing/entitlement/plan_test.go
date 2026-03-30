@@ -1,8 +1,11 @@
 package entitlement
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"exe.dev/exedb"
 )
 
 func TestPlanGrants(t *testing.T) {
@@ -86,7 +89,6 @@ func TestPlanGrantsUnknownPlan(t *testing.T) {
 }
 
 func TestGetPlanCategory(t *testing.T) {
-	trial := "trial"
 	future := time.Now().Add(24 * time.Hour)
 	past := time.Now().Add(-24 * time.Hour)
 	oldDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -104,7 +106,7 @@ func TestGetPlanCategory(t *testing.T) {
 		},
 		{
 			name:   "canceled overrides trial",
-			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", BillingExemption: &trial, BillingTrialEndsAt: &future},
+			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryBasic,
 		},
 		{
@@ -124,12 +126,12 @@ func TestGetPlanCategory(t *testing.T) {
 		},
 		{
 			name:   "trial not expired is trial",
-			inputs: UserPlanInputs{Category: "no_billing", BillingExemption: &trial, BillingTrialEndsAt: &future},
+			inputs: UserPlanInputs{Category: "no_billing", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryTrial,
 		},
 		{
 			name:   "trial expired falls through",
-			inputs: UserPlanInputs{Category: "no_billing", BillingExemption: &trial, BillingTrialEndsAt: &past, CreatedAt: &newDate},
+			inputs: UserPlanInputs{Category: "no_billing", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
@@ -542,4 +544,134 @@ func TestAllPlansIncludesEnterprise(t *testing.T) {
 	if entIdx >= teamIdx {
 		t.Errorf("Enterprise (idx=%d) should come before Team (idx=%d)", entIdx, teamIdx)
 	}
+}
+
+// TestGetPlanForUser verifies the GetPlanForUser function.
+func TestGetPlanForUser(t *testing.T) {
+	future := time.Now().Add(24 * time.Hour)
+	past := time.Now().Add(-24 * time.Hour)
+	oldDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		row  exedb.GetUserPlanDataRow
+		want PlanCategory
+	}{
+		{
+			name: "friend plan",
+			row: exedb.GetUserPlanDataRow{
+				Category:  "friend",
+				PlanID:    strPtr("friend"),
+				CreatedAt: &newDate,
+			},
+			want: CategoryFriend,
+		},
+		{
+			name: "vip plan",
+			row: exedb.GetUserPlanDataRow{
+				Category:             "friend",
+				PlanID:               strPtr("vip:monthly:20260106"),
+				HasExplicitOverrides: 1,
+				CreatedAt:            &newDate,
+			},
+			want: CategoryVIP,
+		},
+		{
+			name: "active trial",
+			row: exedb.GetUserPlanDataRow{
+				Category:       "no_billing",
+				PlanID:         strPtr("trial:monthly:20260106"),
+				TrialExpiresAt: &future,
+				CreatedAt:      &newDate,
+			},
+			want: CategoryTrial,
+		},
+		{
+			name: "expired trial",
+			row: exedb.GetUserPlanDataRow{
+				Category:       "no_billing",
+				PlanID:         strPtr("trial:monthly:20260106"),
+				TrialExpiresAt: &past,
+				CreatedAt:      &newDate,
+			},
+			want: CategoryBasic,
+		},
+		{
+			name: "individual plan",
+			row: exedb.GetUserPlanDataRow{
+				Category:      "has_billing",
+				BillingStatus: "active",
+				PlanID:        strPtr("individual:monthly:20260106"),
+				CreatedAt:     &newDate,
+			},
+			want: CategoryIndividual,
+		},
+		{
+			name: "team member",
+			row: exedb.GetUserPlanDataRow{
+				Category:          "no_billing",
+				TeamBillingActive: 1,
+				CreatedAt:         &newDate,
+			},
+			want: CategoryTeam,
+		},
+		{
+			name: "grandfathered user",
+			row: exedb.GetUserPlanDataRow{
+				Category:  "no_billing",
+				CreatedAt: &oldDate,
+			},
+			want: CategoryGrandfathered,
+		},
+		{
+			name: "basic user",
+			row: exedb.GetUserPlanDataRow{
+				Category:  "no_billing",
+				CreatedAt: &newDate,
+			},
+			want: CategoryBasic,
+		},
+		{
+			name: "canceled overrides all",
+			row: exedb.GetUserPlanDataRow{
+				Category:       "has_billing",
+				BillingStatus:  "canceled",
+				PlanID:         strPtr("trial:monthly:20260106"),
+				TrialExpiresAt: &future,
+				CreatedAt:      &oldDate,
+			},
+			want: CategoryBasic,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockQueries{row: tt.row}
+			got, err := GetPlanForUser(context.Background(), mock, "test-user")
+			if err != nil {
+				t.Fatalf("GetPlanForUser() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("GetPlanForUser() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// mockQueries implements PlanDataQuerier for testing.
+type mockQueries struct {
+	row exedb.GetUserPlanDataRow
+	err error
+}
+
+func (m *mockQueries) GetUserPlanData(ctx context.Context, userID string) (exedb.GetUserPlanDataRow, error) {
+	if m.err != nil {
+		return exedb.GetUserPlanDataRow{}, m.err
+	}
+	return m.row, nil
+}
+
+func strPtr(s string) *string {
+	return &s
 }

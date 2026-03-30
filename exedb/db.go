@@ -684,6 +684,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserPlanCategoryStmt, err = db.PrepareContext(ctx, getUserPlanCategory); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserPlanCategory: %w", err)
 	}
+	if q.getUserPlanDataStmt, err = db.PrepareContext(ctx, getUserPlanData); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserPlanData: %w", err)
+	}
 	if q.getUserRootSupportStmt, err = db.PrepareContext(ctx, getUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserRootSupport: %w", err)
 	}
@@ -987,6 +990,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setIPAbuseFilterDisabledStmt, err = db.PrepareContext(ctx, setIPAbuseFilterDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetIPAbuseFilterDisabled: %w", err)
 	}
+	if q.setInviteCodeUserFieldsStmt, err = db.PrepareContext(ctx, setInviteCodeUserFields); err != nil {
+		return nil, fmt.Errorf("error preparing query SetInviteCodeUserFields: %w", err)
+	}
 	if q.setLastBouncesPollStmt, err = db.PrepareContext(ctx, setLastBouncesPoll); err != nil {
 		return nil, fmt.Errorf("error preparing query SetLastBouncesPoll: %w", err)
 	}
@@ -1016,9 +1022,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setUserAuthProviderStmt, err = db.PrepareContext(ctx, setUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserAuthProvider: %w", err)
-	}
-	if q.setUserBillingExemptionStmt, err = db.PrepareContext(ctx, setUserBillingExemption); err != nil {
-		return nil, fmt.Errorf("error preparing query SetUserBillingExemption: %w", err)
 	}
 	if q.setUserCgroupOverridesStmt, err = db.PrepareContext(ctx, setUserCgroupOverrides); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserCgroupOverrides: %w", err)
@@ -2305,6 +2308,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserPlanCategoryStmt: %w", cerr)
 		}
 	}
+	if q.getUserPlanDataStmt != nil {
+		if cerr := q.getUserPlanDataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserPlanDataStmt: %w", cerr)
+		}
+	}
 	if q.getUserRootSupportStmt != nil {
 		if cerr := q.getUserRootSupportStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserRootSupportStmt: %w", cerr)
@@ -2810,6 +2818,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setIPAbuseFilterDisabledStmt: %w", cerr)
 		}
 	}
+	if q.setInviteCodeUserFieldsStmt != nil {
+		if cerr := q.setInviteCodeUserFieldsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setInviteCodeUserFieldsStmt: %w", cerr)
+		}
+	}
 	if q.setLastBouncesPollStmt != nil {
 		if cerr := q.setLastBouncesPollStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setLastBouncesPollStmt: %w", cerr)
@@ -2858,11 +2871,6 @@ func (q *Queries) Close() error {
 	if q.setUserAuthProviderStmt != nil {
 		if cerr := q.setUserAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserAuthProviderStmt: %w", cerr)
-		}
-	}
-	if q.setUserBillingExemptionStmt != nil {
-		if cerr := q.setUserBillingExemptionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setUserBillingExemptionStmt: %w", cerr)
 		}
 	}
 	if q.setUserCgroupOverridesStmt != nil {
@@ -3424,6 +3432,7 @@ type Queries struct {
 	getUserLLMCreditStmt                       *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
+	getUserPlanDataStmt                        *sql.Stmt
 	getUserRootSupportStmt                     *sql.Stmt
 	getUserWithDetailsStmt                     *sql.Stmt
 	getUserWithSSHKeyStmt                      *sql.Stmt
@@ -3525,6 +3534,7 @@ type Queries struct {
 	setBoxLockReasonStmt                       *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
+	setInviteCodeUserFieldsStmt                *sql.Stmt
 	setLastBouncesPollStmt                     *sql.Stmt
 	setLoginCreationDisabledStmt               *sql.Stmt
 	setNewThrottleEmailPatternsStmt            *sql.Stmt
@@ -3535,7 +3545,6 @@ type Queries struct {
 	setTeamAuthProviderStmt                    *sql.Stmt
 	setTrialExpiresAtStmt                      *sql.Stmt
 	setUserAuthProviderStmt                    *sql.Stmt
-	setUserBillingExemptionStmt                *sql.Stmt
 	setUserCgroupOverridesStmt                 *sql.Stmt
 	setUserDiscordStmt                         *sql.Stmt
 	setUserIsLockedOutStmt                     *sql.Stmt
@@ -3822,6 +3831,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
+		getUserPlanDataStmt:                        q.getUserPlanDataStmt,
 		getUserRootSupportStmt:                     q.getUserRootSupportStmt,
 		getUserWithDetailsStmt:                     q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                      q.getUserWithSSHKeyStmt,
@@ -3923,6 +3933,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,
+		setInviteCodeUserFieldsStmt:                q.setInviteCodeUserFieldsStmt,
 		setLastBouncesPollStmt:                     q.setLastBouncesPollStmt,
 		setLoginCreationDisabledStmt:               q.setLoginCreationDisabledStmt,
 		setNewThrottleEmailPatternsStmt:            q.setNewThrottleEmailPatternsStmt,
@@ -3933,7 +3944,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setTeamAuthProviderStmt:                    q.setTeamAuthProviderStmt,
 		setTrialExpiresAtStmt:                      q.setTrialExpiresAtStmt,
 		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,
-		setUserBillingExemptionStmt:                q.setUserBillingExemptionStmt,
 		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,
 		setUserDiscordStmt:                         q.setUserDiscordStmt,
 		setUserIsLockedOutStmt:                     q.setUserIsLockedOutStmt,

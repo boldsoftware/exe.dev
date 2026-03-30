@@ -536,8 +536,6 @@ type User struct {
 	NewVmCreationDisabled  bool       `db:"new_vm_creation_disabled" json:"new_vm_creation_disabled"`
 	DiscordID              *string    `db:"discord_id" json:"discord_id"`
 	DiscordUsername        *string    `db:"discord_username" json:"discord_username"`
-	BillingExemption       *string    `db:"billing_exemption" json:"billing_exemption"`
-	BillingTrialEndsAt     *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
 	SignedUpWithInviteID   *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
 	NextSSHKeyNumber       int64      `db:"next_ssh_key_number" json:"next_ssh_key_number"`
 	Region                 string     `db:"region" json:"region"`

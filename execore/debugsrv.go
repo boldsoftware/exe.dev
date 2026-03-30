@@ -2158,13 +2158,13 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
+			BillingExemption       string  `json:"billing_exemption,omitempty"`
 			CreditAvailableUSD     float64 `json:"credit_available_usd"`
 			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
 			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
 			DiscordID              string  `json:"discord_id,omitempty"`
 			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
-			BillingExemption       string  `json:"billing_exemption,omitempty"`
 			Limits                 string  `json:"limits,omitempty"`
 		}
 		var usersJSON []userInfo
@@ -2191,8 +2191,13 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				DiscordID:              ptrStr(u.DiscordID),
 				DiscordUsername:        ptrStr(u.DiscordUsername),
 				InviteCount:            invitesByUser[u.UserID],
-				BillingExemption:       ptrStr(u.BillingExemption),
 				Limits:                 ptrStr(u.Limits),
+			}
+			// Derive billing exemption for display from account_plans
+			if acctID != "" {
+				if activePlan, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, acctID); err == nil {
+					ui.BillingExemption = entitlement.DeriveExemptionDisplay(&activePlan.PlanID)
+				}
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit
@@ -2578,8 +2583,8 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 
 // handleDebugGrantTrial grants a trial to an existing user.
 // This is the admin equivalent of applying a trial invite code post-facto.
-// It sets billing_exemption='trial', updates account_plans, and re-enables
-// VM creation if it was disabled (e.g. by a false-positive IPQS flag).
+// It updates account_plans and re-enables VM creation if it was disabled
+// (e.g. by a false-positive IPQS flag).
 func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -2600,40 +2605,34 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check current plan to prevent downgrades. Fail closed: any billing
-	// lookup error other than "no row" is a hard stop.
-	billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID)
+	// Check current plan to prevent downgrades.
+	cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (entitlement.PlanCategory, error) {
+		return entitlement.GetPlanForUser(ctx, q, userID)
+	})
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, fmt.Sprintf("failed to check billing: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to check plan: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if err == nil {
-		inputs := entitlement.UserPlanInputs{
-			Category:           billingRow.Category,
-			BillingStatus:      billingRow.BillingStatus,
-			BillingExemption:   billingRow.BillingExemption,
-			CreatedAt:          billingRow.CreatedAt,
-			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
-			// TeamBillingActive and HasExplicitOverrides are not populated here.
-			// Team users may be misclassified as Basic; the GetTeamForUser check
-			// below catches them separately.
+		// Check for active trial to provide better error message
+		var trialExpiresAt *time.Time
+		if acct, acctErr := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID); acctErr == nil {
+			if activePlan, planErr := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, acct.ID); planErr == nil && strings.HasPrefix(activePlan.PlanID, "trial:") {
+				trialExpiresAt = activePlan.TrialExpiresAt
+			}
 		}
-		cat := entitlement.GetPlanCategory(inputs)
+
 		switch cat {
 		case entitlement.CategoryBasic:
-			// GetPlanCategory maps canceled → CategoryBasic; reject those explicitly.
-			if billingRow.BillingStatus == "canceled" {
-				http.Error(w, "user has canceled billing; trial cannot override canceled status", http.StatusBadRequest)
-				return
-			}
+			// Basic users can be granted a trial (including expired trials).
 		case entitlement.CategoryRestricted:
 			// Restricted users can be granted a trial.
 		case entitlement.CategoryTrial:
-			if billingRow.BillingTrialEndsAt != nil && time.Now().Before(*billingRow.BillingTrialEndsAt) {
-				http.Error(w, fmt.Sprintf("user already has an active trial ending %s", billingRow.BillingTrialEndsAt.Format("2006-01-02")), http.StatusBadRequest)
+			if trialExpiresAt != nil && time.Now().Before(*trialExpiresAt) {
+				http.Error(w, fmt.Sprintf("user already has an active trial ending %s", trialExpiresAt.Format("2006-01-02")), http.StatusBadRequest)
 				return
 			}
-			// Note: expired trials resolve to CategoryBasic via GetPlanCategory, not here.
+			// Note: expired trials resolve to CategoryBasic via GetPlanForUser, not here.
 		default:
 			http.Error(w, fmt.Sprintf("user already has %s plan; granting a trial would be a downgrade", cat), http.StatusBadRequest)
 			return
@@ -2667,17 +2666,6 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 	trialEnd := sqlite.NormalizeTime(now.AddDate(0, 0, days))
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
-		// Set billing exemption on user, preserving existing invite ID.
-		exemption := "trial"
-		if err := q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
-			BillingExemption:     &exemption,
-			BillingTrialEndsAt:   &trialEnd,
-			SignedUpWithInviteID: user.SignedUpWithInviteID,
-			UserID:               userID,
-		}); err != nil {
-			return fmt.Errorf("set billing exemption: %w", err)
-		}
-
 		// Re-enable VM creation if disabled.
 		if user.NewVmCreationDisabled {
 			if err := q.SetUserNewVMCreationDisabled(ctx, exedb.SetUserNewVMCreationDisabledParams{
@@ -5318,8 +5306,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		PlanCategory               string
 		DiscordID                  string
 		DiscordUsername            string
-		BillingExemption           string
-		BillingTrialEndsAt         string
 		SignedUpWithInviteID       string
 		BillingAccounts            []billingAccountInfo
 		HasCredit                  bool
@@ -5357,8 +5343,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		VMCreationDisabled:       user.NewVmCreationDisabled,
 		DiscordID:                ptrStr(user.DiscordID),
 		DiscordUsername:          ptrStr(user.DiscordUsername),
-		BillingExemption:         ptrStr(user.BillingExemption),
-		BillingTrialEndsAt:       formatTime(user.BillingTrialEndsAt),
 		SignedUpWithInviteID:     formatInt64Ptr(user.SignedUpWithInviteID),
 		BillingAccounts:          billingAccounts,
 		HasCredit:                hasCredit,
@@ -5373,18 +5357,12 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CanGrantTrial:            true, // default true; overridden below if billing exists
 	}
 
-	if billingRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserBilling, userID); err == nil {
-		inputs := entitlement.UserPlanInputs{
-			Category:           billingRow.Category,
-			BillingStatus:      billingRow.BillingStatus,
-			BillingExemption:   billingRow.BillingExemption,
-			CreatedAt:          billingRow.CreatedAt,
-			BillingTrialEndsAt: billingRow.BillingTrialEndsAt,
-		}
-		version := entitlement.GetPlanCategory(inputs)
-		data.PlanCategory = string(version)
-		data.PlanName = entitlement.PlanName(version)
-		data.CanGrantTrial = version == entitlement.CategoryBasic || version == entitlement.CategoryRestricted
+	if cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (entitlement.PlanCategory, error) {
+		return entitlement.GetPlanForUser(ctx, q, userID)
+	}); err == nil {
+		data.PlanCategory = string(cat)
+		data.PlanName = entitlement.PlanName(cat)
+		data.CanGrantTrial = cat == entitlement.CategoryBasic || cat == entitlement.CategoryRestricted
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {

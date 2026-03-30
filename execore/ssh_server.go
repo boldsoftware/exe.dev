@@ -1497,7 +1497,7 @@ func (s *Server) lookupUnusedInviteCode(ctx context.Context, code string) *exedb
 	return &invite
 }
 
-// applyInviteCode marks an invite code as used and sets the user's billing exemption.
+// applyInviteCode marks an invite code as used and updates account_plans.
 func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCode, userID string) error {
 	return s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		// Mark the invite code as used
@@ -1508,53 +1508,44 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			return fmt.Errorf("failed to mark invite code as used: %w", err)
 		}
 
-		// Set user billing exemption based on plan type
-		var billingExemption *string
+		// Update user fields for invite code tracking
+		if err := q.SetInviteCodeUserFields(ctx, exedb.SetInviteCodeUserFieldsParams{
+			SignedUpWithInviteID: &inviteCode.ID,
+			UserID:               userID,
+		}); err != nil {
+			return fmt.Errorf("failed to update user invite fields: %w", err)
+		}
+
+		// Update account_plans based on plan type
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("failed to get account: %w", err)
+		}
+
+		var basePlan entitlement.PlanCategory
 		var trialEndsAt *time.Time
 
 		switch inviteCode.PlanType {
 		case "free":
-			exemption := "free"
-			billingExemption = &exemption
+			basePlan = entitlement.CategoryFriend
 		case "trial":
-			exemption := "trial"
-			billingExemption = &exemption
+			basePlan = entitlement.CategoryTrial
 			// Trial ends in 1 month
 			t := sqlite.NormalizeTime(time.Now().AddDate(0, 1, 0))
 			trialEndsAt = &t
 		}
 
-		if err := q.SetUserBillingExemption(ctx, exedb.SetUserBillingExemptionParams{
-			BillingExemption:     billingExemption,
-			BillingTrialEndsAt:   trialEndsAt,
-			SignedUpWithInviteID: &inviteCode.ID,
-			UserID:               userID,
-		}); err != nil {
-			return fmt.Errorf("failed to set user billing exemption: %w", err)
-		}
-
-		// Update account_plans if the user has an account.
-		acct, err := q.GetAccountByUserID(ctx, userID)
-		if err == nil {
-			var basePlan entitlement.PlanCategory
-			switch inviteCode.PlanType {
-			case "free":
-				basePlan = entitlement.CategoryFriend
-			case "trial":
-				basePlan = entitlement.CategoryTrial
-			}
-			if basePlan != "" {
-				now := sqlite.NormalizeTime(time.Now())
-				changedBy := "invite:" + inviteCode.Code
-				if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
-					AccountID:      acct.ID,
-					PlanID:         entitlement.PlanID(basePlan),
-					At:             now,
-					TrialExpiresAt: trialEndsAt,
-					ChangedBy:      changedBy,
-				}); err != nil {
-					return fmt.Errorf("failed to apply invite: %w", err)
-				}
+		if basePlan != "" {
+			now := sqlite.NormalizeTime(time.Now())
+			changedBy := "invite:" + inviteCode.Code
+			if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+				AccountID:      acct.ID,
+				PlanID:         entitlement.PlanID(basePlan),
+				At:             now,
+				TrialExpiresAt: trialEndsAt,
+				ChangedBy:      changedBy,
+			}); err != nil {
+				return fmt.Errorf("failed to apply invite: %w", err)
 			}
 		}
 

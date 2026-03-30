@@ -24,8 +24,6 @@ table.info th { width: 200px; }
 <tr><th>VM Creation Disabled</th><td>{{if .VMCreationDisabled}}Yes{{else}}No{{end}}</td></tr>
 {{if .PlanName}}<tr><th>Plan</th><td>{{.PlanName}}</td></tr>{{end}}
 {{if .DiscordID}}<tr><th>Discord</th><td>{{.DiscordUsername}} ({{.DiscordID}})</td></tr>{{end}}
-{{if .BillingExemption}}<tr><th>Billing Exemption</th><td>{{.BillingExemption}}</td></tr>{{end}}
-{{if .BillingTrialEndsAt}}<tr><th>Billing Trial Ends</th><td>{{.BillingTrialEndsAt}}</td></tr>{{end}}
 {{if .SignedUpWithInviteID}}<tr><th>Signed Up With Invite</th><td>{{.SignedUpWithInviteID}}</td></tr>{{end}}
 <tr><th>Region</th><td>{{.Region}} ({{.RegionDisplay}})</td></tr>
 </table>

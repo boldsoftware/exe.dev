@@ -1,8 +1,11 @@
 package entitlement
 
 import (
+	"context"
 	"strings"
 	"time"
+
+	"exe.dev/exedb"
 )
 
 // PlanCategory identifies a billing plan.
@@ -300,14 +303,14 @@ type UserPlanInputs struct {
 	// BillingStatus is the subscription status: "active", "canceled", or "".
 	BillingStatus string
 
-	// BillingExemption is the exemption type: "free", "trial", or nil.
-	BillingExemption *string
+	// PlanID is the active plan ID from account_plans (e.g., "trial:monthly:20260106", "friend", "free").
+	PlanID *string
+
+	// TrialExpiresAt is when the trial expires, if the plan is a trial.
+	TrialExpiresAt *time.Time
 
 	// CreatedAt is when the user account was created.
 	CreatedAt *time.Time
-
-	// BillingTrialEndsAt is when the trial expires, if applicable.
-	BillingTrialEndsAt *time.Time
 
 	// HasExplicitOverrides indicates VIP-style per-user overrides exist.
 	HasExplicitOverrides bool
@@ -344,9 +347,9 @@ func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
 		return CategoryIndividual
 	}
 
-	// Trial: trial exemption that hasn't expired.
-	if inputs.BillingExemption != nil && *inputs.BillingExemption == "trial" {
-		if inputs.BillingTrialEndsAt != nil && time.Now().Before(*inputs.BillingTrialEndsAt) {
+	// Trial: plan_id starts with "trial:" and hasn't expired.
+	if inputs.PlanID != nil && strings.HasPrefix(*inputs.PlanID, "trial:") {
+		if inputs.TrialExpiresAt != nil && time.Now().Before(*inputs.TrialExpiresAt) {
 			return CategoryTrial
 		}
 	}
@@ -357,4 +360,57 @@ func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
 	}
 
 	return CategoryBasic
+}
+
+// PlanDataQuerier abstracts the database query needed by GetPlanForUser.
+type PlanDataQuerier interface {
+	GetUserPlanData(ctx context.Context, userID string) (exedb.GetUserPlanDataRow, error)
+}
+
+// GetPlanForUser returns the user's plan category by querying the database
+// and applying all billing logic in one function. This replaces the pattern
+// of manually constructing UserPlanInputs and calling GetPlanCategory.
+//
+// This is the preferred way to determine a user's plan. It encapsulates:
+//   - Querying account_plans for trial/friend/free status
+//   - Checking billing_events for active/canceled status
+//   - Checking team membership and team billing owner status
+//   - Applying grandfathered status for old accounts
+//   - Handling trial expiration logic
+//
+// Returns sql.ErrNoRows if the user doesn't exist.
+func GetPlanForUser(ctx context.Context, q PlanDataQuerier, userID string) (PlanCategory, error) {
+	row, err := q.GetUserPlanData(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+
+	// Construct inputs for GetPlanCategory
+	inputs := UserPlanInputs{
+		Category:             row.Category,
+		BillingStatus:        row.BillingStatus,
+		PlanID:               row.PlanID,
+		TrialExpiresAt:       row.TrialExpiresAt,
+		CreatedAt:            row.CreatedAt,
+		HasExplicitOverrides: row.HasExplicitOverrides != 0,
+		TeamBillingActive:    row.TeamBillingActive != 0,
+	}
+
+	return GetPlanCategory(inputs), nil
+}
+
+// DeriveExemptionDisplay returns a human-readable billing exemption string
+// for display purposes (debug UI, logs). This is NOT used for plan decisions.
+// Returns "free", "trial", or empty string.
+func DeriveExemptionDisplay(planID *string) string {
+	if planID == nil {
+		return ""
+	}
+	if *planID == "friend" || *planID == "free" {
+		return "free"
+	}
+	if strings.HasPrefix(*planID, "trial:") {
+		return "trial"
+	}
+	return ""
 }

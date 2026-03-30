@@ -72,16 +72,6 @@ SELECT
 FROM invite_codes
 WHERE assigned_to_user_id = ?;
 
--- User billing exemption
-
--- name: SetUserBillingExemption :exec
-UPDATE users SET
-    billing_exemption = ?,
-    billing_trial_ends_at = ?,
-    signed_up_with_invite_id = ?,
-    created_for_login_with_exe = 0
-WHERE user_id = ?;
-
 -- name: ListAllInviteCodesWithEmails :many
 -- Lists all invite codes with giver and recipient emails for debug page
 SELECT
@@ -101,3 +91,9 @@ FROM invite_codes ic
 LEFT JOIN users giver ON ic.assigned_to_user_id = giver.user_id
 LEFT JOIN users recipient ON ic.used_by_user_id = recipient.user_id
 ORDER BY ic.id DESC;
+
+-- name: SetInviteCodeUserFields :exec
+UPDATE users SET
+    signed_up_with_invite_id = ?,
+    created_for_login_with_exe = 0
+WHERE user_id = ?;

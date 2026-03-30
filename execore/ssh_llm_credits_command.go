@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/llmgateway"
@@ -76,6 +77,14 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 		return nil
 	}
 
+	// Derive billing exemption for display from account_plans
+	var billingExemption string
+	if hasBillingAccount {
+		if activePlan, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActiveAccountPlan, billingAccountID); err == nil {
+			billingExemption = entitlement.DeriveExemptionDisplay(&activePlan.PlanID)
+		}
+	}
+
 	if cc.WantJSON() {
 		result := map[string]any{
 			"user_id": user.UserID,
@@ -110,8 +119,8 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 			"has_account":    hasBillingAccount,
 			"billing_status": billingStatus.BillingStatus,
 		}
-		if billingStatus.BillingExemption != nil {
-			billingJSON["billing_exemption"] = *billingStatus.BillingExemption
+		if billingExemption != "" {
+			billingJSON["billing_exemption"] = billingExemption
 		}
 		if hasBillingAccount {
 			billingJSON["account_id"] = billingAccountID
@@ -183,8 +192,8 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	cc.Writeln("")
 	cc.Writeln("\033[1;33m── Billing Credit ──\033[0m")
 	cc.Writeln("  Billing status:  %s", cmp.Or(billingStatus.BillingStatus, "(none)"))
-	if billingStatus.BillingExemption != nil {
-		cc.Writeln("  Exemption:       %s", *billingStatus.BillingExemption)
+	if billingExemption != "" {
+		cc.Writeln("  Exemption:       %s", billingExemption)
 	}
 	if hasBillingAccount {
 		cc.Writeln("  Account ID:      %s", billingAccountID)

@@ -390,31 +390,20 @@ func (q *Queries) ListUnusedSystemInviteCodes(ctx context.Context) ([]InviteCode
 	return items, nil
 }
 
-const setUserBillingExemption = `-- name: SetUserBillingExemption :exec
-
+const setInviteCodeUserFields = `-- name: SetInviteCodeUserFields :exec
 UPDATE users SET
-    billing_exemption = ?,
-    billing_trial_ends_at = ?,
     signed_up_with_invite_id = ?,
     created_for_login_with_exe = 0
 WHERE user_id = ?
 `
 
-type SetUserBillingExemptionParams struct {
-	BillingExemption     *string    `db:"billing_exemption" json:"billing_exemption"`
-	BillingTrialEndsAt   *time.Time `db:"billing_trial_ends_at" json:"billing_trial_ends_at"`
-	SignedUpWithInviteID *int64     `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
-	UserID               string     `db:"user_id" json:"user_id"`
+type SetInviteCodeUserFieldsParams struct {
+	SignedUpWithInviteID *int64 `db:"signed_up_with_invite_id" json:"signed_up_with_invite_id"`
+	UserID               string `db:"user_id" json:"user_id"`
 }
 
-// User billing exemption
-func (q *Queries) SetUserBillingExemption(ctx context.Context, arg SetUserBillingExemptionParams) error {
-	_, err := q.exec(ctx, q.setUserBillingExemptionStmt, setUserBillingExemption,
-		arg.BillingExemption,
-		arg.BillingTrialEndsAt,
-		arg.SignedUpWithInviteID,
-		arg.UserID,
-	)
+func (q *Queries) SetInviteCodeUserFields(ctx context.Context, arg SetInviteCodeUserFieldsParams) error {
+	_, err := q.exec(ctx, q.setInviteCodeUserFieldsStmt, setInviteCodeUserFields, arg.SignedUpWithInviteID, arg.UserID)
 	return err
 }
 

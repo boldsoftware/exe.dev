@@ -113,7 +113,7 @@ func (q *Queries) GetUserAuthProvider(ctx context.Context, userID string) (GetUs
 }
 
 const getUserByDiscordUsername = `-- name: GetUserByDiscordUsername :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE discord_username = ?
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE discord_username = ?
 `
 
 func (q *Queries) GetUserByDiscordUsername(ctx context.Context, discordUsername *string) (User, error) {
@@ -128,8 +128,6 @@ func (q *Queries) GetUserByDiscordUsername(ctx context.Context, discordUsername 
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
-		&i.BillingExemption,
-		&i.BillingTrialEndsAt,
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
@@ -145,7 +143,7 @@ func (q *Queries) GetUserByDiscordUsername(ctx context.Context, discordUsername 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
 FROM users
 WHERE canonical_email = ?
 `
@@ -162,8 +160,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
-		&i.BillingExemption,
-		&i.BillingTrialEndsAt,
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
@@ -223,7 +219,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
 FROM users
 WHERE user_id = ?
 `
@@ -240,8 +236,6 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
-		&i.BillingExemption,
-		&i.BillingTrialEndsAt,
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
@@ -280,7 +274,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, billing_exemption, billing_trial_ends_at, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -301,8 +295,6 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.NewVmCreationDisabled,
 			&i.DiscordID,
 			&i.DiscordUsername,
-			&i.BillingExemption,
-			&i.BillingTrialEndsAt,
 			&i.SignedUpWithInviteID,
 			&i.NextSSHKeyNumber,
 			&i.Region,

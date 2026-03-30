@@ -183,7 +183,7 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 }
 
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
-SELECT u.user_id, u.email, u.created_at, u.root_support, u.created_for_login_with_exe, u.new_vm_creation_disabled, u.discord_id, u.discord_username, u.billing_exemption, u.billing_trial_ends_at, u.signed_up_with_invite_id, u.next_ssh_key_number, u.region, u.canonical_email, u.is_locked_out, u.limits, u.cgroup_overrides, u.newsletter_subscribed, u.auth_provider, u.auth_provider_id
+SELECT u.user_id, u.email, u.created_at, u.root_support, u.created_for_login_with_exe, u.new_vm_creation_disabled, u.discord_id, u.discord_username, u.signed_up_with_invite_id, u.next_ssh_key_number, u.region, u.canonical_email, u.is_locked_out, u.limits, u.cgroup_overrides, u.newsletter_subscribed, u.auth_provider, u.auth_provider_id
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?
@@ -201,8 +201,6 @@ func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User
 		&i.NewVmCreationDisabled,
 		&i.DiscordID,
 		&i.DiscordUsername,
-		&i.BillingExemption,
-		&i.BillingTrialEndsAt,
 		&i.SignedUpWithInviteID,
 		&i.NextSSHKeyNumber,
 		&i.Region,
