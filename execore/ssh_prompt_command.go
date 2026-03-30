@@ -9,6 +9,7 @@ import (
 
 	"github.com/anmitsu/go-shlex"
 	gliderssh "github.com/gliderlabs/ssh"
+	"golang.org/x/term"
 
 	"exe.dev/execore/promptloop"
 	"exe.dev/exemenu"
@@ -44,9 +45,14 @@ func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.Comman
 	dispatcher := &commandTreeDispatcher{ss: ss, cc: cc}
 	output := &terminalOutput{cc: cc}
 
-	// Save and restore the lobby prompt since the prompt loop changes it.
+	// Save and restore the lobby prompt and history since the prompt loop
+	// has its own context (English sentences vs. REPL commands).
 	lobbyPrompt := fmt.Sprintf("\033[1;36m%s\033[0m \033[37m▶\033[0m ", ss.server.env.ReplHost)
-	defer cc.SetPrompt(lobbyPrompt)
+	lobbyHistory := cc.Terminal.SwapHistory(term.NewHistory(100))
+	defer func() {
+		cc.Terminal.SwapHistory(lobbyHistory)
+		cc.SetPrompt(lobbyPrompt)
+	}()
 
 	cc.Writeln("\033[1;36m🤖 prompt\033[0m — interactive AI assistant")
 	cc.Writeln("")

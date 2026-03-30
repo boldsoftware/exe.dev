@@ -503,6 +503,18 @@ func (t *Terminal) historyAdd(entry string) {
 	t.History.Add(entry)
 }
 
+// SwapHistory replaces the terminal's history with h and returns the previous
+// history. It resets history navigation state (historyIndex, historyPending).
+func (t *Terminal) SwapHistory(h History) History {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	old := t.History
+	t.History = h
+	t.historyIndex = -1
+	t.historyPending = ""
+	return old
+}
+
 // handleKey processes the given key and, optionally, returns a line of text
 // that the user has entered.
 func (t *Terminal) handleKey(key rune) (line string, ok bool) {
@@ -1008,6 +1020,14 @@ func (t *Terminal) SetBracketedPasteMode(on bool) {
 		io.WriteString(t.c, "\x1b[?2004h")
 	} else {
 		io.WriteString(t.c, "\x1b[?2004l")
+	}
+}
+
+// NewHistory returns a History that stores up to max entries.
+func NewHistory(max int) History {
+	return &stRingBuffer{
+		entries: make([]string, max),
+		max:     max,
 	}
 }
 
