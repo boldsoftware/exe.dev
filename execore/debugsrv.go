@@ -6802,6 +6802,9 @@ func (s *Server) handleDebugTeamCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.slog().InfoContext(ctx, "created team via debug", "team_id", teamID, "billing_owner", ownerUserID)
+	if user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, ownerUserID); err == nil {
+		s.slackFeed.NewTeam(ctx, user.Email)
+	}
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "created team %s with billing_owner %s", teamID, ownerUserID)
 }

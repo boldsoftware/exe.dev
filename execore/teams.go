@@ -663,6 +663,10 @@ func (s *Server) EnableTeam(ctx context.Context, userID, displayName string) (st
 		"display_name", displayName,
 		"user_id", userID)
 
+	if user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID); err == nil {
+		s.slackFeed.NewTeam(ctx, user.Email)
+	}
+
 	return teamID, nil
 }
 
@@ -727,6 +731,10 @@ func (s *Server) DisableTeam(ctx context.Context, userID string) error {
 		"team_id", teamID,
 		"display_name", team.DisplayName,
 		"user_id", userID)
+
+	if user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID); err == nil {
+		s.slackFeed.TeamDowngrade(ctx, user.Email)
+	}
 
 	return nil
 }

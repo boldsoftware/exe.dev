@@ -611,6 +611,7 @@ func (ss *SSHServer) handleTeamCreateCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	slog.InfoContext(ctx, "root: created team", "team_id", teamID, "billing_owner", billingOwnerEmail, "by", cc.User.ID)
+	ss.server.slackFeed.NewTeam(ctx, billingOwnerEmail)
 	cc.Writeln("Created team %s (%s) with billing owner %s", teamID, displayName, billingOwnerEmail)
 	return nil
 }
