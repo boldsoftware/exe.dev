@@ -18,6 +18,7 @@ import shutil
 import socketserver
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -472,7 +473,7 @@ def cleanup_worktree(wt_path):
 
 def copy_skills(wt_path):
     """Copy reviewing-code and autorefine skills into the worktree."""
-    skills_src = os.path.expanduser("~/.claude/skills")
+    skills_src = os.path.join(SCRIPT_DIR, "skills")
     skills_dst = os.path.join(wt_path, ".claude", "skills")
     for skill in ["reviewing-code", "autorefine"]:
         src = os.path.join(skills_src, skill)
@@ -487,8 +488,68 @@ def copy_skills(wt_path):
 # ---------------------------------------------------------------------------
 
 
+AGENTS_PATH = "scripts/agents"
+DEPLOY_STATE_FILE = os.path.join(STATE_DIR, "last-deployed-agents-tree")
+
+
+def check_for_self_update():
+    """Fetch origin and check if scripts/agents/ changed. If so, redeploy and exit.
+
+    The gardening pass will also fetch+reset, but we check first so that
+    updates to bored itself (code, skills, UI, service file) take effect
+    before any work begins.
+    """
+    try:
+        # Use last successful deploy as baseline so a failed deploy retries.
+        try:
+            with open(DEPLOY_STATE_FILE) as f:
+                old_tree = f.read().strip()
+        except FileNotFoundError:
+            old_tree = git("rev-parse", "HEAD:" + AGENTS_PATH, cwd=EXE_REPO, check=False)
+
+        git("fetch", "origin", cwd=EXE_REPO)
+        git("reset", "--hard", "origin/main", cwd=EXE_REPO)
+        new_tree = git("rev-parse", "HEAD:" + AGENTS_PATH, cwd=EXE_REPO, check=False)
+
+        if old_tree == new_tree:
+            return  # no changes
+
+        log.info("scripts/agents changed (%s -> %s), redeploying", old_tree[:7], new_tree[:7])
+
+        # Rebuild UI
+        ui_dir = os.path.join(EXE_REPO, "scripts", "agents", "bored", "ui")
+        if os.path.isdir(ui_dir):
+            run_cmd(["npm", "ci"], cwd=ui_dir)
+            run_cmd(["node", "build.js"], cwd=ui_dir)
+            log.info("UI rebuilt")
+
+        # Update systemd service
+        service_src = os.path.join(EXE_REPO, "scripts", "agents", "bored", "bored.service")
+        if os.path.isfile(service_src):
+            run_cmd(["sudo", "cp", service_src, "/etc/systemd/system/bored.service"])
+            run_cmd(["sudo", "systemctl", "daemon-reload"])
+            log.info("systemd service updated")
+
+        # Record successful deploy so failures don't get stuck.
+        with open(DEPLOY_STATE_FILE, "w") as f:
+            f.write(new_tree)
+
+        # os._exit: sys.exit only raises SystemExit in the current thread,
+        # which is the daemon worker thread — the main thread would keep running.
+        log.info("exiting for restart")
+        os._exit(0)
+
+    except Exception:
+        log.exception("self-update deploy failed")
+        send_alert(
+            "bored: self-update deploy failed",
+            traceback.format_exc()[-1000:],
+        )
+
+
 def gardening_pass(queued_issues=None):
     """Run a gardening pass across all open issues. Returns issue number (int) or 0."""
+    # fetch+reset already done by check_for_self_update, but be safe
     git("fetch", "origin", cwd=EXE_REPO)
     git("reset", "--hard", "origin/main", cwd=EXE_REPO)
 
@@ -704,6 +765,8 @@ def background_worker():
 
     while True:
         try:
+            check_for_self_update()
+
             if db_count_items() < MAX_ITEMS:
                 if time.time() - last_gardening_empty < GARDENING_BACKOFF:
                     log.debug("gardening backoff, skipping iteration")
