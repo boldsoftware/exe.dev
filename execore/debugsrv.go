@@ -7559,6 +7559,8 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		Users             int            `json:"users"`
 		CapacityTotal     int            `json:"capacity_total"`
 		CapacityUsed      int            `json:"capacity_used"`
+		VMSoftLimit       int            `json:"vm_soft_limit"`
+		VMHardLimit       int            `json:"vm_hard_limit"`
 	}
 
 	// Build a map from region code -> regionInfo, seeded from region.All().
@@ -7591,6 +7593,8 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		if ec.up.Load() {
 			info.ExeletsUp++
 			info.CapacityTotal += int(ec.VMHardLimit())
+			info.VMSoftLimit += int(ec.VMSoftLimit())
+			info.VMHardLimit += int(ec.VMHardLimit())
 		}
 	}
 
