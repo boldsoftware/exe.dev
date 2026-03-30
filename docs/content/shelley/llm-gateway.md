@@ -29,7 +29,7 @@ $ curl -s http://169.254.169.254/gateway/llm/anthropic/v1/messages \
     -H "content-type: application/json" \
     -H "anthropic-version: 2023-06-01" \
     -d '{
-      "model": "claude-sonnet-4-5-20250929",
+      "model": "claude-sonnet-4-6",
       "max_tokens": 256,
       "messages": [{"role": "user", "content": "Hello!"}]
     }'
