@@ -945,38 +945,13 @@ const summaryRows = computed(() => {
   return rows
 })
 
-// Compute the most common version per process name for mismatch detection
-const modeVersionByProcess = computed(() => {
-  const procVersions = new Map<string, Map<string, number>>()
-  for (const p of baseFilteredProcs.value) {
-    if (!p.version) continue
-    if (!procVersions.has(p.process)) procVersions.set(p.process, new Map())
-    const vc = procVersions.get(p.process)!
-    vc.set(p.version, (vc.get(p.version) || 0) + 1)
-  }
-  const result = new Map<string, string>()
-  for (const [proc, vc] of procVersions) {
-    let maxCount = 0
-    let modeVersion = ''
-    for (const [version, count] of vc) {
-      if (count > maxCount) {
-        maxCount = count
-        modeVersion = version
-      }
-    }
-    result.set(proc, modeVersion)
-  }
-  return result
-})
-
 function stepsWithOutput(d: DeployStatus): { name: string; output: string }[] {
   return d.steps.filter(s => s.output && s.status !== 'failed')
 }
 
 function isMismatch(p: DeployProcess): boolean {
   if (!p.version) return false
-  const mode = modeVersionByProcess.value.get(p.process)
-  return !!mode && mode !== p.version
+  return p.version !== headSHA.value
 }
 
 // Deploy helpers
@@ -1011,7 +986,7 @@ function isDeploying(p: DeployProcess): boolean {
 }
 
 const deployableStages = new Set(['staging', 'prod', 'global'])
-const prodAllowedProcesses = new Set(['metricsd', 'cgtop'])
+const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd'])
 
 function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false
