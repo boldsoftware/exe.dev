@@ -100,6 +100,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		systemd-ask-password-console.path \
 		systemd-ask-password-wall.path \
 		ssh.socket \
+		ssh.service \
 		plymouth.service \
 		plymouth-start.service \
 		plymouth-quit.service \
