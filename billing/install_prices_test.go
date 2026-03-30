@@ -41,9 +41,10 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 
 	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/products/prod_individual":
+	case r.Method == http.MethodGet && (r.URL.Path == "/v1/products/prod_individual" || r.URL.Path == "/v1/products/prod_team"):
+		productID := r.URL.Path[len("/v1/products/"):]
 		c.mu.Lock()
-		_, ok := c.products["prod_individual"]
+		_, ok := c.products[productID]
 		c.mu.Unlock()
 
 		if !ok {
@@ -51,7 +52,11 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 			io.WriteString(w, `{"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such product"}}`)
 			return
 		}
-		io.WriteString(w, `{"id":"prod_individual","object":"product","name":"Individual"}`)
+		name := "Individual"
+		if productID == "prod_team" {
+			name = "Team"
+		}
+		io.WriteString(w, `{"id":"`+productID+`","object":"product","name":"`+name+`"}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/products":
 		id := r.Form.Get("id")
 		name := r.Form.Get("name")
@@ -71,8 +76,13 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 		c.mu.Unlock()
 
 		if ok {
-			io.WriteString(w, fmt.Sprintf(`{"object":"list","data":[{"id":"%s","object":"price","lookup_key":"%s","product":"prod_individual"}],"has_more":false,"url":"/v1/prices"}`,
-				priceID, lookupKey,
+			// Determine product from lookup key
+			product := "prod_individual"
+			if len(lookupKey) >= 4 && lookupKey[:4] == "team" {
+				product = "prod_team"
+			}
+			io.WriteString(w, fmt.Sprintf(`{"object":"list","data":[{"id":"%s","object":"price","lookup_key":"%s","product":"%s"}],"has_more":false,"url":"/v1/prices"}`,
+				priceID, lookupKey, product,
 			))
 			return
 		}
@@ -83,6 +93,7 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 		product := r.Form.Get("product")
 		unitAmount, _ := strconv.ParseInt(r.Form.Get("unit_amount"), 10, 64)
 		interval := r.Form.Get("recurring[interval]")
+		usageType := r.Form.Get("recurring[usage_type]")
 
 		priceID := "price_" + lookupKey
 
@@ -93,7 +104,11 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 		c.lastPriceCurrency = currency
 		c.lastPriceProductID = product
 		c.lastPriceUnitAmount = unitAmount
-		c.lastPriceInterval = interval
+		if usageType != "" {
+			c.lastPriceInterval = "" // metered pricing has no interval
+		} else {
+			c.lastPriceInterval = interval
+		}
 		c.mu.Unlock()
 
 		io.WriteString(w, fmt.Sprintf(`{"id":"%s","object":"price","lookup_key":"%s","product":"%s"}`,
@@ -119,32 +134,29 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 
-	if catalog.productCreates != 1 {
-		t.Fatalf("product creates = %d, want 1", catalog.productCreates)
+	if catalog.productCreates != 2 {
+		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
 	}
-	if catalog.priceCreates != 1 {
-		t.Fatalf("price creates = %d, want 1", catalog.priceCreates)
+	if catalog.priceCreates != 8 {
+		t.Fatalf("price creates = %d, want 8", catalog.priceCreates)
 	}
-	if catalog.lastProductCreateID != "prod_individual" {
-		t.Fatalf("product id = %q, want %q", catalog.lastProductCreateID, "prod_individual")
+	if catalog.lastProductCreateID != "prod_team" {
+		t.Fatalf("last product id = %q, want %q", catalog.lastProductCreateID, "prod_team")
 	}
-	if catalog.lastProductCreateName != "Individual" {
-		t.Fatalf("product name = %q, want %q", catalog.lastProductCreateName, "Individual")
+	if catalog.lastProductCreateName != "Team" {
+		t.Fatalf("last product name = %q, want %q", catalog.lastProductCreateName, "Team")
 	}
-	if catalog.lastPriceLookupKey != DefaultPlan {
-		t.Fatalf("price lookup key = %q, want %q", catalog.lastPriceLookupKey, DefaultPlan)
+	if catalog.lastPriceLookupKey != "team:usage-bandwidth:20260106" {
+		t.Fatalf("last price lookup key = %q, want %q", catalog.lastPriceLookupKey, "team:usage-bandwidth:20260106")
 	}
 	if catalog.lastPriceCurrency != "usd" {
-		t.Fatalf("price currency = %q, want %q", catalog.lastPriceCurrency, "usd")
+		t.Fatalf("last price currency = %q, want %q", catalog.lastPriceCurrency, "usd")
 	}
-	if catalog.lastPriceProductID != "prod_individual" {
-		t.Fatalf("price product id = %q, want %q", catalog.lastPriceProductID, "prod_individual")
+	if catalog.lastPriceProductID != "prod_team" {
+		t.Fatalf("last price product id = %q, want %q", catalog.lastPriceProductID, "prod_team")
 	}
-	if catalog.lastPriceUnitAmount != 2000 {
-		t.Fatalf("price unit amount = %d, want 2000", catalog.lastPriceUnitAmount)
-	}
-	if catalog.lastPriceInterval != "month" {
-		t.Fatalf("price interval = %q, want %q", catalog.lastPriceInterval, "month")
+	if catalog.lastPriceUnitAmount != 7 {
+		t.Fatalf("last price unit amount = %d, want 7", catalog.lastPriceUnitAmount)
 	}
 }
 
@@ -165,10 +177,10 @@ func TestInstallPricesIsIdempotent(t *testing.T) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 
-	if catalog.productCreates != 1 {
-		t.Fatalf("product creates = %d, want 1", catalog.productCreates)
+	if catalog.productCreates != 2 {
+		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
 	}
-	if catalog.priceCreates != 1 {
-		t.Fatalf("price creates = %d, want 1", catalog.priceCreates)
+	if catalog.priceCreates != 8 {
+		t.Fatalf("price creates = %d, want 8", catalog.priceCreates)
 	}
 }

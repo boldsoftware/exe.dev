@@ -11,6 +11,13 @@ import (
 // PlanCategory identifies a billing plan.
 type PlanCategory string
 
+// StripePriceInfo contains Stripe price metadata for a plan.
+type StripePriceInfo struct {
+	LookupKey string
+	Model     string
+	Interval  string
+}
+
 // Plan category constants.
 const (
 	CategoryVIP           PlanCategory = "vip"
@@ -39,6 +46,10 @@ type Plan struct {
 
 	// Name is the human-readable display name.
 	Name string
+
+	// StripePrices maps billing option keys ("monthly", "annual", "usage-disk", "usage-bandwidth")
+	// to Stripe price metadata.
+	StripePrices map[string]StripePriceInfo
 
 	// LLMGatewayCategory determines credit refresh behavior in the LLM gateway.
 	// Values: "has_billing", "friend", "no_billing".
@@ -91,11 +102,17 @@ var plans = map[PlanCategory]Plan{
 		},
 	},
 	CategoryTeam: {
-		ID:                 "team:monthly:20260106",
-		Available:          true,
-		Category:           CategoryTeam,
-		Paid:               true,
-		Name:               "Team",
+		ID:        "team:monthly:20260106",
+		Available: true,
+		Category:  CategoryTeam,
+		Paid:      true,
+		Name:      "Team",
+		StripePrices: map[string]StripePriceInfo{
+			"monthly":         {LookupKey: "team:monthly:20260106", Model: "subscription", Interval: "monthly"},
+			"annual":          {LookupKey: "team:annual:20260106", Model: "subscription", Interval: "annual"},
+			"usage-disk":      {LookupKey: "team:usage-disk:20260106", Model: "metered", Interval: ""},
+			"usage-bandwidth": {LookupKey: "team:usage-bandwidth:20260106", Model: "metered", Interval: ""},
+		},
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
@@ -107,11 +124,17 @@ var plans = map[PlanCategory]Plan{
 		},
 	},
 	CategoryIndividual: {
-		ID:                 "individual:monthly:20260106",
-		Available:          true,
-		Category:           CategoryIndividual,
-		Paid:               true,
-		Name:               "Individual",
+		ID:        "individual:monthly:20260106",
+		Available: true,
+		Category:  CategoryIndividual,
+		Paid:      true,
+		Name:      "Individual",
+		StripePrices: map[string]StripePriceInfo{
+			"monthly":         {LookupKey: "individual", Model: "subscription", Interval: "monthly"},
+			"annual":          {LookupKey: "individual:annual:20260106", Model: "subscription", Interval: "annual"},
+			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
+			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
+		},
 		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
@@ -317,6 +340,20 @@ type UserPlanInputs struct {
 
 	// TeamBillingActive is true when the user's team billing owner has active billing.
 	TeamBillingActive bool
+}
+
+// PlanStripePriceInfo returns the StripePriceInfo for a given plan version and billing option.
+// Returns an empty StripePriceInfo if the plan or billing option is not found.
+func PlanStripePriceInfo(version PlanCategory, billingOption string) StripePriceInfo {
+	p, ok := plans[version]
+	if !ok {
+		return StripePriceInfo{}
+	}
+	info, ok := p.StripePrices[billingOption]
+	if !ok {
+		return StripePriceInfo{}
+	}
+	return info
 }
 
 // GetPlanCategory maps existing billing state to a PlanCategory.

@@ -55,6 +55,8 @@ const (
 	DefaultPlan         = "individual"
 	productIndividualID = "prod_individual"
 	productIndividual   = "Individual"
+	productTeamID       = "prod_team"
+	productTeam         = "Team"
 
 	// TestAPIKey is the Stripe test API key. It is safe to check into source code
 	// and easy to revoke should someone want to spam our test account.
@@ -68,6 +70,8 @@ type managedPrice struct {
 	interval    stripe.PriceRecurringInterval
 	productID   string
 	productName string
+	metered     bool
+	usageType   string
 }
 
 var managedPrices = []managedPrice{
@@ -78,6 +82,66 @@ var managedPrices = []managedPrice{
 		interval:    stripe.PriceRecurringIntervalMonth,
 		productID:   productIndividualID,
 		productName: productIndividual,
+	},
+	{
+		lookupKey:   "individual:annual:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  20000,
+		interval:    stripe.PriceRecurringIntervalYear,
+		productID:   productIndividualID,
+		productName: productIndividual,
+	},
+	{
+		lookupKey:   "individual:usage-disk:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  8, // $0.08 in cents
+		productID:   productIndividualID,
+		productName: productIndividual,
+		metered:     true,
+		usageType:   "metered",
+	},
+	{
+		lookupKey:   "individual:usage-bandwidth:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  7, // $0.07 in cents
+		productID:   productIndividualID,
+		productName: productIndividual,
+		metered:     true,
+		usageType:   "metered",
+	},
+	{
+		lookupKey:   "team:monthly:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  2500,
+		interval:    stripe.PriceRecurringIntervalMonth,
+		productID:   productTeamID,
+		productName: productTeam,
+	},
+	{
+		lookupKey:   "team:annual:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  25000,
+		interval:    stripe.PriceRecurringIntervalYear,
+		productID:   productTeamID,
+		productName: productTeam,
+	},
+	{
+		lookupKey:   "team:usage-disk:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  8,
+		productID:   productTeamID,
+		productName: productTeam,
+		metered:     true,
+		usageType:   "metered",
+	},
+	{
+		lookupKey:   "team:usage-bandwidth:20260106",
+		currency:    stripe.CurrencyUSD,
+		unitAmount:  7,
+		productID:   productTeamID,
+		productName: productTeam,
+		metered:     true,
+		usageType:   "metered",
 	},
 }
 
@@ -197,16 +261,25 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 			continue
 		}
 
-		recurringInterval := string(p.interval)
-		created, err := c.V1Prices.Create(ctx, &stripe.PriceCreateParams{
+		params := &stripe.PriceCreateParams{
 			LookupKey:  new(p.lookupKey),
 			Currency:   new(string(p.currency)),
 			UnitAmount: new(p.unitAmount),
 			Product:    new(p.productID),
-			Recurring: &stripe.PriceCreateRecurringParams{
+		}
+
+		if p.metered {
+			params.Recurring = &stripe.PriceCreateRecurringParams{
+				UsageType: &p.usageType,
+			}
+		} else {
+			recurringInterval := string(p.interval)
+			params.Recurring = &stripe.PriceCreateRecurringParams{
 				Interval: &recurringInterval,
-			},
-		})
+			}
+		}
+
+		created, err := c.V1Prices.Create(ctx, params)
 		if err != nil {
 			return fmt.Errorf("create price %q: %w", p.lookupKey, err)
 		}

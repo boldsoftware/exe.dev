@@ -14,10 +14,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:27 GMT
-Request-Id: req_wk9irwUB4KRcFV
+Date: Mon, 30 Mar 2026 19:53:23 GMT
+Request-Id: req_lSA4XVQG9NPllJ
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -62,10 +62,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:27 GMT
-Request-Id: req_k11Wt7jMgLdqYH
+Date: Mon, 30 Mar 2026 19:53:23 GMT
+Request-Id: req_NJTiLSTvzJLdH3
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -107,13 +107,769 @@ X-Wc: ABGHIJ
   ],
   "has_more": false,
   "url": "/v1/prices"
-}251 1483
+}188 1554
+GET https://api.stripe.com/v1/products/prod_individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_3
+
+HTTP/2.0 200 OK
+Content-Length: 456
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:23 GMT
+Request-Id: req_rMPeqhO1NH0WYI
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_individual",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1770852547,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Individual",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1770852547,
+  "url": null
+}228 1934
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual%3Aannual%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_4
+
+HTTP/2.0 200 OK
+Content-Length: 836
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:23 GMT
+Request-Id: req_F4YlISQnkYiL3f
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGl7RKBUWL0n1QNMzYoJFGI",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897501,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual:annual:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_individual",
+      "recurring": {
+        "interval": "year",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 20000,
+      "unit_amount_decimal": "20000"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}188 1554
+GET https://api.stripe.com/v1/products/prod_individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_5
+
+HTTP/2.0 200 OK
+Content-Length: 456
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_CchkAaWEMd98ZW
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_individual",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1770852547,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Individual",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1770852547,
+  "url": null
+}232 1931
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual%3Ausage-disk%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_6
+
+HTTP/2.0 200 OK
+Content-Length: 833
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_mWsQYfxXqPhTsZ
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCrKBUWL0n1QNK0DB65qQ",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897837,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual:usage-disk:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_individual",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 8,
+      "unit_amount_decimal": "8"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}188 1554
+GET https://api.stripe.com/v1/products/prod_individual HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_7
+
+HTTP/2.0 200 OK
+Content-Length: 456
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_VFyCRSRqV8nhtF
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_individual",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1770852547,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Individual",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1770852547,
+  "url": null
+}237 1936
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual%3Ausage-bandwidth%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_8
+
+HTTP/2.0 200 OK
+Content-Length: 838
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_msuDXxn5JDhpd8
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCrKBUWL0n1QNmQFfF4yP",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897837,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "individual:usage-bandwidth:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_individual",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 7,
+      "unit_amount_decimal": "7"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}182 1542
+GET https://api.stripe.com/v1/products/prod_team HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_9
+
+HTTP/2.0 200 OK
+Content-Length: 444
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_1Sa6rzdrXhTFds
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_team",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1774897837,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Team",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1774897838,
+  "url": null
+}224 1922
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=team%3Amonthly%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_10
+
+HTTP/2.0 200 OK
+Content-Length: 824
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_hVn1LETJ6nM6x1
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCsKBUWL0n1QNLQjhXaNh",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897838,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "team:monthly:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_team",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 2500,
+      "unit_amount_decimal": "2500"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}183 1542
+GET https://api.stripe.com/v1/products/prod_team HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_11
+
+HTTP/2.0 200 OK
+Content-Length: 444
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_HglxuFoPNXXU3V
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_team",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1774897837,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Team",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1774897838,
+  "url": null
+}223 1922
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=team%3Aannual%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_12
+
+HTTP/2.0 200 OK
+Content-Length: 824
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_Ym1as7UWLNTKIw
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCsKBUWL0n1QNkNL9kitO",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897838,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "team:annual:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_team",
+      "recurring": {
+        "interval": "year",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 25000,
+      "unit_amount_decimal": "25000"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}183 1542
+GET https://api.stripe.com/v1/products/prod_team HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_13
+
+HTTP/2.0 200 OK
+Content-Length: 444
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_4TYg6Jk0Xy4Rxb
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_team",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1774897837,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Team",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1774897838,
+  "url": null
+}227 1919
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=team%3Ausage-disk%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_14
+
+HTTP/2.0 200 OK
+Content-Length: 821
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_PH32hqQofqCEQq
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCtKBUWL0n1QNQqxOcqtv",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897839,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "team:usage-disk:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_team",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 8,
+      "unit_amount_decimal": "8"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}183 1542
+GET https://api.stripe.com/v1/products/prod_team HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_15
+
+HTTP/2.0 200 OK
+Content-Length: 444
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_wJJRb8lhGraIvD
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "id": "prod_team",
+  "object": "product",
+  "active": true,
+  "attributes": [],
+  "created": 1774897837,
+  "default_price": null,
+  "description": null,
+  "images": [],
+  "livemode": false,
+  "marketing_features": [],
+  "metadata": {},
+  "name": "Team",
+  "package_dimensions": null,
+  "shippable": null,
+  "statement_descriptor": null,
+  "tax_code": null,
+  "type": "service",
+  "unit_label": null,
+  "updated": 1774897838,
+  "url": null
+}232 1924
+GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=team%3Ausage-bandwidth%3A20260106 HTTP/1.1
+Host: api.stripe.com
+User-Agent: Go-http-client/1.1
+Content-Type: application/x-www-form-urlencoded
+Replay-Id: req_16
+
+HTTP/2.0 200 OK
+Content-Length: 826
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
+Access-Control-Max-Age: 300
+Cache-Control: no-cache, no-store
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
+Content-Type: application/json
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Request-Id: req_avM19x07jXUHze
+Server: nginx
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Stripe-Version: 2025-08-27.basil
+Vary: Origin
+X-Stripe-Priority-Routing-Enabled: true
+X-Stripe-Routing-Context-Priority-Tier: api-testmode
+X-Wc: ABGHIJ
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "price_1TGlCtKBUWL0n1QNktws45Ng",
+      "object": "price",
+      "active": true,
+      "billing_scheme": "per_unit",
+      "created": 1774897839,
+      "currency": "usd",
+      "custom_unit_amount": null,
+      "livemode": false,
+      "lookup_key": "team:usage-bandwidth:20260106",
+      "metadata": {},
+      "nickname": null,
+      "product": "prod_team",
+      "recurring": {
+        "interval": "month",
+        "interval_count": 1,
+        "meter": null,
+        "trial_period_days": null,
+        "usage_type": "licensed"
+      },
+      "tax_behavior": "unspecified",
+      "tiers_mode": null,
+      "transform_quantity": null,
+      "type": "recurring",
+      "unit_amount": 7,
+      "unit_amount_decimal": "7"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/prices"
+}252 1483
 POST https://api.stripe.com/v1/test_helpers/test_clocks HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 42
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_3
+Replay-Id: req_17
 
 frozen_time=1577836800&name=TestNormalizedHTTP/2.0 200 OK
 Content-Length: 274
@@ -123,12 +879,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:27 GMT
-Idempotency-Key: 1770852567501925000_eMjvEg
-Original-Request: req_EnKKxJj92JWqvC
-Request-Id: req_EnKKxJj92JWqvC
+Date: Mon, 30 Mar 2026 19:53:24 GMT
+Idempotency-Key: 1774900404800510996_PKLf_Q
+Original-Request: req_6bZbJZuMjPQWet
+Request-Id: req_6bZbJZuMjPQWet
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -139,21 +895,21 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "id": "clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "object": "test_helpers.test_clock",
-  "created": 1770852567,
-  "deletes_after": 1773444567,
+  "created": 1774900404,
+  "deletes_after": 1777492404,
   "frozen_time": 1577836800,
   "livemode": false,
   "name": "TestSubscribeNewThenActive",
   "status": "ready",
   "status_details": {}
-}208 1921
+}209 1921
 GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_4
+Replay-Id: req_18
 
 HTTP/2.0 200 OK
 Content-Length: 823
@@ -163,10 +919,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:27 GMT
-Request-Id: req_2VPAkFJkQB8c6h
+Date: Mon, 30 Mar 2026 19:53:25 GMT
+Request-Id: req_jSzuRgOur5FdlM
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -208,15 +964,15 @@ X-Wc: ABGHIJ
   ],
   "has_more": false,
   "url": "/v1/prices"
-}304 1914
+}305 1914
 POST https://api.stripe.com/v1/customers HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 109
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_5
+Replay-Id: req_19
 
-id=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&email=user%40example.com&test_clock=clock_1SzmqZKBUWL0n1QNsUIoj6DhHTTP/2.0 200 OK
+id=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&email=user%40example.com&test_clock=clock_1TGlsGKBUWL0n1QN4J75bFmqHTTP/2.0 200 OK
 Content-Length: 705
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -224,12 +980,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:27 GMT
-Idempotency-Key: 1770852567774477000_LFf9wg
-Original-Request: req_lKikzBDvoPwM4M
-Request-Id: req_lKikzBDvoPwM4M
+Date: Mon, 30 Mar 2026 19:53:25 GMT
+Idempotency-Key: 1774900405060102723_WTlqUA
+Original-Request: req_VOeGn5lLkxbgUq
+Request-Id: req_VOeGn5lLkxbgUq
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -240,7 +996,7 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "id": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "object": "customer",
   "address": null,
   "balance": 0,
@@ -252,7 +1008,7 @@ X-Wc: ABGHIJ
   "description": null,
   "discount": null,
   "email": "user@example.com",
-  "invoice_prefix": "ESRWNGIQ",
+  "invoice_prefix": "QKP3WU6C",
   "invoice_settings": {
     "custom_fields": null,
     "default_payment_method": null,
@@ -267,13 +1023,13 @@ X-Wc: ABGHIJ
   "preferred_locales": [],
   "shipping": null,
   "tax_exempt": "none",
-  "test_clock": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh"
-}237 1184
-GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&status=all HTTP/1.1
+  "test_clock": "clock_1TGlsGKBUWL0n1QN4J75bFmq"
+}238 1184
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&status=all HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_6
+Replay-Id: req_20
 
 HTTP/2.0 200 OK
 Content-Length: 87
@@ -283,10 +1039,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:28 GMT
-Request-Id: req_FOjSz1IR4Vwvcr
+Date: Mon, 30 Mar 2026 19:53:25 GMT
+Request-Id: req_qx3S9WlcDbgAUz
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -300,28 +1056,28 @@ X-Wc: ABGHIJ
   "data": [],
   "has_more": false,
   "url": "/v1/subscriptions"
-}436 4453
+}437 4487
 POST https://api.stripe.com/v1/checkout/sessions HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 233
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_7
+Replay-Id: req_21
 
-cancel_url=https%3A%2F%2Ffirst.com%2Fcancel&customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&line_items[0][price]=price_1SzSSNKBUWL0n1QN9Cl7SCQQ&line_items[0][quantity]=1&mode=subscription&success_url=https%3A%2F%2Ffirst.com%2FreturnHTTP/2.0 200 OK
-Content-Length: 3243
+cancel_url=https%3A%2F%2Ffirst.com%2Fcancel&customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&line_items[0][price]=price_1SzSSNKBUWL0n1QN9Cl7SCQQ&line_items[0][quantity]=1&mode=subscription&success_url=https%3A%2F%2Ffirst.com%2FreturnHTTP/2.0 200 OK
+Content-Length: 3277
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
 Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:28 GMT
-Idempotency-Key: 1770852568107227000_z1Bpnw
-Original-Request: req_CkrQyEv6hxicby
-Request-Id: req_CkrQyEv6hxicby
+Date: Mon, 30 Mar 2026 19:53:25 GMT
+Idempotency-Key: 1774900405458942416_29LnOg
+Original-Request: req_Aanj5nyUldScjr
+Request-Id: req_Aanj5nyUldScjr
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -332,7 +1088,7 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "cs_test_a1vfV13pTqdoJJtgjCtS5wCJVqiXpLXrJREV5XdrQaxjoNJrIDfdKIHECf",
+  "id": "cs_test_a1LDwK6r3fc5mQ2SUrXfmzHmvapOgfb2LHCkwpVzcXxCqGB6MAnrJuDfPp",
   "object": "checkout.session",
   "adaptive_pricing": {
     "enabled": true
@@ -367,7 +1123,7 @@ X-Wc: ABGHIJ
   },
   "consent": null,
   "consent_collection": null,
-  "created": 1770852568,
+  "created": 1774900405,
   "currency": "usd",
   "currency_conversion": null,
   "custom_fields": [],
@@ -377,7 +1133,7 @@ X-Wc: ABGHIJ
     "submit": null,
     "terms_of_service_acceptance": null
   },
-  "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "customer_account": null,
   "customer_creation": null,
   "customer_details": {
@@ -392,7 +1148,8 @@ X-Wc: ABGHIJ
   },
   "customer_email": null,
   "discounts": [],
-  "expires_at": 1770938968,
+  "expires_at": 1774986805,
+  "integration_identifier": null,
   "invoice": null,
   "invoice_creation": null,
   "livemode": false,
@@ -446,14 +1203,14 @@ X-Wc: ABGHIJ
     "amount_tax": 0
   },
   "ui_mode": "hosted",
-  "url": "https://checkout.stripe.com/c/pay/cs_test_a1vfV13pTqdoJJtgjCtS5wCJVqiXpLXrJREV5XdrQaxjoNJrIDfdKIHECf#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vn9XcVFOR1BSSTVrNFRLTV1nRExSbjB2dVZmT2hJZFRcSnJPVnBPSFxdNUR8NmEyVldma098dXFJfDFkMW9WPUwzUzA1cE88TWRhZnVLQ0Z3VV1TU3JvNTVLTV1TX0R0YicpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl",
+  "url": "https://checkout.stripe.com/c/pay/cs_test_a1LDwK6r3fc5mQ2SUrXfmzHmvapOgfb2LHCkwpVzcXxCqGB6MAnrJuDfPp#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vn9XcVFOR1BSSTVrNFRLTV1nRExSbjB2dVZmT2hJZFRcSnJPVnBPSFxdNUR8NmEyVldma098dXFJfDFkMW9WPUwzUzA1cE88TWRhZnVLQ0Z3VV1TU3JvNTVLTV1TX0R0YicpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl",
   "wallet_options": null
-}208 1921
+}209 1921
 GET https://api.stripe.com/v1/prices?active=true&lookup_keys[0]=individual HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_8
+Replay-Id: req_22
 
 HTTP/2.0 200 OK
 Content-Length: 823
@@ -463,10 +1220,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:28 GMT
-Request-Id: req_rBATsYI4rUI8uG
+Date: Mon, 30 Mar 2026 19:53:25 GMT
+Request-Id: req_uKIJIWbqADAi4T
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -508,15 +1265,15 @@ X-Wc: ABGHIJ
   ],
   "has_more": false,
   "url": "/v1/prices"
-}268 2324
+}269 2324
 POST https://api.stripe.com/v1/payment_methods/pm_card_visa/attach HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 48
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_9
+Replay-Id: req_23
 
-customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6DhHTTP/2.0 200 OK
+customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmqHTTP/2.0 200 OK
 Content-Length: 1114
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -524,12 +1281,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:28 GMT
-Idempotency-Key: 1770852568592471000_sr_8ug
-Original-Request: req_4TQdCf9UPq0fi0
-Request-Id: req_4TQdCf9UPq0fi0
+Date: Mon, 30 Mar 2026 19:53:26 GMT
+Idempotency-Key: 1774900405982633166_gHsaNw
+Original-Request: req_H1uo4eSKY4hOn5
+Request-Id: req_H1uo4eSKY4hOn5
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -540,7 +1297,7 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "pm_1SzmqaKBUWL0n1QNcXYTnCrL",
+  "id": "pm_1TGlsIKBUWL0n1QNNdWNDks9",
   "object": "payment_method",
   "allow_redisplay": "unspecified",
   "billing_details": {
@@ -566,7 +1323,7 @@ X-Wc: ABGHIJ
     },
     "country": "US",
     "display_brand": "visa",
-    "exp_month": 2,
+    "exp_month": 3,
     "exp_year": 2027,
     "fingerprint": "9U5QwtE29x5zAP0T",
     "funding": "credit",
@@ -584,8 +1341,8 @@ X-Wc: ABGHIJ
     },
     "wallet": null
   },
-  "created": 1770852568,
-  "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "created": 1774900406,
+  "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "customer_account": null,
   "livemode": false,
   "metadata": {},
@@ -596,9 +1353,9 @@ Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 146
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_10
+Replay-Id: req_24
 
-customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&default_payment_method=pm_1SzmqaKBUWL0n1QNcXYTnCrL&items[0][price]=price_1SzSSNKBUWL0n1QN9Cl7SCQQHTTP/2.0 200 OK
+customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&default_payment_method=pm_1TGlsIKBUWL0n1QNNdWNDks9&items[0][price]=price_1SzSSNKBUWL0n1QN9Cl7SCQQHTTP/2.0 200 OK
 Content-Length: 4397
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -606,12 +1363,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:32 GMT
-Idempotency-Key: 1770852569015189000_COG2UA
-Original-Request: req_ccJ6v6dsQAVdzV
-Request-Id: req_ccJ6v6dsQAVdzV
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Idempotency-Key: 1774900406549492908_sfwOzQ
+Original-Request: req_bWB9e2fgCWH9wT
+Request-Id: req_bWB9e2fgCWH9wT
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -622,7 +1379,7 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+  "id": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
   "object": "subscription",
   "application": null,
   "application_fee_percent": null,
@@ -649,10 +1406,10 @@ X-Wc: ABGHIJ
   "collection_method": "charge_automatically",
   "created": 1577836800,
   "currency": "usd",
-  "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "customer_account": null,
   "days_until_due": null,
-  "default_payment_method": "pm_1SzmqaKBUWL0n1QNcXYTnCrL",
+  "default_payment_method": "pm_1TGlsIKBUWL0n1QNNdWNDks9",
   "default_source": null,
   "default_tax_rates": [],
   "description": null,
@@ -668,7 +1425,7 @@ X-Wc: ABGHIJ
     "object": "list",
     "data": [
       {
-        "id": "si_TxiH7q2JXHGDaT",
+        "id": "si_UFGPk6288wUavL",
         "object": "subscription_item",
         "billing_thresholds": null,
         "created": 1577836800,
@@ -725,15 +1482,15 @@ X-Wc: ABGHIJ
           "unit_amount_decimal": "2000"
         },
         "quantity": 1,
-        "subscription": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+        "subscription": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
         "tax_rates": []
       }
     ],
     "has_more": false,
     "total_count": 1,
-    "url": "/v1/subscription_items?subscription=sub_1SzmqbKBUWL0n1QNVTt8ZaCd"
+    "url": "/v1/subscription_items?subscription=sub_1TGlsIKBUWL0n1QNP9U9kAPJ"
   },
-  "latest_invoice": "in_1SzmqbKBUWL0n1QN8V9ZevE0",
+  "latest_invoice": "in_1TGlsJKBUWL0n1QNrqrVBLsw",
   "livemode": false,
   "metadata": {},
   "next_pending_invoice_item_invoice": null,
@@ -772,7 +1529,7 @@ X-Wc: ABGHIJ
   "schedule": null,
   "start_date": 1577836800,
   "status": "active",
-  "test_clock": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "test_clock": "clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "transfer_data": null,
   "trial_end": null,
   "trial_settings": {
@@ -787,9 +1544,9 @@ Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 109
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_11
+Replay-Id: req_25
 
-id=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&email=user%40example.com&test_clock=clock_1SzmqZKBUWL0n1QNsUIoj6DhHTTP/2.0 400 Bad Request
+id=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&email=user%40example.com&test_clock=clock_1TGlsGKBUWL0n1QN4J75bFmqHTTP/2.0 400 Bad Request
 Content-Length: 340
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -797,12 +1554,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:32 GMT
-Idempotency-Key: 1770852572616992000_eZgQFw
-Original-Request: req_XEHWtUhjXpHeKQ
-Request-Id: req_XEHWtUhjXpHeKQ
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Idempotency-Key: 1774900410172153663_QI7T5g
+Original-Request: req_v2WLlo3adttrXo
+Request-Id: req_v2WLlo3adttrXo
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -817,16 +1574,16 @@ X-Wc: ABGHIJ
     "code": "resource_already_exists",
     "doc_url": "https://stripe.com/docs/error-codes/resource-already-exists",
     "message": "Customer already exists.",
-    "request_log_url": "https://dashboard.stripe.com/acct_1SzRtTKBUWL0n1QN/test/workbench/logs?object=req_XEHWtUhjXpHeKQ",
+    "request_log_url": "https://dashboard.stripe.com/acct_1SzRtTKBUWL0n1QN/test/workbench/logs?object=req_v2WLlo3adttrXo",
     "type": "invalid_request_error"
   }
 }
 238 6231
-GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&status=all HTTP/1.1
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&status=all HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_12
+Replay-Id: req_26
 
 HTTP/2.0 200 OK
 Content-Length: 5132
@@ -836,10 +1593,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:32 GMT
-Request-Id: req_ObPAqBW3xKpQEI
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Request-Id: req_6vxH357WluZVmX
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -852,7 +1609,7 @@ X-Wc: ABGHIJ
   "object": "list",
   "data": [
     {
-      "id": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+      "id": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
       "object": "subscription",
       "application": null,
       "application_fee_percent": null,
@@ -879,10 +1636,10 @@ X-Wc: ABGHIJ
       "collection_method": "charge_automatically",
       "created": 1577836800,
       "currency": "usd",
-      "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+      "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
       "customer_account": null,
       "days_until_due": null,
-      "default_payment_method": "pm_1SzmqaKBUWL0n1QNcXYTnCrL",
+      "default_payment_method": "pm_1TGlsIKBUWL0n1QNNdWNDks9",
       "default_source": null,
       "default_tax_rates": [],
       "description": null,
@@ -898,7 +1655,7 @@ X-Wc: ABGHIJ
         "object": "list",
         "data": [
           {
-            "id": "si_TxiH7q2JXHGDaT",
+            "id": "si_UFGPk6288wUavL",
             "object": "subscription_item",
             "billing_thresholds": null,
             "created": 1577836800,
@@ -955,15 +1712,15 @@ X-Wc: ABGHIJ
               "unit_amount_decimal": "2000"
             },
             "quantity": 1,
-            "subscription": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+            "subscription": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
             "tax_rates": []
           }
         ],
         "has_more": false,
         "total_count": 1,
-        "url": "/v1/subscription_items?subscription=sub_1SzmqbKBUWL0n1QNVTt8ZaCd"
+        "url": "/v1/subscription_items?subscription=sub_1TGlsIKBUWL0n1QNP9U9kAPJ"
       },
-      "latest_invoice": "in_1SzmqbKBUWL0n1QN8V9ZevE0",
+      "latest_invoice": "in_1TGlsJKBUWL0n1QNrqrVBLsw",
       "livemode": false,
       "metadata": {},
       "next_pending_invoice_item_invoice": null,
@@ -1002,7 +1759,7 @@ X-Wc: ABGHIJ
       "schedule": null,
       "start_date": 1577836800,
       "status": "active",
-      "test_clock": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+      "test_clock": "clock_1TGlsGKBUWL0n1QN4J75bFmq",
       "transfer_data": null,
       "trial_end": null,
       "trial_settings": {
@@ -1021,9 +1778,9 @@ Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 93
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_13
+Replay-Id: req_27
 
-customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&return_url=https%3A%2F%2Fsecond.com%2FreturnHTTP/2.0 200 OK
+customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&return_url=https%3A%2F%2Fsecond.com%2FreturnHTTP/2.0 200 OK
 Content-Length: 504
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -1031,12 +1788,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:33 GMT
-Idempotency-Key: 1770852572881199000_mu5V4A
-Original-Request: req_rPFeGzyneyJLk0
-Request-Id: req_rPFeGzyneyJLk0
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Idempotency-Key: 1774900410456208101_dOpb1Q
+Original-Request: req_9eySh4Zfw9M5jp
+Request-Id: req_9eySh4Zfw9M5jp
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -1047,27 +1804,27 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "bps_1SzmqeKBUWL0n1QNhbqZqWht",
+  "id": "bps_1TGlsMKBUWL0n1QNN8ZlrFxa",
   "object": "billing_portal.session",
   "configuration": "bpc_1SzSSUKBUWL0n1QNUvNSxLaN",
-  "created": 1770852572,
-  "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "created": 1774900410,
+  "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "customer_account": null,
   "flow": null,
   "livemode": false,
   "locale": null,
   "on_behalf_of": null,
   "return_url": "https://second.com/return",
-  "url": "https://billing.stripe.com/p/session/test_YWNjdF8xU3pSdFRLQlVXTDBuMVFOLF9UeGlIdktLYlBvRDRlU1dMcG5rWXRZTUtmdG5yUGln0100pEpvb78s"
+  "url": "https://billing.stripe.com/p/session/test_YWNjdF8xU3pSdFRLQlVXTDBuMVFOLF9VRkdQb0dWYVA5dnc5R2xkTDdvc1BRM0lsNjYwc3Zh0100s0kJvHEF"
 }305 1558
 POST https://api.stripe.com/v1/customers HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Length: 109
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_14
+Replay-Id: req_28
 
-id=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&email=user%40example.com&test_clock=clock_1SzmqZKBUWL0n1QNsUIoj6DhHTTP/2.0 400 Bad Request
+id=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&email=user%40example.com&test_clock=clock_1TGlsGKBUWL0n1QN4J75bFmqHTTP/2.0 400 Bad Request
 Content-Length: 340
 Access-Control-Allow-Credentials: true
 Access-Control-Allow-Methods: GET, HEAD, PUT, PATCH, POST, DELETE
@@ -1075,12 +1832,12 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:33 GMT
-Idempotency-Key: 1770852573051921000_hXeflQ
-Original-Request: req_JvNWhUTZgDY3UO
-Request-Id: req_JvNWhUTZgDY3UO
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Idempotency-Key: 1774900410678142492_4nWdMg
+Original-Request: req_tBvpET8Bvbh7b5
+Request-Id: req_tBvpET8Bvbh7b5
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Should-Retry: false
@@ -1095,16 +1852,16 @@ X-Wc: ABGHIJ
     "code": "resource_already_exists",
     "doc_url": "https://stripe.com/docs/error-codes/resource-already-exists",
     "message": "Customer already exists.",
-    "request_log_url": "https://dashboard.stripe.com/acct_1SzRtTKBUWL0n1QN/test/workbench/logs?object=req_JvNWhUTZgDY3UO",
+    "request_log_url": "https://dashboard.stripe.com/acct_1SzRtTKBUWL0n1QN/test/workbench/logs?object=req_tBvpET8Bvbh7b5",
     "type": "invalid_request_error"
   }
 }
 238 6231
-GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh&status=all HTTP/1.1
+GET https://api.stripe.com/v1/subscriptions?customer=exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq&status=all HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_15
+Replay-Id: req_29
 
 HTTP/2.0 200 OK
 Content-Length: 5132
@@ -1114,10 +1871,10 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:33 GMT
-Request-Id: req_Uvc02C25Lkte8O
+Date: Mon, 30 Mar 2026 19:53:30 GMT
+Request-Id: req_KLGHKxSY16zX4R
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -1130,7 +1887,7 @@ X-Wc: ABGHIJ
   "object": "list",
   "data": [
     {
-      "id": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+      "id": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
       "object": "subscription",
       "application": null,
       "application_fee_percent": null,
@@ -1157,10 +1914,10 @@ X-Wc: ABGHIJ
       "collection_method": "charge_automatically",
       "created": 1577836800,
       "currency": "usd",
-      "customer": "exe_test_clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+      "customer": "exe_test_clock_1TGlsGKBUWL0n1QN4J75bFmq",
       "customer_account": null,
       "days_until_due": null,
-      "default_payment_method": "pm_1SzmqaKBUWL0n1QNcXYTnCrL",
+      "default_payment_method": "pm_1TGlsIKBUWL0n1QNNdWNDks9",
       "default_source": null,
       "default_tax_rates": [],
       "description": null,
@@ -1176,7 +1933,7 @@ X-Wc: ABGHIJ
         "object": "list",
         "data": [
           {
-            "id": "si_TxiH7q2JXHGDaT",
+            "id": "si_UFGPk6288wUavL",
             "object": "subscription_item",
             "billing_thresholds": null,
             "created": 1577836800,
@@ -1233,15 +1990,15 @@ X-Wc: ABGHIJ
               "unit_amount_decimal": "2000"
             },
             "quantity": 1,
-            "subscription": "sub_1SzmqbKBUWL0n1QNVTt8ZaCd",
+            "subscription": "sub_1TGlsIKBUWL0n1QNP9U9kAPJ",
             "tax_rates": []
           }
         ],
         "has_more": false,
         "total_count": 1,
-        "url": "/v1/subscription_items?subscription=sub_1SzmqbKBUWL0n1QNVTt8ZaCd"
+        "url": "/v1/subscription_items?subscription=sub_1TGlsIKBUWL0n1QNP9U9kAPJ"
       },
-      "latest_invoice": "in_1SzmqbKBUWL0n1QN8V9ZevE0",
+      "latest_invoice": "in_1TGlsJKBUWL0n1QNrqrVBLsw",
       "livemode": false,
       "metadata": {},
       "next_pending_invoice_item_invoice": null,
@@ -1280,7 +2037,7 @@ X-Wc: ABGHIJ
       "schedule": null,
       "start_date": 1577836800,
       "status": "active",
-      "test_clock": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+      "test_clock": "clock_1TGlsGKBUWL0n1QN4J75bFmq",
       "transfer_data": null,
       "trial_end": null,
       "trial_settings": {
@@ -1294,11 +2051,11 @@ X-Wc: ABGHIJ
   "has_more": false,
   "url": "/v1/subscriptions"
 }223 1245
-DELETE https://api.stripe.com/v1/test_helpers/test_clocks/clock_1SzmqZKBUWL0n1QNsUIoj6Dh HTTP/1.1
+DELETE https://api.stripe.com/v1/test_helpers/test_clocks/clock_1TGlsGKBUWL0n1QN4J75bFmq HTTP/1.1
 Host: api.stripe.com
 User-Agent: Go-http-client/1.1
 Content-Type: application/x-www-form-urlencoded
-Replay-Id: req_16
+Replay-Id: req_30
 
 HTTP/2.0 200 OK
 Content-Length: 102
@@ -1308,11 +2065,11 @@ Access-Control-Allow-Origin: *
 Access-Control-Expose-Headers: Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required
 Access-Control-Max-Age: 300
 Cache-Control: no-cache, no-store
-Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=UejDfKKD1hlud_VYnZxd4jUjssy8dpKEvTYgm0tCj7jkbO4ad2cRXWbRpbXFLU6BNc7yNlts0zHVoGHk
+Content-Security-Policy: base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src 'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=NA4OGUADGVmq0oCRyG9ixXR-rlWmtN6JdG4G36gcY_dPLk9LKbOUzX6B_Kk-rtgr6byOfh0eIAweGSra
 Content-Type: application/json
-Date: Wed, 11 Feb 2026 23:29:33 GMT
-Idempotency-Key: 1770852573349654000_awDryA
-Request-Id: req_MYL8Gy0Ky4kAOT
+Date: Mon, 30 Mar 2026 19:53:31 GMT
+Idempotency-Key: 1774900410978551171_86nw6w
+Request-Id: req_Nx0mKJS3t0s3us
 Server: nginx
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 Stripe-Version: 2025-08-27.basil
@@ -1322,7 +2079,7 @@ X-Stripe-Routing-Context-Priority-Tier: api-testmode
 X-Wc: ABGHIJ
 
 {
-  "id": "clock_1SzmqZKBUWL0n1QNsUIoj6Dh",
+  "id": "clock_1TGlsGKBUWL0n1QN4J75bFmq",
   "object": "test_helpers.test_clock",
   "deleted": true
 }

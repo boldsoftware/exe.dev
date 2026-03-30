@@ -675,3 +675,161 @@ func (m *mockQueries) GetUserPlanData(ctx context.Context, userID string) (exedb
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestPlanStripePriceInfo(t *testing.T) {
+	tests := []struct {
+		name          string
+		plan          PlanCategory
+		billingOption string
+		want          StripePriceInfo
+	}{
+		// Individual plan tests
+		{
+			name:          "individual monthly",
+			plan:          CategoryIndividual,
+			billingOption: "monthly",
+			want: StripePriceInfo{
+				LookupKey: "individual",
+				Model:     "subscription",
+				Interval:  "monthly",
+			},
+		},
+		{
+			name:          "individual annual",
+			plan:          CategoryIndividual,
+			billingOption: "annual",
+			want: StripePriceInfo{
+				LookupKey: "individual:annual:20260106",
+				Model:     "subscription",
+				Interval:  "annual",
+			},
+		},
+		{
+			name:          "individual usage-disk",
+			plan:          CategoryIndividual,
+			billingOption: "usage-disk",
+			want: StripePriceInfo{
+				LookupKey: "individual:usage-disk:20260106",
+				Model:     "metered",
+				Interval:  "",
+			},
+		},
+		{
+			name:          "individual usage-bandwidth",
+			plan:          CategoryIndividual,
+			billingOption: "usage-bandwidth",
+			want: StripePriceInfo{
+				LookupKey: "individual:usage-bandwidth:20260106",
+				Model:     "metered",
+				Interval:  "",
+			},
+		},
+		// Team plan tests
+		{
+			name:          "team monthly",
+			plan:          CategoryTeam,
+			billingOption: "monthly",
+			want: StripePriceInfo{
+				LookupKey: "team:monthly:20260106",
+				Model:     "subscription",
+				Interval:  "monthly",
+			},
+		},
+		{
+			name:          "team annual",
+			plan:          CategoryTeam,
+			billingOption: "annual",
+			want: StripePriceInfo{
+				LookupKey: "team:annual:20260106",
+				Model:     "subscription",
+				Interval:  "annual",
+			},
+		},
+		{
+			name:          "team usage-disk",
+			plan:          CategoryTeam,
+			billingOption: "usage-disk",
+			want: StripePriceInfo{
+				LookupKey: "team:usage-disk:20260106",
+				Model:     "metered",
+				Interval:  "",
+			},
+		},
+		{
+			name:          "team usage-bandwidth",
+			plan:          CategoryTeam,
+			billingOption: "usage-bandwidth",
+			want: StripePriceInfo{
+				LookupKey: "team:usage-bandwidth:20260106",
+				Model:     "metered",
+				Interval:  "",
+			},
+		},
+		// Unknown plan category
+		{
+			name:          "unknown plan category",
+			plan:          PlanCategory("nonexistent"),
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		// Unknown billing option
+		{
+			name:          "individual unknown billing option",
+			plan:          CategoryIndividual,
+			billingOption: "nonexistent",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "team unknown billing option",
+			plan:          CategoryTeam,
+			billingOption: "quarterly",
+			want:          StripePriceInfo{},
+		},
+		// Plans without StripePrices
+		{
+			name:          "VIP plan has no stripe prices",
+			plan:          CategoryVIP,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "Friend plan has no stripe prices",
+			plan:          CategoryFriend,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "Grandfathered plan has no stripe prices",
+			plan:          CategoryGrandfathered,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "Trial plan has no stripe prices",
+			plan:          CategoryTrial,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "Basic plan has no stripe prices",
+			plan:          CategoryBasic,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+		{
+			name:          "Restricted plan has no stripe prices",
+			plan:          CategoryRestricted,
+			billingOption: "monthly",
+			want:          StripePriceInfo{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PlanStripePriceInfo(tt.plan, tt.billingOption)
+			if got != tt.want {
+				t.Errorf("PlanStripePriceInfo(%q, %q) = %+v, want %+v", tt.plan, tt.billingOption, got, tt.want)
+			}
+		})
+	}
+}
