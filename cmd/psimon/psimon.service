@@ -1,0 +1,12 @@
+[Unit]
+Description=psimon - CI machine pressure monitor
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/psimon -port 9101
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

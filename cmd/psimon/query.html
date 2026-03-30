@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{.Title}}</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<style>
+  body {
+    background: #f5f5f5;
+    color: #222;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  h1 {
+    font-size: 1.3em;
+    font-weight: 600;
+    margin-bottom: 16px;
+    text-align: center;
+    color: #333;
+  }
+  #chart {
+    margin: 0 auto;
+  }
+  .vega-embed {
+    padding: 0 !important;
+  }
+  .vega-embed .vega-actions {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+<h1>{{.Title}}</h1>
+<div id="chart"></div>
+<script>
+const samples = {{.SamplesJSON}};
+
+const data = samples.map(s => ({
+  time: new Date(s.Timestamp * 1000),
+  CPUPercent: s.CPUPercent,
+  CPUSome: s.CPUSome,
+  IOSome: s.IOSome,
+  IOFull: s.IOFull,
+  MemSome: s.MemSome,
+  MemFull: s.MemFull,
+}));
+
+function singleChart(title, yTitle, field, color) {
+  return {
+    width: 700,
+    height: 120,
+    title: { text: title, anchor: 'start', fontSize: 13, color: '#333' },
+    data: { values: data },
+    mark: { type: 'area', line: { strokeWidth: 1.5, color: color }, color: { x1: 1, y1: 1, x2: 1, y2: 0, gradient: 'linear', stops: [{ offset: 0, color: 'white' }, { offset: 1, color: color }] }, opacity: 0.25, interpolate: 'monotone' },
+    encoding: {
+      x: { field: 'time', type: 'temporal', title: null },
+      y: { field: field, type: 'quantitative', title: yTitle, scale: { zero: true } },
+    },
+  };
+}
+
+function dualChart(title, yTitle, fields, colors, legends) {
+  return {
+    width: 700,
+    height: 120,
+    title: { text: title, anchor: 'start', fontSize: 13, color: '#333' },
+    data: { values: data },
+    transform: [
+      { fold: fields, as: ['metric', 'value'] },
+      {
+        calculate: fields.map((f, i) =>
+          "datum.metric === '" + f + "' ? '" + legends[i] + "' : "
+        ).join('') + "''",
+        as: 'label'
+      },
+    ],
+    mark: { type: 'line', strokeWidth: 1.5, interpolate: 'monotone' },
+    encoding: {
+      x: { field: 'time', type: 'temporal', title: null },
+      y: { field: 'value', type: 'quantitative', title: yTitle, scale: { zero: true } },
+      color: {
+        field: 'label',
+        type: 'nominal',
+        title: null,
+        scale: { domain: legends, range: colors },
+        legend: { orient: 'top-right', offset: -10, labelFontSize: 11 },
+      },
+    },
+  };
+}
+
+const spec = {
+  $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+  config: {
+    background: 'white',
+    axis: {
+      domainColor: '#ccc',
+      gridColor: '#eee',
+      tickColor: '#ccc',
+      labelColor: '#666',
+      titleColor: '#444',
+      titleFontSize: 11,
+      labelFontSize: 10,
+    },
+    legend: {
+      labelColor: '#444',
+    },
+    view: { stroke: null },
+  },
+  vconcat: [
+    singleChart('CPU Usage', 'CPU %', 'CPUPercent', '#e25c6a'),
+    singleChart('CPU Pressure', '% stalled (avg10)', 'CPUSome', '#4a80c4'),
+    dualChart('IO Pressure', '% stalled (avg10)',
+      ['IOSome', 'IOFull'],
+      ['#e5a834', '#e25c6a'],
+      ['some (≥1 task)', 'full (all tasks)']),
+    dualChart('Memory Pressure', '% stalled (avg10)',
+      ['MemSome', 'MemFull'],
+      ['#3bbae0', '#8338ec'],
+      ['some (≥1 task)', 'full (all tasks)']),
+  ],
+  spacing: 18,
+  resolve: { scale: { x: 'shared', color: 'independent' } },
+};
+
+vegaEmbed('#chart', spec, { actions: false });
+</script>
+</body>
+</html>

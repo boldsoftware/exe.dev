@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 SEGMENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "segments")
 
@@ -292,7 +293,35 @@ def generate_coverage_merge_step(all_test_keys):
     return '\n'.join(lines)
 
 
+def generate_psimon_step(all_keys):
+    """Generate a final step that collects psimon pressure data."""
+    lines = [
+        '- label: ":chart_with_upwards_trend: collect CI pressure"',
+        '  key: collect-psimon',
+        '  allow_dependency_failure: true',
+        '  depends_on:',
+    ]
+    for key in all_keys:
+        lines.append(f'    - {key}')
+    lines += [
+        '  command: .buildkite/steps/collect-psimon.sh',
+        '  timeout_in_minutes: 2',
+        '  artifact_paths:',
+        '    - "psimon-pressure.html"',
+    ]
+    return '\n'.join(lines)
+
+
 def main():
+    # Record build start time for psimon to use later.
+    try:
+        subprocess.run(
+            ["buildkite-agent", "meta-data", "set", "psimon-start", str(int(time.time()))],
+            check=False, capture_output=True,
+        )
+    except FileNotFoundError:
+        pass  # Not running in Buildkite
+
     exe_changed, shelley_changed = detect_changes()
 
     branch = os.environ.get("BUILDKITE_BRANCH", "")
@@ -355,6 +384,11 @@ def main():
             "__ALL_DEPS__", "\n" + deps_yaml(all_keys),
         )
         segments.append(push_text)
+
+    # psimon: collect CI machine pressure data as the very last step.
+    final_keys = collect_step_keys("\n".join(segments))
+    psimon_text = generate_psimon_step(final_keys)
+    segments.append(psimon_text)
 
     # Emit the pipeline (stdout for upload, stderr for build log)
     lines = ["agents:", "  queue: exe-ci", "", "steps:"]
