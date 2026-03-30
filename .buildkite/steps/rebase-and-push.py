@@ -54,33 +54,49 @@ def setup_subrepo_mirrors(token: str):
     if os.path.exists(alternates_file):
         existing = set(open(alternates_file).read().splitlines())
 
+    # Phase 1: ensure mirrors exist, set URLs, launch fetches in parallel.
+    fetch_procs = []
     for name, repo in SUBREPOS:
         url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
         mirror_dir = os.path.join(mirrors_dir, repo)
-        objects_dir = os.path.join(mirror_dir, "objects")
 
         if not os.path.isdir(mirror_dir):
             print(f"Creating mirror for {repo} at {mirror_dir}", flush=True)
             run("git", "clone", "--mirror", url, mirror_dir)
         else:
-            # Rotate the token and update the mirror.
             subprocess.run(["git", "-C", mirror_dir, "remote", "set-url", "origin", url], capture_output=True)
-            run("./bin/retry.sh", "git", "-C", mirror_dir, "fetch", "--prune", "origin")
+            cmd = ["./bin/retry.sh", "git", "-C", mirror_dir, "fetch", "--prune", "origin"]
+            print(f"+ {' '.join(cmd)} &", flush=True)
+            fetch_procs.append((name, repo, subprocess.Popen(cmd)))
 
-        # Register mirror objects as an alternate for the working checkout.
+    # Wait for all fetches.
+    for name, repo, p in fetch_procs:
+        rc = p.wait()
+        if rc != 0:
+            print(f"ERROR: mirror fetch for {repo} failed (exit {rc})", file=sys.stderr)
+            sys.exit(1)
+
+    # Phase 2: register alternates and remotes (fast, local-only).
+    for name, repo in SUBREPOS:
+        url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/{repo}.git"
+        mirror_dir = os.path.join(mirrors_dir, repo)
+        objects_dir = os.path.join(mirror_dir, "objects")
+
         if objects_dir not in existing:
             with open(alternates_file, "a") as f:
                 f.write(objects_dir + "\n")
             existing.add(objects_dir)
 
-        # Set up the remote pointing at GitHub (the normal way).
         result = subprocess.run(["git", "remote", "set-url", name, url], capture_output=True)
         if result.returncode != 0:
             run("git", "remote", "add", name, url)
 
 
-def sync_shelley(token: str):
-    """If shelley/main has advanced past origin/main, sync those commits."""
+def sync_shelley(token: str) -> bool:
+    """If shelley/main has advanced past origin/main, sync those commits.
+
+    Returns True if origin/main was updated (caller should re-fetch).
+    """
     print("--- :arrows_counterclockwise: Check shelley/main sync", flush=True)
 
     # Mirrors already set up; fetch from GitHub (fast due to alternates).
@@ -99,18 +115,29 @@ def sync_shelley(token: str):
         run("./bin/retry.sh", "git", "fetch", "origin", "main")
         run("git", "checkout", "--detach", queue_head)
         print("Shelley sync complete; origin/main updated", flush=True)
+        return True
     else:
         print("shelley/main in sync, nothing to do", flush=True)
+        return False
 
 
 def push_to_subrepos(token: str):
-    """Push to subrepos (shelley, exeuntu, oss)."""
+    """Push to subrepos (shelley, exeuntu, oss) in parallel."""
     print("--- :package: Push to subrepos", flush=True)
 
     # Remotes and mirrors already set up by setup_subrepo_mirrors().
-    run("bin/push-to-subrepo.sh", "main", "shelley", "shelley")
-    run("bin/push-to-subrepo.sh", "main", "exeuntu", "exeuntu")
-    run("bin/push-to-subrepo.sh", "main", "oss", "oss")
+    # The remote name doubles as the local directory name for all subrepos.
+    # Launch all pushes, then wait for all to finish.
+    procs = []
+    for name, _repo in SUBREPOS:
+        cmd = ["bin/push-to-subrepo.sh", "main", name, name]
+        print(f"+ {' '.join(cmd)} &", flush=True)
+        procs.append((name, subprocess.Popen(cmd)))
+    for name, p in procs:
+        rc = p.wait()
+        if rc != 0:
+            print(f"ERROR: push to {name} failed (exit {rc})", file=sys.stderr)
+            sys.exit(1)
 
 
 def trigger_exeuntu_build(token: str, origin_main_before: str):
@@ -251,10 +278,11 @@ def main():
     print("--- :art: Check formatting", flush=True)
     run("git", "config", "user.email", "ci@exe.dev")
     run("git", "config", "user.name", "exe CI")
+
     maybe_format()
 
-    print("--- :key: Generate GitHub App token", flush=True)
-    token = github_token.get()
+    print("--- :key: Acquire GitHub App token", flush=True)
+    token = github_token.get_cached()
     github_token.configure_origin(token)
     print("Token acquired.", flush=True)
 
@@ -266,10 +294,11 @@ def main():
     setup_subrepo_mirrors(token)
 
     # Sync shelley/main if it has advanced
-    sync_shelley(token)
+    shelley_synced = sync_shelley(token)
 
-    # Re-fetch after potential shelley sync
-    run("./bin/retry.sh", "git", "fetch", "origin", "main")
+    # Re-fetch only if shelley sync pushed to origin/main.
+    if shelley_synced:
+        run("./bin/retry.sh", "git", "fetch", "origin", "main")
 
     head_sha = run("git", "rev-parse", "--short", "HEAD", capture=True).stdout.strip()
     main_sha = run("git", "rev-parse", "--short", "origin/main", capture=True).stdout.strip()

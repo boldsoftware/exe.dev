@@ -20,3 +20,12 @@ else
     echo "No formatting changes needed"
     buildkite-agent meta-data set needs_formatting false
 fi
+
+# Pre-generate GitHub App token for the push step on queue branches.
+# This hides the ~1.3s token generation latency from the critical path.
+if [[ "${BUILDKITE_BRANCH:-}" == kite-queue-* ]]; then
+    echo "--- :key: Pre-generate GitHub App token"
+    token=$(python3 .buildkite/steps/github_token.py)
+    buildkite-agent meta-data set github_app_token "$token"
+    echo "Token saved to metadata."
+fi

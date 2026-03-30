@@ -95,6 +95,17 @@ def get() -> str:
     return _get_installation_token(jwt)
 
 
+def get_cached() -> str:
+    """Return a GitHub token from Buildkite metadata (set by the format step), or generate a fresh one."""
+    r = subprocess.run(
+        ["buildkite-agent", "meta-data", "get", "github_app_token"],
+        capture_output=True, text=True,
+    )
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    return get()
+
+
 def configure_origin(token: str):
     """Set the origin remote URL to use the given token."""
     url = f"https://x-access-token:{token}@github.com/{GITHUB_ORG}/exe.git"
