@@ -194,6 +194,7 @@ export interface ProfileData {
   showIntegrations: boolean
   inviteCount: number
   canRequestInvites: boolean
+  boxes: { name: string; status: string }[]
 }
 
 export interface IntegrationsData {

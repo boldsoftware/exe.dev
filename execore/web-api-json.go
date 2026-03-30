@@ -199,6 +199,7 @@ type jsonProfileData struct {
 	Passkeys           []jsonPasskey       `json:"passkeys"`
 	SiteSessions       []jsonSiteSession   `json:"siteSessions"`
 	SharedBoxes        []jsonSharedBox     `json:"sharedBoxes"`
+	Boxes              []jsonBoxMinimal    `json:"boxes"`
 	TeamInfo           *jsonTeamInfo       `json:"teamInfo"`
 	PendingTeamInvites []jsonPendingInvite `json:"pendingTeamInvites"`
 	CanEnableTeam      bool                `json:"canEnableTeam"`
@@ -606,12 +607,21 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
 	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 
+	// Boxes (for API key VM scope dropdown)
+	var boxes []jsonBoxMinimal
+	if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
+		for _, b := range userBoxes {
+			boxes = append(boxes, jsonBoxMinimal{Name: b.Name, Status: b.Status})
+		}
+	}
+
 	profile := jsonProfileData{
 		User:               newJSONUserInfoWithNewsletter(user),
 		SSHKeys:            nonNil(sshKeys),
 		Passkeys:           nonNil(passkeys),
 		SiteSessions:       nonNil(siteSessions),
 		SharedBoxes:        sharedBoxes,
+		Boxes:              nonNil(boxes),
 		PendingTeamInvites: make([]jsonPendingInvite, 0),
 		BasicUser:          basicUser,
 		ShowIntegrations:   showIntegrations,

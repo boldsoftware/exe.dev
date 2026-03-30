@@ -193,6 +193,8 @@ func TestIsCommandAllowed(t *testing.T) {
 		{"integrations attach test vm:mybox", true},
 		{"integrations detach test vm:mybox", true},
 		{"integrations setup github", true},
+		{"ssh-key generate-api-key --label=ci --exp=30d --json", true},
+		{"ssh-key generate-api-key --vm=my-vm --label=deploy --json", true},
 		{"integrations list", false},
 		{"new --name=test", false},
 		{"help", false},

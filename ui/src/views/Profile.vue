@@ -276,6 +276,15 @@
         </div>
       </section>
 
+      <!-- API Keys -->
+      <section class="card">
+        <h2 class="card-title">API Keys</h2>
+        <p class="section-help">API keys let you access exe.dev and your VMs programmatically. <a href="/docs/cli-ssh-key#generate-api-key">Docs</a></p>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-secondary" @click="openCreateAPIKey">Create API Key</button>
+        </div>
+      </section>
+
       <!-- Passkeys -->
       <section class="card">
         <h2 class="card-title">Passkeys</h2>
@@ -361,13 +370,110 @@
       @close="modal.visible = false"
       @success="reload"
     />
+
+    <!-- Create API Key Modal -->
+    <div v-if="apiKeyModal.visible" class="modal-overlay" @click.self="closeApiKeyModal">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Create API Key">
+        <div class="modal-header">
+          <h3>Create API Key</h3>
+          <button class="modal-close" aria-label="Close" @click="closeApiKeyModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <template v-if="!apiKeyModal.result">
+            <div class="form-row">
+              <label>Label</label>
+              <input v-model="apiKeyModal.label" class="form-input" placeholder="my-api-key" />
+            </div>
+            <div class="form-row">
+              <label>Scope</label>
+              <select v-model="apiKeyModal.vm" class="form-input">
+                <option value="">exe.dev API</option>
+                <option v-for="box in (data?.boxes || [])" :key="box.name" :value="box.name">{{ box.name }}</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Expiry</label>
+              <select v-model="apiKeyModal.expiry" class="form-input">
+                <option value="30d">30 days</option>
+                <option value="90d">90 days</option>
+                <option value="1y">1 year</option>
+                <option value="never">Never</option>
+              </select>
+            </div>
+            <div v-if="!apiKeyModal.vm" class="form-row">
+              <label>Allowed commands <span class="text-muted">(leave unchecked for defaults)</span></label>
+              <div class="cmd-checkboxes">
+                <label v-for="cmd in availableCommands" :key="cmd.value" class="cmd-checkbox">
+                  <input type="checkbox" :value="cmd.value" v-model="apiKeyModal.cmds" />
+                  <code>{{ cmd.value }}</code>
+                  <span v-if="cmd.isDefault" class="cmd-default-badge">default</span>
+                </label>
+              </div>
+            </div>
+            <div class="cmd-preview">
+              <code>{{ apiKeyBuiltCommand }}</code>
+            </div>
+            <div v-if="apiKeyModal.error" class="cmd-result error">{{ apiKeyModal.error }}</div>
+          </template>
+          <template v-else>
+            <div class="api-key-result">
+              <div class="api-key-result-row">
+                <span class="api-key-result-label">Label</span>
+                <span>{{ apiKeyModal.result.label }}</span>
+              </div>
+              <div v-if="apiKeyModal.result.expires_at" class="api-key-result-row">
+                <span class="api-key-result-label">Expires</span>
+                <span>{{ formatExpiry(apiKeyModal.result.expires_at) }}</span>
+              </div>
+              <div v-else class="api-key-result-row">
+                <span class="api-key-result-label">Expires</span>
+                <span>Never</span>
+              </div>
+              <div class="api-key-token-area">
+                <label class="api-key-token-label">Your API Key</label>
+                <div class="api-key-token-box">
+                  <code class="api-key-token-value">{{ apiKeyModal.result.token }}</code>
+                  <CopyButton :text="apiKeyModal.result.token" title="Copy token" />
+                </div>
+              </div>
+              <div class="api-key-warning">
+                ⚠ This token will not be shown again. Copy it now.
+              </div>
+              <div class="api-key-usage">
+                <label>Usage example</label>
+                <div class="cmd-preview">
+                  <code v-if="apiKeyModal.vm">curl -H "Authorization: Bearer {{ apiKeyModal.result.token }}" https://{{ apiKeyUsageHost }}/</code>
+                  <code v-else>curl -X POST https://{{ apiKeyUsageHost }}/exec -H "Authorization: Bearer {{ apiKeyModal.result.token }}" -d 'whoami'</code>
+                  <CopyButton :text="apiKeyUsageExample" title="Copy usage example" />
+                </div>
+              </div>
+              <div class="api-key-revoke-hint">
+                Revoke with: <code>ssh-key remove {{ apiKeyModal.result.label }}</code>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <template v-if="apiKeyModal.result">
+            <button class="btn btn-primary" @click="closeApiKeyModal">Done</button>
+          </template>
+          <template v-else>
+            <button class="btn btn-secondary" @click="closeApiKeyModal">Cancel</button>
+            <button class="btn btn-primary" :disabled="apiKeyModal.running" @click="runApiKeyCommand">
+              {{ apiKeyModal.running ? 'Creating...' : 'Create' }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import { fetchProfile, shellQuote, type ProfileData } from '../api/client'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { fetchProfile, runCommand, shellQuote, type ProfileData } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
+import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
 import ProgressBar from 'primevue/progressbar'
 import DataTable from 'primevue/datatable'
@@ -423,6 +529,133 @@ const transactionHistory = computed(() => {
   return [...purchases, ...gifts].sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime())
 })
 
+// API Key modal
+const apiKeyModal = reactive({
+  visible: false,
+  label: '',
+  vm: '',
+  expiry: '30d',
+  cmds: [] as string[],
+  running: false,
+  error: '',
+  result: null as { label: string; token: string; namespace: string; fingerprint: string; expires_at?: string } | null,
+})
+
+const defaultCmds = new Set(['help', 'ls', 'new', 'whoami', 'ssh-key list', 'share show'])
+const availableCommands = [
+  { value: 'ls' },
+  { value: 'new' },
+  { value: 'rm' },
+  { value: 'restart' },
+  { value: 'rename' },
+  { value: 'whoami' },
+  { value: 'help' },
+  { value: 'cp' },
+  { value: 'tag' },
+  { value: 'ssh-key list' },
+  { value: 'ssh-key add' },
+  { value: 'ssh-key remove' },
+  { value: 'ssh-key generate-api-key' },
+  { value: 'share show' },
+  { value: 'share add' },
+  { value: 'share remove' },
+  { value: 'share set-public' },
+  { value: 'share set-private' },
+  { value: 'integrations add' },
+  { value: 'integrations remove' },
+  { value: 'integrations attach' },
+  { value: 'integrations detach' },
+  { value: 'shelley prompt' },
+].map(c => ({ ...c, isDefault: defaultCmds.has(c.value) }))
+
+const apiKeyBuiltCommand = computed(() => {
+  const parts = ['ssh-key generate-api-key']
+  if (apiKeyModal.label.trim()) {
+    parts.push(`--label=${shellQuote(apiKeyModal.label.trim())}`)
+  }
+  if (apiKeyModal.vm) {
+    parts.push(`--vm=${shellQuote(apiKeyModal.vm)}`)
+  }
+  if (!apiKeyModal.vm && apiKeyModal.cmds.length > 0) {
+    parts.push(`--cmds=${shellQuote(apiKeyModal.cmds.join(','))}`)
+  }
+  parts.push(`--exp=${apiKeyModal.expiry}`)
+  parts.push('--json')
+  return parts.join(' ')
+})
+
+function openCreateAPIKey() {
+  apiKeyModal.visible = true
+  apiKeyModal.label = ''
+  apiKeyModal.vm = ''
+  apiKeyModal.expiry = '30d'
+  apiKeyModal.cmds = []
+  apiKeyModal.running = false
+  apiKeyModal.error = ''
+  apiKeyModal.result = null
+}
+
+function closeApiKeyModal() {
+  apiKeyModal.visible = false
+  if (apiKeyModal.result) {
+    reload()
+  }
+}
+
+async function runApiKeyCommand() {
+  apiKeyModal.running = true
+  apiKeyModal.error = ''
+  try {
+    const resp = await runCommand(apiKeyBuiltCommand.value)
+    if (resp.success && resp.output) {
+      try {
+        const parsed = JSON.parse(resp.output)
+        apiKeyModal.result = parsed
+      } catch {
+        apiKeyModal.error = resp.output
+      }
+    } else {
+      apiKeyModal.error = resp.error || resp.output || 'Command failed'
+    }
+  } catch (err: any) {
+    apiKeyModal.error = err.message || 'Request failed'
+  } finally {
+    apiKeyModal.running = false
+  }
+}
+
+const apiKeyUsageHost = computed(() => {
+  if (!apiKeyModal.result) return ''
+  // namespace is like "v0@exe.dev" or "v0@vmname.exe.xyz"
+  const ns = apiKeyModal.result.namespace
+  const at = ns.indexOf('@')
+  return at >= 0 ? ns.slice(at + 1) : ns
+})
+
+const apiKeyUsageExample = computed(() => {
+  if (!apiKeyModal.result) return ''
+  const host = apiKeyUsageHost.value
+  const token = apiKeyModal.result.token
+  if (apiKeyModal.vm) {
+    return `curl -H "Authorization: Bearer ${token}" https://${host}/`
+  }
+  return `curl -X POST https://${host}/exec -H "Authorization: Bearer ${token}" -d 'whoami'`
+})
+
+function formatExpiry(iso: string | undefined): string {
+  if (!iso) return 'Never'
+  const d = new Date(iso)
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+
+// Escape key handler
+function onEscapeKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (apiKeyModal.visible) { closeApiKeyModal(); return }
+  if (showRegionModal.value) { showRegionModal.value = false; return }
+}
+
 const modal = reactive({
   visible: false,
   title: '',
@@ -455,7 +688,14 @@ async function loadProfile() {
   }
 }
 
-onMounted(loadProfile)
+onMounted(() => {
+  document.addEventListener('keydown', onEscapeKey)
+  loadProfile()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onEscapeKey)
+})
 
 function openModal(opts: Partial<typeof modal>) {
   Object.assign(modal, {
@@ -1316,11 +1556,24 @@ async function toggleNewsletter(event: Event) {
 
 .form-input {
   flex: 1;
+  width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--surface-border);
   border-radius: 4px;
   font-family: inherit;
   font-size: 13px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  border-color: var(--primary-color);
+  outline: none;
+}
+
+select.form-input {
+  cursor: pointer;
 }
 
 .field-error {
@@ -1417,5 +1670,227 @@ async function toggleNewsletter(event: Event) {
   font-size: 12px;
   color: var(--text-color-muted);
   margin-top: 4px;
+}
+
+/* API Key Modal */
+.modal-panel {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  width: 520px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.modal-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-color-muted);
+  padding: 0 4px;
+}
+
+.modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--surface-border);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+}
+
+.cmd-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--text-color-secondary);
+}
+
+.cmd-preview code {
+  flex: 1;
+  min-width: 0;
+}
+
+.cmd-preview :deep(.copy-btn) {
+  flex-shrink: 0;
+}
+
+.cmd-result {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  white-space: pre-wrap;
+}
+
+.cmd-result.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+}
+
+.api-key-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.api-key-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.api-key-result-label {
+  color: var(--text-color-muted);
+  min-width: 60px;
+  font-size: 12px;
+}
+
+.api-key-token-area {
+  margin-top: 4px;
+}
+
+.api-key-token-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.api-key-token-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.api-key-token-value {
+  flex: 1;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.api-key-warning {
+  font-size: 12px;
+  color: var(--warning-text, #b45309);
+  background: var(--warning-bg, #fef3c7);
+  border: 1px solid var(--warning-border, #f59e0b);
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+
+.api-key-usage {
+  margin-top: 2px;
+}
+
+.api-key-usage label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.cmd-checkboxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+}
+
+.cmd-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.cmd-checkbox input[type="checkbox"] {
+  accent-color: var(--text-color);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cmd-checkbox code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.cmd-default-badge {
+  font-size: 9px;
+  color: var(--text-color-muted);
+  background: var(--surface-subtle);
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 16px;
+}
+
+.api-key-revoke-hint {
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+
+.api-key-revoke-hint code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: var(--surface-subtle);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
 }
 </style>
