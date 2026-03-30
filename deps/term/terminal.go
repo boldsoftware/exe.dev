@@ -819,10 +819,12 @@ func (t *Terminal) readLine() (line string, err error) {
 			if !t.pasteActive {
 				if key == keyCtrlD {
 					if len(t.line) == 0 {
+						t.resetLineState(rest)
 						return "", io.EOF
 					}
 				}
 				if key == keyCtrlC {
+					t.resetLineState(rest)
 					return "", io.EOF
 				}
 				if key == keyPasteStart {
@@ -845,12 +847,7 @@ func (t *Terminal) readLine() (line string, err error) {
 			}
 			line, lineOk = t.handleKey(key)
 		}
-		if len(rest) > 0 {
-			n := copy(t.inBuf[:], rest)
-			t.remainder = t.inBuf[:n]
-		} else {
-			t.remainder = nil
-		}
+		t.setRemainder(rest)
 		t.c.Write(t.outBuf)
 		t.outBuf = t.outBuf[:0]
 		if lineOk {
@@ -879,6 +876,32 @@ func (t *Terminal) readLine() (line string, err error) {
 
 		t.remainder = t.inBuf[:n+len(t.remainder)]
 	}
+}
+
+// setRemainder updates t.remainder from rest. Must be called with t.lock held.
+func (t *Terminal) setRemainder(rest []byte) {
+	if len(rest) > 0 {
+		n := copy(t.inBuf[:], rest)
+		t.remainder = t.inBuf[:n]
+	} else {
+		t.remainder = nil
+	}
+}
+
+// resetLineState cleans up after an early return from readLine (ctrl+D/ctrl+C).
+// It consumes processed bytes from remainder, writes a newline so the next
+// prompt starts on a fresh line, and resets cursor state. Must be called with
+// t.lock held.
+func (t *Terminal) resetLineState(rest []byte) {
+	t.setRemainder(rest)
+	t.queue([]rune("\r\n"))
+	t.line = t.line[:0]
+	t.pos = 0
+	t.cursorX = 0
+	t.cursorY = 0
+	t.maxLine = 0
+	t.c.Write(t.outBuf)
+	t.outBuf = t.outBuf[:0]
 }
 
 // SetPrompt sets the prompt to be used when reading subsequent lines.

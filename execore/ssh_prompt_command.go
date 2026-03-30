@@ -20,7 +20,7 @@ func (ss *SSHServer) promptCommand() *exemenu.Command {
 		Name:              "prompt",
 		Hidden:            true,
 		Description:       "Interactive AI assistant for exe.dev",
-		Usage:             "prompt <initial prompt>",
+		Usage:             "prompt [initial prompt]",
 		Handler:           ss.handlePromptCommand,
 		RawArgs:           true,
 		HasPositionalArgs: true,
@@ -28,18 +28,11 @@ func (ss *SSHServer) promptCommand() *exemenu.Command {
 }
 
 func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.SSHSession == nil {
+	if cc.Terminal == nil {
 		return cc.Errorf("prompt requires an interactive SSH session")
 	}
 
-	if len(cc.Args) < 1 {
-		return cc.Errorf("usage: prompt <initial prompt>")
-	}
-
-	initialPrompt := strings.Join(cc.Args, " ")
-	if strings.TrimSpace(initialPrompt) == "" {
-		return cc.Errorf("prompt text is required")
-	}
+	initialPrompt := strings.TrimSpace(strings.Join(cc.Args, " "))
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
@@ -57,6 +50,19 @@ func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.Comman
 
 	cc.Writeln("\033[1;36m🤖 prompt\033[0m — interactive AI assistant")
 	cc.Writeln("")
+
+	// If no initial prompt provided, let the user type one interactively.
+	if initialPrompt == "" {
+		var err error
+		initialPrompt, err = output.PromptUser("> ")
+		if err != nil {
+			return nil // ctrl+D → back to REPL
+		}
+		initialPrompt = strings.TrimSpace(initialPrompt)
+		if initialPrompt == "" {
+			return nil
+		}
+	}
 
 	systemPrompt := fmt.Sprintf(
 		"You are an expert assistant for exe.dev, a cloud VM service. "+

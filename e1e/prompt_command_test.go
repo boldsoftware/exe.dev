@@ -39,7 +39,8 @@ func TestPromptCommand(t *testing.T) {
 	pty.Disconnect()
 }
 
-// TestPromptCommandNoArgs verifies that prompt without arguments shows usage.
+// TestPromptCommandNoArgs verifies that prompt without arguments enters
+// interactive mode and lets the user type the initial prompt.
 func TestPromptCommandNoArgs(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
@@ -48,8 +49,20 @@ func TestPromptCommandNoArgs(t *testing.T) {
 
 	pty, _, _, _ := registerForExeDev(t)
 
+	// Run prompt with no args — should show banner and prompt for input.
+	pty.Reject("internal error")
+	pty.Reject("Raw error")
 	pty.SendLine("prompt")
-	pty.Want("usage:")
+	pty.Want("prompt")
+	pty.Want("> ")
+
+	// Type the initial prompt — mock will process it like any other prompt.
+	pty.SendLine("how many vms do i have")
+	pty.Want("I found your VMs")
+
+	// Exit the follow-up prompt.
+	pty.Want("> ")
+	pty.SendLine("")
 	pty.WantPrompt()
 
 	pty.Disconnect()
