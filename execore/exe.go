@@ -1263,55 +1263,39 @@ func (s *Server) initShardIPs(ctx context.Context) {
 		return
 	}
 
-	if err := s.loadAndSetNAShardIPs(ctx); err != nil {
-		s.slog().ErrorContext(ctx, "NA shard IP loading failed", "error", err)
-		return
-	}
-
 	// Production: load NetActuate shard IPs from DB.
-	ips, err := s.loadPublicIPsFromDB(ctx)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "public IP discovery failed", "error", err)
-		return
-	}
-	s.PublicIPs = ips
-}
-
-// loadAndSetNAShardIPs loads NetActuate shard IPs from the database and populates the DNS server cache.
-func (s *Server) loadAndSetNAShardIPs(ctx context.Context) error {
 	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
 	if err != nil {
-		return fmt.Errorf("load NA shard IPs: %w", err)
+		s.slog().ErrorContext(ctx, "failed to list netactuate_ip_shards", "error", err)
+		return
 	}
+
+	// Populate DNS server cache.
 	naShardIPs := buildNAShardIPs(s.slog(), ctx, netActuateShards)
 	s.dnsServer.SetNetActuateShardIPs(naShardIPs)
 	s.slog().InfoContext(ctx, "NA shard IPs loaded", "count", len(netActuateShards))
-	return nil
+
+	// Build public IP map for sshpiper routing.
+	s.PublicIPs = buildPublicIPs(s.slog(), ctx, netActuateShards, s.env.BoxHost)
 }
 
-// loadPublicIPsFromDB loads PublicIPs from the netactuate_ip_shards table.
+// buildPublicIPs builds a map from public IP to shard info.
 // NetActuate doesn't NAT, so sshpiper sees the public IP directly.
-func (s *Server) loadPublicIPsFromDB(ctx context.Context) (map[netip.Addr]publicips.PublicIP, error) {
-	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list netactuate_ip_shards: %w", err)
-	}
-
-	result := make(map[netip.Addr]publicips.PublicIP, len(netActuateShards))
-	for _, row := range netActuateShards {
+func buildPublicIPs(log *slog.Logger, ctx context.Context, rows []exedb.NetActuateIPShard, boxHost string) map[netip.Addr]publicips.PublicIP {
+	result := make(map[netip.Addr]publicips.PublicIP, len(rows))
+	for _, row := range rows {
 		ip, err := netip.ParseAddr(row.PublicIP)
 		if err != nil {
-			s.slog().WarnContext(ctx, "invalid public IP in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
+			log.WarnContext(ctx, "invalid public IP in netactuate_ip_shards", "shard", row.Shard, "ip", row.PublicIP, "error", err)
 			continue
 		}
 		result[ip] = publicips.PublicIP{
 			IP:     ip,
-			Domain: publicips.NetActuateShardSub(int(row.Shard)) + "." + s.env.BoxHost,
+			Domain: publicips.NetActuateShardSub(int(row.Shard)) + "." + boxHost,
 			Shard:  int(row.Shard),
 		}
 	}
-
-	return result, nil
+	return result
 }
 
 func buildNAShardIPs(log *slog.Logger, ctx context.Context, rows []exedb.NetActuateIPShard) []netip.Addr {
@@ -1347,30 +1331,6 @@ func (s *Server) logIPResolver() {
 	}
 	slices.Sort(assignments)
 	s.slog().Info("public IP assignments loaded", "assignments", assignments)
-}
-
-// validateIPShards validates that all NetActuate shard IPs are routable on this machine.
-func (s *Server) validateIPShards(ctx context.Context) {
-	netActuateShards, err := withRxRes0(s, ctx, (*exedb.Queries).ListNetActuateIPShards)
-	if err != nil {
-		s.slog().ErrorContext(ctx, "failed to list netactuate_ip_shards for validation", "error", err)
-		return
-	}
-
-	for _, row := range netActuateShards {
-		found := false
-		for _, info := range s.PublicIPs {
-			if info.Shard == int(row.Shard) && info.IP.String() == row.PublicIP {
-				found = true
-				break
-			}
-		}
-		if !found {
-			s.slog().ErrorContext(ctx, "netactuate_ip_shard not routable on this machine",
-				"shard", row.Shard,
-				"public_ip", row.PublicIP)
-		}
-	}
 }
 
 // withRx executes a function with a read-only database transaction and exedb queries
@@ -2869,10 +2829,6 @@ func (s *Server) start() error {
 				s.slog().InfoContext(ctx, "embedded DNS server started", "ips", privateIPs)
 			}
 		}
-	}
-
-	if s.env.DiscoverPublicIPs {
-		s.validateIPShards(ctx)
 	}
 
 	// Start LMTP server for inbound email
