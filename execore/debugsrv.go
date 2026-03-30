@@ -93,6 +93,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
 	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
+	mux.HandleFunc("POST /debug/user/assign-enterprise", s.handleDebugAssignEnterprise)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
@@ -2729,6 +2730,84 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		"trial_ends_at", trialEnd)
 	s.slackFeed.TrialStarted(ctx, userID)
 
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
+// handleDebugAssignEnterprise assigns enterprise billing to a user's account.
+// POST /debug/user/assign-enterprise
+// Required: user_id (or email)
+func (s *Server) handleDebugAssignEnterprise(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := r.FormValue("user_id")
+	email := r.FormValue("email")
+	if userID == "" && email != "" {
+		ce := canonicalizeEmail(email)
+		uid, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("user with email %q not found: %v", email, err), http.StatusNotFound)
+			return
+		}
+		userID = uid
+	}
+	if userID == "" {
+		http.Error(w, "user_id or email is required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	var accountID string
+	if errors.Is(err, sql.ErrNoRows) {
+		accountID = "exe_" + crand.Text()[:16]
+	} else if err != nil {
+		http.Error(w, fmt.Sprintf("failed to check existing account: %v", err), http.StatusInternalServerError)
+		return
+	} else {
+		accountID = acct.ID
+	}
+
+	now := sqlite.NormalizeTime(time.Now())
+
+	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        accountID,
+			CreatedBy: userID,
+		}); err != nil {
+			return fmt.Errorf("insert account: %w", err)
+		}
+		if err := q.InsertBillingEvent(ctx, exedb.InsertBillingEventParams{
+			AccountID: accountID,
+			EventType: "active",
+			EventAt:   now,
+		}); err != nil {
+			return fmt.Errorf("insert billing event: %w", err)
+		}
+		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID: accountID,
+			PlanID:    entitlement.PlanID(entitlement.CategoryEnterprise),
+			At:        now,
+			ChangedBy: "debug:assign-enterprise",
+		}); err != nil {
+			return fmt.Errorf("replace account plan: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to assign enterprise: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "enterprise plan assigned via debug endpoint",
+		"user_id", userID, "email", user.Email, "account_id", accountID)
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 

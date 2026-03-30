@@ -48,6 +48,11 @@ func TestPlanGrants(t *testing.T) {
 		{CategoryTeam, LLMUse, true},
 		{CategoryTeam, CreditPurchase, true},
 
+		// Enterprise
+		{CategoryEnterprise, CreditPurchase, true},
+		{CategoryEnterprise, VMRun, true},
+		{CategoryEnterprise, TeamCreate, false},
+
 		// CategoryRestricted — grants nothing
 		{CategoryRestricted, LLMUse, false},
 		{CategoryRestricted, VMCreate, false},
@@ -479,5 +484,62 @@ func TestPlanGrantsWithVersionedID(t *testing.T) {
 	}
 	if !PlanGrants(version2, LLMUse) {
 		t.Error("PlanGrants with versioned basic should grant LLMUse")
+	}
+}
+
+func TestEnterprisePlanExists(t *testing.T) {
+	p, ok := GetPlan(CategoryEnterprise)
+	if !ok {
+		t.Fatal("CategoryEnterprise not found in plans")
+	}
+	if p.ID != "enterprise:monthly:20260106" {
+		t.Errorf("Enterprise plan ID = %q, want %q", p.ID, "enterprise:monthly:20260106")
+	}
+	if p.Name != "Enterprise" {
+		t.Errorf("Enterprise plan Name = %q, want %q", p.Name, "Enterprise")
+	}
+	if !p.Paid {
+		t.Error("Enterprise plan should be Paid=true")
+	}
+	if p.LLMGatewayCategory != "has_billing" {
+		t.Errorf("Enterprise LLMGatewayCategory = %q, want %q", p.LLMGatewayCategory, "has_billing")
+	}
+}
+
+func TestEnterprisePlanGrants(t *testing.T) {
+	shouldGrant := []Entitlement{LLMUse, CreditPurchase, InviteRequest, VMCreate, VMConnect, VMRun}
+	for _, ent := range shouldGrant {
+		if !PlanGrants(CategoryEnterprise, ent) {
+			t.Errorf("PlanGrants(CategoryEnterprise, %q) = false, want true", ent.ID)
+		}
+	}
+	if PlanGrants(CategoryEnterprise, TeamCreate) {
+		t.Error("PlanGrants(CategoryEnterprise, TeamCreate) = true, want false")
+	}
+}
+
+func TestAllPlansIncludesEnterprise(t *testing.T) {
+	all := AllPlans()
+	found := false
+	vipIdx, entIdx, teamIdx := -1, -1, -1
+	for i, p := range all {
+		switch p.Category {
+		case CategoryVIP:
+			vipIdx = i
+		case CategoryEnterprise:
+			entIdx = i
+			found = true
+		case CategoryTeam:
+			teamIdx = i
+		}
+	}
+	if !found {
+		t.Fatal("CategoryEnterprise not found in AllPlans()")
+	}
+	if vipIdx >= entIdx {
+		t.Errorf("VIP (idx=%d) should come before Enterprise (idx=%d)", vipIdx, entIdx)
+	}
+	if entIdx >= teamIdx {
+		t.Errorf("Enterprise (idx=%d) should come before Team (idx=%d)", entIdx, teamIdx)
 	}
 }

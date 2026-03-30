@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
@@ -324,6 +325,81 @@ func TestGetActivePlanForUserWithParent(t *testing.T) {
 	}
 	if soloPlan.AccountID != soloAcctID {
 		t.Errorf("expected solo account_id=%q, got %q", soloAcctID, soloPlan.AccountID)
+	}
+}
+
+func TestEnterpriseParentInheritance(t *testing.T) {
+	t.Parallel()
+	db, q := setupAccountTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	ownerUserID := "usr_entowner001"
+	ownerAcctID := "exe_entowner001"
+	memberUserID := "usr_entmember01"
+	memberAcctID := "exe_entmember01"
+
+	for _, row := range []struct{ uid, email string }{
+		{ownerUserID, "enterprise-owner@example.com"},
+		{memberUserID, "enterprise-member@example.com"},
+	} {
+		if _, err := db.ExecContext(ctx, `INSERT INTO users (user_id, email) VALUES (?, ?)`, row.uid, row.email); err != nil {
+			t.Fatalf("insert user %s: %v", row.uid, err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by) VALUES (?, ?)`, ownerAcctID, ownerUserID); err != nil {
+		t.Fatalf("insert owner account: %v", err)
+	}
+	if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID: ownerAcctID,
+		PlanID:    "enterprise:monthly:20260106",
+		StartedAt: now,
+		ChangedBy: strPtr("test:setup"),
+	}); err != nil {
+		t.Fatalf("insert owner enterprise plan: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by, parent_id) VALUES (?, ?, ?)`, memberAcctID, memberUserID, ownerAcctID); err != nil {
+		t.Fatalf("insert member account with parent_id: %v", err)
+	}
+	if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID: memberAcctID,
+		PlanID:    "basic",
+		StartedAt: now,
+		ChangedBy: strPtr("test:setup"),
+	}); err != nil {
+		t.Fatalf("insert member basic plan: %v", err)
+	}
+
+	ownerPlan, err := q.GetActivePlanForUser(ctx, ownerUserID)
+	if err != nil {
+		t.Fatalf("GetActivePlanForUser(owner): %v", err)
+	}
+	if ownerPlan.PlanID != "enterprise:monthly:20260106" {
+		t.Errorf("owner plan = %q, want %q", ownerPlan.PlanID, "enterprise:monthly:20260106")
+	}
+
+	memberPlan, err := q.GetActivePlanForUser(ctx, memberUserID)
+	if err != nil {
+		t.Fatalf("GetActivePlanForUser(member): %v", err)
+	}
+	if memberPlan.PlanID != "enterprise:monthly:20260106" {
+		t.Errorf("member inherited plan = %q, want %q (from parent)", memberPlan.PlanID, "enterprise:monthly:20260106")
+	}
+	if memberPlan.AccountID != ownerAcctID {
+		t.Errorf("member account_id = %q, want %q (parent's account)", memberPlan.AccountID, ownerAcctID)
+	}
+
+	plan, ok := entitlement.GetPlanByID(memberPlan.PlanID)
+	if !ok {
+		t.Fatal("GetPlanByID failed for enterprise plan")
+	}
+	if !entitlement.PlanGrants(plan.Category, entitlement.VMCreate) {
+		t.Error("Enterprise plan should grant VMCreate")
+	}
+	if !entitlement.PlanGrants(plan.Category, entitlement.CreditPurchase) {
+		t.Error("Enterprise plan should grant CreditPurchase")
 	}
 }
 

@@ -11,6 +11,7 @@ type PlanCategory string
 // Plan category constants.
 const (
 	CategoryVIP           PlanCategory = "vip"
+	CategoryEnterprise    PlanCategory = "enterprise"
 	CategoryTeam          PlanCategory = "team"
 	CategoryIndividual    PlanCategory = "individual"
 	CategoryFriend        PlanCategory = "friend"
@@ -68,6 +69,22 @@ var plans = map[PlanCategory]Plan{
 		LLMGatewayCategory: "friend",
 		Entitlements: map[Entitlement]bool{
 			All: true,
+		},
+	},
+	CategoryEnterprise: {
+		ID:                 "enterprise:monthly:20260106",
+		Available:          true,
+		Category:           CategoryEnterprise,
+		Paid:               true,
+		Name:               "Enterprise",
+		LLMGatewayCategory: "has_billing",
+		Entitlements: map[Entitlement]bool{
+			LLMUse:         true,
+			CreditPurchase: true,
+			InviteRequest:  true,
+			VMCreate:       true,
+			VMConnect:      true,
+			VMRun:          true,
 		},
 	},
 	CategoryTeam: {
@@ -170,6 +187,7 @@ var plans = map[PlanCategory]Plan{
 func AllPlans() []Plan {
 	order := []PlanCategory{
 		CategoryVIP,
+		CategoryEnterprise,
 		CategoryTeam,
 		CategoryIndividual,
 		CategoryFriend,
