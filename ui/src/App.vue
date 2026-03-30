@@ -131,6 +131,9 @@ const isLoggedIn = isAuthenticated
   --code-bg: #f3f4f6;
   --code-text: #1a1a1a;
 
+  /* Pinstripe */
+  --pinstripe-image: url("data:image/svg+xml,%3Csvg width='2' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='2' height='2' y='2' fill='%23000' opacity='0.03'/%3E%3C/svg%3E");
+
   /* Font */
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
@@ -201,6 +204,8 @@ const isLoggedIn = isAuthenticated
     --code-bg: #2a2a2a;
     --code-text: #f3f4f6;
 
+    /* Pinstripe */
+    --pinstripe-image: url("data:image/svg+xml,%3Csvg width='2' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='2' height='2' y='2' fill='%23fff' opacity='0.03'/%3E%3C/svg%3E");
   }
 }
 
@@ -213,6 +218,7 @@ body {
   font-size: 13px;
   line-height: 1.6;
   background: var(--surface-ground);
+  background-image: var(--pinstripe-image);
   color: var(--text-color);
   -webkit-font-smoothing: antialiased;
 }
