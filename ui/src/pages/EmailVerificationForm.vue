@@ -1,21 +1,28 @@
 <template>
   <div class="page">
     <main class="page-content">
-      <p class="subtitle text-lg mb-3">{{ page.email }}</p>
-      <h1 class="heading mb-8">CONFIRM LOGIN</h1>
-      <form method="POST" :action="page.formAction">
-        <input v-if="page.redirect" type="hidden" name="redirect" :value="page.redirect">
-        <input v-if="page.return_host" type="hidden" name="return_host" :value="page.return_host">
-        <input v-if="page.source" type="hidden" name="source" :value="page.source">
-        <input type="hidden" name="token" :value="page.token">
-        <button type="submit" class="btn-primary">Confirm</button>
-      </form>
+      <!-- Blank while auto-submit is in flight; show hint after 2s -->
+      <div v-if="autoSubmitting">
+        <p v-if="showHint" class="subtitle">Verifying...</p>
+      </div>
+      <!-- Fallback shown if auto-submit doesn't navigate away -->
+      <div v-else>
+        <p class="subtitle text-lg mb-3">{{ page.email }}</p>
+        <h1 class="heading mb-8">CONFIRM LOGIN</h1>
+        <form method="POST" :action="page.formAction">
+          <input v-if="page.redirect" type="hidden" name="redirect" :value="page.redirect">
+          <input v-if="page.return_host" type="hidden" name="return_host" :value="page.return_host">
+          <input v-if="page.source" type="hidden" name="source" :value="page.source">
+          <input type="hidden" name="token" :value="page.token">
+          <button type="submit" class="btn-primary">Confirm</button>
+        </form>
+      </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { pageData } from './simple'
 
 interface PageData {
@@ -28,8 +35,15 @@ interface PageData {
 }
 
 const page = pageData<PageData>()
+const autoSubmitting = ref(true)
+const showHint = ref(false)
 
 onMounted(() => {
+  // After 2s of blank screen, show "Verifying..." hint
+  setTimeout(() => { showHint.value = true }, 2000)
+  // After 5s, give up on auto-submit and show manual form
+  setTimeout(() => { autoSubmitting.value = false }, 5000)
+
   // Auto-submit immediately via a dynamically created form
   const f = document.createElement('form')
   f.method = 'POST'
@@ -66,6 +80,10 @@ onMounted(() => {
 .page-content {
   width: 100%;
   max-width: 42rem;
+}
+
+.loading {
+  text-align: center;
 }
 
 .heading {
