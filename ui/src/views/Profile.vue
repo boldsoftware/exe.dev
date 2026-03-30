@@ -57,6 +57,126 @@
         </div>
       </section>
 
+      <!-- Billing (Unified) -->
+      <section class="card">
+        <h2 class="card-title">Billing & Credits</h2>
+        <div class="billing-card-inner">
+          <!-- Skip Billing Notice -->
+          <template v-if="data.credits.skipBilling">
+            <div class="info-row">
+              <span class="info-label">Status</span>
+              <span class="info-value">Not configured (no <code>STRIPE_SECRET_KEY</code> env var exported)</span>
+            </div>
+          </template>
+
+          <!-- Full Billing UI -->
+          <template v-else>
+            <!-- Header: Plan Name, Status Badge, Action Buttons -->
+            <div class="billing-header">
+              <div class="billing-header-left">
+                <h3 class="plan-name">{{ data.credits.planName || 'Individual' }}</h3>
+                <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
+              </div>
+              <div class="billing-header-right">
+                <a v-if="data.credits.selfServeBilling" href="/billing/update?source=profile" class="btn btn-secondary">Invoices</a>
+                <a href="/billing/update?source=profile" class="btn btn-secondary">Manage Plan</a>
+              </div>
+            </div>
+
+            <!-- Shelley Credits Section -->
+            <div v-if="data.credits.hasShelleyFreeCreditPct" class="credits-grid">
+              <!-- Monthly Allowance Card -->
+              <div class="credit-card">
+                <div class="credit-card-title">MONTHLY ALLOWANCE</div>
+                <div class="credit-card-amount">${{ Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) }}</div>
+                <div class="credit-card-subtitle">remaining</div>
+                <div class="credit-card-detail">of ${{ Math.round(data.credits.shelleyCreditsMax) }} · </div>
+                <div class="credit-card-detail">Resets {{ data.credits.monthlyCreditsResetAt }}</div>
+              </div>
+
+              <!-- Extra Credits Card -->
+              <div class="credit-card">
+                <div class="credit-card-title">EXTRA CREDITS</div>
+                <div class="credit-card-amount">${{ Math.round(data.credits.ledgerBalanceUSD) }}</div>
+                <div class="credit-card-subtitle">balance</div>
+                <div class="credit-card-detail">Purchased · no expiry</div>
+              </div>
+            </div>
+
+            <!-- Monthly Usage Progress -->
+            <div v-if="data.credits.hasShelleyFreeCreditPct" class="usage-section">
+              <div class="usage-header">
+                <span class="usage-label">Monthly Usage</span>
+                <span class="usage-pct">{{ Math.round(data.credits.monthlyUsedPct) }}% used</span>
+              </div>
+              <ProgressBar 
+                :value="Math.min(data.credits.monthlyUsedPct, 100)" 
+                :severity="usageBarSeverity"
+                :show-value="false"
+              />
+              <div class="usage-footer">
+                <span>${{ Math.round(data.credits.monthlyUsedUSD) }} used this month</span>
+                <span v-if="data.credits.ledgerBalanceUSD > 0">${{ Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) }} + ${{ Math.round(data.credits.ledgerBalanceUSD) }} extra available</span>
+              </div>
+            </div>
+
+            <!-- Buy Credits -->
+            <div v-if="data.credits.hasShelleyFreeCreditPct" class="buy-section">
+              <div class="buy-label">
+                Top up extra credits · <a href="/docs/pricing#shelley-tokens" class="learn-more-link">How credits work</a>
+              </div>
+              <form method="POST" action="/credits/buy" class="buy-form">
+                <div class="buy-amounts">
+                  <button type="button" @click="selectedAmount = 5" :class="['amount-btn', { 'amount-btn-selected': selectedAmount === 5 }]">$5</button>
+                  <button type="button" @click="selectedAmount = 10" :class="['amount-btn', { 'amount-btn-selected': selectedAmount === 10 }]">$10</button>
+                  <button type="button" @click="selectedAmount = 25" :class="['amount-btn', { 'amount-btn-selected': selectedAmount === 25 }]">$25</button>
+                  <button type="button" @click="selectedAmount = 50" :class="['amount-btn', { 'amount-btn-selected': selectedAmount === 50 }]">$50</button>
+                  <button type="button" @click="selectedAmount = 100" :class="['amount-btn', { 'amount-btn-selected': selectedAmount === 100 }]">$100</button>
+                </div>
+                <input type="hidden" name="dollars" :value="selectedAmount" />
+                <button type="submit" class="buy-btn">Buy ${{ selectedAmount }}</button>
+              </form>
+            </div>
+
+            <!-- Transaction History -->
+            <div v-if="transactionHistory.length > 0" class="transaction-section">
+              <div class="transaction-header">
+                <h4 class="subsection-title">Transaction History</h4>
+                <a href="#" class="view-all-link">View all →</a>
+              </div>
+              <DataTable :value="transactionHistory" size="small" class="transaction-table">
+                <Column field="type" header="DESCRIPTION" />
+                <Column field="amount" header="AMOUNT" />
+                <Column field="date" header="DATE">
+                  <template #body="slotProps">
+                    {{ slotProps.data.date || '—' }}
+                  </template>
+                </Column>
+                <Column field="details" header="">
+                  <template #body="slotProps">
+                    <a 
+                      v-if="slotProps.data.type === 'Purchase' && slotProps.data.details" 
+                      :href="slotProps.data.details" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      class="receipt-link"
+                    >
+                      Receipt ↗
+                    </a>
+                  </template>
+                </Column>
+              </DataTable>
+            </div>
+
+            <!-- Support -->
+            <div class="support-section">
+              <span class="support-label">Support</span>
+              <a href="mailto:support@exe.dev">support@exe.dev</a>
+            </div>
+          </template>
+        </div>
+      </section>
+
       <!-- Pending Team Invites -->
       <section v-if="data.pendingTeamInvites.length > 0" class="card">
         <h2 class="card-title">Team Invitations</h2>
@@ -130,118 +250,6 @@
             Disabling your team will remove all team shares, cancel pending invites, and delete team auth/SSO configuration. Your VMs will remain on your personal account.
           </p>
           <button class="btn btn-danger" @click="disableTeam">Disable Team</button>
-        </div>
-      </section>
-
-      <!-- Billing -->
-      <section class="card">
-        <h2 class="card-title">Billing</h2>
-        <div class="info-grid">
-          <template v-if="data.credits.skipBilling">
-            <div class="info-row">
-              <span class="info-label">Status</span>
-              <span class="info-value">Not configured (no <code>STRIPE_SECRET_KEY</code> env var exported)</span>
-            </div>
-          </template>
-          <template v-else>
-            <div v-if="data.credits.selfServeBilling" class="info-row">
-              <span class="info-label">Plan</span>
-              <span class="info-value"><a href="/billing/update?source=profile">{{ data.credits.planName }} (Monthly)</a></span>
-            </div>
-            <div v-else-if="data.credits.planName" class="info-row">
-              <span class="info-label">Plan</span>
-              <span class="info-value">{{ data.credits.planName }}</span>
-            </div>
-            <div v-if="data.credits.selfServeBilling" class="info-row">
-              <span class="info-label">Status</span>
-              <span class="info-value">Active</span>
-            </div>
-            <div v-if="data.credits.selfServeBilling" class="info-row">
-              <span class="info-label">Invoices</span>
-              <span class="info-value"><a href="/billing/update?source=profile">View</a></span>
-            </div>
-            <div v-else-if="data.credits.billingStatus === 'canceled' && !data.credits.paidPlan" class="info-row">
-              <span class="info-label">Subscription</span>
-              <span class="info-value"><a href="/billing/update?source=profile">Renew</a></span>
-            </div>
-            <div v-else-if="!data.credits.paidPlan" class="info-row">
-              <span class="info-label">Subscribe</span>
-              <span class="info-value"><a href="/billing/update?source=profile">Upgrade to a paid plan</a></span>
-            </div>
-          </template>
-          <div v-if="!data.credits.skipBilling" class="info-row">
-            <span class="info-label">Support</span>
-            <span class="info-value"><a href="mailto:support@exe.dev">support@exe.dev</a></span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Shelley Credits -->
-      <section class="card">
-        <h2 class="card-title">Shelley Credits</h2>
-
-        <!-- Credit bar -->
-        <div v-if="data.credits.hasShelleyFreeCreditPct">
-          <div class="credit-section">
-            <div class="subsection-title">Monthly Allowance</div>
-            <div class="credit-header">
-              <span>{{ Math.round(data.credits.monthlyUsedUSD) }} of {{ Math.round(data.credits.shelleyCreditsMax) }} used{{ data.credits.monthlyUsedPct >= 100 && data.credits.ledgerBalanceUSD > 0 ? ' · Using extra credits' : '' }}</span>
-              <span class="text-muted">Resets {{ data.credits.monthlyCreditsResetAt }}</span>
-            </div>
-            <div class="credit-bar">
-              <div
-                class="credit-bar-fill"
-                :class="creditBarColor"
-                :style="{ width: Math.min(data.credits.monthlyUsedPct, 100) + '%' }"
-              ></div>
-            </div>
-          </div>
-
-          <!-- Extra Credits -->
-          <div class="extra-credits-section">
-            <div class="extra-credits-header">
-              <div>
-                <div class="subsection-title">Extra Credits</div>
-                <div class="extra-credits-balance">
-                  {{ data.credits.ledgerBalanceUSD > 0 ? Math.round(data.credits.ledgerBalanceUSD) + ' remaining' : 'No extra credits' }}
-                  · <a href="/docs/pricing#shelley-tokens" class="text-link">Learn more</a>
-                </div>
-              </div>
-              <form method="POST" action="/credits/buy" class="buy-form">
-                <input type="number" name="dollars" min="5" step="1" inputmode="numeric" value="25" required class="buy-input" />
-                <button type="submit" class="btn btn-primary">Buy more</button>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <!-- Purchases -->
-        <div v-if="data.credits.purchases.length > 0" class="purchases-section">
-          <h3 class="subsection-title">Purchases (Last 30D)</h3>
-          <table class="mini-table">
-            <thead><tr><th>Credits</th><th>Date</th><th>Receipt</th></tr></thead>
-            <tbody>
-              <tr v-for="(p, i) in data.credits.purchases" :key="i">
-                <td>{{ p.amount }}</td>
-                <td>{{ p.date }}</td>
-                <td><a v-if="p.receiptURL" :href="p.receiptURL" target="_blank" rel="noopener noreferrer">View</a></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Gifts -->
-        <div v-if="data.credits.gifts.length > 0" class="purchases-section">
-          <h3 class="subsection-title">Gift History</h3>
-          <table class="mini-table">
-            <thead><tr><th>Credits</th><th>Reason</th></tr></thead>
-            <tbody>
-              <tr v-for="(g, i) in data.credits.gifts" :key="i">
-                <td>{{ g.amount }}</td>
-                <td>{{ g.reason }}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -357,6 +365,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { fetchProfile, shellQuote, type ProfileData } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
+import Tag from 'primevue/tag'
+import ProgressBar from 'primevue/progressbar'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 
 const loading = ref(true)
 const loadError = ref('')
@@ -373,12 +385,39 @@ const teamName = ref('')
 const teamError = ref('')
 const creatingTeam = ref(false)
 
-const creditBarColor = computed(() => {
+// Billing state
+const selectedAmount = ref(25)
+
+const usageBarSeverity = computed(() => {
   const pct = data.value?.credits.monthlyUsedPct ?? 0
-  if (pct >= 90) return 'bar-red'
-  if (pct >= 75) return 'bar-orange'
-  if (pct >= 50) return 'bar-yellow'
-  return 'bar-green'
+  if (pct >= 90) return 'danger'
+  if (pct >= 75) return 'warning'
+  if (pct >= 50) return 'info'
+  return 'success'
+})
+
+const transactionHistory = computed(() => {
+  if (!data.value) return []
+  
+  // Merge purchases and gifts
+  const purchases = (data.value.credits.purchases || []).map(p => ({
+    type: 'Purchase',
+    amount: p.amount,
+    date: p.date,
+    details: p.receiptURL,
+    rawDate: new Date(p.date)
+  }))
+  
+  const gifts = (data.value.credits.gifts || []).map(g => ({
+    type: 'Gift',
+    amount: g.amount,
+    date: '', // Gifts don't have dates in the current structure
+    details: g.reason,
+    rawDate: new Date(0) // Default to epoch for sorting
+  }))
+  
+  // Combine and sort by date (newest first)
+  return [...purchases, ...gifts].sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime())
 })
 
 const modal = reactive({
@@ -686,7 +725,7 @@ async function toggleNewsletter(event: Event) {
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-color-secondary);
   text-transform: uppercase;
@@ -782,35 +821,290 @@ async function toggleNewsletter(event: Event) {
 }
 
 /* Credit bar */
-.credit-section {
-  margin-top: 12px;
+/* Redesigned Billing & Credits Section */
+.billing-card-inner {
+  background: var(--surface-ground);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 24px;
 }
 
-.credit-header {
+/* Billing Header */
+.billing-header {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  margin-bottom: 6px;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
-.credit-bar {
-  height: 8px;
-  background: var(--surface-border);
-  border-radius: 4px;
-  overflow: hidden;
+.billing-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.credit-bar-fill {
-  height: 100%;
-  background: var(--primary-color);
-  border-radius: 4px;
-  transition: width 0.3s;
+.plan-name {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
 }
 
-.credit-extra {
+.billing-header-right {
+  display: flex;
+  gap: 8px;
+}
+
+.active-tag {
+  background: var(--text-color) !important;
+  color: var(--surface-ground) !important;
+}
+
+/* Credit Cards Grid */
+.credits-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.credit-card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.credit-card-title {
   font-size: 11px;
+  font-weight: 600;
   color: var(--text-color-muted);
-  margin-top: 4px;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.credit-card-amount {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.credit-card-subtitle {
+  font-size: 14px;
+  color: var(--text-color-muted);
+  margin-bottom: 8px;
+}
+
+.credit-card-detail {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  line-height: 1.5;
+}
+
+/* Usage Section */
+.usage-section {
+  margin-bottom: 24px;
+}
+
+.usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.usage-label {
+  font-weight: 500;
+}
+
+.usage-pct {
+  color: var(--text-color-muted);
+}
+
+.usage-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-color-muted);
+}
+
+/* Buy Section */
+.buy-section {
+  padding: 20px;
+  border-top: 1px solid var(--surface-border);
+  margin: 0 -24px 24px;
+  padding: 20px 24px;
+}
+
+.buy-label {
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.buy-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.buy-amounts {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.amount-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--surface-border);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-color);
+  transition: all 0.15s;
+}
+
+.amount-btn:hover {
+  background: var(--surface-hover);
+}
+
+.amount-btn-selected {
+  border-color: var(--text-color);
+  background: transparent;
+  color: var(--text-color);
+}
+
+.buy-btn {
+  background: var(--text-color);
+  color: var(--surface-ground);
+  border: none;
+  padding: 10px 24px;
+  font-weight: 600;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.buy-btn:hover {
+  filter: brightness(0.9);
+}
+
+/* Transaction Section */
+.transaction-section {
+  margin-bottom: 24px;
+}
+
+.transaction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.transaction-header .subsection-title {
+  margin: 0;
+}
+
+.view-all-link {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  text-decoration: none;
+}
+
+.view-all-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+.transaction-table {
+  font-size: 12px;
+}
+
+.receipt-link {
+  color: var(--text-color-muted);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.receipt-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+/* Support Section */
+.support-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--surface-border);
+  font-size: 12px;
+}
+
+.support-label {
+  color: var(--text-color-muted);
+  margin-right: 8px;
+}
+
+.support-section a {
+  color: var(--text-color-muted);
+  text-decoration: none;
+}
+
+.support-section a:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+.learn-more-link {
+  color: var(--text-color-muted);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.learn-more-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .credits-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .billing-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .buy-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .buy-amounts {
+    width: 100%;
+  }
+}
+
+/* ProgressBar severity colors */
+:deep(.p-progressbar.p-progressbar-success .p-progressbar-value) {
+  background: var(--success-color);
+}
+
+:deep(.p-progressbar.p-progressbar-info .p-progressbar-value) {
+  background: var(--warning-color);
+}
+
+:deep(.p-progressbar.p-progressbar-warning .p-progressbar-value) {
+  background: #f97316;
+}
+
+:deep(.p-progressbar.p-progressbar-danger .p-progressbar-value) {
+  background: var(--danger-color);
 }
 
 /* SSH Keys */
@@ -1037,54 +1331,7 @@ async function toggleNewsletter(event: Event) {
 }
 
 /* Extra credits */
-.extra-credits-section {
-  margin-top: 16px;
-}
 
-.extra-credits-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.extra-credits-balance {
-  font-size: 12px;
-  color: var(--text-color-muted);
-  margin-top: 2px;
-}
-
-.buy-form {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.buy-input {
-  width: 60px;
-  padding: 4px 8px;
-  border: 1px solid var(--surface-border);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: inherit;
-}
-
-/* Credit bar colors */
-.credit-bar-fill.bar-green {
-  background: var(--success-color);
-}
-
-.credit-bar-fill.bar-yellow {
-  background: var(--warning-color);
-}
-
-.credit-bar-fill.bar-orange {
-  background: #f97316;
-}
-
-.credit-bar-fill.bar-red {
-  background: var(--danger-color);
-}
 
 /* Buttons */
 .btn {
