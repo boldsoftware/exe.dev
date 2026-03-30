@@ -171,30 +171,44 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 	}
 
 	// Apply connection limits and bandwidth limits in the background.
-	// This allows the gRPC server to start faster.
+	// This allows the gRPC server to start faster. We parallelize across
+	// VMs since each operates on its own tap/ifb interfaces with no
+	// cross-VM dependencies. Without this, 800 VMs × ~9 exec calls each
+	// takes ~10 minutes sequentially.
 	go func() {
+		const maxWorkers = 64
+		sem := make(chan struct{}, maxWorkers)
+		var wg sync.WaitGroup
+
 		for _, i := range instances {
 			// Skip stopped instances - they don't have TAP devices
 			if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
 				continue
 			}
 
-			if i.VMConfig != nil && i.VMConfig.NetworkInterface != nil && i.VMConfig.NetworkInterface.IP != nil {
-				ipStr := i.VMConfig.NetworkInterface.IP.IPV4
-				ip, _, err := net.ParseCIDR(ipStr)
-				if err != nil {
-					s.log.WarnContext(ctx, "failed to parse instance IP", "instance", i.ID, "ip", ipStr, "error", err)
-					continue
+			wg.Add(1)
+			sem <- struct{}{} // acquire worker slot
+			go func(inst *api.Instance) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+					ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
+					ip, _, err := net.ParseCIDR(ipStr)
+					if err != nil {
+						s.log.WarnContext(ctx, "failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
+					} else if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
+						s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "ip", ip.String(), "error", err)
+					}
 				}
-				if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
-					s.log.WarnContext(ctx, "failed to apply connection limit", "instance", i.ID, "ip", ip.String(), "error", err)
+				// Apply bandwidth limit to existing TAP device
+				if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
+					s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
 				}
-			}
-			// Apply bandwidth limit to existing TAP device
-			if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, i.ID); err != nil {
-				s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", i.ID, "error", err)
-			}
+			}(i)
 		}
+
+		wg.Wait()
 		s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))
 	}()
 
