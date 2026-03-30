@@ -52,6 +52,12 @@ type Recipe struct {
 	// "bash -c" on the remote host.
 	PreRestartCmds []string
 
+	// PreflightCmds are shell commands to run on the remote host
+	// after backup but before restart. Used for migration preflight
+	// checks. Template variables: {binary} = remote binary path,
+	// {stage} = deploy stage. Each entry is passed to "bash -c".
+	PreflightCmds []string
+
 	// ServiceFiles maps deploy stage to the repo-relative path of the
 	// systemd service file to install. If a stage is not present in the
 	// map but a "" (empty string) key exists, that entry is used as a
@@ -153,6 +159,9 @@ var Recipes = map[string]Recipe{
 		},
 		PreRestartCmds: []string{
 			`sqlite3 ~/exe.db .dump | zstd -o ~/exe.db.$(date +%Y%m%d-%H%M%S).sql.zst`,
+		},
+		PreflightCmds: []string{
+			`sqlite3 ~/exe.db ".backup /tmp/preflight.db" && {binary} --preflight --db /tmp/preflight.db --stage {stage}; rc=$?; rm -f /tmp/preflight.db; exit $rc`,
 		},
 		ServiceFiles: map[string]string{
 			"staging": "ops/deploy/exed-staging.service",

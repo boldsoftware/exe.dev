@@ -213,6 +213,15 @@ func (m *Manager) execute(ctx context.Context, d *deploy) {
 		}
 	}
 
+	// Run preflight checks (e.g. migration validation).
+	if len(recipe.PreflightCmds) > 0 {
+		d.beginStep("preflight")
+		err = m.preflight(ctx, d, recipe, remotePath)
+		if d.stepDone(err) {
+			return
+		}
+	}
+
 	// Restart the systemd service.
 	d.beginStep("restart")
 	err = m.restart(ctx, d, recipe)
@@ -539,6 +548,20 @@ func (m *Manager) preRestart(ctx context.Context, d *deploy, recipe Recipe) erro
 		}
 	}
 	d.setStepOutput(fmt.Sprintf("%d command(s) completed", len(recipe.PreRestartCmds)))
+	return nil
+}
+
+func (m *Manager) preflight(ctx context.Context, d *deploy, recipe Recipe, remotePath string) error {
+	user := recipe.remoteUser()
+	replacer := strings.NewReplacer("{binary}", remotePath, "{stage}", d.stage)
+	for i, cmd := range recipe.PreflightCmds {
+		expanded := replacer.Replace(cmd)
+		d.setStepOutput(fmt.Sprintf("running check %d/%d", i+1, len(recipe.PreflightCmds)))
+		if err := m.ssh(ctx, user, d.dnsName, "bash", "-c", expanded); err != nil {
+			return fmt.Errorf("preflight cmd %d: %w", i+1, err)
+		}
+	}
+	d.setStepOutput(fmt.Sprintf("%d check(s) passed", len(recipe.PreflightCmds)))
 	return nil
 }
 

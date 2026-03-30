@@ -63,6 +63,9 @@ func StepNames(process string) []string {
 	if r, ok := Recipes[process]; ok && len(r.PreRestartCmds) > 0 {
 		steps = append(steps, "backup")
 	}
+	if r, ok := Recipes[process]; ok && len(r.PreflightCmds) > 0 {
+		steps = append(steps, "preflight")
+	}
 	steps = append(steps, "restart", "verify")
 	return steps
 }
