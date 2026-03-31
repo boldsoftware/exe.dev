@@ -73,9 +73,9 @@ def main():
     # 4. Go binaries that don't depend on UI or exelet-fs — start immediately
     go_procs = {}
     go_procs["exeprox"] = subprocess.Popen(
-        ["go", "build", "-race"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"])
+        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"])
     go_procs["sshpiperd"] = subprocess.Popen(
-        ["go", "build", "-race", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
+        ["go", "build", "-race", "-ldflags=-s -w", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
         cwd="deps/sshpiper")
     # Note: exeletd is built later — it embeds exelet/fs via //go:embed,
     # so exelet-fs + exe-init must complete first.
@@ -138,7 +138,7 @@ def main():
     # 5. Build exed (depends on ui/dist being present)
     t_exed = time.monotonic()
     exed_result = subprocess.run(
-        ["go", "build", "-race"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"])
+        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"])
     if exed_result.returncode != 0:
         print("  FAILED: exed", file=sys.stderr, flush=True)
         sys.exit(1)
