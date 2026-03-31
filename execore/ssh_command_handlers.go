@@ -1775,7 +1775,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GiB (e.g., '8' for 8 GiB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])

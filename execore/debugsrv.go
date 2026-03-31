@@ -2908,14 +2908,14 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 			info.InstanceLimit = int(ec.VMHardLimit())
 
 			// Get load information.
-			kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f", float64(kib)/1048576.0) }
+			kibToGiB := func(kib int64) string { return fmt.Sprintf("%.1f", float64(kib)/1048576.0) }
 			usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			if usage, err := ec.client.GetMachineUsage(usageCtx, &resourceapi.GetMachineUsageRequest{}); err == nil {
 				info.Available = usage.Available
 				info.LoadAverage = fmt.Sprintf("%.2f", usage.Usage.LoadAverage)
-				info.MemFree = kibToGB(usage.Usage.MemFree)
-				info.SwapFree = kibToGB(usage.Usage.SwapFree)
-				info.DiskFree = kibToGB(usage.Usage.DiskFree)
+				info.MemFree = kibToGiB(usage.Usage.MemFree)
+				info.SwapFree = kibToGiB(usage.Usage.SwapFree)
+				info.DiskFree = kibToGiB(usage.Usage.DiskFree)
 				info.RxRate = fmt.Sprintf("%.1f", float64(usage.Usage.RxBytesRate)*8/1000000)
 				info.TxRate = fmt.Sprintf("%.1f", float64(usage.Usage.TxBytesRate)*8/1000000)
 			}
@@ -3165,14 +3165,14 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 	bytesToHuman := func(b uint64) string {
 		switch {
 		case b >= 1<<40:
-			return fmt.Sprintf("%.1f TB", float64(b)/float64(1<<40))
+			return fmt.Sprintf("%.1f TiB", float64(b)/float64(1<<40))
 		case b >= 1<<30:
-			return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
+			return fmt.Sprintf("%.1f GiB", float64(b)/float64(1<<30))
 		default:
-			return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
+			return fmt.Sprintf("%.1f MiB", float64(b)/float64(1<<20))
 		}
 	}
-	kibToGB := func(kib int64) string { return fmt.Sprintf("%.1f GB", float64(kib)/1048576.0) }
+	kibToGiB := func(kib int64) string { return fmt.Sprintf("%.1f GiB", float64(kib)/1048576.0) }
 
 	// Parallel gRPC calls
 	wg.Add(4)
@@ -3194,12 +3194,12 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 			mu.Lock()
 			available = usage.Available
 			loadAvg = fmt.Sprintf("%.2f", usage.Usage.LoadAverage)
-			memTotal = kibToGB(usage.Usage.MemTotal)
-			memFree = kibToGB(usage.Usage.MemFree)
-			swapTotal = kibToGB(usage.Usage.SwapTotal)
-			swapFree = kibToGB(usage.Usage.SwapFree)
-			diskTotal = kibToGB(usage.Usage.DiskTotal)
-			diskFree = kibToGB(usage.Usage.DiskFree)
+			memTotal = kibToGiB(usage.Usage.MemTotal)
+			memFree = kibToGiB(usage.Usage.MemFree)
+			swapTotal = kibToGiB(usage.Usage.SwapTotal)
+			swapFree = kibToGiB(usage.Usage.SwapFree)
+			diskTotal = kibToGiB(usage.Usage.DiskTotal)
+			diskFree = kibToGiB(usage.Usage.DiskFree)
 			rxRate = fmt.Sprintf("%.1f Mbit/s", float64(usage.Usage.RxBytesRate)*8/1000000)
 			txRate = fmt.Sprintf("%.1f Mbit/s", float64(usage.Usage.TxBytesRate)*8/1000000)
 			mu.Unlock()

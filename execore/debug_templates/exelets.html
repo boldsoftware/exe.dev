@@ -20,7 +20,7 @@
 <p>No exelets configured.</p>
 {{else}}
 <table>
-<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GB)</th><th>SwapFree (GB)</th><th>DiskFree (GB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Links</th><th>Actions</th></tr>
+<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GiB)</th><th>SwapFree (GiB)</th><th>DiskFree (GiB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Links</th><th>Actions</th></tr>
 {{range .Exelets}}
 <tr{{if .IsPreferred}} class="preferred"{{end}}>
 <td><code><a href="/debug/exelets/{{.Hostname}}">{{.Address}}</a></code></td>

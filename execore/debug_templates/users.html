@@ -57,8 +57,8 @@
 <p>Set per-vm resource limits for user:</p>
 <p><strong id="limitsEmailDisplay"></strong></p>
 <input type="hidden" name="user_id" id="limitsUserIdInput">
-<p>Memory (GB): <input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8"></p>
-<p>Disk (GB): <input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30"></p>
+<p>Memory (GiB): <input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8"></p>
+<p>Disk (GiB): <input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30"></p>
 <p>CPUs: <input type="number" name="max_cpus" id="maxCpusInput" min="0" step="1" placeholder="e.g., 4"></p>
 <p style="font-size: 11px; color: #666;">Leave blank or 0 to use defaults. Clear all to remove limits.</p>
 <p>
@@ -164,8 +164,8 @@ $(document).ready(function() {
                     try {
                         var p = JSON.parse(limits);
                         var parts = [];
-                        if (p.max_memory) parts.push((p.max_memory / 1e9).toFixed(0) + 'GB mem');
-                        if (p.max_disk) parts.push((p.max_disk / 1e9).toFixed(0) + 'GB disk');
+                        if (p.max_memory) parts.push((p.max_memory / (1024*1024*1024)).toFixed(0) + 'GiB mem');
+                        if (p.max_disk) parts.push((p.max_disk / (1024*1024*1024)).toFixed(0) + 'GiB disk');
                         if (p.max_cpus) parts.push(p.max_cpus + ' cpu');
                         summary = parts.length ? parts.join(', ') : '-';
                     } catch(e) { summary = 'invalid'; }
@@ -337,17 +337,17 @@ document.addEventListener('click', function(e) {
         document.getElementById('limitsUserIdInput').value = userId;
 
         // Parse existing limits
-        var memGB = '', diskGB = '', cpus = '';
+        var memGiB = '', diskGiB = '', cpus = '';
         if (limits) {
             try {
                 var p = JSON.parse(limits);
-                if (p.max_memory) memGB = (p.max_memory / 1e9).toFixed(0);
-                if (p.max_disk) diskGB = (p.max_disk / 1e9).toFixed(0);
+                if (p.max_memory) memGiB = (p.max_memory / (1024*1024*1024)).toFixed(0);
+                if (p.max_disk) diskGiB = (p.max_disk / (1024*1024*1024)).toFixed(0);
                 if (p.max_cpus) cpus = p.max_cpus;
             } catch(e) {}
         }
-        document.getElementById('maxMemoryInput').value = memGB;
-        document.getElementById('maxDiskInput').value = diskGB;
+        document.getElementById('maxMemoryInput').value = memGiB;
+        document.getElementById('maxDiskInput').value = diskGiB;
         document.getElementById('maxCpusInput').value = cpus;
 
         document.getElementById('limitsDialog').showModal();
@@ -367,15 +367,15 @@ document.getElementById('limitsClearBtn').addEventListener('click', function() {
 document.getElementById('limitsForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var userId = document.getElementById('limitsUserIdInput').value;
-    var memGB = parseInt(document.getElementById('maxMemoryInput').value) || 0;
-    var diskGB = parseInt(document.getElementById('maxDiskInput').value) || 0;
+    var memGiB = parseInt(document.getElementById('maxMemoryInput').value) || 0;
+    var diskGiB = parseInt(document.getElementById('maxDiskInput').value) || 0;
     var cpus = parseInt(document.getElementById('maxCpusInput').value) || 0;
 
     var limits = '';
-    if (memGB || diskGB || cpus) {
+    if (memGiB || diskGiB || cpus) {
         var obj = {};
-        if (memGB) obj.max_memory = memGB * 1e9;
-        if (diskGB) obj.max_disk = diskGB * 1e9;
+        if (memGiB) obj.max_memory = memGiB * 1024*1024*1024;
+        if (diskGiB) obj.max_disk = diskGiB * 1024*1024*1024;
         if (cpus) obj.max_cpus = cpus;
         limits = JSON.stringify(obj);
     }
