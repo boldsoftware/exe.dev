@@ -440,9 +440,12 @@ def push_and_monitor(args, commit, short, queue_branch, ref, is_last_attempt):
         m, s = divmod(elapsed, 60)
 
         if state == "passed":
-            print(f"q: passed [{m}m{s}s]", file=sys.stderr)
-            if not args.dry_run and not args.no_fetch:
-                git("fetch", "origin", "main", "--quiet", check=False)
+            if args.dry_run:
+                print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+            else:
+                print(f"q: passed, pushed to main [{m}m{s}s]", file=sys.stderr)
+                if not args.no_fetch:
+                    git("fetch", "origin", "main", "--quiet", check=False)
             run_post_hook(args.post_success)
             return True
         else:
@@ -482,7 +485,7 @@ def push_and_monitor(args, commit, short, queue_branch, ref, is_last_attempt):
     m, s = divmod(elapsed, 60)
 
     if conclusion == "success":
-        print(f"q: passed [{m}m{s}s]", file=sys.stderr)
+        print(f"q: passed, pushed to main [{m}m{s}s]", file=sys.stderr)
         if not args.no_fetch:
             git("fetch", "origin", "main", "--quiet", check=False)
         run_post_hook(args.post_success)
