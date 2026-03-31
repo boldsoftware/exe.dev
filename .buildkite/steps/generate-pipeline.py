@@ -367,8 +367,8 @@ def main():
     if shelley_changed:
         segments.append(load_segment("shelley.yml"))
 
-    # Conditional: blog tests
-    if blog_changed:
+    # Conditional: blog tests (run for blog-only changes, or as part of exe)
+    if blog_changed or exe_changed:
         segments.append(load_segment("blog.yml"))
 
     # Always: formatting
