@@ -312,12 +312,12 @@ curl -s -H "$AUTH" "$URL"
 
 ### IDs
 
-| Resource | ID |
-|----------|------|
-| Organization | `76e3b458-f59b-4d98-a1c6-f45b8d87f6ec` |
-| Service | `f7e2b7ae-7e5f-4339-bd4c-d076773ac9bc` |
-| Metrics source | `69a63f8fb6b5862ebca57245` |
-| Logs source | `69a63f8fb6b5862ebca5723d` |
+| Resource | Observability (new) | Original (deprecated) |
+|----------|--------------------|-----------------------|
+| Organization | `76e3b458-f59b-4d98-a1c6-f45b8d87f6ec` | (same) |
+| Service | `3d718833-6a3d-46f4-90e3-329159975f64` | `f7e2b7ae-7e5f-4339-bd4c-d076773ac9bc` |
+| Metrics source | `69cc2aaa2562ef5f27226375` | `69a63f8fb6b5862ebca57245` |
+| Logs source | `69cc2aaa15bdab674da27769` | `69a63f8fb6b5862ebca5723d` |
 
 These can be discovered via `GET /organizations` -> `GET /organizations/{orgId}/services`
 -> `GET .../clickstack/sources`.
@@ -352,13 +352,14 @@ https://api.clickhouse.cloud/v1/organizations/{orgId}/services/{serviceId}/click
         "displayType": "line",
         "sourceId": "<metrics-or-logs-source-id>",
         "select": [{
-          "valueExpression": "<metric-name>",
+          "valueExpression": "Value",
+          "metricName": "<metric-name>",
           "metricType": "<gauge|sum|histogram|summary>",
           "aggFn": "<aggregation>",
           "where": "",
           "whereLanguage": "lucene"
         }],
-        "groupBy": "<resource-or-metric-attribute-key>"
+        "groupBy": "ResourceAttributes['service.instance.id']"
       }
     }
   ],
@@ -374,8 +375,11 @@ but the managed ClickHouse Cloud API does not.
 
 **`displayType` values**: `line` (confirmed working; others likely include `bar`, `area`, `number`).
 
-**`valueExpression`**: The OTel metric name (e.g. `node_pressure_cpu_waiting_seconds_total`).
-Required for all aggFn except `count`.
+**`valueExpression`**: The column to aggregate — use `"Value"` for metrics tiles.
+
+**`metricName`**: The OTel metric name (e.g. `node_pressure_cpu_waiting_seconds_total`).
+This is a separate field from `valueExpression` — the metric name filters which rows to
+read, and `valueExpression` says which column to aggregate.
 
 **`groupBy`**: A single string (not an array). Use OTel resource attribute keys like
 `service.instance.id`, or metric attribute keys.
@@ -398,12 +402,9 @@ The field goes inside each `select[]` item as `metricType` (not `metricDataType`
 use the internal field name `metricType` directly — it preserves `metricType` in responses
 but silently strips `metricDataType`.
 
-**Status (2026-03-14)**: Despite `metricType` being preserved in the API response, metrics
-dashboard tiles still fail to render. The managed ClickStack API may have a bug where
-`metricType` is stored but not passed through to the chart rendering pipeline. This needs
-to be revisited — try creating a dashboard tile manually in the Clickstack UI first, then
-GET it via the API to see what the working tile config looks like. That will reveal the
-exact field names and values the UI uses.
+**Status (2026-03-31)**: `metricType` works correctly on the new observability cluster.
+The issue on the old cluster may have been a version bug. Dashboard tiles created via API
+with `metricType` render correctly.
 
 ### OTel Metrics Tables
 
@@ -431,14 +432,6 @@ Common columns: `MetricName`, `Value`, `TimeUnix`, `Attributes` (Map), `Resource
   base64-encode and use `-H "Authorization: Basic ..."`.
 - PUT on dashboards is a full replace (not a patch). You must send all tiles.
 
-### Debugging approach for next attempt
-
-1. Create a metrics tile manually in the Clickstack web UI (pick any metric, e.g.
-   `node_load1` which is a gauge).
-2. GET that dashboard via the API and inspect the exact tile config.
-3. Compare the working config against what the API produces when you POST/PUT.
-4. The diff will reveal any fields the UI sets that the API doesn't expose.
-
 ### Host PSI Metrics (in `otel_metrics_sum`)
 
 | Metric | PSI category |
@@ -451,8 +444,25 @@ Common columns: `MetricName`, `Value`, `TimeUnix`, `Attributes` (Map), `Resource
 
 Grouped by `service.instance.id` (e.g. `exe-ctr-07:9100`, `exed-02:19100`).
 
-### Existing Dashboards
+### Existing Dashboards (observability cluster)
+
+| Name | ID | Definition |
+|------|-----|------------|
+| Hosts | `69cc4919471d49fd0e076eea` | `hosts_dashboard()` in `sync-dashboards.py` |
+
+Dashboards are defined in code in `clickhouse/dashboards/sync-dashboards.py`. To sync:
+
+```bash
+./clickhouse/dashboards/sync-dashboards.py          # sync all
+./clickhouse/dashboards/sync-dashboards.py hosts     # sync one by name
+./clickhouse/dashboards/sync-dashboards.py --dump    # print JSON without syncing
+```
+
+The script matches by name — existing dashboards are updated in place, new ones are created.
+Add new dashboards by defining a function with the `@dashboard` decorator.
+
+### Existing Dashboards (old cluster, deprecated)
 
 | Name | ID | Description |
 |------|-----|-------------|
-| Host Resource Pressure (PSI) | `69b5c43825fefba28dfaef6c` | 5 panels (currently broken — metricType issue) |
+| Host Resource Pressure (PSI) | `69b5c43825fefba28dfaef6c` | 5 panels (was broken — metricType issue) |
