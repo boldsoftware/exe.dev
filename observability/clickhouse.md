@@ -1,43 +1,29 @@
 # ClickHouse Cloud
 
-Host: `mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443` (HTTPS)
+See `clickhouse/clickhouse.md` for full documentation.
 
-## Users
+## Clusters
 
-| User | Purpose | Password env var |
-|------|---------|-----------------|
-| `default` | Admin | `CLICKHOUSE_PASSWORD` |
-| `readonly` | Read-only queries (SELECT only, `readonly = 1`) | `CLICKHOUSE_READONLY_PASSWORD` |
-
-## Creating a new read-only user
-
-Generate a password:
-
-```bash
-openssl rand -base64 18
-```
-
-Connect as admin and create the user:
-
-```bash
-curl --user "default:$CLICKHOUSE_PASSWORD" \
-  --data-binary "CREATE USER IF NOT EXISTS <username> IDENTIFIED WITH sha256_password BY '<password>' SETTINGS readonly = 1" \
-  https://mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443
-
-curl --user "default:$CLICKHOUSE_PASSWORD" \
-  --data-binary "GRANT CURRENT GRANTS(SELECT ON *.*) TO <username>" \
-  https://mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443
-```
-
-Note: `GRANT CURRENT GRANTS(...)` is used instead of plain `GRANT` because the
-`default` user lacks GRANT OPTION on some system tables (e.g. `system.zookeeper`).
+| Name | Host | Status |
+|------|------|--------|
+| Observability (new) | `tumy84t4c1.us-west-2.aws.clickhouse.cloud:8443` | Active |
+| Original | `mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443` | Deprecated 2026-03-31 |
 
 ## Querying
 
+Use your `*-ro` user and password from `clickhouse-ro-users.txt`:
+
 ```bash
-curl --user "readonly:$CLICKHOUSE_READONLY_PASSWORD" \
+curl --user "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
   --data-binary 'SELECT version()' \
-  https://mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443
+  https://tumy84t4c1.us-west-2.aws.clickhouse.cloud:8443
+```
+
+Set `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from your credentials in `clickhouse-ro-users.txt`:
+
+```bash
+export CLICKHOUSE_USER="yourname-ro"
+export CLICKHOUSE_PASSWORD="yourpassword"
 ```
 
 ## OTel Logs Schema
