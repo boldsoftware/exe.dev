@@ -147,6 +147,7 @@ EOF
 
 # Preflight migration check: always run (idempotent, safe)
 echo "Running migration preflight check..."
+PREFLIGHT_START=$(date +%s%N)
 ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<PREFLIGHT
 sqlite3 ~/exe.db ".backup /tmp/preflight.db"
 if ~/$BINARY_NAME --preflight --db /tmp/preflight.db --stage prod; then
@@ -158,7 +159,8 @@ else
 fi
 rm -f /tmp/preflight.db
 PREFLIGHT
-echo -e "${GREEN}✓ Migration preflight passed${NC}"
+PREFLIGHT_ELAPSED=$(( ($(date +%s%N) - PREFLIGHT_START) / 1000000 ))
+echo -e "${GREEN}✓ Migration preflight passed${NC} ($((PREFLIGHT_ELAPSED / 1000)).$((PREFLIGHT_ELAPSED % 1000 / 100))s)"
 echo ""
 
 # Get the previous binary version for rollback instructions
