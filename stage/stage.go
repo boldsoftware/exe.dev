@@ -386,6 +386,7 @@ func Staging() Env {
 				"chicken.exe.xyz",
 				"exe.dev",
 				"phil-dev.exe.xyz",
+				"phil-exe-dev.exe.xyz",
 				"example.com", // nobody can receive email here, which makes it convenient to open up for placeholder / similar tests
 			},
 		},
