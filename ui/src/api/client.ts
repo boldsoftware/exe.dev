@@ -206,6 +206,7 @@ export interface IntegrationsData {
   githubAppSlug: string
   hasPushTokens: boolean
   allTags: string[]
+  tagVMs: Record<string, string[]>
   boxes: { name: string; status: string }[]
   integrationScheme: string
   boxHost: string

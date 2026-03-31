@@ -231,6 +231,7 @@
                 :disabled="loadingRepos"
                 @focus="repoDropdownOpen = true"
                 @input="repoDropdownOpen = true"
+                @blur="delayClose(() => repoDropdownOpen = false)"
               />
               <div v-if="repoDropdownOpen && !loadingRepos && filteredRepos.length > 0" class="repo-dropdown">
                 <div
@@ -257,8 +258,9 @@
             <label>Attach to</label>
             <div class="multi-select" ref="ghAttachRef">
               <div class="multi-select-tags" v-if="ghModal.attachments.length > 0">
-                <span v-for="a in ghModal.attachments" :key="a" class="multi-select-tag">
+                <span v-for="a in ghModal.attachments" :key="a" class="multi-select-tag" :class="{ 'multi-select-tag-default': a === `tag:${ghEffectiveName}` }">
                   {{ a }}
+                  <span v-if="a.startsWith('tag:')" class="tag-default-hint">{{ tagChipHint(a.slice(4)) }}</span>
                   <button class="multi-select-tag-remove" @click="removeGhAttachment(a)">&times;</button>
                 </span>
               </div>
@@ -269,21 +271,55 @@
                 placeholder="Search VMs, tags..."
                 @focus="ghAttachOpen = true"
                 @input="ghAttachOpen = true"
+                @blur="delayClose(() => ghAttachOpen = false)"
               />
               <div v-if="ghAttachOpen && filteredGhAttachOptions.length > 0" class="attach-dropdown">
                 <div
                   v-for="opt in filteredGhAttachOptions"
-                  :key="opt"
+                  :key="opt.value"
                   class="attach-option"
-                  @mousedown.prevent="addGhAttachment(opt)"
+                  @mousedown.prevent="addGhAttachment(opt.value)"
                 >
-                  {{ opt }}
+                  <span>{{ opt.label }}</span>
+                  <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="ghFirstTag" class="form-row">
+            <label>Tag additional VMs with <span class="tag-hash">#{{ ghFirstTag }}</span></label>
+            <div class="multi-select" ref="ghTagVMRef">
+              <div class="multi-select-tags" v-if="ghModal.tagVMs.length > 0">
+                <span v-for="vm in ghModal.tagVMs" :key="vm" class="multi-select-tag">
+                  {{ vm }}
+                  <button class="multi-select-tag-remove" @click="removeGhTagVM(vm)">&times;</button>
+                </span>
+              </div>
+              <input
+                ref="ghTagVMInputRef"
+                v-model="ghTagVMSearch"
+                class="form-input"
+                placeholder="Select VMs..."
+                @focus="ghTagVMOpen = true"
+                @input="ghTagVMOpen = true"
+                @blur="delayClose(() => ghTagVMOpen = false)"
+              />
+              <div v-if="ghTagVMOpen && filteredGhTagVMOptions.length > 0" class="attach-dropdown">
+                <div
+                  v-for="opt in filteredGhTagVMOptions"
+                  :key="opt.name"
+                  class="attach-option"
+                  @mousedown.prevent="addGhTagVM(opt.name)"
+                >
+                  <span>{{ opt.name }}</span>
+                  <span v-if="opt.tags.length > 0" class="attach-option-context">{{ opt.tags.join(', ') }}</span>
                 </div>
               </div>
             </div>
           </div>
           <div class="cmd-preview">
-            <code>{{ ghBuiltCommand || 'Select a repository to preview command' }}</code>
+            <code v-for="(cmd, i) in ghBuiltCommands" :key="i">{{ cmd }}</code>
+            <code v-if="ghBuiltCommands.length === 0">Select a repository to preview command</code>
           </div>
           <div v-if="ghModal.result" class="cmd-result" :class="ghModal.result.success ? 'success' : 'error'">
             {{ ghModal.result.output || ghModal.result.error }}
@@ -293,7 +329,7 @@
           <button v-if="ghModal.result?.success" class="btn btn-primary" @click="closeGhModal">Done</button>
           <template v-else>
             <button class="btn btn-secondary" @click="closeGhModal">Cancel</button>
-            <button class="btn btn-primary" :disabled="!ghBuiltCommand || ghModal.running" @click="runGhCommand">
+            <button class="btn btn-primary" :disabled="ghBuiltCommands.length === 0 || ghModal.running" @click="runGhCommand">
               {{ ghModal.running ? 'Running...' : 'Run' }}
             </button>
           </template>
@@ -337,8 +373,9 @@
             <label>Attach to</label>
             <div class="multi-select" ref="proxyAttachRef">
               <div class="multi-select-tags" v-if="proxyModal.attachments.length > 0">
-                <span v-for="a in proxyModal.attachments" :key="a" class="multi-select-tag">
+                <span v-for="a in proxyModal.attachments" :key="a" class="multi-select-tag" :class="{ 'multi-select-tag-default': a === `tag:${proxyModal.name.trim()}` }">
                   {{ a }}
+                  <span v-if="a.startsWith('tag:')" class="tag-default-hint">{{ tagChipHint(a.slice(4)) }}</span>
                   <button class="multi-select-tag-remove" @click="removeProxyAttachment(a)">&times;</button>
                 </span>
               </div>
@@ -349,21 +386,55 @@
                 placeholder="Search VMs, tags..."
                 @focus="proxyAttachOpen = true"
                 @input="proxyAttachOpen = true"
+                @blur="delayClose(() => proxyAttachOpen = false)"
               />
               <div v-if="proxyAttachOpen && filteredProxyAttachOptions.length > 0" class="attach-dropdown">
                 <div
                   v-for="opt in filteredProxyAttachOptions"
-                  :key="opt"
+                  :key="opt.value"
                   class="attach-option"
-                  @mousedown.prevent="addProxyAttachment(opt)"
+                  @mousedown.prevent="addProxyAttachment(opt.value)"
                 >
-                  {{ opt }}
+                  <span>{{ opt.label }}</span>
+                  <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="proxyFirstTag" class="form-row">
+            <label>Tag additional VMs with <span class="tag-hash">#{{ proxyFirstTag }}</span></label>
+            <div class="multi-select" ref="proxyTagVMRef">
+              <div class="multi-select-tags" v-if="proxyModal.tagVMs.length > 0">
+                <span v-for="vm in proxyModal.tagVMs" :key="vm" class="multi-select-tag">
+                  {{ vm }}
+                  <button class="multi-select-tag-remove" @click="removeProxyTagVM(vm)">&times;</button>
+                </span>
+              </div>
+              <input
+                ref="proxyTagVMInputRef"
+                v-model="proxyTagVMSearch"
+                class="form-input"
+                placeholder="Select VMs..."
+                @focus="proxyTagVMOpen = true"
+                @input="proxyTagVMOpen = true"
+                @blur="delayClose(() => proxyTagVMOpen = false)"
+              />
+              <div v-if="proxyTagVMOpen && filteredProxyTagVMOptions.length > 0" class="attach-dropdown">
+                <div
+                  v-for="opt in filteredProxyTagVMOptions"
+                  :key="opt.name"
+                  class="attach-option"
+                  @mousedown.prevent="addProxyTagVM(opt.name)"
+                >
+                  <span>{{ opt.name }}</span>
+                  <span v-if="opt.tags.length > 0" class="attach-option-context">{{ opt.tags.join(', ') }}</span>
                 </div>
               </div>
             </div>
           </div>
           <div class="cmd-preview">
-            <code>{{ proxyBuiltCommand || 'Fill in name and target to preview command' }}</code>
+            <code v-for="(cmd, i) in proxyBuiltCommands" :key="i">{{ cmd }}</code>
+            <code v-if="proxyBuiltCommands.length === 0">Fill in name and target to preview command</code>
           </div>
           <div v-if="proxyModal.result" class="cmd-result" :class="proxyModal.result.success ? 'success' : 'error'">
             {{ proxyModal.result.output || proxyModal.result.error }}
@@ -373,7 +444,7 @@
           <button v-if="proxyModal.result?.success" class="btn btn-primary" @click="closeProxyModal">Done</button>
           <template v-else>
             <button class="btn btn-secondary" @click="closeProxyModal">Cancel</button>
-            <button class="btn btn-primary" :disabled="!proxyBuiltCommand || proxyModal.running" @click="runProxyCommand">
+            <button class="btn btn-primary" :disabled="proxyBuiltCommands.length === 0 || proxyModal.running" @click="runProxyCommand">
               {{ proxyModal.running ? 'Running...' : 'Run' }}
             </button>
           </template>
@@ -406,15 +477,17 @@
                 placeholder="Search VMs, tags to attach..."
                 @focus="attachModalOpen = true"
                 @input="attachModalOpen = true"
+                @blur="delayClose(() => attachModalOpen = false)"
               />
               <div v-if="attachModalOpen && filteredAttachModalOptions.length > 0" class="attach-dropdown">
                 <div
                   v-for="opt in filteredAttachModalOptions"
-                  :key="opt"
+                  :key="opt.value"
                   class="attach-option"
-                  @mousedown.prevent="attachFromModal(opt)"
+                  @mousedown.prevent="attachFromModal(opt.value)"
                 >
-                  {{ opt }}
+                  <span>{{ opt.label }}</span>
+                  <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
                 </div>
               </div>
             </div>
@@ -432,7 +505,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { fetchIntegrations, shellQuote, runCommand, type IntegrationsData } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
@@ -484,12 +557,17 @@ const ghModal = reactive({
   repo: '',
   name: '',
   attachments: [] as string[],
+  tagVMs: [] as string[],
   running: false,
   result: null as { success: boolean; output: string; error: string } | null,
 })
 
 const ghAttachSearch = ref('')
 const ghAttachOpen = ref(false)
+const ghTagVMSearch = ref('')
+const ghTagVMOpen = ref(false)
+const ghTagVMRef = ref<HTMLElement | null>(null)
+const ghTagVMInputRef = ref<HTMLInputElement | null>(null)
 
 // HTTP Proxy add modal
 const proxyModal = reactive({
@@ -500,12 +578,17 @@ const proxyModal = reactive({
   bearer: '',
   header: '',
   attachments: [] as string[],
+  tagVMs: [] as string[],
   running: false,
   result: null as { success: boolean; output: string; error: string } | null,
 })
 
 const proxyAttachSearch = ref('')
 const proxyAttachOpen = ref(false)
+const proxyTagVMSearch = ref('')
+const proxyTagVMOpen = ref(false)
+const proxyTagVMRef = ref<HTMLElement | null>(null)
+const proxyTagVMInputRef = ref<HTMLInputElement | null>(null)
 
 // Attach modal (for managing attachments on existing integrations)
 const attachModal = reactive({
@@ -521,15 +604,32 @@ const attachModalOpen = ref(false)
 const attachModalRef = ref<HTMLElement | null>(null)
 const attachModalInputRef = ref<HTMLInputElement | null>(null)
 
-// All possible attachment options
+// Helper: describe VMs for a tag in the dropdown
+function tagVMLabel(tag: string): string {
+  const vms = data.value?.tagVMs?.[tag] || []
+  if (vms.length === 0) return ''
+  if (vms.length <= 3) return vms.join(', ')
+  return `${vms.length} VMs`
+}
+
+function tagChipHint(tag: string): string {
+  const vms = data.value?.tagVMs?.[tag] || []
+  if (vms.length === 0) return 'new tag'
+  if (vms.length <= 2) return vms.join(', ')
+  return `attached to ${vms.length} VMs`
+}
+
+// All possible attachment options (for existing integration attach modal)
 const allAttachOptions = computed(() => {
-  if (!data.value) return []
-  const opts: string[] = ['auto:all']
+  if (!data.value) return [] as { value: string; label: string; sublabel: string }[]
+  const opts: { value: string; label: string; sublabel: string }[] = [
+    { value: 'auto:all', label: 'auto:all', sublabel: `${data.value.boxes.length} VMs` },
+  ]
   for (const tag of data.value.allTags) {
-    opts.push(`tag:${tag}`)
+    opts.push({ value: `tag:${tag}`, label: `tag:${tag}`, sublabel: tagVMLabel(tag) })
   }
   for (const box of data.value.boxes) {
-    opts.push(`vm:${box.name}`)
+    opts.push({ value: `vm:${box.name}`, label: `vm:${box.name}`, sublabel: '' })
   }
   return opts
 })
@@ -537,13 +637,39 @@ const allAttachOptions = computed(() => {
 function filterAttachOptions(search: string, selected: string[]) {
   const q = search.toLowerCase().trim()
   return allAttachOptions.value
-    .filter(o => !selected.includes(o))
-    .filter(o => !q || o.toLowerCase().includes(q))
+    .filter(o => !selected.includes(o.value))
+    .filter(o => !q || o.value.toLowerCase().includes(q) || o.sublabel.toLowerCase().includes(q))
+}
+
+const filteredAttachModalOptions = computed(() => filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments))
+
+// VM options for tagging (used in both add modals)
+// Helper: get tags for a VM
+function vmTags(vmName: string): string[] {
+  if (!data.value?.tagVMs) return []
+  const tags: string[] = []
+  for (const [tag, vms] of Object.entries(data.value.tagVMs)) {
+    if (vms.includes(vmName)) tags.push(tag)
+  }
+  return tags
+}
+
+const allVMOptions = computed(() => {
+  if (!data.value) return [] as { name: string; tags: string[] }[]
+  return data.value.boxes.map(b => ({ name: b.name, tags: vmTags(b.name) }))
+})
+
+function filterVMOptions(search: string, selected: string[]) {
+  const q = search.toLowerCase().trim()
+  return allVMOptions.value
+    .filter(vm => !selected.includes(vm.name))
+    .filter(vm => !q || vm.name.toLowerCase().includes(q) || vm.tags.some(t => t.toLowerCase().includes(q)))
 }
 
 const filteredGhAttachOptions = computed(() => filterAttachOptions(ghAttachSearch.value, ghModal.attachments))
 const filteredProxyAttachOptions = computed(() => filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments))
-const filteredAttachModalOptions = computed(() => filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments))
+const filteredGhTagVMOptions = computed(() => filterVMOptions(ghTagVMSearch.value, ghModal.tagVMs))
+const filteredProxyTagVMOptions = computed(() => filterVMOptions(proxyTagVMSearch.value, proxyModal.tagVMs))
 
 const filteredRepos = computed(() => {
   const q = repoSearch.value.toLowerCase().trim()
@@ -554,21 +680,71 @@ const filteredRepos = computed(() => {
   ).slice(0, 50)
 })
 
-// GitHub modal command builder
-const ghBuiltCommand = computed(() => {
-  if (!ghModal.repo) return ''
-  const name = ghModal.name.trim() || ghModal.repo.replace(/\//g, '-')
+// GitHub modal: effective name for tag
+const ghEffectiveName = computed(() => {
+  return ghModal.name.trim() || (ghModal.repo ? ghModal.repo.replace(/\//g, '-') : 'integration-name')
+})
+
+// First tag from attachments (for "Tag additional VMs with #foo")
+const ghFirstTag = computed(() => {
+  const tag = ghModal.attachments.find(a => a.startsWith('tag:'))
+  return tag ? tag.slice(4) : ''
+})
+
+const proxyFirstTag = computed(() => {
+  const tag = proxyModal.attachments.find(a => a.startsWith('tag:'))
+  return tag ? tag.slice(4) : ''
+})
+
+// Keep default tag:<name> attachment in sync with effective name
+watch(ghEffectiveName, (newName, oldName) => {
+  if (oldName && oldName !== 'integration-name') {
+    const oldTag = `tag:${oldName}`
+    const idx = ghModal.attachments.indexOf(oldTag)
+    if (idx !== -1) {
+      ghModal.attachments[idx] = `tag:${newName}`
+    }
+  } else if (newName !== 'integration-name' && ghModal.attachments.length === 0) {
+    ghModal.attachments.push(`tag:${newName}`)
+  }
+})
+
+// GitHub modal command builder (returns array of commands)
+const ghBuiltCommands = computed(() => {
+  if (!ghModal.repo) return [] as string[]
+  const name = ghEffectiveName.value
   let cmd = `integrations add github --name=${shellQuote(name)} --repository=${shellQuote(ghModal.repo)}`
   for (const a of ghModal.attachments) {
     cmd += ` --attach=${shellQuote(a)}`
   }
-  return cmd
+  const cmds: string[] = [cmd]
+  const tagName = ghFirstTag.value
+  if (tagName) {
+    for (const vm of ghModal.tagVMs) {
+      cmds.push(`tag ${shellQuote(vm)} ${shellQuote(tagName)}`)
+    }
+  }
+  return cmds
 })
 
-// Proxy modal command builder
-const proxyBuiltCommand = computed(() => {
-  if (!proxyModal.name.trim() || !proxyModal.target.trim()) return ''
-  let cmd = `integrations add http-proxy --name=${shellQuote(proxyModal.name.trim())} --target=${shellQuote(proxyModal.target.trim())}`
+// Keep default tag:<name> attachment in sync with proxy name
+watch(() => proxyModal.name.trim(), (newName, oldName) => {
+  if (oldName) {
+    const oldTag = `tag:${oldName}`
+    const idx = proxyModal.attachments.indexOf(oldTag)
+    if (idx !== -1) {
+      proxyModal.attachments[idx] = `tag:${newName}`
+    }
+  } else if (newName && proxyModal.attachments.length === 0) {
+    proxyModal.attachments.push(`tag:${newName}`)
+  }
+})
+
+// Proxy modal command builder (returns array of commands)
+const proxyBuiltCommands = computed(() => {
+  if (!proxyModal.name.trim() || !proxyModal.target.trim()) return [] as string[]
+  const name = proxyModal.name.trim()
+  let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(proxyModal.target.trim())}`
   if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
     cmd += ` --bearer=${shellQuote(proxyModal.bearer.trim())}`
   } else if (proxyModal.authMethod === 'header' && proxyModal.header.trim()) {
@@ -577,7 +753,14 @@ const proxyBuiltCommand = computed(() => {
   for (const a of proxyModal.attachments) {
     cmd += ` --attach=${shellQuote(a)}`
   }
-  return cmd
+  const cmds: string[] = [cmd]
+  const tagName = proxyFirstTag.value
+  if (tagName) {
+    for (const vm of proxyModal.tagVMs) {
+      cmds.push(`tag ${shellQuote(vm)} ${shellQuote(tagName)}`)
+    }
+  }
+  return cmds
 })
 
 
@@ -598,6 +781,22 @@ function removeGhAttachment(opt: string) {
   ghModal.attachments = ghModal.attachments.filter(a => a !== opt)
 }
 
+// GitHub tag VM helpers
+function addGhTagVM(vm: string) {
+  if (!ghModal.tagVMs.includes(vm)) {
+    ghModal.tagVMs.push(vm)
+  }
+  ghTagVMSearch.value = ''
+  nextTick(() => {
+    ghTagVMInputRef.value?.focus()
+    ghTagVMOpen.value = true
+  })
+}
+
+function removeGhTagVM(vm: string) {
+  ghModal.tagVMs = ghModal.tagVMs.filter(v => v !== vm)
+}
+
 // Proxy attachment helpers
 function addProxyAttachment(opt: string) {
   if (!proxyModal.attachments.includes(opt)) {
@@ -612,6 +811,22 @@ function addProxyAttachment(opt: string) {
 
 function removeProxyAttachment(opt: string) {
   proxyModal.attachments = proxyModal.attachments.filter(a => a !== opt)
+}
+
+// Proxy tag VM helpers
+function addProxyTagVM(vm: string) {
+  if (!proxyModal.tagVMs.includes(vm)) {
+    proxyModal.tagVMs.push(vm)
+  }
+  proxyTagVMSearch.value = ''
+  nextTick(() => {
+    proxyTagVMInputRef.value?.focus()
+    proxyTagVMOpen.value = true
+  })
+}
+
+function removeProxyTagVM(vm: string) {
+  proxyModal.tagVMs = proxyModal.tagVMs.filter(v => v !== vm)
 }
 
 // Attach modal: immediately attach a spec
@@ -657,6 +872,11 @@ async function detachFromModal(spec: string) {
 }
 
 // Close modals on Escape
+// Close a dropdown after a short delay (allows mousedown on options to fire first)
+function delayClose(fn: () => void) {
+  setTimeout(fn, 150)
+}
+
 function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   if (attachModal.visible) { closeAttachModal(); return }
@@ -672,8 +892,14 @@ function onDocClick(e: MouseEvent) {
   if (ghAttachRef.value && !ghAttachRef.value.contains(e.target as Node)) {
     ghAttachOpen.value = false
   }
+  if (ghTagVMRef.value && !ghTagVMRef.value.contains(e.target as Node)) {
+    ghTagVMOpen.value = false
+  }
   if (proxyAttachRef.value && !proxyAttachRef.value.contains(e.target as Node)) {
     proxyAttachOpen.value = false
+  }
+  if (proxyTagVMRef.value && !proxyTagVMRef.value.contains(e.target as Node)) {
+    proxyTagVMOpen.value = false
   }
   if (attachModalRef.value && !attachModalRef.value.contains(e.target as Node)) {
     attachModalOpen.value = false
@@ -768,10 +994,12 @@ async function openAddGitHubRepo() {
   ghModal.repo = ''
   ghModal.name = ''
   ghModal.attachments = []
+  ghModal.tagVMs = []
   ghModal.running = false
   ghModal.result = null
   repoSearch.value = ''
   ghAttachSearch.value = ''
+  ghTagVMSearch.value = ''
   loadingRepos.value = true
   try {
     const resp = await fetch('/github/repos')
@@ -802,13 +1030,21 @@ function closeGhModal() {
 }
 
 async function runGhCommand() {
-  const cmd = ghBuiltCommand.value
-  if (!cmd) return
+  const cmds = ghBuiltCommands.value
+  if (cmds.length === 0) return
   ghModal.running = true
   ghModal.result = null
   try {
-    const res = await runCommand(cmd)
-    ghModal.result = { success: !!res.success, output: res.output || '', error: res.error || res.output || '' }
+    const outputs: string[] = []
+    for (const cmd of cmds) {
+      const res = await runCommand(cmd)
+      if (!res.success) {
+        ghModal.result = { success: false, output: '', error: res.output || res.error || 'Command failed' }
+        return
+      }
+      if (res.output) outputs.push(res.output)
+    }
+    ghModal.result = { success: true, output: outputs.join('\n') || 'Done', error: '' }
   } catch (err: any) {
     ghModal.result = { success: false, output: '', error: err.message || 'Network error' }
   } finally {
@@ -825,9 +1061,11 @@ function openAddHTTPProxy() {
   proxyModal.bearer = ''
   proxyModal.header = ''
   proxyModal.attachments = []
+  proxyModal.tagVMs = []
   proxyModal.running = false
   proxyModal.result = null
   proxyAttachSearch.value = ''
+  proxyTagVMSearch.value = ''
 }
 
 function closeProxyModal() {
@@ -837,13 +1075,21 @@ function closeProxyModal() {
 }
 
 async function runProxyCommand() {
-  const cmd = proxyBuiltCommand.value
-  if (!cmd) return
+  const cmds = proxyBuiltCommands.value
+  if (cmds.length === 0) return
   proxyModal.running = true
   proxyModal.result = null
   try {
-    const res = await runCommand(cmd)
-    proxyModal.result = { success: !!res.success, output: res.output || '', error: res.error || res.output || '' }
+    const outputs: string[] = []
+    for (const cmd of cmds) {
+      const res = await runCommand(cmd)
+      if (!res.success) {
+        proxyModal.result = { success: false, output: '', error: res.output || res.error || 'Command failed' }
+        return
+      }
+      if (res.output) outputs.push(res.output)
+    }
+    proxyModal.result = { success: true, output: outputs.join('\n') || 'Done', error: '' }
   } catch (err: any) {
     proxyModal.result = { success: false, output: '', error: err.message || 'Network error' }
   } finally {
@@ -1352,6 +1598,24 @@ select.form-input {
   opacity: 0.5;
 }
 
+.multi-select-tag-default {
+  border: 1px solid var(--primary-color, #14b8a6);
+}
+
+.tag-default-hint {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--primary-color, #14b8a6);
+  opacity: 0.8;
+}
+
+.tag-hash {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
 .attach-empty {
   font-size: 12px;
   color: var(--text-color-muted);
@@ -1384,6 +1648,20 @@ select.form-input {
   background: var(--surface-hover);
 }
 
+.attach-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.attach-option-context {
+  font-size: 11px;
+  color: var(--text-color-muted);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+
 /* Command preview */
 .cmd-preview {
   background: var(--surface-subtle);
@@ -1394,6 +1672,13 @@ select.form-input {
   font-size: 12px;
   word-break: break-all;
   color: var(--text-color-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cmd-preview code {
+  display: block;
 }
 
 .cmd-result {

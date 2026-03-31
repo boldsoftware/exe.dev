@@ -235,6 +235,7 @@ type jsonIntegrationsData struct {
 	GitHubAppSlug      string                `json:"githubAppSlug"`
 	HasPushTokens      bool                  `json:"hasPushTokens"`
 	AllTags            []string              `json:"allTags"`
+	TagVMs             map[string][]string   `json:"tagVMs"`
 	Boxes              []jsonBoxMinimal      `json:"boxes"`
 	IntegrationScheme  string                `json:"integrationScheme"`
 	BoxHost            string                `json:"boxHost"`
@@ -777,6 +778,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			ProxyIntegrations:  make([]jsonIntegrationInfo, 0),
 			GitHubAccounts:     make([]jsonGitHubAccount, 0),
 			AllTags:            make([]string, 0),
+			TagVMs:             map[string][]string{},
 			Boxes:              make([]jsonBoxMinimal, 0),
 			IntegrationScheme:  s.integrationScheme(),
 			BoxHost:            s.env.BoxHost,
@@ -784,18 +786,18 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 
-	tagSet := map[string]bool{}
+	tagVMs := map[string][]string{}
 	var profileBoxes []jsonBoxMinimal
 	if userBoxes, err := withRxRes1(s, r.Context(), (*exedb.Queries).BoxesForUser, userID); err == nil {
 		for _, b := range userBoxes {
 			profileBoxes = append(profileBoxes, jsonBoxMinimal{Name: b.Name, Status: b.Status})
 			for _, t := range b.GetTags() {
-				tagSet[t] = true
+				tagVMs[t] = append(tagVMs[t], b.Name)
 			}
 		}
 	}
 	var allTags []string
-	for t := range tagSet {
+	for t := range tagVMs {
 		allTags = append(allTags, t)
 	}
 
@@ -808,6 +810,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 		GitHubAppSlug:      ghAppSlug,
 		HasPushTokens:      hasPushTokens,
 		AllTags:            nonNil(allTags),
+		TagVMs:             tagVMs,
 		Boxes:              nonNil(profileBoxes),
 		IntegrationScheme:  s.integrationScheme(),
 		BoxHost:            s.env.BoxHost,
