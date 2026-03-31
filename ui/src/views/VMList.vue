@@ -51,12 +51,12 @@
       <!-- Grouped by tag -->
       <template v-else>
         <div v-for="group in groupedBoxes" :key="group.label" class="group-section">
-          <button class="group-header" @click="toggleGroup(group.label)">
+          <button v-if="group.label" class="group-header" @click="toggleGroup(group.label)">
             <span class="group-tag" :class="{ untagged: group.label === 'Untagged' }">{{ group.label }}</span>
             <span class="group-count">{{ group.boxes.length }}</span>
             <i :class="collapsedGroups.has(group.label) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'" class="group-chevron"></i>
           </button>
-          <div v-if="!collapsedGroups.has(group.label)" class="boxes-list">
+          <div v-if="!group.label || !collapsedGroups.has(group.label)" class="boxes-list">
             <VMCard
               v-for="box in group.boxes"
               :key="box.name"
@@ -271,7 +271,7 @@ function loadViewOptions(): ViewOptions {
       }
     }
   } catch { /* ignore */ }
-  return { sort: 'updatedAt', group: 'none' }
+  return { sort: 'name', group: 'tag' }
 }
 const viewOptions = ref<ViewOptions>(loadViewOptions())
 watch(viewOptions, (v) => {
@@ -462,8 +462,12 @@ const groupedBoxes = computed<BoxGroup[]>(() => {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([label, boxes]) => ({ label: '#' + label, boxes }))
 
-  // Untagged last
+  // Untagged last — but if ALL VMs are untagged (no tag groups exist),
+  // return a single flat group so the "Untagged" header is not shown.
   if (untagged.length > 0) {
+    if (groups.length === 0) {
+      return [{ label: '', boxes: untagged }]
+    }
     groups.push({ label: 'Untagged', boxes: untagged })
   }
 
