@@ -751,6 +751,7 @@ function attachViaCommand(name: string) {
 }
 
 function closeAttachModal() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   attachModal.visible = false
 }
 
@@ -795,6 +796,7 @@ function selectRepo(repo: any) {
 }
 
 function closeGhModal() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   ghModal.visible = false
   if (ghModal.result?.success) reload()
 }
@@ -829,6 +831,7 @@ function openAddHTTPProxy() {
 }
 
 function closeProxyModal() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   proxyModal.visible = false
   if (proxyModal.result?.success) reload()
 }

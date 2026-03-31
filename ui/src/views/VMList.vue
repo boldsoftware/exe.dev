@@ -126,11 +126,11 @@
     />
 
     <!-- Editor Picker Modal -->
-    <div v-if="editorModalOpen" class="prompt-overlay" @click="editorModalOpen = false">
+    <div v-if="editorModalOpen" class="prompt-overlay" @click="blurActiveElement(); editorModalOpen = false">
       <div class="prompt-modal" role="dialog" aria-modal="true" @click.stop>
         <div class="prompt-header">
           <span class="prompt-title">Open in Editor</span>
-          <button class="prompt-close" aria-label="Close" @click="editorModalOpen = false">&times;</button>
+          <button class="prompt-close" aria-label="Close" @click="blurActiveElement(); editorModalOpen = false">&times;</button>
         </div>
         <div class="prompt-body">
           <div>
@@ -165,11 +165,11 @@
     </div>
 
     <!-- Prompt Shelley Modal -->
-    <div v-if="promptModalOpen" class="prompt-overlay" @click="promptModalOpen = false">
+    <div v-if="promptModalOpen" class="prompt-overlay" @click="blurActiveElement(); promptModalOpen = false">
       <div class="prompt-modal" role="dialog" aria-modal="true" @click.stop>
         <div class="prompt-header">
           <span class="prompt-title">Prompt Shelley</span>
-          <button class="prompt-close" aria-label="Close" @click="promptModalOpen = false">&times;</button>
+          <button class="prompt-close" aria-label="Close" @click="blurActiveElement(); promptModalOpen = false">&times;</button>
         </div>
         <form @submit.prevent="submitPrompt">
           <div class="prompt-body">
@@ -422,10 +422,18 @@ async function loadDashboard() {
   }
 }
 
+function blurActiveElement() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
 function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (editorModalOpen.value) { editorModalOpen.value = false; return }
-  if (promptModalOpen.value) { promptModalOpen.value = false; return }
+  // Blur before hiding to prevent browser scroll jump when v-if
+  // destroys the focused element.
+  if (editorModalOpen.value) { blurActiveElement(); editorModalOpen.value = false; return }
+  if (promptModalOpen.value) { blurActiveElement(); promptModalOpen.value = false; return }
 }
 
 onMounted(() => {

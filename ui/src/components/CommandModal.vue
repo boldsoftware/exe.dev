@@ -161,6 +161,11 @@ onBeforeUnmount(() => {
 })
 
 function close() {
+  // Blur focused element before hiding to prevent browser scroll jump
+  // when v-if destroys the focused input.
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
   emit('close')
 }
 </script>

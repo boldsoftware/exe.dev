@@ -596,6 +596,7 @@ function openCreateAPIKey() {
 }
 
 function closeApiKeyModal() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   apiKeyModal.visible = false
   if (apiKeyModal.result) {
     reload()
