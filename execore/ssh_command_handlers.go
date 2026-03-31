@@ -483,8 +483,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "grant-support-root",
-			Hidden:            true,
-			Description:       "Grant or revoke exe.dev support root access to a VM",
+			Description:       "Allow exe.dev support to log in to a VM",
 			Usage:             "grant-support-root <vmname> on|off",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
