@@ -141,6 +141,9 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 
 	// Run any migrations that haven't been executed
 	dbAlreadyExists := len(executedMigrations) > 0
+	if dbAlreadyExists && !executedMigrations["132-drop-legacy-ip-shard-tables.sql"] {
+		return fmt.Errorf("database has migrations but is missing floor migration 132-drop-legacy-ip-shard-tables.sql; this database predates migration consolidation and cannot be upgraded with this binary")
+	}
 	for _, m := range migrations {
 		if executedMigrations[m.name] {
 			continue

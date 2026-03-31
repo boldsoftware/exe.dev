@@ -86,9 +86,12 @@ func run() error {
 		return fmt.Errorf("no migration files found")
 	}
 
-	// Sort by migration number
+	// Sort by migration number, then lexicographically (matching exedb.go runner)
 	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].number < migrations[j].number
+		if migrations[i].number != migrations[j].number {
+			return migrations[i].number < migrations[j].number
+		}
+		return migrations[i].name < migrations[j].name
 	})
 
 	lastMigration := migrations[len(migrations)-1]

@@ -1,1 +1,0 @@
-ALTER TABLE users ADD COLUMN newsletter_subscribed INTEGER NOT NULL DEFAULT 0;

@@ -1,1 +1,0 @@
-ALTER TABLE vm_templates ADD COLUMN image TEXT NOT NULL DEFAULT '';

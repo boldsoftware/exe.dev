@@ -1,1 +1,0 @@
-ALTER TABLE vm_templates ADD COLUMN deploy_count INTEGER NOT NULL DEFAULT 0;
