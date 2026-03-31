@@ -28,7 +28,7 @@ type billingGatewayDataSpy struct {
 	useCreditsCall []useCreditsCall
 }
 
-func (s *billingGatewayDataSpy) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
+func (s *billingGatewayDataSpy) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) error {
 	s.mu.Lock()
 	s.useCreditsCall = append(s.useCreditsCall, useCreditsCall{
 		accountID: accountID,
@@ -37,9 +37,10 @@ func (s *billingGatewayDataSpy) UseCredits(ctx context.Context, accountID string
 	})
 	s.mu.Unlock()
 
-	if s.useCreditsErr != nil {
-		return tender.Zero(), s.useCreditsErr
-	}
+	return s.useCreditsErr
+}
+
+func (s *billingGatewayDataSpy) GetCreditBalance(ctx context.Context, accountID string) (tender.Value, error) {
 	return s.remaining, nil
 }
 

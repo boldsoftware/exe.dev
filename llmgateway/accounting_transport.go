@@ -638,12 +638,11 @@ func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) 
 	}
 
 	unitPrice := costUSDToMicrocents(overageUSD)
-	remaining, err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice)
-	if err != nil {
+	if err := m.creditMgr.data.UseCredits(ctx, m.billingAccountID, 1, unitPrice); err != nil {
 		m.log.ErrorContext(ctx, "failed to debit billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents(), "error", err)
 		return remainingCredit
 	}
-	m.log.DebugContext(ctx, "debited billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents(), "remaining_microcents", remaining.Microcents())
+	m.log.DebugContext(ctx, "debited billing credits", "account_id", m.billingAccountID, "cost_usd", costUSD, "overage_usd", overageUSD, "unit_price_microcents", unitPrice.Microcents())
 	return remainingCredit
 }
 

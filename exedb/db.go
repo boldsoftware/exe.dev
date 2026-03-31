@@ -429,6 +429,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCheckoutParamsStmt, err = db.PrepareContext(ctx, getCheckoutParams); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCheckoutParams: %w", err)
 	}
+	if q.getCreditBalanceStmt, err = db.PrepareContext(ctx, getCreditBalance); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCreditBalance: %w", err)
+	}
 	if q.getCreditStateStmt, err = db.PrepareContext(ctx, getCreditState); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCreditState: %w", err)
 	}
@@ -1872,6 +1875,11 @@ func (q *Queries) Close() error {
 	if q.getCheckoutParamsStmt != nil {
 		if cerr := q.getCheckoutParamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getCheckoutParamsStmt: %w", cerr)
+		}
+	}
+	if q.getCreditBalanceStmt != nil {
+		if cerr := q.getCreditBalanceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCreditBalanceStmt: %w", cerr)
 		}
 	}
 	if q.getCreditStateStmt != nil {
@@ -3323,6 +3331,7 @@ type Queries struct {
 	getBoxesSharedWithUserStmt                 *sql.Stmt
 	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
+	getCreditBalanceStmt                       *sql.Stmt
 	getCreditStateStmt                         *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
@@ -3719,6 +3728,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
 		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
+		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getCreditStateStmt:                         q.getCreditStateStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,

@@ -27,8 +27,6 @@ type preflightGatewayData struct {
 	useCreditsErr     error
 	useCreditsCalls   int
 	useCreditsAccount string
-	useCreditsQty     int
-	useCreditsPrice   tender.Value
 }
 
 func (d *preflightGatewayData) BoxCreator(context.Context, string) (string, bool, error) {
@@ -56,11 +54,13 @@ func (d *preflightGatewayData) TeamBillingAccountID(context.Context, string) (st
 	return "", false, nil
 }
 
-func (d *preflightGatewayData) UseCredits(_ context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
+func (d *preflightGatewayData) UseCredits(_ context.Context, _ string, _ int, _ tender.Value) error {
+	return nil
+}
+
+func (d *preflightGatewayData) GetCreditBalance(_ context.Context, accountID string) (tender.Value, error) {
 	d.useCreditsCalls++
 	d.useCreditsAccount = accountID
-	d.useCreditsQty = quantity
-	d.useCreditsPrice = unitPrice
 	return d.useCreditsBalance, d.useCreditsErr
 }
 
@@ -185,17 +185,11 @@ func TestGateway_PreRequestCreditPreflight(t *testing.T) {
 				t.Fatalf("AccountIDForUser calls = %d, want %d", tc.data.accountLookups, tc.wantAccountLookups)
 			}
 			if tc.data.useCreditsCalls != tc.wantUseCreditsCalls {
-				t.Fatalf("UseCredits calls = %d, want %d", tc.data.useCreditsCalls, tc.wantUseCreditsCalls)
+				t.Fatalf("GetCreditBalance calls = %d, want %d", tc.data.useCreditsCalls, tc.wantUseCreditsCalls)
 			}
 			if tc.wantUseCreditsCalls > 0 {
 				if tc.data.useCreditsAccount != tc.data.accountID {
-					t.Fatalf("UseCredits accountID = %q, want %q", tc.data.useCreditsAccount, tc.data.accountID)
-				}
-				if tc.data.useCreditsQty != 0 {
-					t.Fatalf("UseCredits quantity = %d, want 0", tc.data.useCreditsQty)
-				}
-				if tc.data.useCreditsPrice != tender.Zero() {
-					t.Fatalf("UseCredits unitPrice = %d, want %d", tc.data.useCreditsPrice.Microcents(), tender.Zero().Microcents())
+					t.Fatalf("GetCreditBalance accountID = %q, want %q", tc.data.useCreditsAccount, tc.data.accountID)
 				}
 			}
 		})

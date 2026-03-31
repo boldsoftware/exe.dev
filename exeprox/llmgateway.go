@@ -98,11 +98,20 @@ func (gd *ProxyLLMGatewayData) TeamBillingAccountID(ctx context.Context, userID 
 }
 
 // UseCredits implements [llmgateway.GatewayData.UseCredits].
-func (gd *ProxyLLMGatewayData) UseCredits(ctx context.Context, accountID string, quantity int, unitprice tender.Value) (tender.Value, error) {
-	resp, err := gd.client.LLMUseCredits(ctx, &proxyapi.LLMUseCreditsRequest{
+func (gd *ProxyLLMGatewayData) UseCredits(ctx context.Context, accountID string, quantity int, unitprice tender.Value) error {
+	_, err := gd.client.LLMUseCredits(ctx, &proxyapi.LLMUseCreditsRequest{
 		AccountID:  accountID,
 		Quantity:   int64(quantity),
 		Microcents: unitprice.Microcents(),
+	})
+	return err
+}
+
+// GetCreditBalance implements [llmgateway.GatewayData.GetCreditBalance].
+// Uses zero-value LLMUseCredits for backward compat with older exed.
+func (gd *ProxyLLMGatewayData) GetCreditBalance(ctx context.Context, accountID string) (tender.Value, error) {
+	resp, err := gd.client.LLMUseCredits(ctx, &proxyapi.LLMUseCreditsRequest{
+		AccountID: accountID,
 	})
 	if err != nil {
 		return tender.Zero(), err

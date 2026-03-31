@@ -813,7 +813,8 @@ func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (
 // Credits defines the interface for credit operations on billing accounts.
 type Credits interface {
 	GiftCredits(ctx context.Context, billingID string, p *GiftCreditsParams) error
-	SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error)
+	SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) error
+	CreditBalance(ctx context.Context, billingID string) (tender.Value, error)
 	GetCreditState(ctx context.Context, billingID string) (*CreditState, error)
 	ListGifts(ctx context.Context, billingID string) ([]GiftEntry, error)
 }
@@ -916,21 +917,25 @@ func (m *Manager) ListGifts(ctx context.Context, billingID string) ([]GiftEntry,
 	return gifts, nil
 }
 
-func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) (remaining tender.Value, _ error) {
+func (m *Manager) SpendCredits(ctx context.Context, billingID string, quantity int, unitPrice tender.Value) error {
 	if unitPrice.IsNegative() {
-		return tender.Zero(), fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())
+		return fmt.Errorf("unit price must be non-negative, got %d microcents", unitPrice.Microcents())
 	}
 
 	creditType := "usage"
-	rem, err := exedb.WithTxRes1(m.DB, ctx, (*exedb.Queries).UseCredits, exedb.UseCreditsParams{
+	return exedb.WithTx1(m.DB, ctx, (*exedb.Queries).UseCredits, exedb.UseCreditsParams{
 		AccountID:  billingID,
 		Amount:     unitPrice.Times(-quantity).Microcents(),
 		CreditType: &creditType,
 	})
+}
+
+func (m *Manager) CreditBalance(ctx context.Context, billingID string) (tender.Value, error) {
+	bal, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetCreditBalance, billingID)
 	if err != nil {
 		return tender.Zero(), err
 	}
-	return tender.Mint(0, rem), nil
+	return tender.Mint(0, bal), nil
 }
 
 // BuyCreditsParams contains the parameters for purchasing credits.

@@ -362,17 +362,37 @@ func (es *exeproxServer) LLMDebitCredit(ctx context.Context, req *proxyapi.LLMDe
 	return ret, nil
 }
 
-// LLMUseCredits applies a credit usage entry and returns remaining credir.
+// LLMUseCredits applies a credit usage entry.
+// When quantity and microcents are both zero, falls back to a balance check
+// for backward compatibility with older exeprox clients that haven't switched
+// to LLMGetCreditBalance yet. Remove this fallback once all clients are updated.
 // See [llmgateway.GatewayData.UseCredits].
 func (es *exeproxServer) LLMUseCredits(ctx context.Context, req *proxyapi.LLMUseCreditsRequest) (*proxyapi.LLMUseCreditsResponse, error) {
-	val, err := (&billing.Manager{DB: es.s.db}).SpendCredits(ctx, req.AccountID, int(req.Quantity), tender.Mint(0, req.Microcents))
+	mgr := &billing.Manager{DB: es.s.db}
+	// A zero-value request is a balance query from old exeprox clients.
+	// Safe to intercept: zero spend is a ledger no-op.
+	if req.Quantity == 0 && req.Microcents == 0 {
+		bal, err := mgr.CreditBalance(ctx, req.AccountID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		return &proxyapi.LLMUseCreditsResponse{Microcents: bal.Microcents()}, nil
+	}
+	if err := mgr.SpendCredits(ctx, req.AccountID, int(req.Quantity), tender.Mint(0, req.Microcents)); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &proxyapi.LLMUseCreditsResponse{}, nil
+}
+
+// LLMGetCreditBalance returns the remaining credit balance for an account.
+// See [llmgateway.GatewayData.GetCreditBalance].
+func (es *exeproxServer) LLMGetCreditBalance(ctx context.Context, req *proxyapi.LLMGetCreditBalanceRequest) (*proxyapi.LLMGetCreditBalanceResponse, error) {
+	mgr := &billing.Manager{DB: es.s.db}
+	bal, err := mgr.CreditBalance(ctx, req.AccountID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	ret := &proxyapi.LLMUseCreditsResponse{
-		Microcents: val.Microcents(),
-	}
-	return ret, nil
+	return &proxyapi.LLMGetCreditBalanceResponse{Microcents: bal.Microcents()}, nil
 }
 
 // gatewayCreditInfoToProto converts  an [llmgateway.CreditInfo]

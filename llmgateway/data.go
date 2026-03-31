@@ -46,8 +46,11 @@ type GatewayData interface {
 	// a team with a billing_owner who has a billing account.
 	TeamBillingAccountID(ctx context.Context, userID string) (string, bool, error)
 
-	// UseCredits applies a credit usage entry and returns remaining billing credit.
-	UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error)
+	// UseCredits applies a credit usage entry.
+	UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) error
+
+	// GetCreditBalance returns the current billing credit balance for an account.
+	GetCreditBalance(ctx context.Context, accountID string) (tender.Value, error)
 }
 
 // DBGatewayData is an implementation of GatewayData that uses
@@ -109,6 +112,11 @@ func (gd *DBGatewayData) TeamBillingAccountID(ctx context.Context, userID string
 }
 
 // UseCredits implements [GatewayData.UseCredits].
-func (gd *DBGatewayData) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) (tender.Value, error) {
+func (gd *DBGatewayData) UseCredits(ctx context.Context, accountID string, quantity int, unitPrice tender.Value) error {
 	return (&billing.Manager{DB: gd.DB}).SpendCredits(ctx, accountID, quantity, unitPrice)
+}
+
+// GetCreditBalance implements [GatewayData.GetCreditBalance].
+func (gd *DBGatewayData) GetCreditBalance(ctx context.Context, accountID string) (tender.Value, error) {
+	return (&billing.Manager{DB: gd.DB}).CreditBalance(ctx, accountID)
 }

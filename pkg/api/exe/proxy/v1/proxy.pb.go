@@ -1551,6 +1551,94 @@ func (x *LLMUseCreditsResponse) GetMicrocents() int64 {
 	return 0
 }
 
+type LLMGetCreditBalanceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountID     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LLMGetCreditBalanceRequest) Reset() {
+	*x = LLMGetCreditBalanceRequest{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LLMGetCreditBalanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LLMGetCreditBalanceRequest) ProtoMessage() {}
+
+func (x *LLMGetCreditBalanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LLMGetCreditBalanceRequest.ProtoReflect.Descriptor instead.
+func (*LLMGetCreditBalanceRequest) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *LLMGetCreditBalanceRequest) GetAccountID() string {
+	if x != nil {
+		return x.AccountID
+	}
+	return ""
+}
+
+type LLMGetCreditBalanceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Microcents    int64                  `protobuf:"varint,1,opt,name=microcents,proto3" json:"microcents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LLMGetCreditBalanceResponse) Reset() {
+	*x = LLMGetCreditBalanceResponse{}
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LLMGetCreditBalanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LLMGetCreditBalanceResponse) ProtoMessage() {}
+
+func (x *LLMGetCreditBalanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LLMGetCreditBalanceResponse.ProtoReflect.Descriptor instead.
+func (*LLMGetCreditBalanceResponse) Descriptor() ([]byte, []int) {
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *LLMGetCreditBalanceResponse) GetMicrocents() int64 {
+	if x != nil {
+		return x.Microcents
+	}
+	return 0
+}
+
 type CreateAuthCookieRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -1561,7 +1649,7 @@ type CreateAuthCookieRequest struct {
 
 func (x *CreateAuthCookieRequest) Reset() {
 	*x = CreateAuthCookieRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1573,7 +1661,7 @@ func (x *CreateAuthCookieRequest) String() string {
 func (*CreateAuthCookieRequest) ProtoMessage() {}
 
 func (x *CreateAuthCookieRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[27]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1586,7 +1674,7 @@ func (x *CreateAuthCookieRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAuthCookieRequest.ProtoReflect.Descriptor instead.
 func (*CreateAuthCookieRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{27}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreateAuthCookieRequest) GetUserID() string {
@@ -1612,7 +1700,7 @@ type CreateAuthCookieResponse struct {
 
 func (x *CreateAuthCookieResponse) Reset() {
 	*x = CreateAuthCookieResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1624,7 +1712,7 @@ func (x *CreateAuthCookieResponse) String() string {
 func (*CreateAuthCookieResponse) ProtoMessage() {}
 
 func (x *CreateAuthCookieResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[28]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1637,7 +1725,7 @@ func (x *CreateAuthCookieResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAuthCookieResponse.ProtoReflect.Descriptor instead.
 func (*CreateAuthCookieResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{28}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CreateAuthCookieResponse) GetCookieValue() string {
@@ -1656,7 +1744,7 @@ type DeleteAuthCookieRequest struct {
 
 func (x *DeleteAuthCookieRequest) Reset() {
 	*x = DeleteAuthCookieRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1668,7 +1756,7 @@ func (x *DeleteAuthCookieRequest) String() string {
 func (*DeleteAuthCookieRequest) ProtoMessage() {}
 
 func (x *DeleteAuthCookieRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[29]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1681,7 +1769,7 @@ func (x *DeleteAuthCookieRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuthCookieRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAuthCookieRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{29}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteAuthCookieRequest) GetCookieValue() string {
@@ -1699,7 +1787,7 @@ type DeleteAuthCookieResponse struct {
 
 func (x *DeleteAuthCookieResponse) Reset() {
 	*x = DeleteAuthCookieResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1711,7 +1799,7 @@ func (x *DeleteAuthCookieResponse) String() string {
 func (*DeleteAuthCookieResponse) ProtoMessage() {}
 
 func (x *DeleteAuthCookieResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[30]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +1812,7 @@ func (x *DeleteAuthCookieResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuthCookieResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAuthCookieResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{30}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{32}
 }
 
 type UsedCookieRequest struct {
@@ -1736,7 +1824,7 @@ type UsedCookieRequest struct {
 
 func (x *UsedCookieRequest) Reset() {
 	*x = UsedCookieRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1748,7 +1836,7 @@ func (x *UsedCookieRequest) String() string {
 func (*UsedCookieRequest) ProtoMessage() {}
 
 func (x *UsedCookieRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[31]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1761,7 +1849,7 @@ func (x *UsedCookieRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedCookieRequest.ProtoReflect.Descriptor instead.
 func (*UsedCookieRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{31}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UsedCookieRequest) GetCookieValue() string {
@@ -1779,7 +1867,7 @@ type UsedCookieResponse struct {
 
 func (x *UsedCookieResponse) Reset() {
 	*x = UsedCookieResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1791,7 +1879,7 @@ func (x *UsedCookieResponse) String() string {
 func (*UsedCookieResponse) ProtoMessage() {}
 
 func (x *UsedCookieResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[32]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1804,7 +1892,7 @@ func (x *UsedCookieResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedCookieResponse.ProtoReflect.Descriptor instead.
 func (*UsedCookieResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{32}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{34}
 }
 
 type HasUserAccessToBoxRequest struct {
@@ -1818,7 +1906,7 @@ type HasUserAccessToBoxRequest struct {
 
 func (x *HasUserAccessToBoxRequest) Reset() {
 	*x = HasUserAccessToBoxRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1830,7 +1918,7 @@ func (x *HasUserAccessToBoxRequest) String() string {
 func (*HasUserAccessToBoxRequest) ProtoMessage() {}
 
 func (x *HasUserAccessToBoxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[33]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1843,7 +1931,7 @@ func (x *HasUserAccessToBoxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HasUserAccessToBoxRequest.ProtoReflect.Descriptor instead.
 func (*HasUserAccessToBoxRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{33}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *HasUserAccessToBoxRequest) GetBoxID() int64 {
@@ -1876,7 +1964,7 @@ type HasUserAccessToBoxResponse struct {
 
 func (x *HasUserAccessToBoxResponse) Reset() {
 	*x = HasUserAccessToBoxResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[34]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1888,7 +1976,7 @@ func (x *HasUserAccessToBoxResponse) String() string {
 func (*HasUserAccessToBoxResponse) ProtoMessage() {}
 
 func (x *HasUserAccessToBoxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[34]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1901,7 +1989,7 @@ func (x *HasUserAccessToBoxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HasUserAccessToBoxResponse.ProtoReflect.Descriptor instead.
 func (*HasUserAccessToBoxResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{34}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *HasUserAccessToBoxResponse) GetOk() bool {
@@ -1922,7 +2010,7 @@ type IsBoxSharedWithUserTeamRequest struct {
 
 func (x *IsBoxSharedWithUserTeamRequest) Reset() {
 	*x = IsBoxSharedWithUserTeamRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[35]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1934,7 +2022,7 @@ func (x *IsBoxSharedWithUserTeamRequest) String() string {
 func (*IsBoxSharedWithUserTeamRequest) ProtoMessage() {}
 
 func (x *IsBoxSharedWithUserTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[35]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1947,7 +2035,7 @@ func (x *IsBoxSharedWithUserTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsBoxSharedWithUserTeamRequest.ProtoReflect.Descriptor instead.
 func (*IsBoxSharedWithUserTeamRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{35}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *IsBoxSharedWithUserTeamRequest) GetBoxID() int64 {
@@ -1980,7 +2068,7 @@ type IsBoxSharedWithUserTeamResponse struct {
 
 func (x *IsBoxSharedWithUserTeamResponse) Reset() {
 	*x = IsBoxSharedWithUserTeamResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[36]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1992,7 +2080,7 @@ func (x *IsBoxSharedWithUserTeamResponse) String() string {
 func (*IsBoxSharedWithUserTeamResponse) ProtoMessage() {}
 
 func (x *IsBoxSharedWithUserTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[36]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2005,7 +2093,7 @@ func (x *IsBoxSharedWithUserTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsBoxSharedWithUserTeamResponse.ProtoReflect.Descriptor instead.
 func (*IsBoxSharedWithUserTeamResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{36}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *IsBoxSharedWithUserTeamResponse) GetOk() bool {
@@ -2026,7 +2114,7 @@ type IsBoxShelleySharedWithTeamMemberRequest struct {
 
 func (x *IsBoxShelleySharedWithTeamMemberRequest) Reset() {
 	*x = IsBoxShelleySharedWithTeamMemberRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[37]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2038,7 +2126,7 @@ func (x *IsBoxShelleySharedWithTeamMemberRequest) String() string {
 func (*IsBoxShelleySharedWithTeamMemberRequest) ProtoMessage() {}
 
 func (x *IsBoxShelleySharedWithTeamMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[37]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2051,7 +2139,7 @@ func (x *IsBoxShelleySharedWithTeamMemberRequest) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use IsBoxShelleySharedWithTeamMemberRequest.ProtoReflect.Descriptor instead.
 func (*IsBoxShelleySharedWithTeamMemberRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{37}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *IsBoxShelleySharedWithTeamMemberRequest) GetBoxID() int64 {
@@ -2084,7 +2172,7 @@ type IsBoxShelleySharedWithTeamMemberResponse struct {
 
 func (x *IsBoxShelleySharedWithTeamMemberResponse) Reset() {
 	*x = IsBoxShelleySharedWithTeamMemberResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[38]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2096,7 +2184,7 @@ func (x *IsBoxShelleySharedWithTeamMemberResponse) String() string {
 func (*IsBoxShelleySharedWithTeamMemberResponse) ProtoMessage() {}
 
 func (x *IsBoxShelleySharedWithTeamMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[38]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2109,7 +2197,7 @@ func (x *IsBoxShelleySharedWithTeamMemberResponse) ProtoReflect() protoreflect.M
 
 // Deprecated: Use IsBoxShelleySharedWithTeamMemberResponse.ProtoReflect.Descriptor instead.
 func (*IsBoxShelleySharedWithTeamMemberResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{38}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *IsBoxShelleySharedWithTeamMemberResponse) GetOk() bool {
@@ -2131,7 +2219,7 @@ type CheckShareLinkRequest struct {
 
 func (x *CheckShareLinkRequest) Reset() {
 	*x = CheckShareLinkRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[39]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2143,7 +2231,7 @@ func (x *CheckShareLinkRequest) String() string {
 func (*CheckShareLinkRequest) ProtoMessage() {}
 
 func (x *CheckShareLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[39]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2156,7 +2244,7 @@ func (x *CheckShareLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckShareLinkRequest.ProtoReflect.Descriptor instead.
 func (*CheckShareLinkRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{39}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *CheckShareLinkRequest) GetBoxID() int64 {
@@ -2196,7 +2284,7 @@ type CheckShareLinkResponse struct {
 
 func (x *CheckShareLinkResponse) Reset() {
 	*x = CheckShareLinkResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[40]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2208,7 +2296,7 @@ func (x *CheckShareLinkResponse) String() string {
 func (*CheckShareLinkResponse) ProtoMessage() {}
 
 func (x *CheckShareLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[40]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2221,7 +2309,7 @@ func (x *CheckShareLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckShareLinkResponse.ProtoReflect.Descriptor instead.
 func (*CheckShareLinkResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{40}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CheckShareLinkResponse) GetOk() bool {
@@ -2240,7 +2328,7 @@ type ValidateMagicSecretRequest struct {
 
 func (x *ValidateMagicSecretRequest) Reset() {
 	*x = ValidateMagicSecretRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[41]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2252,7 +2340,7 @@ func (x *ValidateMagicSecretRequest) String() string {
 func (*ValidateMagicSecretRequest) ProtoMessage() {}
 
 func (x *ValidateMagicSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[41]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2265,7 +2353,7 @@ func (x *ValidateMagicSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateMagicSecretRequest.ProtoReflect.Descriptor instead.
 func (*ValidateMagicSecretRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{41}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ValidateMagicSecretRequest) GetSecret() string {
@@ -2287,7 +2375,7 @@ type ValidateMagicSecretResponse struct {
 
 func (x *ValidateMagicSecretResponse) Reset() {
 	*x = ValidateMagicSecretResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[42]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2299,7 +2387,7 @@ func (x *ValidateMagicSecretResponse) String() string {
 func (*ValidateMagicSecretResponse) ProtoMessage() {}
 
 func (x *ValidateMagicSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[42]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2312,7 +2400,7 @@ func (x *ValidateMagicSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateMagicSecretResponse.ProtoReflect.Descriptor instead.
 func (*ValidateMagicSecretResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{42}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ValidateMagicSecretResponse) GetErrorMessage() string {
@@ -2352,7 +2440,7 @@ type SSHKeyByFingerprintRequest struct {
 
 func (x *SSHKeyByFingerprintRequest) Reset() {
 	*x = SSHKeyByFingerprintRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[43]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2364,7 +2452,7 @@ func (x *SSHKeyByFingerprintRequest) String() string {
 func (*SSHKeyByFingerprintRequest) ProtoMessage() {}
 
 func (x *SSHKeyByFingerprintRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[43]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2377,7 +2465,7 @@ func (x *SSHKeyByFingerprintRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SSHKeyByFingerprintRequest.ProtoReflect.Descriptor instead.
 func (*SSHKeyByFingerprintRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{43}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SSHKeyByFingerprintRequest) GetFingerprint() string {
@@ -2398,7 +2486,7 @@ type SSHKeyByFingerprintResponse struct {
 
 func (x *SSHKeyByFingerprintResponse) Reset() {
 	*x = SSHKeyByFingerprintResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[44]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2410,7 +2498,7 @@ func (x *SSHKeyByFingerprintResponse) String() string {
 func (*SSHKeyByFingerprintResponse) ProtoMessage() {}
 
 func (x *SSHKeyByFingerprintResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[44]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2423,7 +2511,7 @@ func (x *SSHKeyByFingerprintResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SSHKeyByFingerprintResponse.ProtoReflect.Descriptor instead.
 func (*SSHKeyByFingerprintResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{44}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SSHKeyByFingerprintResponse) GetKeyExists() bool {
@@ -2457,7 +2545,7 @@ type HLLNoteEventsRequest struct {
 
 func (x *HLLNoteEventsRequest) Reset() {
 	*x = HLLNoteEventsRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[45]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2469,7 +2557,7 @@ func (x *HLLNoteEventsRequest) String() string {
 func (*HLLNoteEventsRequest) ProtoMessage() {}
 
 func (x *HLLNoteEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[45]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2482,7 +2570,7 @@ func (x *HLLNoteEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HLLNoteEventsRequest.ProtoReflect.Descriptor instead.
 func (*HLLNoteEventsRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{45}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *HLLNoteEventsRequest) GetUserID() string {
@@ -2507,7 +2595,7 @@ type HLLNoteEventsResponse struct {
 
 func (x *HLLNoteEventsResponse) Reset() {
 	*x = HLLNoteEventsResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[46]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2519,7 +2607,7 @@ func (x *HLLNoteEventsResponse) String() string {
 func (*HLLNoteEventsResponse) ProtoMessage() {}
 
 func (x *HLLNoteEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[46]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2532,7 +2620,7 @@ func (x *HLLNoteEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HLLNoteEventsResponse.ProtoReflect.Descriptor instead.
 func (*HLLNoteEventsResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{46}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{48}
 }
 
 type CheckAndIncrementEmailQuotaRequest struct {
@@ -2544,7 +2632,7 @@ type CheckAndIncrementEmailQuotaRequest struct {
 
 func (x *CheckAndIncrementEmailQuotaRequest) Reset() {
 	*x = CheckAndIncrementEmailQuotaRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[47]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2556,7 +2644,7 @@ func (x *CheckAndIncrementEmailQuotaRequest) String() string {
 func (*CheckAndIncrementEmailQuotaRequest) ProtoMessage() {}
 
 func (x *CheckAndIncrementEmailQuotaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[47]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2569,7 +2657,7 @@ func (x *CheckAndIncrementEmailQuotaRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CheckAndIncrementEmailQuotaRequest.ProtoReflect.Descriptor instead.
 func (*CheckAndIncrementEmailQuotaRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{47}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CheckAndIncrementEmailQuotaRequest) GetUserID() string {
@@ -2587,7 +2675,7 @@ type CheckAndIncrementEmailQuotaResponse struct {
 
 func (x *CheckAndIncrementEmailQuotaResponse) Reset() {
 	*x = CheckAndIncrementEmailQuotaResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[48]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2599,7 +2687,7 @@ func (x *CheckAndIncrementEmailQuotaResponse) String() string {
 func (*CheckAndIncrementEmailQuotaResponse) ProtoMessage() {}
 
 func (x *CheckAndIncrementEmailQuotaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[48]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2612,7 +2700,7 @@ func (x *CheckAndIncrementEmailQuotaResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CheckAndIncrementEmailQuotaResponse.ProtoReflect.Descriptor instead.
 func (*CheckAndIncrementEmailQuotaResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{48}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{50}
 }
 
 type SendEmailRequest struct {
@@ -2633,7 +2721,7 @@ type SendEmailRequest struct {
 
 func (x *SendEmailRequest) Reset() {
 	*x = SendEmailRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[49]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2645,7 +2733,7 @@ func (x *SendEmailRequest) String() string {
 func (*SendEmailRequest) ProtoMessage() {}
 
 func (x *SendEmailRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[49]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2658,7 +2746,7 @@ func (x *SendEmailRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendEmailRequest.ProtoReflect.Descriptor instead.
 func (*SendEmailRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{49}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *SendEmailRequest) GetEmailType() string {
@@ -2718,7 +2806,7 @@ type SendEmailResponse struct {
 
 func (x *SendEmailResponse) Reset() {
 	*x = SendEmailResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[50]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2730,7 +2818,7 @@ func (x *SendEmailResponse) String() string {
 func (*SendEmailResponse) ProtoMessage() {}
 
 func (x *SendEmailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[50]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2743,7 +2831,7 @@ func (x *SendEmailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendEmailResponse.ProtoReflect.Descriptor instead.
 func (*SendEmailResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{50}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{52}
 }
 
 type CheckAndDebitVMEmailCreditRequest struct {
@@ -2755,7 +2843,7 @@ type CheckAndDebitVMEmailCreditRequest struct {
 
 func (x *CheckAndDebitVMEmailCreditRequest) Reset() {
 	*x = CheckAndDebitVMEmailCreditRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[51]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2767,7 +2855,7 @@ func (x *CheckAndDebitVMEmailCreditRequest) String() string {
 func (*CheckAndDebitVMEmailCreditRequest) ProtoMessage() {}
 
 func (x *CheckAndDebitVMEmailCreditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[51]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2780,7 +2868,7 @@ func (x *CheckAndDebitVMEmailCreditRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CheckAndDebitVMEmailCreditRequest.ProtoReflect.Descriptor instead.
 func (*CheckAndDebitVMEmailCreditRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{51}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CheckAndDebitVMEmailCreditRequest) GetBoxID() int64 {
@@ -2800,7 +2888,7 @@ type CheckAndDebitVMEmailCreditResponse struct {
 
 func (x *CheckAndDebitVMEmailCreditResponse) Reset() {
 	*x = CheckAndDebitVMEmailCreditResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[52]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2812,7 +2900,7 @@ func (x *CheckAndDebitVMEmailCreditResponse) String() string {
 func (*CheckAndDebitVMEmailCreditResponse) ProtoMessage() {}
 
 func (x *CheckAndDebitVMEmailCreditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[52]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2825,7 +2913,7 @@ func (x *CheckAndDebitVMEmailCreditResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CheckAndDebitVMEmailCreditResponse.ProtoReflect.Descriptor instead.
 func (*CheckAndDebitVMEmailCreditResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{52}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CheckAndDebitVMEmailCreditResponse) GetOk() bool {
@@ -2850,7 +2938,7 @@ type ChangesRequest struct {
 
 func (x *ChangesRequest) Reset() {
 	*x = ChangesRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[53]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2862,7 +2950,7 @@ func (x *ChangesRequest) String() string {
 func (*ChangesRequest) ProtoMessage() {}
 
 func (x *ChangesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[53]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2875,7 +2963,7 @@ func (x *ChangesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangesRequest.ProtoReflect.Descriptor instead.
 func (*ChangesRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{53}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{55}
 }
 
 // ChangesResponse is one entry in a stream of responses.
@@ -2903,7 +2991,7 @@ type ChangesResponse struct {
 
 func (x *ChangesResponse) Reset() {
 	*x = ChangesResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[54]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2915,7 +3003,7 @@ func (x *ChangesResponse) String() string {
 func (*ChangesResponse) ProtoMessage() {}
 
 func (x *ChangesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[54]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2928,7 +3016,7 @@ func (x *ChangesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangesResponse.ProtoReflect.Descriptor instead.
 func (*ChangesResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{54}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ChangesResponse) GetAction() isChangesResponse_Action {
@@ -3117,7 +3205,7 @@ type DeletedBox struct {
 
 func (x *DeletedBox) Reset() {
 	*x = DeletedBox{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[55]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3129,7 +3217,7 @@ func (x *DeletedBox) String() string {
 func (*DeletedBox) ProtoMessage() {}
 
 func (x *DeletedBox) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[55]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3142,7 +3230,7 @@ func (x *DeletedBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBox.ProtoReflect.Descriptor instead.
 func (*DeletedBox) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{55}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *DeletedBox) GetBoxName() string {
@@ -3164,7 +3252,7 @@ type MovedBox struct {
 
 func (x *MovedBox) Reset() {
 	*x = MovedBox{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[56]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3176,7 +3264,7 @@ func (x *MovedBox) String() string {
 func (*MovedBox) ProtoMessage() {}
 
 func (x *MovedBox) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[56]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3189,7 +3277,7 @@ func (x *MovedBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovedBox.ProtoReflect.Descriptor instead.
 func (*MovedBox) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{56}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *MovedBox) GetBoxName() string {
@@ -3210,7 +3298,7 @@ type RenamedBox struct {
 
 func (x *RenamedBox) Reset() {
 	*x = RenamedBox{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[57]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3222,7 +3310,7 @@ func (x *RenamedBox) String() string {
 func (*RenamedBox) ProtoMessage() {}
 
 func (x *RenamedBox) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[57]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3235,7 +3323,7 @@ func (x *RenamedBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenamedBox.ProtoReflect.Descriptor instead.
 func (*RenamedBox) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{57}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *RenamedBox) GetOldBoxName() string {
@@ -3264,7 +3352,7 @@ type UpdatedBoxRoute struct {
 
 func (x *UpdatedBoxRoute) Reset() {
 	*x = UpdatedBoxRoute{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[58]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3276,7 +3364,7 @@ func (x *UpdatedBoxRoute) String() string {
 func (*UpdatedBoxRoute) ProtoMessage() {}
 
 func (x *UpdatedBoxRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[58]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3289,7 +3377,7 @@ func (x *UpdatedBoxRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatedBoxRoute.ProtoReflect.Descriptor instead.
 func (*UpdatedBoxRoute) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{58}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *UpdatedBoxRoute) GetBoxName() string {
@@ -3332,7 +3420,7 @@ type DeletedCookie struct {
 
 func (x *DeletedCookie) Reset() {
 	*x = DeletedCookie{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[59]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3344,7 +3432,7 @@ func (x *DeletedCookie) String() string {
 func (*DeletedCookie) ProtoMessage() {}
 
 func (x *DeletedCookie) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[59]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3357,7 +3445,7 @@ func (x *DeletedCookie) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedCookie.ProtoReflect.Descriptor instead.
 func (*DeletedCookie) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{59}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *DeletedCookie) GetKey() isDeletedCookie_Key {
@@ -3412,7 +3500,7 @@ type DeletedBoxShare struct {
 
 func (x *DeletedBoxShare) Reset() {
 	*x = DeletedBoxShare{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[60]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3424,7 +3512,7 @@ func (x *DeletedBoxShare) String() string {
 func (*DeletedBoxShare) ProtoMessage() {}
 
 func (x *DeletedBoxShare) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[60]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3437,7 +3525,7 @@ func (x *DeletedBoxShare) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBoxShare.ProtoReflect.Descriptor instead.
 func (*DeletedBoxShare) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{60}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *DeletedBoxShare) GetBoxName() string {
@@ -3465,7 +3553,7 @@ type DeletedBoxShareLink struct {
 
 func (x *DeletedBoxShareLink) Reset() {
 	*x = DeletedBoxShareLink{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[61]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3477,7 +3565,7 @@ func (x *DeletedBoxShareLink) String() string {
 func (*DeletedBoxShareLink) ProtoMessage() {}
 
 func (x *DeletedBoxShareLink) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[61]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3490,7 +3578,7 @@ func (x *DeletedBoxShareLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBoxShareLink.ProtoReflect.Descriptor instead.
 func (*DeletedBoxShareLink) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{61}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *DeletedBoxShareLink) GetBoxName() string {
@@ -3520,7 +3608,7 @@ type DeletedSSHKey struct {
 
 func (x *DeletedSSHKey) Reset() {
 	*x = DeletedSSHKey{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[62]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3532,7 +3620,7 @@ func (x *DeletedSSHKey) String() string {
 func (*DeletedSSHKey) ProtoMessage() {}
 
 func (x *DeletedSSHKey) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[62]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3545,7 +3633,7 @@ func (x *DeletedSSHKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedSSHKey.ProtoReflect.Descriptor instead.
 func (*DeletedSSHKey) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{62}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *DeletedSSHKey) GetID() int64 {
@@ -3590,7 +3678,7 @@ type UserChanged struct {
 
 func (x *UserChanged) Reset() {
 	*x = UserChanged{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[63]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3602,7 +3690,7 @@ func (x *UserChanged) String() string {
 func (*UserChanged) ProtoMessage() {}
 
 func (x *UserChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[63]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3615,7 +3703,7 @@ func (x *UserChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserChanged.ProtoReflect.Descriptor instead.
 func (*UserChanged) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{63}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *UserChanged) GetUserExists() bool {
@@ -3650,7 +3738,7 @@ type DeletedTeamMember struct {
 
 func (x *DeletedTeamMember) Reset() {
 	*x = DeletedTeamMember{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[64]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3662,7 +3750,7 @@ func (x *DeletedTeamMember) String() string {
 func (*DeletedTeamMember) ProtoMessage() {}
 
 func (x *DeletedTeamMember) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[64]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3675,7 +3763,7 @@ func (x *DeletedTeamMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedTeamMember.ProtoReflect.Descriptor instead.
 func (*DeletedTeamMember) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{64}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *DeletedTeamMember) GetTeamID() string {
@@ -3704,7 +3792,7 @@ type DeletedBoxShareTeam struct {
 
 func (x *DeletedBoxShareTeam) Reset() {
 	*x = DeletedBoxShareTeam{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3716,7 +3804,7 @@ func (x *DeletedBoxShareTeam) String() string {
 func (*DeletedBoxShareTeam) ProtoMessage() {}
 
 func (x *DeletedBoxShareTeam) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[65]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3729,7 +3817,7 @@ func (x *DeletedBoxShareTeam) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedBoxShareTeam.ProtoReflect.Descriptor instead.
 func (*DeletedBoxShareTeam) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{65}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *DeletedBoxShareTeam) GetTeamID() string {
@@ -3762,7 +3850,7 @@ type ResolveExe1TokenRequest struct {
 
 func (x *ResolveExe1TokenRequest) Reset() {
 	*x = ResolveExe1TokenRequest{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3774,7 +3862,7 @@ func (x *ResolveExe1TokenRequest) String() string {
 func (*ResolveExe1TokenRequest) ProtoMessage() {}
 
 func (x *ResolveExe1TokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[66]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3787,7 +3875,7 @@ func (x *ResolveExe1TokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveExe1TokenRequest.ProtoReflect.Descriptor instead.
 func (*ResolveExe1TokenRequest) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{66}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ResolveExe1TokenRequest) GetExe1Token() string {
@@ -3807,7 +3895,7 @@ type ResolveExe1TokenResponse struct {
 
 func (x *ResolveExe1TokenResponse) Reset() {
 	*x = ResolveExe1TokenResponse{}
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[67]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3819,7 +3907,7 @@ func (x *ResolveExe1TokenResponse) String() string {
 func (*ResolveExe1TokenResponse) ProtoMessage() {}
 
 func (x *ResolveExe1TokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[67]
+	mi := &file_exe_proxy_v1_proxy_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3832,7 +3920,7 @@ func (x *ResolveExe1TokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveExe1TokenResponse.ProtoReflect.Descriptor instead.
 func (*ResolveExe1TokenResponse) Descriptor() ([]byte, []int) {
-	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{67}
+	return file_exe_proxy_v1_proxy_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ResolveExe1TokenResponse) GetTokenExists() bool {
@@ -3964,6 +4052,13 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"microcents\x18\x03 \x01(\x03R\n" +
 	"microcents\"7\n" +
 	"\x15LLMUseCreditsResponse\x12\x1e\n" +
+	"\n" +
+	"microcents\x18\x01 \x01(\x03R\n" +
+	"microcents\";\n" +
+	"\x1aLLMGetCreditBalanceRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"=\n" +
+	"\x1bLLMGetCreditBalanceResponse\x12\x1e\n" +
 	"\n" +
 	"microcents\x18\x01 \x01(\x03R\n" +
 	"microcents\"J\n" +
@@ -4108,7 +4203,7 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x18ResolveExe1TokenResponse\x12!\n" +
 	"\ftoken_exists\x18\x01 \x01(\bR\vtokenExists\x12\x1d\n" +
 	"\n" +
-	"exe0_token\x18\x02 \x01(\tR\texe0Token2\x9a\x14\n" +
+	"exe0_token\x18\x02 \x01(\tR\texe0Token2\x86\x15\n" +
 	"\x10ProxyInfoService\x12F\n" +
 	"\aBoxInfo\x12\x1c.exe.proxy.v1.BoxInfoRequest\x1a\x1d.exe.proxy.v1.BoxInfoResponse\x12O\n" +
 	"\n" +
@@ -4122,7 +4217,8 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x18CheckAndRefreshLLMCredit\x12-.exe.proxy.v1.CheckAndRefreshLLMCreditRequest\x1a..exe.proxy.v1.CheckAndRefreshLLMCreditResponse\x12y\n" +
 	"\x18TopUpOnLLMBillingUpgrade\x12-.exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest\x1a..exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse\x12[\n" +
 	"\x0eLLMDebitCredit\x12#.exe.proxy.v1.LLMDebitCreditRequest\x1a$.exe.proxy.v1.LLMDebitCreditResponse\x12X\n" +
-	"\rLLMUseCredits\x12\".exe.proxy.v1.LLMUseCreditsRequest\x1a#.exe.proxy.v1.LLMUseCreditsResponse\x12a\n" +
+	"\rLLMUseCredits\x12\".exe.proxy.v1.LLMUseCreditsRequest\x1a#.exe.proxy.v1.LLMUseCreditsResponse\x12j\n" +
+	"\x13LLMGetCreditBalance\x12(.exe.proxy.v1.LLMGetCreditBalanceRequest\x1a).exe.proxy.v1.LLMGetCreditBalanceResponse\x12a\n" +
 	"\x10CreateAuthCookie\x12%.exe.proxy.v1.CreateAuthCookieRequest\x1a&.exe.proxy.v1.CreateAuthCookieResponse\x12a\n" +
 	"\x10DeleteAuthCookie\x12%.exe.proxy.v1.DeleteAuthCookieRequest\x1a&.exe.proxy.v1.DeleteAuthCookieResponse\x12O\n" +
 	"\n" +
@@ -4152,7 +4248,7 @@ func file_exe_proxy_v1_proxy_proto_rawDescGZIP() []byte {
 	return file_exe_proxy_v1_proxy_proto_rawDescData
 }
 
-var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
+var file_exe_proxy_v1_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_exe_proxy_v1_proxy_proto_goTypes = []any{
 	(*BoxInfoRequest)(nil),                           // 0: exe.proxy.v1.BoxInfoRequest
 	(*BoxInfoResponse)(nil),                          // 1: exe.proxy.v1.BoxInfoResponse
@@ -4181,72 +4277,74 @@ var file_exe_proxy_v1_proxy_proto_goTypes = []any{
 	(*LLMDebitCreditResponse)(nil),                   // 24: exe.proxy.v1.LLMDebitCreditResponse
 	(*LLMUseCreditsRequest)(nil),                     // 25: exe.proxy.v1.LLMUseCreditsRequest
 	(*LLMUseCreditsResponse)(nil),                    // 26: exe.proxy.v1.LLMUseCreditsResponse
-	(*CreateAuthCookieRequest)(nil),                  // 27: exe.proxy.v1.CreateAuthCookieRequest
-	(*CreateAuthCookieResponse)(nil),                 // 28: exe.proxy.v1.CreateAuthCookieResponse
-	(*DeleteAuthCookieRequest)(nil),                  // 29: exe.proxy.v1.DeleteAuthCookieRequest
-	(*DeleteAuthCookieResponse)(nil),                 // 30: exe.proxy.v1.DeleteAuthCookieResponse
-	(*UsedCookieRequest)(nil),                        // 31: exe.proxy.v1.UsedCookieRequest
-	(*UsedCookieResponse)(nil),                       // 32: exe.proxy.v1.UsedCookieResponse
-	(*HasUserAccessToBoxRequest)(nil),                // 33: exe.proxy.v1.HasUserAccessToBoxRequest
-	(*HasUserAccessToBoxResponse)(nil),               // 34: exe.proxy.v1.HasUserAccessToBoxResponse
-	(*IsBoxSharedWithUserTeamRequest)(nil),           // 35: exe.proxy.v1.IsBoxSharedWithUserTeamRequest
-	(*IsBoxSharedWithUserTeamResponse)(nil),          // 36: exe.proxy.v1.IsBoxSharedWithUserTeamResponse
-	(*IsBoxShelleySharedWithTeamMemberRequest)(nil),  // 37: exe.proxy.v1.IsBoxShelleySharedWithTeamMemberRequest
-	(*IsBoxShelleySharedWithTeamMemberResponse)(nil), // 38: exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
-	(*CheckShareLinkRequest)(nil),                    // 39: exe.proxy.v1.CheckShareLinkRequest
-	(*CheckShareLinkResponse)(nil),                   // 40: exe.proxy.v1.CheckShareLinkResponse
-	(*ValidateMagicSecretRequest)(nil),               // 41: exe.proxy.v1.ValidateMagicSecretRequest
-	(*ValidateMagicSecretResponse)(nil),              // 42: exe.proxy.v1.ValidateMagicSecretResponse
-	(*SSHKeyByFingerprintRequest)(nil),               // 43: exe.proxy.v1.SSHKeyByFingerprintRequest
-	(*SSHKeyByFingerprintResponse)(nil),              // 44: exe.proxy.v1.SSHKeyByFingerprintResponse
-	(*HLLNoteEventsRequest)(nil),                     // 45: exe.proxy.v1.HLLNoteEventsRequest
-	(*HLLNoteEventsResponse)(nil),                    // 46: exe.proxy.v1.HLLNoteEventsResponse
-	(*CheckAndIncrementEmailQuotaRequest)(nil),       // 47: exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
-	(*CheckAndIncrementEmailQuotaResponse)(nil),      // 48: exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
-	(*SendEmailRequest)(nil),                         // 49: exe.proxy.v1.SendEmailRequest
-	(*SendEmailResponse)(nil),                        // 50: exe.proxy.v1.SendEmailResponse
-	(*CheckAndDebitVMEmailCreditRequest)(nil),        // 51: exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
-	(*CheckAndDebitVMEmailCreditResponse)(nil),       // 52: exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
-	(*ChangesRequest)(nil),                           // 53: exe.proxy.v1.ChangesRequest
-	(*ChangesResponse)(nil),                          // 54: exe.proxy.v1.ChangesResponse
-	(*DeletedBox)(nil),                               // 55: exe.proxy.v1.DeletedBox
-	(*MovedBox)(nil),                                 // 56: exe.proxy.v1.MovedBox
-	(*RenamedBox)(nil),                               // 57: exe.proxy.v1.RenamedBox
-	(*UpdatedBoxRoute)(nil),                          // 58: exe.proxy.v1.UpdatedBoxRoute
-	(*DeletedCookie)(nil),                            // 59: exe.proxy.v1.DeletedCookie
-	(*DeletedBoxShare)(nil),                          // 60: exe.proxy.v1.DeletedBoxShare
-	(*DeletedBoxShareLink)(nil),                      // 61: exe.proxy.v1.DeletedBoxShareLink
-	(*DeletedSSHKey)(nil),                            // 62: exe.proxy.v1.DeletedSSHKey
-	(*UserChanged)(nil),                              // 63: exe.proxy.v1.UserChanged
-	(*DeletedTeamMember)(nil),                        // 64: exe.proxy.v1.DeletedTeamMember
-	(*DeletedBoxShareTeam)(nil),                      // 65: exe.proxy.v1.DeletedBoxShareTeam
-	(*ResolveExe1TokenRequest)(nil),                  // 66: exe.proxy.v1.ResolveExe1TokenRequest
-	(*ResolveExe1TokenResponse)(nil),                 // 67: exe.proxy.v1.ResolveExe1TokenResponse
-	(*timestamppb.Timestamp)(nil),                    // 68: google.protobuf.Timestamp
+	(*LLMGetCreditBalanceRequest)(nil),               // 27: exe.proxy.v1.LLMGetCreditBalanceRequest
+	(*LLMGetCreditBalanceResponse)(nil),              // 28: exe.proxy.v1.LLMGetCreditBalanceResponse
+	(*CreateAuthCookieRequest)(nil),                  // 29: exe.proxy.v1.CreateAuthCookieRequest
+	(*CreateAuthCookieResponse)(nil),                 // 30: exe.proxy.v1.CreateAuthCookieResponse
+	(*DeleteAuthCookieRequest)(nil),                  // 31: exe.proxy.v1.DeleteAuthCookieRequest
+	(*DeleteAuthCookieResponse)(nil),                 // 32: exe.proxy.v1.DeleteAuthCookieResponse
+	(*UsedCookieRequest)(nil),                        // 33: exe.proxy.v1.UsedCookieRequest
+	(*UsedCookieResponse)(nil),                       // 34: exe.proxy.v1.UsedCookieResponse
+	(*HasUserAccessToBoxRequest)(nil),                // 35: exe.proxy.v1.HasUserAccessToBoxRequest
+	(*HasUserAccessToBoxResponse)(nil),               // 36: exe.proxy.v1.HasUserAccessToBoxResponse
+	(*IsBoxSharedWithUserTeamRequest)(nil),           // 37: exe.proxy.v1.IsBoxSharedWithUserTeamRequest
+	(*IsBoxSharedWithUserTeamResponse)(nil),          // 38: exe.proxy.v1.IsBoxSharedWithUserTeamResponse
+	(*IsBoxShelleySharedWithTeamMemberRequest)(nil),  // 39: exe.proxy.v1.IsBoxShelleySharedWithTeamMemberRequest
+	(*IsBoxShelleySharedWithTeamMemberResponse)(nil), // 40: exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
+	(*CheckShareLinkRequest)(nil),                    // 41: exe.proxy.v1.CheckShareLinkRequest
+	(*CheckShareLinkResponse)(nil),                   // 42: exe.proxy.v1.CheckShareLinkResponse
+	(*ValidateMagicSecretRequest)(nil),               // 43: exe.proxy.v1.ValidateMagicSecretRequest
+	(*ValidateMagicSecretResponse)(nil),              // 44: exe.proxy.v1.ValidateMagicSecretResponse
+	(*SSHKeyByFingerprintRequest)(nil),               // 45: exe.proxy.v1.SSHKeyByFingerprintRequest
+	(*SSHKeyByFingerprintResponse)(nil),              // 46: exe.proxy.v1.SSHKeyByFingerprintResponse
+	(*HLLNoteEventsRequest)(nil),                     // 47: exe.proxy.v1.HLLNoteEventsRequest
+	(*HLLNoteEventsResponse)(nil),                    // 48: exe.proxy.v1.HLLNoteEventsResponse
+	(*CheckAndIncrementEmailQuotaRequest)(nil),       // 49: exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
+	(*CheckAndIncrementEmailQuotaResponse)(nil),      // 50: exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
+	(*SendEmailRequest)(nil),                         // 51: exe.proxy.v1.SendEmailRequest
+	(*SendEmailResponse)(nil),                        // 52: exe.proxy.v1.SendEmailResponse
+	(*CheckAndDebitVMEmailCreditRequest)(nil),        // 53: exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
+	(*CheckAndDebitVMEmailCreditResponse)(nil),       // 54: exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
+	(*ChangesRequest)(nil),                           // 55: exe.proxy.v1.ChangesRequest
+	(*ChangesResponse)(nil),                          // 56: exe.proxy.v1.ChangesResponse
+	(*DeletedBox)(nil),                               // 57: exe.proxy.v1.DeletedBox
+	(*MovedBox)(nil),                                 // 58: exe.proxy.v1.MovedBox
+	(*RenamedBox)(nil),                               // 59: exe.proxy.v1.RenamedBox
+	(*UpdatedBoxRoute)(nil),                          // 60: exe.proxy.v1.UpdatedBoxRoute
+	(*DeletedCookie)(nil),                            // 61: exe.proxy.v1.DeletedCookie
+	(*DeletedBoxShare)(nil),                          // 62: exe.proxy.v1.DeletedBoxShare
+	(*DeletedBoxShareLink)(nil),                      // 63: exe.proxy.v1.DeletedBoxShareLink
+	(*DeletedSSHKey)(nil),                            // 64: exe.proxy.v1.DeletedSSHKey
+	(*UserChanged)(nil),                              // 65: exe.proxy.v1.UserChanged
+	(*DeletedTeamMember)(nil),                        // 66: exe.proxy.v1.DeletedTeamMember
+	(*DeletedBoxShareTeam)(nil),                      // 67: exe.proxy.v1.DeletedBoxShareTeam
+	(*ResolveExe1TokenRequest)(nil),                  // 68: exe.proxy.v1.ResolveExe1TokenRequest
+	(*ResolveExe1TokenResponse)(nil),                 // 69: exe.proxy.v1.ResolveExe1TokenResponse
+	(*timestamppb.Timestamp)(nil),                    // 70: google.protobuf.Timestamp
 }
 var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	2,  // 0: exe.proxy.v1.BoxInfoResponse.route:type_name -> exe.proxy.v1.BoxRoute
-	68, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
-	68, // 2: exe.proxy.v1.UserInfoResponse.when:type_name -> google.protobuf.Timestamp
+	70, // 1: exe.proxy.v1.CookieInfoResponse.expires_at:type_name -> google.protobuf.Timestamp
+	70, // 2: exe.proxy.v1.UserInfoResponse.when:type_name -> google.protobuf.Timestamp
 	7,  // 3: exe.proxy.v1.UserInfoResponse.user_info:type_name -> exe.proxy.v1.UserInfo
 	10, // 4: exe.proxy.v1.GetPublicIPsResponse.public_ip:type_name -> exe.proxy.v1.PublicIP
 	19, // 5: exe.proxy.v1.CheckAndRefreshLLMCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
-	68, // 6: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
+	70, // 6: exe.proxy.v1.CreditInfo.last_refresh:type_name -> google.protobuf.Timestamp
 	20, // 7: exe.proxy.v1.CreditInfo.plan:type_name -> exe.proxy.v1.Plan
 	19, // 8: exe.proxy.v1.LLMDebitCreditResponse.credit_info:type_name -> exe.proxy.v1.CreditInfo
-	55, // 9: exe.proxy.v1.ChangesResponse.deleted_box:type_name -> exe.proxy.v1.DeletedBox
-	57, // 10: exe.proxy.v1.ChangesResponse.renamed_box:type_name -> exe.proxy.v1.RenamedBox
-	58, // 11: exe.proxy.v1.ChangesResponse.updated_box_route:type_name -> exe.proxy.v1.UpdatedBoxRoute
-	59, // 12: exe.proxy.v1.ChangesResponse.deleted_cookie:type_name -> exe.proxy.v1.DeletedCookie
-	60, // 13: exe.proxy.v1.ChangesResponse.deleted_box_share:type_name -> exe.proxy.v1.DeletedBoxShare
-	61, // 14: exe.proxy.v1.ChangesResponse.deleted_box_share_link:type_name -> exe.proxy.v1.DeletedBoxShareLink
-	62, // 15: exe.proxy.v1.ChangesResponse.deleted_ssh_key:type_name -> exe.proxy.v1.DeletedSSHKey
-	63, // 16: exe.proxy.v1.ChangesResponse.user_changed:type_name -> exe.proxy.v1.UserChanged
-	64, // 17: exe.proxy.v1.ChangesResponse.deleted_team_member:type_name -> exe.proxy.v1.DeletedTeamMember
-	65, // 18: exe.proxy.v1.ChangesResponse.deleted_box_share_team:type_name -> exe.proxy.v1.DeletedBoxShareTeam
-	56, // 19: exe.proxy.v1.ChangesResponse.moved_box:type_name -> exe.proxy.v1.MovedBox
+	57, // 9: exe.proxy.v1.ChangesResponse.deleted_box:type_name -> exe.proxy.v1.DeletedBox
+	59, // 10: exe.proxy.v1.ChangesResponse.renamed_box:type_name -> exe.proxy.v1.RenamedBox
+	60, // 11: exe.proxy.v1.ChangesResponse.updated_box_route:type_name -> exe.proxy.v1.UpdatedBoxRoute
+	61, // 12: exe.proxy.v1.ChangesResponse.deleted_cookie:type_name -> exe.proxy.v1.DeletedCookie
+	62, // 13: exe.proxy.v1.ChangesResponse.deleted_box_share:type_name -> exe.proxy.v1.DeletedBoxShare
+	63, // 14: exe.proxy.v1.ChangesResponse.deleted_box_share_link:type_name -> exe.proxy.v1.DeletedBoxShareLink
+	64, // 15: exe.proxy.v1.ChangesResponse.deleted_ssh_key:type_name -> exe.proxy.v1.DeletedSSHKey
+	65, // 16: exe.proxy.v1.ChangesResponse.user_changed:type_name -> exe.proxy.v1.UserChanged
+	66, // 17: exe.proxy.v1.ChangesResponse.deleted_team_member:type_name -> exe.proxy.v1.DeletedTeamMember
+	67, // 18: exe.proxy.v1.ChangesResponse.deleted_box_share_team:type_name -> exe.proxy.v1.DeletedBoxShareTeam
+	58, // 19: exe.proxy.v1.ChangesResponse.moved_box:type_name -> exe.proxy.v1.MovedBox
 	2,  // 20: exe.proxy.v1.UpdatedBoxRoute.route:type_name -> exe.proxy.v1.BoxRoute
-	68, // 21: exe.proxy.v1.UserChanged.when:type_name -> google.protobuf.Timestamp
+	70, // 21: exe.proxy.v1.UserChanged.when:type_name -> google.protobuf.Timestamp
 	7,  // 22: exe.proxy.v1.UserChanged.user_info:type_name -> exe.proxy.v1.UserInfo
 	0,  // 23: exe.proxy.v1.ProxyInfoService.BoxInfo:input_type -> exe.proxy.v1.BoxInfoRequest
 	3,  // 24: exe.proxy.v1.ProxyInfoService.CookieInfo:input_type -> exe.proxy.v1.CookieInfoRequest
@@ -4259,49 +4357,51 @@ var file_exe_proxy_v1_proxy_proto_depIdxs = []int32{
 	21, // 31: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:input_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeRequest
 	23, // 32: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:input_type -> exe.proxy.v1.LLMDebitCreditRequest
 	25, // 33: exe.proxy.v1.ProxyInfoService.LLMUseCredits:input_type -> exe.proxy.v1.LLMUseCreditsRequest
-	27, // 34: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:input_type -> exe.proxy.v1.CreateAuthCookieRequest
-	29, // 35: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:input_type -> exe.proxy.v1.DeleteAuthCookieRequest
-	31, // 36: exe.proxy.v1.ProxyInfoService.UsedCookie:input_type -> exe.proxy.v1.UsedCookieRequest
-	33, // 37: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:input_type -> exe.proxy.v1.HasUserAccessToBoxRequest
-	35, // 38: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:input_type -> exe.proxy.v1.IsBoxSharedWithUserTeamRequest
-	37, // 39: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:input_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberRequest
-	39, // 40: exe.proxy.v1.ProxyInfoService.CheckShareLink:input_type -> exe.proxy.v1.CheckShareLinkRequest
-	41, // 41: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:input_type -> exe.proxy.v1.ValidateMagicSecretRequest
-	43, // 42: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:input_type -> exe.proxy.v1.SSHKeyByFingerprintRequest
-	66, // 43: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:input_type -> exe.proxy.v1.ResolveExe1TokenRequest
-	45, // 44: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:input_type -> exe.proxy.v1.HLLNoteEventsRequest
-	47, // 45: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:input_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
-	49, // 46: exe.proxy.v1.ProxyInfoService.SendEmail:input_type -> exe.proxy.v1.SendEmailRequest
-	51, // 47: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:input_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
-	53, // 48: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
-	1,  // 49: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
-	4,  // 50: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
-	6,  // 51: exe.proxy.v1.ProxyInfoService.UserInfo:output_type -> exe.proxy.v1.UserInfoResponse
-	9,  // 52: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
-	12, // 53: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
-	14, // 54: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
-	16, // 55: exe.proxy.v1.ProxyInfoService.TopLevelCert:output_type -> exe.proxy.v1.TopLevelCertResponse
-	18, // 56: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
-	22, // 57: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
-	24, // 58: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
-	26, // 59: exe.proxy.v1.ProxyInfoService.LLMUseCredits:output_type -> exe.proxy.v1.LLMUseCreditsResponse
-	28, // 60: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:output_type -> exe.proxy.v1.CreateAuthCookieResponse
-	30, // 61: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:output_type -> exe.proxy.v1.DeleteAuthCookieResponse
-	32, // 62: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
-	34, // 63: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:output_type -> exe.proxy.v1.HasUserAccessToBoxResponse
-	36, // 64: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:output_type -> exe.proxy.v1.IsBoxSharedWithUserTeamResponse
-	38, // 65: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:output_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
-	40, // 66: exe.proxy.v1.ProxyInfoService.CheckShareLink:output_type -> exe.proxy.v1.CheckShareLinkResponse
-	42, // 67: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:output_type -> exe.proxy.v1.ValidateMagicSecretResponse
-	44, // 68: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:output_type -> exe.proxy.v1.SSHKeyByFingerprintResponse
-	67, // 69: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:output_type -> exe.proxy.v1.ResolveExe1TokenResponse
-	46, // 70: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:output_type -> exe.proxy.v1.HLLNoteEventsResponse
-	48, // 71: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:output_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
-	50, // 72: exe.proxy.v1.ProxyInfoService.SendEmail:output_type -> exe.proxy.v1.SendEmailResponse
-	52, // 73: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:output_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
-	54, // 74: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
-	49, // [49:75] is the sub-list for method output_type
-	23, // [23:49] is the sub-list for method input_type
+	27, // 34: exe.proxy.v1.ProxyInfoService.LLMGetCreditBalance:input_type -> exe.proxy.v1.LLMGetCreditBalanceRequest
+	29, // 35: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:input_type -> exe.proxy.v1.CreateAuthCookieRequest
+	31, // 36: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:input_type -> exe.proxy.v1.DeleteAuthCookieRequest
+	33, // 37: exe.proxy.v1.ProxyInfoService.UsedCookie:input_type -> exe.proxy.v1.UsedCookieRequest
+	35, // 38: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:input_type -> exe.proxy.v1.HasUserAccessToBoxRequest
+	37, // 39: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:input_type -> exe.proxy.v1.IsBoxSharedWithUserTeamRequest
+	39, // 40: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:input_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberRequest
+	41, // 41: exe.proxy.v1.ProxyInfoService.CheckShareLink:input_type -> exe.proxy.v1.CheckShareLinkRequest
+	43, // 42: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:input_type -> exe.proxy.v1.ValidateMagicSecretRequest
+	45, // 43: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:input_type -> exe.proxy.v1.SSHKeyByFingerprintRequest
+	68, // 44: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:input_type -> exe.proxy.v1.ResolveExe1TokenRequest
+	47, // 45: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:input_type -> exe.proxy.v1.HLLNoteEventsRequest
+	49, // 46: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:input_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaRequest
+	51, // 47: exe.proxy.v1.ProxyInfoService.SendEmail:input_type -> exe.proxy.v1.SendEmailRequest
+	53, // 48: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:input_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditRequest
+	55, // 49: exe.proxy.v1.ProxyInfoService.Changes:input_type -> exe.proxy.v1.ChangesRequest
+	1,  // 50: exe.proxy.v1.ProxyInfoService.BoxInfo:output_type -> exe.proxy.v1.BoxInfoResponse
+	4,  // 51: exe.proxy.v1.ProxyInfoService.CookieInfo:output_type -> exe.proxy.v1.CookieInfoResponse
+	6,  // 52: exe.proxy.v1.ProxyInfoService.UserInfo:output_type -> exe.proxy.v1.UserInfoResponse
+	9,  // 53: exe.proxy.v1.ProxyInfoService.GetPublicIPs:output_type -> exe.proxy.v1.GetPublicIPsResponse
+	12, // 54: exe.proxy.v1.ProxyInfoService.GetLobbyIP:output_type -> exe.proxy.v1.GetLobbyIPResponse
+	14, // 55: exe.proxy.v1.ProxyInfoService.CertForDomain:output_type -> exe.proxy.v1.CertForDomainResponse
+	16, // 56: exe.proxy.v1.ProxyInfoService.TopLevelCert:output_type -> exe.proxy.v1.TopLevelCertResponse
+	18, // 57: exe.proxy.v1.ProxyInfoService.CheckAndRefreshLLMCredit:output_type -> exe.proxy.v1.CheckAndRefreshLLMCreditResponse
+	22, // 58: exe.proxy.v1.ProxyInfoService.TopUpOnLLMBillingUpgrade:output_type -> exe.proxy.v1.TopUpOnLLMBillingUpgradeResponse
+	24, // 59: exe.proxy.v1.ProxyInfoService.LLMDebitCredit:output_type -> exe.proxy.v1.LLMDebitCreditResponse
+	26, // 60: exe.proxy.v1.ProxyInfoService.LLMUseCredits:output_type -> exe.proxy.v1.LLMUseCreditsResponse
+	28, // 61: exe.proxy.v1.ProxyInfoService.LLMGetCreditBalance:output_type -> exe.proxy.v1.LLMGetCreditBalanceResponse
+	30, // 62: exe.proxy.v1.ProxyInfoService.CreateAuthCookie:output_type -> exe.proxy.v1.CreateAuthCookieResponse
+	32, // 63: exe.proxy.v1.ProxyInfoService.DeleteAuthCookie:output_type -> exe.proxy.v1.DeleteAuthCookieResponse
+	34, // 64: exe.proxy.v1.ProxyInfoService.UsedCookie:output_type -> exe.proxy.v1.UsedCookieResponse
+	36, // 65: exe.proxy.v1.ProxyInfoService.HasUserAccessToBox:output_type -> exe.proxy.v1.HasUserAccessToBoxResponse
+	38, // 66: exe.proxy.v1.ProxyInfoService.IsBoxSharedWithUserTeam:output_type -> exe.proxy.v1.IsBoxSharedWithUserTeamResponse
+	40, // 67: exe.proxy.v1.ProxyInfoService.IsBoxShelleySharedWithTeamMember:output_type -> exe.proxy.v1.IsBoxShelleySharedWithTeamMemberResponse
+	42, // 68: exe.proxy.v1.ProxyInfoService.CheckShareLink:output_type -> exe.proxy.v1.CheckShareLinkResponse
+	44, // 69: exe.proxy.v1.ProxyInfoService.ValidateMagicSecret:output_type -> exe.proxy.v1.ValidateMagicSecretResponse
+	46, // 70: exe.proxy.v1.ProxyInfoService.SSHKeyByFingerprint:output_type -> exe.proxy.v1.SSHKeyByFingerprintResponse
+	69, // 71: exe.proxy.v1.ProxyInfoService.ResolveExe1Token:output_type -> exe.proxy.v1.ResolveExe1TokenResponse
+	48, // 72: exe.proxy.v1.ProxyInfoService.HLLNoteEvents:output_type -> exe.proxy.v1.HLLNoteEventsResponse
+	50, // 73: exe.proxy.v1.ProxyInfoService.CheckAndIncrementEmailQuota:output_type -> exe.proxy.v1.CheckAndIncrementEmailQuotaResponse
+	52, // 74: exe.proxy.v1.ProxyInfoService.SendEmail:output_type -> exe.proxy.v1.SendEmailResponse
+	54, // 75: exe.proxy.v1.ProxyInfoService.CheckAndDebitVMEmailCredit:output_type -> exe.proxy.v1.CheckAndDebitVMEmailCreditResponse
+	56, // 76: exe.proxy.v1.ProxyInfoService.Changes:output_type -> exe.proxy.v1.ChangesResponse
+	50, // [50:77] is the sub-list for method output_type
+	23, // [23:50] is the sub-list for method input_type
 	23, // [23:23] is the sub-list for extension type_name
 	23, // [23:23] is the sub-list for extension extendee
 	0,  // [0:23] is the sub-list for field type_name
@@ -4312,7 +4412,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 	if File_exe_proxy_v1_proxy_proto != nil {
 		return
 	}
-	file_exe_proxy_v1_proxy_proto_msgTypes[54].OneofWrappers = []any{
+	file_exe_proxy_v1_proxy_proto_msgTypes[56].OneofWrappers = []any{
 		(*ChangesResponse_DeletedBox)(nil),
 		(*ChangesResponse_RenamedBox)(nil),
 		(*ChangesResponse_UpdatedBoxRoute)(nil),
@@ -4325,7 +4425,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 		(*ChangesResponse_DeletedBoxShareTeam)(nil),
 		(*ChangesResponse_MovedBox)(nil),
 	}
-	file_exe_proxy_v1_proxy_proto_msgTypes[59].OneofWrappers = []any{
+	file_exe_proxy_v1_proxy_proto_msgTypes[61].OneofWrappers = []any{
 		(*DeletedCookie_CookieValue)(nil),
 		(*DeletedCookie_UserID)(nil),
 	}
@@ -4335,7 +4435,7 @@ func file_exe_proxy_v1_proxy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_proxy_v1_proxy_proto_rawDesc), len(file_exe_proxy_v1_proxy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   68,
+			NumMessages:   70,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

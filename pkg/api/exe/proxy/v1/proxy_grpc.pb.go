@@ -33,6 +33,7 @@ const (
 	ProxyInfoService_TopUpOnLLMBillingUpgrade_FullMethodName         = "/exe.proxy.v1.ProxyInfoService/TopUpOnLLMBillingUpgrade"
 	ProxyInfoService_LLMDebitCredit_FullMethodName                   = "/exe.proxy.v1.ProxyInfoService/LLMDebitCredit"
 	ProxyInfoService_LLMUseCredits_FullMethodName                    = "/exe.proxy.v1.ProxyInfoService/LLMUseCredits"
+	ProxyInfoService_LLMGetCreditBalance_FullMethodName              = "/exe.proxy.v1.ProxyInfoService/LLMGetCreditBalance"
 	ProxyInfoService_CreateAuthCookie_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/CreateAuthCookie"
 	ProxyInfoService_DeleteAuthCookie_FullMethodName                 = "/exe.proxy.v1.ProxyInfoService/DeleteAuthCookie"
 	ProxyInfoService_UsedCookie_FullMethodName                       = "/exe.proxy.v1.ProxyInfoService/UsedCookie"
@@ -81,9 +82,12 @@ type ProxyInfoServiceClient interface {
 	// from the user's LLM credit.
 	// See llmgateway.CreditManager.LLMDebitCredit.
 	LLMDebitCredit(ctx context.Context, in *LLMDebitCreditRequest, opts ...grpc.CallOption) (*LLMDebitCreditResponse, error)
-	// LLMUseCredits applies a credit usage entry and returns remaining credit.
+	// LLMUseCredits applies a credit usage entry.
 	// See llmgateway.GatewayData.UseCredits.
 	LLMUseCredits(ctx context.Context, in *LLMUseCreditsRequest, opts ...grpc.CallOption) (*LLMUseCreditsResponse, error)
+	// LLMGetCreditBalance returns the remaining credit balance for an account.
+	// See llmgateway.GatewayData.GetCreditBalance.
+	LLMGetCreditBalance(ctx context.Context, in *LLMGetCreditBalanceRequest, opts ...grpc.CallOption) (*LLMGetCreditBalanceResponse, error)
 	// CreateAuthCookie creates an authentication cookie.
 	CreateAuthCookie(ctx context.Context, in *CreateAuthCookieRequest, opts ...grpc.CallOption) (*CreateAuthCookieResponse, error)
 	// DeleteAuthCookie deletes an authentication cookie.
@@ -255,6 +259,16 @@ func (c *proxyInfoServiceClient) LLMUseCredits(ctx context.Context, in *LLMUseCr
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(LLMUseCreditsResponse)
 	err := c.cc.Invoke(ctx, ProxyInfoService_LLMUseCredits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyInfoServiceClient) LLMGetCreditBalance(ctx context.Context, in *LLMGetCreditBalanceRequest, opts ...grpc.CallOption) (*LLMGetCreditBalanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LLMGetCreditBalanceResponse)
+	err := c.cc.Invoke(ctx, ProxyInfoService_LLMGetCreditBalance_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -451,9 +465,12 @@ type ProxyInfoServiceServer interface {
 	// from the user's LLM credit.
 	// See llmgateway.CreditManager.LLMDebitCredit.
 	LLMDebitCredit(context.Context, *LLMDebitCreditRequest) (*LLMDebitCreditResponse, error)
-	// LLMUseCredits applies a credit usage entry and returns remaining credit.
+	// LLMUseCredits applies a credit usage entry.
 	// See llmgateway.GatewayData.UseCredits.
 	LLMUseCredits(context.Context, *LLMUseCreditsRequest) (*LLMUseCreditsResponse, error)
+	// LLMGetCreditBalance returns the remaining credit balance for an account.
+	// See llmgateway.GatewayData.GetCreditBalance.
+	LLMGetCreditBalance(context.Context, *LLMGetCreditBalanceRequest) (*LLMGetCreditBalanceResponse, error)
 	// CreateAuthCookie creates an authentication cookie.
 	CreateAuthCookie(context.Context, *CreateAuthCookieRequest) (*CreateAuthCookieResponse, error)
 	// DeleteAuthCookie deletes an authentication cookie.
@@ -544,6 +561,9 @@ func (UnimplementedProxyInfoServiceServer) LLMDebitCredit(context.Context, *LLMD
 }
 func (UnimplementedProxyInfoServiceServer) LLMUseCredits(context.Context, *LLMUseCreditsRequest) (*LLMUseCreditsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LLMUseCredits not implemented")
+}
+func (UnimplementedProxyInfoServiceServer) LLMGetCreditBalance(context.Context, *LLMGetCreditBalanceRequest) (*LLMGetCreditBalanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LLMGetCreditBalance not implemented")
 }
 func (UnimplementedProxyInfoServiceServer) CreateAuthCookie(context.Context, *CreateAuthCookieRequest) (*CreateAuthCookieResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateAuthCookie not implemented")
@@ -798,6 +818,24 @@ func _ProxyInfoService_LLMUseCredits_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProxyInfoServiceServer).LLMUseCredits(ctx, req.(*LLMUseCreditsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyInfoService_LLMGetCreditBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LLMGetCreditBalanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyInfoServiceServer).LLMGetCreditBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyInfoService_LLMGetCreditBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyInfoServiceServer).LLMGetCreditBalance(ctx, req.(*LLMGetCreditBalanceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1111,6 +1149,10 @@ var ProxyInfoService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LLMUseCredits",
 			Handler:    _ProxyInfoService_LLMUseCredits_Handler,
+		},
+		{
+			MethodName: "LLMGetCreditBalance",
+			Handler:    _ProxyInfoService_LLMGetCreditBalance_Handler,
 		},
 		{
 			MethodName: "CreateAuthCookie",

@@ -10,6 +10,19 @@ import (
 	"time"
 )
 
+const getCreditBalance = `-- name: GetCreditBalance :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS INTEGER) FROM billing_credits WHERE account_id = ?
+`
+
+// GetCreditBalance returns the total credit balance for an account.
+// Returns 0 for nonexistent accounts (all callers verify account existence beforehand).
+func (q *Queries) GetCreditBalance(ctx context.Context, accountID string) (int64, error) {
+	row := q.queryRow(ctx, q.getCreditBalanceStmt, getCreditBalance, accountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getCreditState = `-- name: GetCreditState :one
 SELECT
     CAST(COALESCE(SUM(CASE WHEN credit_type = 'gift' THEN amount ELSE 0 END), 0) AS INTEGER) AS gift,
@@ -177,12 +190,11 @@ func (q *Queries) ListGiftCredits(ctx context.Context, accountID string) ([]List
 	return items, nil
 }
 
-const useCredits = `-- name: UseCredits :one
+const useCredits = `-- name: UseCredits :exec
 INSERT INTO billing_credits (account_id, amount, hour_bucket, credit_type)
 VALUES (?1, ?2, strftime('%Y-%m-%d %H:00:00', CURRENT_TIMESTAMP), ?3)
 ON CONFLICT(account_id, hour_bucket, credit_type)
 DO UPDATE SET amount = billing_credits.amount + excluded.amount
-RETURNING CAST((SELECT COALESCE(SUM(amount), 0) FROM billing_credits WHERE account_id = ?1) AS INTEGER)
 `
 
 type UseCreditsParams struct {
@@ -191,11 +203,9 @@ type UseCreditsParams struct {
 	CreditType *string `db:"credit_type" json:"credit_type"`
 }
 
-// UseCredits inserts a deduction into the credit ledger and returns the new balance.
+// UseCredits inserts a deduction into the credit ledger.
 // amount should be negative for deductions. Negative balances are allowed.
-func (q *Queries) UseCredits(ctx context.Context, arg UseCreditsParams) (int64, error) {
-	row := q.queryRow(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount, arg.CreditType)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
+func (q *Queries) UseCredits(ctx context.Context, arg UseCreditsParams) error {
+	_, err := q.exec(ctx, q.useCreditsStmt, useCredits, arg.AccountID, arg.Amount, arg.CreditType)
+	return err
 }

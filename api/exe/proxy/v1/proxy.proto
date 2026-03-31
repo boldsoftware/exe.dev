@@ -47,9 +47,13 @@ service ProxyInfoService {
   // See llmgateway.CreditManager.LLMDebitCredit.
   rpc LLMDebitCredit(LLMDebitCreditRequest) returns (LLMDebitCreditResponse);
 
-  // LLMUseCredits applies a credit usage entry and returns remaining credit.
+  // LLMUseCredits applies a credit usage entry.
   // See llmgateway.GatewayData.UseCredits.
   rpc LLMUseCredits(LLMUseCreditsRequest) returns (LLMUseCreditsResponse);
+
+  // LLMGetCreditBalance returns the remaining credit balance for an account.
+  // See llmgateway.GatewayData.GetCreditBalance.
+  rpc LLMGetCreditBalance(LLMGetCreditBalanceRequest) returns (LLMGetCreditBalanceResponse);
 
   // CreateAuthCookie creates an authentication cookie.
   rpc CreateAuthCookie(CreateAuthCookieRequest) returns (CreateAuthCookieResponse);
@@ -268,6 +272,14 @@ message LLMUseCreditsRequest {
 }
 
 message LLMUseCreditsResponse {
+  int64 microcents = 1;
+}
+
+message LLMGetCreditBalanceRequest {
+  string account_id = 1;
+}
+
+message LLMGetCreditBalanceResponse {
   int64 microcents = 1;
 }
 

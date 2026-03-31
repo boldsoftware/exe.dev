@@ -250,7 +250,7 @@ func TestGetCreditState_MixedCredits(t *testing.T) {
 	}
 
 	// Spend some credits
-	_, err = m.SpendCredits(t.Context(), "acct_mixed", 1, tender.Mint(200, 0))
+	err = m.SpendCredits(t.Context(), "acct_mixed", 1, tender.Mint(200, 0))
 	if err != nil {
 		t.Fatalf("SpendCredits: %v", err)
 	}

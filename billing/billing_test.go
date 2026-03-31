@@ -114,7 +114,7 @@ func TestSyncCredits(t *testing.T) {
 	checkBalance := func(aliceID string, want tender.Value) {
 		t.Helper()
 
-		got, err := m.SpendCredits(t.Context(), aliceID, 0, tender.Zero())
+		got, err := m.CreditBalance(t.Context(), aliceID)
 		check(err, nil)
 
 		if got != want {
@@ -165,7 +165,7 @@ func TestSyncCredits(t *testing.T) {
 	check(err, nil)
 
 	// Check that the credits were added to the ledger.
-	balance, err := m.SpendCredits(t.Context(), aliceID, 0, tender.Zero())
+	balance, err := m.CreditBalance(t.Context(), aliceID)
 	check(err, nil)
 
 	if balance != tender.Mint(100, 0) {
@@ -182,17 +182,23 @@ func TestUseCreditsPreservesFractionalCents(t *testing.T) {
 	accountID := "exe_fractional_cents"
 	createTestAccount(t, m.DB, accountID, "user_fractional_cents")
 
-	balance, err := m.SpendCredits(ctx, accountID, 3, tender.Mint(0, 5000))
-	if err != nil {
+	if err := m.SpendCredits(ctx, accountID, 3, tender.Mint(0, 5000)); err != nil {
 		t.Fatalf("UseCredits fractional: %v", err)
+	}
+	balance, err := m.CreditBalance(ctx, accountID)
+	if err != nil {
+		t.Fatalf("CreditBalance: %v", err)
 	}
 	if want := tender.Mint(-1, -5000); balance != want {
 		t.Fatalf("fractional balance = %v, want %v", balance, want)
 	}
 
-	balance, err = m.SpendCredits(ctx, accountID, 2, tender.Mint(1, 0))
-	if err != nil {
+	if err := m.SpendCredits(ctx, accountID, 2, tender.Mint(1, 0)); err != nil {
 		t.Fatalf("UseCredits whole cents: %v", err)
+	}
+	balance, err = m.CreditBalance(ctx, accountID)
+	if err != nil {
+		t.Fatalf("CreditBalance: %v", err)
 	}
 	if want := tender.Mint(-3, -5000); balance != want {
 		t.Fatalf("whole-cent balance = %v, want %v", balance, want)
@@ -208,7 +214,7 @@ func TestSpendCreditsRejectsNegativeUnitPrice(t *testing.T) {
 	accountID := "exe_negative_price"
 	createTestAccount(t, m.DB, accountID, "user_negative_price")
 
-	_, err := m.SpendCredits(ctx, accountID, 1, tender.Mint(0, -1))
+	err := m.SpendCredits(ctx, accountID, 1, tender.Mint(0, -1))
 	if err == nil {
 		t.Fatal("SpendCredits with negative unitPrice error = nil, want non-nil")
 	}
@@ -216,7 +222,7 @@ func TestSpendCreditsRejectsNegativeUnitPrice(t *testing.T) {
 		t.Fatalf("SpendCredits with negative unitPrice error = %q, want non-negative unit price error", got)
 	}
 
-	balance, err := m.SpendCredits(ctx, accountID, 0, tender.Zero())
+	balance, err := m.CreditBalance(ctx, accountID)
 	if err != nil {
 		t.Fatalf("read balance after rejected spend: %v", err)
 	}
@@ -270,9 +276,9 @@ func TestGiftCredits(t *testing.T) {
 	}
 
 	// Verify the balance reflects the gift.
-	balance, err := m.SpendCredits(ctx, accountID, 0, tender.Zero())
+	balance, err := m.CreditBalance(ctx, accountID)
 	if err != nil {
-		t.Fatalf("SpendCredits read balance: %v", err)
+		t.Fatalf("CreditBalance: %v", err)
 	}
 	if want := tender.Mint(5000, 0); balance != want {
 		t.Fatalf("balance = %v, want %v", balance, want)
@@ -300,9 +306,9 @@ func TestGiftCreditsMultipleCalls(t *testing.T) {
 	}
 
 	// Each call produces a unique gift_id (timestamp-based), so both insert.
-	balance, err := m.SpendCredits(ctx, accountID, 0, tender.Zero())
+	balance, err := m.CreditBalance(ctx, accountID)
 	if err != nil {
-		t.Fatalf("SpendCredits read balance: %v", err)
+		t.Fatalf("CreditBalance: %v", err)
 	}
 	if want := tender.Mint(5000, 0); balance != want {
 		t.Fatalf("balance = %v, want %v (expected two gifts)", balance, want)
@@ -405,7 +411,7 @@ func TestGetCreditState(t *testing.T) {
 	}
 
 	// Spend some credits.
-	_, err = m.SpendCredits(ctx, accountID, 10, tender.Mint(100, 0)) // spend $10
+	err = m.SpendCredits(ctx, accountID, 10, tender.Mint(100, 0)) // spend $10
 	if err != nil {
 		t.Fatalf("SpendCredits: %v", err)
 	}

@@ -515,7 +515,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	var purchases []jsonPurchaseRow
 	account, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountByUserID, userID)
 	if err == nil {
-		balance, err := s.billing.SpendCredits(r.Context(), account.ID, 0, tender.Zero())
+		balance, err := s.billing.CreditBalance(r.Context(), account.ID)
 		if err == nil {
 			creditBalance = balance
 		}

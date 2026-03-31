@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/billing/tender"
 	"exe.dev/domz"
 	"exe.dev/llmpricing"
 	"exe.dev/stage"
@@ -254,7 +253,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		billingBalance, err := m.data.UseCredits(r.Context(), accountID, 0, tender.Zero())
+		billingBalance, err := m.data.GetCreditBalance(r.Context(), accountID)
 		if errors.Is(err, context.Canceled) {
 			return
 		}

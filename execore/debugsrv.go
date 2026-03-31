@@ -5392,7 +5392,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Credit balance via billing manager (same as profile page).
-		balance, err := s.billing.SpendCredits(ctx, a.ID, 0, tender.Zero())
+		balance, err := s.billing.CreditBalance(ctx, a.ID)
 		if err != nil {
 			info.CreditBalance = fmt.Sprintf("error: %v", err)
 		} else {
@@ -5511,7 +5511,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	creditBalance := tender.Zero()
 	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
 	if err == nil {
-		bal, err := s.billing.SpendCredits(ctx, account.ID, 0, tender.Zero())
+		bal, err := s.billing.CreditBalance(ctx, account.ID)
 		if err == nil {
 			creditBalance = bal
 		}
