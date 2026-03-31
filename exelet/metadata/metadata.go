@@ -990,7 +990,7 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 func (s *Service) integrationTransport() *http.Transport {
 	return &http.Transport{
 		TLSHandshakeTimeout:   20 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Minute,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
