@@ -6,7 +6,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="icon" href="/favicon.ico">
   <meta name="color-scheme" content="light dark">
-  <title>Service unavailable</title>
+  <title>Access Denied</title>
   <meta name="robots" content="noindex">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Cache-Control" content="no-store">
@@ -16,12 +16,12 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --bg: #fafafa; --text: #111; --text-secondary: #666; --text-muted: #999;
-      --code-bg: #f3f4f6;
+      --link: #0066cc; --link-hover: #004499;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #111; --text: #f3f4f6; --text-secondary: #9ca3af; --text-muted: #6b7280;
-        --code-bg: #2a2a2a;
+        --link: #60a5fa; --link-hover: #93c5fd;
       }
     }
     body {
@@ -33,16 +33,10 @@
     }
     main { width: 100%; max-width: 42rem; }
     h1 { font-size: 2.25rem; font-weight: 600; line-height: 1.2; margin-bottom: 1.5rem; }
-    .label {
-      font-size: 13px; color: var(--text-muted); text-transform: uppercase;
-      letter-spacing: 0.5px; margin-bottom: 0.75rem;
-    }
     .desc { color: var(--text-secondary); margin-bottom: 2rem; }
-    .code-block {
-      background: var(--code-bg); border-radius: 4px; padding: 16px;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 14px; line-height: 1.5; overflow-x: auto;
-    }
+    .desc strong { color: var(--text); font-weight: 600; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { color: var(--link-hover); text-decoration: underline; }
     .trace { color: var(--text-muted); font-size: 14px; margin-top: 1.5rem; }
     @media (max-width: 640px) {
       body { padding: 24px; }
@@ -51,16 +45,9 @@
 </head>
 <body>
   <main>
-    {{if .IsShelleyPort}}
-    <p class="label">Shelley Agent</p>
-    <h1>Shelley isn't running on {{.BoxName}}</h1>
-    <p class="desc">The Shelley coding agent isn't currently running on this VM.</p>
-    {{else}}
-    <h1>Port {{.Port}} unbound.</h1>
-    <div class="code-block">
-      <code>ssh {{.BoxName | call .BoxDest}} sudo systemctl enable --now nginx</code>
-    </div>
-    {{end}}
+    <h1>Unauthorized</h1>
+    <p class="desc">You don't have access to <strong>{{.BoxName}}</strong>.</p>
+    <a href="{{.DashboardURL}}">Return to your VMs</a>
     {{if .TraceID}}<p class="trace">trace: {{.TraceID}}</p>{{end}}
   </main>
 </body>

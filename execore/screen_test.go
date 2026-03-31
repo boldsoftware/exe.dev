@@ -280,7 +280,7 @@ func TestScreenFlow(t *testing.T) {
 			DashboardURL: "/",
 			TraceID:      "test-trace-id",
 		}
-		server.renderTemplate(context.Background(), rec, "terminal-access-denied.html", data)
+		server.renderTemplate(context.Background(), rec, "proxy-terminal-access-denied.html", data)
 
 		if rec.Code != 200 {
 			t.Errorf("terminal-access-denied template: expected 200, got %d", rec.Code)

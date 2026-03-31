@@ -177,7 +177,7 @@ func (ps *ProxyServer) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc 
 				DashboardURL: dashboardURL,
 				TraceID:      tracing.TraceIDFromContext(r.Context()),
 			}
-			ps.renderTemplate(r.Context(), w, "terminal-access-denied.html", data)
+			ps.renderTemplate(r.Context(), w, "proxy-terminal-access-denied.html", data)
 			return
 		}
 

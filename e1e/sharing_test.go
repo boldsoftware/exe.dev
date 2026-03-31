@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/playwright-community/playwright-go"
+
 	"exe.dev/e1e/testinfra"
 )
 
@@ -1468,5 +1470,209 @@ echo "QUERY=$QUERY_STRING"
 		t.Errorf("container missing expected page param: %s", body)
 	}
 
+	cleanupBox(t, ownerKeyFile, box)
+}
+
+// TestShareLinkFlow_Playwright tests the full share link flow in a real browser.
+// A box owner creates a share link, a guest user clicks it in a browser,
+// goes through the authentication flow, and should end up with access to the box.
+//
+// This exercises the entire redirect chain with real JavaScript execution:
+//  1. Owner creates a box and a share link
+//  2. Fresh browser navigates to the share link URL (box.exe.cloud/?share=TOKEN)
+//  3. Browser follows redirects to the 401 auth page (should show "You've been invited")
+//  4. Guest enters email, submits the form
+//  5. Guest clicks email verification link (auto-submits via JS)
+//  6. Browser follows redirect chain back to the box
+//  7. Assert: guest can see the box content (share link was consumed)
+//  8. Assert: the ?share= token was stripped from the final URL
+func TestShareLinkFlow_Playwright(t *testing.T) {
+	skipIfNoPlaywright(t)
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	httpPort := Env.HTTPPort()
+
+	// Step 1: Owner creates a box with an HTTP server.
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-link-pw.example")
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	ownerPTY.Disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	serveIndex(t, box, ownerKeyFile, "shared-content")
+	configureProxyRoute(t, ownerKeyFile, box, 8080, "private")
+
+	// Create a share link.
+	linkOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add-share-link", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to create share link: %v\n%s", err, linkOut)
+	}
+	var linkInfo struct {
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	}
+	if err := json.Unmarshal(linkOut, &linkInfo); err != nil {
+		t.Fatalf("failed to parse link info: %v\n%s", err, linkOut)
+	}
+	if linkInfo.Token == "" {
+		t.Fatal("empty share token")
+	}
+
+	// Step 2: Guest navigates to the share link in a fresh browser.
+	guestEmail := "guest@test-share-link-pw.example"
+	shareURL := fmt.Sprintf("http://%s.exe.cloud:%d/?share=%s", box, httpPort, linkInfo.Token)
+
+	page, err := testinfra.NewPage()
+	if err != nil {
+		t.Fatalf("failed to create page: %v", err)
+	}
+	defer page.Close()
+
+	resp, err := page.Goto(shareURL)
+	if err != nil {
+		t.Fatalf("failed to navigate to share URL: %v", err)
+	}
+
+	// Step 3: Browser should follow redirects to the 401 auth page.
+	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateDomcontentloaded,
+	})
+	if err != nil {
+		t.Fatalf("failed to wait for load: %v", err)
+	}
+
+	if resp.Status() != 401 {
+		content, _ := page.Content()
+		t.Fatalf("expected 401 page, got status %d: %s", resp.Status(), truncate(content, 800))
+	}
+
+	// Verify the 401 page shows the "You've been invited" message.
+	content, err := page.Content()
+	if err != nil {
+		t.Fatalf("failed to get content: %v", err)
+	}
+	if !strings.Contains(content, "invited") {
+		t.Fatalf("expected 'invited' messaging on 401 page, got: %s", truncate(content, 800))
+	}
+
+	// Verify CSS loaded (regression: proxy didn't serve /static/ before auth).
+	heading := page.Locator("h1").First()
+	fontFamily, err := heading.Evaluate("el => getComputedStyle(el).fontFamily", nil)
+	if err != nil {
+		t.Fatalf("failed to get computed font-family: %v", err)
+	}
+	if fontStr, ok := fontFamily.(string); !ok || fontStr == "" {
+		t.Errorf("heading has no font-family, CSS may not have loaded")
+	}
+
+	// Verify the redirect hidden field preserves the share token.
+	redirectField := page.Locator("input[name=redirect]")
+	redirectValue, err := redirectField.GetAttribute("value")
+	if err != nil {
+		t.Fatalf("failed to get redirect field value: %v", err)
+	}
+	if !strings.Contains(redirectValue, "share=") {
+		t.Fatalf("redirect field should contain share token, got: %q", redirectValue)
+	}
+
+	// Step 4: Fill email and submit.
+	emailInput := page.Locator("input[name=email]")
+	if err := emailInput.Fill(guestEmail); err != nil {
+		t.Fatalf("failed to fill email: %v", err)
+	}
+	if err := page.Locator("button[type=submit]").First().Click(); err != nil {
+		t.Fatalf("failed to click submit: %v", err)
+	}
+
+	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateDomcontentloaded,
+	})
+	if err != nil {
+		t.Fatalf("failed to wait for load after submit: %v", err)
+	}
+
+	// Should see "Check your email" page.
+	if err := waitForVue(page, "Check your email", 15000); err != nil {
+		content, _ := page.Content()
+		t.Fatalf("expected email-sent page: %v\n%s", err, truncate(content, 800))
+	}
+
+	// Step 5: Get verification email and navigate to it.
+	emailMsg, err := Env.servers.Email.WaitForEmail(guestEmail)
+	if err != nil {
+		t.Fatalf("failed to wait for email: %v", err)
+	}
+	verifyURL, err := testinfra.ExtractVerificationToken(emailMsg.Body)
+	if err != nil {
+		t.Fatalf("failed to extract verification URL: %v", err)
+	}
+	t.Logf("Verification URL: %s", verifyURL)
+
+	// Navigate to verification URL. The Vue page auto-submits via JS.
+	_, err = page.Goto(verifyURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateCommit,
+	})
+	if err != nil {
+		t.Fatalf("failed to navigate to verification URL: %v", err)
+	}
+
+	// Step 6: Wait for redirect chain to settle.
+	// The flow: /verify-email \u2192 auto-submit \u2192 /auth/confirm \u2192 LoginConfirmation page.
+	// For non-owners, the confirmation page shows and requires clicking "Continue".
+	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateNetworkidle,
+	})
+	if err != nil {
+		t.Fatalf("failed to wait for network idle: %v", err)
+	}
+
+	// Check if we're on the confirmation page (non-owner flow).
+	content, _ = page.Content()
+	if strings.Contains(content, "CONFIRM LOGIN") {
+		t.Logf("On confirmation page, clicking Continue")
+		continueBtn := page.Locator("text=Continue").First()
+		if err := continueBtn.Click(); err != nil {
+			t.Fatalf("failed to click Continue: %v", err)
+		}
+
+		// Wait for the final redirect chain to settle.
+		err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State: playwright.LoadStateNetworkidle,
+		})
+		if err != nil {
+			t.Fatalf("failed to wait for network idle after Continue: %v", err)
+		}
+	}
+
+	// Step 7: Assert the browser ended up on the box with the content visible.
+	content, err = page.Content()
+	if err != nil {
+		t.Fatalf("failed to get final content: %v", err)
+	}
+
+	if strings.Contains(content, "cross-origin") {
+		t.Fatalf("CSRF error in final page: %s", truncate(content, 800))
+	}
+
+	if !strings.Contains(content, "shared-content") {
+		t.Fatalf("expected box content 'shared-content', got: %s", truncate(content, 800))
+	}
+
+	// Step 8: Verify the share token was stripped from the URL.
+	finalURL := page.URL()
+	if strings.Contains(finalURL, "share=") {
+		t.Fatalf("share token should have been stripped from URL, got: %s", finalURL)
+	}
+
+	expectedHost := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
+	if !strings.Contains(finalURL, expectedHost) {
+		t.Fatalf("expected URL to contain %s, got %s", expectedHost, finalURL)
+	}
+
+	t.Logf("Share link flow completed successfully. Final URL: %s", finalURL)
+
+	// Cleanup
 	cleanupBox(t, ownerKeyFile, box)
 }

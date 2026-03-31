@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico">
+  <meta name="color-scheme" content="light dark">
+  <title>Access required</title>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #fafafa; --text: #111; --text-secondary: #666; --text-muted: #999;
+      --border-input: #e0e0e0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111; --text: #f3f4f6; --text-secondary: #9ca3af; --text-muted: #6b7280;
+        --border-input: #333;
+      }
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px; line-height: 1.6;
+      color: var(--text); background: var(--bg);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 48px;
+    }
+    main { width: 100%; max-width: 42rem; }
+    h1 { font-size: 2.25rem; font-weight: 600; line-height: 1.2; margin-bottom: 1rem; }
+    .email { color: var(--text-secondary); font-size: 1.125rem; margin-bottom: 0.75rem; }
+    .desc { color: var(--text-secondary); font-size: 1.125rem; margin-bottom: 2rem; }
+    textarea {
+      display: block; width: 100%; padding: 8px 12px;
+      border: 2px solid var(--border-input); border-radius: 4px;
+      font-family: inherit; font-size: 1.125rem; resize: none;
+      background: transparent; color: var(--text); outline: none;
+    }
+    textarea:focus { border-color: var(--text-secondary); }
+    textarea::placeholder { color: var(--text-muted); }
+    button {
+      display: inline-block; margin-top: 1.5rem; padding: 12px 24px;
+      border: none; border-radius: 4px; cursor: pointer;
+      font-family: inherit; font-size: 1.125rem;
+      background: var(--text); color: var(--bg);
+      transition: opacity 0.15s ease;
+    }
+    button:hover { opacity: 0.85; }
+    @media (max-width: 640px) {
+      body { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="email">{{.Email}}</p>
+    <h1>You need access</h1>
+    <p class="desc">Ask the owner to let you in.</p>
+    <form method="POST" action="/__exe.dev/request-access">
+      <textarea name="message" placeholder="Message (optional)" rows="3"></textarea>
+      <button type="submit">Request access</button>
+    </form>
+  </main>
+</body>
+</html>

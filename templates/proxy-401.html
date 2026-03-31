@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico">
+  <meta name="color-scheme" content="light dark">
+  <title>Access Denied</title>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #fafafa; --text: #111; --text-secondary: #666;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111; --text: #f3f4f6; --text-secondary: #9ca3af;
+      }
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px; line-height: 1.6;
+      color: var(--text); background: var(--bg);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 48px;
+    }
+    main { width: 100%; max-width: 42rem; }
+    h1 { font-size: 2.25rem; font-weight: 600; line-height: 1.2; margin-bottom: 2rem; }
+    .email { color: var(--text-secondary); font-size: 1.125rem; margin-bottom: 0.75rem; }
+    .hint { color: var(--text-secondary); }
+    @media (max-width: 640px) {
+      body { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="email">{{.Email}}</p>
+    <h1>Access Denied.</h1>
+    <p class="hint">(find someone you know that can let you in)</p>
+  </main>
+</body>
+</html>

@@ -444,7 +444,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 
 		// Non-owner: render 503 page
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = ps.renderTemplate(r.Context(), w, "503.html", struct {
+		_ = ps.renderTemplate(r.Context(), w, "proxy-503.html", struct {
 			TraceID string
 		}{
 			TraceID: tracing.TraceIDFromContext(r.Context()),
@@ -1233,7 +1233,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 	// show the request-access page.
 	if userEmail != "" && box != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		ps.renderTemplate(r.Context(), w, "request-access.html", struct {
+		ps.renderTemplate(r.Context(), w, "proxy-request-access.html", struct {
 			Email string
 		}{
 			Email: userEmail,
@@ -1260,7 +1260,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 		Email: userEmail,
 	}
 	w.WriteHeader(http.StatusUnauthorized)
-	ps.renderTemplate(r.Context(), w, "401.html", data)
+	ps.renderTemplate(r.Context(), w, "proxy-401.html", data)
 }
 
 // RenderLockedOutPage renders the account-locked page and
@@ -1339,7 +1339,7 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	}
 
 	if r.Method == http.MethodGet {
-		ps.renderTemplate(ctx, w, "request-access.html", struct {
+		ps.renderTemplate(ctx, w, "proxy-request-access.html", struct {
 			Email string
 		}{
 			Email: requesterEmail,
@@ -1404,7 +1404,7 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	}
 
 	ps.Lg.InfoContext(ctx, "access request sent", "requester", requesterEmail, "owner", ownerEmail, "box", boxName)
-	ps.renderTemplate(ctx, w, "request-sent.html", nil)
+	ps.renderTemplate(ctx, w, "proxy-request-sent.html", nil)
 }
 
 // RedirectToAuth redirects the user to the /__exe.dev/login URL
