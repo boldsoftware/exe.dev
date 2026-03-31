@@ -108,9 +108,8 @@ func (gd *ProxyLLMGatewayData) UseCredits(ctx context.Context, accountID string,
 }
 
 // GetCreditBalance implements [llmgateway.GatewayData.GetCreditBalance].
-// Uses zero-value LLMUseCredits for backward compat with older exed.
 func (gd *ProxyLLMGatewayData) GetCreditBalance(ctx context.Context, accountID string) (tender.Value, error) {
-	resp, err := gd.client.LLMUseCredits(ctx, &proxyapi.LLMUseCreditsRequest{
+	resp, err := gd.client.LLMGetCreditBalance(ctx, &proxyapi.LLMGetCreditBalanceRequest{
 		AccountID: accountID,
 	})
 	if err != nil {
