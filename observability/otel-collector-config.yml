@@ -334,6 +334,20 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
+  # ClickHouse exporter for observability cluster
+  clickhouse/observability:
+    database: default
+    endpoint: https://tumy84t4c1.us-west-2.aws.clickhouse.cloud:8443
+    password: "${CLICKHOUSE_OBSERVABILITY_PASSWORD}"
+    username: default
+    ttl: 87600h
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
   # S3 exporter for staging metrics
   # Writes to s3://exe.dev-logs/metrics/staging/year=YYYY/month=MM/day=DD/hour=HH/
   awss3/staging-metrics:
@@ -385,27 +399,27 @@ service:
     logs/staging-storage:
       receivers: [routing]
       processors: [filter/storage]
-      exporters: [file/staging, awss3/staging, clickhouse]
+      exporters: [file/staging, awss3/staging, clickhouse, clickhouse/observability]
 
     # Production storage: file + S3
     logs/production-storage:
       receivers: [routing]
       processors: [filter/storage]
-      exporters: [file/production, awss3/production, clickhouse]
+      exporters: [file/production, awss3/production, clickhouse, clickhouse/observability]
 
     # Unknown environment: file + S3 (no Honeycomb)
     logs/unknown:
       receivers: [routing]
-      exporters: [file/unknown, awss3/unknown, clickhouse]
+      exporters: [file/unknown, awss3/unknown, clickhouse, clickhouse/observability]
 
     # Staging metrics: scrape prometheus endpoints, send to S3
     metrics/staging:
       receivers: [prometheus/staging]
       processors: [batch]
-      exporters: [awss3/staging-metrics, clickhouse]
+      exporters: [awss3/staging-metrics, clickhouse, clickhouse/observability]
 
     # Production metrics: scrape prometheus endpoints, send to S3
     metrics/production:
       receivers: [prometheus/production]
       processors: [batch]
-      exporters: [awss3/production-metrics, clickhouse]
+      exporters: [awss3/production-metrics, clickhouse, clickhouse/observability]

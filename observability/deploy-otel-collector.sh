@@ -25,7 +25,7 @@ OTEL_ENV_FILE=/etc/default/otel-collector
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Use provided credentials, or read them from the existing env file on mon
-if [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
+if [ -z "${CLICKHOUSE_PASSWORD:-}" ] || [ -z "${CLICKHOUSE_OBSERVABILITY_PASSWORD:-}" ]; then
     echo "Credentials not provided locally, reading from mon:${OTEL_ENV_FILE}..."
     REMOTE_ENV=$(ssh ubuntu@mon "sudo cat ${OTEL_ENV_FILE} 2>/dev/null" || true)
     if [ -n "$REMOTE_ENV" ]; then
@@ -33,6 +33,11 @@ if [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
     fi
     if [ -z "${CLICKHOUSE_PASSWORD:-}" ]; then
         echo "ERROR: CLICKHOUSE_PASSWORD is required" >&2
+        echo "Provide it as an env var or ensure ${OTEL_ENV_FILE} exists on mon" >&2
+        exit 1
+    fi
+    if [ -z "${CLICKHOUSE_OBSERVABILITY_PASSWORD:-}" ]; then
+        echo "ERROR: CLICKHOUSE_OBSERVABILITY_PASSWORD is required" >&2
         echo "Provide it as an env var or ensure ${OTEL_ENV_FILE} exists on mon" >&2
         exit 1
     fi
@@ -107,6 +112,7 @@ ssh ubuntu@mon "sudo mv /tmp/otel-collector-config.yml ${OTEL_CONFIG_PATH} && su
 echo "Creating environment file..."
 ssh ubuntu@mon "sudo tee ${OTEL_ENV_FILE} > /dev/null" <<EOF
 CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+CLICKHOUSE_OBSERVABILITY_PASSWORD=${CLICKHOUSE_OBSERVABILITY_PASSWORD}
 EOF
 ssh ubuntu@mon "sudo chmod 600 ${OTEL_ENV_FILE}"
 
