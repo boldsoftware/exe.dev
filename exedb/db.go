@@ -813,6 +813,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertSignupRejectionStmt, err = db.PrepareContext(ctx, insertSignupRejection); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSignupRejection: %w", err)
 	}
+	if q.insertStripeWebhookEventStmt, err = db.PrepareContext(ctx, insertStripeWebhookEvent); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertStripeWebhookEvent: %w", err)
+	}
 	if q.insertTagResolutionHistoryStmt, err = db.PrepareContext(ctx, insertTagResolutionHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTagResolutionHistory: %w", err)
 	}
@@ -873,6 +876,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllInviteCodesWithEmailsStmt, err = db.PrepareContext(ctx, listAllInviteCodesWithEmails); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllInviteCodesWithEmails: %w", err)
 	}
+	if q.listAllStripeWebhookEventsStmt, err = db.PrepareContext(ctx, listAllStripeWebhookEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllStripeWebhookEvents: %w", err)
+	}
 	if q.listAllTeamsStmt, err = db.PrepareContext(ctx, listAllTeams); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllTeams: %w", err)
 	}
@@ -929,6 +935,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listPlanVersionCountsStmt, err = db.PrepareContext(ctx, listPlanVersionCounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPlanVersionCounts: %w", err)
+	}
+	if q.listStripeWebhookEventsByTypeStmt, err = db.PrepareContext(ctx, listStripeWebhookEventsByType); err != nil {
+		return nil, fmt.Errorf("error preparing query ListStripeWebhookEventsByType: %w", err)
 	}
 	if q.listSubscriptionEventsStmt, err = db.PrepareContext(ctx, listSubscriptionEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSubscriptionEvents: %w", err)
@@ -2493,6 +2502,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertSignupRejectionStmt: %w", cerr)
 		}
 	}
+	if q.insertStripeWebhookEventStmt != nil {
+		if cerr := q.insertStripeWebhookEventStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertStripeWebhookEventStmt: %w", cerr)
+		}
+	}
 	if q.insertTagResolutionHistoryStmt != nil {
 		if cerr := q.insertTagResolutionHistoryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertTagResolutionHistoryStmt: %w", cerr)
@@ -2593,6 +2607,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllInviteCodesWithEmailsStmt: %w", cerr)
 		}
 	}
+	if q.listAllStripeWebhookEventsStmt != nil {
+		if cerr := q.listAllStripeWebhookEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllStripeWebhookEventsStmt: %w", cerr)
+		}
+	}
 	if q.listAllTeamsStmt != nil {
 		if cerr := q.listAllTeamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllTeamsStmt: %w", cerr)
@@ -2686,6 +2705,11 @@ func (q *Queries) Close() error {
 	if q.listPlanVersionCountsStmt != nil {
 		if cerr := q.listPlanVersionCountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listPlanVersionCountsStmt: %w", cerr)
+		}
+	}
+	if q.listStripeWebhookEventsByTypeStmt != nil {
+		if cerr := q.listStripeWebhookEventsByTypeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listStripeWebhookEventsByTypeStmt: %w", cerr)
 		}
 	}
 	if q.listSubscriptionEventsStmt != nil {
@@ -3395,6 +3419,7 @@ type Queries struct {
 	insertSSHKeyIfNotExistsStmt                *sql.Stmt
 	insertSignupIPCheckStmt                    *sql.Stmt
 	insertSignupRejectionStmt                  *sql.Stmt
+	insertStripeWebhookEventStmt               *sql.Stmt
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertTeamStmt                             *sql.Stmt
 	insertTeamMemberStmt                       *sql.Stmt
@@ -3415,6 +3440,7 @@ type Queries struct {
 	listAllGitHubUserTokensStmt                *sql.Stmt
 	listAllIntegrationsStmt                    *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
+	listAllStripeWebhookEventsStmt             *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
 	listAllTemplatesStmt                       *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
@@ -3434,6 +3460,7 @@ type Queries struct {
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
+	listStripeWebhookEventsByTypeStmt          *sql.Stmt
 	listSubscriptionEventsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
@@ -3784,6 +3811,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyIfNotExistsStmt:                q.insertSSHKeyIfNotExistsStmt,
 		insertSignupIPCheckStmt:                    q.insertSignupIPCheckStmt,
 		insertSignupRejectionStmt:                  q.insertSignupRejectionStmt,
+		insertStripeWebhookEventStmt:               q.insertStripeWebhookEventStmt,
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertTeamStmt:                             q.insertTeamStmt,
 		insertTeamMemberStmt:                       q.insertTeamMemberStmt,
@@ -3804,6 +3832,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllGitHubUserTokensStmt:                q.listAllGitHubUserTokensStmt,
 		listAllIntegrationsStmt:                    q.listAllIntegrationsStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
+		listAllStripeWebhookEventsStmt:             q.listAllStripeWebhookEventsStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,
 		listAllTemplatesStmt:                       q.listAllTemplatesStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
@@ -3823,6 +3852,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
+		listStripeWebhookEventsByTypeStmt:          q.listStripeWebhookEventsByTypeStmt,
 		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,

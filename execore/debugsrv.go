@@ -77,6 +77,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
 	mux.HandleFunc("GET /debug/billing-health", s.handleDebugBillingHealth)
+	mux.HandleFunc("GET /debug/billing-events", s.handleDebugBillingEvents)
 	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanCategorys)
 	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanCategoryMigrate)
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
@@ -5777,6 +5778,80 @@ func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request
 		PlanCounts:    plans,
 	}
 	s.renderDebugTemplate(ctx, w, "billing-health.html", data)
+}
+
+func (s *Server) handleDebugBillingEvents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Fetch all legacy billing_events
+	type billingEventRow struct {
+		ID        int64
+		AccountID string
+		EventType string
+		EventAt   string
+		CreatedAt string
+		Source    string
+		StripeID  string
+	}
+	var billingEvents []billingEventRow
+
+	allAccounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list accounts: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	for _, acct := range allAccounts {
+		events, err := withRxRes1(s, ctx, (*exedb.Queries).ListBillingEventsForAccount, acct.ID)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to list billing events", "error", err, "account_id", acct.ID)
+			continue
+		}
+		for _, e := range events {
+			row := billingEventRow{
+				ID:        e.ID,
+				AccountID: e.AccountID,
+				EventType: e.EventType,
+				EventAt:   e.EventAt.Format(time.RFC3339),
+				CreatedAt: e.CreatedAt.Format(time.RFC3339),
+				Source:    "legacy",
+			}
+			billingEvents = append(billingEvents, row)
+		}
+	}
+
+	// Fetch all stripe_webhook_events
+	type webhookEventRow struct {
+		ID            int64
+		StripeEventID string
+		EventType     string
+		CreatedAt     string
+	}
+	var webhookEvents []webhookEventRow
+
+	allWebhooks, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllStripeWebhookEvents)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list webhook events: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	for _, wh := range allWebhooks {
+		webhookEvents = append(webhookEvents, webhookEventRow{
+			ID:            wh.ID,
+			StripeEventID: wh.StripeEventID,
+			EventType:     wh.EventType,
+			CreatedAt:     wh.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	data := struct {
+		BillingEvents []billingEventRow
+		WebhookEvents []webhookEventRow
+	}{
+		BillingEvents: billingEvents,
+		WebhookEvents: webhookEvents,
+	}
+	s.renderDebugTemplate(ctx, w, "billing-events.html", data)
 }
 
 func (s *Server) handleDebugBillingJump(w http.ResponseWriter, r *http.Request) {

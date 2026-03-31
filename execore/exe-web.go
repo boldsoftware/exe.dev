@@ -786,6 +786,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBillingUpdate(w, r)
 	case "/billing/success":
 		s.handleBillingSuccess(w, r)
+	case "/stripe/webhook":
+		s.billing.HandleWebhook(w, r)
 	case "/credits/buy":
 		s.handleCreditsBuy(w, r)
 	case "/credits/success":

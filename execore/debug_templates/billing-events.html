@@ -1,0 +1,76 @@
+<!doctype html>
+<html><head><title>Billing Events</title>
+{{template "base-head"}}
+<style>
+h1 { margin-bottom: 10px; }
+table.info { border-collapse: collapse; width: 100%; margin-top: 20px; }
+table.info th, table.info td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+table.info th { background-color: #f2f2f2; }
+.legacy-tag { background-color: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+.muted { color: #888; font-size: 12px; }
+</style>
+</head><body>
+<h1>Billing Events</h1>
+<p><a href="/debug">/debug</a> &gt; billing events</p>
+
+<div class="section">
+<h2>Legacy Billing Events <span class="legacy-tag">LEGACY</span></h2>
+<p class="muted">Events from the old billing_events table (subscription polling)</p>
+{{if .BillingEvents}}
+<table class="info">
+<thead>
+<tr>
+<th>ID</th>
+<th>Account ID</th>
+<th>Event Type</th>
+<th>Event At</th>
+<th>Created At</th>
+</tr>
+</thead>
+<tbody>
+{{range .BillingEvents}}
+<tr>
+<td>{{.ID}}</td>
+<td><code>{{.AccountID}}</code></td>
+<td><code>{{.EventType}}</code></td>
+<td>{{.EventAt}}</td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p class="muted">No legacy billing events found.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>Stripe Webhook Events</h2>
+<p class="muted">Events from the new stripe_webhook_events table (RFC-21 webhook ingress)</p>
+{{if .WebhookEvents}}
+<table class="info">
+<thead>
+<tr>
+<th>ID</th>
+<th>Stripe Event ID</th>
+<th>Event Type</th>
+<th>Created At</th>
+</tr>
+</thead>
+<tbody>
+{{range .WebhookEvents}}
+<tr>
+<td>{{.ID}}</td>
+<td><code>{{.StripeEventID}}</code></td>
+<td><code>{{.EventType}}</code></td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p class="muted">No webhook events found.</p>
+{{end}}
+</div>
+
+</body></html>

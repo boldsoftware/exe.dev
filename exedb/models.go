@@ -460,6 +460,14 @@ type SshHostKey struct {
 	CertSig     *string    `db:"cert_sig" json:"cert_sig"`
 }
 
+type StripeWebhookEvent struct {
+	ID            int64     `db:"id" json:"id"`
+	StripeEventID string    `db:"stripe_event_id" json:"stripe_event_id"`
+	EventType     string    `db:"event_type" json:"event_type"`
+	Payload       string    `db:"payload" json:"payload"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+}
+
 type TagResolution struct {
 	Registry       string  `db:"registry" json:"registry"`
 	Repository     string  `db:"repository" json:"repository"`

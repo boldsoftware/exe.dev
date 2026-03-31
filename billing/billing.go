@@ -156,8 +156,9 @@ type Manager struct {
 	// DB is the database connection for credit ledger operations.
 	DB *sqlite.DB
 
-	Logger    *slog.Logger
-	SlackFeed *logging.SlackFeed
+	Logger        *slog.Logger
+	WebhookSecret string
+	SlackFeed     *logging.SlackFeed
 
 	priceIDCache syncs.Map[string, func() result.Of[string]]
 

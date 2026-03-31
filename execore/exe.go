@@ -1177,6 +1177,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.billing.DB = s.db
 	s.billing.Logger = slog
 	s.billing.SlackFeed = s.slackFeed
+	s.billing.WebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
 	s.billing.OnPlanDowngrade = s.handlePlanDowngrade
 
 	if cfg.Env.BootstrapStripeCatalog {
