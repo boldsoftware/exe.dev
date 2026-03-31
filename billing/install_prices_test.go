@@ -137,8 +137,8 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	if catalog.productCreates != 2 {
 		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
 	}
-	if catalog.priceCreates != 8 {
-		t.Fatalf("price creates = %d, want 8", catalog.priceCreates)
+	if catalog.priceCreates != 4 {
+		t.Fatalf("price creates = %d, want 4", catalog.priceCreates)
 	}
 	if catalog.lastProductCreateID != "prod_team" {
 		t.Fatalf("last product id = %q, want %q", catalog.lastProductCreateID, "prod_team")
@@ -146,8 +146,8 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	if catalog.lastProductCreateName != "Team" {
 		t.Fatalf("last product name = %q, want %q", catalog.lastProductCreateName, "Team")
 	}
-	if catalog.lastPriceLookupKey != "team:usage-bandwidth:20260106" {
-		t.Fatalf("last price lookup key = %q, want %q", catalog.lastPriceLookupKey, "team:usage-bandwidth:20260106")
+	if catalog.lastPriceLookupKey != "team:annual:20260106" {
+		t.Fatalf("last price lookup key = %q, want %q", catalog.lastPriceLookupKey, "team:annual:20260106")
 	}
 	if catalog.lastPriceCurrency != "usd" {
 		t.Fatalf("last price currency = %q, want %q", catalog.lastPriceCurrency, "usd")
@@ -155,8 +155,8 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	if catalog.lastPriceProductID != "prod_team" {
 		t.Fatalf("last price product id = %q, want %q", catalog.lastPriceProductID, "prod_team")
 	}
-	if catalog.lastPriceUnitAmount != 7 {
-		t.Fatalf("last price unit amount = %d, want 7", catalog.lastPriceUnitAmount)
+	if catalog.lastPriceUnitAmount != 25000 {
+		t.Fatalf("last price unit amount = %d, want 25000", catalog.lastPriceUnitAmount)
 	}
 }
 
@@ -180,7 +180,7 @@ func TestInstallPricesIsIdempotent(t *testing.T) {
 	if catalog.productCreates != 2 {
 		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
 	}
-	if catalog.priceCreates != 8 {
-		t.Fatalf("price creates = %d, want 8", catalog.priceCreates)
+	if catalog.priceCreates != 4 {
+		t.Fatalf("price creates = %d, want 4", catalog.priceCreates)
 	}
 }

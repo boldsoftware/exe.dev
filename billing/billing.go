@@ -238,6 +238,9 @@ func (m *Manager) client() *stripe.Client {
 func (m *Manager) InstallPrices(ctx context.Context) error {
 	c := m.client()
 	for _, p := range managedPrices {
+		if p.metered {
+			continue // TODO: metered prices require Stripe Meters as of API version 2025-03-31.basil
+		}
 		if err := m.ensureProduct(ctx, c, p.productID, p.productName); err != nil {
 			return err
 		}
