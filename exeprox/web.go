@@ -298,8 +298,8 @@ func (wp *WebProxy) start(ctx context.Context, cancel context.CancelFunc) error 
 }
 
 // initShardIPs builds the mapping from local IPs to public IP info.
-// If env.DiscoverPublicIPs is true, we fetch shard IPs from exed via gRPC.
-// If env.DiscoverPublicIPs is false, we use 127.21.0.x where x is the shard number.
+// If env.UseDBShardIPs is true, we fetch shard IPs from exed via gRPC.
+// If env.UseDBShardIPs is false, we use 127.21.0.x where x is the shard number.
 func (wp *WebProxy) initShardIPs(ctx context.Context) {
 	defer wp.logIPResolver()
 
@@ -310,7 +310,7 @@ func (wp *WebProxy) initShardIPs(ctx context.Context) {
 
 	wp.lobbyIP = wp.env.LobbyIP
 
-	if !wp.env.DiscoverPublicIPs {
+	if !wp.env.UseDBShardIPs {
 		wp.lg().InfoContext(ctx, "using dev IP resolver", "box_host", wp.env.BoxHost)
 		ips, err := publicips.LocalhostIPs(ctx, wp.env.BoxHost, wp.env.NumShards)
 		if err != nil {

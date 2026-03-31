@@ -1204,7 +1204,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	})
 
 	// Initialize embedded DNS server for BoxHost (exe.xyz).
-	// Started in prod/staging only (when DiscoverPublicIPs is set).
+	// Started in prod/staging only (when UseDBShardIPs is set).
 	s.dnsServer = exens.NewServer(s.db, s.log, cfg.Env.BoxHost, cfg.Env.WebHost)
 
 	// Initialize LMTP server for inbound email delivery
@@ -1237,8 +1237,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 // initShardIPs sets up the IP resolver for mapping local IPs to public IP info.
-// DiscoverPublicIPs=true: load NetActuate shard IPs from DB.
-// DiscoverPublicIPs=false: use 127.21.0.x where x is the shard number.
+// UseDBShardIPs=true: load NetActuate shard IPs from DB.
+// UseDBShardIPs=false: use 127.21.0.x where x is the shard number.
 func (s *Server) initShardIPs(ctx context.Context) {
 	defer s.logIPResolver()
 
@@ -1252,7 +1252,7 @@ func (s *Server) initShardIPs(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	if !s.env.DiscoverPublicIPs {
+	if !s.env.UseDBShardIPs {
 		s.slog().InfoContext(ctx, "using dev IP resolver", "box_host", s.env.BoxHost)
 		ips, err := publicips.LocalhostIPs(ctx, s.env.BoxHost, s.env.NumShards)
 		if err != nil {
@@ -2816,7 +2816,7 @@ func (s *Server) start() error {
 	}
 
 	// Start embedded DNS server.
-	if s.env.DiscoverPublicIPs {
+	if s.env.UseDBShardIPs {
 		dnsCtx, dnsCancel := context.WithTimeout(ctx, 10*time.Second)
 		privateIPs, err := publicips.EC2PrivateIPs(dnsCtx)
 		dnsCancel()

@@ -50,7 +50,7 @@ type Env struct {
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
 	UseCobble            bool       // whether to start cobble/pebble for local ACME testing
-	DiscoverPublicIPs    bool       // whether to load public shard IPs from the database (true in prod/staging, false in dev/test)
+	UseDBShardIPs        bool       // whether to load public shard IPs from the database (true in prod/staging, false in dev/test)
 	LobbyIP              netip.Addr // public IP for the lobby (ssh exe.dev / exe.xyz apex)
 	PreloadTailscaleCert bool       // whether to preload tailscale cert at startup (has 10s timeout, skip in tests)
 	EnableLMTP           bool       // whether to start the LMTP server for inbound email delivery
@@ -115,7 +115,7 @@ func Invalid() Env {
 		BoxHost:  "INVALID.INVALID",
 
 		UseCobble:            false,
-		DiscoverPublicIPs:    false,
+		UseDBShardIPs:        false,
 		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           false,
@@ -189,7 +189,7 @@ func Local() Env {
 		BoxHost:  "exe.cloud",
 
 		UseCobble:            !onExeBox, // auto-start cobble/pebble for ACME testing (not needed behind proxy)
-		DiscoverPublicIPs:    false,
+		UseDBShardIPs:        false,
 		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           true,
@@ -256,7 +256,7 @@ func Test() Env {
 		BoxHost:  "exe.cloud",
 
 		UseCobble:            false, // tests start their own cobble/pebble instances as needed
-		DiscoverPublicIPs:    false,
+		UseDBShardIPs:        false,
 		LobbyIP:              netip.AddrFrom4([4]byte{127, 21, 0, 0}),
 		PreloadTailscaleCert: false,
 		EnableLMTP:           true,
@@ -321,7 +321,7 @@ func Staging() Env {
 		BoxHost:  "exe-staging.xyz",
 
 		UseCobble:            false,
-		DiscoverPublicIPs:    true,
+		UseDBShardIPs:        true,
 		LobbyIP:              netip.AddrFrom4([4]byte{100, 22, 218, 249}),
 		PreloadTailscaleCert: true,
 		EnableLMTP:           true,
@@ -401,7 +401,7 @@ func Prod() Env {
 		BoxHost:  "exe.xyz",
 
 		UseCobble:            false,
-		DiscoverPublicIPs:    true,
+		UseDBShardIPs:        true,
 		LobbyIP:              netip.AddrFrom4([4]byte{52, 35, 87, 134}),
 		PreloadTailscaleCert: true,
 		EnableLMTP:           true,
