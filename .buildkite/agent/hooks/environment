@@ -4,9 +4,8 @@
 
 export HOME=/data/buildkite
 export GOPATH="$HOME/go"
+export CI_CACHE="$HOME/.cache/ci"
 export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:$HOME/.local/bin:$HOME/go/bin"
-# CI caches default to ~/.cache/ subdirectories. No CI_CACHE or EXEDEV_CACHE override needed
-# since HOME is on the ZFS data volume.
 
 # SSH multiplexing for GitHub. The buildkite agent makes 3 SSH connections to
 # github.com per checkout (mirror fetch, clone, working-copy fetch). With
