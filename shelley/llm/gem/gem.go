@@ -559,9 +559,14 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			break
 		}
 
+		// Don't retry if the context is already done.
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("gemini: API error after %d attempts: %w", attempts+1, gemApiErr)
+		}
+
 		if attempts == len(backoff) {
 			// We've exhausted all retry attempts
-			return nil, fmt.Errorf("gemini: API error after %d attempts (last at %s): %w", attempts, time.Now().Format(time.DateTime), gemApiErr)
+			return nil, fmt.Errorf("gemini: API error after %d attempts (last at %s): %w", attempts+1, time.Now().Format(time.DateTime), gemApiErr)
 		}
 
 		// Check if the error is retryable (e.g., server error or rate limiting)
@@ -570,7 +575,11 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			random := time.Duration(rand.Int63n(int64(time.Second)))
 			sleep := backoff[attempts] + random
 			slog.WarnContext(ctx, "gemini_request_retry", "error", gemApiErr.Error(), "attempt", attempts+1, "sleep", sleep)
-			time.Sleep(sleep)
+			select {
+			case <-time.After(sleep):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("gemini: API error after %d attempts: %w", attempts+1, gemApiErr)
+			}
 			continue
 		}
 

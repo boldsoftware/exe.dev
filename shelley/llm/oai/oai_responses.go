@@ -443,9 +443,16 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 			return nil, fmt.Errorf("responses request failed after %d attempts (url=%s, model=%s): %w", attempts, fullURL, model.ModelName, errs)
 		}
 		if attempts > 0 {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("responses request failed after %d attempts (url=%s, model=%s): %w", attempts, fullURL, model.ModelName, errs)
+			}
 			sleep := backoff[min(attempts, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
 			slog.WarnContext(ctx, "responses request sleep before retry", "sleep", sleep, "attempts", attempts)
-			time.Sleep(sleep)
+			select {
+			case <-time.After(sleep):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("responses request failed after %d attempts (url=%s, model=%s): %w", attempts, fullURL, model.ModelName, errs)
+			}
 		}
 
 		// Create HTTP request
@@ -464,6 +471,9 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 		httpResp, err := httpc.Do(httpReq)
 		if err != nil {
 			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: %w", attempts+1, time.Now().Format(time.DateTime), err))
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("responses request failed after %d attempts (url=%s, model=%s): %w", attempts+1, fullURL, model.ModelName, errs)
+			}
 			continue
 		}
 		defer httpResp.Body.Close()

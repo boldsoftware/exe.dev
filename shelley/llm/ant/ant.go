@@ -937,6 +937,10 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 				return nil, err
 			}
 			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: %w", attempts+1, time.Now().Format(time.DateTime), err))
+			// Don't retry if the context is already done — the error is not transient.
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("anthropic request failed after %d attempts: %w", attempts+1, errs)
+			}
 			continue
 		}
 
@@ -945,8 +949,13 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			response, err := parseSSEStream(resp.Body, ir.OnStream)
 			resp.Body.Close()
 			if err != nil {
-				// Stream parse errors might be transient (connection reset, etc.)
 				errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: %w", attempts+1, time.Now().Format(time.DateTime), err))
+				// Don't retry if the context is already done — the stream failure
+				// was caused by context cancellation/deadline, not a transient error.
+				if ctx.Err() != nil {
+					return nil, fmt.Errorf("anthropic request failed after %d attempts: %w", attempts+1, errs)
+				}
+				// Stream parse errors might be transient (connection reset, etc.)
 				continue
 			}
 			// Calculate and set the cost_usd field

@@ -2069,6 +2069,80 @@ func TestDoStopsRetryingOnContextCancel(t *testing.T) {
 	}
 }
 
+func TestDoNoRetryOnContextDeadlineDuringStream(t *testing.T) {
+	// Simulate the exact scenario from the bug report: the context deadline fires
+	// during SSE stream reading. The provider should NOT retry — it should return
+	// immediately with a clear error.
+
+	// Use a transport that blocks during stream reading until the context is cancelled
+	transport := &contextDeadlineTransport{}
+
+	s := &Service{
+		APIKey:  "test-key",
+		HTTPC:   &http.Client{Transport: transport},
+		Backoff: []time.Duration{10 * time.Second}, // long backoff to prove we don't sleep
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		}},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := s.Do(ctx, req)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Do() expected error")
+	}
+	// Should fail immediately (within 1s), not wait for backoff
+	if elapsed > 2*time.Second {
+		t.Errorf("Do() took %v, should have returned immediately on context deadline", elapsed)
+	}
+	// Should have made exactly 1 attempt
+	if transport.calls != 1 {
+		t.Errorf("expected 1 attempt, got %d (should not retry on context deadline)", transport.calls)
+	}
+	// Error should mention the failure clearly
+	if !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("error = %q, want to contain 'context deadline exceeded'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "1 attempts") {
+		t.Errorf("error = %q, want to contain '1 attempts'", err.Error())
+	}
+}
+
+// contextDeadlineTransport returns a 200 response with an SSE stream that
+// blocks until the request context is cancelled, simulating a stream that
+// gets cut off by a context deadline.
+type contextDeadlineTransport struct {
+	calls int
+}
+
+func (t *contextDeadlineTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.calls++
+	// Return a 200 with a body that sends the start of an SSE stream,
+	// then blocks until the context is cancelled.
+	pr, pw := io.Pipe()
+	go func() {
+		// Write the beginning of a valid SSE stream
+		pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-5-20250929\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":100,\"output_tokens\":0}}}\n\n"))
+		// Block until context is cancelled
+		<-req.Context().Done()
+		pw.CloseWithError(req.Context().Err())
+	}()
+	return &http.Response{
+		StatusCode: 200,
+		Body:       pr,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}, nil
+}
+
 func TestDoFailsAfterMaxRetriesOnTruncatedStream(t *testing.T) {
 	// All attempts return truncated stream — should fail after max retries
 	truncated := mockTruncatedSSEResponse("msg_trunc", Claude45Sonnet, "partial", 100)

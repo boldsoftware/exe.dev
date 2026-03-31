@@ -210,6 +210,12 @@ func (l *Loop) ProcessOneTurn(ctx context.Context) error {
 // mutual recursion (processLLMRequest ↔ executeToolCalls) caused, because
 // each iteration's locals are freed before the next iteration starts.
 func (l *Loop) processLLMRequest(ctx context.Context) error {
+	// 30-minute outer timeout for the entire turn (which may involve multiple
+	// LLM requests if the model makes tool calls). Each individual LLM request
+	// gets a shorter 5-minute timeout below.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
 	for {
 		l.mu.Lock()
 		messages := append([]llm.Message(nil), l.history...)
@@ -261,16 +267,22 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 		}
 		l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools), "system_items", len(system), "system_length", systemLen)
 
-		// Add a timeout for the LLM request to prevent indefinite hangs
-		llmCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-
-		// Retry LLM requests that fail with retryable errors (EOF, connection reset)
+		// Retry LLM requests that fail with retryable errors (EOF, connection reset, timeout).
+		// Each attempt gets its own 5-minute timeout so a timeout on one attempt
+		// doesn't prevent retrying.
 		const maxRetries = 2
 		var resp *llm.Response
 		var err error
+	retryLoop:
 		for attempt := 1; attempt <= maxRetries; attempt++ {
+			llmCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			resp, err = llmService.Do(llmCtx, req)
+			cancel()
 			if err == nil {
+				break
+			}
+			// If the parent context is done, don't retry — the caller cancelled us.
+			if ctx.Err() != nil {
 				break
 			}
 			if !isRetryableError(err) || attempt == maxRetries {
@@ -280,9 +292,13 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 				"error", err,
 				"attempt", attempt,
 				"max_retries", maxRetries)
-			time.Sleep(time.Second * time.Duration(attempt)) // Simple backoff
+			select {
+			case <-time.After(time.Second * time.Duration(attempt)):
+			case <-ctx.Done():
+				err = ctx.Err()
+				break retryLoop
+			}
 		}
-		cancel()
 
 		// Flush any buffered stream deltas before recording the message,
 		// so the UI sees the streaming text before the full message replaces it.
@@ -700,7 +716,9 @@ func (l *Loop) insertMissingToolResults(req *llm.Request) {
 }
 
 // isRetryableError checks if an error is transient and should be retried.
-// This includes EOF errors (connection closed unexpectedly) and similar network issues.
+// This includes EOF errors (connection closed unexpectedly), timeouts, and
+// similar network issues. The caller is responsible for checking whether the
+// parent context is still alive before retrying.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -718,6 +736,8 @@ func isRetryableError(err error) bool {
 		"no such host",
 		"network is unreachable",
 		"i/o timeout",
+		"context deadline exceeded", // per-request timeout, not parent cancellation
+		"incomplete stream",         // truncated SSE stream from provider
 	}
 	for _, pattern := range retryablePatterns {
 		if strings.Contains(errStr, pattern) {
