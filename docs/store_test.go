@@ -604,3 +604,35 @@ func TestHandlerLLMsTxt(t *testing.T) {
 		t.Error("/llms-full.txt content differs from /docs/all.md")
 	}
 }
+
+func TestSubheadingNumbersContiguous(t *testing.T) {
+	store, err := Load(stage.Prod())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const highThreshold = 90
+
+	seen := make(map[int]string) // number -> heading text
+	maxNormal := 0
+
+	for _, g := range store.groups {
+		num, ok := subheadingNumber(g.Heading)
+		if !ok {
+			continue
+		}
+		if prev, dup := seen[num]; dup {
+			t.Errorf("duplicate subheading number %d: %q and %q", num, prev, g.Heading)
+		}
+		seen[num] = g.Heading
+		if num < highThreshold && num > maxNormal {
+			maxNormal = num
+		}
+	}
+
+	for i := 1; i <= maxNormal; i++ {
+		if _, ok := seen[i]; !ok {
+			t.Errorf("subheading number %d is missing (have 1..%d with gap)", i, maxNormal)
+		}
+	}
+}
