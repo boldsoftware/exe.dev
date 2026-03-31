@@ -5,7 +5,6 @@ package llmpricing
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // Provider represents an LLM API provider.
@@ -78,10 +77,11 @@ func calculateCostMicroCents(provider Provider, model string, usage Usage) micro
 // ModelCost holds pricing in cents per million tokens.
 // Using cents (integers) avoids floating-point precision issues.
 type ModelCost struct {
-	Input         uint64 // cents per 1M input tokens
-	Output        uint64 // cents per 1M output tokens
-	CacheRead     uint64 // cents per 1M cache read tokens
-	CacheCreation uint64 // cents per 1M cache creation tokens
+	Input         uint64    // cents per 1M input tokens
+	Output        uint64    // cents per 1M output tokens
+	CacheRead     uint64    // cents per 1M cache read tokens
+	CacheCreation uint64    // cents per 1M cache creation tokens
+	Type          ModelType // defaults to ModelTypeChat when empty
 }
 
 // ServerToolCosts maps server tool use names to their per-use cost in microCents.
@@ -214,22 +214,21 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		"codex-mini-latest": {Input: 150, Output: 600, CacheRead: 37},
 
 		// Embedding models
-		"text-embedding-3-small": {Input: 2, Output: 0},
-		"text-embedding-3-large": {Input: 13, Output: 0},
-		"text-embedding-ada-002": {Input: 10, Output: 0},
+		"text-embedding-3-small": {Input: 2, Type: ModelTypeEmbedding},
+		"text-embedding-3-large": {Input: 13, Type: ModelTypeEmbedding},
+		"text-embedding-ada-002": {Input: 10, Type: ModelTypeEmbedding},
 	},
 
 	// Fireworks AI
-	// Cached input tokens are priced at 50% of input price for all text and vision language models.
 	// Source: https://fireworks.ai/pricing
 	ProviderFireworks: {
 		// Qwen models
-		"accounts/fireworks/models/qwen3-8b":           {Input: 5, Output: 20, CacheRead: 2},
-		"accounts/fireworks/models/qwen3-embedding-8b": {Input: 5, Output: 0},
-		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 5, Output: 0},
+		"accounts/fireworks/models/qwen3-8b":           {Input: 20, Output: 20, CacheRead: 10},
+		"accounts/fireworks/models/qwen3-embedding-8b": {Input: 5, Type: ModelTypeEmbedding},
+		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 5, Type: ModelTypeReranker},
 
 		// GLM models
-		"accounts/fireworks/models/glm-5":   {Input: 100, Output: 320, CacheRead: 50},
+		"accounts/fireworks/models/glm-5":   {Input: 100, Output: 320, CacheRead: 20},
 		"accounts/fireworks/models/glm-4p7": {Input: 60, Output: 220, CacheRead: 30},
 
 		// Kimi models
@@ -243,16 +242,16 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		"accounts/fireworks/models/minimax-m2p5": {Input: 30, Output: 120, CacheRead: 3},
 
 		// GPT-OSS models
-		"accounts/fireworks/models/gpt-oss-120b": {Input: 15, Output: 60, CacheRead: 7},
-		"accounts/fireworks/models/gpt-oss-20b":  {Input: 5, Output: 20, CacheRead: 2},
+		"accounts/fireworks/models/gpt-oss-120b": {Input: 15, Output: 60, CacheRead: 1},
+		"accounts/fireworks/models/gpt-oss-20b":  {Input: 7, Output: 30, CacheRead: 4},
 
 		// Llama models
 		"accounts/fireworks/models/llama-v3p3-70b-instruct": {Input: 90, Output: 90, CacheRead: 45},
 
 		// Embedding models (no caching)
-		"nomic-ai/nomic-embed-text-v1.5": {Input: 1, Output: 0},
-		"thenlper/gte-large":             {Input: 1, Output: 0},
-		"WhereIsAI/UAE-Large-V1":         {Input: 1, Output: 0},
+		"nomic-ai/nomic-embed-text-v1.5": {Input: 1, Type: ModelTypeEmbedding},
+		"thenlper/gte-large":             {Input: 1, Type: ModelTypeEmbedding},
+		"WhereIsAI/UAE-Large-V1":         {Input: 1, Type: ModelTypeEmbedding},
 	},
 }
 
@@ -283,13 +282,10 @@ type GatewayModel struct {
 	Type     ModelType
 }
 
-// modelType infers the type of a model from its name and pricing.
-func modelType(name string, cost ModelCost) ModelType {
-	if strings.Contains(name, "reranker") {
-		return ModelTypeReranker
-	}
-	if cost.Output == 0 {
-		return ModelTypeEmbedding
+// modelType returns the model's type, defaulting to ModelTypeChat.
+func modelType(_ string, cost ModelCost) ModelType {
+	if cost.Type != "" {
+		return cost.Type
 	}
 	return ModelTypeChat
 }

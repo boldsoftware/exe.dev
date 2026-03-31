@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -171,8 +174,8 @@ func TestCalculateCost_Fireworks(t *testing.T) {
 			},
 			// 500K input @ $1.00 = $0.50
 			// 100K output @ $3.20 = $0.32
-			// 500K cache read @ $0.50 = $0.25
-			wantUSD: 1.07,
+			// 500K cache read @ $0.20 = $0.10
+			wantUSD: 0.92,
 		},
 		{
 			name:  "deepseek-v3p1 with cache",
@@ -317,6 +320,43 @@ func TestAllowedModels(t *testing.T) {
 	}
 }
 
+func TestPiExtensionFireworksModelsInPricing(t *testing.T) {
+	// Verify that every Fireworks model ID registered in the Pi extension
+	// has a corresponding entry in llmpricing.
+	src, err := os.ReadFile(filepath.Join("..", "exeuntu", "pi-extension", "index.ts"))
+	if err != nil {
+		t.Fatalf("Could not read pi-extension index.ts: %v", err)
+	}
+
+	re := regexp.MustCompile(`id:\s*"(accounts/fireworks/models/[^"]+)"`)
+	matches := re.FindAllSubmatch(src, -1)
+	if len(matches) == 0 {
+		t.Fatal("No Fireworks model IDs found in pi-extension index.ts")
+	}
+
+	for _, m := range matches {
+		modelID := string(m[1])
+		if !IsModelAllowed(ProviderFireworks, modelID) {
+			t.Errorf("Pi extension model %q not found in llmpricing allowlist", modelID)
+		}
+	}
+	t.Logf("Checked %d Fireworks model IDs from pi-extension", len(matches))
+
+	// Reverse check: every Fireworks chat model in pricing should be in the extension.
+	piModels := make(map[string]bool)
+	for _, m := range matches {
+		piModels[string(m[1])] = true
+	}
+	for modelID, cost := range allowedModels[ProviderFireworks] {
+		if cost.Type != "" {
+			continue // embedding/reranker models are pricing-only
+		}
+		if !piModels[modelID] {
+			t.Errorf("Pricing model %q has no pi-extension entry", modelID)
+		}
+	}
+}
+
 // floatEqual checks if two floats are approximately equal (within 0.01%)
 func floatEqual(a, b float64) bool {
 	if a == b {
@@ -367,6 +407,12 @@ func TestPricingMatchesModelsDev(t *testing.T) {
 		ProviderFireworks: "fireworks-ai",
 	}
 
+	// Models where the Fireworks pricing page (our source of truth) disagrees
+	// with models.dev. Skip these rather than chase stale third-party data.
+	skipModels := map[string]bool{
+		"fireworks/accounts/fireworks/models/gpt-oss-20b": true,
+	}
+
 	var mismatches []string
 	var checked int
 
@@ -385,6 +431,9 @@ func TestPricingMatchesModelsDev(t *testing.T) {
 		}
 
 		for modelName, ourPricing := range models {
+			if skipModels[string(provider)+"/"+modelName] {
+				continue
+			}
 			apiModel, ok := apiProvider.Models[modelName]
 			if !ok {
 				// Model not in API, skip
