@@ -10,6 +10,8 @@ from YAML segments in .buildkite/segments/::
   - format.yml             (always)
   - push.yml               (only for kite-queue-* branches)
 
+Changes that only affect observability/ are treated as no-op for exe tests.
+
 e1e shard steps are generated dynamically based on environment variables:
   E1E_SHARDS          — number of e1e shard steps (default 5)
   E1E_VM_CONCURRENCY  — VMs per shard (default 12)
@@ -73,6 +75,8 @@ def detect_changes():
             shelley_changed = True
         elif f.startswith("blog/") or f.startswith("cmd/blogd/"):
             blog_changed = True
+        elif f.startswith("observability/"):
+            pass  # observability-only changes don't need exe tests
         else:
             exe_changed = True
 
