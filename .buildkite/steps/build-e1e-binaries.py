@@ -29,25 +29,6 @@ def timed(label, fn):
     return result
 
 
-def _go_cache_stats(label):
-    """Print Go build cache diagnostics."""
-    print(f"\n  [{label}] Go cache diagnostics:", flush=True)
-    gocache = subprocess.run(["go", "env", "GOCACHE"], capture_output=True, text=True).stdout.strip()
-    gomodcache = subprocess.run(["go", "env", "GOMODCACHE"], capture_output=True, text=True).stdout.strip()
-    print(f"  GOCACHE={gocache}", flush=True)
-    print(f"  GOMODCACHE={gomodcache}", flush=True)
-    for name, path in [("GOCACHE", gocache), ("GOMODCACHE", gomodcache)]:
-        if os.path.isdir(path):
-            du = subprocess.run(["du", "-sh", path], capture_output=True, text=True).stdout.strip()
-            # Count entries (files) in top two levels to gauge population
-            count = subprocess.run(
-                ["find", path, "-maxdepth", "2", "-type", "f"],
-                capture_output=True, text=True).stdout.count("\n")
-            print(f"  {name}: {du} ({count} entries at depth≤2)", flush=True)
-        else:
-            print(f"  {name}: DOES NOT EXIST", flush=True)
-
-
 def main():
     os.environ["PATH"] = "/usr/local/go/bin:" + os.environ.get("HOME", "") + "/go/bin:" + os.environ.get("HOME", "") + "/.local/bin:" + os.environ["PATH"]
 
@@ -71,9 +52,6 @@ def main():
 
     # Clean up prebuilt dirs from previous builds.
     _cleanup_old_prebuilt(ci_cache, build_id)
-
-    print("--- :mag: Go build cache diagnostics (before)", flush=True)
-    _go_cache_stats("before")
 
     print("--- :wrench: Build all artifacts (parallel)", flush=True)
     t0 = time.monotonic()
@@ -168,8 +146,6 @@ def main():
     timings["exed (link)"] = time.monotonic() - t_exed
 
     total = time.monotonic() - t0
-
-    _go_cache_stats("after")
 
     # ── Copy artifacts for downstream shards ──
     print("--- :package: Cache build artifacts for shards", flush=True)
