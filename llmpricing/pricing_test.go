@@ -33,7 +33,7 @@ func TestCalculateCost_Anthropic(t *testing.T) {
 		},
 		{
 			name:  "claude-sonnet-4.5 with cache",
-			model: "claude-sonnet-4-5-20250929",
+			model: "claude-sonnet-4-6",
 			usage: Usage{
 				InputTokens:              500_000,
 				OutputTokens:             100_000,
@@ -213,7 +213,7 @@ func TestCalculateCost_UnknownModel(t *testing.T) {
 }
 
 func TestCalculateCost_ZeroUsage(t *testing.T) {
-	got := CalculateCost(ProviderAnthropic, "claude-sonnet-4-5-20250929", Usage{})
+	got := CalculateCost(ProviderAnthropic, "claude-sonnet-4-6", Usage{})
 	if got != 0 {
 		t.Errorf("CalculateCost(zero usage) = $%.6f, want $0", got)
 	}
@@ -221,7 +221,7 @@ func TestCalculateCost_ZeroUsage(t *testing.T) {
 
 func TestCalculateCost_SmallUsage(t *testing.T) {
 	// Test that small token counts don't get lost to rounding
-	got := CalculateCost(ProviderAnthropic, "claude-sonnet-4-5-20250929", Usage{
+	got := CalculateCost(ProviderAnthropic, "claude-sonnet-4-6", Usage{
 		InputTokens:  100,
 		OutputTokens: 50,
 	})

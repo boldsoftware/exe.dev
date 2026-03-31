@@ -29,7 +29,7 @@ dSPy optimizers (MIPROv2, etc.) work on RLM modules as a drop-in. Example:
 import dspy
 from daily_brief import DailyBrief
 
-lm = dspy.LM("anthropic/claude-sonnet-4-5-20250929")
+lm = dspy.LM("anthropic/claude-sonnet-4-6")
 dspy.configure(lm=lm)
 
 rlm = dspy.RLM(DailyBrief, max_iterations=15, max_llm_calls=30)

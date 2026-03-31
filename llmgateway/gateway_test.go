@@ -934,7 +934,7 @@ func TestGateway_CostHeaders(t *testing.T) {
 	// Create a mock Anthropic server that returns usage info
 	jsonResponse := `{
 		"id": "msg_123",
-		"model": "claude-sonnet-4-20250514",
+		"model": "claude-sonnet-4-6",
 		"usage": {
 			"input_tokens": 100,
 			"output_tokens": 50,
@@ -953,7 +953,7 @@ func TestGateway_CostHeaders(t *testing.T) {
 
 	// Create a test request
 	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model": "claude-sonnet-4-20250514", "messages": []}`))
+		strings.NewReader(`{"model": "claude-sonnet-4-6", "messages": []}`))
 	incomingReq.Header.Set("X-Exedev-Box", "test-box")
 	incomingReq.Header.Set("Content-Type", "application/json")
 	incomingReq.RemoteAddr = "127.0.0.1:12345"
@@ -1097,7 +1097,7 @@ func TestGateway_SSE_SlogAttributes(t *testing.T) {
 
 	// Build a realistic Anthropic SSE stream
 	var sseBuf bytes.Buffer
-	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_test123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":10,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_test123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":10,"output_tokens":3}}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":10,"output_tokens":25}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
@@ -1113,7 +1113,7 @@ func TestGateway_SSE_SlogAttributes(t *testing.T) {
 	mockURL, _ := url.Parse(mockAnthropic.URL)
 
 	// Set up accounting transport pointing at mock
-	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	reqBody := `{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello"}],"stream":true}`
 	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(reqBody))
 	incomingReq.Header.Set("X-Exedev-Box", "test-box")
@@ -1149,7 +1149,7 @@ func TestGateway_SSE_SlogAttributes(t *testing.T) {
 
 	// Verify the sseUsage was stored with correct values
 	require.NotNil(t, transport.sseUsage, "sseUsage should be stored")
-	require.Equal(t, "claude-sonnet-4-5-20250929", transport.sseUsage.Model)
+	require.Equal(t, "claude-sonnet-4-6", transport.sseUsage.Model)
 	require.Equal(t, "msg_test123", transport.sseUsage.MessageID)
 	require.Equal(t, uint64(50), transport.sseUsage.Usage.InputTokens)
 	require.Equal(t, uint64(25), transport.sseUsage.Usage.OutputTokens)
@@ -1172,7 +1172,7 @@ func TestGateway_SSE_SlogAttributes(t *testing.T) {
 func TestGateway_SSE_SlogMiddlewareIntegration(t *testing.T) {
 	// Build a realistic Anthropic SSE stream
 	var sseBuf bytes.Buffer
-	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_integ123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_integ123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":3}}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi there"}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":20,"output_tokens":40}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"message_stop"}` + "\n\n")
@@ -1255,7 +1255,7 @@ func TestGateway_SSE_SlogMiddlewareIntegration(t *testing.T) {
 	}
 	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
 
-	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	reqBody := `{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello"}],"stream":true}`
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(reqBody))
 	req.Header.Set("X-Exedev-Box", "test-box")
@@ -1292,7 +1292,7 @@ func TestGateway_SSE_SlogMiddlewareIntegration(t *testing.T) {
 	t.Logf("200: OK log line: %v", foundLogLine)
 
 	// Verify LLM-specific attributes are present in the log line
-	require.Equal(t, "claude-sonnet-4-5-20250929", foundLogLine["llm_model"],
+	require.Equal(t, "claude-sonnet-4-6", foundLogLine["llm_model"],
 		"log line should include llm_model")
 	require.Equal(t, "test-box", foundLogLine["vm_name"],
 		"log line should include vm_name")
@@ -1322,7 +1322,7 @@ func TestGateway_SSE_GzipNegotiation(t *testing.T) {
 	// Build a realistic Anthropic SSE stream.
 	var ssePlain bytes.Buffer
 	ssePlain.WriteString("event: message_start\n")
-	ssePlain.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_gz","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"output_tokens":1}}}` + "\n\n")
+	ssePlain.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_gz","type":"message","role":"assistant","content":[],"usage":{"input_tokens":50,"output_tokens":1}}}` + "\n\n")
 	ssePlain.WriteString("event: content_block_delta\n")
 	ssePlain.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}` + "\n\n")
 	ssePlain.WriteString("event: message_delta\n")
@@ -1420,7 +1420,7 @@ func TestGateway_SSE_GzipNegotiation(t *testing.T) {
 	}
 	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
 
-	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	reqBody := `{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello"}],"stream":true}`
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(reqBody))
 	req.Header.Set("X-Exedev-Box", "test-box")
@@ -1522,7 +1522,7 @@ func TestGateway_SSE_MissingUsageLogsError(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("POST", "/v1/messages",
-		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+		strings.NewReader(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"hi"}],"stream":true}`))
 	req.Header.Set("X-Exedev-Box", "test-box")
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -1544,7 +1544,7 @@ func TestGateway_SSE_StartUsageMerge(t *testing.T) {
 	// Simulate Anthropic sending input_tokens only in message_start,
 	// not in message_delta.
 	var sseBuf bytes.Buffer
-	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_merge","type":"message","role":"assistant","content":[],"usage":{"input_tokens":42,"cache_creation_input_tokens":5,"cache_read_input_tokens":10,"output_tokens":1}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_merge","type":"message","role":"assistant","content":[],"usage":{"input_tokens":42,"cache_creation_input_tokens":5,"cache_read_input_tokens":10,"output_tokens":1}}}` + "\n\n")
 	sseBuf.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}` + "\n\n")
 	// message_delta with output_tokens only (no input_tokens)
 	sseBuf.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}` + "\n\n")
@@ -1622,7 +1622,7 @@ func TestGateway_SSE_StartUsageMerge(t *testing.T) {
 	}
 	wrapped := sloghttp.NewWithConfig(logger, slogConfig)(gatewayHandler)
 
-	reqBody := `{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"Hello"}],"stream":true}`
+	reqBody := `{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello"}],"stream":true}`
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(reqBody))
 	req.Header.Set("X-Exedev-Box", "test-box")

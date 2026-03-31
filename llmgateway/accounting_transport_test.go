@@ -395,7 +395,7 @@ func TestAccountingTransport_Anthropic(t *testing.T) {
 
 	backend := `{
 		"id": "msg_ant123",
-		"model": "claude-sonnet-4-20250514",
+		"model": "claude-sonnet-4-6",
 		"usage": {
 			"input_tokens": 400,
 			"output_tokens": 80,
@@ -408,7 +408,7 @@ func TestAccountingTransport_Anthropic(t *testing.T) {
 		llmpricing.ProviderAnthropic,
 		backend,
 		"/_/gateway/anthropic/v1/messages",
-		`{"model":"claude-sonnet-4-20250514","messages":[]}`,
+		`{"model":"claude-sonnet-4-6","messages":[]}`,
 		logger,
 	)
 
@@ -429,7 +429,7 @@ func TestAccountingTransport_Anthropic(t *testing.T) {
 	attrs := attrMap(debit)
 	t.Logf("debitResponse attrs: %v", attrs)
 
-	assertAttr(t, attrs, "model", "claude-sonnet-4-20250514")
+	assertAttr(t, attrs, "model", "claude-sonnet-4-6")
 	assertAttr(t, attrs, "message_id", "msg_ant123")
 	assertAttrUint(t, attrs, "input_tokens", 400)
 	assertAttrUint(t, attrs, "output_tokens", 80)
@@ -999,7 +999,7 @@ func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
 	// Key: message_start has model/id inside "message", message_delta has usage but NO model/id.
 	var sseBuf bytes.Buffer
 	sseBuf.WriteString("event: message_start\n")
-	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_017N87RsTpk77EtJoeyifnHh","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3}}}` + "\n\n")
+	sseBuf.WriteString(`data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_017N87RsTpk77EtJoeyifnHh","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3}}}` + "\n\n")
 	sseBuf.WriteString("event: content_block_start\n")
 	sseBuf.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n")
 	sseBuf.WriteString("event: ping\n")
@@ -1027,7 +1027,7 @@ func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
 	mockURL, _ := url.Parse(backend.URL)
 
 	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[],"stream":true}`))
+		strings.NewReader(`{"model":"claude-sonnet-4-6","messages":[],"stream":true}`))
 	incomingReq.Header.Set("X-Exedev-Box", "test-box")
 	incomingReq.Header.Set("Content-Type", "application/json")
 	incomingReq.RemoteAddr = "127.0.0.1:12345"
@@ -1070,8 +1070,8 @@ func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
 	if transport.sseUsage == nil {
 		t.Fatal("sseUsage was not stored")
 	}
-	if transport.sseUsage.Model != "claude-sonnet-4-5-20250929" {
-		t.Errorf("sseUsage.Model = %q, want %q", transport.sseUsage.Model, "claude-sonnet-4-5-20250929")
+	if transport.sseUsage.Model != "claude-sonnet-4-6" {
+		t.Errorf("sseUsage.Model = %q, want %q", transport.sseUsage.Model, "claude-sonnet-4-6")
 	}
 	if transport.sseUsage.MessageID != "msg_017N87RsTpk77EtJoeyifnHh" {
 		t.Errorf("sseUsage.MessageID = %q, want %q", transport.sseUsage.MessageID, "msg_017N87RsTpk77EtJoeyifnHh")
@@ -1084,7 +1084,7 @@ func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
 	}
 
 	// Verify cost is correctly calculated (not zero!)
-	// claude-sonnet-4-5-20250929: Input=300, Output=1500 (cents per million tokens)
+	// claude-sonnet-4-6: Input=300, Output=1500 (cents per million tokens)
 	// Cost = (10 * 300 + 12 * 1500) / 100_000_000 = 21000 / 100_000_000
 	expectedMicroCents := uint64(10)*300 + uint64(12)*1500
 	expectedUSD := float64(expectedMicroCents) / 100_000_000
@@ -1106,7 +1106,7 @@ func TestAccountingTransport_Anthropic_SSE(t *testing.T) {
 	attrs := attrMap(debit)
 	t.Logf("SSE debitResponse attrs: %v", attrs)
 
-	assertAttr(t, attrs, "model", "claude-sonnet-4-5-20250929")
+	assertAttr(t, attrs, "model", "claude-sonnet-4-6")
 	assertAttr(t, attrs, "message_id", "msg_017N87RsTpk77EtJoeyifnHh")
 	assertAttrUint(t, attrs, "input_tokens", 10)
 	assertAttrUint(t, attrs, "output_tokens", 12)

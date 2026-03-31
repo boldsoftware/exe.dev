@@ -529,7 +529,7 @@ func TestVanillaBox(t *testing.T) {
 			Provider:     "anthropic",
 			Path:         "anthropic/v1/messages",
 			ExtraHeaders: []string{`-H "anthropic-version: 2023-06-01"`},
-			Body:         `{"model":"claude-sonnet-4-20250514"}`,
+			Body:         `{"model":"claude-sonnet-4-6"}`,
 			WantStrings:  []string{`"request_id"`},
 		},
 		{
