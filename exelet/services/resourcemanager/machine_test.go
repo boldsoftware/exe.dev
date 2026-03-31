@@ -82,18 +82,22 @@ func TestReadDiskInfo(t *testing.T) {
 		t.Errorf("could not parse avail value %q: %v", fields[1], err)
 	}
 
-	if info.diskTotal != blocks {
-		t.Errorf("df block count %d != diskInfo block count %d", blocks, info.diskTotal)
+	// Do rough comparisons, as df and statfs can disagree slightly
+	// on some filesystems (e.g. ZFS), and free space may be changing.
+	totalDiff := info.diskTotal - blocks
+	if totalDiff < 0 {
+		totalDiff = -totalDiff
+	}
+	if totalDiff > 1<<20 {
+		t.Errorf("df total %d too different from diskInfo total %d", blocks, info.diskTotal)
 	}
 
-	// Do a rough comparison of available disk,
-	// as it may be changing.
-	diff := info.diskFree - avail
-	if diff < 0 {
-		diff = -diff
+	availDiff := info.diskFree - avail
+	if availDiff < 0 {
+		availDiff = -availDiff
 	}
-	if diff > 1<<20 {
-		t.Errorf("df block avail %d too different from diskInfo block free %d", avail, info.diskFree)
+	if availDiff > 1<<20 {
+		t.Errorf("df avail %d too different from diskInfo free %d", avail, info.diskFree)
 	}
 }
 
