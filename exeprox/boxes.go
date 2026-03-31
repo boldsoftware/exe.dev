@@ -134,31 +134,35 @@ func (bd *boxesData) isShelleySharedWithTeamMember(ctx context.Context, exeproxD
 
 // isShareLinkValid reports whether a share link is valid for a box.
 func (bd *boxesData) isShareLinkValid(ctx context.Context, exeproxData ExeproxData, boxID int, boxName, userID, shareToken string) (bool, error) {
-	// Look in the cache.
+	// When userID is non-empty, the call has side effects:
+	// it records usage and creates an email-based share for the user.
+	// Always call through to exed in this case, even on a cache hit,
+	// because each new user needs their own email share created.
+	if userID != "" {
+		ok, err := exeproxData.CheckShareLink(ctx, boxID, boxName, userID, shareToken)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			bd.boxShareLinks.Store(shareToken, boxShareLink{boxName: boxName})
+		}
+		return ok, nil
+	}
+
+	// Validation-only call (empty userID): use the cache.
 	bsl, ok := bd.boxShareLinks.Load(shareToken)
 	if ok {
 		return bsl.boxName == boxName, nil
 	}
 
 	// Not found in cache. Ask exed whether the share token is valid.
-	// When userID is non-empty, this also records usage and creates
-	// an email-based share for the user.
-	ok, err := exeproxData.CheckShareLink(ctx, boxID, boxName, userID, shareToken)
+	ok, err := exeproxData.CheckShareLink(ctx, boxID, boxName, "", shareToken)
 	if err != nil {
 		return false, err
 	}
-
-	if ok && userID != "" {
-		// Access granted with a real user; cache the result.
-		// Don't cache validation-only calls (empty userID)
-		// so that a subsequent access-granting call still
-		// triggers side effects (usage tracking, email share creation).
-		bsl := boxShareLink{
-			boxName: boxName,
-		}
-		bd.boxShareLinks.Store(shareToken, bsl)
+	if ok {
+		bd.boxShareLinks.Store(shareToken, boxShareLink{boxName: boxName})
 	}
-
 	return ok, nil
 }
 

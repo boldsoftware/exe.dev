@@ -1399,9 +1399,21 @@ func TestShareLinkStripsTokenFromURL(t *testing.T) {
 	// After the share link was consumed, plain access works via the
 	// auto-created email share.
 	proxyAssert(t, box, proxyExpectation{
-		name:     "access works without share token",
+		name:     "guest1 access works without share token",
 		httpPort: httpPort,
 		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
+
+	// guest2 also consumed a share link above. Verify that the
+	// email share was auto-created for guest2 as well, so they can
+	// access without the share token. This is a regression test for
+	// a bug where the exeprox share-link cache would prevent the
+	// email share creation gRPC call for the second user.
+	proxyAssert(t, box, proxyExpectation{
+		name:     "guest2 access works without share token",
+		httpPort: httpPort,
+		cookies:  guest2Cookies,
 		httpCode: http.StatusOK,
 	})
 
@@ -1672,6 +1684,376 @@ func TestShareLinkFlow_Playwright(t *testing.T) {
 	}
 
 	t.Logf("Share link flow completed successfully. Final URL: %s", finalURL)
+
+	// Cleanup
+	cleanupBox(t, ownerKeyFile, box)
+}
+
+// TestShareLinkLoggedOutUserFlow tests that a logged-out user can access a box
+// via a share link after going through the full login flow.
+//
+// This is the specific scenario:
+// 1. User A creates a box with a private HTTP server and creates a share link
+// 2. User B (completely logged out, no cookies) visits the share link URL
+// 3. User B is redirected to login, goes through email verification
+// 4. After login completes, user B should be redirected back and gain access
+//
+// This is a regression test for a bug where user B would get "permission denied"
+// after completing the login flow, even though the share link was valid.
+// Bouncing exeprox would fix the issue, suggesting cached state was involved.
+func TestShareLinkLoggedOutUserFlow(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	noGolden(t)
+
+	// === Setup: Owner creates box with share link ===
+	ownerPTY, _, ownerKeyFile, _ := registerForExeDevWithEmail(t, "owner@test-share-link-logout.example")
+	box := newBox(t, ownerPTY, testinfra.BoxOpts{Command: "/bin/bash"})
+	ownerPTY.Disconnect()
+	waitForSSH(t, box, ownerKeyFile)
+
+	const boxInternalPort = 8080
+	serveIndex(t, box, ownerKeyFile, "share-link-content")
+
+	httpPort := Env.HTTPPort()
+	configureProxyRoute(t, ownerKeyFile, box, boxInternalPort, "private")
+
+	// Create a share link
+	linkOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "share", "add-share-link", box, "--json")
+	if err != nil {
+		t.Fatalf("failed to create share link: %v\n%s", err, linkOut)
+	}
+	var linkInfo struct {
+		Token string `json:"token"`
+	}
+	if err = json.Unmarshal(linkOut, &linkInfo); err != nil {
+		t.Fatalf("failed to parse link JSON: %v\n%s", err, linkOut)
+	}
+	if linkInfo.Token == "" {
+		t.Fatal("empty share token")
+	}
+
+	// === Test: Completely logged-out user visits share link ===
+	guestEmail := "guest@test-share-link-logout.example"
+
+	// Create a jar with NO cookies at all - user B is completely logged out
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+	client := noRedirectClient(jar)
+
+	// Step 1: Visit box.exe.cloud/?share=TOKEN with no auth
+	host := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
+	shareURL := fmt.Sprintf("http://%s/?share=%s", host, linkInfo.Token)
+	req, err := localhostRequestWithHostHeader("GET", shareURL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to visit share link: %v", err)
+	}
+
+	// Should get a 307 redirect to /__exe.dev/login
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected 307 redirect, got %d: %s", resp.StatusCode, body)
+	}
+
+	location, err := resp.Location()
+	if err != nil {
+		t.Fatalf("missing Location header: %v", err)
+	}
+	resp.Body.Close()
+	t.Logf("Step 1: Got redirect to %s", location.String())
+
+	// Verify the redirect preserves the share token in the redirect parameter
+	// (may be URL-encoded as %3D instead of =)
+	if !strings.Contains(location.String(), "share") {
+		t.Fatalf("redirect lost share token: %s", location.String())
+	}
+
+	// Step 2: Follow to /__exe.dev/login (which redirects to main domain /auth)
+	req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+	if err != nil {
+		t.Fatalf("failed to create login request: %v", err)
+	}
+	req.Host = host
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to follow login redirect: %v", err)
+	}
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected 307 from /__exe.dev/login, got %d: %s", resp.StatusCode, body)
+	}
+	location, err = resp.Location()
+	if err != nil {
+		t.Fatalf("missing Location from login: %v", err)
+	}
+	resp.Body.Close()
+	t.Logf("Step 2: Got redirect to main domain auth: %s", location.String())
+
+	// Verify the auth URL has redirect and return_host
+	if !strings.Contains(location.String(), "return_host=") {
+		t.Fatalf("auth URL missing return_host: %s", location.String())
+	}
+	if !strings.Contains(location.String(), "redirect=") {
+		t.Fatalf("auth URL missing redirect: %s", location.String())
+	}
+
+	// Step 3: Follow to /auth on main domain - should get the 401 login page
+	resp, err = client.Get(location.String())
+	if err != nil {
+		t.Fatalf("failed to reach auth page: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected 401 from /auth, got %d: %s", resp.StatusCode, body)
+	}
+	authPageBody, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("failed to read auth page: %v", err)
+	}
+
+	// Step 4: Submit email form from the 401 page
+	formData := testinfra.ExtractFormFields(authPageBody)
+	formData.Set("email", guestEmail)
+
+	authURL := fmt.Sprintf("http://localhost:%d/auth", Env.servers.Exed.HTTPPort)
+	resp, err = client.PostForm(authURL, formData)
+	if err != nil {
+		t.Fatalf("failed to POST email: %v", err)
+	}
+	// Follow any redirects from exeprox to exed
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		loc, err := resp.Location()
+		if err != nil {
+			t.Fatalf("missing Location: %v", err)
+		}
+		resp.Body.Close()
+		resp, err = client.PostForm(loc.String(), formData)
+		if err != nil {
+			t.Fatalf("failed to follow redirect: %v", err)
+		}
+	}
+	resp.Body.Close()
+	t.Logf("Step 4: Submitted email %s for authentication", guestEmail)
+
+	// Step 5: Complete email verification
+	emailMsg, err := Env.servers.Email.WaitForEmail(guestEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyURL, err := testinfra.ExtractVerificationToken(emailMsg.Body)
+	if err != nil {
+		t.Fatalf("failed to extract verification URL: %v", err)
+	}
+
+	// GET the verification page
+	getResp, err := http.Get(verifyURL)
+	if err != nil {
+		t.Fatalf("failed to access verification page: %v", err)
+	}
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("verification page returned %d", getResp.StatusCode)
+	}
+	verifyBody, err := io.ReadAll(getResp.Body)
+	getResp.Body.Close()
+	if err != nil {
+		t.Fatalf("failed to read verification page: %v", err)
+	}
+
+	verifyFormData := testinfra.ExtractFormFields(verifyBody)
+	actionPath := testinfra.ExtractFormAction(verifyBody, "/verify-email")
+
+	postURL := fmt.Sprintf("http://localhost:%d%s", Env.servers.Exed.HTTPPort, actionPath)
+	resp, err = client.PostForm(postURL, verifyFormData)
+	if err != nil {
+		t.Fatalf("failed to submit verification: %v", err)
+	}
+
+	// Follow any exeprox->exed redirects
+	for resp.StatusCode == http.StatusTemporaryRedirect {
+		loc, err := resp.Location()
+		if err != nil {
+			t.Fatalf("missing Location from verify: %v", err)
+		}
+		if loc.Path != "/verify-email" {
+			break
+		}
+		resp.Body.Close()
+		resp, err = client.PostForm(loc.String(), verifyFormData)
+		if err != nil {
+			t.Fatalf("failed to follow verify redirect: %v", err)
+		}
+	}
+
+	t.Logf("Step 5: Verification response status: %d", resp.StatusCode)
+
+	// After verification, should get redirected to /auth/confirm
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected redirect after verification, got %d: %s", resp.StatusCode, body)
+	}
+	location, err = resp.Location()
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("missing Location after verification: %v", err)
+	}
+	t.Logf("Step 5: Verification redirected to: %s", location.String())
+
+	if !strings.Contains(location.Path, "/auth/confirm") {
+		t.Fatalf("expected redirect to /auth/confirm, got %s", location.String())
+	}
+
+	// Step 6: Follow to /auth/confirm - shows confirmation page
+	resp, err = client.Get(location.String())
+	if err != nil {
+		t.Fatalf("failed to reach confirm page: %v", err)
+	}
+
+	if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect {
+		// Owner gets auto-redirected; non-owner should see confirmation page
+		t.Logf("Step 6: Got redirect from /auth/confirm (unexpected for non-owner)")
+		location, _ = resp.Location()
+		resp.Body.Close()
+	} else if resp.StatusCode == http.StatusOK {
+		// Non-owner: confirmation page with Continue button
+		confirmBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("failed to read confirm page: %v", err)
+		}
+
+		pageData := testinfra.ExtractPageJSON(confirmBody)
+		if pageData == nil {
+			t.Fatalf("confirm page missing Vue page data")
+		}
+
+		continueURL, _ := pageData["confirmUrl"].(string)
+		if continueURL == "" {
+			t.Fatalf("confirm page missing confirmUrl")
+		}
+		t.Logf("Step 6: Clicking Continue: %s", continueURL)
+
+		// Verify the continueURL preserves the share token
+		// (may be URL-encoded as %3D or %3d instead of =)
+		if !strings.Contains(continueURL, "share") {
+			t.Errorf("Continue URL lost share token: %s", continueURL)
+		}
+
+		location, err = url.Parse(continueURL)
+		if err != nil {
+			t.Fatalf("failed to parse continue URL: %v", err)
+		}
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("unexpected status from /auth/confirm: %d: %s", resp.StatusCode, body)
+	}
+
+	// Step 7: Follow /__exe.dev/auth - creates cookie and redirects to /?share=TOKEN
+	req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+	if err != nil {
+		t.Fatalf("failed to create magic auth request: %v", err)
+	}
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to complete magic auth: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("expected 303 from /__exe.dev/auth, got %d: %s", resp.StatusCode, body)
+	}
+
+	finalLocation := resp.Header.Get("Location")
+	resp.Body.Close()
+	t.Logf("Step 7: Magic auth redirected to: %s", finalLocation)
+
+	// The final redirect should include the share token
+	if !strings.Contains(finalLocation, "share") {
+		t.Errorf("final redirect lost share token: %s", finalLocation)
+	}
+
+	// Step 8: Follow the final redirect to the box
+	// Should get 302 (share link consumed, redirect to strip token) or 200 OK
+	origURL := mustParseURL(shareURL)
+	finalURL, err := origURL.Parse(finalLocation)
+	if err != nil {
+		t.Fatalf("failed to parse final redirect: %v", err)
+	}
+	req, err = localhostRequestWithHostHeader("GET", finalURL.String(), nil)
+	if err != nil {
+		t.Fatalf("failed to create final request: %v", err)
+	}
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to make final request: %v", err)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	t.Logf("Step 8: Final response status: %d", resp.StatusCode)
+
+	// Expected: 302 Found (share link consumed, redirecting to strip ?share= param)
+	// or 200 OK (access granted)
+	if resp.StatusCode == http.StatusFound {
+		// Share link consumed, redirect to strip token - happy path
+		redirectLoc := resp.Header.Get("Location")
+		t.Logf("Step 8: Share link consumed, redirect to: %s", redirectLoc)
+
+		// Follow the redirect to verify we can actually access the content
+		stripURL, err := finalURL.Parse(redirectLoc)
+		if err != nil {
+			t.Fatalf("failed to parse strip redirect: %v", err)
+		}
+		req, err = localhostRequestWithHostHeader("GET", stripURL.String(), nil)
+		if err != nil {
+			t.Fatalf("failed to create strip request: %v", err)
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make strip request: %v", err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("BUG: After share link consumed and token stripped, got status %d (expected 200): %s", resp.StatusCode, body)
+		}
+		t.Logf("Step 8: Successfully accessed box content after share link flow")
+	} else if resp.StatusCode == http.StatusOK {
+		t.Logf("Step 8: Direct access granted with share token")
+	} else if resp.StatusCode == http.StatusUnauthorized {
+		t.Fatalf("BUG: Got 401 after completing full login+share link flow. User should have access. Body: %s", body)
+	} else if resp.StatusCode == http.StatusTemporaryRedirect {
+		t.Fatalf("BUG: Got 307 (redirect to login) after completing login. Cookie may not have been set. Body: %s", body)
+	} else {
+		t.Fatalf("unexpected status %d after login+share link flow. Body: %s", resp.StatusCode, body)
+	}
+
+	// Step 9: Verify access persists without the share token.
+	// This is the key assertion: the email share must have been
+	// auto-created during share link consumption, so the user
+	// can access the box without ?share= in the URL.
+	boxURL := fmt.Sprintf("http://localhost:%d/", httpPort)
+	guestCookies := jar.Cookies(mustParseURL(boxURL))
+	proxyAssert(t, box, proxyExpectation{
+		name:     "access persists without share token after login flow",
+		httpPort: httpPort,
+		cookies:  guestCookies,
+		httpCode: http.StatusOK,
+	})
 
 	// Cleanup
 	cleanupBox(t, ownerKeyFile, box)
