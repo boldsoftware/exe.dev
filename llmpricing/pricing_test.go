@@ -32,7 +32,7 @@ func TestCalculateCost_Anthropic(t *testing.T) {
 			wantDesc: "1M input @ $5 + 1M output @ $25 = $30",
 		},
 		{
-			name:  "claude-sonnet-4.5 with cache",
+			name:  "claude-sonnet-4.6 with cache",
 			model: "claude-sonnet-4-6",
 			usage: Usage{
 				InputTokens:              500_000,
