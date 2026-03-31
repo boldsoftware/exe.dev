@@ -17,7 +17,7 @@ import (
 	"exe.dev/stage"
 	"exe.dev/tslog"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 )
 
 // testSSHPubKey is a valid SSH public key for use in tests.

@@ -13,7 +13,7 @@ import (
 	"exe.dev/billing/tender"
 	exesqlite "exe.dev/sqlite"
 	"exe.dev/tslog"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 )
 
 func newEmptyTestDB(t *testing.T) *exesqlite.DB {
@@ -430,7 +430,7 @@ func TestSyncSubscriptionsLive(t *testing.T) {
 	for sub, err := range m.client().V1Subscriptions.List(ctx, &stripe.SubscriptionListParams{
 		Customer: &billingID,
 		Status:   stripe.String("all"),
-	}) {
+	}).All(ctx) {
 		if err != nil {
 			t.Fatalf("list subscriptions: %v", err)
 		}

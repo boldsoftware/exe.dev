@@ -8,7 +8,7 @@ import (
 
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 )
 
 // stripeSubscribe is a helper function that creates a subscription for the given

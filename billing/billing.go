@@ -19,7 +19,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	"exe.dev/sqlite"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 	"tailscale.com/syncs"
 	"tailscale.com/types/result"
 )
@@ -249,7 +249,7 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 		for got, err := range c.V1Prices.List(ctx, &stripe.PriceListParams{
 			LookupKeys: []*string{new(p.lookupKey)},
 			Active:     new(true),
-		}) {
+		}).All(ctx) {
 			if err != nil {
 				return fmt.Errorf("list active price %q: %w", p.lookupKey, err)
 			}
@@ -480,7 +480,7 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 		Customer: &customerID,
 		Status:   new("all"),
 	}
-	for sub, err := range c.V1Subscriptions.List(ctx, params) {
+	for sub, err := range c.V1Subscriptions.List(ctx, params).All(ctx) {
 		if err != nil {
 			m.slog().ErrorContext(ctx, "failed to list subscriptions",
 				withRequestID(err),
@@ -512,7 +512,7 @@ func (m *Manager) lookupPriceID(ctx context.Context, lookupKey string) (string, 
 	for price, err := range m.client().V1Prices.List(ctx, &stripe.PriceListParams{
 		LookupKeys: []*string{&lookupKey},
 		Active:     new(true),
-	}) {
+	}).All(ctx) {
 		if err != nil {
 			return "", err
 		}
@@ -637,7 +637,7 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 	}
 
 	maxEventAt := sinceUnix
-	for event, err := range c.V1Events.List(ctx, params) {
+	for event, err := range c.V1Events.List(ctx, params).All(ctx) {
 		if err != nil {
 			if isRateLimited(err) {
 				m.slog().WarnContext(ctx, "rate limited listing subscription events",
@@ -1020,7 +1020,7 @@ func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
 		},
 	}
 
-	for intent, err := range c.V1PaymentIntents.List(ctx, params) {
+	for intent, err := range c.V1PaymentIntents.List(ctx, params).All(ctx) {
 		if err != nil {
 			return fmt.Errorf("list payment intents: %w", err)
 		}
@@ -1063,7 +1063,7 @@ func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[strin
 	}
 
 	result := make(map[string]string)
-	for charge, err := range c.V1Charges.List(ctx, params) {
+	for charge, err := range c.V1Charges.List(ctx, params).All(ctx) {
 		if err != nil {
 			return nil, fmt.Errorf("list charges: %w", err)
 		}

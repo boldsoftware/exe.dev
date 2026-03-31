@@ -16,7 +16,7 @@ import (
 
 	"exe.dev/backoff"
 	"exe.dev/billing/httprr"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 )
 
 // TestAPIKey is the Stripe test API key used for record/replay clients.

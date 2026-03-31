@@ -17,7 +17,7 @@ import (
 	exesqlite "exe.dev/sqlite"
 	_ "exe.dev/sqlite/sqltest"
 	"exe.dev/tslog"
-	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v85"
 )
 
 // newTestManager returns a Manager configured to use an httprr recorder

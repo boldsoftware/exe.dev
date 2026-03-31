@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"exe.dev/exedb"
-	"github.com/stripe/stripe-go/v82/webhook"
+	"github.com/stripe/stripe-go/v85/webhook"
 )
 
 // HandleWebhook receives Stripe webhook events, verifies the signature,
@@ -22,9 +22,23 @@ func (m *Manager) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sig := r.Header.Get("Stripe-Signature")
+	if m.WebhookSecret == "" {
+		m.slog().ErrorContext(ctx, "webhook secret not configured")
+		http.Error(w, "webhook secret not configured", http.StatusInternalServerError)
+		return
+	}
+	if sig == "" {
+		m.slog().ErrorContext(ctx, "missing Stripe-Signature header")
+		http.Error(w, "missing signature", http.StatusBadRequest)
+		return
+	}
 	event, err := webhook.ConstructEvent(body, sig, m.WebhookSecret)
 	if err != nil {
-		m.slog().ErrorContext(ctx, "failed to verify webhook signature", "error", err)
+		m.slog().ErrorContext(ctx, "failed to verify webhook signature",
+			"error", err,
+			"has_secret", m.WebhookSecret != "",
+			"has_signature", sig != "",
+			"body_len", len(body))
 		http.Error(w, "invalid signature", http.StatusBadRequest)
 		return
 	}

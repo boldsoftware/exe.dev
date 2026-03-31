@@ -1178,6 +1178,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.billing.Logger = slog
 	s.billing.SlackFeed = s.slackFeed
 	s.billing.WebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
+	if s.billing.WebhookSecret != "" {
+		slog.Info("stripe webhook secret configured")
+	} else {
+		slog.Warn("stripe webhook secret not configured - webhook signature validation will fail")
+	}
 	s.billing.OnPlanDowngrade = s.handlePlanDowngrade
 
 	if cfg.Env.BootstrapStripeCatalog {

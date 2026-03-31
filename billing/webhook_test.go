@@ -10,7 +10,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/tslog"
-	"github.com/stripe/stripe-go/v82/webhook"
+	"github.com/stripe/stripe-go/v85/webhook"
 )
 
 func TestHandleWebhook(t *testing.T) {
@@ -21,7 +21,7 @@ func TestHandleWebhook(t *testing.T) {
 		WebhookSecret: "whsec_test_secret",
 	}
 
-	payload := `{"id":"evt_test123","object":"event","api_version":"2025-08-27.basil","type":"customer.subscription.created","data":{"object":{}},"livemode":false,"created":1234567890}`
+	payload := `{"id":"evt_test123","object":"event","api_version":"2026-03-25.dahlia","type":"customer.subscription.created","data":{"object":{}},"livemode":false,"created":1234567890}`
 	timestamp := time.Now()
 	signedPayload := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{
 		Payload:   []byte(payload),
@@ -68,7 +68,7 @@ func TestHandleWebhook_InvalidSignature(t *testing.T) {
 		WebhookSecret: "whsec_test_secret",
 	}
 
-	payload := `{"id":"evt_test123","object":"event","api_version":"2025-08-27.basil","type":"customer.subscription.created","data":{"object":{}},"livemode":false,"created":1234567890}`
+	payload := `{"id":"evt_test123","object":"event","api_version":"2026-03-25.dahlia","type":"customer.subscription.created","data":{"object":{}},"livemode":false,"created":1234567890}`
 	req := httptest.NewRequest(http.MethodPost, "/stripe/webhook", strings.NewReader(payload))
 	req.Header.Set("Stripe-Signature", "invalid_signature")
 	rec := httptest.NewRecorder()
@@ -88,7 +88,7 @@ func TestHandleWebhook_Idempotent(t *testing.T) {
 		WebhookSecret: "whsec_test_secret",
 	}
 
-	payload := `{"id":"evt_idempotent","object":"event","api_version":"2025-08-27.basil","type":"invoice.paid","data":{"object":{}},"livemode":false,"created":1234567890}`
+	payload := `{"id":"evt_idempotent","object":"event","api_version":"2026-03-25.dahlia","type":"invoice.paid","data":{"object":{}},"livemode":false,"created":1234567890}`
 	timestamp := time.Now()
 	signedPayload := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{
 		Payload:   []byte(payload),

@@ -18,6 +18,7 @@ require (
 	codeberg.org/miekg/dns v0.5.26
 	github.com/AfterShip/email-verifier v1.4.1
 	github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2
+	github.com/andybalholm/brotli v1.2.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/boldsoftware/exe.dev/completeinit v0.0.0-00010101000000-000000000000
@@ -68,7 +69,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	github.com/slack-go/slack v0.15.0
 	github.com/stretchr/testify v1.11.1
-	github.com/stripe/stripe-go/v82 v82.5.1
+	github.com/stripe/stripe-go/v85 v85.0.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/veops/go-ansiterm v0.0.5
@@ -80,6 +81,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.14.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/sdk/log v0.14.0
+	go.opentelemetry.io/otel/trace v1.38.0
 	go.opentelemetry.io/proto/otlp v1.7.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/net v0.50.0
@@ -108,7 +110,6 @@ require (
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
-	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apache/arrow-go/v18 v18.5.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
@@ -262,7 +263,6 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
 	go.opentelemetry.io/otel/log v0.14.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
-	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
