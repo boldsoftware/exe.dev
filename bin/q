@@ -4,9 +4,9 @@
 Pushes the given ref (default HEAD) to a queue branch on origin,
 then polls CI until the run completes.
 
-GitHub Actions: pushes to queue-main-* and polls via `gh`.
-Buildkite (--kite): pushes to kite-queue-* and polls via Buildkite API.
+Buildkite (default): pushes to kite-queue-* and polls via Buildkite API.
 Buildkite (--dry-run): pushes to kite-test-* (tests only, no merge).
+GitHub Actions (--no-kite): pushes to queue-main-* and polls via `gh`.
 
 Buildkite API access: set BUILDKITE_API_PROXY (e.g. https://buildkite.int.exe.xyz/)
 or BUILDKITE_API_TOKEN for direct access.
@@ -369,10 +369,10 @@ def run_formatters(ref):
 # Per-user default flags, keyed by git config user.email.
 # Add your email and preferred defaults here.
 USER_DEFAULTS = {
-    "josharian@gmail.com":       ["--no-format", "-k", "--retries", "3"],
-    "philip@bold.dev":           ["--kite", "--slug", "--no-generate"],
-    "philip.zeyliger@gmail.com": ["--kite", "--slug", "--no-generate"],
-    "david@zentus.com":          ["--kite"],
+    "josharian@gmail.com":       ["--no-format", "--retries", "3"],
+    "philip@bold.dev":           ["--slug", "--no-generate"],
+    "philip.zeyliger@gmail.com": ["--slug", "--no-generate"],
+    "david@zentus.com":          [],
 }
 
 
@@ -523,8 +523,10 @@ def main():
                     help="auto-rebase onto origin/main if needed (only if conflict-free)")
     p.add_argument("--no-rebase", action="store_true",
                     help="don't auto-rebase; fail if not fast-forwardable")
-    p.add_argument("--kite", "-k", action="store_true",
-                    help="use Buildkite queue (push to kite-queue-* branch)")
+    p.add_argument("--kite", "-k", action="store_true", default=True,
+                    help="use Buildkite queue (push to kite-queue-* branch) [default]")
+    p.add_argument("--no-kite", "-K", action="store_true",
+                    help="use GitHub Actions queue instead of Buildkite")
     p.add_argument("--dry-run", "-n", action="store_true",
                     help="use Buildkite test-only (push to kite-test-* branch, no merge)")
     p.add_argument("--no-fetch", action="store_true",
@@ -546,6 +548,10 @@ def main():
     elif args.slug is None:
         args.slug = False
     del args.no_slug
+
+    if args.no_kite:
+        args.kite = False
+    del args.no_kite
 
     if args.no_rebase:
         args.rebase = False
