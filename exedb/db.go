@@ -87,6 +87,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countAllAccountsStmt, err = db.PrepareContext(ctx, countAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAllAccounts: %w", err)
 	}
+	if q.countAllBillingEventsStmt, err = db.PrepareContext(ctx, countAllBillingEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAllBillingEvents: %w", err)
+	}
+	if q.countAllStripeWebhookEventsStmt, err = db.PrepareContext(ctx, countAllStripeWebhookEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAllStripeWebhookEvents: %w", err)
+	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -861,6 +867,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllAccountsStmt, err = db.PrepareContext(ctx, listAllAccounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAccounts: %w", err)
 	}
+	if q.listAllBillingEventsPaginatedStmt, err = db.PrepareContext(ctx, listAllBillingEventsPaginated); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllBillingEventsPaginated: %w", err)
+	}
 	if q.listAllBoxesWithOwnerStmt, err = db.PrepareContext(ctx, listAllBoxesWithOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllBoxesWithOwner: %w", err)
 	}
@@ -878,6 +887,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAllStripeWebhookEventsStmt, err = db.PrepareContext(ctx, listAllStripeWebhookEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllStripeWebhookEvents: %w", err)
+	}
+	if q.listAllStripeWebhookEventsPaginatedStmt, err = db.PrepareContext(ctx, listAllStripeWebhookEventsPaginated); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllStripeWebhookEventsPaginated: %w", err)
 	}
 	if q.listAllTeamsStmt, err = db.PrepareContext(ctx, listAllTeams); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllTeams: %w", err)
@@ -1290,6 +1302,16 @@ func (q *Queries) Close() error {
 	if q.countAllAccountsStmt != nil {
 		if cerr := q.countAllAccountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countAllAccountsStmt: %w", cerr)
+		}
+	}
+	if q.countAllBillingEventsStmt != nil {
+		if cerr := q.countAllBillingEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAllBillingEventsStmt: %w", cerr)
+		}
+	}
+	if q.countAllStripeWebhookEventsStmt != nil {
+		if cerr := q.countAllStripeWebhookEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAllStripeWebhookEventsStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -2582,6 +2604,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllAccountsStmt: %w", cerr)
 		}
 	}
+	if q.listAllBillingEventsPaginatedStmt != nil {
+		if cerr := q.listAllBillingEventsPaginatedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllBillingEventsPaginatedStmt: %w", cerr)
+		}
+	}
 	if q.listAllBoxesWithOwnerStmt != nil {
 		if cerr := q.listAllBoxesWithOwnerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllBoxesWithOwnerStmt: %w", cerr)
@@ -2610,6 +2637,11 @@ func (q *Queries) Close() error {
 	if q.listAllStripeWebhookEventsStmt != nil {
 		if cerr := q.listAllStripeWebhookEventsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllStripeWebhookEventsStmt: %w", cerr)
+		}
+	}
+	if q.listAllStripeWebhookEventsPaginatedStmt != nil {
+		if cerr := q.listAllStripeWebhookEventsPaginatedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllStripeWebhookEventsPaginatedStmt: %w", cerr)
 		}
 	}
 	if q.listAllTeamsStmt != nil {
@@ -3177,6 +3209,8 @@ type Queries struct {
 	countAccountsWithoutActivePlanStmt         *sql.Stmt
 	countAccountsWithoutUserStmt               *sql.Stmt
 	countAllAccountsStmt                       *sql.Stmt
+	countAllBillingEventsStmt                  *sql.Stmt
+	countAllStripeWebhookEventsStmt            *sql.Stmt
 	countBoxShareLinksStmt                     *sql.Stmt
 	countBoxShareLinksByUserStmt               *sql.Stmt
 	countBoxSharesStmt                         *sql.Stmt
@@ -3435,12 +3469,14 @@ type Queries struct {
 	listAccountPlanHistoryStmt                 *sql.Stmt
 	listActiveSubscribersByPlanIDStmt          *sql.Stmt
 	listAllAccountsStmt                        *sql.Stmt
+	listAllBillingEventsPaginatedStmt          *sql.Stmt
 	listAllBoxesWithOwnerStmt                  *sql.Stmt
 	listAllGitHubInstallationsWithTokensStmt   *sql.Stmt
 	listAllGitHubUserTokensStmt                *sql.Stmt
 	listAllIntegrationsStmt                    *sql.Stmt
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllStripeWebhookEventsStmt             *sql.Stmt
+	listAllStripeWebhookEventsPaginatedStmt    *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
 	listAllTemplatesStmt                       *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
@@ -3569,6 +3605,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countAccountsWithoutActivePlanStmt:         q.countAccountsWithoutActivePlanStmt,
 		countAccountsWithoutUserStmt:               q.countAccountsWithoutUserStmt,
 		countAllAccountsStmt:                       q.countAllAccountsStmt,
+		countAllBillingEventsStmt:                  q.countAllBillingEventsStmt,
+		countAllStripeWebhookEventsStmt:            q.countAllStripeWebhookEventsStmt,
 		countBoxShareLinksStmt:                     q.countBoxShareLinksStmt,
 		countBoxShareLinksByUserStmt:               q.countBoxShareLinksByUserStmt,
 		countBoxSharesStmt:                         q.countBoxSharesStmt,
@@ -3827,12 +3865,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAccountPlanHistoryStmt:                 q.listAccountPlanHistoryStmt,
 		listActiveSubscribersByPlanIDStmt:          q.listActiveSubscribersByPlanIDStmt,
 		listAllAccountsStmt:                        q.listAllAccountsStmt,
+		listAllBillingEventsPaginatedStmt:          q.listAllBillingEventsPaginatedStmt,
 		listAllBoxesWithOwnerStmt:                  q.listAllBoxesWithOwnerStmt,
 		listAllGitHubInstallationsWithTokensStmt:   q.listAllGitHubInstallationsWithTokensStmt,
 		listAllGitHubUserTokensStmt:                q.listAllGitHubUserTokensStmt,
 		listAllIntegrationsStmt:                    q.listAllIntegrationsStmt,
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllStripeWebhookEventsStmt:             q.listAllStripeWebhookEventsStmt,
+		listAllStripeWebhookEventsPaginatedStmt:    q.listAllStripeWebhookEventsPaginatedStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,
 		listAllTemplatesStmt:                       q.listAllTemplatesStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,

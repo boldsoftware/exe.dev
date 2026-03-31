@@ -5783,59 +5783,77 @@ func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request
 func (s *Server) handleDebugBillingEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Fetch all legacy billing_events
+	const perPage = 50
+
+	billingPage, _ := strconv.Atoi(r.URL.Query().Get("billing_page"))
+	if billingPage < 1 {
+		billingPage = 1
+	}
+	webhookPage, _ := strconv.Atoi(r.URL.Query().Get("webhook_page"))
+	if webhookPage < 1 {
+		webhookPage = 1
+	}
+
+	// Fetch paginated legacy billing_events.
 	type billingEventRow struct {
 		ID        int64
 		AccountID string
 		EventType string
 		EventAt   string
 		CreatedAt string
-		Source    string
-		StripeID  string
 	}
-	var billingEvents []billingEventRow
 
-	allAccounts, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllAccounts)
+	billingTotal, err := withRxRes0(s, ctx, (*exedb.Queries).CountAllBillingEvents)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list accounts: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to count billing events: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	for _, acct := range allAccounts {
-		events, err := withRxRes1(s, ctx, (*exedb.Queries).ListBillingEventsForAccount, acct.ID)
-		if err != nil {
-			s.slog().WarnContext(ctx, "failed to list billing events", "error", err, "account_id", acct.ID)
-			continue
-		}
-		for _, e := range events {
-			row := billingEventRow{
-				ID:        e.ID,
-				AccountID: e.AccountID,
-				EventType: e.EventType,
-				EventAt:   e.EventAt.Format(time.RFC3339),
-				CreatedAt: e.CreatedAt.Format(time.RFC3339),
-				Source:    "legacy",
-			}
-			billingEvents = append(billingEvents, row)
-		}
+	billingRows, err := withRxRes1(s, ctx, (*exedb.Queries).ListAllBillingEventsPaginated, exedb.ListAllBillingEventsPaginatedParams{
+		Limit:  int64(perPage),
+		Offset: int64((billingPage - 1) * perPage),
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list billing events: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	// Fetch all stripe_webhook_events
+	var billingEvents []billingEventRow
+	for _, e := range billingRows {
+		billingEvents = append(billingEvents, billingEventRow{
+			ID:        e.ID,
+			AccountID: e.AccountID,
+			EventType: e.EventType,
+			EventAt:   e.EventAt.Format(time.RFC3339),
+			CreatedAt: e.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	// Fetch paginated stripe_webhook_events.
 	type webhookEventRow struct {
 		ID            int64
 		StripeEventID string
 		EventType     string
 		CreatedAt     string
 	}
-	var webhookEvents []webhookEventRow
 
-	allWebhooks, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllStripeWebhookEvents)
+	webhookTotal, err := withRxRes0(s, ctx, (*exedb.Queries).CountAllStripeWebhookEvents)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to count webhook events: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	webhookRows, err := withRxRes1(s, ctx, (*exedb.Queries).ListAllStripeWebhookEventsPaginated, exedb.ListAllStripeWebhookEventsPaginatedParams{
+		Limit:  int64(perPage),
+		Offset: int64((webhookPage - 1) * perPage),
+	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list webhook events: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	for _, wh := range allWebhooks {
+	var webhookEvents []webhookEventRow
+	for _, wh := range webhookRows {
 		webhookEvents = append(webhookEvents, webhookEventRow{
 			ID:            wh.ID,
 			StripeEventID: wh.StripeEventID,
@@ -5844,12 +5862,27 @@ func (s *Server) handleDebugBillingEvents(w http.ResponseWriter, r *http.Request
 		})
 	}
 
+	billingTotalPages := int((billingTotal + perPage - 1) / perPage)
+	webhookTotalPages := int((webhookTotal + perPage - 1) / perPage)
+
 	data := struct {
-		BillingEvents []billingEventRow
-		WebhookEvents []webhookEventRow
+		BillingEvents     []billingEventRow
+		BillingPage       int
+		BillingTotalPages int
+		BillingTotal      int64
+		WebhookEvents     []webhookEventRow
+		WebhookPage       int
+		WebhookTotalPages int
+		WebhookTotal      int64
 	}{
-		BillingEvents: billingEvents,
-		WebhookEvents: webhookEvents,
+		BillingEvents:     billingEvents,
+		BillingPage:       billingPage,
+		BillingTotalPages: billingTotalPages,
+		BillingTotal:      billingTotal,
+		WebhookEvents:     webhookEvents,
+		WebhookPage:       webhookPage,
+		WebhookTotalPages: webhookTotalPages,
+		WebhookTotal:      webhookTotal,
 	}
 	s.renderDebugTemplate(ctx, w, "billing-events.html", data)
 }

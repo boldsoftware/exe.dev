@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const countAllBillingEvents = `-- name: CountAllBillingEvents :one
+SELECT COUNT(*) FROM billing_events
+`
+
+func (q *Queries) CountAllBillingEvents(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countAllBillingEventsStmt, countAllBillingEvents)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getLatestBillingStatus = `-- name: GetLatestBillingStatus :one
 SELECT event_type FROM billing_events WHERE account_id = ? ORDER BY event_at DESC, id DESC LIMIT 1
 `
@@ -44,6 +55,55 @@ func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEvent
 		arg.StripeEventID,
 	)
 	return err
+}
+
+const listAllBillingEventsPaginated = `-- name: ListAllBillingEventsPaginated :many
+SELECT id, account_id, event_type, event_at, created_at
+FROM billing_events
+ORDER BY id DESC
+LIMIT ? OFFSET ?
+`
+
+type ListAllBillingEventsPaginatedParams struct {
+	Limit  int64 `db:"limit" json:"limit"`
+	Offset int64 `db:"offset" json:"offset"`
+}
+
+type ListAllBillingEventsPaginatedRow struct {
+	ID        int64     `db:"id" json:"id"`
+	AccountID string    `db:"account_id" json:"account_id"`
+	EventType string    `db:"event_type" json:"event_type"`
+	EventAt   time.Time `db:"event_at" json:"event_at"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListAllBillingEventsPaginated(ctx context.Context, arg ListAllBillingEventsPaginatedParams) ([]ListAllBillingEventsPaginatedRow, error) {
+	rows, err := q.query(ctx, q.listAllBillingEventsPaginatedStmt, listAllBillingEventsPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllBillingEventsPaginatedRow{}
+	for rows.Next() {
+		var i ListAllBillingEventsPaginatedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.EventType,
+			&i.EventAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBillingEventsForAccount = `-- name: ListBillingEventsForAccount :many

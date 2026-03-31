@@ -12,3 +12,12 @@ LIMIT ?;
 SELECT id, stripe_event_id, event_type, created_at
 FROM stripe_webhook_events
 ORDER BY created_at DESC;
+
+-- name: ListAllStripeWebhookEventsPaginated :many
+SELECT id, stripe_event_id, event_type, created_at
+FROM stripe_webhook_events
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: CountAllStripeWebhookEvents :one
+SELECT COUNT(*) FROM stripe_webhook_events;

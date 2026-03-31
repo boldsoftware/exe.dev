@@ -13,6 +13,15 @@ SELECT id, account_id, event_type, event_at, created_at
 FROM billing_events WHERE account_id = ?
 ORDER BY id DESC;
 
+-- name: ListAllBillingEventsPaginated :many
+SELECT id, account_id, event_type, event_at, created_at
+FROM billing_events
+ORDER BY id DESC
+LIMIT ? OFFSET ?;
+
+-- name: CountAllBillingEvents :one
+SELECT COUNT(*) FROM billing_events;
+
 -- name: ListSubscriptionEvents :many
 -- ListSubscriptionEvents returns subscription events for an account, ordered by time ascending.
 SELECT account_id, event_type, event_at

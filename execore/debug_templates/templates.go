@@ -67,6 +67,8 @@ func Parse(env stage.Env) (*template.Template, error) {
 			},
 			"hasPrefix":     strings.HasPrefix,
 			"urlPathEscape": url.PathEscape,
+			"add":           func(a, b int) int { return a + b },
+			"subtract":      func(a, b int) int { return a - b },
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})

@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const countAllStripeWebhookEvents = `-- name: CountAllStripeWebhookEvents :one
+SELECT COUNT(*) FROM stripe_webhook_events
+`
+
+func (q *Queries) CountAllStripeWebhookEvents(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countAllStripeWebhookEventsStmt, countAllStripeWebhookEvents)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertStripeWebhookEvent = `-- name: InsertStripeWebhookEvent :exec
 INSERT OR IGNORE INTO stripe_webhook_events (stripe_event_id, event_type, payload) VALUES (?, ?, ?)
 `
@@ -47,6 +58,53 @@ func (q *Queries) ListAllStripeWebhookEvents(ctx context.Context) ([]ListAllStri
 	items := []ListAllStripeWebhookEventsRow{}
 	for rows.Next() {
 		var i ListAllStripeWebhookEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StripeEventID,
+			&i.EventType,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllStripeWebhookEventsPaginated = `-- name: ListAllStripeWebhookEventsPaginated :many
+SELECT id, stripe_event_id, event_type, created_at
+FROM stripe_webhook_events
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListAllStripeWebhookEventsPaginatedParams struct {
+	Limit  int64 `db:"limit" json:"limit"`
+	Offset int64 `db:"offset" json:"offset"`
+}
+
+type ListAllStripeWebhookEventsPaginatedRow struct {
+	ID            int64     `db:"id" json:"id"`
+	StripeEventID string    `db:"stripe_event_id" json:"stripe_event_id"`
+	EventType     string    `db:"event_type" json:"event_type"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListAllStripeWebhookEventsPaginated(ctx context.Context, arg ListAllStripeWebhookEventsPaginatedParams) ([]ListAllStripeWebhookEventsPaginatedRow, error) {
+	rows, err := q.query(ctx, q.listAllStripeWebhookEventsPaginatedStmt, listAllStripeWebhookEventsPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllStripeWebhookEventsPaginatedRow{}
+	for rows.Next() {
+		var i ListAllStripeWebhookEventsPaginatedRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.StripeEventID,
