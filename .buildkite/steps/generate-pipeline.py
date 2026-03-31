@@ -6,6 +6,7 @@ from YAML segments in .buildkite/segments/::
   - commit-validation.yml  (always)
   - exe.yml                (if exe files changed) — base steps only
   - shelley.yml            (if shelley files changed)
+  - blog.yml               (if blog/ or cmd/blogd/ files changed)
   - format.yml             (always)
   - push.yml               (only for kite-queue-* branches)
 
@@ -47,7 +48,7 @@ TEST_LETTER_COUNTS = [
 
 
 def detect_changes():
-    """Return (exe_changed, shelley_changed) by diffing against origin/main."""
+    """Return (exe_changed, shelley_changed, blog_changed) by diffing against origin/main."""
     # Always fetch origin/main to ensure it's up-to-date. The CI checkout
     # only fetches the specific commit SHA, leaving origin/main stale from
     # a previous build. A stale origin/main causes the diff to include
@@ -62,17 +63,20 @@ def detect_changes():
     if not files:
         print("No files changed vs origin/main, defaulting to exe tests",
               file=sys.stderr)
-        return True, False
+        return True, False, False
 
     exe_changed = False
     shelley_changed = False
+    blog_changed = False
     for f in files:
         if f.startswith("shelley/") or f == ".github/workflows/shelley-tests.yml":
             shelley_changed = True
+        elif f.startswith("blog/") or f.startswith("cmd/blogd/"):
+            blog_changed = True
         else:
             exe_changed = True
 
-    return exe_changed, shelley_changed
+    return exe_changed, shelley_changed, blog_changed
 
 
 def load_segment(name):
@@ -322,7 +326,7 @@ def main():
     except FileNotFoundError:
         pass  # Not running in Buildkite
 
-    exe_changed, shelley_changed = detect_changes()
+    exe_changed, shelley_changed, blog_changed = detect_changes()
 
     branch = os.environ.get("BUILDKITE_BRANCH", "")
     is_queue = branch.startswith("kite-queue-")
@@ -336,6 +340,7 @@ def main():
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
+          f"blog_changed={blog_changed} "
           f"is_queue={is_queue} branch={branch} "
           f"e1e_shards={n_shards} vm_concurrency={vm_concurrency} "
           f"gomaxprocs={gomaxprocs or '(default)'} "
@@ -361,6 +366,10 @@ def main():
     # Conditional: shelley tests
     if shelley_changed:
         segments.append(load_segment("shelley.yml"))
+
+    # Conditional: blog tests
+    if blog_changed:
+        segments.append(load_segment("blog.yml"))
 
     # Always: formatting
     segments.append(load_segment("format.yml"))

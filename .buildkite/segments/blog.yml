@@ -1,0 +1,4 @@
+- label: ":pencil: blog tests"
+  key: test-blog
+  command: .buildkite/steps/test-blog.sh
+  timeout_in_minutes: 10

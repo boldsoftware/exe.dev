@@ -164,6 +164,7 @@ for commit in $commits; do
 
     has_exeuntu=false
     has_shelley=false
+    has_blog=false
     has_oss=false
     has_other=false
 
@@ -172,6 +173,7 @@ for commit in $commits; do
         exeuntu/*) has_exeuntu=true ;;
         shelley/*) has_shelley=true ;;
         .github/workflows/shelley-tests.yml) has_shelley=true ;;
+        blog/* | cmd/blogd/*) has_blog=true ;;
         oss/*) has_oss=true ;;
         *) has_other=true ;;
         esac
@@ -180,12 +182,13 @@ for commit in $commits; do
     count=0
     [ "$has_exeuntu" = true ] && count=$((count + 1))
     [ "$has_shelley" = true ] && count=$((count + 1))
+    [ "$has_blog" = true ] && count=$((count + 1))
     [ "$has_oss" = true ] && count=$((count + 1))
     [ "$has_other" = true ] && count=$((count + 1))
 
     if [ "$count" -gt 1 ]; then
         echo "❌ ERROR: Commit $(git log --oneline -n 1 "$commit") mixes files across domains."
-        echo "Each commit must touch only exeuntu/, only shelley/, only oss/, or only other files."
+        echo "Each commit must touch only exeuntu/, only shelley/, only blog/, only oss/, or only other files."
         echo "Files in this commit:"
         echo "$files"
         has_errors=1
