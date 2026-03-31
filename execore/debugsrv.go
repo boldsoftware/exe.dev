@@ -2659,7 +2659,7 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Truncate(time.Second)
+	now := time.Now()
 	trialEnd := now.AddDate(0, 0, days)
 
 	err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {

@@ -1113,7 +1113,7 @@ func (m *Manager) ListSubscribersByPlanCategory(ctx context.Context, planID stri
 // to another, closing the old plan and inserting the new one within a single
 // transaction. Returns the number of accounts migrated.
 func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
-	now := time.Now().UTC()
+	now := time.Now()
 	changedBy := fmt.Sprintf("admin:migrate:%s->%s", fromPlanID, toPlanID)
 
 	// Collect account IDs first.
