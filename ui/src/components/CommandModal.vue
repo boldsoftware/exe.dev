@@ -9,7 +9,7 @@
         <!-- eslint-disable-next-line vue/no-v-html -- descriptions are built from trusted code, not user data -->
         <div v-if="description" ref="descRef" class="modal-description" v-html="description"></div>
         <div class="cmd-display">
-          <code>{{ displayCommand }}</code>
+          <code>{{ shownCommand }}</code>
         </div>
         <input
           v-if="needsInput"
@@ -20,9 +20,12 @@
           autocomplete="off"
           @keydown.enter="run"
         />
-        <div v-if="result.output || result.error" class="cmd-result" :class="{ success: result.success, error: !result.success }">
+        <div v-if="(result.output || result.error) && !formattedResult" class="cmd-result" :class="{ success: result.success, error: !result.success }">
           {{ result.output || result.error }}
         </div>
+        <!-- Formatted success result (e.g. share-link with copy button) -->
+        <!-- eslint-disable-next-line vue/no-v-html -- built from trusted JSON data -->
+        <div v-if="formattedResult" class="cmd-result success formatted" v-html="formattedResult"></div>
       </div>
       <div class="modal-footer">
         <button v-if="!cmd.success.value" class="btn btn-secondary" @click="close">Cancel</button>
@@ -56,10 +59,12 @@ const props = defineProps<{
   title: string
   description?: string
   command?: string
+  displayCommand?: string
   commandPrefix?: string
   inputPlaceholder?: string
   defaultValue?: string
   danger?: boolean
+  successFormat?: string
 }>()
 
 const emit = defineEmits<{
@@ -72,6 +77,7 @@ const inputValue = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const descRef = ref<HTMLElement | null>(null)
 const result = ref({ output: '', error: '', success: false })
+const formattedResult = ref('')
 
 function injectPreCopyButtons() {
   if (!descRef.value) return
@@ -110,6 +116,12 @@ const displayCommand = computed(() => {
   return props.commandPrefix || ''
 })
 
+/** Command text shown in the UI (may hide internal flags like --json). */
+const shownCommand = computed(() => {
+  if (props.displayCommand) return props.displayCommand
+  return displayCommand.value
+})
+
 const fullCommand = computed(() => {
   if (props.command) return props.command
   if (props.commandPrefix && inputValue.value.trim()) {
@@ -117,6 +129,60 @@ const fullCommand = computed(() => {
   }
   return ''
 })
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+function formatSuccessResult(output: string, format: string): string {
+  if (format === 'share-link') {
+    try {
+      const data = JSON.parse(output)
+      const h = escapeHtml
+      return `<div class="share-link-result">
+        <div class="share-link-check">✓ Share link created</div>
+        <div class="share-link-field">
+          <div class="share-link-label">Share URL</div>
+          <div class="share-link-copy-row">
+            <code class="share-link-url">${h(data.url)}</code>
+            <button class="share-link-copy-btn" data-copy-url title="Copy URL">Copy</button>
+          </div>
+        </div>
+        <div class="share-link-revoke">To revoke: <code>share remove-link ${h(data.vm_name)} ${h(data.token)}</code></div>
+      </div>`
+    } catch {
+      return ''
+    }
+  }
+  return ''
+}
+
+function attachCopyHandlers() {
+  // Attach click handler for the copy button rendered via v-html
+  const btn = document.querySelector('[data-copy-url]') as HTMLButtonElement | null
+  if (!btn) return
+  const url = btn.closest('.share-link-result')?.querySelector('.share-link-url')?.textContent || ''
+  btn.removeAttribute('data-copy-url')
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(url).then(() => {
+      btn.textContent = 'Copied!'
+      setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+    }).catch(() => {
+      // Fallback
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.style.cssText = 'position:fixed;opacity:0'
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy') } catch { /* noop */ }
+      document.body.removeChild(ta)
+      btn.textContent = 'Copied!'
+      setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+    })
+  })
+}
 
 function onEscapeKey(e: KeyboardEvent) {
   if (e.key === 'Escape') close()
@@ -127,6 +193,7 @@ watch(() => props.visible, (v) => {
     inputValue.value = props.defaultValue || ''
     cmd.reset()
     result.value = { output: '', error: '', success: false }
+    formattedResult.value = ''
     nextTick(() => {
       injectPreCopyButtons()
       inputRef.value?.focus()
@@ -152,6 +219,12 @@ async function run() {
     success: !!res.success,
   }
   if (res.success) {
+    if (props.successFormat) {
+      formattedResult.value = formatSuccessResult(res.output || '', props.successFormat)
+    }
+    if (formattedResult.value) {
+      nextTick(attachCopyHandlers)
+    }
     emit('success', res.output || '')
   }
 }
@@ -377,5 +450,77 @@ function close() {
 
 .btn-danger:hover:not(:disabled) {
   background: var(--danger-hover);
+}
+
+/* Formatted results override pre-wrap from plain .cmd-result */
+.cmd-result.formatted {
+  white-space: normal;
+  font-family: inherit;
+}
+
+.cmd-result :deep(.share-link-check) {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.cmd-result :deep(.share-link-label) {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.cmd-result :deep(.share-link-copy-row) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cmd-result :deep(.share-link-url) {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.cmd-result :deep(.share-link-copy-btn) {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--surface-card);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cmd-result :deep(.share-link-copy-btn:hover) {
+  background: var(--surface-subtle);
+}
+
+.cmd-result :deep(.share-link-revoke) {
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.cmd-result :deep(.share-link-revoke code) {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  background: var(--surface-card);
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
 }
 </style>

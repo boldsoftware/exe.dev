@@ -407,6 +407,7 @@ class CommandModal {
     #isDanger = false;
     #commandSucceeded = false;
     #needsReload = false;
+    #onSuccess = null;
 
     // Arrow function to preserve 'this' binding for event listener
     #handleEscape = (e) => {
@@ -430,6 +431,34 @@ class CommandModal {
         return div.innerHTML;
     }
 
+    /** Public escape for use in onSuccess callbacks. */
+    escapeHtml(text) { return this.#escapeHtml(text); }
+
+    /** Copy text to clipboard, showing feedback on the button. */
+    copyText(button, text) {
+        const orig = button.textContent;
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => {
+                button.textContent = 'Copied!';
+                setTimeout(() => { button.textContent = orig; }, 1500);
+            }).catch(() => this.#fallbackCopy(button, text, orig));
+        } else {
+            this.#fallbackCopy(button, text, orig);
+        }
+    }
+
+    #fallbackCopy(button, text, origLabel) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch {}
+        document.body.removeChild(ta);
+        button.textContent = 'Copied!';
+        setTimeout(() => { button.textContent = origLabel; }, 1500);
+    }
+
     #getFullCommand() {
         if (this.#inputEl) {
             const input = this.#inputEl.value.trim();
@@ -448,9 +477,13 @@ class CommandModal {
         }
     }
 
-    #showSuccess(message) {
+    #showSuccess(message, html) {
         this.#output.classList.add('visible', 'success');
-        this.#output.textContent = message || 'Done';
+        if (html) {
+            this.#output.innerHTML = html;
+        } else {
+            this.#output.textContent = message || 'Done';
+        }
         this.#runBtn.textContent = 'Run';
         this.#runBtn.disabled = true;
         this.#commandSucceeded = true;
@@ -469,10 +502,12 @@ class CommandModal {
      * @param {Object} options
      * @param {string} options.title - Modal title
      * @param {string} [options.command] - Full command to run (no input needed)
+     * @param {string} [options.displayCommand] - Command shown in the UI (if different from command)
      * @param {string} [options.commandPrefix] - Command prefix (input appended)
      * @param {string} [options.inputPlaceholder] - Placeholder for input field
      * @param {string} [options.defaultValue] - Default value for input field
      * @param {boolean} [options.danger] - Use red "Run" button
+     * @param {function} [options.onSuccess] - (output) => html|null; custom HTML for success
      */
     open(options) {
         if (!this.#overlay) this.#init();
@@ -493,6 +528,7 @@ class CommandModal {
         this.#runBtn.textContent = 'Run';
         this.#commandSucceeded = false;
         this.#needsReload = false;
+        this.#onSuccess = options.onSuccess || null;
 
         // Set button style
         this.#runBtn.classList.toggle('danger', this.#isDanger);
@@ -509,7 +545,8 @@ class CommandModal {
         if (options.command) {
             this.#currentCommand = options.command;
             this.#inputEl = null;
-            this.#display.innerHTML = `<span class="cmd-text-static">${this.#escapeHtml(options.command)}</span>`;
+            const shown = options.displayCommand || options.command;
+            this.#display.innerHTML = `<span class="cmd-text-static">${this.#escapeHtml(shown)}</span>`;
         } else if (options.commandPrefix) {
             this.#currentCommand = options.commandPrefix;
             this.#display.textContent = options.commandPrefix;
@@ -586,7 +623,11 @@ class CommandModal {
             const result = await response.json();
 
             if (result.success) {
-                this.#showSuccess(result.output);
+                let html = null;
+                if (this.#onSuccess) {
+                    html = this.#onSuccess(result.output);
+                }
+                this.#showSuccess(result.output, html);
             } else {
                 this.#showError(result.output || result.error);
             }
@@ -608,8 +649,40 @@ class CommandModal {
     static createShareLink(boxName) {
         cmdModal.open({
             title: 'Create Share Link',
-            command: `share add-link ${shellQuote(boxName)}`,
-            description: 'A share link allows anyone with the link to create an account and then access this VM\'s web server. <a href="/docs/sharing">Docs</a>'
+            command: `share add-link ${shellQuote(boxName)} --json`,
+            displayCommand: `share add-link ${shellQuote(boxName)}`,
+            description: 'A share link allows anyone with the link to create an account and access this VM\'s web server. <a href="/docs/sharing">Docs</a>',
+            onSuccess(output) {
+                try {
+                    const data = JSON.parse(output);
+                    const url = data.url;
+                    const h = (s) => cmdModal.escapeHtml(s);
+                    const html = `<div class="share-link-result">
+                        <div class="share-link-check">✓ Share link created</div>
+                        <div class="share-link-field">
+                            <label>Share URL</label>
+                            <div class="share-link-copy-row">
+                                <code class="share-link-url">${h(url)}</code>
+                                <button class="btn btn-copy" data-copy-text title="Copy URL">Copy</button>
+                            </div>
+                        </div>
+                        <div class="share-link-revoke">
+                            To revoke: <code>share remove-link ${h(data.vm_name)} ${h(data.token)}</code>
+                        </div>
+                    </div>`;
+                    // Attach click handler after DOM insertion via setTimeout
+                    setTimeout(() => {
+                        const btn = document.querySelector('[data-copy-text]');
+                        if (btn) {
+                            btn.removeAttribute('data-copy-text');
+                            btn.addEventListener('click', () => cmdModal.copyText(btn, url));
+                        }
+                    });
+                    return html;
+                } catch {
+                    return null; // fall back to default
+                }
+            }
         });
     }
 

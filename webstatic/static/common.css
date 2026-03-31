@@ -349,6 +349,76 @@ table a:hover {
   color: var(--color-danger);
 }
 
+/* Share link result (used by onSuccess HTML) */
+.share-link-result {
+  font-size: var(--text-xs);
+}
+
+.share-link-check {
+  font-weight: 600;
+  color: var(--color-success);
+  margin-bottom: 12px;
+}
+
+.share-link-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.share-link-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-link-url {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  word-break: break-all;
+  user-select: all;
+}
+
+.btn-copy {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-copy:hover {
+  background: var(--color-bg-subtle);
+}
+
+.share-link-revoke {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.share-link-revoke code {
+  font-size: 11px;
+  background: var(--color-surface);
+  padding: 2px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
 .cmd-modal-buttons {
   display: flex;
   gap: 8px;

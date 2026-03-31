@@ -2,6 +2,7 @@ package execore
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -178,6 +179,7 @@ func TestIsCommandAllowed(t *testing.T) {
 		{"share add mybox user@example.com", true},
 		{"share remove mybox user@example.com", true},
 		{"share add-link mybox", true},
+		{"share add-link mybox --json", true},
 		{"share remove-link mybox token123", true},
 		{"share set-public mybox", true},
 		{"share set-private mybox", true},
@@ -363,5 +365,85 @@ func TestAPICheckoutParams(t *testing.T) {
 	server.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Expected 401 for unauthenticated, got %d", w.Code)
+	}
+}
+
+func TestShareAddLinkJSONViaWeb(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// Create a user and get auth cookie.
+	email := "share-link-json@example.com"
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, server.env.WebHost)
+	if err != nil {
+		t.Fatalf("create auth cookie: %v", err)
+	}
+
+	// Create a box owned by the user.
+	boxName := "share-link-test"
+	_, err = server.preCreateBox(t.Context(), preCreateBoxOptions{
+		userID:        user.UserID,
+		ctrhost:       "test-host",
+		name:          boxName,
+		image:         "exeuntu-24.04",
+		region:        "pdx",
+		noShard:       true,
+		allocatedCPUs: 1,
+	})
+	if err != nil {
+		t.Fatalf("preCreateBox: %v", err)
+	}
+
+	// Run share add-link --json via the web /cmd endpoint.
+	reqBody := fmt.Sprintf(`{"command": "share add-link %s --json"}`, boxName)
+	req := httptest.NewRequest("POST", "/cmd", strings.NewReader(reqBody))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Parse the outer web response.
+	var resp struct {
+		Success bool   `json:"success"`
+		Output  string `json:"output"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse web response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("command failed: %s", resp.Output)
+	}
+
+	// Parse the inner JSON produced by --json.
+	var data struct {
+		Status string `json:"status"`
+		VMName string `json:"vm_name"`
+		Token  string `json:"token"`
+		URL    string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(resp.Output), &data); err != nil {
+		t.Fatalf("parse share-link JSON: %v\nraw output: %s", err, resp.Output)
+	}
+
+	if data.Status != "success" {
+		t.Errorf("expected status=success, got %q", data.Status)
+	}
+	if data.VMName != boxName {
+		t.Errorf("expected vm_name=%q, got %q", boxName, data.VMName)
+	}
+	if data.Token == "" {
+		t.Error("expected non-empty token")
+	}
+	if !strings.Contains(data.URL, boxName) || !strings.Contains(data.URL, data.Token) {
+		t.Errorf("URL %q should contain box name and token", data.URL)
 	}
 }

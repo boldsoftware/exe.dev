@@ -117,10 +117,12 @@
       :title="modal.title"
       :description="modal.description"
       :command="modal.command"
+      :display-command="modal.displayCommand"
       :command-prefix="modal.commandPrefix"
       :input-placeholder="modal.inputPlaceholder"
       :default-value="modal.defaultValue"
       :danger="modal.danger"
+      :success-format="modal.successFormat"
       @close="closeModal"
       @success="onModalSuccess"
     />
@@ -293,10 +295,12 @@ const modal = reactive({
   title: '',
   description: '',
   command: '',
+  displayCommand: '',
   commandPrefix: '',
   inputPlaceholder: '',
   defaultValue: '',
   danger: false,
+  successFormat: '',
 })
 
 watch(searchQuery, (val) => syncFilterToURL(val))
@@ -487,8 +491,10 @@ function handleAction(action: ActionEvent) {
     case 'share-link':
       openModal({
         title: 'Create Share Link',
-        command: `share add-link ${q}`,
+        command: `share add-link ${q} --json`,
+        displayCommand: `share add-link ${q}`,
         description: 'A share link allows anyone with the link to create an account and access this VM\'s web server. <a href="/docs/sharing" target="_blank" rel="noopener noreferrer">Docs</a>',
+        successFormat: 'share-link',
       })
       break
     case 'remove-share':
@@ -563,10 +569,12 @@ function openModal(opts: Partial<typeof modal>) {
     title: '',
     description: '',
     command: '',
+    displayCommand: '',
     commandPrefix: '',
     inputPlaceholder: '',
     defaultValue: '',
     danger: false,
+    successFormat: '',
     ...opts,
   })
 }
