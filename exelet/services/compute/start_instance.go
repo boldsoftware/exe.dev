@@ -127,6 +127,19 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 	// update network interface (ip= boot arg is derived from this at runtime)
 	vmCfg.NetworkInterface = networkInterface
 
+	// Persist the network interface to the instance config before starting the
+	// VMM. The IP lease reconciler (reconcileIPLeases) considers any IPAM lease
+	// whose IP does not appear in a persisted instance config to be orphaned and
+	// releases it. Between CreateInterface above and vmm.Start below there is a
+	// window where the lease exists in IPAM but the config on disk still has
+	// NetworkInterface==nil. A concurrent reconciliation triggered by
+	// DeleteInstance can race into that window, release our freshly-allocated IP,
+	// and hand it to another VM — causing an IP collision.
+	iCfg.VMConfig.NetworkInterface = networkInterface
+	if err := s.saveInstanceConfig(iCfg); err != nil {
+		return err
+	}
+
 	if isMigratedVM {
 		// For migrated VMs, create the VMM config with network interface already set
 		if err := s.vmm.Create(ctx, vmCfg); err != nil {
