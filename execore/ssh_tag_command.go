@@ -11,7 +11,7 @@ import (
 	"exe.dev/exemenu"
 )
 
-var tagNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+var tagNameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	deleteMode := cc.FlagSet.Lookup("d").Value.String() == "true"
@@ -27,7 +27,7 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 	CommandLogAddAttr(ctx, slog.String("tag_name", tagName))
 
 	if !tagNameRe.MatchString(tagName) {
-		return cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_]*", tagName)
+		return cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_-]*", tagName)
 	}
 
 	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)

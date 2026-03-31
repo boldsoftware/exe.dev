@@ -9,7 +9,7 @@ integrations attach testint tag:INVALID
 - help to see a list of commands
 
 PROMPT ▶ integrations attach testint tag:INVALID
-invalid tag name "INVALID": must match ^[a-z][a-z0-9_]*$
+invalid tag name "INVALID": must match ^[a-z][a-z0-9_-]*$
 PROMPT ▶ integrations attach testint foo:bar
 invalid attachment spec "foo:bar": must be vm:<name>, tag:<name>, or auto:all
 PROMPT ▶ integrations attach testint vm:nonexistent-vm-xyz

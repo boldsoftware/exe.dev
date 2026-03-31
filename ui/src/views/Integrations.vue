@@ -357,9 +357,18 @@
             <label>Auth method</label>
             <select v-model="proxyModal.authMethod" class="form-input">
               <option value="none">None</option>
+              <option value="basic">HTTP Basic Auth</option>
               <option value="bearer">Bearer Token</option>
               <option value="header">Custom Header</option>
             </select>
+          </div>
+          <div v-if="proxyModal.authMethod === 'basic'" class="form-row">
+            <label>Username</label>
+            <input v-model="proxyModal.basicUser" class="form-input" placeholder="username" autocomplete="off" />
+          </div>
+          <div v-if="proxyModal.authMethod === 'basic'" class="form-row">
+            <label>Password</label>
+            <input v-model="proxyModal.basicPass" type="password" class="form-input" placeholder="password" autocomplete="new-password" />
           </div>
           <div v-if="proxyModal.authMethod === 'bearer'" class="form-row">
             <label>Token</label>
@@ -575,6 +584,8 @@ const proxyModal = reactive({
   name: '',
   target: '',
   authMethod: 'none',
+  basicUser: '',
+  basicPass: '',
   bearer: '',
   header: '',
   attachments: [] as string[],
@@ -727,6 +738,25 @@ const ghBuiltCommands = computed(() => {
   return cmds
 })
 
+// Auto-detect basic auth credentials in pasted target URL
+watch(() => proxyModal.target, (newTarget) => {
+  if (proxyModal.authMethod !== 'none' && proxyModal.authMethod !== 'basic') return
+  try {
+    const url = new URL(newTarget)
+    if (url.username || url.password) {
+      proxyModal.authMethod = 'basic'
+      proxyModal.basicUser = decodeURIComponent(url.username)
+      proxyModal.basicPass = decodeURIComponent(url.password)
+      // Strip credentials from the displayed target URL
+      url.username = ''
+      url.password = ''
+      proxyModal.target = url.toString()
+    }
+  } catch {
+    // Not a valid URL yet, ignore
+  }
+})
+
 // Keep default tag:<name> attachment in sync with proxy name
 watch(() => proxyModal.name.trim(), (newName, oldName) => {
   if (oldName) {
@@ -740,11 +770,31 @@ watch(() => proxyModal.name.trim(), (newName, oldName) => {
   }
 })
 
+// Proxy modal: build target URL with basic auth credentials embedded if needed
+function proxyEffectiveTarget(): string {
+  const raw = proxyModal.target.trim()
+  if (!raw) return ''
+  if (proxyModal.authMethod !== 'basic') return raw
+  const user = proxyModal.basicUser.trim()
+  const pass = proxyModal.basicPass
+  if (!user && !pass) return raw
+  try {
+    const url = new URL(raw)
+    url.username = user
+    url.password = pass
+    return url.toString()
+  } catch {
+    // If the URL is malformed, just show it as-is
+    return raw
+  }
+}
+
 // Proxy modal command builder (returns array of commands)
 const proxyBuiltCommands = computed(() => {
   if (!proxyModal.name.trim() || !proxyModal.target.trim()) return [] as string[]
   const name = proxyModal.name.trim()
-  let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(proxyModal.target.trim())}`
+  const target = proxyEffectiveTarget()
+  let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(target)}`
   if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
     cmd += ` --bearer=${shellQuote(proxyModal.bearer.trim())}`
   } else if (proxyModal.authMethod === 'header' && proxyModal.header.trim()) {
@@ -1058,6 +1108,8 @@ function openAddHTTPProxy() {
   proxyModal.name = ''
   proxyModal.target = ''
   proxyModal.authMethod = 'none'
+  proxyModal.basicUser = ''
+  proxyModal.basicPass = ''
   proxyModal.bearer = ''
   proxyModal.header = ''
   proxyModal.attachments = []
