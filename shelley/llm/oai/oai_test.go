@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -1322,5 +1323,88 @@ func TestServiceDo(t *testing.T) {
 	}
 	if resp.Usage.OutputTokens != 20 {
 		t.Errorf("resp.Usage.OutputTokens = %d, expected 20", resp.Usage.OutputTokens)
+	}
+}
+
+func TestServiceDoProxyPlainTextError(t *testing.T) {
+	// Simulate a proxy returning a plain-text error (not JSON).
+	// Previously this would fail to parse as *openai.APIError and
+	// return immediately without retrying. Now it should be handled
+	// via *openai.RequestError and retried as a 502.
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			// Return plain-text 502 like the integration proxy used to
+			http.Error(w, "integration proxy: upstream request failed (trace: abc123)", http.StatusBadGateway)
+			return
+		}
+		// Third attempt succeeds
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+			ID:     "chatcmpl-test",
+			Object: "chat.completion",
+			Model:  "gpt-4.1",
+			Choices: []openai.ChatCompletionChoice{{
+				Index:        0,
+				Message:      openai.ChatCompletionMessage{Role: "assistant", Content: "ok"},
+				FinishReason: "stop",
+			}},
+		})
+	}))
+	defer server.Close()
+
+	svc := &Service{
+		APIKey:   "test-key",
+		Model:    GPT41,
+		ModelURL: server.URL + "/v1",
+	}
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hi"}},
+		}},
+	}
+
+	resp, err := svc.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do() error = %v, expected success after retry", err)
+	}
+	if resp == nil {
+		t.Fatal("Do() returned nil response")
+	}
+	if attempts != 3 {
+		t.Errorf("expected 3 attempts (2 failures + 1 success), got %d", attempts)
+	}
+}
+
+func TestServiceDoProxyPlainText4xxError(t *testing.T) {
+	// A 403 plain-text error should NOT be retried.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "integration not found or not attached to this VM", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	svc := &Service{
+		APIKey:   "test-key",
+		Model:    GPT41,
+		ModelURL: server.URL + "/v1",
+	}
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hi"}},
+		}},
+	}
+
+	_, err := svc.Do(context.Background(), req)
+	if err == nil {
+		t.Fatal("Do() expected error for 403, got nil")
+	}
+	if !strings.Contains(err.Error(), "status 403") {
+		t.Errorf("expected error to mention status 403, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "integration not found") {
+		t.Errorf("expected error to contain proxy message, got: %v", err)
 	}
 }

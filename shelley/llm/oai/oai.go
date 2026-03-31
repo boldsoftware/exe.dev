@@ -825,35 +825,52 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			continue
 		}
 
+		// Extract HTTP status code from either APIError or RequestError.
+		// RequestError occurs when the response body isn't valid JSON
+		// (e.g., from a proxy returning plain text).
+		var (
+			statusCode int
+			errMsg     string
+		)
 		var apiErr *openai.APIError
-		if ok := errors.As(err, &apiErr); !ok {
-			// Not an OpenAI API error, return immediately with accumulated errors
+		var reqErr *openai.RequestError
+		switch {
+		case errors.As(err, &apiErr):
+			statusCode = apiErr.HTTPStatusCode
+			errMsg = apiErr.Error()
+		case errors.As(err, &reqErr):
+			statusCode = reqErr.HTTPStatusCode
+			// Surface the body for proxy errors so the user sees
+			// the actual upstream message (e.g., trace IDs).
+			errMsg = fmt.Sprintf("status %d: %s", reqErr.HTTPStatusCode, strings.TrimSpace(string(reqErr.Body)))
+		default:
+			// Not an OpenAI error at all (network, TLS, etc.), return immediately
 			return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: url=%s model=%s: %w", attempts+1, time.Now().Format(time.DateTime), fullURL, model.ModelName, err))
 		}
 
 		now := time.Now().Format(time.DateTime)
 		switch {
-		case apiErr.HTTPStatusCode >= 500:
+		case statusCode >= 500:
 			// Server error, try again with backoff
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", errMsg, "status_code", statusCode, "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, statusCode, fullURL, model.ModelName, errMsg))
 			continue
 
-		case apiErr.HTTPStatusCode == 429:
+		case statusCode == 429:
 			// Rate limited, accumulate error and retry
-			slog.WarnContext(ctx, "openai_request_rate_limited", "error", apiErr.Error(), "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (rate limited, url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_rate_limited", "error", errMsg, "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (rate limited, url=%s, model=%s): %s", attempts+1, now, statusCode, fullURL, model.ModelName, errMsg))
 			continue
 
-		case apiErr.HTTPStatusCode >= 400 && apiErr.HTTPStatusCode < 500:
+		case statusCode >= 400 && statusCode < 500:
 			// Client error, probably unrecoverable
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", errMsg, "status_code", statusCode, "url", fullURL, "model", model.ModelName)
+			return nil, errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, statusCode, fullURL, model.ModelName, errMsg))
 
 		default:
 			// Other error, accumulate and retry
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
-			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", errMsg, "status_code", statusCode, "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("attempt %d at %s: status %d (url=%s, model=%s): %s", attempts+1, now, statusCode, fullURL, model.ModelName, errMsg))
 			continue
 		}
 	}
