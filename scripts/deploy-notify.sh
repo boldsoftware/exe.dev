@@ -38,7 +38,7 @@ deploy_notify_start() {
     local hostname_flag=""
 
     sha=$(git rev-parse --short HEAD)
-    deployer=$(whoami)
+    deployer=${DEPLOYER:-$(whoami)}
 
     if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
         dirty_flag="--dirty"
