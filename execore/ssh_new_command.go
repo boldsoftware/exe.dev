@@ -526,11 +526,15 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return
 		}
 
-		// Determine SSH user based on image
-		// Check if this is an exeuntu image (handle various forms)
-		sshUser := "root"
-		if strings.Contains(image, "exeuntu") {
-			sshUser = "exedev"
+		// Determine SSH user: prefer the exe.dev/login-user label from the image,
+		// fall back to "exedev" for exeuntu images, default to "root".
+		sshUser := instance.LoginUser
+		if sshUser == "" {
+			if strings.Contains(image, "exeuntu") {
+				sshUser = "exedev"
+			} else {
+				sshUser = "root"
+			}
 		}
 
 		// Reconstruct ExposedPorts map from proto format

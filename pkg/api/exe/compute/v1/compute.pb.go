@@ -1966,7 +1966,8 @@ type Instance struct {
 	Placement     *Placement             `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`
 	SSHPort       int32                  `protobuf:"varint,10,opt,name=ssh_port,json=sshPort,proto3" json:"ssh_port,omitempty"`
 	ExposedPorts  []*ExposedPort         `protobuf:"bytes,11,rep,name=exposed_ports,json=exposedPorts,proto3" json:"exposed_ports,omitempty"`
-	GroupID       string                 `protobuf:"bytes,12,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"` // Group ID for per-account cgroup grouping
+	GroupID       string                 `protobuf:"bytes,12,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`       // Group ID for per-account cgroup grouping
+	LoginUser     string                 `protobuf:"bytes,13,opt,name=login_user,json=loginUser,proto3" json:"login_user,omitempty"` // Login user from image label (exe.dev/login-user)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2081,6 +2082,13 @@ func (x *Instance) GetExposedPorts() []*ExposedPort {
 func (x *Instance) GetGroupID() string {
 	if x != nil {
 		return x.GroupID
+	}
+	return ""
+}
+
+func (x *Instance) GetLoginUser() string {
+	if x != nil {
+		return x.LoginUser
 	}
 	return ""
 }
@@ -5214,7 +5222,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x14GetSystemInfoRequest\"E\n" +
 	"\x15GetSystemInfoResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x12\n" +
-	"\x04arch\x18\x02 \x01(\tR\x04arch\"\xad\x03\n" +
+	"\x04arch\x18\x02 \x01(\tR\x04arch\"\xcc\x03\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -5230,7 +5238,9 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\bssh_port\x18\n" +
 	" \x01(\x05R\asshPort\x12@\n" +
 	"\rexposed_ports\x18\v \x03(\v2\x1b.exe.compute.v1.ExposedPortR\fexposedPorts\x12\x19\n" +
-	"\bgroup_id\x18\f \x01(\tR\agroupId\"\xf7\x02\n" +
+	"\bgroup_id\x18\f \x01(\tR\agroupId\x12\x1d\n" +
+	"\n" +
+	"login_user\x18\r \x01(\tR\tloginUser\"\xf7\x02\n" +
 	"\bVMConfig\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +

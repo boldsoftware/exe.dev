@@ -197,6 +197,7 @@ message Instance {
   int32 ssh_port = 10;
   repeated ExposedPort exposed_ports = 11;
   string group_id = 12;  // Group ID for per-account cgroup grouping
+  string login_user = 13; // Login user from image label (exe.dev/login-user)
 }
 
 message VMConfig {

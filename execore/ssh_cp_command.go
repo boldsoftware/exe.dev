@@ -366,10 +366,15 @@ done:
 		return cloneErr
 	}
 
-	// Determine SSH user based on source image
-	sshUser := "root"
-	if strings.Contains(sourceBox.Image, "exeuntu") {
-		sshUser = "exedev"
+	// Determine SSH user: prefer the exe.dev/login-user label from the image,
+	// fall back to "exedev" for exeuntu images, default to "root".
+	sshUser := clonedInstance.LoginUser
+	if sshUser == "" {
+		if strings.Contains(sourceBox.Image, "exeuntu") {
+			sshUser = "exedev"
+		} else {
+			sshUser = "root"
+		}
 	}
 
 	// Update box with container info

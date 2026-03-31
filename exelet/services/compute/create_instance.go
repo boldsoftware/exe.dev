@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -728,6 +730,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		SSHPort:      int32(sshPort), // SSH proxy port
 		ExposedPorts: exposedPorts,
 		GroupID:      req.GroupID,
+		LoginUser:    loginUserFromImageConfig(imageConfig),
 	}
 
 	if err := s.saveInstanceConfig(i); err != nil {
@@ -752,6 +755,15 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	return i, nil
+}
+
+// loginUserFromImageConfig reads the exe.dev/login-user label from the OCI image config.
+// This allows custom images to specify which user SSH sessions should use.
+func loginUserFromImageConfig(imageConfig *ocispec.Image) string {
+	if imageConfig == nil {
+		return ""
+	}
+	return imageConfig.Config.Labels[config.InstanceExeLabelLoginUser]
 }
 
 // reservedBootArgPrefixes are boot arg prefixes managed by the VMM at runtime.
