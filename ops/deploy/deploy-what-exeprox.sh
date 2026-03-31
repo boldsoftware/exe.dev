@@ -23,7 +23,8 @@ if [ -n "$1" ]; then
     fi
 else
     # Discover all exeprox prod hosts from prometheus.yml
-    HOSTS=$(grep -oE "exeprox-[a-z0-9]+-prod-[0-9]+" "$REPO_ROOT/observability/prometheus.yml" | sort -u)
+    # Matches: exeprox-lax2-prod-01, exeprox-atl-na-01, exeprox-na-chi-01
+    HOSTS=$(grep -oE "exeprox-[a-z0-9]+-(prod|na)-[0-9]+|exeprox-na-[a-z0-9]+-[0-9]+" "$REPO_ROOT/observability/prometheus.yml" | sort -u)
     if [ -z "$HOSTS" ]; then
         echo "😞 could not discover exeprox hosts from prometheus.yml"
         exit 1
