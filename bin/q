@@ -372,6 +372,7 @@ USER_DEFAULTS = {
     "josharian@gmail.com":       ["--no-format", "-k", "--retries", "3"],
     "philip@bold.dev":           ["--kite", "--slug", "--no-generate"],
     "philip.zeyliger@gmail.com": ["--kite", "--slug", "--no-generate"],
+    "david@zentus.com":          ["--kite"],
 }
 
 
