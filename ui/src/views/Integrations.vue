@@ -162,6 +162,12 @@
                 {{ ig.attachments.length > 0 ? '+' : '+ attach' }}
               </button>
             </div>
+            <div class="usage-rows">
+              <div class="usage-row">
+                <code>{{ integrationScheme }}://{{ ig.name }}.int.{{ boxHost }}/</code>
+                <CopyButton :text="`${integrationScheme}://${ig.name}.int.${boxHost}/`" title="Copy" />
+              </div>
+            </div>
           </div>
           <div class="integration-actions">
             <button class="btn btn-danger" @click="removeIntegration(ig.name)">Remove</button>
