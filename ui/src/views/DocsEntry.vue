@@ -284,6 +284,7 @@ watch(
   /* Override the parent .content max-width by expanding */
   margin: -24px -20px;
   padding: 0;
+  background: var(--surface-card);
 }
 
 .loading-state, .error-state {
