@@ -27,15 +27,28 @@ NODE_BIN     := $(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin
 NPM          := $(NODE_BIN)/npm
 NODE         := $(NODE_BIN)/node
 export PATH  := $(CURDIR)/$(NODE_BIN):$(PATH)
+# Ensure fully non-interactive builds (corepack download prompts, npm ci hints, etc.)
+export COREPACK_ENABLE_AUTO_PIN := 0
+export CI := 1
 
-$(NPM):
+$(NODE_BIN)/.corepack-enabled:
 	@mkdir -p $(NODE_DIR)
-	@echo "Downloading Node.js v$(NODE_VERSION) ($(NODE_OS)-$(NODE_ARCH))..."
-	@curl -fsSL $(NODE_URL) | tar -xJ -C $(NODE_DIR)
-	@touch $@
-	@echo "Node.js v$(NODE_VERSION) installed to $(NODE_BIN)"
+	@if [ ! -f "$@" ]; then \
+		echo "Downloading Node.js v$(NODE_VERSION) ($(NODE_OS)-$(NODE_ARCH))..."; \
+		tmp=$$(mktemp -d); \
+		curl -fsSL $(NODE_URL) | tar -xJ -C "$$tmp"; \
+		"$$tmp/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin/corepack" enable \
+			--install-directory "$$tmp/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin"; \
+		touch "$$tmp/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin/.corepack-enabled"; \
+		mv -Tf "$$tmp/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)" \
+			"$(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)" 2>/dev/null \
+			|| mv -f "$$tmp/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)" \
+				"$(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)"; \
+		rm -rf "$$tmp"; \
+	fi
+	@echo "Node.js v$(NODE_VERSION) ready in $(NODE_BIN)"
 
-node: $(NPM)
+node: $(NODE_BIN)/.corepack-enabled
 	@echo "node: $$($(NODE) --version)"
 	@echo "npm:  $$($(NPM) --version)"
 	@echo "PATH: $(NODE_BIN)"
@@ -46,13 +59,7 @@ build-server: build-ui
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/exe-ops-server ./cmd/exe-ops-server
 
-PNPM := $(NODE_BIN)/pnpm
-
-$(PNPM): $(NPM)
-	@corepack enable --install-directory $(NODE_BIN)
-	@echo "pnpm enabled via corepack"
-
-build-ui: $(PNPM)
+build-ui: $(NODE_BIN)/.corepack-enabled
 	cd ui && pnpm install --frozen-lockfile && pnpm run build
 
 run-server: build-server
