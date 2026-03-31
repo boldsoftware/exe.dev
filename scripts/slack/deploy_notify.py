@@ -100,6 +100,9 @@ def format_start_blocks(
     et_str = eastern.strftime("%I:%M%p").lstrip("0").lower() + " ET"
     utc_str = now.strftime("%H:%M UTC")
 
+    # Derive stage from service name
+    stage = "staging" if "staging" in service.lower() else "prod"
+
     blocks = []
 
     if dirty:
@@ -124,6 +127,7 @@ def format_start_blocks(
         sha_text = f"*SHA*\n<{sha_url}|`{sha}`>"
     fields = [
         {"type": "mrkdwn", "text": f"*Service*\n{service}"},
+        {"type": "mrkdwn", "text": f"*Stage*\n{stage}"},
         {"type": "mrkdwn", "text": sha_text},
         {"type": "mrkdwn", "text": f"*Who*\n{deployer}"},
         {"type": "mrkdwn", "text": f"*Time*\n{pt_str} / {et_str} / {utc_str}"},
