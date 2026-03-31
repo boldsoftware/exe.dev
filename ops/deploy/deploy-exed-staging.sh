@@ -151,7 +151,7 @@ else
 fi
 rm -f /tmp/preflight.db
 PREFLIGHT
-PREFLIGHT_ELAPSED=$(( ($(date +%s%N) - PREFLIGHT_START) / 1000000 ))
+PREFLIGHT_ELAPSED=$((($(date +%s%N) - PREFLIGHT_START) / 1000000))
 echo -e "${GREEN}✓ Migration preflight passed${NC} ($((PREFLIGHT_ELAPSED / 1000)).$((PREFLIGHT_ELAPSED % 1000 / 100))s)"
 echo ""
 
