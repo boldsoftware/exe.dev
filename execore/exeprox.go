@@ -699,15 +699,19 @@ func sendProxyChange(proxyChange *proxyapi.ChangesResponse) {
 
 // streamProxyChanges runs in a goroutine that never exits.
 // It sends proxy changes to all the registered streams.
+// Sends are done serially to avoid concurrent Send calls on the
+// same gRPC stream, which would cause "SendHeader called multiple times".
 func streamProxyChanges() {
 	for {
 		proxyChange := <-proxyChangesChan
 
 		proxyChangesMu.Lock()
-		for _, stream := range proxyChangesStreams {
-			go streamProxyChange(stream, proxyChange)
-		}
+		streams := slices.Clone(proxyChangesStreams)
 		proxyChangesMu.Unlock()
+
+		for _, stream := range streams {
+			streamProxyChange(stream, proxyChange)
+		}
 	}
 }
 
