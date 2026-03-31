@@ -13,8 +13,10 @@
   command: .buildkite/steps/test-non-e1e-checks.sh
   timeout_in_minutes: 20
 
+# Unit tests depend on format to stagger CPU usage (not a real dependency).
 - label: ":go: unit tests (execore A-H)"
   key: unit-a
+  depends_on: format
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -27,6 +29,7 @@
 
 - label: ":go: unit tests (other pkgs)"
   key: unit-b
+  depends_on: format
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -39,6 +42,7 @@
 
 - label: ":go: unit tests (execore I-P)"
   key: unit-c
+  depends_on: format
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -51,6 +55,7 @@
 
 - label: ":go: unit tests (execore Q-Z)"
   key: unit-d
+  depends_on: format
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
