@@ -317,38 +317,29 @@ SELECT created_by FROM accounts WHERE id = ?;
 -- GetUserPlanData returns all data needed to determine a user's plan category.
 -- This is used by billing/entitlement.GetPlanForUser to compute the final PlanCategory.
 SELECT
-    -- Plan category: friend/has_billing/no_billing
-    CASE
-        WHEN ap.plan_id IN ('friend', 'free') THEN 'friend'
-        WHEN EXISTS (
-            SELECT 1 FROM accounts a
-            JOIN billing_events e ON e.account_id = a.id
-            WHERE a.created_by = ?1
-            AND e.event_type = 'active'
-            AND e.id = (
-                SELECT e2.id FROM billing_events e2
-                WHERE e2.account_id = a.id
-                ORDER BY e2.event_at DESC, e2.id DESC
-                LIMIT 1
-            )
-        ) THEN 'has_billing'
-        WHEN EXISTS (
-            SELECT 1 FROM team_members tm_user
-            JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
-            JOIN accounts a ON a.created_by = tm_billing.user_id
-            JOIN billing_events e ON e.account_id = a.id
-            WHERE tm_user.user_id = ?1
-            AND tm_billing.role = 'billing_owner'
-            AND e.event_type = 'active'
-            AND e.id = (
-                SELECT e2.id FROM billing_events e2
-                WHERE e2.account_id = a.id
-                ORDER BY e2.event_at DESC, e2.id DESC
-                LIMIT 1
-            )
-        ) THEN 'has_billing'
-        ELSE 'no_billing'
-    END AS category,
+    -- Account plan info
+    ap.plan_id,
+    -- Team billing: true if user is on a team with an active billing owner
+    CAST(EXISTS (
+        SELECT 1 FROM team_members tm_user
+        JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
+        JOIN accounts a ON a.created_by = tm_billing.user_id
+        JOIN billing_events e ON e.account_id = a.id
+        WHERE tm_user.user_id = ?1
+        AND tm_billing.role = 'billing_owner'
+        AND e.event_type = 'active'
+        AND e.id = (
+            SELECT e2.id FROM billing_events e2
+            WHERE e2.account_id = a.id
+            ORDER BY e2.event_at DESC, e2.id DESC
+            LIMIT 1
+        )
+    ) AS INTEGER) AS team_billing_active,
+    -- Explicit overrides: VIP status is determined by plan_id prefix 'vip:'
+    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
+    ap.trial_expires_at,
+    -- User info
+    u.created_at,
     -- Billing status: active/canceled/empty
     CAST(COALESCE(
         CASE
@@ -377,30 +368,7 @@ SELECT
                 )
             ) THEN 'canceled'
         END,
-    '') AS TEXT) AS billing_status,
-    -- Account plan info
-    ap.plan_id,
-    ap.trial_expires_at,
-    -- User info
-    u.created_at,
-    -- Team billing: true if user is on a team with an active billing owner
-    EXISTS (
-        SELECT 1 FROM team_members tm_user
-        JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
-        JOIN accounts a ON a.created_by = tm_billing.user_id
-        JOIN billing_events e ON e.account_id = a.id
-        WHERE tm_user.user_id = ?1
-        AND tm_billing.role = 'billing_owner'
-        AND e.event_type = 'active'
-        AND e.id = (
-            SELECT e2.id FROM billing_events e2
-            WHERE e2.account_id = a.id
-            ORDER BY e2.event_at DESC, e2.id DESC
-            LIMIT 1
-        )
-    ) AS team_billing_active,
-    -- Explicit overrides: VIP status is determined by plan_id prefix 'vip:'
-    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides
+    '') AS TEXT) AS billing_status
 FROM users u
 LEFT JOIN accounts a ON a.created_by = u.user_id
 LEFT JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL

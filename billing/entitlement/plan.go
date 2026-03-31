@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/stage"
 )
 
 // PlanCategory identifies a billing plan.
@@ -51,10 +52,6 @@ type Plan struct {
 	// to Stripe price metadata.
 	StripePrices map[string]StripePriceInfo
 
-	// LLMGatewayCategory determines credit refresh behavior in the LLM gateway.
-	// Values: "has_billing", "friend", "no_billing".
-	LLMGatewayCategory string
-
 	// Entitlements is the set of capabilities this plan grants.
 	Entitlements map[Entitlement]bool
 
@@ -72,26 +69,169 @@ type PlanQuotas struct {
 	// and Grandfathered intentionally have 0 because they use the "friend"
 	// category and never hit the upgrade bonus code path.
 	SignupBonusCreditUSD float64
+
+	// MonthlyLLMCreditUSD is the monthly LLM credit allowance in USD.
+	// This is the amount refreshed at the start of each month.
+	MonthlyLLMCreditUSD float64
+
+	// MaxUserVMs is the maximum number of VMs an individual user can create.
+	MaxUserVMs int
+
+	// MaxTeamVMs is the maximum number of VMs a team can create.
+	MaxTeamVMs int
+
+	// TrialDays is the number of days of trial access granted for this plan.
+	TrialDays int
+
+	// MaxMemory is the maximum memory in bytes per VM.
+	// 0 means use stage.Env.DefaultMemory as the fallback.
+	MaxMemory uint64
+
+	// MaxDisk is the maximum disk in bytes per VM.
+	// 0 means use stage.Env.DefaultDisk as the fallback.
+	MaxDisk uint64
+
+	// MaxCPUs is the maximum number of CPUs per VM.
+	// 0 means use stage.Env.DefaultCPUs as the fallback.
+	MaxCPUs uint64
+}
+
+// QuotaContext provides the context needed to resolve quotas for a specific request.
+type QuotaContext struct {
+	// UserLimits contains per-user override values from user.limits JSON.
+	UserLimits *UserLimits
+
+	// TeamLimits contains per-team override values from team.limits JSON.
+	TeamLimits *UserLimits
+
+	// InTeam indicates whether this request is in team context.
+	InTeam bool
+
+	// Env provides environment defaults for memory, disk, CPU.
+	// Pass nil to use hard-coded fallbacks.
+	Env *stage.Env
+}
+
+// UserLimits represents per-user or per-team resource limit overrides.
+// All fields are optional; when nil/zero, plan or default limits apply.
+type UserLimits struct {
+	MaxBoxes  int    `json:"max_boxes,omitempty"`  // Max number of VMs
+	MaxMemory uint64 `json:"max_memory,omitempty"` // Max memory in bytes
+	MaxDisk   uint64 `json:"max_disk,omitempty"`   // Max disk in bytes
+	MaxCPUs   uint64 `json:"max_cpus,omitempty"`   // Max number of CPUs
+}
+
+// ResolvedQuotas contains single resolved quota values for a specific context.
+// Unlike PlanQuotas which has MaxUserVMs/MaxTeamVMs, this has one MaxVMs value.
+type ResolvedQuotas struct {
+	MaxVMs    int    // Max VMs (already resolved for user vs team)
+	TrialDays int    // Trial period in days
+	MaxMemory uint64 // Max memory in bytes per VM
+	MaxDisk   uint64 // Max disk in bytes per VM
+	MaxCPUs   uint64 // Max number of CPUs per VM
+}
+
+// PlanQuotas returns the base quota values for this plan without applying
+// any per-user or per-team overrides. Use this to access plan defaults like
+// SignupBonusCreditUSD or MonthlyLLMCreditUSD.
+func (p Plan) PlanQuotas() PlanQuotas {
+	return p.Quotas
+}
+
+// GetQuotas resolves the effective quota values for a specific context by applying
+// the precedence: override > plan > default.
+// This is the primary API for getting quotas - it returns single resolved values
+// instead of requiring callers to choose between user/team variants.
+func (p Plan) GetQuotas(ctx QuotaContext) ResolvedQuotas {
+	quotas := ResolvedQuotas{
+		TrialDays: p.Quotas.TrialDays,
+	}
+
+	// Determine which plan limit applies (user vs team)
+	var planMaxVMs int
+	if ctx.InTeam {
+		planMaxVMs = p.Quotas.MaxTeamVMs
+	} else {
+		planMaxVMs = p.Quotas.MaxUserVMs
+	}
+
+	// Determine which override limit applies (user vs team)
+	var effectiveLimits *UserLimits
+	if ctx.InTeam && ctx.TeamLimits != nil {
+		effectiveLimits = ctx.TeamLimits
+	} else if !ctx.InTeam && ctx.UserLimits != nil {
+		effectiveLimits = ctx.UserLimits
+	}
+
+	// MaxVMs: override > plan > default
+	if effectiveLimits != nil && effectiveLimits.MaxBoxes > 0 {
+		quotas.MaxVMs = effectiveLimits.MaxBoxes
+	} else if planMaxVMs > 0 {
+		quotas.MaxVMs = planMaxVMs
+	} else {
+		// Fall back to stage defaults
+		if ctx.InTeam {
+			quotas.MaxVMs = stage.DefaultMaxTeamBoxes
+		} else {
+			quotas.MaxVMs = stage.DefaultMaxBoxes
+		}
+	}
+
+	// MaxMemory: override > plan > env default
+	if effectiveLimits != nil && effectiveLimits.MaxMemory > 0 {
+		quotas.MaxMemory = effectiveLimits.MaxMemory
+	} else if p.Quotas.MaxMemory > 0 {
+		quotas.MaxMemory = p.Quotas.MaxMemory
+	} else if ctx.Env != nil {
+		quotas.MaxMemory = max(ctx.Env.DefaultMemory, uint64(stage.MinMemory))
+	} else {
+		quotas.MaxMemory = uint64(stage.MinMemory)
+	}
+
+	// MaxDisk: override > plan > env default
+	if effectiveLimits != nil && effectiveLimits.MaxDisk > 0 {
+		quotas.MaxDisk = effectiveLimits.MaxDisk
+	} else if p.Quotas.MaxDisk > 0 {
+		quotas.MaxDisk = p.Quotas.MaxDisk
+	} else if ctx.Env != nil {
+		quotas.MaxDisk = max(ctx.Env.DefaultDisk, uint64(stage.MinDisk))
+	} else {
+		quotas.MaxDisk = uint64(stage.MinDisk)
+	}
+
+	// MaxCPUs: override > plan > env default
+	if effectiveLimits != nil && effectiveLimits.MaxCPUs > 0 {
+		quotas.MaxCPUs = effectiveLimits.MaxCPUs
+	} else if p.Quotas.MaxCPUs > 0 {
+		quotas.MaxCPUs = p.Quotas.MaxCPUs
+	} else if ctx.Env != nil {
+		quotas.MaxCPUs = max(ctx.Env.DefaultCPUs, uint64(stage.MinCPUs))
+	} else {
+		quotas.MaxCPUs = uint64(stage.MinCPUs)
+	}
+
+	return quotas
 }
 
 var plans = map[PlanCategory]Plan{
 	CategoryVIP: {
-		ID:                 "vip",
-		Available:          true,
-		Category:           CategoryVIP,
-		Name:               "VIP",
-		LLMGatewayCategory: "friend",
+		ID:        "vip",
+		Available: true,
+		Category:  CategoryVIP,
+		Name:      "VIP",
 		Entitlements: map[Entitlement]bool{
 			All: true,
 		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 500.0,
+		},
 	},
 	CategoryEnterprise: {
-		ID:                 "enterprise:monthly:20260106",
-		Available:          true,
-		Category:           CategoryEnterprise,
-		Paid:               true,
-		Name:               "Enterprise",
-		LLMGatewayCategory: "has_billing",
+		ID:        "enterprise:monthly:20260106",
+		Available: true,
+		Category:  CategoryEnterprise,
+		Paid:      true,
+		Name:      "Enterprise",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -99,6 +239,9 @@ var plans = map[PlanCategory]Plan{
 			VMCreate:       true,
 			VMConnect:      true,
 			VMRun:          true,
+		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 500.0,
 		},
 	},
 	CategoryTeam: {
@@ -113,7 +256,6 @@ var plans = map[PlanCategory]Plan{
 			"usage-disk":      {LookupKey: "team:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "team:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -121,6 +263,9 @@ var plans = map[PlanCategory]Plan{
 			VMCreate:       true,
 			VMConnect:      true,
 			VMRun:          true,
+		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 500.0,
 		},
 	},
 	CategoryIndividual: {
@@ -135,7 +280,6 @@ var plans = map[PlanCategory]Plan{
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		LLMGatewayCategory: "has_billing",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -147,65 +291,76 @@ var plans = map[PlanCategory]Plan{
 		},
 		Quotas: PlanQuotas{
 			SignupBonusCreditUSD: 100.0,
+			MonthlyLLMCreditUSD:  100.0,
 		},
 	},
 	CategoryFriend: {
-		ID:                 "friend",
-		Available:          true,
-		Category:           CategoryFriend,
-		Name:               "Friend",
-		LLMGatewayCategory: "friend",
+		ID:        "friend",
+		Available: true,
+		Category:  CategoryFriend,
+		Name:      "Friend",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
 			VMConnect: true,
 			VMRun:     true,
+		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 500.0,
 		},
 	},
 	CategoryGrandfathered: {
-		ID:                 "grandfathered",
-		Available:          true,
-		Category:           CategoryGrandfathered,
-		Name:               "Grandfathered",
-		LLMGatewayCategory: "no_billing",
+		ID:        "grandfathered",
+		Available: true,
+		Category:  CategoryGrandfathered,
+		Name:      "Grandfathered",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
 			VMConnect: true,
 			VMRun:     true,
+		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 0,
 		},
 	},
 	CategoryTrial: {
-		ID:                 "trial:monthly:20260106",
-		Available:          true,
-		Category:           CategoryTrial,
-		Name:               "Trial",
-		LLMGatewayCategory: "no_billing",
+		ID:        "trial:monthly:20260106",
+		Available: true,
+		Category:  CategoryTrial,
+		Name:      "Trial",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMCreate:  true,
 			VMConnect: true,
 			VMRun:     true,
 		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 0,
+		},
 	},
 	CategoryBasic: {
-		ID:                 "basic:monthly:20260106",
-		Available:          true,
-		Category:           CategoryBasic,
-		Name:               "Basic",
-		LLMGatewayCategory: "no_billing",
+		ID:        "basic:monthly:20260106",
+		Available: true,
+		Category:  CategoryBasic,
+		Name:      "Basic",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:    true,
 			VMConnect: true,
 		},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 0,
+		},
 	},
 	CategoryRestricted: {
-		ID:                 "restricted",
-		Available:          true,
-		Category:           CategoryRestricted,
-		Name:               "Restricted",
-		LLMGatewayCategory: "no_billing",
-		Entitlements:       map[Entitlement]bool{},
+		ID:           "restricted",
+		Available:    true,
+		Category:     CategoryRestricted,
+		Name:         "Restricted",
+		Entitlements: map[Entitlement]bool{},
+		Quotas: PlanQuotas{
+			MonthlyLLMCreditUSD: 0,
+		},
 	},
 }
 
@@ -320,9 +475,6 @@ var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
 // UserPlanInputs captures the billing state needed to resolve a user's plan version.
 // Uses plain Go types to avoid importing exedb or execore.
 type UserPlanInputs struct {
-	// Category is the result of GetUserPlanCategory: "has_billing", "no_billing", "friend".
-	Category string
-
 	// BillingStatus is the subscription status: "active", "canceled", or "".
 	BillingStatus string
 
@@ -364,13 +516,13 @@ func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
 		return CategoryBasic
 	}
 
-	// VIP: friend category with explicit overrides.
-	if inputs.Category == "friend" && inputs.HasExplicitOverrides {
+	// VIP: identified by explicit overrides flag (from plan_id like 'vip:%').
+	if inputs.HasExplicitOverrides {
 		return CategoryVIP
 	}
 
-	// Friend: friend category without overrides.
-	if inputs.Category == "friend" {
+	// Friend: plan_id is "friend" or "free".
+	if inputs.PlanID != nil && (*inputs.PlanID == "friend" || *inputs.PlanID == "free") {
 		return CategoryFriend
 	}
 
@@ -380,7 +532,7 @@ func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
 	}
 
 	// Individual: has active billing (not on a team).
-	if inputs.Category == "has_billing" {
+	if inputs.BillingStatus == "active" {
 		return CategoryIndividual
 	}
 
@@ -424,7 +576,6 @@ func GetPlanForUser(ctx context.Context, q PlanDataQuerier, userID string) (Plan
 
 	// Construct inputs for GetPlanCategory
 	inputs := UserPlanInputs{
-		Category:             row.Category,
 		BillingStatus:        row.BillingStatus,
 		PlanID:               row.PlanID,
 		TrialExpiresAt:       row.TrialExpiresAt,

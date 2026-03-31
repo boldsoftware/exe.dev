@@ -3,26 +3,31 @@ package execore
 import (
 	"encoding/json"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/stage"
 )
 
-// UserLimits represents per-user resource limit overrides.
-// All fields are optional; when nil/zero, the default limits apply.
-type UserLimits struct {
-	MaxBoxes  int    `json:"max_boxes,omitempty"`  // Max number of VMs
-	MaxMemory uint64 `json:"max_memory,omitempty"` // Max memory in bytes
-	MaxDisk   uint64 `json:"max_disk,omitempty"`   // Max disk in bytes
-	MaxCPUs   uint64 `json:"max_cpus,omitempty"`   // Max number of CPUs
-}
+// UserLimits is a type alias for backward compatibility.
+// New code should use entitlement.UserLimits directly.
+type UserLimits = entitlement.UserLimits
 
 // ParseUserLimits parses the limits JSON from a user record.
 // Returns nil if the user has no limits override set.
 func ParseUserLimits(user *exedb.User) *UserLimits {
-	if user.Limits == nil || *user.Limits == "" {
+	if user == nil || user.Limits == nil || *user.Limits == "" {
 		return nil
 	}
 	return ParseUserLimitsFromJSON(*user.Limits)
+}
+
+// ParseTeamLimits parses the limits JSON from a team record.
+// Returns nil if the team has no limits override set.
+func ParseTeamLimits(team *exedb.Team) *UserLimits {
+	if team == nil || team.Limits == nil || *team.Limits == "" {
+		return nil
+	}
+	return ParseUserLimitsFromJSON(*team.Limits)
 }
 
 // ParseUserLimitsFromJSON parses the limits JSON string.

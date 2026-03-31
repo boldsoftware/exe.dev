@@ -101,67 +101,67 @@ func TestGetPlanCategory(t *testing.T) {
 	}{
 		{
 			name:   "canceled overrides grandfathered",
-			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", CreatedAt: &oldDate},
+			inputs: UserPlanInputs{BillingStatus: "canceled", CreatedAt: &oldDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "canceled overrides trial",
-			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: UserPlanInputs{BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "friend with overrides is VIP",
-			inputs: UserPlanInputs{Category: "friend", HasExplicitOverrides: true},
+			inputs: UserPlanInputs{HasExplicitOverrides: true},
 			want:   CategoryVIP,
 		},
 		{
 			name:   "friend without overrides",
-			inputs: UserPlanInputs{Category: "friend"},
+			inputs: UserPlanInputs{PlanID: strPtr("friend")},
 			want:   CategoryFriend,
 		},
 		{
 			name:   "has_billing is individual",
-			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active"},
+			inputs: UserPlanInputs{BillingStatus: "active"},
 			want:   CategoryIndividual,
 		},
 		{
 			name:   "trial not expired is trial",
-			inputs: UserPlanInputs{Category: "no_billing", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: UserPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryTrial,
 		},
 		{
 			name:   "trial expired falls through",
-			inputs: UserPlanInputs{Category: "no_billing", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
+			inputs: UserPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "old user is grandfathered",
-			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate},
+			inputs: UserPlanInputs{CreatedAt: &oldDate},
 			want:   CategoryGrandfathered,
 		},
 		{
 			name:   "new user with nothing is basic",
-			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate},
+			inputs: UserPlanInputs{CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "team member covered by billing owner",
-			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &newDate, TeamBillingActive: true},
+			inputs: UserPlanInputs{CreatedAt: &newDate, TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 		{
 			name:   "canceled user on team still basic",
-			inputs: UserPlanInputs{Category: "no_billing", BillingStatus: "canceled", TeamBillingActive: true},
+			inputs: UserPlanInputs{BillingStatus: "canceled", TeamBillingActive: true},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "individual with own billing on team resolves to team",
-			inputs: UserPlanInputs{Category: "has_billing", BillingStatus: "active", TeamBillingActive: true},
+			inputs: UserPlanInputs{BillingStatus: "active", TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 		{
 			name:   "grandfathered user on team resolves to team",
-			inputs: UserPlanInputs{Category: "no_billing", CreatedAt: &oldDate, TeamBillingActive: true},
+			inputs: UserPlanInputs{CreatedAt: &oldDate, TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 	}
@@ -181,7 +181,6 @@ func TestGetPlanCategory(t *testing.T) {
 func TestTeamMemberCanCreateVM(t *testing.T) {
 	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	inputs := UserPlanInputs{
-		Category:          "no_billing",
 		CreatedAt:         &newDate,
 		TeamBillingActive: true,
 	}
@@ -199,7 +198,6 @@ func TestTeamMemberCanCreateVM(t *testing.T) {
 func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	inputs := UserPlanInputs{
-		Category:          "no_billing",
 		CreatedAt:         &newDate,
 		TeamBillingActive: false,
 	}
@@ -448,8 +446,8 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 	if p.Category != CategoryIndividual {
 		t.Errorf("GetPlanByID versioned got category %q, want %q", p.Category, CategoryIndividual)
 	}
-	if p.LLMGatewayCategory != "has_billing" {
-		t.Errorf("GetPlanByID versioned got category %q, want %q", p.LLMGatewayCategory, "has_billing")
+	if p.Quotas.MonthlyLLMCreditUSD != 100.0 {
+		t.Errorf("GetPlanByID versioned got monthly credit %f, want 100.0", p.Quotas.MonthlyLLMCreditUSD)
 	}
 
 	// Bare ID should still work.
@@ -503,8 +501,8 @@ func TestEnterprisePlanExists(t *testing.T) {
 	if !p.Paid {
 		t.Error("Enterprise plan should be Paid=true")
 	}
-	if p.LLMGatewayCategory != "has_billing" {
-		t.Errorf("Enterprise LLMGatewayCategory = %q, want %q", p.LLMGatewayCategory, "has_billing")
+	if p.Quotas.MonthlyLLMCreditUSD != 500.0 {
+		t.Errorf("Enterprise monthly credit = %f, want 500.0", p.Quotas.MonthlyLLMCreditUSD)
 	}
 }
 
@@ -561,7 +559,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "friend plan",
 			row: exedb.GetUserPlanDataRow{
-				Category:  "friend",
 				PlanID:    strPtr("friend"),
 				CreatedAt: &newDate,
 			},
@@ -570,7 +567,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "vip plan",
 			row: exedb.GetUserPlanDataRow{
-				Category:             "friend",
 				PlanID:               strPtr("vip:monthly:20260106"),
 				HasExplicitOverrides: 1,
 				CreatedAt:            &newDate,
@@ -580,7 +576,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "active trial",
 			row: exedb.GetUserPlanDataRow{
-				Category:       "no_billing",
 				PlanID:         strPtr("trial:monthly:20260106"),
 				TrialExpiresAt: &future,
 				CreatedAt:      &newDate,
@@ -590,7 +585,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "expired trial",
 			row: exedb.GetUserPlanDataRow{
-				Category:       "no_billing",
 				PlanID:         strPtr("trial:monthly:20260106"),
 				TrialExpiresAt: &past,
 				CreatedAt:      &newDate,
@@ -600,7 +594,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "individual plan",
 			row: exedb.GetUserPlanDataRow{
-				Category:      "has_billing",
 				BillingStatus: "active",
 				PlanID:        strPtr("individual:monthly:20260106"),
 				CreatedAt:     &newDate,
@@ -610,7 +603,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "team member",
 			row: exedb.GetUserPlanDataRow{
-				Category:          "no_billing",
 				TeamBillingActive: 1,
 				CreatedAt:         &newDate,
 			},
@@ -619,7 +611,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "grandfathered user",
 			row: exedb.GetUserPlanDataRow{
-				Category:  "no_billing",
 				CreatedAt: &oldDate,
 			},
 			want: CategoryGrandfathered,
@@ -627,7 +618,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "basic user",
 			row: exedb.GetUserPlanDataRow{
-				Category:  "no_billing",
 				CreatedAt: &newDate,
 			},
 			want: CategoryBasic,
@@ -635,7 +625,6 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "canceled overrides all",
 			row: exedb.GetUserPlanDataRow{
-				Category:       "has_billing",
 				BillingStatus:  "canceled",
 				PlanID:         strPtr("trial:monthly:20260106"),
 				TrialExpiresAt: &future,

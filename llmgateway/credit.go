@@ -65,34 +65,49 @@ var (
 func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
 	// Primary path: resolve plan from account_plans table.
 	planRow, err := q.GetActivePlanForUser(ctx, userID)
-	var catResult string
+	var monthlyCredit float64
+	var planCategory entitlement.PlanCategory
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return Plan{}, fmt.Errorf("failed to get active plan for user: %w", err)
 		}
 		// Legacy fallback: user has no account_plans row yet (pre-backfill).
-		catResult, err = q.GetUserPlanCategory(ctx, userID)
+		catResult, err := q.GetUserPlanCategory(ctx, userID)
 		if err != nil {
 			return Plan{}, fmt.Errorf("failed to get user plan category (legacy): %w", err)
+		}
+		// Map legacy categories to credit amounts
+		switch catResult {
+		case "has_billing":
+			monthlyCredit = 100.0
+			planCategory = entitlement.CategoryIndividual
+		case "friend":
+			monthlyCredit = 100.0
+			planCategory = entitlement.CategoryFriend
+		case "no_billing":
+			monthlyCredit = 0
+			planCategory = entitlement.CategoryBasic
+		default:
+			return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
 		}
 	} else {
 		p, ok := entitlement.GetPlanByID(planRow.PlanID)
 		if !ok {
 			return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
 		}
-		catResult = p.LLMGatewayCategory
+		monthlyCredit = p.Quotas.MonthlyLLMCreditUSD
+		planCategory = p.Category
 	}
 
+	// Determine base plan based on plan category
 	var plan Plan
-	switch catResult {
-	case "has_billing":
-		plan = planHasBilling
-	case "friend":
+	switch planCategory {
+	case entitlement.CategoryFriend, entitlement.CategoryVIP:
 		plan = planFriend
-	case "no_billing":
-		plan = planNoBilling
+	case entitlement.CategoryIndividual, entitlement.CategoryTeam, entitlement.CategoryEnterprise:
+		plan = planHasBilling
 	default:
-		return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
+		plan = planNoBilling
 	}
 
 	// Apply explicit per-user overrides when configured.
@@ -109,8 +124,9 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		return plan, nil
 	}
 
-	switch catResult {
-	case "has_billing":
+	// Set up refresh behavior based on monthly credit amount
+	if monthlyCredit >= 100.0 {
+		// Paid plans: monthly top-up
 		plan.MaxCredit = monthlyTopUpSubscribedUSD
 		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			now = now.UTC()
@@ -122,13 +138,12 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 			}
 			return available, lastRefresh
 		}
-	case "friend", "no_billing":
+	} else {
+		// Free/trial plans: no refresh
 		plan.MaxCredit = initialFreeCreditNoSubscriptionUSD
 		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			return available, lastRefresh
 		}
-	default:
-		return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
 	}
 	plan.RefreshPerHour = 0
 
