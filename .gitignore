@@ -48,8 +48,6 @@ blogd
 e3e
 docsd
 !cmd/docsd
-e1ed
-!cmd/e1ed
 
 # daily brief debug output
 brief_*.md
