@@ -182,7 +182,7 @@ func loadFromFS(fsys fs.FS, env stage.Env) (*Store, error) {
 			return a.Visible()
 		}
 		if a.Subheading != b.Subheading {
-			return a.Subheading < b.Subheading
+			return compareSubheadings(a.Subheading, b.Subheading)
 		}
 		if a.Suborder != 0 && b.Suborder != 0 && a.Suborder != b.Suborder {
 			return a.Suborder < b.Suborder
@@ -754,6 +754,33 @@ func groupDocsByHeading(entries []*Entry) []Group {
 		})
 	}
 	return groups
+}
+
+func subheadingNumber(s string) (int, bool) {
+	dotIdx := strings.Index(s, ".")
+	if dotIdx <= 0 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s[:dotIdx]))
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func compareSubheadings(a, b string) bool {
+	aNum, aOk := subheadingNumber(a)
+	bNum, bOk := subheadingNumber(b)
+	if aOk && bOk {
+		if aNum != bNum {
+			return aNum < bNum
+		}
+		return a < b
+	}
+	if aOk != bOk {
+		return aOk
+	}
+	return a < b
 }
 
 func extractMainHeading(subheading string) string {
