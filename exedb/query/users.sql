@@ -81,3 +81,6 @@ SELECT * FROM users WHERE discord_username = ?;
 
 -- name: UpdateUserEmail :exec
 UPDATE users SET email = ?, canonical_email = ? WHERE user_id = ?;
+
+-- name: GetAllUserCgroupOverrides :many
+SELECT user_id, cgroup_overrides FROM users WHERE cgroup_overrides IS NOT NULL;

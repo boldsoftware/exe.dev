@@ -72,6 +72,38 @@ func (q *Queries) DeleteUser(ctx context.Context, userID string) error {
 	return err
 }
 
+const getAllUserCgroupOverrides = `-- name: GetAllUserCgroupOverrides :many
+SELECT user_id, cgroup_overrides FROM users WHERE cgroup_overrides IS NOT NULL
+`
+
+type GetAllUserCgroupOverridesRow struct {
+	UserID          string  `db:"user_id" json:"user_id"`
+	CgroupOverrides *string `db:"cgroup_overrides" json:"cgroup_overrides"`
+}
+
+func (q *Queries) GetAllUserCgroupOverrides(ctx context.Context) ([]GetAllUserCgroupOverridesRow, error) {
+	rows, err := q.query(ctx, q.getAllUserCgroupOverridesStmt, getAllUserCgroupOverrides)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllUserCgroupOverridesRow{}
+	for rows.Next() {
+		var i GetAllUserCgroupOverridesRow
+		if err := rows.Scan(&i.UserID, &i.CgroupOverrides); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAndIncrementNextSSHKeyNumber = `-- name: GetAndIncrementNextSSHKeyNumber :one
 UPDATE users SET next_ssh_key_number = next_ssh_key_number + 1
 WHERE user_id = ?

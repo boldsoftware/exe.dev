@@ -327,6 +327,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getAllBoxShareLinksByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllBoxShareLinksByBoxID: %w", err)
 	}
+	if q.getAllUserCgroupOverridesStmt, err = db.PrepareContext(ctx, getAllUserCgroupOverrides); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllUserCgroupOverrides: %w", err)
+	}
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
 	}
@@ -647,9 +650,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
-	}
-	if q.getUserCgroupOverridesByHostStmt, err = db.PrepareContext(ctx, getUserCgroupOverridesByHost); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserCgroupOverridesByHost: %w", err)
 	}
 	if q.getUserDefaultsStmt, err = db.PrepareContext(ctx, getUserDefaults); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserDefaults: %w", err)
@@ -1704,6 +1704,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAllBoxShareLinksByBoxIDStmt: %w", cerr)
 		}
 	}
+	if q.getAllUserCgroupOverridesStmt != nil {
+		if cerr := q.getAllUserCgroupOverridesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllUserCgroupOverridesStmt: %w", cerr)
+		}
+	}
 	if q.getAllUserEventsStmt != nil {
 		if cerr := q.getAllUserEventsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
@@ -2237,11 +2242,6 @@ func (q *Queries) Close() error {
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
-		}
-	}
-	if q.getUserCgroupOverridesByHostStmt != nil {
-		if cerr := q.getUserCgroupOverridesByHostStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserCgroupOverridesByHostStmt: %w", cerr)
 		}
 	}
 	if q.getUserDefaultsStmt != nil {
@@ -3289,6 +3289,7 @@ type Queries struct {
 	getActiveAccountPlanStmt                   *sql.Stmt
 	getActivePlanForUserStmt                   *sql.Stmt
 	getAllBoxShareLinksByBoxIDStmt             *sql.Stmt
+	getAllUserCgroupOverridesStmt              *sql.Stmt
 	getAllUserEventsStmt                       *sql.Stmt
 	getAndIncrementNextSSHKeyNumberStmt        *sql.Stmt
 	getAppTokenInfoStmt                        *sql.Stmt
@@ -3396,7 +3397,6 @@ type Queries struct {
 	getUserBillingStatusStmt                   *sql.Stmt
 	getUserByDiscordUsernameStmt               *sql.Stmt
 	getUserByEmailStmt                         *sql.Stmt
-	getUserCgroupOverridesByHostStmt           *sql.Stmt
 	getUserDefaultsStmt                        *sql.Stmt
 	getUserEmailCountForDateStmt               *sql.Stmt
 	getUserIDByAccountIDStmt                   *sql.Stmt
@@ -3685,6 +3685,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getActiveAccountPlanStmt:                   q.getActiveAccountPlanStmt,
 		getActivePlanForUserStmt:                   q.getActivePlanForUserStmt,
 		getAllBoxShareLinksByBoxIDStmt:             q.getAllBoxShareLinksByBoxIDStmt,
+		getAllUserCgroupOverridesStmt:              q.getAllUserCgroupOverridesStmt,
 		getAllUserEventsStmt:                       q.getAllUserEventsStmt,
 		getAndIncrementNextSSHKeyNumberStmt:        q.getAndIncrementNextSSHKeyNumberStmt,
 		getAppTokenInfoStmt:                        q.getAppTokenInfoStmt,
@@ -3792,7 +3793,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserBillingStatusStmt:                   q.getUserBillingStatusStmt,
 		getUserByDiscordUsernameStmt:               q.getUserByDiscordUsernameStmt,
 		getUserByEmailStmt:                         q.getUserByEmailStmt,
-		getUserCgroupOverridesByHostStmt:           q.getUserCgroupOverridesByHostStmt,
 		getUserDefaultsStmt:                        q.getUserDefaultsStmt,
 		getUserEmailCountForDateStmt:               q.getUserEmailCountForDateStmt,
 		getUserIDByAccountIDStmt:                   q.getUserIDByAccountIDStmt,

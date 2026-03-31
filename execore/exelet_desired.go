@@ -44,21 +44,6 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch user-level cgroup overrides for all users with boxes on this host.
-	overrideRows, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserCgroupOverridesByHost, host)
-	switch {
-	case errors.Is(err, context.Canceled):
-		return
-	case err != nil:
-		s.slog().ErrorContext(ctx, "failed to get user cgroup overrides for exelet desired state", "host", host, "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	userOverrides := make(map[string][]desiredstate.CgroupSetting, len(overrideRows))
-	for _, row := range overrideRows {
-		userOverrides[row.UserID] = desiredstate.ParseOverrides(*row.CgroupOverrides)
-	}
-
 	// Build the desired state response.
 	// Group VMs by their owner (user_id), which is used as the cgroup group ID.
 	// Also track max allocated CPUs per user on this host for default group limits.
@@ -115,6 +100,24 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 			State:  state,
 			Cgroup: cgroups,
 		})
+	}
+
+	// Fetch user-level cgroup overrides. Instead of JOINing boxes→users per host,
+	// fetch all users with overrides (a small set) and filter to users on this host.
+	allOverrides, err := withRxRes0(s, ctx, (*exedb.Queries).GetAllUserCgroupOverrides)
+	switch {
+	case errors.Is(err, context.Canceled):
+		return
+	case err != nil:
+		s.slog().ErrorContext(ctx, "failed to get user cgroup overrides for exelet desired state", "host", host, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	userOverrides := make(map[string][]desiredstate.CgroupSetting)
+	for _, row := range allOverrides {
+		if groupSet[row.UserID] {
+			userOverrides[row.UserID] = desiredstate.ParseOverrides(*row.CgroupOverrides)
+		}
 	}
 
 	// Build groups (one per unique user_id on this host).
