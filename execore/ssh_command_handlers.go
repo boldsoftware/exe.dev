@@ -155,21 +155,54 @@ var (
 	addShareMessageFlag = addStringFlag("message", "", "message to include in share invitation")
 )
 
-// parseSize parses a human-readable size string into bytes using humanize.ParseBytes.
-// Numbers without a suffix are treated as GB (e.g., "4" means 4GB).
+// parseSize parses a human-readable size string into bytes.
+// All units are binary (powers of 1024): "GB" and "GiB" both mean gibibytes.
+// Numbers without a suffix are treated as GiB (e.g., "4" means 4 GiB).
 func parseSize(s string) (uint64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("empty size string")
 	}
 
-	// Try parsing as plain number first (treat as GB)
-	if bytes, err := strconv.ParseUint(s, 10, 64); err == nil {
-		return bytes * 1024 * 1024 * 1024, nil // Convert GB to bytes
+	// Try parsing as plain number first (treat as GiB)
+	if v, err := strconv.ParseUint(s, 10, 64); err == nil {
+		return v * 1024 * 1024 * 1024, nil
 	}
 
-	// Try parsing with unit suffix using humanize
-	return humanize.ParseBytes(s)
+	// Split into numeric prefix and unit suffix
+	i := 0
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
+		i++
+	}
+	if i == 0 {
+		return 0, fmt.Errorf("invalid size: %q", s)
+	}
+	numStr := s[:i]
+	unit := strings.TrimSpace(strings.ToUpper(s[i:]))
+
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size: %q", s)
+	}
+
+	// All units are binary (powers of 1024). "GB" = "GIB" = gibibytes.
+	var multiplier float64
+	switch unit {
+	case "B", "BYTE", "BYTES":
+		multiplier = 1
+	case "K", "KB", "KIB":
+		multiplier = 1024
+	case "M", "MB", "MIB":
+		multiplier = 1024 * 1024
+	case "G", "GB", "GIB":
+		multiplier = 1024 * 1024 * 1024
+	case "T", "TB", "TIB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0, fmt.Errorf("unknown unit: %q", unit)
+	}
+
+	return uint64(num * multiplier), nil
 }
 
 // newCommandFlags creates a FlagSet for the new command
@@ -1837,10 +1870,10 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				return cc.Errorf("invalid --memory value: %s", err)
 			}
 			if memoryBytes < stage.MinMemory {
-				return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+				return cc.Errorf("--memory must be at least %s", humanize.IBytes(stage.MinMemory))
 			}
 			if memoryBytes > stage.SupportMaxMemory {
-				return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(stage.SupportMaxMemory))
+				return cc.Errorf("--memory cannot exceed %s", humanize.IBytes(stage.SupportMaxMemory))
 			}
 			req.Memory = &memoryBytes
 		}
@@ -1859,7 +1892,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 		if !cc.WantJSON() {
 			var changes []string
 			if req.Memory != nil {
-				changes = append(changes, fmt.Sprintf("memory to %s", humanize.Bytes(*req.Memory)))
+				changes = append(changes, fmt.Sprintf("memory to %s", humanize.IBytes(*req.Memory)))
 			}
 			if req.CPUs != nil {
 				changes = append(changes, fmt.Sprintf("CPU to %d", *req.CPUs))

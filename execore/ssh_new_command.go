@@ -182,10 +182,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("invalid --memory value: %s", err)
 		}
 		if parsedMemory < stage.MinMemory {
-			return cc.Errorf("--memory must be at least %s", humanize.Bytes(stage.MinMemory))
+			return cc.Errorf("--memory must be at least %s", humanize.IBytes(stage.MinMemory))
 		}
 		if parsedMemory > maxMemory {
-			return cc.Errorf("--memory cannot exceed %s", humanize.Bytes(maxMemory))
+			return cc.Errorf("--memory cannot exceed %s", humanize.IBytes(maxMemory))
 		}
 		memory = parsedMemory
 	}
@@ -197,10 +197,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("invalid --disk value: %s", err)
 		}
 		if parsedDisk < stage.MinDisk {
-			return cc.Errorf("--disk must be at least %s", humanize.Bytes(stage.MinDisk))
+			return cc.Errorf("--disk must be at least %s", humanize.IBytes(stage.MinDisk))
 		}
 		if parsedDisk > maxDisk {
-			return cc.Errorf("--disk cannot exceed %s", humanize.Bytes(maxDisk))
+			return cc.Errorf("--disk cannot exceed %s", humanize.IBytes(maxDisk))
 		}
 		disk = parsedDisk
 	}

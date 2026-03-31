@@ -18,7 +18,7 @@ func TestCpResources(t *testing.T) {
 	// Create a user and give them elevated limits for testing
 	pty, _, keyFile, email := registerForExeDevWithEmail(t, "cpres@test-cpresources.example")
 	// Set elevated limits to allow testing with larger resources
-	setUserLimits(t, email, `{"max_memory": 8000000000, "max_disk": 20000000000, "max_cpus": 4}`)
+	setUserLimits(t, email, `{"max_memory": 8589934592, "max_disk": 21474836480, "max_cpus": 4}`) // 8 GiB, 20 GiB
 
 	// Create a source box
 	sourceBox := newBox(t, pty)

@@ -29,7 +29,7 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 		return nil, status.Error(codes.InvalidArgument, "additional_bytes must be at least 1GB")
 	}
 	if req.AdditionalBytes > maxDiskGrowth {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("additional_bytes cannot exceed %s", humanize.Bytes(maxDiskGrowth)))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("additional_bytes cannot exceed %s", humanize.IBytes(maxDiskGrowth)))
 	}
 
 	// Serialize per-instance operations and check migration status atomically.

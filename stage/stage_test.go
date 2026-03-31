@@ -4,23 +4,23 @@ import "testing"
 
 // TestResourceLimitsConstants verifies the resource limit constants are set correctly
 func TestResourceLimitsConstants(t *testing.T) {
-	// Verify minimums
-	if MinMemory != 2*1000*1000*1000 {
-		t.Errorf("MinMemory = %d, want 2GB (2000000000)", MinMemory)
+	// Verify minimums (binary: powers of 1024)
+	if MinMemory != 2*1024*1024*1024 {
+		t.Errorf("MinMemory = %d, want 2 GiB (%d)", MinMemory, 2*1024*1024*1024)
 	}
-	if MinDisk != 4*1000*1000*1000 {
-		t.Errorf("MinDisk = %d, want 4GB (4000000000)", MinDisk)
+	if MinDisk != 4*1024*1024*1024 {
+		t.Errorf("MinDisk = %d, want 4 GiB (%d)", MinDisk, 4*1024*1024*1024)
 	}
 	if MinCPUs != 1 {
 		t.Errorf("MinCPUs = %d, want 1", MinCPUs)
 	}
 
-	// Verify support maximums
-	if SupportMaxMemory != 32*1000*1000*1000 {
-		t.Errorf("SupportMaxMemory = %d, want 32GB (32000000000)", SupportMaxMemory)
+	// Verify support maximums (binary: powers of 1024)
+	if SupportMaxMemory != 32*1024*1024*1024 {
+		t.Errorf("SupportMaxMemory = %d, want 32 GiB (%d)", SupportMaxMemory, 32*1024*1024*1024)
 	}
-	if SupportMaxDisk != 128*1000*1000*1000 {
-		t.Errorf("SupportMaxDisk = %d, want 128GB (128000000000)", SupportMaxDisk)
+	if SupportMaxDisk != 128*1024*1024*1024 {
+		t.Errorf("SupportMaxDisk = %d, want 128 GiB (%d)", SupportMaxDisk, 128*1024*1024*1024)
 	}
 	if SupportMaxCPUs != 8 {
 		t.Errorf("SupportMaxCPUs = %d, want 8", SupportMaxCPUs)

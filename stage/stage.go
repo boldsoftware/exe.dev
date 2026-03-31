@@ -13,13 +13,13 @@ import (
 // Resource limits for VM creation
 const (
 	// Minimum resource limits (all users)
-	MinMemory = 2 * 1000 * 1000 * 1000 // 2GB minimum RAM
-	MinDisk   = 4 * 1000 * 1000 * 1000 // 4GB minimum disk (for ZFS base image)
+	MinMemory = 2 * 1024 * 1024 * 1024 // 2 GiB minimum RAM
+	MinDisk   = 4 * 1024 * 1024 * 1024 // 4 GiB minimum disk (for ZFS base image)
 	MinCPUs   = 1                      // 1 CPU minimum
 
 	// Maximum resource limits for support users (root_support=1)
-	SupportMaxMemory = 32 * 1000 * 1000 * 1000  // 32GB max RAM for support
-	SupportMaxDisk   = 128 * 1000 * 1000 * 1000 // 128GB max disk for support
+	SupportMaxMemory = 32 * 1024 * 1024 * 1024  // 32 GiB max RAM for support
+	SupportMaxDisk   = 128 * 1024 * 1024 * 1024 // 128 GiB max disk for support
 	SupportMaxCPUs   = 8                        // 8 CPUs max for support
 
 	// DefaultMaxBoxes is the default maximum number of VMs per user.
@@ -229,8 +229,8 @@ func Local() Env {
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
 
-		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
-		DefaultDisk:   10 * 1000 * 1000 * 1000, // 10GB
+		DefaultMemory: 1 * 1024 * 1024 * 1024,  // 1 GiB
+		DefaultDisk:   10 * 1024 * 1024 * 1024, // 10 GiB
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Second,
@@ -296,8 +296,8 @@ func Test() Env {
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
 
-		DefaultMemory: 1 * 1000 * 1000 * 1000,  // 1GB
-		DefaultDisk:   11 * 1000 * 1000 * 1000, // 11GB
+		DefaultMemory: 1 * 1024 * 1024 * 1024,  // 1 GiB
+		DefaultDisk:   11 * 1024 * 1024 * 1024, // 11 GiB
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Second,
@@ -361,8 +361,8 @@ func Staging() Env {
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
-		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
-		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+		DefaultMemory: 8 * 1024 * 1024 * 1024,  // 8 GiB
+		DefaultDisk:   20 * 1024 * 1024 * 1024, // 20 GiB
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
@@ -441,8 +441,8 @@ func Prod() Env {
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
-		DefaultMemory: 8 * 1000 * 1000 * 1000,  // 8GB
-		DefaultDisk:   20 * 1000 * 1000 * 1000, // 20GB
+		DefaultMemory: 8 * 1024 * 1024 * 1024,  // 8 GiB
+		DefaultDisk:   20 * 1024 * 1024 * 1024, // 20 GiB
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,

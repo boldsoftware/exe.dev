@@ -77,7 +77,7 @@ func TestResVal(t *testing.T) {
 
 	// Set elevated per-user limits
 	t.Run("set-lim", func(t *testing.T) {
-		setUserLimits(t, elevatedEmail, `{"max_memory": 32000000000, "max_disk": 128000000000, "max_cpus": 8}`)
+		setUserLimits(t, elevatedEmail, `{"max_memory": 34359738368, "max_disk": 137438953472, "max_cpus": 8}`) // 32 GiB, 128 GiB
 	})
 
 	// Test that elevated user still cannot exceed their limits
@@ -144,7 +144,7 @@ func TestResCreate(t *testing.T) {
 
 	// Set elevated per-user limits
 	t.Run("set-lim", func(t *testing.T) {
-		setUserLimits(t, elevatedEmail, `{"max_memory": 8000000000, "max_cpus": 4}`)
+		setUserLimits(t, elevatedEmail, `{"max_memory": 8589934592, "max_cpus": 4}`) // 8 GiB
 	})
 
 	// Test that elevated user can exceed regular limits

@@ -32,7 +32,7 @@ func TestUserLimits(t *testing.T) {
 
 	// Now set custom limits for the user via debug endpoint
 	t.Run("set-lim", func(t *testing.T) {
-		setUserLimits(t, regularEmail, `{"max_memory": 4000000000, "max_disk": 30000000000, "max_cpus": 4}`)
+		setUserLimits(t, regularEmail, `{"max_memory": 4294967296, "max_disk": 32212254720, "max_cpus": 4}`) // 4 GiB, 30 GiB
 	})
 
 	// Now the user should be able to create with higher memory
@@ -96,7 +96,7 @@ func TestUserLimitsCp(t *testing.T) {
 
 	// Set custom limits
 	t.Run("set-lim", func(t *testing.T) {
-		setUserLimits(t, email, `{"max_memory": 4000000000}`)
+		setUserLimits(t, email, `{"max_memory": 4294967296}`) // 4 GiB
 	})
 
 	// Now copy with higher memory should work

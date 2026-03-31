@@ -226,21 +226,21 @@ func printLimitsIndented(cc *exemenu.CommandContext, limits *UserLimits, indent 
 	}
 }
 
-// formatBytes formats bytes as a human-readable string (e.g., "8 GB").
+// formatBytes formats bytes as a human-readable string (e.g., "8 GiB").
 func formatBytes(b uint64) string {
 	const (
-		gb = 1000 * 1000 * 1000
-		mb = 1000 * 1000
+		gib = 1024 * 1024 * 1024
+		mib = 1024 * 1024
 	)
 	switch {
-	case b >= gb:
-		val := float64(b) / float64(gb)
+	case b >= gib:
+		val := float64(b) / float64(gib)
 		if val == float64(int(val)) {
-			return fmt.Sprintf("%d GB", int(val))
+			return fmt.Sprintf("%d GiB", int(val))
 		}
-		return fmt.Sprintf("%.1f GB", val)
-	case b >= mb:
-		return fmt.Sprintf("%d MB", b/mb)
+		return fmt.Sprintf("%.1f GiB", val)
+	case b >= mib:
+		return fmt.Sprintf("%d MiB", b/mib)
 	default:
 		return fmt.Sprintf("%d bytes", b)
 	}
