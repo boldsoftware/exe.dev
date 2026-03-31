@@ -69,6 +69,21 @@ func Parse(env stage.Env) (*template.Template, error) {
 			"urlPathEscape": url.PathEscape,
 			"add":           func(a, b int) int { return a + b },
 			"subtract":      func(a, b int) int { return a - b },
+			"formatBytes": func(bytes uint64) string {
+				if bytes == 0 {
+					return "-"
+				}
+				const unit = 1024
+				if bytes < unit {
+					return fmt.Sprintf("%d B", bytes)
+				}
+				div, exp := uint64(unit), 0
+				for n := bytes / unit; n >= unit; n /= unit {
+					div *= unit
+					exp++
+				}
+				return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+			},
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})

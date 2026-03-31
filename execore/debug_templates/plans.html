@@ -6,6 +6,10 @@ td.granted { color: #28a745; font-weight: bold; text-align: center; }
 td.denied  { color: #ccc; text-align: center; }
 th.plan-col { text-align: center; min-width: 80px; }
 th.plan-col small { display: block; color: #888; font-weight: normal; }
+th.plan-col code { display: block; color: #666; font-size: 0.85em; margin-top: 4px; }
+tbody.quotas { border-top: 2px solid #333; }
+tbody.quotas th { background: #f5f5f5; text-align: left; font-weight: bold; }
+tbody.quotas td { text-align: center; }
 </style>
 </head><body>
 <h1>Plans &amp; Entitlements</h1>
@@ -15,7 +19,7 @@ th.plan-col small { display: block; color: #888; font-weight: normal; }
 <thead>
 <tr>
   <th>Entitlement</th>
-  {{range .Plans}}<th class="plan-col">{{.Name}}<small>{{.Category}}</small></th>{{end}}
+  {{range .Plans}}<th class="plan-col">{{.Name}}<small>{{.Category}}</small><code>{{.ID}}</code></th>{{end}}
 </tr>
 </thead>
 <tbody>
@@ -28,6 +32,41 @@ th.plan-col small { display: block; color: #888; font-weight: normal; }
   {{range $plans}}{{if or (index .Entitlements $ent) (index .Entitlements $wildcard)}}<td class="granted">&#x2713;</td>{{else}}<td class="denied">&mdash;</td>{{end}}{{end}}
 </tr>
 {{end}}
+</tbody>
+<tbody class="quotas">
+<tr><th colspan="{{add (len .Plans) 1}}">Quotas</th></tr>
+<tr>
+  <td><strong>Signup Bonus Credit (USD)</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.SignupBonusCreditUSD}}${{.Quotas.SignupBonusCreditUSD}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Monthly LLM Credit (USD)</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.MonthlyLLMCreditUSD}}${{.Quotas.MonthlyLLMCreditUSD}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Trial Days</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.TrialDays}}{{.Quotas.TrialDays}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Max User VMs</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.MaxUserVMs}}{{.Quotas.MaxUserVMs}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Max Team VMs</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.MaxTeamVMs}}{{.Quotas.MaxTeamVMs}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Max CPUs</strong></td>
+  {{range .Plans}}<td>{{if .Quotas.MaxCPUs}}{{.Quotas.MaxCPUs}}{{else}}&mdash;{{end}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Max Memory</strong></td>
+  {{range .Plans}}<td>{{formatBytes .Quotas.MaxMemory}}</td>{{end}}
+</tr>
+<tr>
+  <td><strong>Max Disk</strong></td>
+  {{range .Plans}}<td>{{formatBytes .Quotas.MaxDisk}}</td>{{end}}
+</tr>
 </tbody>
 </table>
 
