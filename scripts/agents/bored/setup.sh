@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "==> Building frontend..."
 cd "$SCRIPT_DIR/ui"
-npm ci
+pnpm install --frozen-lockfile
 node build.js
 echo "    Frontend built successfully."
 

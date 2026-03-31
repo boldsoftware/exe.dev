@@ -18,15 +18,16 @@ export PATH := $(CURDIR)/$(NODEENV)/bin:$(PATH)
 # Bootstrap Node.js environment via uv nodeenv
 $(NODEENV):
 	uv tool run nodeenv --node=lts $(NODEENV)
-	$(NODEENV)/bin/npm install
+	$(NODEENV)/bin/corepack enable
+	$(NODEENV)/bin/pnpm install
 
 node_modules: $(NODEENV) package.json
-	$(NODEENV)/bin/npm install
+	$(NODEENV)/bin/pnpm install
 	touch node_modules
 
 # Run TypeScript type checking
 typecheck: node_modules
-	$(NODEENV)/bin/npx tsc --noEmit
+	$(NODEENV)/bin/pnpm exec tsc --noEmit
 
 # Deploy Grafana dashboards
 deploy-grafana: node_modules
@@ -36,7 +37,7 @@ deploy-grafana: node_modules
 		exit 1; \
 	fi
 	@echo "Deploying Grafana dashboards to $(GRAFANA_URL)..."
-	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/npx tsx dashboards.mts
+	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/pnpm exec tsx dashboards.mts
 
 # Deploy notification templates and contact point configs
 deploy-notifications: node_modules
@@ -46,7 +47,7 @@ deploy-notifications: node_modules
 		exit 1; \
 	fi
 	@echo "Deploying notification templates to $(GRAFANA_URL)..."
-	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/npx tsx notifications.mts
+	GRAFANA_URL=$(GRAFANA_URL) $(NODEENV)/bin/pnpm exec tsx notifications.mts
 
 # Deploy Prometheus configuration
 deploy-prometheus:

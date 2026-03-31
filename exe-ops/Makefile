@@ -46,8 +46,14 @@ build-server: build-ui
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/exe-ops-server ./cmd/exe-ops-server
 
-build-ui: $(NPM)
-	cd ui && npm ci && npm run build
+PNPM := $(NODE_BIN)/pnpm
+
+$(PNPM): $(NPM)
+	@corepack enable --install-directory $(NODE_BIN)
+	@echo "pnpm enabled via corepack"
+
+build-ui: $(PNPM)
+	cd ui && pnpm install --frozen-lockfile && pnpm run build
 
 run-server: build-server
 	$(BIN_DIR)/exe-ops-server --addr $(ADDR) --tls=false
