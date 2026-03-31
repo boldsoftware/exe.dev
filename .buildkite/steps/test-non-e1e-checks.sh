@@ -6,9 +6,13 @@ set -euo pipefail
 # All checks that don't depend on each other run in parallel.
 
 export PATH="/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
+source .buildkite/steps/go-cache-diagnostics.sh
 
 echo "--- :go: Set up Go"
 go version
+
+echo "--- :mag: Go build cache diagnostics"
+go_cache_stats "before"
 
 echo "--- :package: Ensure b2 CLI available"
 if ! command -v b2 >/dev/null 2>&1; then

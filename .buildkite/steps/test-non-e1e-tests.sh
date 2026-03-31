@@ -9,11 +9,15 @@ set -euo pipefail
 # Unset / empty → run all (local dev default)
 
 export PATH="/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
+source .buildkite/steps/go-cache-diagnostics.sh
 
 UNIT_TEST_SHARD="${UNIT_TEST_SHARD:-}"
 
 echo "--- :go: Set up Go"
 go version
+
+echo "--- :mag: Go build cache diagnostics"
+go_cache_stats "before"
 
 # Only shard B (other pkgs) needs exelet-fs and exe-init because some packages
 # (exelet/fs, exelet/services/compute, cmd/exelet) embed those files.
