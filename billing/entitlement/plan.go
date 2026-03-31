@@ -292,6 +292,7 @@ var plans = map[PlanCategory]Plan{
 		Quotas: PlanQuotas{
 			SignupBonusCreditUSD: 100.0,
 			MonthlyLLMCreditUSD:  100.0,
+			TrialDays:            7,
 		},
 	},
 	CategoryFriend: {
@@ -337,6 +338,7 @@ var plans = map[PlanCategory]Plan{
 		},
 		Quotas: PlanQuotas{
 			MonthlyLLMCreditUSD: 0,
+			TrialDays:           30,
 		},
 	},
 	CategoryBasic: {

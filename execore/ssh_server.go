@@ -1529,8 +1529,10 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			basePlan = entitlement.CategoryFriend
 		case "trial":
 			basePlan = entitlement.CategoryTrial
-			// Trial ends in 1 month
-			t := time.Now().AddDate(0, 1, 0)
+			// Get trial days from Trial plan quotas
+			plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
+			trialDays := plan.Quotas.TrialDays
+			t := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 			trialEndsAt = &t
 		}
 

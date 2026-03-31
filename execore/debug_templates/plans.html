@@ -2,72 +2,220 @@
 <html><head><title>Plans &amp; Entitlements</title>
 {{template "base-head"}}
 <style>
-td.granted { color: #28a745; font-weight: bold; text-align: center; }
-td.denied  { color: #ccc; text-align: center; }
-th.plan-col { text-align: center; min-width: 80px; }
-th.plan-col small { display: block; color: #888; font-weight: normal; }
-th.plan-col code { display: block; color: #666; font-size: 0.85em; margin-top: 4px; }
-tbody.quotas { border-top: 2px solid #333; }
-tbody.quotas th { background: #f5f5f5; text-align: left; font-weight: bold; }
-tbody.quotas td { text-align: center; }
+/* Card container - responsive flex layout */
+.plans-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 16px 0;
+}
+
+/* Individual plan card with left border for paid/free distinction */
+.plan-card {
+    flex: 1 1 280px;
+    max-width: 320px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    overflow: hidden;
+}
+.plan-card.paid {
+    border-left: 3px solid #28a745;
+}
+.plan-card.free {
+    border-left: 3px solid #6c757d;
+}
+
+/* Card header with plan name and status */
+.plan-header {
+    padding: 12px;
+    border-bottom: 1px solid #ccc;
+    background: #f5f5f5;
+}
+.plan-header h3 {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.plan-header .plan-meta {
+    font-size: 11px;
+    color: #666;
+}
+.plan-header .plan-meta code {
+    background: #e8e8e8;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.badge-paid { background: #28a745; color: white; }
+.badge-free { background: #6c757d; color: white; }
+.badge-available { background: #007bff; color: white; }
+.badge-unavailable { background: #dc3545; color: white; }
+
+/* Card body sections */
+.plan-section {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+.plan-section:last-child {
+    border-bottom: none;
+}
+.plan-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #888;
+    letter-spacing: 0.5px;
+}
+
+/* Entitlements list */
+.entitlements-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.entitlements-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 12px;
+    font-family: monospace;
+}
+.ent-granted { color: #333; }
+.ent-denied { color: #ccc; }
+.ent-icon { color: #28a745; font-weight: bold; width: 16px; text-align: center; }
+
+/* Quotas table within card */
+.quotas-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.quotas-table th {
+    text-align: left;
+    font-weight: normal;
+    color: #666;
+    padding: 2px 0;
+    border: none;
+    background: transparent;
+}
+.quotas-table td {
+    text-align: right;
+    padding: 2px 0;
+    border: none;
+}
+.quota-zero { color: #ccc; }
+
+/* Wildcard indicator - appears at top of entitlements section */
+.wildcard-notice {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    padding: 6px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-bottom: 8px;
+}
+
+/* Responsive: stack cards on very small screens */
+@media (max-width: 600px) {
+    .plans-container {
+        flex-direction: column;
+    }
+    .plan-card {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+}
 </style>
 </head><body>
 <h1>Plans &amp; Entitlements</h1>
 <p><a href="/debug">/debug</a> &gt; billing &gt; plans</p>
 
-<table>
-<thead>
-<tr>
-  <th>Entitlement</th>
-  {{range .Plans}}<th class="plan-col">{{.Name}}<small>{{.Category}}</small><code>{{.ID}}</code></th>{{end}}
-</tr>
-</thead>
-<tbody>
-{{$plans := .Plans}}
+<div class="plans-container">
+{{$allEntitlements := .Entitlements}}
 {{$wildcard := .WildcardEnt}}
-{{range .Entitlements}}
-{{$ent := .}}
-<tr>
-  <td><code>{{.ID}}</code> &mdash; {{.DisplayName}}</td>
-  {{range $plans}}{{if or (index .Entitlements $ent) (index .Entitlements $wildcard)}}<td class="granted">&#x2713;</td>{{else}}<td class="denied">&mdash;</td>{{end}}{{end}}
-</tr>
+{{range .Plans}}
+<div class="plan-card {{if .Paid}}paid{{else}}free{{end}}">
+    <div class="plan-header">
+        <h3>
+            {{.Name}}
+            {{if .Paid}}<span class="badge badge-paid">Paid</span>{{else}}<span class="badge badge-free">Free</span>{{end}}
+        </h3>
+        <div class="plan-meta">
+            <span>{{.Category}}</span> · <code>{{.ID}}</code>
+            {{if .Available}}<span class="badge badge-available">Available</span>{{else}}<span class="badge badge-unavailable">Unavailable</span>{{end}}
+        </div>
+    </div>
+
+    <div class="plan-section">
+        <h4>Entitlements</h4>
+        {{if index .Entitlements $wildcard}}
+        <div class="wildcard-notice">✦ Grants ALL entitlements (wildcard)</div>
+        {{end}}
+        <ul class="entitlements-list">
+        {{$plan := .}}
+        {{range $allEntitlements}}
+            {{$ent := .}}
+            {{if or (index $plan.Entitlements $ent) (index $plan.Entitlements $wildcard)}}
+            <li class="ent-granted"><span>{{$ent.ID}}</span><span class="ent-icon">✓</span></li>
+            {{else}}
+            <li class="ent-denied"><span>{{$ent.ID}}</span><span class="ent-icon"></span></li>
+            {{end}}
+        {{end}}
+        </ul>
+    </div>
+
+    <div class="plan-section">
+        <h4>Quotas</h4>
+        <table class="quotas-table">
+            <tr>
+                <th>Signup Bonus</th>
+                <td{{if not .Quotas.SignupBonusCreditUSD}} class="quota-zero"{{end}}>{{if .Quotas.SignupBonusCreditUSD}}${{.Quotas.SignupBonusCreditUSD}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Monthly LLM Credit</th>
+                <td{{if not .Quotas.MonthlyLLMCreditUSD}} class="quota-zero"{{end}}>{{if .Quotas.MonthlyLLMCreditUSD}}${{.Quotas.MonthlyLLMCreditUSD}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Trial Days</th>
+                <td{{if not .Quotas.TrialDays}} class="quota-zero"{{end}}>{{if .Quotas.TrialDays}}{{.Quotas.TrialDays}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Max User VMs</th>
+                <td{{if not .Quotas.MaxUserVMs}} class="quota-zero"{{end}}>{{if .Quotas.MaxUserVMs}}{{.Quotas.MaxUserVMs}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Max Team VMs</th>
+                <td{{if not .Quotas.MaxTeamVMs}} class="quota-zero"{{end}}>{{if .Quotas.MaxTeamVMs}}{{.Quotas.MaxTeamVMs}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Max CPUs</th>
+                <td{{if not .Quotas.MaxCPUs}} class="quota-zero"{{end}}>{{if .Quotas.MaxCPUs}}{{.Quotas.MaxCPUs}}{{else}}—{{end}}</td>
+            </tr>
+            <tr>
+                <th>Max Memory</th>
+                <td>{{formatBytes .Quotas.MaxMemory}}</td>
+            </tr>
+            <tr>
+                <th>Max Disk</th>
+                <td>{{formatBytes .Quotas.MaxDisk}}</td>
+            </tr>
+        </table>
+    </div>
+</div>
 {{end}}
-</tbody>
-<tbody class="quotas">
-<tr><th colspan="{{add (len .Plans) 1}}">Quotas</th></tr>
-<tr>
-  <td><strong>Signup Bonus Credit (USD)</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.SignupBonusCreditUSD}}${{.Quotas.SignupBonusCreditUSD}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Monthly LLM Credit (USD)</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.MonthlyLLMCreditUSD}}${{.Quotas.MonthlyLLMCreditUSD}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Trial Days</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.TrialDays}}{{.Quotas.TrialDays}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Max User VMs</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.MaxUserVMs}}{{.Quotas.MaxUserVMs}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Max Team VMs</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.MaxTeamVMs}}{{.Quotas.MaxTeamVMs}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Max CPUs</strong></td>
-  {{range .Plans}}<td>{{if .Quotas.MaxCPUs}}{{.Quotas.MaxCPUs}}{{else}}&mdash;{{end}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Max Memory</strong></td>
-  {{range .Plans}}<td>{{formatBytes .Quotas.MaxMemory}}</td>{{end}}
-</tr>
-<tr>
-  <td><strong>Max Disk</strong></td>
-  {{range .Plans}}<td>{{formatBytes .Quotas.MaxDisk}}</td>{{end}}
-</tr>
-</tbody>
-</table>
+</div>
 
 </body></html>
