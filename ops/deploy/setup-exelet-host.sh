@@ -4,7 +4,7 @@ set -euo pipefail
 # Check for machine name parameter
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <machine-name>"
-    echo "Machine name must be in format: exe-ctr-NN or exe-ctr-staging-NN (where NN is a number)"
+    echo "Machine name must be in format: exe-ctr-NN, exe-ctr-staging-NN, or exelet-<region>-<prod|staging>-NN"
     exit 1
 fi
 
@@ -14,18 +14,23 @@ MACHINE_NAME="$1"
 if [ "${SKIP_NAME_CHECK:-}" = "1" ]; then
     echo "Warning: SKIP_NAME_CHECK is set, bypassing machine name validation"
 else
-    if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]]; then
-        echo "Error: Machine name must be in format exe-ctr-NN or exe-ctr-staging-NN (e.g., exe-ctr-01, exe-ctr-staging-01)"
+    if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-(staging-)?[0-9]+$ ]] && ! [[ "$MACHINE_NAME" =~ ^exelet-[a-z]+-((prod|staging))-[0-9]+$ ]]; then
+        echo "Error: Machine name must be in format exe-ctr-NN, exe-ctr-staging-NN, or exelet-<region>-<prod|staging>-NN"
         echo "Set SKIP_NAME_CHECK=1 to bypass this check"
         exit 1
     fi
 fi
 
 # Determine stage based on machine name
-if [[ "$MACHINE_NAME" =~ ^exe-ctr-staging- ]] || [ "${SKIP_NAME_CHECK:-}" = "1" ]; then
+if [[ "$MACHINE_NAME" =~ -prod- ]]; then
+    STAGE="production"
+elif [[ "$MACHINE_NAME" =~ -staging- ]] || [[ "$MACHINE_NAME" =~ ^exe-ctr-staging- ]]; then
+    STAGE="staging"
+elif [ "${SKIP_NAME_CHECK:-}" = "1" ]; then
     STAGE="staging"
 else
-    STAGE="production"
+    echo "ERROR: Cannot determine stage from machine name '${MACHINE_NAME}'. Name must contain '-prod-' or '-staging-'."
+    exit 1
 fi
 ROLE="exelet"
 echo "Machine role: ${ROLE}, stage: ${STAGE}"
