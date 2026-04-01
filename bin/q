@@ -668,10 +668,10 @@ def main():
         queue_branch = f"{prefix}-{user}-{branch}"
 
     # --- Retry validation ---
-    max_attempts = 1 + args.retries
     if args.retries > 0 and ref != "HEAD":
-        print(f"q: --retries requires HEAD (got {ref})", file=sys.stderr)
-        raise SystemExit(1)
+        print(f"q: --retries requires HEAD; disabling for {ref}", file=sys.stderr)
+        args.retries = 0
+    max_attempts = 1 + args.retries
 
     # --- Push + monitor (with retries) ---
     for attempt in range(1, max_attempts + 1):
