@@ -19,6 +19,8 @@ import (
 
 	"shelley.exe.dev/claudetool/bashkit"
 	"shelley.exe.dev/llm"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // PermissionCallback is a function type for checking if a command is allowed to run
@@ -469,10 +471,11 @@ func humanizeBytes(bytes int) string {
 // This accounts for version managers (uv, mise, direnv, …) that only
 // add entries to PATH after shell startup scripts are sourced.
 func shellHasCommand(ctx context.Context, name string) bool {
-	// name comes from bashkit.ExtractCommands, which guarantees simple
-	// identifiers (no slashes, no equals, no empty strings). Single-quoting
-	// is purely defensive.
-	cmd := exec.CommandContext(ctx, "bash", "--login", "-c", "command -v '"+strings.ReplaceAll(name, "'", "")+"'")
+	quoted, err := syntax.Quote(name, syntax.LangBash)
+	if err != nil {
+		return false
+	}
+	cmd := exec.CommandContext(ctx, "bash", "--login", "-c", "command -v "+quoted)
 	cmd.Stdin = nil
 	return cmd.Run() == nil
 }

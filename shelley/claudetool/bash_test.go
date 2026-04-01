@@ -456,3 +456,24 @@ func TestIsNoTrailerSet(t *testing.T) {
 		}
 	})
 }
+
+func TestShellHasCommand(t *testing.T) {
+	ctx := context.Background()
+
+	// bash is always available since we run tests via bash
+	if !shellHasCommand(ctx, "bash") {
+		t.Error("expected bash to be found")
+	}
+
+	// A non-existent command should not be found
+	if shellHasCommand(ctx, "definitely-not-a-real-command-xyz123") {
+		t.Error("expected non-existent command to not be found")
+	}
+
+	// Cancelled context should return false
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if shellHasCommand(canceled, "bash") {
+		t.Error("expected cancelled context to return false")
+	}
+}
