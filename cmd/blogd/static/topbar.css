@@ -24,35 +24,30 @@ header .nav-left {
   gap: 16px;
 }
 
-header .nav-logo {
+header .nav-logo-img {
   display: flex;
-  align-items: center;
-  gap: 8px;
+}
+
+header .nav-logo-img img {
+  width: 28px;
+  height: 28px;
+}
+
+header .nav-logo-text {
   font-weight: 600;
-  font-size: 18px;
+  font-size: 16px;
   color: #000000;
   text-decoration: none;
   white-space: nowrap;
 }
 
-header .nav-logo img {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-}
-
-header .nav-links {
-  display: flex;
-  gap: 20px;
-}
-
-header .nav-links a {
+header .nav-link {
   color: #414141;
   text-decoration: none;
-  font-size: 14px;
+  font-size: 16px;
 }
 
-header .nav-links a:hover {
+header .nav-link:hover {
   color: #000000;
 }
 
@@ -108,12 +103,7 @@ header .btn .btn-text {
 }
 
 @media (max-width: 768px) {
-  /* Keep nav-links visible but adjust styling */
-  header .nav-links {
-    gap: 16px;
-  }
-
-  header .nav-links a {
+  header .nav-link {
     font-size: 13px;
   }
 
@@ -142,15 +132,15 @@ header .btn .btn-text {
     border-bottom-color: #333;
   }
 
-  header .nav-logo {
+  header .nav-logo-text {
     color: #f3f4f6;
   }
 
-  header .nav-links a {
+  header .nav-link {
     color: #9ca3af;
   }
 
-  header .nav-links a:hover {
+  header .nav-link:hover {
     color: #f3f4f6;
   }
 

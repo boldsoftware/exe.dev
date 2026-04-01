@@ -5,14 +5,10 @@
 <header>
   <div class="nav-container">
     <div class="nav-left">
-      <a href="https://exe.dev" class="nav-logo">
-        <img src="/static/exy.webp" alt="exe.dev logo" width="28" height="28" />
-        exe.dev
-      </a>
-      <div class="nav-links">
-        <a href="https://exe.dev/docs" {{if eq .ActivePage "docs"}}class="active"{{end}}>docs</a>
-        <a href="/" {{if eq .ActivePage "blog"}}class="active"{{end}}>blog</a>
-      </div>
+      <a href="https://exe.dev" class="nav-logo-img"><img src="/static/exy.webp" alt="exe.dev logo" width="28" height="28" /></a>
+      <a href="https://exe.dev" class="nav-logo-text">exe.dev</a>
+      <a href="https://exe.dev/docs" class="nav-link{{if eq .ActivePage "docs"}} active{{end}}">docs</a>
+      <a href="/" class="nav-link{{if eq .ActivePage "blog"}} active{{end}}">blog</a>
     </div>
     <div class="nav-right">
       <!-- Intentionally minimal on blog.exe.dev -->

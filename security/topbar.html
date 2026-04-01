@@ -5,14 +5,10 @@
 <header>
   <div class="nav-container">
     <div class="nav-left">
-      <a href="https://exe.dev" class="nav-logo">
-        <img src="/static/exy.png" alt="exe.dev logo" />
-        exe.dev
-      </a>
-      <div class="nav-links">
-        <a href="https://exe.dev/docs">docs</a>
-        <a href="/security" {{if eq .ActivePage "security"}}class="active"{{end}}>security</a>
-      </div>
+      <a href="https://exe.dev" class="nav-logo-img"><img src="/static/exy.png" alt="exe.dev logo" /></a>
+      <a href="https://exe.dev" class="nav-logo-text">exe.dev</a>
+      <a href="https://exe.dev/docs" class="nav-link">docs</a>
+      <a href="/security" class="nav-link{{if eq .ActivePage "security"}} active{{end}}">security</a>
     </div>
     <div class="nav-right">
     </div>

@@ -21,38 +21,34 @@ header .nav-container {
 header .nav-left {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 8px;
 }
 
-header .nav-logo {
+header .nav-logo-img {
   display: flex;
-  align-items: center;
-  gap: 8px;
+}
+
+header .nav-logo-img img {
+  width: 30px;
+  height: 30px;
+}
+
+header .nav-logo-text {
   font-weight: 600;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
+  margin-right: 24px;
 }
 
-header .nav-logo img {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-}
-
-header .nav-links {
-  display: flex;
-  gap: 24px;
-}
-
-header .nav-links a {
+header .nav-link {
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: var(--text-sm);
+  font-size: 16px;
 }
 
-header .nav-links a:hover {
+header .nav-link:hover {
   color: var(--color-text);
 }
 
@@ -115,12 +111,8 @@ header .btn .btn-text {
     padding-bottom: 10px;
   }
 
-  header .nav-links {
-    gap: 16px;
-  }
-
-  header .nav-links a {
-    font-size: var(--text-xs);
+  header .nav-link {
+    font-size: 14px;
   }
 
   header .btn .btn-text {
@@ -139,16 +131,11 @@ header .btn .btn-text {
     gap: 6px;
   }
 
-  header .nav-logo {
-    font-size: 16px;
+  header .nav-logo-text {
+    font-size: 14px;
     min-width: 0;
     overflow: hidden;
-  }
-
-  header .nav-logo-text {
-    overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
     max-width: 80px;
   }
 }

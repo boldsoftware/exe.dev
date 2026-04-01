@@ -4,13 +4,9 @@
 <header>
   <div class="nav-container">
     <div class="nav-left">
-      <a href="/" class="nav-logo">
-        <img src="/static/exy.png" alt="{{.WebHost}} logo" />
-        <span class="nav-logo-text">{{.WebHost}}</span>
-      </a>
-      <div class="nav-links">
-        <a href="/docs">docs</a>
-      </div>
+      <a href="/" class="nav-logo-img"><img src="/static/exy.png" alt="{{.WebHost}} logo" /></a>
+      <a href="/" class="nav-logo-text">{{.WebHost}}</a>
+      <a href="/docs" class="nav-link">docs</a>
     </div>
     <div class="nav-right">
       {{if .IsLoggedIn}}

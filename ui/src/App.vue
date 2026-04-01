@@ -5,11 +5,9 @@
         <div class="nav-left">
           <router-link to="/" class="nav-logo">
             <img src="/exy.png" alt="exe.dev" class="logo-img" />
-            <span class="logo-text">exe.dev</span>
           </router-link>
-          <nav class="nav-links">
-            <router-link to="/docs" class="docs-link">docs</router-link>
-          </nav>
+          <router-link to="/" class="logo-text">exe.dev</router-link>
+          <router-link to="/docs" class="docs-link">docs</router-link>
         </div>
         <div class="nav-right">
           <template v-if="isLoggedIn">
@@ -285,16 +283,11 @@ select:focus {
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .nav-logo {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  color: var(--text-color);
-  font-weight: 600;
 }
 
 .logo-img {
@@ -304,16 +297,20 @@ select:focus {
 
 .logo-text {
   font-size: 14px;
+  font-weight: 600;
   letter-spacing: -0.02em;
+  text-decoration: none;
+  color: var(--text-color);
+  margin-right: 8px;
 }
 
-.nav-links a {
-  font-size: 13px;
+.docs-link {
+  font-size: 14px;
   color: var(--text-color-secondary);
   text-decoration: none;
 }
 
-.nav-links a:hover {
+.docs-link:hover {
   color: var(--text-color);
   text-decoration: none;
 }
