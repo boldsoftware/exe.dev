@@ -17,6 +17,8 @@ import (
 	exeletclient "exe.dev/exelet/client"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // fakeLiveMigrationServer implements a minimal ComputeServiceServer for testing
@@ -27,6 +29,8 @@ type fakeLiveMigrationServer struct {
 	coldBooted            bool   // controls what ReceiveVMResult.ColdBooted returns
 	role                  string // "source" or "target"
 	sendPreMetadataStatus bool   // when true, sends a SendVMStatus before metadata (if client accepts)
+	deleteErrs            []error
+	deleteCalls           int
 }
 
 func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
@@ -39,10 +43,21 @@ func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.G
 }
 
 func (f *fakeLiveMigrationServer) DeleteInstance(_ context.Context, _ *computeapi.DeleteInstanceRequest) (*computeapi.DeleteInstanceResponse, error) {
+	f.deleteCalls++
+	if len(f.deleteErrs) > 0 {
+		err := f.deleteErrs[0]
+		f.deleteErrs = f.deleteErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &computeapi.DeleteInstanceResponse{}, nil
 }
 
-// SendVM implements the source side: sends metadata, a data chunk, and complete.
+// SendVM implements the source side of the migration protocol.
+// When the start request includes a TargetAddress (direct mode), it simulates
+// the source connecting directly to the target and relays control messages back
+// to execore. Otherwise it falls back to the legacy proxy protocol.
 // When sendPreMetadataStatus is true and the client sets AcceptStatus, a
 // SendVMStatus message is sent before metadata to simulate a replication wait.
 func (f *fakeLiveMigrationServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
@@ -52,6 +67,13 @@ func (f *fakeLiveMigrationServer) SendVM(stream computeapi.ComputeService_SendVM
 		return err
 	}
 	startReq := req.GetStart()
+
+	// Direct mode: source connects to target, sends control messages to execore.
+	if startReq != nil && startReq.TargetAddress != "" {
+		return f.sendVMDirect(stream, startReq)
+	}
+
+	// Legacy proxy mode (data flows through execore).
 
 	// If configured, send a status frame before metadata (simulates replication wait).
 	if f.sendPreMetadataStatus && startReq != nil && startReq.AcceptStatus {
@@ -104,6 +126,124 @@ func (f *fakeLiveMigrationServer) SendVM(stream computeapi.ComputeService_SendVM
 	}
 
 	// Return nil to close the stream (EOF).
+	return nil
+}
+
+// sendVMDirect simulates direct exelet-to-exelet migration. The source dials
+// the target, drives the ReceiveVM protocol, and relays control messages
+// (TargetReady, Metadata, Progress, Result) back to execore via the SendVM stream.
+func (f *fakeLiveMigrationServer) sendVMDirect(stream computeapi.ComputeService_SendVMServer, startReq *computeapi.SendVMStartRequest) error {
+	// Dial the target exelet.
+	targetClient, err := exeletclient.NewClient(startReq.TargetAddress, exeletclient.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("fake source: failed to dial target %s: %w", startReq.TargetAddress, err)
+	}
+	defer targetClient.Close()
+
+	recvStream, err := targetClient.ReceiveVM(stream.Context())
+	if err != nil {
+		return fmt.Errorf("fake source: failed to start ReceiveVM: %w", err)
+	}
+
+	// Send ReceiveVMStartRequest to target.
+	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+		Type: &computeapi.ReceiveVMRequest_Start{
+			Start: &computeapi.ReceiveVMStartRequest{
+				InstanceID: startReq.InstanceID,
+				Live:       startReq.Live,
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("fake source: failed to send ReceiveVM start: %w", err)
+	}
+
+	// Read ReceiveVMReady from target.
+	readyResp, err := recvStream.Recv()
+	if err != nil {
+		return fmt.Errorf("fake source: failed to receive ReceiveVMReady: %w", err)
+	}
+	ready := readyResp.GetReady()
+
+	// Forward TargetReady to execore stream.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_TargetReady{
+			TargetReady: &computeapi.SendVMTargetReady{
+				TargetNetwork: ready.GetTargetNetwork(),
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// If configured, send a status frame before metadata.
+	if f.sendPreMetadataStatus && startReq.AcceptStatus {
+		if err := stream.Send(&computeapi.SendVMResponse{
+			Type: &computeapi.SendVMResponse_Status{
+				Status: &computeapi.SendVMStatus{
+					Message: "waiting for storage replication to complete",
+				},
+			},
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Send metadata to execore.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_Metadata{
+			Metadata: &computeapi.SendVMMetadata{
+				Instance: &computeapi.Instance{
+					ID:    "test-instance",
+					Image: "ubuntu:latest",
+				},
+				BaseImageID: "sha256:fake",
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Send data directly to target.
+	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+		Type: &computeapi.ReceiveVMRequest_Data{
+			Data: &computeapi.ReceiveVMDataChunk{
+				Data: []byte("testdata"),
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("fake source: failed to send data to target: %w", err)
+	}
+
+	// Send complete to target.
+	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
+		Type: &computeapi.ReceiveVMRequest_Complete{
+			Complete: &computeapi.ReceiveVMComplete{
+				Checksum: "fakechecksum",
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("fake source: failed to send complete to target: %w", err)
+	}
+
+	// Read result from target.
+	resultResp, err := recvStream.Recv()
+	if err != nil {
+		return fmt.Errorf("fake source: failed to receive result from target: %w", err)
+	}
+	result := resultResp.GetResult()
+
+	// Forward result to execore.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_Result{
+			Result: &computeapi.SendVMResult{
+				Instance:   result.GetInstance(),
+				ColdBooted: result.GetColdBooted(),
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -261,10 +401,11 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 
 			gotSSHPort, gotColdBooted, err := server.migrateVMLive(ctx, migrateVMLiveParams{
 				source:     sourceClient,
-				target:     targetClient,
+				targetAddr: targetAddr,
 				instanceID: containerID,
 				box:        box,
 				progress:   progress,
+				directOnly: false,
 			})
 			if err != nil {
 				t.Fatalf("migrateVMLive failed: %v", err)
@@ -350,10 +491,11 @@ func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
 
 	_, _, err = server.migrateVMLive(ctx, migrateVMLiveParams{
 		source:     sourceClient,
-		target:     targetClient,
+		targetAddr: targetAddr,
 		instanceID: containerID,
 		box:        box,
 		progress:   progress,
+		directOnly: false,
 	})
 	if err != nil {
 		t.Fatalf("migrateVMLive failed: %v", err)
@@ -376,14 +518,14 @@ func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
 	_, sourceClient := startFakeMigrationExelet(t, sourceSrv)
 
 	targetSrv := &fakeLiveMigrationServer{role: "target"}
-	_, targetClient := startFakeMigrationExelet(t, targetSrv)
+	targetAddr, _ := startFakeMigrationExelet(t, targetSrv)
 
 	var messages []string
 	progress := func(format string, args ...any) {
 		messages = append(messages, fmt.Sprintf(format, args...))
 	}
 
-	err := server.migrateVM(ctx, sourceClient, targetClient, "test-instance", false, progress)
+	err := server.migrateVM(ctx, sourceClient, "test-instance", targetAddr, false, false, progress)
 	if err != nil {
 		t.Fatalf("migrateVM failed: %v", err)
 	}
@@ -513,5 +655,83 @@ func TestMigrateBoxColdBootSendsEmail(t *testing.T) {
 		}
 	case <-timer.C:
 		t.Fatal("timed out waiting for maintenance email")
+	}
+}
+
+func TestHandleDebugBoxMigrateRetriesSourceDeleteWhileMigrationUnlocks(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 33333
+	sourceSrv := &fakeLiveMigrationServer{
+		sshPort: sshPort,
+		role:    "source",
+		deleteErrs: []error{
+			status.Error(codes.FailedPrecondition, "instance is being migrated"),
+			nil,
+		},
+	}
+	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	const boxName = "delete-retry-vm"
+	userID := createTestUser(t, server, boxName+"@boldvm.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          boxName,
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containerID := "container-" + boxName
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+			SSHPort:     nil,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"live":         {"true"},
+		"confirm_name": {boxName},
+	}
+	req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	server.handleDebugBoxMigrate(w, req)
+	body := w.Body.String()
+
+	if sourceSrv.deleteCalls != 2 {
+		t.Fatalf("DeleteInstance calls = %d, want 2\nbody:\n%s", sourceSrv.deleteCalls, body)
+	}
+	if strings.Contains(body, "WARNING: failed to delete source instance") {
+		t.Fatalf("unexpected source delete warning after retry:\n%s", body)
+	}
+	if !strings.Contains(body, "Source instance deleted.") {
+		t.Fatalf("expected successful source delete message, got:\n%s", body)
+	}
+	if !strings.Contains(body, "MIGRATION_SUCCESS:") {
+		t.Fatalf("expected migration success, got:\n%s", body)
 	}
 }

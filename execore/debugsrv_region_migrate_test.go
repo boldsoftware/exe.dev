@@ -313,7 +313,7 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "test", false, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", false, false, progress)
 
 		joined := strings.Join(messages, "\n")
 		if !strings.Contains(joined, "already stopped") {
@@ -332,7 +332,7 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "test", true, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", true, false, progress)
 
 		joined := strings.Join(messages, "\n")
 		if !strings.Contains(joined, "still running") {
@@ -340,8 +340,9 @@ func TestRestartSourceVM(t *testing.T) {
 		}
 	})
 
-	t.Run("restarts_stopped_vm", func(t *testing.T) {
+	t.Run("skips_restart_stopped_cold", func(t *testing.T) {
 		// Use a server that returns STOPPED for GetInstance.
+		// With split-brain protection, restartSourceVM skips restart when VM is stopped.
 		srv := &fakeStoppedServer{sshPort: sshPort}
 		_, client := startFakeComputeServer(t, srv)
 		ec := &exeletClient{client: client}
@@ -351,11 +352,11 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "migration failed", true, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "migration failed", true, false, progress)
 
 		joined := strings.Join(messages, "\n")
-		if !strings.Contains(joined, "VM restarted on source") {
-			t.Errorf("expected restart message, got:\n%s", joined)
+		if !strings.Contains(joined, "skipping restart") {
+			t.Errorf("expected 'skipping restart' message, got:\n%s", joined)
 		}
 	})
 }

@@ -5,11 +5,12 @@
 body { max-width: 600px; }
 h1 { margin-bottom: 10px; }
 label { display: block; margin-top: 15px; font-weight: bold; }
+label.inline { display: inline; font-weight: normal; }
 select, input[type="text"] { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; font-size: 14px; }
 button { margin-top: 20px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
 button[type="submit"] { background: #007bff; color: white; border: none; }
 button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
-#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; }
+#progress { margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 500px; overflow-y: auto; }
 #progress.active { display: block; }
 #progress.error { background: #f8d7da; border-color: #f5c6cb; }
 #progress.success { background: #d4edda; border-color: #c3e6cb; }
@@ -33,7 +34,10 @@ button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
 {{end}}
 </select>
 
-<label style="display:inline;margin-top:15px;"><input type="checkbox" id="liveCheckbox" checked> Live migration (preserve process state)</label>
+<div style="margin-top:15px; display:flex; gap:20px;">
+<label class="inline"><input type="checkbox" id="liveCheckbox" checked> Live migration (preserve process state)</label>
+<label class="inline"><input type="checkbox" name="direct_only" id="directOnlyCheckbox" value="true"> &#10003; Try direct only</label>
+</div>
 <input type="hidden" name="live" id="liveHidden" value="true">
 
 <label for="confirm_name">Type box name to confirm:</label>
@@ -61,17 +65,18 @@ document.getElementById('liveCheckbox').addEventListener('change', function() {
     document.getElementById('liveHidden').value = this.checked ? 'true' : 'false';
     document.getElementById('submitBtn').textContent = this.checked ? 'Migrate (live)' : 'Migrate';
 });
+
 document.getElementById('migrateForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var form = this;
-    var progress = document.getElementById('progress');
+    var progressLog = document.getElementById('progress');
     var submitBtn = document.getElementById('submitBtn');
     var isLive = document.getElementById('liveCheckbox').checked;
 
     submitBtn.disabled = true;
     submitBtn.textContent = isLive ? 'Live migrating...' : 'Migrating...';
-    progress.className = 'active';
-    progress.textContent = (isLive ? 'Starting live migration...\n' : 'Starting migration...\n');
+    progressLog.className = 'active';
+    progressLog.textContent = '';
 
     fetch(form.action, {
         method: 'POST',
@@ -82,28 +87,24 @@ document.getElementById('migrateForm').addEventListener('submit', function(e) {
 
         function read() {
             reader.read().then(function(result) {
-                if (result.done) {
-                    return;
-                }
+                if (result.done) { return; }
                 var text = decoder.decode(result.value, {stream: true});
-                progress.textContent += text;
-                progress.scrollTop = progress.scrollHeight;
+                progressLog.textContent += text;
+                progressLog.scrollTop = progressLog.scrollHeight;
 
-                // Check for completion markers
                 if (text.includes('MIGRATION_SUCCESS:')) {
-                    progress.className = 'active success';
+                    progressLog.className = 'active success';
                     var match = text.match(/MIGRATION_SUCCESS:(\S+)/);
                     if (match) {
-                        // Add a clickable link instead of auto-redirecting
                         var link = document.createElement('a');
                         link.href = '/debug/vms/' + match[1];
                         link.textContent = 'Go to VM details \u2192';
                         link.style.cssText = 'display:inline-block;margin-top:15px;padding:10px 20px;background:#28a745;color:white;text-decoration:none;border-radius:4px;';
-                        progress.parentNode.insertBefore(link, progress.nextSibling);
+                        progressLog.parentNode.insertBefore(link, progressLog.nextSibling);
                     }
                 } else if (text.includes('MIGRATION_ERROR:')) {
-                    progress.className = 'active error';
-                    submitBtn.textContent = 'Migrate';
+                    progressLog.className = 'active error';
+                    submitBtn.textContent = isLive ? 'Migrate (live)' : 'Migrate';
                     submitBtn.disabled = false;
                 }
 
@@ -112,9 +113,9 @@ document.getElementById('migrateForm').addEventListener('submit', function(e) {
         }
         read();
     }).catch(function(err) {
-        progress.className = 'active error';
-        progress.textContent += '\nFetch error: ' + err;
-        submitBtn.textContent = 'Migrate';
+        progressLog.className = 'active error';
+        progressLog.textContent += '\nFetch error: ' + err;
+        submitBtn.textContent = isLive ? 'Migrate (live)' : 'Migrate';
         submitBtn.disabled = false;
     });
 });

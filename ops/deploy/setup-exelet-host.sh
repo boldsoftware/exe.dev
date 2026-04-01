@@ -333,6 +333,7 @@ packages:
   - curl
   - jq
   - pv
+  - docker.io
   - atop
   - btop
   - htop
@@ -411,6 +412,8 @@ runcmd:
     tailscale status 2>&1
     echo "Tailscale initialization complete"
 
+    # add ubuntu user to docker group
+    usermod -aG docker ubuntu
 EOF
     )
 
@@ -723,16 +726,17 @@ fi # end of new-instance provisioning (skipped during re-provision)
 # Build cloud-hypervisor artifacts on remote
 ###############################################
 
-# Copy setup script to the remote host
-echo "Copying setup scripts to ${MACHINE_NAME}..."
+# Copy Dockerfile and setup script to the remote host
+echo "Copying build context and setup scripts to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "${SCRIPT_DIR}/setup-cloud-hypervisor.sh" \
+    "${SCRIPT_DIR}/cloud-hypervisor/Dockerfile" \
     "ubuntu@${MACHINE_NAME}:~/"; then
     echo "ERROR: Failed to copy scripts to remote"
     exit 1
 fi
 
-# Build artifacts on remote via native source build
+# Build artifacts on remote using Docker
 echo "Building Cloud Hypervisor artifacts on ${MACHINE_NAME}..."
 REMOTE_BUILD_CMD="set -euo pipefail
 CLOUD_HYPERVISOR_VERSION=${CLOUD_HYPERVISOR_VERSION}
@@ -741,67 +745,37 @@ CACHE_DIR=\"\$HOME/.cache/exedops\"
 ARTIFACT_NAME=\"cloud-hypervisor-\${CLOUD_HYPERVISOR_VERSION}-amd64.tar.gz\"
 
 mkdir -p \"\$CACHE_DIR\"
+mkdir -p \"\$HOME/cloud-hypervisor-build\"
+mv \"\$HOME/Dockerfile\" \"\$HOME/cloud-hypervisor-build/\"
 
 # Check if artifact already exists
 if [ -f \"\$CACHE_DIR/\$ARTIFACT_NAME\" ]; then
     echo \"Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) cache hit\"
 else
-    echo \"Building Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) from source...\"
+    echo \"Building Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) via Docker...\"
 
-    # Install build dependencies
-    sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y \\
-        build-essential libcap-ng-dev libseccomp-dev pkg-config git curl >/dev/null 2>&1
+    IMAGE_TAG=\"exe-cloud-hypervisor:\${CLOUD_HYPERVISOR_VERSION}-amd64\"
 
-    # Install Rust nightly
-    if ! command -v rustup &>/dev/null; then
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --profile minimal
-        source \"\$HOME/.cargo/env\"
-    else
-        rustup install nightly
-        rustup default nightly
-    fi
-    rustup component add rustfmt --toolchain nightly
+    docker build \\
+        --tag \"\$IMAGE_TAG\" \\
+        --build-arg \"CLOUD_HYPERVISOR_VERSION=\${CLOUD_HYPERVISOR_VERSION}\" \\
+        --build-arg \"VIRTIOFSD_VERSION=\${VIRTIOFSD_VERSION}\" \\
+        --build-arg \"TARGETARCH=amd64\" \\
+        \"\$HOME/cloud-hypervisor-build\"
 
-    BUILD_DIR=\$(mktemp -d)
-    OUT_DIR=\$(mktemp -d)
-    mkdir -p \"\$OUT_DIR/bin\"
+    CONTAINER_ID=\$(docker create \"\$IMAGE_TAG\" /bin/true)
+    TMP_DIR=\$(mktemp -d)
 
-    # Download and build Cloud Hypervisor
-    echo \"Downloading Cloud Hypervisor v\${CLOUD_HYPERVISOR_VERSION} source...\"
-    curl -sSfL \"https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v\${CLOUD_HYPERVISOR_VERSION}.tar.gz\" \\
-        | tar xz -C \"\$BUILD_DIR\"
-    pushd \"\$BUILD_DIR/cloud-hypervisor-\${CLOUD_HYPERVISOR_VERSION}\" >/dev/null
-    echo \"Building cloud-hypervisor and ch-remote...\"
-    cargo +nightly build --release
-    cp target/release/cloud-hypervisor \"\$OUT_DIR/bin/\"
-    cp target/release/ch-remote \"\$OUT_DIR/bin/\"
-    popd >/dev/null
+    docker cp \"\$CONTAINER_ID:/out/.\" \"\$TMP_DIR\"
+    docker rm \"\$CONTAINER_ID\" >/dev/null 2>&1 || true
 
-    # Download and build virtiofsd
-    echo \"Downloading virtiofsd v\${VIRTIOFSD_VERSION} source...\"
-    curl -sSfL \"https://gitlab.com/virtio-fs/virtiofsd/-/archive/v\${VIRTIOFSD_VERSION}/virtiofsd-v\${VIRTIOFSD_VERSION}.tar.gz\" \\
-        | tar xz -C \"\$BUILD_DIR\"
-    pushd \"\$BUILD_DIR/virtiofsd-v\${VIRTIOFSD_VERSION}\" >/dev/null
-    echo \"Building virtiofsd...\"
-    cargo +nightly build --release
-    cp target/release/virtiofsd \"\$OUT_DIR/bin/\"
-    popd >/dev/null
-
-    # Write metadata
-    cat > \"\$OUT_DIR/metadata\" <<METAEOF
-cloud_hypervisor_version=\${CLOUD_HYPERVISOR_VERSION}
-virtiofsd_version=\${VIRTIOFSD_VERSION}
-arch=amd64
-build_date=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
-METAEOF
-
-    # Package tarball
-    tar czf \"\$CACHE_DIR/\$ARTIFACT_NAME\" -C \"\$OUT_DIR\" .
-    rm -rf \"\$BUILD_DIR\" \"\$OUT_DIR\"
+    tar czf \"\$CACHE_DIR/\$ARTIFACT_NAME\" -C \"\$TMP_DIR\" .
+    rm -rf \"\$TMP_DIR\"
 
     echo \"Cached Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) at \$CACHE_DIR/\$ARTIFACT_NAME\"
 fi
+
+rm -rf \"\$HOME/cloud-hypervisor-build\"
 
 # Place the setup script for execution
 sudo mv \"\$HOME/setup-cloud-hypervisor.sh\" /root/setup-cloud-hypervisor.sh

@@ -73,6 +73,13 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 
+	if os.Getenv("CTR_HOST") == "localhost" {
+		if err := testinfra.BootstrapLocalhost(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to bootstrap localhost: %v\n", err)
+			exit(1)
+		}
+	}
+
 	var (
 		exedLogFile     *os.File
 		exeproxLogFile  *os.File
@@ -304,30 +311,51 @@ func deleteBox(t *testing.T, boxName, keyFile string) {
 }
 
 // boxHosts returns a mapping from exelet hosts to box names on that host.
-func boxHosts(t *testing.T) map[string][]string {
+type debugBox struct {
+	Host   string `json:"host"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+func listBoxes(t *testing.T) []debugBox {
+	t.Helper()
+
 	url := fmt.Sprintf("http://localhost:%d/debug/vms?format=json", serverEnv.Exed.HTTPPort)
 	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("%s returned status %d", url, resp.StatusCode)
 	}
 
-	var boxes []struct {
-		Host string `json:"host"`
-		Name string `json:"name"`
-	}
+	var boxes []debugBox
 	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
 		t.Fatalf("failed to JSON decode %s: %v", url, err)
 	}
 
-	resp.Body.Close()
+	return boxes
+}
+
+func boxHosts(t *testing.T) map[string][]string {
+	t.Helper()
 
 	ret := make(map[string][]string)
-	for _, box := range boxes {
+	for _, box := range listBoxes(t) {
 		ret[box.Host] = append(ret[box.Host], box.Name)
 	}
 
 	return ret
+}
+
+func findBox(t *testing.T, boxName string) (debugBox, bool) {
+	t.Helper()
+
+	for _, box := range listBoxes(t) {
+		if box.Name == boxName {
+			return box, true
+		}
+	}
+	return debugBox{}, false
 }

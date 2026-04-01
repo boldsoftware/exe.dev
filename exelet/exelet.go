@@ -124,8 +124,6 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts .
 		grpcStreamLogTypeInterceptor(),
 	}
 
-	// TODO: auth middleware
-
 	grpcOpts = append(grpcOpts,
 		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
 		grpc.ChainStreamInterceptor(streamServerInterceptors...),

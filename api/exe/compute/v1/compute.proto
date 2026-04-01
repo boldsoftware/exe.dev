@@ -307,6 +307,10 @@ message SendVMStartRequest {
   // When true, the source may send SendVMStatus messages before metadata.
   // Clients that don't set this will only receive metadata as the first response.
   bool accept_status = 5;
+  // Direct migration: source connects to target directly for data transfer.
+  // When set, source dials target_address and opens a ReceiveVM stream.
+  string target_address = 6;
+  string target_group_id = 7;
 }
 
 message SendVMControl {
@@ -325,11 +329,29 @@ message SendVMResponse {
     SendVMSnapshotChunk snapshot_data = 5;
     SendVMAwaitControl await_control = 6;
     SendVMStatus status = 7;
+    SendVMTargetReady target_ready = 8;
+    SendVMProgress progress = 9;
+    SendVMResult result = 10;
   }
 }
 
 message SendVMStatus {
   string message = 1; // Human-readable status message (e.g., "waiting for storage replication to complete")
+}
+
+message SendVMTargetReady {
+  bool has_base_image = 1;
+  NetworkInterface target_network = 2;
+}
+
+message SendVMProgress {
+  int64 bytes_sent = 1;
+}
+
+message SendVMResult {
+  Instance instance = 1;
+  string error = 2;
+  bool cold_booted = 3;
 }
 
 message SendVMSnapshotChunk {
@@ -356,7 +378,7 @@ message SendVMMetadata {
   string base_image_id = 2;          // e.g., "sha256:abc123..."
   uint64 total_size_estimate = 3;    // Estimated bytes for progress display
   bool encrypted = 4;                // Whether disk is encrypted
-  bytes encryption_key = 5;          // Encryption key (if encrypted)
+  bytes encryption_key = 5;          // Encryption key (if encrypted). Nil in direct mode; key sent directly to target via ReceiveVMStartRequest.
 }
 
 message SendVMDataChunk {
@@ -380,14 +402,16 @@ message ReceiveVMRequest {
   }
 }
 
-message ReceiveVMPhaseComplete {}
+message ReceiveVMPhaseComplete {
+  bool last = 1;  // When true, no more sideband phases follow; target should not open a new listener
+}
 
 message ReceiveVMStartRequest {
   string instance_id = 1;           // Instance ID to use on target
   Instance source_instance = 2;     // Instance config from source
   string base_image_id = 3;         // Base image ID to check/clone
   bool encrypted = 4;               // Whether disk is encrypted
-  bytes encryption_key = 5;         // Encryption key (if encrypted)
+  bytes encryption_key = 5;         // Encryption key (if encrypted). In direct mode, carries the actual key from source to target.
   string group_id = 6;              // Target group ID
   bool live = 7;                    // Live migration: restore from CH snapshot
 }
@@ -412,12 +436,18 @@ message ReceiveVMResponse {
   oneof type {
     ReceiveVMReady ready = 1;
     ReceiveVMResult result = 2;
+    ReceiveVMPhaseReady phase_ready = 3;  // Sent after PhaseComplete in sideband mode with next TCP addr
   }
 }
 
 message ReceiveVMReady {
   bool has_base_image = 1;              // Target already has the base image
   NetworkInterface target_network = 2;  // Allocated network for live migration
+  string sideband_addr = 3;            // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
+}
+
+message ReceiveVMPhaseReady {
+  string sideband_addr = 1;  // host:port of raw TCP listener for the next migration phase
 }
 
 message ReceiveVMResult {

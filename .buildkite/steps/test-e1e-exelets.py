@@ -36,15 +36,19 @@ def main():
     os.environ["E1E_LOG_DIR"] = os.path.abspath("e1e-logs-exelets")
 
     json_results = "e1e-results-exelets.json"
+    junit_results = "e1e-results-exelets.xml"
 
     vm_concurrency = os.environ.get("E1E_EXELETS_VM_CONCURRENCY", os.environ.get("E1E_VM_CONCURRENCY", "10"))
     env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
-    test_result = subprocess.run(
-        ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
-         "--", "-race", "-count=1", "-timeout=15m", "-failfast",
-         "./e1e/testinfra", "./e1e/exelets"],
-        env=env,
-    )
+    cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
+           "--junitfile", junit_results,
+           "--", "-race", "-count=1", "-timeout=15m", "-failfast",
+           "./e1e/testinfra", "./e1e/exelets"]
+    if run_filter := os.environ.get("E1E_EXELETS_RUN_FILTER", ""):
+        cmd.extend(["-run", run_filter])
+    if skip_filter := os.environ.get("E1E_EXELETS_SKIP_FILTER", ""):
+        cmd.extend(["-skip", skip_filter])
+    test_result = subprocess.run(cmd, env=env)
 
     _annotate_results(json_results)
     _generate_gantt(json_results)

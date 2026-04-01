@@ -197,17 +197,42 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
             lines.append(f'    - "coverage-e1e-{shard_num}.txt"')
         lines.append('')
 
-    # Exelets step
+    # Exelets step (all tests except direct migration)
     lines.append('- label: ":electric_plug: e1e exelets"')
     lines.append('  key: test-exelets')
     lines.append('  depends_on:')
     lines.append('    - build-e1e')
     lines.append('    - ensure-snapshot')
     lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
-    lines.append('  timeout_in_minutes: 15')
+    lines.append('  timeout_in_minutes: 10')
     lines.append('  env:')
     lines.append('    VM_DRIVER: cloudhypervisor')
     lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
+    lines.append('    E1E_EXELETS_SKIP_FILTER: "TestDirectMigration"')
+    if coverage:
+        lines.append(f'    E1E_COVERAGE: "true"')
+    lines.append('  artifact_paths:')
+    lines.append('    - "e1e-results-exelets.json"')
+    lines.append('    - "test-gantt-exelets.html"')
+    lines.append('    - "e1e-results-exelets.xml"')
+    lines.append('    - "e1e-logs-exelets/**/*"')
+    if coverage:
+        lines.append('    - "coverage-exelets.txt"')
+
+    lines.append('')
+
+    # Exelets migration step (direct migration tests, parallel with above)
+    lines.append('- label: ":arrow_right_hook: e1e migration"')
+    lines.append('  key: test-exelets-migration')
+    lines.append('  depends_on:')
+    lines.append('    - build-e1e')
+    lines.append('    - ensure-snapshot')
+    lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
+    lines.append('  timeout_in_minutes: 10')
+    lines.append('  env:')
+    lines.append('    VM_DRIVER: cloudhypervisor')
+    lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
+    lines.append('    E1E_EXELETS_RUN_FILTER: "TestDirectMigration"')
     if coverage:
         lines.append(f'    E1E_COVERAGE: "true"')
     lines.append('  artifact_paths:')
@@ -383,7 +408,7 @@ def main():
         # Collect keys of all test steps that produce coverage.
         test_keys = collect_step_keys("\n".join(segments))
         # Filter to only test step keys (unit-*, test-e1e-*, test-exelets).
-        coverage_deps = [k for k in test_keys if k.startswith("unit-") or k.startswith("test-e1e-") or k == "test-exelets"]
+        coverage_deps = [k for k in test_keys if k.startswith("unit-") or k.startswith("test-e1e-") or k in ("test-exelets", "test-exelets-migration")]
         segments.append(generate_coverage_merge_step(coverage_deps))
 
     # Collect all step keys for dependency lists

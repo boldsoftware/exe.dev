@@ -2,9 +2,13 @@ package exelets
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/e1e/testinfra"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
@@ -221,5 +225,121 @@ func TestLoadedHost(t *testing.T) {
 	}
 	if !slices.Contains(boxes[exeletAddrs[1]], boxName4) {
 		t.Errorf("box4 is not on expected exelet %s", exeletAddrs[1])
+	}
+}
+
+func TestDirectMigration(t *testing.T) {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	exeletAddrs := []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+		t.Fatal(err)
+	}
+
+	pty, _, keyFile, email := register(t)
+	boxName := makeBox(t, pty, keyFile, email)
+	pty.Disconnect()
+	defer deleteBox(t, boxName, keyFile)
+
+	sourceBox, ok := findBox(t, boxName)
+	if !ok {
+		t.Fatalf("box %q not found before migration", boxName)
+	}
+
+	var targetAddr string
+	switch sourceBox.Host {
+	case exeletAddrs[0]:
+		targetAddr = exeletAddrs[1]
+	case exeletAddrs[1]:
+		targetAddr = exeletAddrs[0]
+	default:
+		t.Fatalf("box %q created on unexpected host %q", boxName, sourceBox.Host)
+	}
+
+	t.Run("cold", func(t *testing.T) {
+		migrateBox(t, boxName, targetAddr, false)
+		assertBoxEventuallyOnHost(t, boxName, targetAddr)
+		assertBoxSSHWorks(t, boxName, keyFile)
+	})
+
+	t.Run("live_reverse", func(t *testing.T) {
+		migrateBox(t, boxName, sourceBox.Host, true)
+		assertBoxEventuallyOnHost(t, boxName, sourceBox.Host)
+		assertBoxSSHWorks(t, boxName, keyFile)
+
+		migrateBox(t, boxName, targetAddr, true)
+		assertBoxEventuallyOnHost(t, boxName, targetAddr)
+		assertBoxSSHWorks(t, boxName, keyFile)
+	})
+}
+
+func migrateBox(t *testing.T, boxName, target string, live bool) {
+	t.Helper()
+
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {target},
+		"confirm_name": {boxName},
+		"live":         {fmt.Sprintf("%t", live)},
+	}
+	url := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
+	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("failed to POST %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("%s returned status %d:\n%s", url, resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read migrate response: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "MIGRATION_SUCCESS:"+boxName) {
+		t.Fatalf("migration response missing success marker:\n%s", text)
+	}
+	if !strings.Contains(text, "MIGRATION_DIRECT_CONFIRMED:") {
+		t.Fatalf("migration did not use direct exelet-to-exelet path (no MIGRATION_DIRECT_CONFIRMED in response):\n%s", text)
+	}
+}
+
+func assertBoxEventuallyOnHost(t *testing.T, boxName, wantHost string) {
+	t.Helper()
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		box, ok := findBox(t, boxName)
+		if ok && box.Host == wantHost && box.Status == "running" {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	box, ok := findBox(t, boxName)
+	if !ok {
+		t.Fatalf("box %q not found after waiting for host %q", boxName, wantHost)
+	}
+	t.Fatalf("box %q ended on host=%q status=%q, want host=%q status=running", boxName, box.Host, box.Status, wantHost)
+}
+
+func assertBoxSSHWorks(t *testing.T, boxName, keyFile string) {
+	t.Helper()
+
+	if err := serverEnv.WaitForBoxSSHServer(t.Context(), boxName, keyFile); err != nil {
+		t.Fatal(err)
+	}
+	out, err := serverEnv.BoxSSHCommand(t.Context(), boxName, keyFile, "hostname").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to ssh to %q after migration: %v\n%s", boxName, err, out)
+	}
+	if !strings.Contains(string(out), boxName) {
+		t.Fatalf("hostname output %q does not contain box name %q", strings.TrimSpace(string(out)), boxName)
 	}
 }

@@ -12,11 +12,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"exe.dev/exelet/atomicfile"
@@ -167,15 +169,42 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		s.log.InfoContext(ctx, "live: allocated target network", "instance", instanceID, "ip", targetNetwork.IP.IPV4)
 	}
 
+	// Open a raw TCP listener for the sideband data channel.
+	// The source exelet dials this directly and streams ZFS data over TCP instead of
+	// gRPC chunks, eliminating protobuf framing overhead and enabling true pipeline I/O.
+	//
+	// Advertise our own IP, not the peer's. Use the UDP-dial trick: ask the kernel
+	// which local interface it would use to reach the peer — no packet is sent.
+	var sbLocalHost string
+	if p, ok := peer.FromContext(ctx); ok {
+		if conn, err := net.Dial("udp", p.Addr.String()); err == nil {
+			sbLocalHost = conn.LocalAddr().(*net.UDPAddr).IP.String()
+			conn.Close()
+		}
+	}
+	var sbLn net.Listener
+	sidebandAddr := ""
+	if sbLocalHost != "" {
+		if ln, err := net.Listen("tcp", "0.0.0.0:0"); err == nil {
+			sbLn = ln
+			port := ln.Addr().(*net.TCPAddr).Port
+			sidebandAddr = net.JoinHostPort(sbLocalHost, strconv.Itoa(port))
+		}
+	}
+
 	// Send ready response
 	if err := stream.Send(&api.ReceiveVMResponse{
 		Type: &api.ReceiveVMResponse_Ready{
 			Ready: &api.ReceiveVMReady{
 				HasBaseImage:  hasBaseImage,
 				TargetNetwork: targetNetwork,
+				SidebandAddr:  sidebandAddr,
 			},
 		},
 	}); err != nil {
+		if sbLn != nil {
+			sbLn.Close()
+		}
 		receiveErr = status.Errorf(codes.Internal, "failed to send ready: %v", err)
 		return receiveErr
 	}
@@ -239,6 +268,47 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	var totalBytes uint64
 	var expectedChecksum string
 
+	// sidebandPhase accepts one TCP connection on ln, pipes bytes through the shared
+	// hasher into a new zfs recv, and reports the result on the returned channel.
+	// It owns the full lifecycle of the zfs recv for that phase.
+	type sbResult struct{ err error }
+	sidebandPhase := func(ln net.Listener) chan sbResult {
+		ch := make(chan sbResult, 1)
+		recv := startZfsRecv(instanceID)
+		go func() {
+			conn, err := ln.Accept()
+			ln.Close()
+			if err != nil {
+				recv.pw.CloseWithError(err)
+				<-recv.errCh
+				ch <- sbResult{fmt.Errorf("sideband accept: %w", err)}
+				return
+			}
+			defer conn.Close()
+			go func() { <-ctx.Done(); conn.Close() }()
+
+			n, copyErr := io.Copy(io.MultiWriter(recv.pw, hasher), conn)
+			totalBytes += uint64(n)
+			recv.pw.Close()
+			zfsErr := <-recv.errCh
+			if copyErr != nil && !errors.Is(copyErr, net.ErrClosed) {
+				ch <- sbResult{fmt.Errorf("sideband copy: %w", copyErr)}
+				return
+			}
+			if zfsErr != nil {
+				ch <- sbResult{fmt.Errorf("zfs recv: %w", zfsErr)}
+				return
+			}
+			ch <- sbResult{}
+		}()
+		return ch
+	}
+
+	var sbCh chan sbResult
+	if sbLn != nil {
+		sbCh = sidebandPhase(sbLn)
+	}
+
 	// Track current receiver (may switch from base image to instance)
 	var baseImageRecv *zfsReceiver
 	var instanceRecv *zfsReceiver
@@ -278,6 +348,13 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 
 		switch v := req.Type.(type) {
 		case *api.ReceiveVMRequest_Data:
+			// Source sent gRPC Data chunks — not using sideband. Close the pending listener
+			// so the goroutine unblocks and drains into the buffered channel.
+			if sbLn != nil {
+				sbLn.Close()
+				sbLn = nil
+				sbCh = nil
+			}
 			// Handle transition from base image to instance data
 			if v.Data.IsBaseImage && !receivingBaseImage {
 				// Validate base image ID is set - without this we'd target the pool root
@@ -341,24 +418,56 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			// needed in the future, clients must be updated to drain Acks concurrently.
 
 		case *api.ReceiveVMRequest_PhaseComplete:
-			// Phase complete: close the current zfs recv.
-			// The next Data chunk will lazily start a new receiver if needed
-			// (e.g., phase 2 incremental). For live migration, the final phase is
-			// followed by snapshot chunks, not ZFS data, so no new receiver is needed.
-			if instanceRecv == nil {
-				receiveErr = status.Error(codes.FailedPrecondition,
-					"received PhaseComplete before any instance data")
-				return receiveErr
-			}
-			s.log.InfoContext(ctx, "completing phase zfs receive", "instance", instanceID)
-			if err := waitRecvComplete(instanceRecv); err != nil {
+			if sbCh != nil {
+				// Sideband mode: wait for the TCP goroutine to finish this phase.
+				s.log.InfoContext(ctx, "sideband: waiting for phase to complete", "instance", instanceID)
+				result := <-sbCh
+				sbCh = nil
+				if result.err != nil {
+					receiveErr = status.Errorf(codes.Internal, "sideband phase: %v", result.err)
+					return receiveErr
+				}
 				rb.zfsDatasetCreated = true
-				receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
-				return receiveErr
+
+				// If this is the last sideband phase, don't open a new listener.
+				// The next data (CH snapshot) will arrive via gRPC, not TCP.
+				var phase2Addr string
+				if !v.PhaseComplete.Last && sbLocalHost != "" {
+					ln2, err := net.Listen("tcp", "0.0.0.0:0")
+					if err != nil {
+						receiveErr = status.Errorf(codes.Internal, "failed to open phase 2 sideband: %v", err)
+						return receiveErr
+					}
+					port := ln2.Addr().(*net.TCPAddr).Port
+					phase2Addr = net.JoinHostPort(sbLocalHost, strconv.Itoa(port))
+					sbCh = sidebandPhase(ln2)
+				}
+				if err := stream.Send(&api.ReceiveVMResponse{
+					Type: &api.ReceiveVMResponse_PhaseReady{
+						PhaseReady: &api.ReceiveVMPhaseReady{SidebandAddr: phase2Addr},
+					},
+				}); err != nil {
+					receiveErr = status.Errorf(codes.Internal, "failed to send phase ready: %v", err)
+					return receiveErr
+				}
+			} else {
+				// gRPC chunk mode: close the current zfs recv.
+				// The next Data chunk will lazily start a new receiver if needed.
+				if instanceRecv == nil {
+					receiveErr = status.Error(codes.FailedPrecondition,
+						"received PhaseComplete before any instance data")
+					return receiveErr
+				}
+				s.log.InfoContext(ctx, "completing phase zfs receive", "instance", instanceID)
+				if err := waitRecvComplete(instanceRecv); err != nil {
+					rb.zfsDatasetCreated = true
+					receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
+					return receiveErr
+				}
+				rb.zfsDatasetCreated = true
+				instanceRecv = nil
+				currentRecv = nil
 			}
-			rb.zfsDatasetCreated = true
-			instanceRecv = nil
-			currentRecv = nil
 
 		case *api.ReceiveVMRequest_SnapshotData:
 			// Live migration: receive CH snapshot file chunks
@@ -402,13 +511,6 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		}
 	}
 
-	// Validate that we received disk data - without this we'd create a broken instance
-	if !rb.zfsDatasetCreated && instanceRecv == nil {
-		receiveErr = status.Error(codes.InvalidArgument,
-			"no instance disk data received")
-		return receiveErr
-	}
-
 	// Validate that we received a Complete message with checksum
 	if expectedChecksum == "" {
 		receiveErr = status.Error(codes.InvalidArgument,
@@ -416,14 +518,31 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		return receiveErr
 	}
 
-	// Wait for instance zfs recv to complete (may already be done if PhaseComplete closed it)
-	if instanceRecv != nil {
-		if err := waitRecvComplete(instanceRecv); err != nil {
-			rb.zfsDatasetCreated = true // Attempt cleanup even on partial failure
-			receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
+	if sbCh != nil {
+		// Sideband mode: wait for the final TCP phase to drain and zfs recv to finish.
+		s.log.InfoContext(ctx, "sideband: waiting for final phase to complete", "instance", instanceID)
+		result := <-sbCh
+		sbCh = nil
+		if result.err != nil {
+			receiveErr = status.Errorf(codes.Internal, "sideband final phase: %v", result.err)
 			return receiveErr
 		}
 		rb.zfsDatasetCreated = true
+	} else {
+		// gRPC chunk mode: validate data was received and wait for any in-flight recv.
+		if !rb.zfsDatasetCreated && instanceRecv == nil {
+			receiveErr = status.Error(codes.InvalidArgument,
+				"no instance disk data received")
+			return receiveErr
+		}
+		if instanceRecv != nil {
+			if err := waitRecvComplete(instanceRecv); err != nil {
+				rb.zfsDatasetCreated = true
+				receiveErr = status.Errorf(codes.Internal, "zfs recv failed: %v", err)
+				return receiveErr
+			}
+			rb.zfsDatasetCreated = true
+		}
 	}
 
 	// Verify checksum
