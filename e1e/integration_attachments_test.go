@@ -5,6 +5,54 @@ import (
 	"testing"
 )
 
+// TestIntegrationAttachmentOnDeletedVM checks that a vm: attachment spec is
+// cleaned up when the referenced VM is deleted. If the integration still lists
+// vm:<name> after deletion, the bug is real.
+func TestIntegrationAttachmentOnDeletedVM(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 1)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	defer pty.Disconnect()
+
+	bn := boxName(t)
+	pty.SendLine(fmt.Sprintf("new --name=%s", bn))
+	pty.WantRE("Creating .*" + bn)
+	pty.Want("Ready")
+	pty.WantPrompt()
+	waitForSSH(t, bn, keyFile)
+
+	// Create an integration and attach it to the VM by name.
+	pty.SendLine("integrations add http-proxy --name=deletedvmint --target=https://example.com --header=X-Test:test")
+	pty.Want("Added integration deletedvmint")
+	pty.WantPrompt()
+
+	pty.SendLine(fmt.Sprintf("integrations attach deletedvmint vm:%s", bn))
+	pty.Want("Attached deletedvmint to vm:" + bn)
+	pty.WantPrompt()
+
+	// Confirm the attachment is listed before deletion.
+	pty.SendLine("integrations list")
+	pty.Want("vm:" + bn)
+	pty.WantPrompt()
+
+	// Delete the VM.
+	pty.deleteBox(bn)
+
+	// After deletion, the vm: spec should be gone from the integration.
+	// If it still appears, the bug is confirmed.
+	pty.SendLine("integrations list")
+	pty.Reject("vm:" + bn)
+	pty.WantPrompt()
+
+	// Clean up.
+	pty.SendLine("integrations remove deletedvmint")
+	pty.Want("Removed")
+	pty.WantPrompt()
+}
+
 // TestIntegrationAttachmentSpecs tests the attachment spec system:
 // vm:<name>, tag:<name>, and auto:all.
 func TestIntegrationAttachmentSpecs(t *testing.T) {

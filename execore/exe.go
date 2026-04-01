@@ -2360,6 +2360,28 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 			return fmt.Errorf("tracking deletion: %w", err)
 		}
 
+		// Remove vm:<name> attachment specs from all integrations owned by this user.
+		// These specs become stale the moment the box is gone.
+		if integrations, err := queries.ListIntegrationsByUser(ctx, userID); err == nil {
+			vmSpec := "vm:" + box.Name
+			for _, ig := range integrations {
+				old := ig.GetAttachments()
+				var pruned []string
+				for _, a := range old {
+					if a != vmSpec {
+						pruned = append(pruned, a)
+					}
+				}
+				if len(pruned) != len(old) {
+					_ = queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+						Attachments:   exedb.AttachmentsJSON(pruned),
+						IntegrationID: ig.IntegrationID,
+						OwnerUserID:   userID,
+					})
+				}
+			}
+		}
+
 		// Reserve the name for the owner for 24 hours (name stickiness)
 		if err := queries.InsertReleasedBoxName(ctx, exedb.InsertReleasedBoxNameParams{
 			Name:   box.Name,
