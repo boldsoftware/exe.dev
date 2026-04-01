@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"slices"
@@ -212,8 +213,9 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		case dns.TypeCAA:
 			rrs, err = s.lookupCAA(ctx, qname, header.Name, header.Class)
 		default:
-			// This is a very common log line if enabled.
-			// s.log.DebugContext(ctx, "unsupported query type", "name", qname, "type", dns.TypeToString[qtype])
+			if rand.IntN(1000) == 0 {
+				s.log.DebugContext(ctx, "unsupported query type (sampled 1/1000)", "name", qname, "type", dns.TypeToString[qtype])
+			}
 		}
 
 		if err != nil {
