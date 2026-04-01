@@ -30,20 +30,21 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-NUM_EXELETS="${NUM_EXELETS:-2}"
+NUM_EXELETS="${NUM_EXELETS:-1}"
 NUM_EXEPROXES="${NUM_EXEPROXES:-1}"
-EXED_VCPUS="${EXED_VCPUS:-2}"
-EXED_RAM="${EXED_RAM:-4096}"
+EXED_VCPUS="${EXED_VCPUS:-1}"
+EXED_RAM="${EXED_RAM:-2048}"
 EXEPROX_VCPUS="${EXEPROX_VCPUS:-1}"
 EXEPROX_RAM="${EXEPROX_RAM:-2048}"
-EXELET_VCPUS="${EXELET_VCPUS:-4}"
+EXELET_VCPUS="${EXELET_VCPUS:-2}"
 EXELET_RAM="${EXELET_RAM:-8192}"
+MON_ENABLED="${MON_ENABLED:-false}"
 MON_VCPUS="${MON_VCPUS:-1}"
 MON_RAM="${MON_RAM:-2048}"
-DISK_GB="${DISK_GB:-40}"
-EXELET_DATA_DISK_GB="${EXELET_DATA_DISK_GB:-50}"
-EXELET_BACKUP_DISK_GB="${EXELET_BACKUP_DISK_GB:-50}"
-EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-16G}"
+DISK_SIZE="${DISK_SIZE:-10G}"
+EXELET_DATA_DISK_SIZE="${EXELET_DATA_DISK_SIZE:-25G}"
+EXELET_BACKUP_DISK_SIZE="${EXELET_BACKUP_DISK_SIZE:-10G}"
+EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-4G}"
 EXELET_RAMDISK_POOL_SIZE="${EXELET_RAMDISK_POOL_SIZE:-}"
 SSH_PUBKEY_DIR="${SSH_PUBKEY_DIR:-$HOME/.ssh}"
 CLUSTER_PREFIX="${CLUSTER_PREFIX:-exe-local}"
@@ -89,7 +90,9 @@ all_vm_names() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         vm_name_exelet "$i"
     done
-    vm_name_mon
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        vm_name_mon
+    fi
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -385,21 +388,21 @@ create_vm() {
 
     # Root disk — copy base and resize (raw; sparse on disk)
     sudo cp --sparse=always "${BASE_IMG}" "${disk}"
-    sudo qemu-img resize -f raw "${disk}" "${DISK_GB}G" >/dev/null 2>&1
+    sudo qemu-img resize -f raw "${disk}" "${DISK_SIZE}" >/dev/null 2>&1
 
     # Extra disks for exelet VMs
     local extra_disks=""
     if [[ "$has_data_disk" == "true" ]]; then
         local data_disk="${WORKDIR}/${name}-data.raw"
-        sudo qemu-img create -f raw "${data_disk}" "${EXELET_DATA_DISK_GB}G" >/dev/null 2>&1
+        sudo qemu-img create -f raw "${data_disk}" "${EXELET_DATA_DISK_SIZE}" >/dev/null 2>&1
         extra_disks+=" path=${data_disk}"
 
         local backup_disk="${WORKDIR}/${name}-backup.raw"
-        sudo qemu-img create -f raw "${backup_disk}" "${EXELET_BACKUP_DISK_GB}G" >/dev/null 2>&1
+        sudo qemu-img create -f raw "${backup_disk}" "${EXELET_BACKUP_DISK_SIZE}" >/dev/null 2>&1
         extra_disks+=" path=${backup_disk}"
 
         local dozer_disk="${WORKDIR}/${name}-dozer.raw"
-        sudo qemu-img create -f raw "${dozer_disk}" "${EXELET_DATA_DISK_GB}G" >/dev/null 2>&1
+        sudo qemu-img create -f raw "${dozer_disk}" "${EXELET_DATA_DISK_SIZE}" >/dev/null 2>&1
         extra_disks+=" path=${dozer_disk}"
     fi
 
@@ -1416,22 +1419,26 @@ write_envfile() {
         done
         echo ""
 
-        local mon_ip
-        mon_ip="$(vm_static_ip "$(vm_name_mon)")"
-        echo "MON_VM=$(vm_name_mon)"
-        echo "MON_IP=${mon_ip}"
-        if [[ -n "$mon_ip" ]]; then
-            local grafana_token
-            grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
-            echo "GRAFANA_URL=http://localhost:3000/"
-            echo "GRAFANA_BEARER_TOKEN=${grafana_token}"
+        if [[ "$MON_ENABLED" == "true" ]]; then
+            local mon_ip
+            mon_ip="$(vm_static_ip "$(vm_name_mon)")"
+            echo "MON_VM=$(vm_name_mon)"
+            echo "MON_IP=${mon_ip}"
+            if [[ -n "$mon_ip" ]]; then
+                local grafana_token
+                grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
+                echo "GRAFANA_URL=http://localhost:3000/"
+                echo "GRAFANA_BEARER_TOKEN=${grafana_token}"
+            fi
         fi
         echo ""
         echo "# Access:"
         echo "# HTTP:       http://localhost:8080"
         echo "# SSH:        ssh -p 2222 <box>@localhost"
-        echo "# Grafana:    http://localhost:3000 (admin/admin)"
-        echo "# Prometheus: http://localhost:9090"
+        if [[ "$MON_ENABLED" == "true" ]]; then
+            echo "# Grafana:    http://localhost:3000 (admin/admin)"
+            echo "# Prometheus: http://localhost:9090"
+        fi
     } >"${envfile}"
     echo "${envfile}"
 }
@@ -1469,7 +1476,9 @@ cmd_start() {
         create_vm "$(vm_name_exelet "$i")" "${EXELET_VCPUS}" "${EXELET_RAM}" generate_cloud_init_exelet true
     done
 
-    create_vm "$(vm_name_mon)" "${MON_VCPUS}" "${MON_RAM}" generate_cloud_init_mon false
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        create_vm "$(vm_name_mon)" "${MON_VCPUS}" "${MON_RAM}" generate_cloud_init_mon false
+    fi
 
     # ── Wait for all VMs (SSH + cloud-init) ─────────────────────────────
 
@@ -1488,7 +1497,9 @@ cmd_start() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         all_names+=("$(vm_name_exelet "$i")")
     done
-    all_names+=("$(vm_name_mon)")
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        all_names+=("$(vm_name_mon)")
+    fi
 
     wait_for_vm_ready "$(vm_name_exed)" "$status_dir" >"${wait_dir}/exed" &
     local pid_exed=$!
@@ -1504,8 +1515,11 @@ cmd_start() {
         exelet_pids[$i]=$!
     done
 
-    wait_for_vm_ready "$(vm_name_mon)" "$status_dir" >"${wait_dir}/mon" &
-    local pid_mon=$!
+    local pid_mon=""
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        wait_for_vm_ready "$(vm_name_mon)" "$status_dir" >"${wait_dir}/mon" &
+        pid_mon=$!
+    fi
 
     display_vm_status "$status_dir" "${all_names[@]}"
 
@@ -1516,7 +1530,9 @@ cmd_start() {
     for i in $(seq 1 "${NUM_EXELETS}"); do
         wait "${exelet_pids[$i]}" || die "exelet-${i} VM failed to become ready"
     done
-    wait "$pid_mon" || die "mon VM failed to become ready"
+    if [[ -n "$pid_mon" ]]; then
+        wait "$pid_mon" || die "mon VM failed to become ready"
+    fi
 
     local exed_ip
     exed_ip="$(cat "${wait_dir}/exed")"
@@ -1531,8 +1547,10 @@ cmd_start() {
         exelet_ips[$i]="$(cat "${wait_dir}/exelet-${i}")"
     done
 
-    local mon_ip
-    mon_ip="$(cat "${wait_dir}/mon")"
+    local mon_ip=""
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        mon_ip="$(cat "${wait_dir}/mon")"
+    fi
 
     log "All VMs ready"
 
@@ -1591,11 +1609,13 @@ cmd_start() {
         done
 
         # ── Provision mon VM ─────────────────────────────────────────
-        local mon_exelet_ip_list=()
-        for i in $(seq 1 "${NUM_EXELETS}"); do
-            mon_exelet_ip_list+=("${exelet_ips[$i]}")
-        done
-        provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
+        if [[ "$MON_ENABLED" == "true" ]]; then
+            local mon_exelet_ip_list=()
+            for i in $(seq 1 "${NUM_EXELETS}"); do
+                mon_exelet_ip_list+=("${exelet_ips[$i]}")
+            done
+            provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
+        fi
     else
         # ── Already provisioned — just update IPs ────────────────────────
         log "Refreshing service configs with current IPs..."
@@ -1614,11 +1634,13 @@ cmd_start() {
             ssh_run "${exeprox_ips[$i]}" 'sudo systemctl daemon-reload && sudo systemctl restart exeprox'
         done
 
-        local mon_exelet_ip_list=()
-        for i in $(seq 1 "${NUM_EXELETS}"); do
-            mon_exelet_ip_list+=("${exelet_ips[$i]}")
-        done
-        provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
+        if [[ "$MON_ENABLED" == "true" ]]; then
+            local mon_exelet_ip_list=()
+            for i in $(seq 1 "${NUM_EXELETS}"); do
+                mon_exelet_ip_list+=("${exelet_ips[$i]}")
+            done
+            provision_mon "$mon_ip" "$exed_ip" "${exeprox_ips[1]}" "${mon_exelet_ip_list[@]}"
+        fi
     fi
 
     # ── Port forwarding ──────────────────────────────────────────────────
@@ -1633,8 +1655,10 @@ cmd_start() {
     log "Cluster is ready!"
     log "  HTTP:       http://localhost:8080"
     log "  SSH:        ssh -p 2222 <box>@localhost"
-    log "  Grafana:    http://localhost:3000 (admin/admin)"
-    log "  Prometheus: http://localhost:9090"
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        log "  Grafana:    http://localhost:3000 (admin/admin)"
+        log "  Prometheus: http://localhost:9090"
+    fi
 }
 
 cmd_deploy() {
@@ -1690,20 +1714,22 @@ cmd_deploy() {
     done
 
     # ── Refresh mon prometheus config ────────────────────────────────────
-    local mon_ip
-    mon_ip="$(vm_static_ip "$(vm_name_mon)")"
-    if vm_running "$(vm_name_mon)"; then
-        log "Refreshing prometheus config on mon VM..."
-        local mon_exelet_ip_list=()
-        for i in $(seq 1 "${NUM_EXELETS}"); do
-            local ename eip
-            ename="$(vm_name_exelet "$i")"
-            eip="$(vm_static_ip "$ename")"
-            mon_exelet_ip_list+=("$eip")
-        done
-        local exeprox_1_ip
-        exeprox_1_ip="$(vm_static_ip "$(vm_name_exeprox 1)")"
-        provision_mon "$mon_ip" "$exed_ip" "${exeprox_1_ip}" "${mon_exelet_ip_list[@]}"
+    local mon_ip=""
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        mon_ip="$(vm_static_ip "$(vm_name_mon)")"
+        if vm_running "$(vm_name_mon)"; then
+            log "Refreshing prometheus config on mon VM..."
+            local mon_exelet_ip_list=()
+            for i in $(seq 1 "${NUM_EXELETS}"); do
+                local ename eip
+                ename="$(vm_name_exelet "$i")"
+                eip="$(vm_static_ip "$ename")"
+                mon_exelet_ip_list+=("$eip")
+            done
+            local exeprox_1_ip
+            exeprox_1_ip="$(vm_static_ip "$(vm_name_exeprox 1)")"
+            provision_mon "$mon_ip" "$exed_ip" "${exeprox_1_ip}" "${mon_exelet_ip_list[@]}"
+        fi
     fi
 
     setup_port_forwarding "$exed_ip" "$mon_ip"
@@ -1712,6 +1738,9 @@ cmd_deploy() {
 }
 
 cmd_deploy_metrics() {
+    if [[ "$MON_ENABLED" != "true" ]]; then
+        die "mon VM is disabled. Set MON_ENABLED=true to use monitoring."
+    fi
     local mon_ip
     mon_ip="$(vm_static_ip "$(vm_name_mon)")"
     if ! vm_running "$(vm_name_mon)"; then
@@ -1904,14 +1933,16 @@ cmd_status() {
         echo "  none"
     fi
 
-    local mon_ip
-    mon_ip="$(vm_static_ip "$(vm_name_mon)")"
-    echo ""
-    echo "Grafana: http://localhost:3000 (admin/admin)"
-    local grafana_token
-    grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
-    if [[ -n "$grafana_token" ]]; then
-        echo "Grafana Bearer Token: ${grafana_token}"
+    if [[ "$MON_ENABLED" == "true" ]]; then
+        local mon_ip
+        mon_ip="$(vm_static_ip "$(vm_name_mon)")"
+        echo ""
+        echo "Grafana: http://localhost:3000 (admin/admin)"
+        local grafana_token
+        grafana_token="$(ssh_run "$mon_ip" 'cat /home/ubuntu/grafana-token 2>/dev/null' 2>/dev/null || true)"
+        if [[ -n "$grafana_token" ]]; then
+            echo "Grafana Bearer Token: ${grafana_token}"
+        fi
     fi
 }
 
@@ -2254,8 +2285,8 @@ install-vnc) cmd_install_vnc ;;
     echo "Environment variables:"
     echo "  NUM_EXELETS=${NUM_EXELETS}  NUM_EXEPROXES=${NUM_EXEPROXES}  CLUSTER_PREFIX=${CLUSTER_PREFIX}"
     echo "  EXED_VCPUS=${EXED_VCPUS}  EXED_RAM=${EXED_RAM}  EXEPROX_VCPUS=${EXEPROX_VCPUS}  EXEPROX_RAM=${EXEPROX_RAM}"
-    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
-    echo "  DISK_GB=${DISK_GB}  EXELET_DATA_DISK_GB=${EXELET_DATA_DISK_GB}  EXELET_BACKUP_DISK_GB=${EXELET_BACKUP_DISK_GB}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
+    echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_ENABLED=${MON_ENABLED}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
+    echo "  DISK_SIZE=${DISK_SIZE}  EXELET_DATA_DISK_SIZE=${EXELET_DATA_DISK_SIZE}  EXELET_BACKUP_DISK_SIZE=${EXELET_BACKUP_DISK_SIZE}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     echo "  EXELET_RAMDISK_POOL_SIZE=${EXELET_RAMDISK_POOL_SIZE}  (tmpfs-backed 'ramdisk' zpool, ephemeral)"
     echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
     exit 1
