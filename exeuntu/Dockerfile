@@ -41,6 +41,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		fonts-noto-color-emoji fonts-symbola \
 		docker.io docker-buildx docker-compose-v2 \
 		imagemagick ffmpeg \
+		bubblewrap \
 		gh \
 		dbus-user-session \
 		&& apt-get remove -y pollinate ubuntu-fan && \
