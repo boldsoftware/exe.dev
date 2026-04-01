@@ -109,13 +109,18 @@
             right: 8px;
             top: 50%;
             transform: translateY(-50%);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 0;
             background: #e0e0e0;
             border: 1px solid #ccc;
             color: #333;
-            padding: 4px 8px;
             border-radius: 3px;
-            font-size: 11px;
             cursor: pointer;
+            transition: all 0.15s;
         }
 
         .copy-btn:hover {
@@ -123,9 +128,7 @@
         }
 
         .copy-btn.copied {
-            background: #22c55e;
             border-color: #22c55e;
-            color: #fff;
         }
 
         .back-link {
@@ -216,7 +219,7 @@
                     <div class="usage-label">Via SSH</div>
                     <div class="usage-command">
                         ssh {{.InviteCode.Code}}@{{.ReplHost}}
-                        <button class="copy-btn" onclick="copyToClipboard(this, 'ssh {{.InviteCode.Code}}@{{.ReplHost}}')">Copy</button>
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'ssh {{.InviteCode.Code}}@{{.ReplHost}}')" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
                     </div>
                 </div>
 
@@ -224,7 +227,7 @@
                     <div class="usage-label">Via Web</div>
                     <div class="usage-url">
                         https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}
-                        <button class="copy-btn" onclick="copyToClipboard(this, 'https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}')">Copy</button>
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'https://{{.WebHost}}/auth?invite={{.InviteCode.Code}}')" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
                     </div>
                 </div>
             </div>
@@ -234,14 +237,16 @@
     </div>
 
     <script>
+        var checkSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         function copyToClipboard(btn, text) {
+            var orig = btn.innerHTML;
             navigator.clipboard.writeText(text).then(function() {
-                btn.textContent = 'Copied!';
+                btn.innerHTML = checkSVG;
                 btn.classList.add('copied');
                 setTimeout(function() {
-                    btn.textContent = 'Copy';
+                    btn.innerHTML = orig;
                     btn.classList.remove('copied');
-                }, 2000);
+                }, 1500);
             });
         }
     </script>

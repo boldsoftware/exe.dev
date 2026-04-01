@@ -14,11 +14,14 @@ input[type="text"] { padding: 8px; }
 }
 .copy-btn {
     position: absolute; top: 8px; right: 8px;
-    background: #444; color: #fff; border: none; padding: 6px 14px;
-    border-radius: 4px; cursor: pointer; font-size: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0;
+    background: #444; color: #fff; border: none;
+    border-radius: 4px; cursor: pointer;
+    transition: all 0.15s;
 }
 .copy-btn:hover { background: #666; }
-.copy-btn.copied { background: #28a745; }
+.copy-btn.copied { color: #22c55e; }
 .summary { color: #555; margin: 10px 0; }
 </style>
 </head><body>
@@ -30,18 +33,20 @@ input[type="text"] { padding: 8px; }
 <h2>Generated Codes</h2>
 <p class="summary">{{len .Codes}} {{.PlanType}} codes &mdash; {{.AssignedFor}}</p>
 <div class="result-box">
-<button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+<button class="copy-btn" onclick="copyToClipboard(this)" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
 <pre id="codes">{{range .Codes}}{{.}}
 {{end}}</pre>
 </div>
 </div>
 <script>
+var checkSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 function copyToClipboard(btn) {
     var text = document.getElementById('codes').textContent.trim();
+    var orig = btn.innerHTML;
     navigator.clipboard.writeText(text).then(function() {
-        btn.textContent = 'Copied!';
+        btn.innerHTML = checkSVG;
         btn.classList.add('copied');
-        setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+        setTimeout(function() { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1500);
     });
 }
 </script>

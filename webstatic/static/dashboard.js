@@ -436,18 +436,19 @@ class CommandModal {
 
     /** Copy text to clipboard, showing feedback on the button. */
     copyText(button, text) {
-        const orig = button.textContent;
+        const orig = button.innerHTML;
+        const checkSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(text).then(() => {
-                button.textContent = 'Copied!';
-                setTimeout(() => { button.textContent = orig; }, 1500);
-            }).catch(() => this.#fallbackCopy(button, text, orig));
+                button.innerHTML = checkSVG;
+                setTimeout(() => { button.innerHTML = orig; }, 1500);
+            }).catch(() => this.#fallbackCopy(button, text, orig, checkSVG));
         } else {
-            this.#fallbackCopy(button, text, orig);
+            this.#fallbackCopy(button, text, orig, checkSVG);
         }
     }
 
-    #fallbackCopy(button, text, origLabel) {
+    #fallbackCopy(button, text, origHTML, checkSVG) {
         const ta = document.createElement('textarea');
         ta.value = text;
         ta.style.cssText = 'position:fixed;opacity:0';
@@ -455,8 +456,8 @@ class CommandModal {
         ta.select();
         try { document.execCommand('copy'); } catch {}
         document.body.removeChild(ta);
-        button.textContent = 'Copied!';
-        setTimeout(() => { button.textContent = origLabel; }, 1500);
+        button.innerHTML = checkSVG;
+        setTimeout(() => { button.innerHTML = origHTML; }, 1500);
     }
 
     #getFullCommand() {
@@ -663,7 +664,7 @@ class CommandModal {
                             <label>Share URL</label>
                             <div class="share-link-copy-row">
                                 <code class="share-link-url">${h(url)}</code>
-                                <button class="btn btn-copy" data-copy-text title="Copy URL">Copy</button>
+                                <button class="btn btn-copy" data-copy-text title="Copy URL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
                             </div>
                         </div>
                         <div class="share-link-revoke">

@@ -125,7 +125,7 @@
 <span class="invite-used">Used by {{.UsedBy}}</span>
 <span class="incident-meta">Created by {{.CreatedBy}} on {{.CreatedAt}}</span>
 {{else}}
-<div class="invite-link"><code id="invite-{{.Token}}">https://status.exe.dev/invite/{{.Token}}</code><button type="button" class="btn-copy" onclick="copyInvite(this, 'invite-{{.Token}}')" title="Copy to clipboard">Copy</button></div>
+<div class="invite-link"><code id="invite-{{.Token}}">https://status.exe.dev/invite/{{.Token}}</code><button type="button" class="btn-copy" onclick="copyInvite(this, 'invite-{{.Token}}')" title="Copy to clipboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
 <div class="invite-meta">
 <span class="incident-meta">Created by {{.CreatedBy}} on {{.CreatedAt}}</span>
 <form method="POST" action="/private/invite/revoke" class="inline-form">
@@ -139,11 +139,13 @@
 </div>
 </div>
 <script>
+var checkSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 function copyInvite(btn, id) {
 	var text = document.getElementById(id).textContent;
+	var orig = btn.innerHTML;
 	navigator.clipboard.writeText(text).then(function() {
-		btn.textContent = 'Copied';
-		setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+		btn.innerHTML = checkSVG;
+		setTimeout(function() { btn.innerHTML = orig; }, 1500);
 	});
 }
 </script>

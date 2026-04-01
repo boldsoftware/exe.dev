@@ -390,15 +390,18 @@ table a:hover {
 
 .btn-copy {
   flex-shrink: 0;
-  padding: 6px 12px;
-  font-size: var(--text-xs);
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--color-border-input);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: all 0.15s;
 }
 
 .btn-copy:hover {

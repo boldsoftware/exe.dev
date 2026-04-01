@@ -147,7 +147,7 @@ function formatSuccessResult(output: string, format: string): string {
           <div class="share-link-label">Share URL</div>
           <div class="share-link-copy-row">
             <code class="share-link-url">${h(data.url)}</code>
-            <button class="share-link-copy-btn" data-copy-url title="Copy URL">Copy</button>
+            <button class="share-link-copy-btn" data-copy-url title="Copy URL"><i class="pi pi-copy" style="font-size:11px;"></i></button>
           </div>
         </div>
         <div class="share-link-revoke">To revoke: <code>share remove-link ${h(data.vm_name)} ${h(data.token)}</code></div>
@@ -165,10 +165,13 @@ function attachCopyHandlers() {
   if (!btn) return
   const url = btn.closest('.share-link-result')?.querySelector('.share-link-url')?.textContent || ''
   btn.removeAttribute('data-copy-url')
+  const copyIcon = '<i class="pi pi-copy" style="font-size:11px;"></i>'
+  const checkIcon = '<i class="pi pi-check" style="font-size:11px;"></i>'
   btn.addEventListener('click', () => {
     navigator.clipboard.writeText(url).then(() => {
-      btn.textContent = 'Copied!'
-      setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+      btn.innerHTML = checkIcon
+      btn.classList.add('copied')
+      setTimeout(() => { btn.innerHTML = copyIcon; btn.classList.remove('copied') }, 1500)
     }).catch(() => {
       // Fallback
       const ta = document.createElement('textarea')
@@ -178,8 +181,9 @@ function attachCopyHandlers() {
       ta.select()
       try { document.execCommand('copy') } catch { /* noop */ }
       document.body.removeChild(ta)
-      btn.textContent = 'Copied!'
-      setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+      btn.innerHTML = checkIcon
+      btn.classList.add('copied')
+      setTimeout(() => { btn.innerHTML = copyIcon; btn.classList.remove('copied') }, 1500)
     })
   })
 }
@@ -493,20 +497,28 @@ function close() {
 
 .cmd-result :deep(.share-link-copy-btn) {
   flex-shrink: 0;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--surface-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--btn-border);
   border-radius: 4px;
-  background: var(--surface-card);
-  color: var(--text-color);
+  background: var(--btn-bg);
+  color: var(--btn-text);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: all 0.15s;
 }
 
 .cmd-result :deep(.share-link-copy-btn:hover) {
-  background: var(--surface-subtle);
+  background: var(--btn-hover-bg);
+  border-color: var(--btn-hover-border);
+}
+
+.cmd-result :deep(.share-link-copy-btn.copied) {
+  color: var(--success-color);
+  border-color: var(--success-color);
 }
 
 .cmd-result :deep(.share-link-revoke) {
