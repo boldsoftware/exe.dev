@@ -131,10 +131,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			now = now.UTC()
 			if !sameUTCMonth(lastRefresh, now) {
-				if available < monthlyTopUpSubscribedUSD {
-					return monthlyTopUpSubscribedUSD, now
-				}
-				return available, now
+				return monthlyTopUpSubscribedUSD, now
 			}
 			return available, lastRefresh
 		}

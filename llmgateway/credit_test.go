@@ -273,13 +273,13 @@ func TestCreditManager_SubscribedMonthRolloverTopUpToFloor(t *testing.T) {
 	}
 }
 
-func TestCreditManager_SubscribedMonthRolloverPreservesBalanceAboveFloor(t *testing.T) {
+func TestCreditManager_SubscribedMonthRolloverResetsToFloor(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	ctx := context.Background()
-	userID := "test-user-month-rollover-preserve"
-	createTestUser(t, db, userID, "month-rollover-preserve@example.com")
+	userID := "test-user-month-rollover-reset"
+	createTestUser(t, db, userID, "month-rollover-reset@example.com")
 
 	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
 	mgr := &CreditManager{
@@ -290,7 +290,7 @@ func TestCreditManager_SubscribedMonthRolloverPreservesBalanceAboveFloor(t *test
 	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("initial check failed: %v", err)
 	}
-	createBillingAccount(t, db, userID, "acct-month-rollover-preserve", now)
+	createBillingAccount(t, db, userID, "acct-month-rollover-reset", now)
 	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
 		t.Fatalf("top up on upgrade failed: %v", err)
 	}
@@ -303,14 +303,166 @@ func TestCreditManager_SubscribedMonthRolloverPreservesBalanceAboveFloor(t *test
 	if err != nil {
 		t.Fatalf("month rollover check failed: %v", err)
 	}
-	if !floatClose(info.Available, 90, 0.000001) {
-		t.Fatalf("available after month rollover = %f, want 90", info.Available)
+	if !floatClose(info.Available, 20, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 20 (unconditional reset)", info.Available)
 	}
 	if !floatClose(info.Max, monthlyTopUpSubscribedUSD, 0.000001) {
 		t.Fatalf("max after month rollover = %f, want %f", info.Max, monthlyTopUpSubscribedUSD)
 	}
 	if info.Plan.Name != "has_billing" {
 		t.Fatalf("plan = %q, want %q", info.Plan.Name, "has_billing")
+	}
+}
+
+func TestCreditManager_SubscribedMonthRolloverNegativeBalance(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-month-rollover-negative"
+	createTestUser(t, db, userID, "month-rollover-negative@example.com")
+
+	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return now },
+	}
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-month-rollover-negative", now)
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("top up on upgrade failed: %v", err)
+	}
+	// Debit more than available to go negative (will error on insufficient credit)
+	// So instead we'll debit all and then manually set to negative using DB
+	if _, err := mgr.DebitCredit(ctx, userID, 120); err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Manually set balance to negative via database
+	now = now.Add(1 * time.Second)
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateUserLLMAvailableCredit(ctx, exedb.UpdateUserLLMAvailableCreditParams{
+			UserID:          userID,
+			AvailableCredit: -5.0,
+			LastRefreshAt:   now,
+		})
+	})
+	if err != nil {
+		t.Fatalf("update credit failed: %v", err)
+	}
+
+	// Verify negative balance (will return ErrInsufficientCredit but still give us info)
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("check before rollover: got error %v, want ErrInsufficientCredit", err)
+	}
+	if info.Available >= 0 {
+		t.Fatalf("available before rollover = %f, want negative", info.Available)
+	}
+
+	// Cross month boundary
+	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, 20, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 20 (unconditional reset)", info.Available)
+	}
+}
+
+func TestCreditManager_SubscribedMonthRolloverExactFloorBalance(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-month-rollover-exact"
+	createTestUser(t, db, userID, "month-rollover-exact@example.com")
+
+	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return now },
+	}
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-month-rollover-exact", now)
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("top up on upgrade failed: %v", err)
+	}
+	// User now has $120, debit $100 to leave exactly $20
+	if _, err := mgr.DebitCredit(ctx, userID, 100); err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Verify exactly $20 balance
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("check before rollover failed: %v", err)
+	}
+	if !floatClose(info.Available, 20, 0.000001) {
+		t.Fatalf("available before rollover = %f, want 20", info.Available)
+	}
+
+	// Cross month boundary
+	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, 20, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 20 (unconditional reset)", info.Available)
+	}
+}
+
+func TestCreditManager_SubscribedMonthRolloverZeroBalance(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-month-rollover-zero"
+	createTestUser(t, db, userID, "month-rollover-zero@example.com")
+
+	now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return now },
+	}
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	createBillingAccount(t, db, userID, "acct-month-rollover-zero", now)
+	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
+		t.Fatalf("top up on upgrade failed: %v", err)
+	}
+	// User now has $120, debit all to exactly 0
+	if _, err := mgr.DebitCredit(ctx, userID, 120); err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Verify zero balance (will return ErrInsufficientCredit but still give us info)
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("check before rollover: got error %v, want ErrInsufficientCredit", err)
+	}
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("available before rollover = %f, want 0", info.Available)
+	}
+
+	// Cross month boundary
+	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, 20, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 20 (unconditional reset)", info.Available)
 	}
 }
 
