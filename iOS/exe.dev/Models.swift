@@ -489,6 +489,7 @@ nonisolated struct HostnameCheckResponse: Decodable {
         self.llmData = msg.llmData
         self.userData = msg.userData
         self.usageData = msg.usageData
+        self.createdAt = msg.createdAt
         self.displayData = msg.displayData
         self.endOfTurn = msg.endOfTurn
         self.displayText = msg.displayText

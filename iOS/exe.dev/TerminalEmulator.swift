@@ -17,7 +17,7 @@ import GhosttyVT
 //   6. ghostty_key_encoder_encode — encode keyboard input
 
 /// A cell in the terminal grid, extracted from the ghostty render state.
-struct TerminalCell {
+nonisolated struct TerminalCell: @unchecked Sendable {
     var character: String = " "
     var fg: UIColor = .white
     var bg: UIColor? = nil
@@ -27,28 +27,29 @@ struct TerminalCell {
 }
 
 /// Cursor state for rendering.
-struct TerminalCursor {
+nonisolated struct TerminalCursor: Sendable {
     var x: Int = 0
     var y: Int = 0
     var visible: Bool = true
 }
 
 /// A snapshot of the terminal's visible grid for rendering.
-struct TerminalScreenState {
+nonisolated struct TerminalScreenState: @unchecked Sendable {
     var cells: [[TerminalCell]] = []
     var cursor: TerminalCursor = TerminalCursor()
     var cols: Int = 80
     var rows: Int = 24
     var bgColor: UIColor = .black
     var fgColor: UIColor = .white
+    var dirtyRows: [Int] = []
+    var needsFullRedraw: Bool = true
 }
 
 /// Terminal emulator backed by libghostty-vt.
 ///
 /// Manages the GhosttyTerminal, GhosttyRenderState, and key encoder.
 /// All operations must happen on the main actor.
-@MainActor
-class TerminalEmulator {
+nonisolated final class TerminalEmulator {
     private(set) var cols: UInt16 = 80
     private(set) var rows: UInt16 = 24
 
@@ -164,9 +165,24 @@ class TerminalEmulator {
     }
 
     /// Snapshot the terminal into a TerminalScreenState for rendering.
-    func getScreenState() -> TerminalScreenState {
-        // Update render state from terminal
+    /// Clean rows are preserved from the previous snapshot so we only decode
+    /// the rows Ghostty marked dirty.
+    func getScreenState(previous: TerminalScreenState? = nil) -> TerminalScreenState? {
         ghostty_render_state_update(renderState, terminal)
+
+        var dirtyState = GHOSTTY_RENDER_STATE_DIRTY_FALSE
+        ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirtyState)
+
+        let rowCount = Int(rows)
+        let colCount = Int(cols)
+        let forceFullRedraw = previous == nil ||
+            previous?.rows != rowCount ||
+            previous?.cols != colCount ||
+            previous?.cells.count != rowCount
+
+        if dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE && !forceFullRedraw {
+            return nil
+        }
 
         // Read colors (zero-init + set size, matching GHOSTTY_INIT_SIZED)
         var colors = GhosttyRenderStateColors()
@@ -179,75 +195,6 @@ class TerminalEmulator {
 
         let defaultFG = uiColor(colors.foreground)
         let defaultBG = uiColor(colors.background)
-
-        // Populate row iterator from render state
-        ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &rowIterator)
-
-        var allRows: [[TerminalCell]] = []
-
-        while ghostty_render_state_row_iterator_next(rowIterator) {
-            // Get cells for this row
-            ghostty_render_state_row_get(rowIterator, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &rowCells)
-
-            var row: [TerminalCell] = []
-            while ghostty_render_state_row_cells_next(rowCells) {
-                var cell = TerminalCell()
-
-                // Read grapheme length
-                var graphemeLen: UInt32 = 0
-                ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &graphemeLen)
-
-                if graphemeLen > 0 {
-                    // Read codepoints
-                    var codepoints = [UInt32](repeating: 0, count: Int(min(graphemeLen, 16)))
-                    ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &codepoints)
-
-                    // Build string from codepoints
-                    var str = ""
-                    for i in 0..<Int(min(graphemeLen, 16)) {
-                        if let scalar = Unicode.Scalar(codepoints[i]) {
-                            str.append(Character(scalar))
-                        }
-                    }
-                    cell.character = str.isEmpty ? " " : str
-                }
-
-                // Read foreground color
-                var fgRgb = GhosttyColorRgb(r: 0, g: 0, b: 0)
-                if ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgRgb) == GHOSTTY_SUCCESS {
-                    cell.fg = uiColor(fgRgb)
-                } else {
-                    cell.fg = defaultFG
-                }
-
-                // Read background color
-                var bgRgb = GhosttyColorRgb(r: 0, g: 0, b: 0)
-                if ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgRgb) == GHOSTTY_SUCCESS {
-                    cell.bg = uiColor(bgRgb)
-                }
-
-                // Read style flags (zero-init + set size, matching GHOSTTY_INIT_SIZED)
-                var style = GhosttyStyle()
-                withUnsafeMutablePointer(to: &style) { ptr in
-                    let raw = UnsafeMutableRawPointer(ptr)
-                    raw.initializeMemory(as: UInt8.self, repeating: 0, count: MemoryLayout<GhosttyStyle>.size)
-                }
-                style.size = MemoryLayout<GhosttyStyle>.size
-                if ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style) == GHOSTTY_SUCCESS {
-                    cell.bold = style.bold
-                    cell.italic = style.italic
-                    cell.inverse = style.inverse
-                }
-
-                row.append(cell)
-            }
-
-            // Clear row dirty flag
-            var clean = false
-            ghostty_render_state_row_set(rowIterator, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean)
-
-            allRows.append(row)
-        }
 
         // Read cursor
         var cursorVisible = false
@@ -264,21 +211,200 @@ class TerminalEmulator {
             cursor = TerminalCursor(x: Int(cx), y: Int(cy), visible: true)
         }
 
+        let previousCursorRow =
+            previous?.cursor.visible == true ? previous?.cursor.y : nil
+        let currentCursorRow = cursor.visible ? cursor.y : nil
+
+        ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &rowIterator)
+
+        var decodedDirtyRows: [Int: [TerminalCell]] = [:]
+        decodedDirtyRows.reserveCapacity(rowCount)
+        var reportedDirtyRows: [Int] = []
+        reportedDirtyRows.reserveCapacity(rowCount)
+
+        var rowIndex = 0
+        while ghostty_render_state_row_iterator_next(rowIterator) {
+            var rowDirty = false
+            ghostty_render_state_row_get(
+                rowIterator,
+                GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY,
+                &rowDirty
+            )
+
+            if forceFullRedraw || dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL || rowDirty {
+                reportedDirtyRows.append(rowIndex)
+                decodedDirtyRows[rowIndex] = readCurrentRow(
+                    colCount: colCount,
+                    defaultFG: defaultFG
+                )
+
+                var clean = false
+                ghostty_render_state_row_set(
+                    rowIterator,
+                    GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY,
+                    &clean
+                )
+            }
+
+            rowIndex += 1
+        }
+
+        let plan = TerminalRedrawPlanner.plan(
+            dirtyState: terminalDirtyState(from: dirtyState),
+            rowCount: rowCount,
+            reportedDirtyRows: reportedDirtyRows,
+            previousCursorRow: previousCursorRow,
+            currentCursorRow: currentCursorRow,
+            forceFullRedraw: forceFullRedraw
+        )
+
         // Reset global dirty
         var cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE
         ghostty_render_state_set(renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState)
 
+        guard !plan.dirtyRows.isEmpty || plan.fullRedraw else {
+            return nil
+        }
+
+        var allRows: [[TerminalCell]]
+        if plan.fullRedraw {
+            allRows = Array(repeating: blankRow(colCount: colCount, defaultFG: defaultFG), count: rowCount)
+        } else if let previous, previous.cells.count == rowCount {
+            allRows = previous.cells
+        } else {
+            allRows = Array(repeating: blankRow(colCount: colCount, defaultFG: defaultFG), count: rowCount)
+        }
+
+        for rowIndex in plan.dirtyRows {
+            guard rowIndex >= 0 && rowIndex < rowCount else { continue }
+            if let row = decodedDirtyRows[rowIndex] {
+                allRows[rowIndex] = row
+            } else if allRows[rowIndex].count != colCount {
+                allRows[rowIndex] = blankRow(colCount: colCount, defaultFG: defaultFG)
+            }
+        }
+
         return TerminalScreenState(
             cells: allRows,
             cursor: cursor,
-            cols: Int(cols),
-            rows: Int(rows),
+            cols: colCount,
+            rows: rowCount,
             bgColor: defaultBG,
-            fgColor: defaultFG
+            fgColor: defaultFG,
+            dirtyRows: plan.dirtyRows,
+            needsFullRedraw: plan.fullRedraw
         )
     }
 
     // MARK: - Helpers
+
+    private func readCurrentRow(colCount: Int, defaultFG: UIColor) -> [TerminalCell] {
+        ghostty_render_state_row_get(
+            rowIterator,
+            GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
+            &rowCells
+        )
+
+        var row: [TerminalCell] = []
+        row.reserveCapacity(colCount)
+
+        while ghostty_render_state_row_cells_next(rowCells) {
+            var cell = TerminalCell()
+
+            var graphemeLen: UInt32 = 0
+            ghostty_render_state_row_cells_get(
+                rowCells,
+                GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
+                &graphemeLen
+            )
+
+            if graphemeLen > 0 {
+                let codepointCount = Int(min(graphemeLen, 16))
+                var codepoints = [UInt32](repeating: 0, count: codepointCount)
+                ghostty_render_state_row_cells_get(
+                    rowCells,
+                    GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
+                    &codepoints
+                )
+
+                var str = ""
+                for i in 0..<codepointCount {
+                    if let scalar = Unicode.Scalar(codepoints[i]) {
+                        str.append(Character(scalar))
+                    }
+                }
+                cell.character = str.isEmpty ? " " : str
+            }
+
+            var fgRgb = GhosttyColorRgb(r: 0, g: 0, b: 0)
+            if ghostty_render_state_row_cells_get(
+                rowCells,
+                GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
+                &fgRgb
+            ) == GHOSTTY_SUCCESS {
+                cell.fg = uiColor(fgRgb)
+            } else {
+                cell.fg = defaultFG
+            }
+
+            var bgRgb = GhosttyColorRgb(r: 0, g: 0, b: 0)
+            if ghostty_render_state_row_cells_get(
+                rowCells,
+                GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR,
+                &bgRgb
+            ) == GHOSTTY_SUCCESS {
+                cell.bg = uiColor(bgRgb)
+            }
+
+            var style = GhosttyStyle()
+            withUnsafeMutablePointer(to: &style) { ptr in
+                let raw = UnsafeMutableRawPointer(ptr)
+                raw.initializeMemory(
+                    as: UInt8.self,
+                    repeating: 0,
+                    count: MemoryLayout<GhosttyStyle>.size
+                )
+            }
+            style.size = MemoryLayout<GhosttyStyle>.size
+            if ghostty_render_state_row_cells_get(
+                rowCells,
+                GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
+                &style
+            ) == GHOSTTY_SUCCESS {
+                cell.bold = style.bold
+                cell.italic = style.italic
+                cell.inverse = style.inverse
+            }
+
+            row.append(cell)
+        }
+
+        if row.count < colCount {
+            row.append(contentsOf: repeatElement(
+                TerminalCell(character: " ", fg: defaultFG, bg: nil, bold: false, italic: false, inverse: false),
+                count: colCount - row.count
+            ))
+        }
+
+        return row
+    }
+
+    private func blankRow(colCount: Int, defaultFG: UIColor) -> [TerminalCell] {
+        Array(repeating: TerminalCell(character: " ", fg: defaultFG), count: colCount)
+    }
+
+    private func terminalDirtyState(from dirtyState: GhosttyRenderStateDirty) -> TerminalDirtyState {
+        switch dirtyState {
+        case GHOSTTY_RENDER_STATE_DIRTY_FALSE:
+            return .clean
+        case GHOSTTY_RENDER_STATE_DIRTY_PARTIAL:
+            return .partial
+        case GHOSTTY_RENDER_STATE_DIRTY_FULL:
+            return .full
+        default:
+            return .full
+        }
+    }
 
     private func uiColor(_ rgb: GhosttyColorRgb) -> UIColor {
         UIColor(

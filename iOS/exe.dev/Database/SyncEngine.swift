@@ -10,9 +10,11 @@ enum SyncEngineSaveNotificationKind: String {
     case conversation
 }
 
-enum SyncEngineSaveNotificationUserInfoKey {
+nonisolated enum SyncEngineSaveNotificationUserInfoKey {
     static let kind = "kind"
     static let conversationID = "conversationID"
+    static let messageIDs = "messageIDs"
+    static let working = "working"
 }
 
 @ModelActor
@@ -20,7 +22,16 @@ actor SyncEngine {
     private var streamTasks: [String: Task<Void, Never>] = [:]
     private enum SaveNotificationKind: Sendable {
         case vms
-        case conversation(String)
+        case conversation(
+            conversationID: String,
+            messageIDs: [String],
+            working: Bool?
+        )
+    }
+
+    private struct ConversationUpsertResult {
+        let didChange: Bool
+        let workingChanged: Bool
     }
 
     // MARK: - VM Sync
@@ -56,18 +67,35 @@ actor SyncEngine {
                           conversationID: String, vmName: String) async throws {
         let data = try await api.getConversation(shelleyURL: shelleyURL, id: conversationID)
 
+        let working = data.conversationState?.working ?? false
+        var didChange = false
+        var workingChanged = false
+
         if let conv = data.conversation {
-            upsertConversation(conv, vmName: vmName,
-                               working: data.conversationState?.working ?? false)
+            let result = upsertConversation(conv, vmName: vmName, working: working)
+            didChange = didChange || result.didChange
+            workingChanged = result.workingChanged
         }
 
+        var changedMessageIDs: [String] = []
         if let messages = data.messages {
             for msg in messages {
-                upsertMessage(msg)
+                if upsertMessage(msg) {
+                    changedMessageIDs.append(msg.messageID)
+                    didChange = true
+                }
             }
         }
 
-        try saveAndNotify(kind: .conversation(conversationID))
+        if didChange {
+            try saveAndNotify(
+                kind: .conversation(
+                    conversationID: conversationID,
+                    messageIDs: orderedUniqueStrings(changedMessageIDs),
+                    working: workingChanged ? working : nil
+                )
+            )
+        }
     }
 
     // MARK: - Cached Conversation Lookup
@@ -108,11 +136,17 @@ actor SyncEngine {
                     }
 
                     if event.heartbeat == true {
-                        if let working = pendingWorking {
-                            updateWorking(conversationID: conversationID, working: working)
-                            try saveAndNotify(kind: .conversation(conversationID))
-                            pendingWorking = nil
+                        if let working = pendingWorking,
+                           updateWorking(conversationID: conversationID, working: working) {
+                            try saveAndNotify(
+                                kind: .conversation(
+                                    conversationID: conversationID,
+                                    messageIDs: [],
+                                    working: working
+                                )
+                            )
                         }
+                        pendingWorking = nil
                         continue
                     }
 
@@ -123,12 +157,28 @@ actor SyncEngine {
                     let now = ContinuousClock.now
                     if !pending.isEmpty &&
                         (now - lastFlush > .milliseconds(100) || pending.count >= 20) {
-                        for msg in pending { upsertMessage(msg) }
-                        if let working = pendingWorking {
-                            updateWorking(conversationID: conversationID, working: working)
-                            pendingWorking = nil
+                        var changedMessageIDs: [String] = []
+                        for msg in pending where upsertMessage(msg) {
+                            changedMessageIDs.append(msg.messageID)
                         }
-                        try saveAndNotify(kind: .conversation(conversationID))
+
+                        var changedWorking: Bool?
+                        if let working = pendingWorking,
+                           updateWorking(conversationID: conversationID, working: working) {
+                            changedWorking = working
+                        }
+
+                        if !changedMessageIDs.isEmpty || changedWorking != nil {
+                            try saveAndNotify(
+                                kind: .conversation(
+                                    conversationID: conversationID,
+                                    messageIDs: orderedUniqueStrings(changedMessageIDs),
+                                    working: changedWorking
+                                )
+                            )
+                        }
+
+                        pendingWorking = nil
                         pending.removeAll(keepingCapacity: true)
                         lastFlush = now
                     }
@@ -136,11 +186,26 @@ actor SyncEngine {
 
                 // Final flush
                 if !pending.isEmpty || pendingWorking != nil {
-                    for msg in pending { upsertMessage(msg) }
-                    if let working = pendingWorking {
-                        updateWorking(conversationID: conversationID, working: working)
+                    var changedMessageIDs: [String] = []
+                    for msg in pending where upsertMessage(msg) {
+                        changedMessageIDs.append(msg.messageID)
                     }
-                    try? saveAndNotify(kind: .conversation(conversationID))
+
+                    var changedWorking: Bool?
+                    if let working = pendingWorking,
+                       updateWorking(conversationID: conversationID, working: working) {
+                        changedWorking = working
+                    }
+
+                    if !changedMessageIDs.isEmpty || changedWorking != nil {
+                        try? saveAndNotify(
+                            kind: .conversation(
+                                conversationID: conversationID,
+                                messageIDs: orderedUniqueStrings(changedMessageIDs),
+                                working: changedWorking
+                            )
+                        )
+                    }
                 }
             } catch {
                 if !Task.isCancelled {
@@ -230,10 +295,16 @@ actor SyncEngine {
         var userInfo: [String: Any] = [:]
         switch kind {
         case .vms:
-            userInfo["kind"] = SyncEngineSaveNotificationKind.vms.rawValue
-        case .conversation(let conversationID):
-            userInfo["kind"] = SyncEngineSaveNotificationKind.conversation.rawValue
-            userInfo["conversationID"] = conversationID
+            userInfo[SyncEngineSaveNotificationUserInfoKey.kind] =
+                SyncEngineSaveNotificationKind.vms.rawValue
+        case .conversation(let conversationID, let messageIDs, let working):
+            userInfo[SyncEngineSaveNotificationUserInfoKey.kind] =
+                SyncEngineSaveNotificationKind.conversation.rawValue
+            userInfo[SyncEngineSaveNotificationUserInfoKey.conversationID] = conversationID
+            userInfo[SyncEngineSaveNotificationUserInfoKey.messageIDs] = messageIDs
+            if let working {
+                userInfo[SyncEngineSaveNotificationUserInfoKey.working] = working
+            }
         }
         NotificationCenter.default.post(
             name: Notification.Name("SyncEngineDidSave"),
@@ -251,30 +322,85 @@ actor SyncEngine {
         return try? modelContext.fetch(descriptor).first?.sequenceID
     }
 
-    private func upsertMessage(_ msg: ShelleyMessage) {
+    private func upsertMessage(_ msg: ShelleyMessage) -> Bool {
         let id = msg.messageID
         let predicate = #Predicate<StoredMessage> { $0.messageID == id }
         if let existing = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
+            guard existing.sequenceID != msg.sequenceID ||
+                existing.type != msg.type ||
+                existing.llmData != msg.llmData ||
+                existing.userData != msg.userData ||
+                existing.usageData != msg.usageData ||
+                existing.createdAt != msg.createdAt ||
+                existing.displayData != msg.displayData ||
+                existing.endOfTurn != msg.endOfTurn ||
+                existing.displayText != msg.displayText ||
+                existing.isToolUse != msg.isToolUse ||
+                existing.toolName != msg.toolName ||
+                existing.toolInputSummary != msg.toolInputSummary ||
+                existing.toolUseID != msg.toolUseID ||
+                existing.toolResultText != msg.toolResultText ||
+                existing.screenshotPath != msg.screenshotPath
+            else {
+                return false
+            }
             existing.update(from: msg)
+            return true
         } else {
             modelContext.insert(StoredMessage(from: msg))
+            return true
         }
     }
 
-    private func upsertConversation(_ conv: Conversation, vmName: String, working: Bool) {
+    private func upsertConversation(
+        _ conv: Conversation,
+        vmName: String,
+        working: Bool
+    ) -> ConversationUpsertResult {
         let id = conv.conversationID
         let predicate = #Predicate<StoredConversation> { $0.conversationID == id }
         if let existing = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
+            let didChange = existing.slug != conv.slug ||
+                existing.userInitiated != conv.userInitiated ||
+                existing.updatedAt != conv.updatedAt ||
+                existing.cwd != conv.cwd ||
+                existing.archived != conv.archived ||
+                existing.parentConversationID != conv.parentConversationID ||
+                existing.model != conv.model ||
+                existing.working != working
+            let workingChanged = existing.working != working
+
+            guard didChange else {
+                return ConversationUpsertResult(didChange: false, workingChanged: false)
+            }
+
             existing.update(from: conv, working: working)
+            return ConversationUpsertResult(didChange: true, workingChanged: workingChanged)
         } else {
             modelContext.insert(StoredConversation(from: conv, vmName: vmName, working: working))
+            return ConversationUpsertResult(didChange: true, workingChanged: true)
         }
     }
 
-    private func updateWorking(conversationID: String, working: Bool) {
+    private func updateWorking(conversationID: String, working: Bool) -> Bool {
         let predicate = #Predicate<StoredConversation> { $0.conversationID == conversationID }
         if let existing = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first {
+            guard existing.working != working else { return false }
             existing.working = working
+            return true
         }
+        return false
+    }
+
+    private func orderedUniqueStrings(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        unique.reserveCapacity(values.count)
+
+        for value in values where seen.insert(value).inserted {
+            unique.append(value)
+        }
+
+        return unique
     }
 }

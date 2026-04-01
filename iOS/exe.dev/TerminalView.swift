@@ -10,15 +10,14 @@ import GhosttyVT
 class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
 
     var screenState = TerminalScreenState() {
-        didSet { setNeedsDisplay() }
+        didSet { invalidateScreenState(from: oldValue, to: screenState) }
     }
 
     /// Called when the user types on the software keyboard (raw text).
     var onInput: ((String) -> Void)?
 
-    /// Called to encode a key event through libghostty-vt's key encoder.
-    /// Returns the escape sequence Data to send, or nil for no output.
-    var onEncodeKey: ((GhosttyKey, GhosttyKeyAction, GhosttyMods, String?, UInt32) -> Data?)?
+    /// Called to forward a key event for asynchronous encoding and send.
+    var onSendKeyEvent: ((GhosttyKey, GhosttyKeyAction, GhosttyMods, String?, UInt32) -> Void)?
 
     /// Called when the view's bounds change (drawer toggle, rotation, etc.)
     /// with the new (cols, rows).
@@ -36,11 +35,45 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
         return UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }()
 
-    /// Computed cell dimensions based on the font.
-    var cellSize: CGSize {
+    private lazy var boldFont: UIFont = {
+        UIFont(
+            descriptor: termFont.fontDescriptor.withSymbolicTraits(.traitBold) ??
+                termFont.fontDescriptor,
+            size: termFont.pointSize
+        )
+    }()
+
+    private lazy var italicFont: UIFont = {
+        UIFont(
+            descriptor: termFont.fontDescriptor.withSymbolicTraits(.traitItalic) ??
+                termFont.fontDescriptor,
+            size: termFont.pointSize
+        )
+    }()
+
+    private lazy var boldItalicFont: UIFont = {
+        UIFont(
+            descriptor: termFont.fontDescriptor.withSymbolicTraits([.traitBold, .traitItalic]) ??
+                termFont.fontDescriptor,
+            size: termFont.pointSize
+        )
+    }()
+
+    private lazy var paragraphStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byClipping
+        return style
+    }()
+
+    private lazy var cachedCellSize: CGSize = {
         let attrs: [NSAttributedString.Key: Any] = [.font: termFont]
         let mSize = ("M" as NSString).size(withAttributes: attrs)
         return CGSize(width: ceil(mSize.width), height: ceil(mSize.height))
+    }()
+
+    /// Computed cell dimensions based on the font.
+    var cellSize: CGSize {
+        cachedCellSize
     }
 
     /// How many cols/rows fit in the current view size.
@@ -80,15 +113,35 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
         let cell = cellSize
         let state = screenState
 
-        // Fill background
+        guard !state.cells.isEmpty else {
+            ctx.setFillColor(state.bgColor.cgColor)
+            ctx.fill(rect)
+            return
+        }
+
         ctx.setFillColor(state.bgColor.cgColor)
-        ctx.fill(bounds)
+        ctx.fill(rect)
 
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = .byClipping
+        let minRow = max(0, Int(floor(rect.minY / cell.height)))
+        guard minRow < state.cells.count else { return }
+        let maxRow = min(
+            state.cells.count - 1,
+            max(minRow, Int(ceil(rect.maxY / cell.height)) - 1)
+        )
+        let minCol = max(0, Int(floor(rect.minX / cell.width)))
 
-        for (y, row) in state.cells.enumerated() {
-            for (x, termCell) in row.enumerated() {
+        for y in minRow...maxRow {
+            let row = state.cells[y]
+            guard !row.isEmpty else { continue }
+            guard minCol < row.count else { continue }
+
+            let maxCol = min(
+                row.count - 1,
+                max(minCol, Int(ceil(rect.maxX / cell.width)) - 1)
+            )
+
+            for x in minCol...maxCol {
+                let termCell = row[x]
                 let cellRect = CGRect(
                     x: CGFloat(x) * cell.width,
                     y: CGFloat(y) * cell.height,
@@ -124,23 +177,50 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
                     continue
                 }
 
-                var font = termFont
-                if termCell.bold && termCell.italic {
-                    font = UIFont(descriptor: termFont.fontDescriptor.withSymbolicTraits([.traitBold, .traitItalic]) ?? termFont.fontDescriptor, size: termFont.pointSize)
-                } else if termCell.bold {
-                    font = UIFont(descriptor: termFont.fontDescriptor.withSymbolicTraits(.traitBold) ?? termFont.fontDescriptor, size: termFont.pointSize)
-                } else if termCell.italic {
-                    font = UIFont(descriptor: termFont.fontDescriptor.withSymbolicTraits(.traitItalic) ?? termFont.fontDescriptor, size: termFont.pointSize)
-                }
-
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: font,
+                    .font: font(for: termCell),
                     .foregroundColor: fg,
                     .paragraphStyle: paragraphStyle,
                 ]
-                let str = NSAttributedString(string: ch, attributes: attrs)
-                str.draw(in: cellRect)
+                ch.draw(in: cellRect, withAttributes: attrs)
             }
+        }
+    }
+
+    private func invalidateScreenState(from oldState: TerminalScreenState, to newState: TerminalScreenState) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard oldState.cols == newState.cols, oldState.rows == newState.rows else {
+            setNeedsDisplay()
+            return
+        }
+        guard !newState.needsFullRedraw else {
+            setNeedsDisplay()
+            return
+        }
+        guard !newState.dirtyRows.isEmpty else { return }
+
+        let cell = cellSize
+        for row in newState.dirtyRows {
+            let rowRect = CGRect(
+                x: 0,
+                y: CGFloat(row) * cell.height,
+                width: bounds.width,
+                height: cell.height
+            )
+            setNeedsDisplay(rowRect.integral)
+        }
+    }
+
+    private func font(for cell: TerminalCell) -> UIFont {
+        switch (cell.bold, cell.italic) {
+        case (true, true):
+            return boldItalicFont
+        case (true, false):
+            return boldFont
+        case (false, true):
+            return italicFont
+        case (false, false):
+            return termFont
         }
     }
 
@@ -256,10 +336,7 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
 
     private func sendKey(_ key: GhosttyKey, mods: GhosttyMods = 0,
                          text: String? = nil, codepoint: UInt32 = 0) {
-        if let data = onEncodeKey?(key, GHOSTTY_KEY_ACTION_PRESS, mods, text, codepoint),
-           let str = String(data: data, encoding: .utf8) {
-            onInput?(str)
-        }
+        onSendKeyEvent?(key, GHOSTTY_KEY_ACTION_PRESS, mods, text, codepoint)
     }
 
     /// Map a lowercase letter scalar to a GhosttyKey.
@@ -276,13 +353,13 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
 struct TerminalViewRepresentable: UIViewRepresentable {
     let screenState: TerminalScreenState
     let onInput: (String) -> Void
-    let onEncodeKey: (GhosttyKey, GhosttyKeyAction, GhosttyMods, String?, UInt32) -> Data?
+    let onSendKey: (GhosttyKey, GhosttyKeyAction, GhosttyMods, String?, UInt32) -> Void
     let onResize: (UInt16, UInt16) -> Void
 
     func makeUIView(context: Context) -> TerminalUIView {
         let view = TerminalUIView()
         view.onInput = onInput
-        view.onEncodeKey = onEncodeKey
+        view.onSendKeyEvent = onSendKey
         view.onGridResize = onResize
         // Become first responder to receive keyboard input.
         DispatchQueue.main.async { view.becomeFirstResponder() }
@@ -292,7 +369,7 @@ struct TerminalViewRepresentable: UIViewRepresentable {
     func updateUIView(_ view: TerminalUIView, context: Context) {
         view.screenState = screenState
         view.onInput = onInput
-        view.onEncodeKey = onEncodeKey
+        view.onSendKeyEvent = onSendKey
         view.onGridResize = onResize
     }
 }
@@ -306,6 +383,7 @@ final class TerminalOutputBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var buffer = Data()
     private var flushScheduled = false
+    private let minimumFlushDelay: Duration = .milliseconds(16)
 
     /// Append data (called from any thread) and schedule a coalesced flush.
     /// The flush closure runs on the main actor at most once per scheduling cycle.
@@ -317,7 +395,11 @@ final class TerminalOutputBuffer: @unchecked Sendable {
         lock.unlock()
 
         if needsSchedule {
-            Task { @MainActor in flush() }
+            Task {
+                try? await Task.sleep(for: minimumFlushDelay)
+                guard !Task.isCancelled else { return }
+                await MainActor.run(body: flush)
+            }
         }
     }
 
@@ -348,7 +430,7 @@ class TerminalViewModel {
     var isConnected = false
     var connectionError: String?
 
-    private let emulator = TerminalEmulator()
+    private var driver = TerminalDriver()
     private var connection: TerminalConnection?
     private let outputBuffer = TerminalOutputBuffer()
     /// Incremented on each connect/disconnect to let stale callbacks bail out.
@@ -361,6 +443,7 @@ class TerminalViewModel {
         let conn = TerminalConnection(vmName: vmName, token: token)
         let gen = generation
         let buf = outputBuffer
+        let currentDriver = driver
 
         // Buffer output from the background WebSocket queue; flush coalesced
         // on the main actor so we do at most one write+render per batch.
@@ -390,7 +473,8 @@ class TerminalViewModel {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard let self, self.generation == gen else { return }
-            conn.sendResize(cols: self.emulator.cols, rows: self.emulator.rows)
+            let gridSize = await currentDriver.currentGridSize()
+            conn.sendResize(cols: gridSize.cols, rows: gridSize.rows)
         }
     }
 
@@ -400,31 +484,53 @@ class TerminalViewModel {
         connection?.disconnect()
         connection = nil
         isConnected = false
+        screenState = TerminalScreenState()
+        driver = TerminalDriver()
     }
 
     func sendInput(_ text: String) {
         connection?.sendInput(text)
     }
 
-    /// Encode a key event through the ghostty key encoder.
-    func encodeKey(key: GhosttyKey, action: GhosttyKeyAction, mods: GhosttyMods,
-                   text: String?, codepoint: UInt32) -> Data? {
-        emulator.encodeKey(key: key, action: action, mods: mods,
-                          text: text, unshiftedCodepoint: codepoint)
+    /// Encode a key event through the ghostty key encoder off the main actor.
+    func sendKeyEvent(key: GhosttyKey, action: GhosttyKeyAction, mods: GhosttyMods,
+                      text: String?, codepoint: UInt32) {
+        let gen = generation
+        let currentDriver = driver
+        Task { @MainActor [weak self] in
+            let encoded = await currentDriver.encodeKey(
+                key: key,
+                action: action,
+                mods: mods,
+                text: text,
+                codepoint: codepoint
+            )
+            guard let self, self.generation == gen, let encoded else { return }
+            self.connection?.sendInput(encoded)
+        }
     }
 
     func resize(cols: UInt16, rows: UInt16) {
-        guard cols != emulator.cols || rows != emulator.rows else { return }
-        emulator.resize(cols: cols, rows: rows)
         connection?.sendResize(cols: cols, rows: rows)
-        screenState = emulator.getScreenState()
+        let gen = generation
+        let currentDriver = driver
+        Task { @MainActor [weak self] in
+            let updated = await currentDriver.resize(cols: cols, rows: rows)
+            guard let self, self.generation == gen, let updated else { return }
+            self.screenState = updated
+        }
     }
 
     private func flushOutput() {
         let data = outputBuffer.take()
         guard !data.isEmpty else { return }
-        emulator.write(data)
-        screenState = emulator.getScreenState()
+        let gen = generation
+        let currentDriver = driver
+        Task { @MainActor [weak self] in
+            let updated = await currentDriver.applyOutput(data)
+            guard let self, self.generation == gen, let updated else { return }
+            self.screenState = updated
+        }
     }
 }
 
@@ -471,9 +577,9 @@ struct VMTerminalView: View {
                     onInput: { text in
                         viewModel.sendInput(text)
                     },
-                    onEncodeKey: { key, action, mods, text, codepoint in
-                        viewModel.encodeKey(key: key, action: action, mods: mods,
-                                            text: text, codepoint: codepoint)
+                    onSendKey: { key, action, mods, text, codepoint in
+                        viewModel.sendKeyEvent(key: key, action: action, mods: mods,
+                                               text: text, codepoint: codepoint)
                     },
                     onResize: { cols, rows in
                         viewModel.resize(cols: cols, rows: rows)

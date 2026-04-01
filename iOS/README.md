@@ -1,3 +1,5 @@
+First run ./build-ghostty.sh.
+
 You need to use xcode.
 
 Set it up with your Bold Software apple account so you join the Bold team.

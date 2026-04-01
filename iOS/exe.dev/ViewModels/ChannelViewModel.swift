@@ -43,8 +43,8 @@ final class ChannelViewModel {
             queue: .main
         ) { [weak self] notification in
             MainActor.assumeIsolated {
-                guard let self, self.shouldRefresh(for: notification) else { return }
-                self.fetchMessages()
+                guard let self else { return }
+                self.handleSaveNotification(notification)
             }
         }
     }
@@ -109,6 +109,8 @@ final class ChannelViewModel {
                     await syncEngine.stopStream(conversationID: old)
                 }
                 conversationID = latest.conversationID
+                messages = []
+                isWorking = latest.working ?? false
             }
             do {
                 try await syncEngine.loadConversation(
@@ -243,26 +245,139 @@ final class ChannelViewModel {
         reconcilePendingMessages()
     }
 
-    private func shouldRefresh(for notification: Notification) -> Bool {
-        guard let conversationID else { return false }
+    private func fetchMessages(messageIDs: [String], conversationID: String) -> [StoredMessage] {
+        let uniqueIDs = orderedUniqueMessageIDs(messageIDs)
+        guard !uniqueIDs.isEmpty else { return [] }
+
+        var fetched: [StoredMessage] = []
+        fetched.reserveCapacity(uniqueIDs.count)
+
+        for messageID in uniqueIDs {
+            let id = messageID
+            let activeConversationID = conversationID
+            let descriptor = FetchDescriptor<StoredMessage>(
+                predicate: #Predicate {
+                    $0.messageID == id && $0.conversationID == activeConversationID
+                }
+            )
+            if let message = try? modelContext.fetch(descriptor).first {
+                fetched.append(message)
+            }
+        }
+
+        return fetched
+    }
+
+    private func handleSaveNotification(_ notification: Notification) {
+        guard let conversationID else { return }
+        guard let save = saveNotification(from: notification, activeConversationID: conversationID) else {
+            return
+        }
+
+        switch save {
+        case .fullReload:
+            fetchMessages()
+
+        case .delta(let delta):
+            if let working = delta.working {
+                isWorking = working
+            }
+
+            let uniqueMessageIDs = orderedUniqueMessageIDs(delta.messageIDs)
+            guard !uniqueMessageIDs.isEmpty else {
+                reconcilePendingMessages()
+                return
+            }
+
+            if ConversationDeltaReducer.shouldReload(
+                hasSnapshot: !messages.isEmpty,
+                changedMessageCount: uniqueMessageIDs.count
+            ) {
+                fetchMessages()
+                return
+            }
+
+            let changedMessages = fetchMessages(
+                messageIDs: uniqueMessageIDs,
+                conversationID: conversationID
+            )
+
+            guard changedMessages.count == uniqueMessageIDs.count else {
+                fetchMessages()
+                return
+            }
+
+            messages = ConversationDeltaReducer.merge(
+                current: messages,
+                changed: changedMessages,
+                id: \.messageID,
+                areInIncreasingOrder: Self.isMessageBefore(_:_:)
+            )
+            reconcilePendingMessages()
+        }
+    }
+
+    private enum SaveNotification {
+        case fullReload
+        case delta(ConversationDelta)
+    }
+
+    private struct ConversationDelta {
+        let messageIDs: [String]
+        let working: Bool?
+    }
+
+    private func saveNotification(
+        from notification: Notification,
+        activeConversationID: String
+    ) -> SaveNotification? {
         guard let userInfo = notification.userInfo,
               let kindRaw = userInfo[SyncEngineSaveNotificationUserInfoKey.kind] as? String,
               let kind = SyncEngineSaveNotificationKind(rawValue: kindRaw)
         else {
-            return true
+            return .fullReload
         }
 
         switch kind {
         case .vms:
-            return false
+            return nil
         case .conversation:
             guard let changedConversationID =
                 userInfo[SyncEngineSaveNotificationUserInfoKey.conversationID] as? String
             else {
-                return true
+                return .fullReload
             }
-            return changedConversationID == conversationID
+            guard changedConversationID == activeConversationID else { return nil }
+            return .delta(
+                ConversationDelta(
+                    messageIDs:
+                        userInfo[SyncEngineSaveNotificationUserInfoKey.messageIDs] as? [String] ?? [],
+                    working: userInfo[SyncEngineSaveNotificationUserInfoKey.working] as? Bool
+                )
+            )
         }
+    }
+
+    private func orderedUniqueMessageIDs(_ messageIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        unique.reserveCapacity(messageIDs.count)
+
+        for messageID in messageIDs where seen.insert(messageID).inserted {
+            unique.append(messageID)
+        }
+
+        return unique
+    }
+
+    private static func isMessageBefore(_ lhs: StoredMessage, _ rhs: StoredMessage) -> Bool {
+        if lhs.sequenceID != rhs.sequenceID {
+            return lhs.sequenceID < rhs.sequenceID
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.messageID < rhs.messageID
     }
 
     /// Remove pending messages that the server has confirmed via SSE.
