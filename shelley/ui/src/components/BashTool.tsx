@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { LLMContent } from "../types";
+import AnsiText from "./AnsiText";
 
 // Display data from the bash tool backend
 interface BashDisplayData {
@@ -153,9 +154,7 @@ function BashTool({
       {/* Streaming preview — shown below header while running, outside the details panel */}
       {isRunning && streamingOutput && !isExpanded && (
         <div className="bash-tool-preview">
-          <pre ref={previewRef} className="bash-tool-preview-code">
-            {visibleStreaming}
-          </pre>
+          <AnsiText ref={previewRef} className="bash-tool-preview-code" text={visibleStreaming} />
           {hasMoreLines && !previewExpanded && (
             <button
               className="bash-tool-preview-more"
@@ -186,9 +185,11 @@ function BashTool({
           {isRunning && streamingOutput && (
             <div className="bash-tool-section">
               <div className="bash-tool-label">Output (streaming):</div>
-              <pre ref={expandedStreamRef} className="bash-tool-code bash-tool-streaming">
-                {streamingOutput}
-              </pre>
+              <AnsiText
+                ref={expandedStreamRef}
+                className="bash-tool-code bash-tool-streaming"
+                text={streamingOutput}
+              />
             </div>
           )}
 
@@ -198,9 +199,10 @@ function BashTool({
                 Output{hasError ? " (Error)" : ""}:
                 {executionTime && <span className="bash-tool-time">{executionTime}</span>}
               </div>
-              <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
-                {output || "(no output)"}
-              </pre>
+              <AnsiText
+                className={`bash-tool-code ${hasError ? "error" : ""}`}
+                text={output || "(no output)"}
+              />
             </div>
           )}
         </div>
