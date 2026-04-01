@@ -42,6 +42,8 @@ def main():
         run(["./bin/retry.sh", "uv", "tool", "install", "b2"])
 
     ci_cache = os.environ.get("CI_CACHE", os.path.join(os.environ.get("HOME", "/tmp"), ".cache", "ci"))
+    # Export CI_CACHE so subprocesses (e.g., make ui) can use persistent cache locations.
+    os.environ["CI_CACHE"] = ci_cache
     goarch = os.environ.get("GOARCH", "amd64")
     build_id = os.environ.get("BUILDKITE_BUILD_ID", "local")
 
@@ -79,6 +81,12 @@ def main():
         cwd="deps/sshpiper")
     # Note: exeletd is built later — it embeds exelet/fs via //go:embed,
     # so exelet-fs + exe-init must complete first.
+
+    # 5. Pre-warm the Go race cache for exed while UI builds.
+    # exed can't link until ui/dist exists (//go:embed), but we can compile
+    # all its Go dependencies now so only the link step remains after UI.
+    exed_warm_proc = subprocess.Popen(
+        ["go", "build", "-race"] + cover_flags + ["./execore", "./exedb", "./billing", "./llmgateway"])
 
     # ── Wait for tasks, tracking timing ──
     timings = {}
@@ -130,6 +138,10 @@ def main():
         failed = True
     else:
         timings["ui"] = time.monotonic() - t0
+
+    # Wait for exed dep pre-warm (best-effort, don't fail the build)
+    if exed_warm_proc.wait() != 0:
+        print("  warning: exed dep pre-warm failed (non-fatal)", flush=True)
 
     if failed:
         print("One or more parallel tasks failed", file=sys.stderr)
