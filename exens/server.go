@@ -209,6 +209,8 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			rrs, err = s.lookupNS(ctx, qname, header.Name, header.Class)
 		case dns.TypeSOA:
 			rrs, err = s.lookupSOA(ctx, qname, header.Name, header.Class)
+		case dns.TypeCAA:
+			rrs, err = s.lookupCAA(ctx, qname, header.Name, header.Class)
 		default:
 			// This is a very common log line if enabled.
 			// s.log.DebugContext(ctx, "unsupported query type", "name", qname, "type", dns.TypeToString[qtype])
@@ -239,7 +241,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		// This is mildly inefficient, but saves implementing the lookup logic
 		// twice to compute a "does this exist" bit.
 		lookups := []func(context.Context, string, string, uint16) ([]dns.RR, error){
-			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
+			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA, s.lookupCAA,
 		}
 		nameExists := false
 		for _, question := range r.Question {
@@ -537,6 +539,24 @@ func (s *Server) lookupSOA(ctx context.Context, qname, fqdn string, class uint16
 			Retry:   7200,    // 2 hours
 			Expire:  1209600, // 2 weeks
 			Minttl:  300,     // 5 minutes (negative cache TTL)
+		},
+	}, nil
+}
+
+// lookupCAA handles CAA record queries.
+// Returns a CAA record allowing Let's Encrypt to issue certificates.
+// Only set at the zone apex; RFC 8659 requires CAs to walk up the tree,
+// so this covers all subdomains.
+func (s *Server) lookupCAA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
+	if qname != s.boxHost {
+		return nil, nil
+	}
+	return []dns.RR{
+		&dns.CAA{
+			Hdr:   dns.Header{Name: fqdn, Class: class, TTL: 300},
+			Flag:  0,
+			Tag:   "issue",
+			Value: "letsencrypt.org",
 		},
 	}, nil
 }

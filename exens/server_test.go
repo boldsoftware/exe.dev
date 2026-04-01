@@ -209,6 +209,58 @@ func TestSOARecords(t *testing.T) {
 	})
 }
 
+func TestCAARecords(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+
+	t.Run("ApexDomain", func(t *testing.T) {
+		rrs, err := server.lookupCAA(ctx, "exe.xyz", "exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CAA record, got %d", len(rrs))
+		}
+		caa, ok := rrs[0].(*dns.CAA)
+		if !ok {
+			t.Fatalf("expected *dns.CAA, got %T", rrs[0])
+		}
+		if caa.Tag != "issue" {
+			t.Errorf("expected tag 'issue', got %q", caa.Tag)
+		}
+		if caa.Value != "letsencrypt.org" {
+			t.Errorf("expected value 'letsencrypt.org', got %q", caa.Value)
+		}
+		if caa.Flag != 0 {
+			t.Errorf("expected flag 0, got %d", caa.Flag)
+		}
+	})
+
+	t.Run("Subdomain", func(t *testing.T) {
+		// CAA only at the apex; RFC 8659 tree-climbing covers subdomains.
+		rrs, err := server.lookupCAA(ctx, "mybox.exe.xyz", "mybox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 CAA records for subdomain, got %d", len(rrs))
+		}
+	})
+
+	t.Run("WrongDomain", func(t *testing.T) {
+		rrs, err := server.lookupCAA(ctx, "other.com", "other.com.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 records for wrong domain, got %d", len(rrs))
+		}
+	})
+}
+
 func TestXtermWildcardA(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
