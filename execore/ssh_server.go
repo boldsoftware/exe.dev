@@ -34,6 +34,7 @@ import (
 )
 
 var errRegistrationCancelled = errors.New("Registration cancelled")
+var errContinuationCancelled = errors.New("continuation cancelled")
 
 // minimalConnMetadata implements ssh.ConnMetadata with just the fields we need
 type minimalConnMetadata struct {
@@ -665,10 +666,25 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 	for {
 		// Read line with tab completion
 		line, err := ss.readLineWithCompletion(terminal, replPrompt, user, publicKey, s)
-		if err != nil {
-			if err == io.EOF {
-				fmt.Fprint(s, "Goodbye!\r\n")
-			}
+		switch {
+		case err == io.EOF:
+			fmt.Fprint(s, "Goodbye!\r\n")
+			return
+		case err != nil:
+			return
+		}
+
+		// Handle line continuations: if a line ends with \ (odd count),
+		// read additional lines and join them.
+		line, err = joinContinuationLines(line, terminal)
+		terminal.SetPrompt(replPrompt)
+		switch {
+		case err == errContinuationCancelled:
+			continue
+		case err == io.EOF:
+			fmt.Fprint(s, "Goodbye!\r\n")
+			return
+		case err != nil:
 			return
 		}
 
@@ -1596,6 +1612,41 @@ func (s *Server) getInviteGiverEmail(ctx context.Context, inviteCode *exedb.Invi
 		return ""
 	}
 	return email
+}
+
+// endsWithContinuation reports whether line ends with a line continuation
+// backslash. A trailing \ is a continuation only when preceded by an even
+// number of backslashes (including zero). Inspired by shell backslash-newline,
+// but intentionally more permissive: trailing whitespace after \ is ignored.
+func endsWithContinuation(line string) bool {
+	trimmed := strings.TrimRight(line, " \t")
+	n := len(trimmed) - len(strings.TrimRight(trimmed, "\\"))
+	return n%2 == 1
+}
+
+// joinContinuationLines assembles a complete command from a terminal,
+// joining lines that end with a backslash continuation character.
+// It returns the assembled line or an error (e.g. io.EOF).
+const contPrompt = "> "
+
+func joinContinuationLines(line string, terminal *term.Terminal) (string, error) {
+	for endsWithContinuation(line) {
+		line = strings.TrimRight(line, " \t")
+		line = line[:len(line)-1] // strip trailing backslash
+		terminal.SetPrompt(contPrompt)
+		contLine, err := terminal.ReadLine()
+		switch {
+		case err == io.EOF:
+			// Ctrl-C and Ctrl-D both return io.EOF from ReadLine.
+			// Cancel the partial command instead of exiting the REPL.
+			terminal.Write([]byte("\n"))
+			return "", errContinuationCancelled
+		case err != nil:
+			return "", err
+		}
+		line += contLine
+	}
+	return line, nil
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support.
