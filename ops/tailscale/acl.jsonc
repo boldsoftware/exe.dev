@@ -5,70 +5,68 @@
 // No network grants for tag:island — that's the point.
 // The new rules are additive, preparing for the eventual *:* removal.
 {
-    "groups": {
-        "group:dev": [
-            "bryan@bold.dev",
-            "david@bold.dev",
-            "evan@bold.dev",
-            "ian@bold.dev",
-            "josh@bold.dev",
-            "philip@bold.dev",
-            "shaun@bold.dev",
-        ],
+  "groups": {
+    "group:dev": [
+      "bryan@bold.dev",
+      "david@bold.dev",
+      "evan@bold.dev",
+      "ian@bold.dev",
+      "josh@bold.dev",
+      "philip@bold.dev",
+      "shaun@bold.dev",
+    ],
+  },
+
+  "tagOwners": {
+    "tag:server": ["autogroup:admin"],
+    "tag:island": ["autogroup:admin"],
+  },
+
+  "grants": [{ "src": ["*"], "dst": ["*"], "ip": ["*"] }],
+
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot", "root"],
     },
-
-    "tagOwners": {
-        "tag:server": ["autogroup:admin"],
-        "tag:island": ["autogroup:admin"],
+    {
+      "action": "accept",
+      "src": ["autogroup:admin", "tag:server"],
+      "dst": ["tag:server", "tag:vast"],
+      "users": ["autogroup:nonroot", "root"],
     },
+    // group:dev can SSH to island machines after they lose tag:server.
+    {
+      "action": "accept",
+      "src": ["group:dev"],
+      "dst": ["tag:island"],
+      "users": ["autogroup:nonroot", "root"],
+    },
+  ],
 
-    "grants": [
-        {"src": ["*"], "dst": ["*"], "ip": ["*"]},
-    ],
+  "nodeAttrs": [
+    {
+      "target": ["autogroup:member", "tag:server"],
+      "attr": ["funnel"],
+    },
+    { "target": ["100.87.187.75"], "attr": ["mullvad"] },
+    { "target": ["100.71.235.113"], "attr": ["mullvad"] },
+  ],
 
-    "ssh": [
-        {
-            "action": "accept",
-            "src":    ["autogroup:member"],
-            "dst":    ["autogroup:self"],
-            "users":  ["autogroup:nonroot", "root"],
-        },
-        {
-            "action": "accept",
-            "src":    ["autogroup:admin", "tag:server"],
-            "dst":    ["tag:server", "tag:vast"],
-            "users":  ["autogroup:nonroot", "root"],
-        },
-        // group:dev can SSH to island machines after they lose tag:server.
-        {
-            "action": "accept",
-            "src":    ["group:dev"],
-            "dst":    ["tag:island"],
-            "users":  ["autogroup:nonroot", "root"],
-        },
-    ],
-
-    "nodeAttrs": [
-        {
-            "target": ["autogroup:member", "tag:server"],
-            "attr":   ["funnel"],
-        },
-        {"target": ["100.87.187.75"], "attr": ["mullvad"]},
-        {"target": ["100.71.235.113"], "attr": ["mullvad"]},
-    ],
-
-    // Tests validate the current (permissive) state.
-    // As phases progress, "accept" entries become "deny" entries.
-    "tests": [
-        // Island machines can still reach things via *:* — will become deny after Phase 3c.
-        {
-            "src":    "tag:island",
-            "accept": ["tag:island:22"],
-        },
-        // josh's laptop can reach everything.
-        {
-            "src":    "100.83.1.18",
-            "accept": ["tag:server:22", "tag:island:22"],
-        },
-    ],
+  // Tests validate the current (permissive) state.
+  // As phases progress, "accept" entries become "deny" entries.
+  "tests": [
+    // Island machines can still reach things via *:* — will become deny after Phase 3c.
+    {
+      "src": "tag:island",
+      "accept": ["tag:island:22"],
+    },
+    // josh's laptop can reach everything.
+    {
+      "src": "100.83.1.18",
+      "accept": ["tag:server:22", "tag:island:22"],
+    },
+  ],
 }
