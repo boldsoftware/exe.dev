@@ -616,25 +616,37 @@ func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
 	h.WaitResponse()
 	sourceConvID := h.convID
 
-	// Distill the source conversation
-	reqBody := DistillConversationRequest{
-		SourceConversationID: sourceConvID,
-		Model:                "predictable",
+	// Create the new conversation and status message manually (same as
+	// handleDistillConversation but without starting the goroutine) so we
+	// can establish the SSE subscription before triggering distillation.
+	model := "predictable"
+	newConv, err := h.server.db.CreateConversation(context.Background(), nil, true, nil, &model, db.ConversationOptions{})
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
 	}
-	body, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest("POST", "/api/conversations/distill", strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	h.server.handleDistillConversation(w, req)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	newConvID := newConv.ConversationID
+
+	// Insert the "in_progress" status message
+	statusUserData := map[string]string{
+		"distill_status": "in_progress",
+		"source_slug":    "test-source",
+	}
+	_, err = h.server.db.CreateMessage(context.Background(), db.CreateMessageParams{
+		ConversationID:      newConvID,
+		Type:                db.MessageTypeSystem,
+		UserData:            statusUserData,
+		ExcludedFromContext: true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create status message: %v", err)
 	}
 
-	var distillResp map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &distillResp); err != nil {
-		t.Fatalf("failed to parse distill response: %v", err)
+	// Get the conversation manager and mark it as distilling
+	manager, err := h.server.getOrCreateConversationManager(context.Background(), newConvID, "")
+	if err != nil {
+		t.Fatalf("failed to create conversation manager: %v", err)
 	}
-	newConvID := distillResp["conversation_id"].(string)
+	manager.SetDistilling(true)
 
 	// Open an SSE stream to the new conversation (like the UI does).
 	// This will receive the initial "in_progress" system message.
@@ -653,6 +665,15 @@ func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for initial SSE message")
 	}
+
+	// Now trigger the distillation. The SSE handler is already subscribed.
+	sourceMsgs, err := h.server.db.ListMessages(context.Background(), sourceConvID)
+	if err != nil {
+		t.Fatalf("failed to list source messages: %v", err)
+	}
+	go func() {
+		h.server.runDistillation(context.Background(), newConvID, "test-source", "predictable", sourceMsgs)
+	}()
 
 	// Now wait for the distillation to complete by watching the SSE stream
 	// for a message containing "complete" status

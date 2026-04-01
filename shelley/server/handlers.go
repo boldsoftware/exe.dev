@@ -1002,6 +1002,12 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Subscribe BEFORE sending initial data so we don't miss broadcasts that
+	// happen between the DB query and the start of the event loop. The subpub
+	// channel is buffered (10), so events arriving while we write the initial
+	// response are queued rather than lost.
+	next := manager.subpub.Subscribe(ctx, lastSeqID)
+
 	// Send initial response (all messages for fresh connections, missed messages for resumes)
 	if len(messages) > 0 {
 		apiMessages := toAPIMessages(messages)
@@ -1040,9 +1046,6 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		w.(http.Flusher).Flush()
 	}
-
-	// Subscribe to new messages after the last one we sent
-	next := manager.subpub.Subscribe(ctx, lastSeqID)
 
 	// Start heartbeat goroutine - sends state every 30 seconds if no other messages
 	heartbeatDone := make(chan struct{})
