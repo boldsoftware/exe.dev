@@ -240,6 +240,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
@@ -248,12 +249,15 @@ import CommandModal from '../components/CommandModal.vue'
 import ViewPopover from '../components/ViewPopover.vue'
 import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
 
+const route = useRoute()
+const router = useRouter()
+
 const loading = ref(true)
 const loadError = ref('')
 const boxes = ref<BoxInfo[]>([])
 const sharedBoxes = ref<SharedBoxInfo[]>([])
 const teamBoxes = ref<TeamBoxInfo[]>([])
-const searchQuery = ref(new URLSearchParams(window.location.search).get('filter') || '')
+const searchQuery = ref((route.query.filter as string) || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
 
@@ -382,15 +386,23 @@ const modal = reactive({
 
 watch(searchQuery, (val) => syncFilterToURL(val))
 
-// Sync filter to URL
+// When the route query changes (e.g. clicking the logo navigates to "/" without ?filter),
+// sync the search query to match.
+watch(() => route.query.filter, (val) => {
+  searchQuery.value = (val as string) || ''
+})
+
+// Sync filter to URL via Vue Router so route.query stays in sync
 function syncFilterToURL(val: string) {
-  const url = new URL(window.location.href)
-  if (val.trim()) {
-    url.searchParams.set('filter', val.trim())
+  const trimmed = val.trim()
+  const current = (route.query.filter as string) || ''
+  if (trimmed === current) return
+  if (trimmed) {
+    router.replace({ query: { ...route.query, filter: trimmed } })
   } else {
-    url.searchParams.delete('filter')
+    const { filter: _, ...rest } = route.query
+    router.replace({ query: rest })
   }
-  history.replaceState(null, '', url.toString())
 }
 
 const filteredBoxes = computed(() => {
