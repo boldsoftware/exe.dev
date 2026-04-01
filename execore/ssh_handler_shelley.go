@@ -247,7 +247,7 @@ func (ss *SSHServer) handleShelleyPrompt(ctx context.Context, cc *exemenu.Comman
 func (ss *SSHServer) createConversation(ctx context.Context, httpClient *http.Client, prompt, userID string) (string, error) {
 	chatReq := ShelleyChatRequest{
 		Message: prompt,
-		Model:   "claude-sonnet-4.5",
+		Model:   "claude-sonnet-4.6",
 	}
 	reqBody, err := json.Marshal(chatReq)
 	if err != nil {
