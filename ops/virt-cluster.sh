@@ -231,7 +231,7 @@ ensure_bridge() {
     if ! sudo iptables -t nat -C POSTROUTING -s "${BRIDGE_SUBNET}" ! -o "${BRIDGE_NAME}" -j MASQUERADE 2>/dev/null; then
         sudo iptables -t nat -A POSTROUTING -s "${BRIDGE_SUBNET}" ! -o "${BRIDGE_NAME}" -j MASQUERADE
     fi
-    # FORWARD rules (Docker often sets policy to DROP)
+    # FORWARD rules
     if ! sudo iptables -C FORWARD -i "${BRIDGE_NAME}" -j ACCEPT 2>/dev/null; then
         sudo iptables -I FORWARD -i "${BRIDGE_NAME}" -j ACCEPT
     fi
@@ -813,46 +813,89 @@ ensure_cloud_hypervisor_artifacts() {
     local arch="amd64"
     local artifact_name="cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}-${arch}.tar.gz"
     local artifact_path="${CACHE_DIR}/${artifact_name}"
-    local build_context="${SCRIPT_DIR}/cloud-hypervisor"
 
     if [[ -f "${artifact_path}" ]]; then
         log "Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} cache hit"
         return 0
     fi
 
-    if [[ ! -d "${build_context}" ]]; then
-        die "Cloud Hypervisor Docker context missing at ${build_context}"
+    # Ensure Rust (cargo) is available
+    local cargo_cmd="cargo"
+    if ! command -v cargo >/dev/null 2>&1; then
+        log "cargo not found, installing Rust nightly via rustup..."
+        local rustup_home
+        rustup_home="$(mktemp -d)"
+        export RUSTUP_HOME="${rustup_home}"
+        export CARGO_HOME="${rustup_home}"
+        curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --no-modify-path
+        export PATH="${CARGO_HOME}/bin:${PATH}"
+        if ! command -v cargo >/dev/null 2>&1; then
+            die "Failed to install Rust. Install Rust (with nightly toolchain) manually."
+        fi
     fi
 
-    local DOCKER_CMD=()
-    if docker info >/dev/null 2>&1; then
-        DOCKER_CMD=(docker)
-    elif sudo docker info >/dev/null 2>&1; then
-        DOCKER_CMD=(sudo docker)
-    else
-        die "Docker is required to build Cloud Hypervisor artifacts"
+    # Ensure nightly toolchain and rustfmt are available
+    if ! rustup toolchain list 2>/dev/null | grep -q nightly; then
+        rustup toolchain install nightly
+    fi
+    rustup component add rustfmt --toolchain nightly 2>/dev/null || true
+
+    # Ensure C build deps are installed
+    local build_pkgs=(build-essential libcap-ng-dev libseccomp-dev pkg-config)
+    local missing_pkgs=()
+    for pkg in "${build_pkgs[@]}"; do
+        if ! dpkg -s "${pkg}" >/dev/null 2>&1; then
+            missing_pkgs+=("${pkg}")
+        fi
+    done
+    if [[ ${#missing_pkgs[@]} -gt 0 ]]; then
+        log "Installing build dependencies: ${missing_pkgs[*]}"
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq "${missing_pkgs[@]}"
     fi
 
     mkdir -p "${CACHE_DIR}"
-    local image_tag="exe-cloud-hypervisor:${CLOUD_HYPERVISOR_VERSION}-${arch}"
-    log "Building Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} via Docker..."
-    "${DOCKER_CMD[@]}" build \
-        --platform "linux/amd64" \
-        --tag "${image_tag}" \
-        --build-arg "CLOUD_HYPERVISOR_VERSION=${CLOUD_HYPERVISOR_VERSION}" \
-        --build-arg "VIRTIOFSD_VERSION=${VIRTIOFSD_VERSION}" \
-        --build-arg "TARGETARCH=${arch}" \
-        "${build_context}"
+    local build_dir
+    build_dir="$(mktemp -d)"
+    local out_dir="${build_dir}/out"
+    mkdir -p "${out_dir}/bin"
 
-    local container_id
-    container_id=$("${DOCKER_CMD[@]}" create "${image_tag}" /bin/true)
-    local tmp_dir
-    tmp_dir="$(mktemp -d)"
-    "${DOCKER_CMD[@]}" cp "${container_id}:/out/." "${tmp_dir}"
-    tar czf "${artifact_path}" -C "${tmp_dir}" .
+    log "Building Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} from source..."
+
+    # Download and extract cloud-hypervisor source
+    log "  Downloading cloud-hypervisor v${CLOUD_HYPERVISOR_VERSION}..."
+    curl -fsSL "https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v${CLOUD_HYPERVISOR_VERSION}.tar.gz" |
+        tar xz -C "${build_dir}"
+    local ch_src="${build_dir}/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}"
+
+    # Build cloud-hypervisor and ch-remote
+    log "  Building cloud-hypervisor and ch-remote..."
+    (cd "${ch_src}" && cargo +nightly build --release)
+    cp "${ch_src}/target/release/cloud-hypervisor" "${out_dir}/bin/cloud-hypervisor"
+    cp "${ch_src}/target/release/ch-remote" "${out_dir}/bin/ch-remote"
+
+    # Clone and build virtiofsd
+    log "  Cloning virtiofsd v${VIRTIOFSD_VERSION}..."
+    git clone --depth=1 --branch "v${VIRTIOFSD_VERSION}" \
+        https://gitlab.com/virtio-fs/virtiofsd.git "${build_dir}/virtiofsd"
+    log "  Building virtiofsd..."
+    (cd "${build_dir}/virtiofsd" && cargo +nightly build --release)
+    cp "${build_dir}/virtiofsd/target/release/virtiofsd" "${out_dir}/bin/virtiofsd"
+
+    # Write metadata
+    cat >"${out_dir}/metadata" <<EOF
+cloud_hypervisor_version=${CLOUD_HYPERVISOR_VERSION}
+virtiofsd_version=${VIRTIOFSD_VERSION}
+arch=${arch}
+build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+
+    # Package artifact tarball
+    tar czf "${artifact_path}" -C "${out_dir}" .
     chmod 0644 "${artifact_path}"
-    rm -rf "${tmp_dir}"
-    "${DOCKER_CMD[@]}" rm "${container_id}" >/dev/null 2>&1 || true
+
+    # Clean up build directory
+    rm -rf "${build_dir}"
     log "Cached Cloud Hypervisor at ${artifact_path}"
 }
 
@@ -2018,15 +2061,19 @@ cmd_install_deps() {
 
     # APT packages
     local pkgs=(
-        qemu-utils     # qemu-img
-        dnsmasq        # DHCP server for bridge network
-        genisoimage    # cloud-init seed ISO creation
-        sqlite3        # database management
-        socat          # port forwarding
-        iproute2       # ip command for bridge/tap management
-        iptables       # NAT rules
-        curl           # downloading base images
-        openssh-client # ssh/scp to VMs
+        build-essential # C compiler/linker for Rust native builds
+        curl            # downloading base images
+        dnsmasq         # DHCP server for bridge network
+        genisoimage     # cloud-init seed ISO creation
+        iproute2        # ip command for bridge/tap management
+        iptables        # NAT rules
+        libcap-ng-dev   # cloud-hypervisor/virtiofsd build dep
+        libseccomp-dev  # cloud-hypervisor/virtiofsd build dep
+        openssh-client  # ssh/scp to VMs
+        pkg-config      # finds C libs for Rust builds
+        qemu-utils      # qemu-img
+        socat           # port forwarding
+        sqlite3         # database management
     )
 
     log "  Installing APT packages..."
@@ -2054,13 +2101,6 @@ cmd_install_deps() {
         log "  Go not found. Install Go 1.26+ from https://go.dev/dl/"
     else
         log "  Go already installed ($(go version))"
-    fi
-
-    # Docker (needed for building cloud-hypervisor artifacts)
-    if ! command -v docker >/dev/null 2>&1; then
-        log "  Docker not found. Install Docker for building cloud-hypervisor artifacts."
-    else
-        log "  Docker already installed"
     fi
 
     # Build cloud-hypervisor artifacts + extract host binaries
@@ -2288,7 +2328,7 @@ install-vnc) cmd_install_vnc ;;
     echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_ENABLED=${MON_ENABLED}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
     echo "  DISK_SIZE=${DISK_SIZE}  EXELET_DATA_DISK_SIZE=${EXELET_DATA_DISK_SIZE}  EXELET_BACKUP_DISK_SIZE=${EXELET_BACKUP_DISK_SIZE}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     echo "  EXELET_RAMDISK_POOL_SIZE=${EXELET_RAMDISK_POOL_SIZE}  (tmpfs-backed 'ramdisk' zpool, ephemeral)"
-    echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
+    echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (apt-cacher-ng cache for faster/offline package installs)"
     exit 1
     ;;
 esac
