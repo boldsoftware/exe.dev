@@ -46,6 +46,14 @@ func TestCp(t *testing.T) {
 		t.Fatalf("failed to sync: %v", err)
 	}
 
+	// Add tags to source VM for copy-tags verification
+	if _, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "tag", sourceBox, "prod"); err != nil {
+		t.Fatalf("failed to add tag 'prod': %v", err)
+	}
+	if _, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "tag", sourceBox, "web"); err != nil {
+		t.Fatalf("failed to add tag 'web': %v", err)
+	}
+
 	// Get source box's SSH host key fingerprint for later comparison
 	// SSH keys are stored at /exe.dev/etc/ssh/ (not /etc/ssh/)
 	sourceHostKeyOut, err := boxSSHCommand(t, sourceBox, keyFile, "sudo", "ssh-keygen", "-lf", "/exe.dev/etc/ssh/ssh_host_ed25519_key.pub").CombinedOutput()
@@ -111,6 +119,42 @@ func TestCp(t *testing.T) {
 
 		// Cleanup this copy
 		cleanupBox(t, keyFile, copiedBox)
+	})
+
+	// Test cp with --copy-tags=false (creates and cleans up a copy)
+	t.Run("CopyTagsFalse", func(t *testing.T) {
+		noTagsBox := "copied-no-tags"
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "cp", sourceBox, noTagsBox, "--copy-tags=false", "--json")
+		if err != nil {
+			t.Fatalf("cp --copy-tags=false failed: %v\n%s", err, out)
+		}
+
+		// Verify via ls --json that the copy has no tags
+		lsOut, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ls", "--json")
+		if err != nil {
+			t.Fatalf("ls --json failed: %v\n%s", err, lsOut)
+		}
+
+		var lsResult struct {
+			VMs []struct {
+				VMName string   `json:"vm_name"`
+				Tags   []string `json:"tags"`
+			} `json:"vms"`
+		}
+		if err := json.Unmarshal(lsOut, &lsResult); err != nil {
+			t.Fatalf("failed to parse ls JSON: %v\n%s", err, lsOut)
+		}
+
+		for _, vm := range lsResult.VMs {
+			if vm.VMName == noTagsBox {
+				if len(vm.Tags) != 0 {
+					t.Fatalf("expected no tags on copy with --copy-tags=false, got %v", vm.Tags)
+				}
+				break
+			}
+		}
+
+		cleanupBox(t, keyFile, noTagsBox)
 	})
 
 	// Test cp without specifying name (random name generated)
@@ -182,6 +226,44 @@ func TestCp(t *testing.T) {
 		}
 		if !strings.Contains(string(out), "cp-source-marker") {
 			t.Fatalf("expected marker file to contain 'cp-source-marker', got: %s", out)
+		}
+	})
+
+	// Verify tags were copied from source
+	t.Run("TagsCopied", func(t *testing.T) {
+		if copiedBox == "" {
+			t.Skip("cp failed, skipping tags verification")
+		}
+
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "ls", "--json")
+		if err != nil {
+			t.Fatalf("ls --json failed: %v\n%s", err, out)
+		}
+
+		var lsResult struct {
+			VMs []struct {
+				VMName string   `json:"vm_name"`
+				Tags   []string `json:"tags"`
+			} `json:"vms"`
+		}
+		if err := json.Unmarshal(out, &lsResult); err != nil {
+			t.Fatalf("failed to parse ls JSON: %v\n%s", err, out)
+		}
+
+		var copiedTags []string
+		for _, vm := range lsResult.VMs {
+			if vm.VMName == copiedBox {
+				copiedTags = vm.Tags
+				break
+			}
+		}
+
+		if len(copiedTags) != 2 {
+			t.Fatalf("expected 2 tags on copied box, got %d: %v", len(copiedTags), copiedTags)
+		}
+		// Tags are sorted alphabetically
+		if copiedTags[0] != "prod" || copiedTags[1] != "web" {
+			t.Fatalf("expected tags [prod, web], got %v", copiedTags)
 		}
 	})
 
