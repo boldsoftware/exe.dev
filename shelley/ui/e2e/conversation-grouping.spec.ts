@@ -1,11 +1,22 @@
 import { test, expect } from "@playwright/test";
 
+async function getGitRoot(
+  request: import("@playwright/test").APIRequestContext,
+): Promise<string> {
+  const resp = await request.get("/api/git/diffs?cwd=.");
+  expect(resp.ok()).toBeTruthy();
+  const data = await resp.json();
+  expect(data.gitRoot).toBeTruthy();
+  return data.gitRoot;
+}
+
 async function createConversation(
   request: import("@playwright/test").APIRequestContext,
   message: string,
+  cwd: string,
 ): Promise<{ conversation_id: string; slug: string }> {
   const resp = await request.post("/api/conversations/new", {
-    data: { message, model: "predictable", cwd: "/home/exedev/shelley" },
+    data: { message, model: "predictable", cwd },
   });
   expect(resp.ok()).toBeTruthy();
   const { conversation_id } = await resp.json();
@@ -28,8 +39,9 @@ test.describe("Conversation grouping", () => {
     page,
     request,
   }) => {
-    await createConversation(request, "Hello from conversation A");
-    const active = await createConversation(request, "Hello from conversation B");
+    const gitRoot = await getGitRoot(request);
+    await createConversation(request, "Hello from conversation A", gitRoot);
+    const active = await createConversation(request, "Hello from conversation B", gitRoot);
 
     await page.goto(`/c/${active.slug}`);
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
