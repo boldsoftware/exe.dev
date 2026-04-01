@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+rm copied-no-tags
+
+- help to see a list of commands
+
+PROMPT ▶ rm copied-no-tags
+Deleting copied-no-tags...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!
