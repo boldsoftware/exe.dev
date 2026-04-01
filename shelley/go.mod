@@ -3,8 +3,8 @@ module shelley.exe.dev
 go 1.26.1
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d
-	github.com/chromedp/chromedp v0.14.1
+	github.com/chromedp/cdproto v0.0.0-20260328224638-b7b298a31867
+	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.12
 	github.com/creack/pty v1.1.24
 	github.com/fynelabs/selfupdate v0.2.1
@@ -85,7 +85,7 @@ require (
 
 require (
 	github.com/chromedp/sysutil v1.1.0 // indirect
-	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2
+	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
