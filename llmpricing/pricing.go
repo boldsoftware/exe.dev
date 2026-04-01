@@ -225,7 +225,7 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		// Qwen models
 		"accounts/fireworks/models/qwen3-8b":           {Input: 20, Output: 20, CacheRead: 10},
 		"accounts/fireworks/models/qwen3-embedding-8b": {Input: 5, Type: ModelTypeEmbedding},
-		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 5, Type: ModelTypeReranker},
+		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 20, Type: ModelTypeReranker},
 
 		// GLM models
 		"accounts/fireworks/models/glm-5":   {Input: 100, Output: 320, CacheRead: 20},
