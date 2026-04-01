@@ -117,8 +117,9 @@ function DiffViewer({
     // Update editor readOnly state when mode changes
     // (but not for commit message files - those have their own editability logic)
     if (editorRef.current && selectedFile && !isCommitMessageFile(selectedFile)) {
-      const modifiedEditor = editorRef.current.getModifiedEditor();
-      modifiedEditor.updateOptions({ readOnly: mode === "comment" });
+      const readOnly = mode === "comment";
+      editorRef.current.updateOptions({ readOnly });
+      editorRef.current.getModifiedEditor().updateOptions({ readOnly });
     }
   }, [mode, selectedFile]);
 
@@ -259,7 +260,7 @@ function DiffViewer({
     // Create diff editor with mobile-friendly options
     const diffEditor = monaco.editor.createDiffEditor(editorContainerRef.current, {
       theme: isDarkModeActive() ? "vs-dark" : "vs",
-      readOnly: !isHeadCommit, // Editable only for HEAD commit messages
+      readOnly: isCommitMsg ? !isHeadCommit : modeRef.current === "comment",
       originalEditable: false,
       automaticLayout: true,
       renderSideBySide: !isMobile,
