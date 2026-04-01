@@ -1,7 +1,7 @@
 #!/bin/bash
-# Deploy exeprox to ALL prod machines in parallel.
+# Deploy exeprox to ALL prod machines sequentially.
 # Discovers exeprox hosts via tailscale and runs
-# deploy-exeprox-prod.sh for each one concurrently.
+# deploy-exeprox-prod.sh for each one, one at a time.
 
 set -euo pipefail
 
@@ -24,38 +24,23 @@ echo "Found $COUNT prod exeproxes:"
 echo "$NAMES" | sed 's/^/  /'
 echo ""
 
-LOGDIR=$(mktemp -d)
-PIDS=()
-MACHINES=()
-
-for name in $NAMES; do
-    echo "Starting deploy: $name"
-    "$DEPLOY_SCRIPT" "$name" ${FLAGS[@]+"${FLAGS[@]}"} >"$LOGDIR/$name.log" 2>&1 &
-    PIDS+=($!)
-    MACHINES+=("$name")
-done
-
-echo ""
-echo "All $COUNT deploys launched. Waiting for completion..."
-echo ""
-
 FAILED=0
-for i in "${!PIDS[@]}"; do
-    pid=${PIDS[$i]}
-    machine=${MACHINES[$i]}
-    if wait "$pid"; then
-        echo "✓ $machine deployed successfully"
+I=0
+for name in $NAMES; do
+    I=$((I + 1))
+    echo "=== [$I/$COUNT] Deploying $name ==="
+    if "$DEPLOY_SCRIPT" "$name" ${FLAGS[@]+"${FLAGS[@]}"}; then
+        echo "✓ $name deployed successfully"
     else
-        echo "✗ $machine FAILED (see $LOGDIR/$machine.log)"
+        echo "✗ $name FAILED"
         FAILED=$((FAILED + 1))
     fi
+    echo ""
 done
 
-echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All $COUNT exeproxes deployed successfully."
-    rm -rf "$LOGDIR"
 else
-    echo "$FAILED/$COUNT deploys failed. Logs in $LOGDIR"
+    echo "$FAILED/$COUNT deploys failed."
     exit 1
 fi
