@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	mathrand "math/rand"
 	"net"
 	"net/http"
@@ -283,12 +284,14 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 		m.challengeMu.RLock()
 		defer m.challengeMu.RUnlock()
 		if cert := m.certTokens[name]; cert != nil {
+			slog.InfoContext(ctx, "acme/autocert: found token cert in memory", "domain", name)
 			return cert, nil
 		}
 		if cert, err := m.cacheGet(ctx, certKey{domain: name, isToken: true}); err == nil {
+			slog.InfoContext(ctx, "acme/autocert: found token cert in cache", "domain", name)
 			return cert, nil
 		}
-		// TODO: cache error results?
+		slog.WarnContext(ctx, "acme/autocert: no token cert", "domain", name, "tokensInMemory", len(m.certTokens))
 		return nil, fmt.Errorf("acme/autocert: no token cert for %q", name)
 	}
 
@@ -312,8 +315,10 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 	// first-time
 	cert, err = m.createCert(ctx, ck)
 	if err != nil {
+		slog.ErrorContext(ctx, "acme/autocert: cert issuance failed", "domain", ck.domain, "error", err)
 		return nil, err
 	}
+	slog.InfoContext(ctx, "acme/autocert: cert issued", "domain", ck.domain, "notAfter", cert.Leaf.NotAfter)
 	m.cachePut(ctx, ck, cert)
 	return cert, nil
 }
@@ -701,8 +706,10 @@ AuthorizeOrderLoop:
 	for {
 		o, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain))
 		if err != nil {
+			slog.WarnContext(ctx, "acme/autocert: AuthorizeOrder failed", "domain", domain, "error", err)
 			return nil, err
 		}
+		slog.InfoContext(ctx, "acme/autocert: AuthorizeOrder", "domain", domain, "status", o.Status, "authzURLs", len(o.AuthzURLs))
 		// Remove all hanging authorizations to reduce rate limit quotas
 		// after we're done.
 		defer func(urls []string) {
@@ -737,18 +744,27 @@ AuthorizeOrderLoop:
 				nextTyp++
 			}
 			if chal == nil {
+				chalTypes := make([]string, len(z.Challenges))
+				for i, c := range z.Challenges {
+					chalTypes[i] = c.Type
+				}
+				slog.WarnContext(ctx, "acme/autocert: no viable challenge type", "domain", domain, "supported", challengeTypes, "available", chalTypes)
 				return nil, fmt.Errorf("acme/autocert: unable to satisfy %q for domain %q: no viable challenge type found", z.URI, domain)
 			}
+			slog.InfoContext(ctx, "acme/autocert: picked challenge", "domain", domain, "type", chal.Type)
 			// Respond to the challenge and wait for validation result.
 			cleanup, err := m.fulfill(ctx, client, chal, domain)
 			if err != nil {
+				slog.WarnContext(ctx, "acme/autocert: fulfill failed", "domain", domain, "type", chal.Type, "error", err)
 				continue AuthorizeOrderLoop
 			}
 			defer cleanup()
 			if _, err := client.Accept(ctx, chal); err != nil {
+				slog.WarnContext(ctx, "acme/autocert: accept failed", "domain", domain, "type", chal.Type, "error", err)
 				continue AuthorizeOrderLoop
 			}
 			if _, err := client.WaitAuthorization(ctx, z.URI); err != nil {
+				slog.WarnContext(ctx, "acme/autocert: WaitAuthorization failed", "domain", domain, "error", err)
 				continue AuthorizeOrderLoop
 			}
 		}
@@ -809,11 +825,14 @@ func (m *Manager) deactivatePendingAuthz(uri []string) {
 func (m *Manager) fulfill(ctx context.Context, client *acme.Client, chal *acme.Challenge, domain string) (cleanup func(), err error) {
 	switch chal.Type {
 	case "tls-alpn-01":
+		slog.InfoContext(ctx, "acme/autocert: creating tls-alpn-01 challenge cert", "domain", domain)
 		cert, err := client.TLSALPN01ChallengeCert(chal.Token, domain)
 		if err != nil {
+			slog.WarnContext(ctx, "acme/autocert: TLSALPN01ChallengeCert failed", "domain", domain, "error", err)
 			return nil, err
 		}
 		m.putCertToken(ctx, domain, &cert)
+		slog.InfoContext(ctx, "acme/autocert: stored tls-alpn-01 challenge cert", "domain", domain)
 		return func() { go m.deleteCertToken(domain) }, nil
 	case "http-01":
 		resp, err := client.HTTP01ChallengeResponse(chal.Token)
@@ -1163,7 +1182,7 @@ func validCert(ck certKey, der [][]byte, key crypto.Signer, now time.Time) (leaf
 }
 
 // https://community.letsencrypt.org/t/2022-01-25-issue-with-tls-alpn-01-validation-method/170450
-var letsEncryptFixDeployTime = time.Date(2022, time.January, 26, 00, 48, 0, 0, time.UTC)
+var letsEncryptFixDeployTime = time.Date(2022, time.January, 26, 0o0, 48, 0, 0, time.UTC)
 
 // isRevokedLetsEncrypt returns whether the certificate is likely to be part of
 // a batch of certificates revoked by Let's Encrypt in January 2022. This check

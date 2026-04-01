@@ -7,6 +7,7 @@ package autocert
 import (
 	"context"
 	"crypto"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -76,8 +77,11 @@ func (dr *domainRenewal) renew() {
 	// TODO: rotate dr.key at some point?
 	next, err := dr.do(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "acme/autocert: renewal failed", "domain", dr.ck.domain, "error", err)
 		next = time.Hour / 2
 		next += time.Duration(pseudoRand.int63n(int64(next)))
+	} else {
+		slog.InfoContext(ctx, "acme/autocert: renewal succeeded", "domain", dr.ck.domain, "nextRenewal", next)
 	}
 	testDidRenewLoop(next, err)
 	dr.timer = time.AfterFunc(next, dr.renew)
