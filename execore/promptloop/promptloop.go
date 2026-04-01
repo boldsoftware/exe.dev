@@ -225,7 +225,7 @@ type Config struct {
 	Dispatcher   CommandDispatcher
 	Output       Output
 	SystemPrompt string
-	ModelName    string // e.g. "claude-opus-4.6"
+	ModelName    string // e.g. "claude-opus-4-6" (Anthropic API model ID)
 	MaxTokens    int
 }
 
