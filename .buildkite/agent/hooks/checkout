@@ -1,0 +1,113 @@
+#!/bin/bash
+set -e
+trap 'echo "Error in $0 at line $LINENO: $(awk "NR == $LINENO" $0)"' ERR
+
+# Fast checkout via rsync from a per-commit cache.
+#
+# First agent to check out a commit does the normal git checkout and
+# populates the cache. Subsequent agents rsync from cache with
+# --link-dest (hardlinks identical files, ~0.25s vs ~1.2s for git clone).
+#
+# Cache lives at /data/buildkite/checkout-cache/<commit>/.
+# Old caches are pruned to keep disk usage bounded.
+#
+# NOTE: This hook is *sourced* by the Buildkite agent, not executed as a
+# subprocess. We must leave cwd at BUILDKITE_BUILD_CHECKOUT_PATH when done
+# and must not call exit (it would kill the agent's shell).
+
+_checkout_t0=$(date +%s%3N)
+
+CACHE_BASE="/data/buildkite/checkout-cache"
+COMMIT="${BUILDKITE_COMMIT}"
+CACHE_DIR="${CACHE_BASE}/${COMMIT}"
+CACHE_READY="${CACHE_DIR}.ready"
+MAX_CACHES=20
+
+# Resolve short commit to full SHA if needed (Buildkite sometimes passes HEAD).
+if [ "${#COMMIT}" -lt 40 ]; then
+  echo "~~~ Skipping rsync cache (commit=${COMMIT} is not a full SHA)"
+  COMMIT=""
+fi
+
+mkdir -p "${CACHE_BASE}"
+
+if [ -n "$COMMIT" ] && [ -f "$CACHE_READY" ]; then
+  # --- Fast path: rsync from cache ---
+  echo "~~~ Checkout via rsync cache (${COMMIT:0:7})"
+  mkdir -p "${BUILDKITE_BUILD_CHECKOUT_PATH}"
+  rsync -a --delete --link-dest="${CACHE_DIR}/" "${CACHE_DIR}/" "${BUILDKITE_BUILD_CHECKOUT_PATH}/"
+  cd "${BUILDKITE_BUILD_CHECKOUT_PATH}"
+  _checkout_t1=$(date +%s%3N)
+  echo "rsync checkout done in $(( _checkout_t1 - _checkout_t0 ))ms"
+  git log -n 1 --oneline
+else
+  # --- Slow path: normal git checkout (first agent for this commit) ---
+  echo "~~~ Checkout via git"
+
+  CHECKOUT="${BUILDKITE_BUILD_CHECKOUT_PATH}"
+
+  if [ -d "${CHECKOUT}/.git" ]; then
+    cd "${CHECKOUT}"
+    # Re-use existing clone: fetch the commit and reset.
+    git fetch origin "${BUILDKITE_COMMIT}" 2>/dev/null || \
+      git fetch origin "+refs/heads/${BUILDKITE_BRANCH}:refs/heads/${BUILDKITE_BRANCH}" 2>/dev/null || \
+      git fetch origin
+    git checkout -f "${BUILDKITE_COMMIT}"
+    git clean -ffdx
+    git submodule sync --recursive 2>/dev/null || true
+    git submodule update --init --recursive --force 2>/dev/null || true
+  else
+    # Fresh clone from the git mirror if available.
+    rm -rf "${CHECKOUT}"
+    MIRROR_DIR="/data/buildkite/git-mirrors"
+    MIRROR=""
+    if [ -d "${MIRROR_DIR}" ]; then
+      for d in "${MIRROR_DIR}"/*/; do
+        if [ -f "${d}HEAD" ]; then
+          MIRROR="${d%/}"
+          break
+        fi
+      done
+    fi
+
+    if [ -n "$MIRROR" ]; then
+      git clone --reference "${MIRROR}" "${BUILDKITE_REPO}" "${CHECKOUT}"
+    else
+      git clone "${BUILDKITE_REPO}" "${CHECKOUT}"
+    fi
+    cd "${CHECKOUT}"
+    git fetch origin "${BUILDKITE_COMMIT}" 2>/dev/null || true
+    git checkout -f "${BUILDKITE_COMMIT}"
+    git clean -ffdx
+  fi
+
+  _checkout_t1=$(date +%s%3N)
+  echo "git checkout done in $(( _checkout_t1 - _checkout_t0 ))ms"
+  git log -n 1 --oneline
+
+  # Populate cache synchronously for other agents.
+  # Uses flock so only one agent per commit populates the cache.
+  if [ -n "$COMMIT" ] && [ ! -f "$CACHE_READY" ]; then
+    LOCK="${CACHE_DIR}.lock"
+    (
+      flock -n 200 || exit 0  # Another agent is already caching; skip.
+      # Double-check after acquiring lock.
+      [ -f "$CACHE_READY" ] && exit 0
+      rm -rf "${CACHE_DIR}"
+      mkdir -p "${CACHE_DIR}"
+      rsync -a "${CHECKOUT}/" "${CACHE_DIR}/"
+      touch "${CACHE_READY}"
+    ) 200>"${LOCK}" || true
+
+    # Prune old caches in a subshell (no cwd side effects).
+    (
+      cd "${CACHE_BASE}"
+      # shellcheck disable=SC2012
+      ls -1td */ 2>/dev/null | tail -n +$((MAX_CACHES + 1)) | while read -r old; do
+        old="${old%/}"
+        rm -rf "${CACHE_BASE}/${old}"
+        rm -f "${CACHE_BASE}/${old}.ready" "${CACHE_BASE}/${old}.lock"
+      done
+    ) || true
+  fi
+fi
