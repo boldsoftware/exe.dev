@@ -112,14 +112,16 @@ func (r *CertRateLimiter) HostPolicy(ctx context.Context, host string) error {
 
 	// Cache miss — this will be a new cert issuance. Rate-limit by box
 	// name so all custom domains pointing at the same VM share one bucket.
-	if err := r.Allow(boxName); err != nil {
-		r.Lg.WarnContext(ctx, "cert rate limiter blocked issuance",
-			"host", host,
-			"boxName", boxName,
-			"error", err,
-		)
-		return err
-	}
+	/*
+		if err := r.Allow(boxName); err != nil {
+			r.Lg.WarnContext(ctx, "cert rate limiter blocked issuance",
+				"host", host,
+				"boxName", boxName,
+				"error", err,
+			)
+			return err
+		}
+	*/
 
 	return nil
 }

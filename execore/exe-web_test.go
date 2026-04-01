@@ -887,6 +887,7 @@ func (c *fakeCache) Delete(_ context.Context, key string) error {
 // TestCertRateLimitHostPolicyCacheHit verifies that the rate limiter is NOT
 // called when the cert is already cached (cache hit).
 func TestCertRateLimitHostPolicyCacheHit(t *testing.T) {
+	t.Skip("skipping: cert rate limiter disabled")
 	t.Parallel()
 
 	knownHostIP := netip.MustParseAddr("203.0.113.10")
@@ -949,6 +950,7 @@ func TestCertRateLimitHostPolicyCacheHit(t *testing.T) {
 // TestCertRateLimitHostPolicyCacheMissConsumesToken verifies that cache misses
 // consume rate limiter tokens, keyed by box name (not domain).
 func TestCertRateLimitHostPolicyCacheMissConsumesToken(t *testing.T) {
+	t.Skip("skipping: cert rate limiter disabled")
 	t.Parallel()
 
 	knownHostIP := netip.MustParseAddr("203.0.113.10")
