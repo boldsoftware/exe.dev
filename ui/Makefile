@@ -80,5 +80,9 @@ _build: $(NODE_BIN)/.corepack-enabled
 	find dist/assets -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
 		| xargs -P0 gzip -9 -k -n
 
+typecheck: $(NODE_BIN)/.corepack-enabled ## Run vue-tsc type checking
+	pnpm install --frozen-lockfile
+	pnpm typecheck
+
 dev: $(NODE_BIN)/.corepack-enabled ## Run Vite dev server
 	pnpm dev
