@@ -62,3 +62,7 @@ custom domain support. To fix this, either disable their
 proxy, or use Cloudflare Snippets (or Workers) to re-write
 the request to point to `vmname.exe.xyz`. Snippets are a paid
 feature.
+
+## Check Your DNS
+
+<div id="dns-checker"></div>

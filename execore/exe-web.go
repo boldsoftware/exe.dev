@@ -932,6 +932,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ideas/submit":
 		s.handleTemplateSubmitAPI(w, r)
 		return
+	case "/api/dns-check":
+		s.handleDNSCheck(w, r)
+		return
 	case "/api/docs":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

@@ -97,6 +97,7 @@ async function loadDoc(slug: string) {
   await nextTick()
   initCodeCopyButtons()
   initAnchorLinks()
+  initDNSChecker()
   scrollToHash()
 }
 
@@ -204,6 +205,119 @@ function initAnchorLinks() {
     a.textContent = '#'
     heading.appendChild(a)
   })
+}
+
+function initDNSChecker() {
+  if (!contentEl.value) return
+  const container = contentEl.value.querySelector('#dns-checker')
+  if (!container) return
+
+  container.innerHTML = `
+    <div class="dns-input-row">
+      <input id="dns-domain" type="text" placeholder="example.com" class="dns-input" />
+      <button id="dns-check-btn" class="dns-btn">Check DNS</button>
+    </div>
+    <div id="dns-result"></div>
+  `
+
+  const input = container.querySelector('#dns-domain') as HTMLInputElement
+  const btn = container.querySelector('#dns-check-btn') as HTMLButtonElement
+  const resultDiv = container.querySelector('#dns-result') as HTMLElement
+
+  async function doCheck() {
+    const domain = input.value.trim()
+    if (!domain) {
+      resultDiv.innerHTML = '<p class="dns-warn">Enter a domain name.</p>'
+      return
+    }
+    btn.disabled = true
+    btn.textContent = 'Checking\u2026'
+    resultDiv.innerHTML = ''
+    try {
+      const resp = await fetch('/api/dns-check?domain=' + encodeURIComponent(domain))
+      const d = await resp.json()
+      if (d.error) {
+        resultDiv.innerHTML = '<p class="dns-err">' + escapeHtml(d.error) + '</p>'
+      } else {
+        resultDiv.innerHTML = renderDNSResult(d)
+      }
+    } catch (e: any) {
+      resultDiv.innerHTML = '<p class="dns-err">Request failed: ' + escapeHtml(e.message) + '</p>'
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Check DNS'
+    }
+  }
+
+  btn.addEventListener('click', doCheck)
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCheck() })
+}
+
+function renderDNSResult(d: any): string {
+  const statusClass = d.status === 'ok' ? 'dns-status-ok' : d.status === 'partial' ? 'dns-status-warn' : 'dns-status-err'
+  const summaryText = d.status === 'ok' ? 'All good!' : d.status === 'partial' ? 'Almost there.' : 'Not quite.'
+  const summaryIcon = d.status === 'ok' ? '\u2713' : d.status === 'partial' ? '\u26a0' : '\u2717'
+
+  let html = '<div class="dns-result-box ' + statusClass + '">'
+  html += '<p class="dns-summary">' + summaryIcon + ' ' + summaryText + '</p>'
+
+  // Build table with Record / Expected / Actual / Status columns
+  html += '<table class="dns-table">'
+  html += '<thead><tr><th>Record</th><th>Expected</th><th>Actual</th><th></th></tr></thead>'
+  html += '<tbody>'
+
+  const isApex = d.isApex || (!d.cname && !d.cnamePointsToExe)
+  const bh = d.boxHost || 'exe.xyz'
+  const vmFQDN = d.boxName ? d.boxName + '.' + bh : 'your-vm.' + bh
+
+  if (isApex) {
+    // Apex domain: show A record row + www CNAME row
+    const aActual = (d.aRecords && d.aRecords.length) ? d.aRecords.join(', ') : (d.aError || 'none')
+    const aOk = d.pointsToExe
+    const aExpected = d.boxIP ? d.boxIP : 'IP of ' + vmFQDN
+    const aHint = d.boxIP ? vmFQDN : ''
+    html += dnsRow('A / ALIAS', d.domain, aExpected, aActual, aOk, aHint)
+
+    let wwwActual = ''
+    let wwwOk = false
+    if (d.wwwCname) {
+      wwwActual = d.wwwCname
+      wwwOk = !d.wwwMissing
+    } else if (d.wwwCnameError) {
+      wwwActual = d.wwwCnameError
+    } else {
+      wwwActual = 'not set'
+    }
+    html += dnsRow('CNAME', 'www.' + d.domain, vmFQDN, wwwActual, wwwOk)
+  } else {
+    // Subdomain: just show CNAME row
+    let actual = ''
+    let ok = false
+    if (d.cname) {
+      actual = d.cname
+      ok = d.cnamePointsToExe
+    } else if (d.cnameError) {
+      actual = d.cnameError
+    } else {
+      actual = 'not set'
+    }
+    html += dnsRow('CNAME', d.domain, vmFQDN, actual, ok)
+  }
+
+  html += '</tbody></table></div>'
+  return html
+}
+
+function dnsRow(type: string, name: string, expected: string, actual: string, ok: boolean, hint?: string): string {
+  const rowCls = ok ? 'dns-row-ok' : 'dns-row-err'
+  const icon = ok ? '\u2713' : '\u2717'
+  const hintHtml = hint ? '<br><span class="dns-hint">' + escapeHtml(hint) + '</span>' : ''
+  return '<tr class="' + rowCls + '">'
+    + '<td><span class="dns-record-type">' + escapeHtml(type) + '</span><br><code>' + escapeHtml(name) + '</code></td>'
+    + '<td><code>' + escapeHtml(expected) + '</code>' + hintHtml + '</td>'
+    + '<td><code>' + escapeHtml(actual) + '</code></td>'
+    + '<td class="dns-check-icon">' + icon + '</td>'
+    + '</tr>'
 }
 
 function handleContentClick(e: MouseEvent) {
@@ -699,6 +813,167 @@ watch(
   .doc-content pre {
     white-space: pre-wrap;
     overflow-wrap: break-word;
+  }
+}
+
+/* DNS Checker */
+.dns-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dns-input {
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text-color);
+  min-width: 260px;
+  flex: 1;
+}
+
+.dns-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.dns-btn {
+  padding: 8px 20px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.dns-btn:hover {
+  background: var(--primary-hover);
+}
+
+.dns-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dns-warn { color: #f59e0b; }
+.dns-err { color: #ef4444; }
+
+#dns-result {
+  margin-top: 12px;
+}
+
+.dns-result-box {
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface-subtle);
+}
+
+
+
+.dns-summary {
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  font-size: 14px;
+}
+
+.dns-status-ok .dns-summary { color: #22c55e; }
+.dns-status-warn .dns-summary { color: #f59e0b; }
+.dns-status-err .dns-summary { color: #ef4444; }
+
+table.dns-table {
+  display: table !important;
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.dns-table th {
+  text-align: left;
+  padding: 6px 12px;
+  color: var(--text-color-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: none !important;
+  border-bottom: 1px solid var(--surface-border) !important;
+  background: transparent !important;
+}
+
+.dns-table td {
+  padding: 10px 12px;
+  vertical-align: top;
+  border: none !important;
+  border-bottom: 1px solid var(--surface-border) !important;
+  color: var(--text-color);
+  background: transparent !important;
+}
+
+.dns-table tr:last-child td {
+  border-bottom: none !important;
+}
+
+.dns-table tr:nth-child(even) {
+  background: transparent !important;
+}
+
+.dns-table code {
+  font-size: 12px;
+  background: none !important;
+  padding: 0;
+  color: inherit;
+}
+
+.dns-record-type {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+}
+
+.dns-hint {
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+
+.dns-row-ok td {
+  color: var(--text-color);
+}
+
+.dns-row-err td {
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+.dns-row-err .dns-check-icon {
+  color: #ef4444;
+}
+
+.dns-row-ok .dns-check-icon {
+  color: #22c55e;
+}
+
+.dns-check-icon {
+  text-align: center;
+  font-size: 16px;
+  width: 32px;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .dns-input {
+    min-width: 0;
+    width: 100%;
+  }
+  .dns-table th:nth-child(2),
+  .dns-table td:nth-child(2) {
+    display: none;
   }
 }
 </style>
