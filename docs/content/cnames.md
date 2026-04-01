@@ -5,8 +5,15 @@ subheading: "2. Features"
 suborder: 4
 ---
 
-Point your own domain at your exe.dev VM. TLS certificates are issued automatically.
-You'll need to visit your DNS provider's configuration to update these.
+You can point your own domain at your exe.dev VM.
+TLS certificates are issued automatically.
+
+To point your domain at an exe.dev VM, edit the records in your domain's
+DNS provider. (If you have not setup a DNS provider, your domain registrar
+usually provides one.)
+
+Which records you need to edit depend on whether it is a subdomain
+e.g. `app.example.com` or an apex domain, e.g. `example.com`:
 
 ## Subdomains (CNAME)
 
