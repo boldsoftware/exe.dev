@@ -34,7 +34,7 @@
     {
       "action": "accept",
       "src": ["autogroup:admin", "tag:server"],
-      "dst": ["tag:server", "tag:vast"],
+      "dst": ["tag:server"],
       "users": ["autogroup:nonroot", "root"],
     },
     // group:dev can SSH to island machines after they lose tag:server.
