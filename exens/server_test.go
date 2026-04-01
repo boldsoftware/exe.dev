@@ -239,14 +239,29 @@ func TestCAARecords(t *testing.T) {
 		}
 	})
 
-	t.Run("Subdomain", func(t *testing.T) {
-		// CAA only at the apex; RFC 8659 tree-climbing covers subdomains.
+	t.Run("VMSubdomain", func(t *testing.T) {
 		rrs, err := server.lookupCAA(ctx, "mybox.exe.xyz", "mybox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 0 {
-			t.Errorf("expected 0 CAA records for subdomain, got %d", len(rrs))
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CAA record for VM subdomain, got %d", len(rrs))
+		}
+		if rrs[0].(*dns.CAA).Value != "letsencrypt.org" {
+			t.Errorf("expected letsencrypt.org, got %q", rrs[0].(*dns.CAA).Value)
+		}
+	})
+
+	t.Run("ShardSubdomain", func(t *testing.T) {
+		rrs, err := server.lookupCAA(ctx, "na043.exe.xyz", "na043.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CAA record for shard subdomain, got %d", len(rrs))
+		}
+		if rrs[0].(*dns.CAA).Value != "letsencrypt.org" {
+			t.Errorf("expected letsencrypt.org, got %q", rrs[0].(*dns.CAA).Value)
 		}
 	})
 

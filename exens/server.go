@@ -241,7 +241,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		// This is mildly inefficient, but saves implementing the lookup logic
 		// twice to compute a "does this exist" bit.
 		lookups := []func(context.Context, string, string, uint16) ([]dns.RR, error){
-			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA, s.lookupCAA,
+			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
 		}
 		nameExists := false
 		for _, question := range r.Question {
@@ -544,11 +544,12 @@ func (s *Server) lookupSOA(ctx context.Context, qname, fqdn string, class uint16
 }
 
 // lookupCAA handles CAA record queries.
-// Returns a CAA record allowing Let's Encrypt to issue certificates.
-// Only set at the zone apex; RFC 8659 requires CAs to walk up the tree,
-// so this covers all subdomains.
+// Returns a CAA record allowing Let's Encrypt to issue certificates
+// for the zone apex and all subdomains (vmname.exe.xyz, naNNN.exe.xyz, etc.).
+// Serving CAA at every level is harmless and lets CAs find the policy
+// without tree-climbing.
 func (s *Server) lookupCAA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
-	if qname != s.boxHost {
+	if qname != s.boxHost && !strings.HasSuffix(qname, "."+s.boxHost) {
 		return nil, nil
 	}
 	return []dns.RR{
