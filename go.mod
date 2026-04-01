@@ -14,6 +14,8 @@ replace github.com/creack/pty => ./deps/pty
 
 replace golang.org/x/term => ./deps/term
 
+replace golang.org/x/crypto => ./deps/autocert
+
 require (
 	codeberg.org/miekg/dns v0.5.26
 	github.com/AfterShip/email-verifier v1.4.1
