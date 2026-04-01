@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ChannelListView: View {
+    @Environment(\.scenePhase) private var scenePhase
     var auth: AuthManager
     var api: APIClient
     var syncEngine: SyncEngine
@@ -92,6 +93,10 @@ struct ChannelListView: View {
         }
         .onChange(of: creatingVMNames) { _, newNames in
             updateCreationPolling(for: newNames)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await loadVMs() }
         }
         .overlay(alignment: .bottomTrailing) {
             Button {

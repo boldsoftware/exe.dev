@@ -112,6 +112,7 @@ private struct InputBarView: View {
 private struct MessageListView: View {
     let viewModel: ChannelViewModel
     @State private var isAtBottom = true
+    @State private var hasPerformedInitialScroll = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -138,29 +139,47 @@ private struct MessageListView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
             }
-            .defaultScrollAnchor(.bottom)
             .onAppear {
-                proxy.scrollTo("bottom")
+                guard !hasPerformedInitialScroll else { return }
+                scrollToBottom(proxy, animated: false)
+                hasPerformedInitialScroll = true
             }
             .onChange(of: viewModel.messages.count) { old, new in
+                if new <= 0 { return }
+
+                if !hasPerformedInitialScroll {
+                    scrollToBottom(proxy, animated: false)
+                    hasPerformedInitialScroll = true
+                    return
+                }
+
                 if new > old && isAtBottom {
-                    proxy.scrollTo("bottom")
+                    scrollToBottom(proxy, animated: false)
                 }
             }
             .onChange(of: viewModel.isWorking) {
                 if isAtBottom {
-                    proxy.scrollTo("bottom")
+                    scrollToBottom(proxy, animated: false)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                if isAtBottom {
-                    // Small delay lets SwiftUI adjust the ScrollView's safe area first
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        withAnimation {
-                            proxy.scrollTo("bottom")
-                        }
-                    }
+            .onChange(of: viewModel.conversationID) { _, _ in
+                hasPerformedInitialScroll = false
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
+        let action = {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation {
+                    action()
                 }
+            } else {
+                action()
             }
         }
     }
@@ -318,7 +337,6 @@ private struct MessageGroupView: View {
                 }
             }
             .padding(.leading, 30)
-            .textSelection(.enabled)
         }
         .padding(.vertical, 4)
     }
@@ -402,26 +420,17 @@ private struct ToolUseView: View {
         if isExpanded {
             VStack(alignment: .leading, spacing: 6) {
                 if let url = screenshotURL {
-                    ScreenshotView(url: url)
+                    ScreenshotView(url: url) {
+                        ToolResultDetailsView(
+                            input: message.toolInputSummary,
+                            result: toolResultMessage?.toolResultText
+                        )
+                    }
                 } else {
-                    if let input = message.toolInputSummary {
-                        Text(input)
-                            .font(.system(size: 12, design: .monospaced))
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    if let result = toolResultMessage?.toolResultText {
-                        Text(result.prefix(2000))
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .lineLimit(20)
-                    }
+                    ToolResultDetailsView(
+                        input: message.toolInputSummary,
+                        result: toolResultMessage?.toolResultText
+                    )
                 }
             }
             .padding(.top, 2)
@@ -429,37 +438,101 @@ private struct ToolUseView: View {
     }
 }
 
-// MARK: - Screenshot View
-
-private struct ScreenshotView: View {
-    let url: URL
-    @Environment(\.authToken) private var authToken
-    @State private var image: UIImage?
-    @State private var failed = false
+private struct ToolResultDetailsView: View {
+    let input: String?
+    let result: String?
 
     var body: some View {
-        // Always use a fixed-height placeholder so layout never depends on the network.
+        VStack(alignment: .leading, spacing: 6) {
+            if let input, !input.isEmpty {
+                detailsBlock(input)
+            }
+
+            if let result = trimmedResult, !result.isEmpty {
+                detailsBlock(result, foregroundStyle: .secondary, lineLimit: 20)
+            }
+        }
+    }
+
+    private var trimmedResult: String? {
+        result.map { String($0.prefix(2000)) }
+    }
+
+    private func detailsBlock(
+        _ text: String,
+        foregroundStyle: Color = .primary,
+        lineLimit: Int? = nil
+    ) -> some View {
+        Text(text)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundStyle(foregroundStyle)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .lineLimit(lineLimit)
+    }
+}
+
+private enum ScreenshotCacheStore {
+    static let imageCache = NSCache<NSURL, UIImage>()
+    static var unavailableURLs = Set<String>()
+}
+
+// MARK: - Screenshot View
+
+private struct ScreenshotView<Fallback: View>: View {
+    private enum LoadState {
+        case idle
+        case loading
+        case loaded
+        case unavailable
+        case failed
+    }
+
+    let url: URL
+    let fallback: Fallback
+    @Environment(\.authToken) private var authToken
+    @State private var image: UIImage?
+    @State private var loadState: LoadState = .idle
+
+    init(url: URL, @ViewBuilder fallback: () -> Fallback) {
+        self.url = url
+        self.fallback = fallback()
+    }
+
+    var body: some View {
         ZStack {
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else if failed {
-                Label("Failed to load screenshot", systemImage: "photo")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             } else {
-                ProgressView()
+                fallbackContent
             }
         }
-        .frame(maxWidth: .infinity, minHeight: image == nil ? 150 : 0)
-        .background(image == nil ? Color(.systemGray6) : .clear)
+        .frame(maxWidth: .infinity, minHeight: loadState == .loading ? 150 : 0)
+        .background(loadState == .loading ? Color(.systemGray6) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .task(id: url) { await loadImage() }
     }
 
     private func loadImage() async {
+        let cacheKey = url as NSURL
+        if let cached = ScreenshotCacheStore.imageCache.object(forKey: cacheKey) {
+            image = cached
+            loadState = .loaded
+            return
+        }
+
+        if ScreenshotCacheStore.unavailableURLs.contains(url.absoluteString) {
+            loadState = .unavailable
+            return
+        }
+
+        loadState = .loading
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         if let authToken {
@@ -469,15 +542,78 @@ private struct ScreenshotView: View {
             let (data, response) = try await URLSession.shared.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if (200..<300).contains(status), let loaded = UIImage(data: data) {
+                ScreenshotCacheStore.imageCache.setObject(loaded, forKey: cacheKey)
+                ScreenshotCacheStore.unavailableURLs.remove(url.absoluteString)
                 image = loaded
+                loadState = .loaded
+            } else if status == 404 || status == 410 {
+                ScreenshotCacheStore.unavailableURLs.insert(url.absoluteString)
+                loadState = .unavailable
             } else {
                 print("[ScreenshotView] HTTP \(status) for \(url)")
-                failed = true
+                loadState = .failed
             }
+        } catch is CancellationError {
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            return
         } catch {
             print("[ScreenshotView] Error loading \(url): \(error)")
-            failed = true
+            loadState = .failed
         }
+    }
+
+    private func retryLoad() {
+        ScreenshotCacheStore.unavailableURLs.remove(url.absoluteString)
+        ScreenshotCacheStore.imageCache.removeObject(forKey: url as NSURL)
+        image = nil
+        loadState = .idle
+        Task { await loadImage() }
+    }
+
+    @ViewBuilder
+    private var fallbackContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch loadState {
+            case .idle, .loading:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading screenshot...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+            case .unavailable:
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                    Text("Screenshot unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Retry") {
+                        retryLoad()
+                    }
+                    .font(.caption)
+                }
+
+            case .failed:
+                HStack(spacing: 8) {
+                    Image(systemName: "photo")
+                    Text("Failed to load screenshot")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Retry") {
+                        retryLoad()
+                    }
+                    .font(.caption)
+                }
+
+            case .loaded:
+                EmptyView()
+            }
+
+            fallback
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -502,6 +638,7 @@ private struct FormattedText: View {
                 }
             }
         }
+        .textSelection(.enabled)
     }
 
     /// Renders a text segment with markdown formatting (bold, italic, inline code, links).

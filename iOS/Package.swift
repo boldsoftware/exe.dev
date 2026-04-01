@@ -16,13 +16,26 @@ let package = Package(
             name: "TerminalRedrawSupport",
             targets: ["TerminalRedrawSupport"]
         ),
+        .library(
+            name: "SyncNotificationSupport",
+            targets: ["SyncNotificationSupport"]
+        ),
     ],
     targets: [
         .target(
             name: "ConversationDeltaReducerSupport",
             path: "exe.dev/ViewModels",
             exclude: ["ChannelViewModel.swift"],
-            sources: ["ConversationDeltaReducer.swift"]
+            sources: [
+                "ConversationDeltaReducer.swift",
+                "ConversationRefreshPolicy.swift",
+            ]
+        ),
+        .target(
+            name: "SyncNotificationSupport",
+            path: "exe.dev/Database",
+            exclude: ["SyncEngine.swift"],
+            sources: ["SyncEngineSaveNotificationDispatcher.swift"]
         ),
         .target(
             name: "TerminalRedrawSupport",
@@ -33,6 +46,7 @@ let package = Package(
             name: "ConversationDeltaReducerSupportTests",
             dependencies: [
                 "ConversationDeltaReducerSupport",
+                "SyncNotificationSupport",
                 "TerminalRedrawSupport",
             ],
             path: "exe.devTests"

@@ -29,6 +29,10 @@ final class ChannelViewModel {
     private let modelContext: ModelContext
     private var observer: (any NSObjectProtocol)?
     private var isDraining = false
+    private var isRefreshingConversation = false
+    private var lastRefreshAttemptAt: Date?
+    private var lastRefreshSuccessAt: Date?
+    private var lastRefreshFailureAt: Date?
 
     init(vmName: String, shelleyURL: String?, api: APIClient, syncEngine: SyncEngine) {
         self.vmName = vmName
@@ -43,8 +47,7 @@ final class ChannelViewModel {
             queue: .main
         ) { [weak self] notification in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.handleSaveNotification(notification)
+                self?.enqueueSaveNotification(notification)
             }
         }
     }
@@ -57,7 +60,10 @@ final class ChannelViewModel {
         }
     }
 
-    func loadLatestConversation() async {
+    func loadLatestConversation(
+        reason: ConversationRefreshReason = .chatBecameVisible,
+        forceRefresh: Bool = false
+    ) async {
         guard let shelleyURL else {
             isLoading = false
             error = "This VM does not have Shelley enabled."
@@ -65,17 +71,31 @@ final class ChannelViewModel {
         }
 
         error = nil
-        isLoading = conversationID == nil
+        await showCachedConversationIfAvailable(shelleyURL: shelleyURL)
 
-        // Show cached conversation immediately if available
-        if let cachedID = await syncEngine.latestConversationID(for: vmName) {
-            conversationID = cachedID
+        let hasCachedConversation = conversationID != nil
+        let refreshState = ConversationRefreshState(
+            lastAttemptAt: lastRefreshAttemptAt,
+            lastSuccessAt: lastRefreshSuccessAt,
+            lastFailureAt: lastRefreshFailureAt
+        )
+
+        if !forceRefresh,
+           !ConversationRefreshPolicy.shouldRefresh(
+                reason: reason,
+                hasCachedConversation: hasCachedConversation,
+                state: refreshState
+           ) {
             isLoading = false
-            fetchMessages()
-            await syncEngine.startStream(
-                api: api, shelleyURL: shelleyURL,
-                conversationID: cachedID, vmName: vmName
-            )
+            return
+        }
+
+        guard !isRefreshingConversation else { return }
+        isRefreshingConversation = true
+        lastRefreshAttemptAt = Date()
+        isLoading = !hasCachedConversation
+        defer {
+            isRefreshingConversation = false
         }
 
         // Refresh from API with retries — shelley may still be starting up.
@@ -88,9 +108,12 @@ final class ChannelViewModel {
 
             do {
                 try await refreshFromAPI(shelleyURL: shelleyURL)
+                lastRefreshSuccessAt = Date()
+                lastRefreshFailureAt = nil
                 return // success
             } catch {
                 if attempt == delays.count - 1 {
+                    lastRefreshFailureAt = Date()
                     // Final attempt failed — show the error.
                     self.error = error.localizedDescription
                     isLoading = false
@@ -131,7 +154,13 @@ final class ChannelViewModel {
                 api: api, shelleyURL: shelleyURL,
                 conversationID: latest.conversationID, vmName: vmName
             )
-        } else if conversationID == nil {
+        } else {
+            if let conversationID {
+                await syncEngine.stopStream(conversationID: conversationID)
+            }
+            conversationID = nil
+            messages = []
+            isWorking = false
             isLoading = false
         }
     }
@@ -245,6 +274,24 @@ final class ChannelViewModel {
         reconcilePendingMessages()
     }
 
+    private func showCachedConversationIfAvailable(shelleyURL: String) async {
+        guard let cachedID = await syncEngine.latestConversationID(for: vmName) else { return }
+
+        if cachedID != conversationID {
+            conversationID = cachedID
+            messages = []
+        }
+
+        isLoading = false
+        fetchMessages()
+        await syncEngine.startStream(
+            api: api,
+            shelleyURL: shelleyURL,
+            conversationID: cachedID,
+            vmName: vmName
+        )
+    }
+
     private func fetchMessages(messageIDs: [String], conversationID: String) -> [StoredMessage] {
         let uniqueIDs = orderedUniqueMessageIDs(messageIDs)
         guard !uniqueIDs.isEmpty else { return [] }
@@ -268,11 +315,21 @@ final class ChannelViewModel {
         return fetched
     }
 
-    private func handleSaveNotification(_ notification: Notification) {
+    private func enqueueSaveNotification(_ notification: Notification) {
         guard let conversationID else { return }
         guard let save = saveNotification(from: notification, activeConversationID: conversationID) else {
             return
         }
+        let activeConversationID = conversationID
+
+        Task { @MainActor [weak self, save, activeConversationID] in
+            guard let self, self.conversationID == activeConversationID else { return }
+            self.handleSaveNotification(save)
+        }
+    }
+
+    private func handleSaveNotification(_ save: SaveNotification) {
+        guard let conversationID else { return }
 
         switch save {
         case .fullReload:
@@ -317,12 +374,12 @@ final class ChannelViewModel {
         }
     }
 
-    private enum SaveNotification {
+    private enum SaveNotification: Sendable {
         case fullReload
         case delta(ConversationDelta)
     }
 
-    private struct ConversationDelta {
+    private struct ConversationDelta: Sendable {
         let messageIDs: [String]
         let working: Bool?
     }

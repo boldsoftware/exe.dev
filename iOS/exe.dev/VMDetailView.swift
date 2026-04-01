@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VMDetailView: View {
+    @Environment(\.scenePhase) private var scenePhase
     let vm: StoredVM
     let api: APIClient
     let syncEngine: SyncEngine
@@ -60,8 +61,25 @@ struct VMDetailView: View {
             if let newURL, channelViewModel.shelleyURL == nil {
                 channelViewModel.shelleyURL = newURL
                 if selectedTab == 0 {
-                    Task { await channelViewModel.loadLatestConversation() }
+                    Task {
+                        await channelViewModel.loadLatestConversation(
+                            reason: .chatBecameVisible,
+                            forceRefresh: true
+                        )
+                    }
                 }
+            }
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            guard newTab == 0 else { return }
+            Task {
+                await channelViewModel.loadLatestConversation(reason: .chatBecameVisible)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active, selectedTab == 0 else { return }
+            Task {
+                await channelViewModel.loadLatestConversation(reason: .appBecameActive)
             }
         }
     }

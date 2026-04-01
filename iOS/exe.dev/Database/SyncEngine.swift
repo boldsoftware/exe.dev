@@ -1,22 +1,6 @@
 import Foundation
 import SwiftData
 
-extension Notification.Name {
-    static let syncEngineDidSave = Notification.Name("SyncEngineDidSave")
-}
-
-enum SyncEngineSaveNotificationKind: String {
-    case vms
-    case conversation
-}
-
-nonisolated enum SyncEngineSaveNotificationUserInfoKey {
-    static let kind = "kind"
-    static let conversationID = "conversationID"
-    static let messageIDs = "messageIDs"
-    static let working = "working"
-}
-
 @ModelActor
 actor SyncEngine {
     private var streamTasks: [String: Task<Void, Never>] = [:]
@@ -101,12 +85,12 @@ actor SyncEngine {
     // MARK: - Cached Conversation Lookup
 
     func latestConversationID(for vmName: String) -> String? {
-        var descriptor = FetchDescriptor<StoredConversation>(
+        let descriptor = FetchDescriptor<StoredConversation>(
             predicate: #Predicate { $0.vmName == vmName },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        descriptor.fetchLimit = 1
-        return try? modelContext.fetch(descriptor).first?.conversationID
+        guard let stored = try? modelContext.fetch(descriptor), !stored.isEmpty else { return nil }
+        return stored.first(where: { !$0.archived })?.conversationID ?? stored.first?.conversationID
     }
 
     // MARK: - SSE Streaming
@@ -288,29 +272,21 @@ actor SyncEngine {
 
     private func saveAndNotify(kind: SaveNotificationKind) throws {
         try modelContext.save()
-        postSaveNotification(kind: kind)
+        SyncEngineSaveNotificationDispatcher.dispatch(notificationPayload(for: kind))
     }
 
-    nonisolated private func postSaveNotification(kind: SaveNotificationKind) {
-        var userInfo: [String: Any] = [:]
+    private func notificationPayload(for kind: SaveNotificationKind)
+        -> SyncEngineSaveNotificationPayload {
         switch kind {
         case .vms:
-            userInfo[SyncEngineSaveNotificationUserInfoKey.kind] =
-                SyncEngineSaveNotificationKind.vms.rawValue
+            return .vms
         case .conversation(let conversationID, let messageIDs, let working):
-            userInfo[SyncEngineSaveNotificationUserInfoKey.kind] =
-                SyncEngineSaveNotificationKind.conversation.rawValue
-            userInfo[SyncEngineSaveNotificationUserInfoKey.conversationID] = conversationID
-            userInfo[SyncEngineSaveNotificationUserInfoKey.messageIDs] = messageIDs
-            if let working {
-                userInfo[SyncEngineSaveNotificationUserInfoKey.working] = working
-            }
+            return .conversation(
+                conversationID: conversationID,
+                messageIDs: messageIDs,
+                working: working
+            )
         }
-        NotificationCenter.default.post(
-            name: Notification.Name("SyncEngineDidSave"),
-            object: nil,
-            userInfo: userInfo
-        )
     }
 
     private func lastSequenceID(for conversationID: String) -> Int64? {
