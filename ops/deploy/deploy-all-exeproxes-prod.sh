@@ -30,7 +30,7 @@ MACHINES=()
 
 for name in $NAMES; do
     echo "Starting deploy: $name"
-    "$DEPLOY_SCRIPT" "$name" "${FLAGS[@]}" >"$LOGDIR/$name.log" 2>&1 &
+    "$DEPLOY_SCRIPT" "$name" ${FLAGS[@]+"${FLAGS[@]}"} >"$LOGDIR/$name.log" 2>&1 &
     PIDS+=($!)
     MACHINES+=("$name")
 done
