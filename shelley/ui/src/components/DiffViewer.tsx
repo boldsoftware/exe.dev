@@ -987,7 +987,9 @@ function DiffViewer({
           if (isCommitMessageFile(file.path)) {
             const hash = commitHashFromPath(file.path);
             const msg = commitMessages.find((m) => m.hash === hash);
-            const label = msg ? `📝 ${truncateWithEllipsis(msg.subject, 50)}` : `📝 ${hash.slice(0, 8)}`;
+            const label = msg
+              ? `📝 ${truncateWithEllipsis(msg.subject, 50)}`
+              : `📝 ${hash.slice(0, 8)}`;
             return (
               <option key={file.path} value={file.path}>
                 {label}
