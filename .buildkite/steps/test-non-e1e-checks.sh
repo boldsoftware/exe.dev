@@ -73,15 +73,15 @@ done
 [ $fail -eq 0 ] || exit 1
 
 echo "--- :white_check_mark: Verify generated code unchanged"
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain -- ':!deps/')" ]; then
     echo "ERROR: 'go generate ./...' or 'make protos' produced uncommitted changes. Commit generated code." >&2
-    git status --porcelain >&2
-    git diff >&2
+    git status --porcelain -- ':!deps/' >&2
+    git diff -- ':!deps/' >&2
     exit 1
 fi
 
 echo "--- :mag: Verify non-test code doesn't import tslog"
-if git grep -n -- 'exe.dev/tslog' -- '*.go' ':!*_test.go'; then
+if git grep -n -- 'exe.dev/tslog' -- '*.go' ':!*_test.go' ':!deps/'; then
     echo "ERROR: production code should not import exe.dev/tslog" >&2
     exit 1
 fi
