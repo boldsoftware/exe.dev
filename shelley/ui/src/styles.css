@@ -31,6 +31,7 @@ body {
   --bg-base: #ffffff;
   --bg-secondary: #f9fafb;
   --bg-tertiary: #f3f4f6;
+  --bg-hover: #f3f4f6;
   --border: #e5e7eb;
   --text-primary: #111827;
   --text-secondary: #6b7280;
@@ -67,6 +68,7 @@ body {
   --bg-base: #1f2937;
   --bg-secondary: #111827;
   --bg-tertiary: #374151;
+  --bg-hover: #374151;
   --border: #374151;
   --text-primary: #f9fafb;
   --text-secondary: #9ca3af;
