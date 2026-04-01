@@ -23,7 +23,7 @@ go build -o bin/shelley ./cmd/shelley
 
 echo "--- :chrome: Install Playwright browsers"
 cd ui
-npx playwright install --with-deps chromium
+npx playwright install chromium
 
 echo "--- :performing_arts: Run Playwright E2E tests"
 npx playwright test
