@@ -173,6 +173,9 @@ func TestIsCommandAllowed(t *testing.T) {
 		command string
 		allowed bool
 	}{
+		{"cp mybox", true},
+		{"cp mybox newname", true},
+		{"cp mybox --copy-tags=false", true},
 		{"restart mybox", true},
 		{"rm mybox", true},
 		{"share show mybox", true},

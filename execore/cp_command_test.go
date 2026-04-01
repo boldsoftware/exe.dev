@@ -49,6 +49,15 @@ func TestCpCommand_Exists(t *testing.T) {
 	if fs.Lookup("json") == nil {
 		t.Error("cp command should have --json flag")
 	}
+
+	// Verify --copy-tags flag exists and defaults to true
+	copyTagsFlag := fs.Lookup("copy-tags")
+	if copyTagsFlag == nil {
+		t.Fatal("cp command should have --copy-tags flag")
+	}
+	if copyTagsFlag.DefValue != "true" {
+		t.Errorf("expected --copy-tags default to be 'true', got %q", copyTagsFlag.DefValue)
+	}
 }
 
 // TestCpCommand_FlagParsing tests flag parsing for the cp command.
@@ -126,6 +135,34 @@ func TestCpCommand_FlagParsing(t *testing.T) {
 				jsonFlag := cc.FlagSet.Lookup("json").Value.String()
 				if jsonFlag != "true" {
 					t.Errorf("Expected json to be 'true', got %q", jsonFlag)
+				}
+			},
+		},
+		{
+			name:         "cp with --copy-tags=false",
+			commandPath:  []string{"cp", "--copy-tags=false", "source-vm"},
+			expectedArgs: []string{"source-vm"},
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for cp command")
+				}
+				copyTags := cc.FlagSet.Lookup("copy-tags").Value.String()
+				if copyTags != "false" {
+					t.Errorf("Expected copy-tags to be 'false', got %q", copyTags)
+				}
+			},
+		},
+		{
+			name:         "cp defaults copy-tags to true",
+			commandPath:  []string{"cp", "source-vm"},
+			expectedArgs: []string{"source-vm"},
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for cp command")
+				}
+				copyTags := cc.FlagSet.Lookup("copy-tags").Value.String()
+				if copyTags != "true" {
+					t.Errorf("Expected copy-tags to default to 'true', got %q", copyTags)
 				}
 			},
 		},
@@ -341,6 +378,7 @@ func TestCpCommand_HelpOutput(t *testing.T) {
 		"cp",
 		"source-vm",
 		"new-name",
+		"copy-tags",
 	}
 
 	for _, expected := range expectedContents {

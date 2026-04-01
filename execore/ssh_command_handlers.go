@@ -236,6 +236,7 @@ func newCommandFlags() *flag.FlagSet {
 func cpCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("cp", flag.ContinueOnError)
 	fs.Bool("json", false, "output in JSON format")
+	fs.Bool("copy-tags", true, "copy tags from source VM (use --copy-tags=false to disable)")
 	// Resource allocation flags - copy uses source values if not specified
 	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
 	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
@@ -343,7 +344,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "cp",
 			Description:       "Copy an existing VM",
-			Usage:             "cp <source-vm> [new-name]",
+			Usage:             "cp <source-vm> [new-name] [--copy-tags=false]",
 			FlagSetFunc:       cpCommandFlags,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
@@ -351,6 +352,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Examples: []string{
 				"cp my-vm              # copy with auto-generated name",
 				"cp my-vm my-vm-copy   # copy with specific name",
+				"cp my-vm --copy-tags=false  # copy without tags",
 			},
 		},
 		{

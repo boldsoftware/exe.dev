@@ -145,6 +145,9 @@
         <button class="action-btn-expanded" @click="$emit('action', { type: 'share-link', boxName: box.name })">
           <i class="pi pi-link"></i> Share Link
         </button>
+        <button class="action-btn-expanded" @click="$emit('action', { type: 'copy', boxName: box.name, extra: box.displayTags })">
+          <i class="pi pi-clone"></i> Copy
+        </button>
         <button class="action-btn-expanded" @click="$emit('action', { type: 'rename', boxName: box.name })">
           <i class="pi pi-pencil"></i> Rename
         </button>

@@ -12,6 +12,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/container"
+	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/stage"
@@ -387,6 +388,20 @@ done:
 		route := sourceBox.GetRoute()
 		if err := ss.updateBoxRouteInDB(ctx, newName, user.ID, sourceBox.Routes, route.Port, route.Share); err != nil {
 			slog.WarnContext(ctx, "failed to copy routing from source box", "source", sourceVMName, "clone", newName, "error", err)
+		}
+	}
+
+	// Copy tags from source box if --copy-tags is true (the default)
+	copyTags := cc.FlagSet.Lookup("copy-tags").Value.String() == "true"
+	if copyTags {
+		if tags := sourceBox.GetTags(); len(tags) > 0 {
+			tagsJSON := exedb.TagsJSON(tags)
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxTags, exedb.UpdateBoxTagsParams{
+				Tags: tagsJSON,
+				ID:   boxID,
+			}); err != nil {
+				slog.WarnContext(ctx, "failed to copy tags from source box", "source", sourceVMName, "clone", newName, "error", err)
+			}
 		}
 	}
 

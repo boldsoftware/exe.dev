@@ -127,6 +127,45 @@
       @success="onModalSuccess"
     />
 
+    <!-- Copy VM Modal -->
+    <div v-if="copyModalOpen" class="prompt-overlay" @click="blurActiveElement(); copyModalOpen = false">
+      <div class="prompt-modal" role="dialog" aria-modal="true" @click.stop>
+        <div class="prompt-header">
+          <span class="prompt-title">Copy VM</span>
+          <button class="prompt-close" aria-label="Close" @click="blurActiveElement(); copyModalOpen = false">&times;</button>
+        </div>
+        <div class="prompt-body">
+          <div class="prompt-field-label">Command</div>
+          <div class="copy-cmd-display">
+            <code>{{ copyDisplayCommand }}</code>
+          </div>
+          <div>
+            <div class="prompt-field-label">New Name <span style="font-weight:400; color: var(--text-color-muted)">(optional)</span></div>
+            <input v-model="copyNewName" class="prompt-input" style="min-height: auto;" placeholder="auto-generated if blank" autocomplete="off" @keydown.enter="runCopy" />
+          </div>
+          <div v-if="copySourceTags.length > 0" class="copy-tags-section">
+            <label class="copy-tags-checkbox">
+              <input v-model="copyCopyTags" type="checkbox" />
+              <span>Copy tags</span>
+            </label>
+            <span class="copy-tags-list">
+              <span v-for="tag in copySourceTags" :key="tag" class="tag">#{{ tag }}</span>
+            </span>
+          </div>
+          <div v-if="copyResult.output || copyResult.error" class="copy-result" :class="{ success: copyResult.success, error: !copyResult.success }">
+            {{ copyResult.output || copyResult.error }}
+          </div>
+        </div>
+        <div class="prompt-footer">
+          <button v-if="!copyResult.success" class="btn btn-secondary" @click="blurActiveElement(); copyModalOpen = false">Cancel</button>
+          <button v-if="copyResult.success" class="btn btn-primary" @click="blurActiveElement(); copyModalOpen = false; onModalSuccess()">Done</button>
+          <button v-else class="btn btn-primary" :disabled="copySending" @click="runCopy">
+            {{ copySending ? 'Copying...' : 'Copy' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Editor Picker Modal -->
     <div v-if="editorModalOpen" class="prompt-overlay" @click="blurActiveElement(); editorModalOpen = false">
       <div class="prompt-modal" role="dialog" aria-modal="true" @click.stop>
@@ -282,6 +321,44 @@ function saveEditorChoice() {
 }
 
 // Prompt modal state
+// Copy VM modal state
+const copyModalOpen = ref(false)
+const copySourceName = ref('')
+const copySourceTags = ref<string[]>([])
+const copyNewName = ref('')
+const copyCopyTags = ref(true)
+const copySending = ref(false)
+const copyResult = ref({ output: '', error: '', success: false })
+
+const copyDisplayCommand = computed(() => {
+  let cmd = `cp ${shellQuote(copySourceName.value)}`
+  if (copyNewName.value.trim()) {
+    cmd += ` ${shellQuote(copyNewName.value.trim())}`
+  }
+  if (!copyCopyTags.value && copySourceTags.value.length > 0) {
+    cmd += ' --copy-tags=false'
+  }
+  return cmd
+})
+
+async function runCopy() {
+  if (copySending.value || copyResult.value.success) return
+  copySending.value = true
+  copyResult.value = { output: '', error: '', success: false }
+  try {
+    const res = await runCommand(copyDisplayCommand.value)
+    copyResult.value = {
+      output: res.output || '',
+      error: res.error || '',
+      success: !!res.success,
+    }
+  } catch (err: any) {
+    copyResult.value = { output: '', error: err.message || 'Failed', success: false }
+  } finally {
+    copySending.value = false
+  }
+}
+
 const promptModalOpen = ref(false)
 const promptVM = ref('__new__')
 const promptText = ref('')
@@ -436,6 +513,7 @@ function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   // Blur before hiding to prevent browser scroll jump when v-if
   // destroys the focused element.
+  if (copyModalOpen.value) { blurActiveElement(); copyModalOpen.value = false; return }
   if (editorModalOpen.value) { blurActiveElement(); editorModalOpen.value = false; return }
   if (promptModalOpen.value) { blurActiveElement(); promptModalOpen.value = false; return }
 }
@@ -470,6 +548,15 @@ function handleAction(action: ActionEvent) {
       editorBoxName.value = action.boxName
       editorDir.value = '/home/exedev'
       editorModalOpen.value = true
+      break
+    case 'copy':
+      copySourceName.value = action.boxName
+      copySourceTags.value = (action.extra as string[]) || []
+      copyNewName.value = ''
+      copyCopyTags.value = true
+      copySending.value = false
+      copyResult.value = { output: '', error: '', success: false }
+      copyModalOpen.value = true
       break
     case 'rename':
       openModal({ title: 'Rename VM', commandPrefix: `rename ${q}`, inputPlaceholder: 'new-name' })
@@ -1096,5 +1183,99 @@ async function submitPrompt() {
 .group-chevron {
   font-size: 10px;
   color: var(--text-color-muted);
+}
+
+.copy-cmd-display {
+  background: var(--surface-subtle, var(--surface-ground));
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.copy-tags-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.copy-tags-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-tags-checkbox input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.copy-tags-list {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.copy-result {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  white-space: pre-wrap;
+}
+
+.copy-result.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
+}
+
+.copy-result.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+}
+
+.btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--text-color);
+  color: var(--surface-ground);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn-secondary {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border-color: var(--btn-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--btn-hover-bg);
+  border-color: var(--btn-hover-border);
 }
 </style>
