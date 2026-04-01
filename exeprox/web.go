@@ -390,21 +390,24 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 		return cert, err
 	}
 
-	// Check that the host is valid before contacting exed.
-	if err := wp.proxyServer().ValidateHostForTLSCert(hello.Context(), hello.ServerName); err != nil {
-		wp.lg().WarnContext(hello.Context(), "not requesting top level cert for invalid host", "serverName", hello.ServerName, "error", err)
-		return nil, err
-	}
-
-	// 3) WebHost (exe.dev) and custom domains use standard autocert (TLS-ALPN-01)
-	// ACME challenge connections must always reach exed so it can
-	// serve the challenge-response certificate.
+	// 3) ACME TLS-ALPN-01 challenge connections must always reach exed
+	// so it can serve challenge-response certificates. Check this BEFORE
+	// ValidateHostForTLSCert, because validation does DNS lookups and
+	// gRPC calls that add latency. ACME validation requests are
+	// time-sensitive; any delay risks Let's Encrypt timing out the
+	// challenge, causing certificate issuance to fail.
 	if len(hello.SupportedProtos) == 1 && hello.SupportedProtos[0] == acme.ALPNProto {
 		cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)
 		if err != nil {
 			wp.lg().ErrorContext(hello.Context(), "top level cert retrieval failed", "serverName", serverName, "error", err)
 		}
 		return cert, err
+	}
+
+	// Validate the host before requesting a (non-ACME) certificate.
+	if err := wp.proxyServer().ValidateHostForTLSCert(hello.Context(), hello.ServerName); err != nil {
+		wp.lg().WarnContext(hello.Context(), "host validation failed, not requesting cert", "serverName", hello.ServerName, "error", err)
+		return nil, err
 	}
 
 	// Cache key incorporates the client's TLS capabilities so that
