@@ -299,10 +299,21 @@ func (es *exeproxServer) TopLevelCert(ctx context.Context, req *proxyapi.TopLeve
 	// thing will happen. In other words, this might be a recursive
 	// call here.
 
+	start := time.Now()
 	cert, err := es.s.certManager.GetCertificate(hello)
+	dur := time.Since(start)
 	if err != nil {
-		es.s.slog().WarnContext(ctx, "getting certificate failed in TopLevelCert", "serverName", req.ServerName, "error", err)
+		es.s.slog().WarnContext(ctx, "getting certificate failed in TopLevelCert", "serverName", req.ServerName, "error", err, "duration", dur)
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if cert.Leaf != nil {
+		es.s.slog().InfoContext(ctx, "cert issued via TopLevelCert",
+			"serverName", req.ServerName,
+			"notAfter", cert.Leaf.NotAfter.Format(time.RFC3339),
+			"issuer", cert.Leaf.Issuer.CommonName,
+			"duration", dur,
+		)
 	}
 
 	bytes, err := wildcardcert.EncodeCertificate(cert)
