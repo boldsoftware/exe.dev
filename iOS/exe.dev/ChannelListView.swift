@@ -16,10 +16,17 @@ struct ChannelListView: View {
     @State private var pollingTask: Task<Void, Never>?
     @State private var creationPollingTask: Task<Void, Never>?
     @State private var cpSource: StoredVM?
+    @State private var vmListScrollOffset: CGFloat = 0
 
     private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
     private var creatingVMNames: [String] { creatingVMs.map(\.vmName).sorted() }
     private var vmSections: [VMListSection<StoredVM>] { VMListGrouping.sections(for: allVMs) }
+    private var brandingOpacity: Double {
+        guard !allVMs.isEmpty else { return 1 }
+        let fadeDistance: CGFloat = 36
+        let progress = min(max(vmListScrollOffset, 0), fadeDistance) / fadeDistance
+        return Double(1 - progress)
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -47,27 +54,33 @@ struct ChannelListView: View {
     private var sidebar: some View {
         Group {
             if isLoading && allVMs.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                sidebarState {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else if let error, allVMs.isEmpty {
-                ContentUnavailableView {
-                    Label("Unable to Load", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Retry") { Task { await loadVMs() } }
+                sidebarState {
+                    ContentUnavailableView {
+                        Label("Unable to Load", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("Retry") { Task { await loadVMs() } }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if allVMs.isEmpty {
-                ContentUnavailableView {
-                    Label("No VMs", systemImage: "server.rack")
-                } description: {
-                    Text("Create your first VM to get started.")
-                } actions: {
-                    Button("New VM") { showingNewVM = true }
-                        .buttonStyle(.borderedProminent)
+                sidebarState {
+                    ContentUnavailableView {
+                        Label("No VMs", systemImage: "server.rack")
+                    } description: {
+                        Text("Create your first VM to get started.")
+                    } actions: {
+                        Button("New VM") { showingNewVM = true }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 vmList
             }
@@ -76,17 +89,7 @@ struct ChannelListView: View {
         .background {
             VMListBackground()
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Sign Out", role: .destructive) { auth.signOut() }
-                } label: {
-                    Image(systemName: "person.circle")
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable { await loadVMs() }
         .task {
             await loadVMs()
@@ -139,6 +142,10 @@ struct ChannelListView: View {
 
     private var vmList: some View {
         List(selection: $selectedVMName) {
+            sidebarHeader(opacity: brandingOpacity)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             ForEach(Array(vmSections.enumerated()), id: \.offset) { _, section in
                 Section {
                     ForEach(section.items) { vm in
@@ -164,6 +171,51 @@ struct ChannelListView: View {
         .listSectionSpacing(.custom(16))
         .scrollContentBackground(.hidden)
         .background(Color.clear)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newValue in
+            vmListScrollOffset = newValue
+        }
+    }
+
+    private func sidebarState<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            sidebarHeader(opacity: 1)
+            content()
+        }
+    }
+
+    private func sidebarHeader(opacity: Double) -> some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image("Exy")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 30, height: 30)
+                Text("exe.dev")
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+
+            Spacer(minLength: 12)
+
+            Menu {
+                Button("Sign Out", role: .destructive) { auth.signOut() }
+            } label: {
+                Image(systemName: "person.circle")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 40)
+                    .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .opacity(opacity)
+        .animation(.easeOut(duration: 0.18), value: opacity)
+        .accessibilityElement(children: .contain)
     }
 
     private func vmRow(_ vm: StoredVM) -> some View {
