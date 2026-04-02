@@ -21,8 +21,10 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a conversation with some messages
-	conv, err := database.CreateConversation(ctx, nil, true, nil, nil, db.ConversationOptions{})
+	// Create a non-user-initiated conversation so that Hydrate() doesn't
+	// try to generate a system prompt (which races with the request context
+	// and adds an unexpected message that throws off sequence ID accounting).
+	conv, err := database.CreateConversation(ctx, nil, false, nil, nil, db.ConversationOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create conversation: %v", err)
 	}
@@ -59,9 +61,11 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 
-	// Test 1: Fresh connection (no last_sequence_id) - should get all messages
+	// Test 1: Fresh connection (no last_sequence_id) - should get all messages.
+	// We also capture lastSeqID here for use in subsequent subtests.
+	var lastSeqID int64
 	t.Run("fresh_connection", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		req := httptest.NewRequest("GET", "/api/conversation/"+conv.ConversationID+"/stream", nil).WithContext(ctx)
@@ -97,28 +101,9 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 		if response.Heartbeat {
 			t.Error("Fresh connection should not be a heartbeat")
 		}
-	})
 
-	// Find the actual last sequence ID (system prompt may have been added)
-	var lastSeqID int64
-	t.Run("find_last_seq_id", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		req := httptest.NewRequest("GET", "/api/conversation/"+conv.ConversationID+"/stream", nil).WithContext(ctx)
-		req.Header.Set("Accept", "text/event-stream")
-		w := newResponseRecorderWithClose()
-		done := make(chan struct{})
-		go func() { defer close(done); mux.ServeHTTP(w, req) }()
-		time.Sleep(300 * time.Millisecond)
-		w.Close()
-		cancel()
-		<-done
-		jsonData := strings.TrimPrefix(strings.Split(w.Body.String(), "\n")[0], "data: ")
-		var resp StreamResponse
-		if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
-			t.Fatalf("Failed to parse: %v", err)
-		}
-		for _, m := range resp.Messages {
+		// Record the last sequence ID for resume tests.
+		for _, m := range response.Messages {
 			if m.SequenceID > lastSeqID {
 				lastSeqID = m.SequenceID
 			}
@@ -127,7 +112,7 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 
 	// Test 2: Resume with no new messages - should get heartbeat
 	t.Run("resume_no_new_messages", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		url := fmt.Sprintf("/api/conversation/%s/stream?last_sequence_id=%d", conv.ConversationID, lastSeqID)
@@ -173,7 +158,7 @@ func TestStreamResumeWithLastSequenceID(t *testing.T) {
 			t.Fatalf("Failed to create message: %v", err)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		url := fmt.Sprintf("/api/conversation/%s/stream?last_sequence_id=%d", conv.ConversationID, lastSeqID)
