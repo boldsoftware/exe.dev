@@ -92,6 +92,9 @@ deploy-node-exporter:
 # Exelet hosts (hosts with ZFS pools)
 EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
 
+# Exelet hosts with replica pairs (non-pdx, non-exe-ctr)
+REPLICA_EXELET_HOSTS := exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01
+
 # Deploy node textfile collector scripts to hosts
 # - zpool-metrics: exelet hosts only (have ZFS pools)
 # - os-updates, system-health: all hosts
@@ -130,6 +133,19 @@ deploy-node-scripts:
 			(sudo crontab -l 2>/dev/null | grep -v zpool-metrics; \
 			 echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab - && \
 			echo 'Cron job installed:' && sudo crontab -l | grep zpool-metrics\""; \
+		echo ""; \
+	done; \
+	for host in $(REPLICA_EXELET_HOSTS); do \
+		echo "Deploying replica-dns to $$host..."; \
+		scp scripts/replica-dns.sh ubuntu@$$host:/tmp/replica-dns.sh && \
+		ssh ubuntu@$$host "bash -c \" \
+			sudo mkdir -p /var/lib/prometheus/node-exporter && \
+			sudo mv /tmp/replica-dns.sh /usr/local/bin/replica-dns.sh && \
+			sudo chmod +x /usr/local/bin/replica-dns.sh && \
+			sudo /usr/local/bin/replica-dns.sh && \
+			(sudo crontab -l 2>/dev/null | grep -v replica-dns; \
+			 echo '* * * * * /usr/local/bin/replica-dns.sh') | sudo crontab - && \
+			echo 'Cron job installed:' && sudo crontab -l | grep replica-dns\""; \
 		echo ""; \
 	done
 

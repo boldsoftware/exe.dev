@@ -3219,6 +3219,26 @@ function makeHostsDashboard() {
     }
   );
 
+  // Exelet replica DNS resolution - alerts when a replica hostname fails to resolve
+  addTimeseriesChart(
+    "Exelet Replica DNS",
+    `exelet_replica_dns_ok{${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}} → {{replica}}"),
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "5m",
+        summary: "Exelet replica DNS not resolving",
+        description: "Replica hostname is not resolving on {{$labels.instance}}. The replica pair may be down or its Tailscale registration may have expired.",
+        labels: { signal: "strong" },
+      },
+      alertQueryOverride: `exelet_replica_dns_ok{role="exelet",stage="production"}`,
+    }
+  );
+
   // Exeprox host availability
   addTimeseriesChart(
     "Exeprox Host Up",
