@@ -74,6 +74,9 @@ jobs:
             tar -czf "templates/$name.tar.gz" -C "templates/$name" --exclude='.DS_Store' .
           done
 
+      - name: Extract headless-shell
+        run: python3 scripts/extract-headless-shell.py dist/headless-shell
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -83,3 +86,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Upload headless-shell assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          for f in dist/headless-shell/headless-shell-linux-*.tar.gz dist/headless-shell/headless-shell-version.txt; do
+            echo "Uploading $(basename $f) to release $TAG..."
+            gh release upload "$TAG" "$f" --clobber
+          done

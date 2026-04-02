@@ -64,14 +64,16 @@ type CommitInfo struct {
 
 // ReleaseInfo represents release metadata.
 type ReleaseInfo struct {
-	TagName      string            `json:"tag_name"`
-	Version      string            `json:"version"`
-	Commit       string            `json:"commit"`
-	CommitFull   string            `json:"commit_full"`
-	CommitTime   string            `json:"commit_time"`
-	PublishedAt  string            `json:"published_at"`
-	DownloadURLs map[string]string `json:"download_urls"`
-	ChecksumsURL string            `json:"checksums_url"`
+	TagName              string            `json:"tag_name"`
+	Version              string            `json:"version"`
+	Commit               string            `json:"commit"`
+	CommitFull           string            `json:"commit_full"`
+	CommitTime           string            `json:"commit_time"`
+	PublishedAt          string            `json:"published_at"`
+	DownloadURLs         map[string]string `json:"download_urls"`
+	ChecksumsURL         string            `json:"checksums_url"`
+	HeadlessShellVersion string            `json:"headless_shell_version,omitempty"`
+	HeadlessShellURLs    map[string]string `json:"headless_shell_urls,omitempty"`
 }
 
 // StaticCommitInfo represents a commit from commits.json.

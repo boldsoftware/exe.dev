@@ -10,6 +10,25 @@ import sys
 from pathlib import Path
 
 
+def get_headless_shell_version(latest_tag: str) -> str:
+    """Get the headless-shell version from the release assets.
+
+    Downloads headless-shell-version.txt from the GitHub release.
+    Returns a string like 'Chromium 147.0.7727.24' or empty string on failure.
+    """
+    url = (
+        f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}"
+        f"/headless-shell-version.txt"
+    )
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return resp.read().decode().strip()
+    except Exception as e:
+        print(f"  Warning: could not fetch headless-shell version: {e}", file=sys.stderr)
+        return ""
+
+
 def generate_release_json(output_dir: Path) -> None:
     """Generate release.json with latest release information."""
     # Get latest tag - fail if none exists
@@ -40,6 +59,8 @@ def generate_release_json(output_dir: Path) -> None:
 
     version = latest_tag[1:] if latest_tag.startswith("v") else latest_tag
 
+    base_url = f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}"
+
     release_info = {
         "tag_name": latest_tag,
         "version": version,
@@ -48,13 +69,25 @@ def generate_release_json(output_dir: Path) -> None:
         "commit_time": latest_commit_time,
         "published_at": published_at,
         "download_urls": {
-            "darwin_amd64": f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}/shelley_darwin_amd64",
-            "darwin_arm64": f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}/shelley_darwin_arm64",
-            "linux_amd64": f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}/shelley_linux_amd64",
-            "linux_arm64": f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}/shelley_linux_arm64",
+            "darwin_amd64": f"{base_url}/shelley_darwin_amd64",
+            "darwin_arm64": f"{base_url}/shelley_darwin_arm64",
+            "linux_amd64": f"{base_url}/shelley_linux_amd64",
+            "linux_arm64": f"{base_url}/shelley_linux_arm64",
         },
-        "checksums_url": f"https://github.com/boldsoftware/shelley/releases/download/{latest_tag}/checksums.txt",
+        "checksums_url": f"{base_url}/checksums.txt",
     }
+
+    # Try to get headless-shell version from release assets
+    headless_version = get_headless_shell_version(latest_tag)
+    if headless_version:
+        release_info["headless_shell_version"] = headless_version
+        release_info["headless_shell_urls"] = {
+            "linux_amd64": f"{base_url}/headless-shell-linux-amd64.tar.gz",
+            "linux_arm64": f"{base_url}/headless-shell-linux-arm64.tar.gz",
+        }
+        print(f"  headless-shell: {headless_version}")
+    else:
+        print("  headless-shell: version not available in release assets")
 
     output_path = output_dir / "release.json"
     with open(output_path, "w") as f:
