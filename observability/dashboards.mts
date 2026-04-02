@@ -1271,6 +1271,42 @@ function makeDevExeDashboard() {
       panelCustomization: (x) =>
         x.min(0),
       gridPos: { w: 8, h: 6 },
+      alertQueryOverride: `increase(letsencrypt_cert_requests_total{stage="production"}[3h])`,
+      alert: {
+        threshold: 150,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "Let's Encrypt cert order rate approaching limit",
+        description: "More than 150 certificate orders in the last 3 hours. Let's Encrypt allows 300 new orders per account per 3 hours. Investigate cert ordering patterns. Code: exeweb/cert_rate_limiter.go, wildcardcert/wildcardcert.go.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  addTimeseriesChart(
+    "LE Orders (3h rolling)",
+    `increase(letsencrypt_cert_requests_total{${STAGE_FILTER}}[3h])`,
+    {
+      panelCustomization: (x) =>
+        x.min(0).thresholds(
+          new ThresholdsConfigBuilder()
+            .mode(ThresholdsMode.Absolute)
+            .steps([
+              { color: "green", value: null as unknown as number },
+              { color: "orange", value: 150 },
+              { color: "red", value: 300 },
+            ])
+        ).thresholdsStyle(new GraphThresholdsStyleConfigBuilder().mode(GraphGradientMode.Line)),
+      gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  addTimeseriesChart(
+    "Cert Rate Limiter (per VM)",
+    `rate(cert_ratelimit_allowed_total{${STAGE_FILTER}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.min(0),
+      gridPos: { w: 8, h: 6 },
     }
   );
 

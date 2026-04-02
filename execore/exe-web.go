@@ -180,6 +180,7 @@ func (s *Server) setupHTTPSServer() {
 	}
 	s.certRateLimiter.Cache = certCache
 	s.certRateLimiter.Lg = s.slog()
+	s.certRateLimiter.CertOrders = s.sshMetrics.letsencryptRequests
 
 	s.certManager = &autocert.Manager{
 		Cache:      certCache,

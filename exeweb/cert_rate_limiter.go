@@ -36,6 +36,9 @@ type CertRateLimiter struct {
 	// Lg is the logger for rate limit events.
 	Lg *slog.Logger
 
+	// CertOrders is incremented on each autocert cache miss (new LE order).
+	CertOrders prometheus.Counter
+
 	allowedTotal     *prometheus.CounterVec
 	rateLimitedTotal *prometheus.CounterVec
 }
@@ -110,8 +113,8 @@ func (r *CertRateLimiter) HostPolicy(ctx context.Context, host string) error {
 		return nil
 	}
 
-	// Cache miss — this will be a new cert issuance. Rate-limit by box
-	// name so all custom domains pointing at the same VM share one bucket.
+	// Cache miss — this will be a new cert issuance.
+	// Rate-limit by box name so all custom domains pointing at the same VM share one bucket.
 	/*
 		if err := r.Allow(boxName); err != nil {
 			r.Lg.WarnContext(ctx, "cert rate limiter blocked issuance",
@@ -122,6 +125,10 @@ func (r *CertRateLimiter) HostPolicy(ctx context.Context, host string) error {
 			return err
 		}
 	*/
+
+	if r.CertOrders != nil {
+		r.CertOrders.Inc()
+	}
 
 	return nil
 }
