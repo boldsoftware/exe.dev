@@ -21,6 +21,7 @@ nonisolated struct VM: Identifiable, Decodable {
     let httpsURL: String
     let shelleyURL: String?
     let image: String?
+    let tags: [String]?
     let regionDisplay: String?
     let creatorEmail: String?
 
@@ -34,6 +35,7 @@ nonisolated struct VM: Identifiable, Decodable {
         case httpsURL = "https_url"
         case shelleyURL = "shelley_url"
         case image
+        case tags
         case regionDisplay = "region_display"
         case creatorEmail = "creator_email"
     }
@@ -334,6 +336,7 @@ nonisolated struct HostnameCheckResponse: Decodable {
     var httpsURL: String
     var shelleyURL: String?
     var image: String?
+    var tagsJSON: String = "[]"
     var regionDisplay: String?
     var creatorEmail: String?
     var lastFetchedAt: Date
@@ -342,6 +345,7 @@ nonisolated struct HostnameCheckResponse: Decodable {
 
     var isRunning: Bool { status == "running" }
     var isCreating: Bool { status == "creating" || status == "pending" || status == "building" }
+    var displayTags: [String] { Self.decodeTags(from: tagsJSON) }
 
     init(from vm: VM) {
         self.vmName = vm.vmName
@@ -351,6 +355,7 @@ nonisolated struct HostnameCheckResponse: Decodable {
         self.httpsURL = vm.httpsURL
         self.shelleyURL = vm.shelleyURL
         self.image = vm.image
+        self.tagsJSON = Self.encodeTags(vm.tags ?? [])
         self.regionDisplay = vm.regionDisplay
         self.creatorEmail = vm.creatorEmail
         self.lastFetchedAt = Date()
@@ -363,6 +368,7 @@ nonisolated struct HostnameCheckResponse: Decodable {
         self.status = "creating"
         self.region = ""
         self.httpsURL = ""
+        self.tagsJSON = "[]"
         self.lastFetchedAt = Date()
     }
 
@@ -373,10 +379,34 @@ nonisolated struct HostnameCheckResponse: Decodable {
         httpsURL = vm.httpsURL
         shelleyURL = vm.shelleyURL
         image = vm.image
+        tagsJSON = Self.encodeTags(vm.tags ?? [])
         regionDisplay = vm.regionDisplay
         creatorEmail = vm.creatorEmail
         lastFetchedAt = Date()
     }
+
+    private static func encodeTags(_ tags: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(tags),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return "[]"
+        }
+        return json
+    }
+
+    private static func decodeTags(from tagsJSON: String) -> [String] {
+        guard let data = tagsJSON.data(using: .utf8),
+              let tags = try? JSONDecoder().decode([String].self, from: data)
+        else {
+            return []
+        }
+        return tags
+    }
+}
+
+extension StoredVM: VMListGroupable {
+    var vmListName: String { vmName }
+    var vmListTags: [String] { displayTags }
 }
 
 @Model final class StoredConversation {

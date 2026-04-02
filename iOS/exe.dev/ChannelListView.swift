@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ChannelListView: View {
+    @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     var auth: AuthManager
     var api: APIClient
@@ -18,8 +19,7 @@ struct ChannelListView: View {
 
     private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
     private var creatingVMNames: [String] { creatingVMs.map(\.vmName).sorted() }
-    private var runningVMs: [StoredVM] { allVMs.filter { $0.isRunning && !$0.isCreating } }
-    private var stoppedVMs: [StoredVM] { allVMs.filter { !$0.isRunning && !$0.isCreating } }
+    private var vmSections: [VMListSection<StoredVM>] { VMListGrouping.sections(for: allVMs) }
 
     var body: some View {
         NavigationSplitView {
@@ -48,7 +48,7 @@ struct ChannelListView: View {
         Group {
             if isLoading && allVMs.isEmpty {
                 ProgressView()
-                    .frame(maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error, allVMs.isEmpty {
                 ContentUnavailableView {
                     Label("Unable to Load", systemImage: "exclamationmark.triangle")
@@ -57,6 +57,7 @@ struct ChannelListView: View {
                 } actions: {
                     Button("Retry") { Task { await loadVMs() } }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if allVMs.isEmpty {
                 ContentUnavailableView {
                     Label("No VMs", systemImage: "server.rack")
@@ -66,11 +67,17 @@ struct ChannelListView: View {
                     Button("New VM") { showingNewVM = true }
                         .buttonStyle(.borderedProminent)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 vmList
             }
         }
-        .navigationTitle("exe.dev")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            VMListBackground()
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -132,36 +139,35 @@ struct ChannelListView: View {
 
     private var vmList: some View {
         List(selection: $selectedVMName) {
-            if !creatingVMs.isEmpty {
-                Section("Creating") {
-                    ForEach(creatingVMs) { vm in
+            ForEach(Array(vmSections.enumerated()), id: \.offset) { _, section in
+                Section {
+                    ForEach(section.items) { vm in
                         vmRow(vm)
+                            .listRowBackground(Color(uiColor: .secondarySystemBackground))
                     }
-                }
-            }
-            if !runningVMs.isEmpty {
-                Section("Running") {
-                    ForEach(runningVMs) { vm in
-                        vmRow(vm)
-                    }
-                }
-            }
-            if !stoppedVMs.isEmpty {
-                Section("Stopped") {
-                    ForEach(stoppedVMs) { vm in
-                        vmRow(vm)
+                } header: {
+                    if let title = section.title {
+                        HStack(spacing: 6) {
+                            Text(title)
+                                .font(.system(.footnote, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text("\(section.items.count)")
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .textCase(nil)
                     }
                 }
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
+        .listSectionSpacing(.custom(16))
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 
     private func vmRow(_ vm: StoredVM) -> some View {
         HStack(spacing: 8) {
-            Text("#")
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
             Text(vm.vmName)
                 .font(.system(.body, design: .monospaced))
             Spacer()
@@ -176,13 +182,16 @@ struct ChannelListView: View {
                     .padding(.vertical, 2)
                     .background(.red, in: Capsule())
             }
-            Circle()
-                .fill(vm.isCreating ? .orange : vm.isRunning ? .green : .gray.opacity(0.4))
-                .frame(width: 8, height: 8)
         }
         .tag(vm.vmName)
-        .disabled(!vm.isRunning && !vm.isCreating)
         .contextMenu {
+            if let safariURL = safariURL(for: vm) {
+                Button {
+                    openURL(safariURL)
+                } label: {
+                    Label("Open in Safari", systemImage: "safari")
+                }
+            }
             if vm.isRunning {
                 Button {
                     cpSource = vm
@@ -191,6 +200,17 @@ struct ChannelListView: View {
                 }
             }
         }
+        .selectionDisabled(!vm.isRunning && !vm.isCreating)
+    }
+
+    private func safariURL(for vm: StoredVM) -> URL? {
+        guard !vm.httpsURL.isEmpty,
+              let url = URL(string: vm.httpsURL),
+              url.scheme != nil
+        else {
+            return nil
+        }
+        return url
     }
 
     private func loadVMs() async {
@@ -275,5 +295,24 @@ private func unreadCount(api: APIClient, shelleyURL: String, lastViewed: Date?) 
         }.count ?? 0
     } catch {
         return -1 // Signal: keep existing count
+    }
+}
+
+private struct VMListBackground: View {
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemGroupedBackground)
+            Canvas { context, size in
+                let stripeHeight: CGFloat = 2
+                let stripeSpacing: CGFloat = 4
+                let stripeColor = Color.primary.opacity(0.03)
+
+                for y in stride(from: stripeHeight, through: size.height, by: stripeSpacing) {
+                    let rect = CGRect(x: 0, y: y, width: size.width, height: stripeHeight)
+                    context.fill(Path(rect), with: .color(stripeColor))
+                }
+            }
+        }
+        .ignoresSafeArea()
     }
 }

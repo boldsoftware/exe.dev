@@ -20,6 +20,10 @@ let package = Package(
             name: "SyncNotificationSupport",
             targets: ["SyncNotificationSupport"]
         ),
+        .library(
+            name: "VMListSupport",
+            targets: ["VMListSupport"]
+        ),
     ],
     targets: [
         .target(
@@ -42,12 +46,18 @@ let package = Package(
             path: "exe.dev/TerminalSupport",
             sources: ["TerminalRedrawPlanner.swift"]
         ),
+        .target(
+            name: "VMListSupport",
+            path: "exe.dev/Support",
+            sources: ["VMListGrouping.swift"]
+        ),
         .testTarget(
             name: "ConversationDeltaReducerSupportTests",
             dependencies: [
                 "ConversationDeltaReducerSupport",
                 "SyncNotificationSupport",
                 "TerminalRedrawSupport",
+                "VMListSupport",
             ],
             path: "exe.devTests"
         ),
