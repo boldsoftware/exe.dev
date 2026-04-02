@@ -24,6 +24,7 @@ type AuthFormPage struct {
 	TeamInviteEmail string `json:"teamInviteEmail,omitempty"`
 	ResponseMode    string `json:"response_mode,omitempty"`
 	CallbackURI     string `json:"callback_uri,omitempty"`
+	IsIOSApp        bool   `json:"isIOSApp,omitempty"`
 }
 
 // AuthPowPage is the proof-of-work challenge page.

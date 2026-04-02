@@ -303,6 +303,18 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 
 	// Check for app token flow (iOS/native app authentication).
 	appFlow := appTokenFlowFromOAuthState(oauthState)
+	if appFlow.isAppTokenFlow() {
+		// iOS app signups get an automatic 7-day trial (no credit card required).
+		if err := s.grantIOSTrial(ctx, userID); err != nil {
+			s.slog().ErrorContext(ctx, "failed to grant iOS trial", "error", err, "user_id", userID)
+		} else {
+			s.slog().InfoContext(ctx, "iOS trial granted",
+				"user_id", userID,
+				"email", oauthState.Email,
+				"source", "google_oauth",
+			)
+		}
+	}
 	if s.completeAuthWithAppToken(w, r, userID, appFlow, true) {
 		return
 	}

@@ -74,6 +74,7 @@ interface PageData {
   teamInviteEmail: string
   response_mode: string
   callback_uri: string
+  isIOSApp: boolean
 }
 
 const page = pageData<PageData>()

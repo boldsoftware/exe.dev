@@ -277,14 +277,139 @@ func TestAppTokenFlowAlreadyAuthenticated(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	// Now renders a passkey prompt page instead of redirecting.
+	// App token flow with existing cookie now shows the sign-in page
+	// so the user can choose which account to use.
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
 	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "exedev-app") || !strings.Contains(bodyStr, "exeapp_") {
-		t.Fatal("page should contain callback URL with app token")
+	// Should show the auth form with response_mode carried through, not issue a token.
+	if !strings.Contains(bodyStr, `"formAction":"/auth"`) {
+		t.Fatal("expected auth form page, got: " + bodyStr[:min(300, len(bodyStr))])
+	}
+	if !strings.Contains(bodyStr, `"response_mode":"app_token"`) {
+		t.Fatal("auth form should carry response_mode=app_token")
+	}
+	// Should NOT contain an app token (not auto-issued).
+	if strings.Contains(bodyStr, "exeapp_") {
+		t.Fatal("should not auto-issue app token when cookie is present")
+	}
+}
+
+func TestIOSNewUserGetsTrial(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	port := s.httpPort()
+	const testEmail = "ios-trial@example.com"
+
+	// Simulate a POST from the iOS app (response_mode=app_token + iOS User-Agent).
+	form := url.Values{}
+	form.Set("email", testEmail)
+	form.Set("response_mode", "app_token")
+	form.Set("callback_uri", "exedev-app://auth")
+	req, _ := http.NewRequest("POST",
+		fmt.Sprintf("http://127.0.0.1:%d/auth", port),
+		strings.NewReader(form.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Verify the user was created with a trial plan.
+	var userID string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, testEmail).Scan(&userID)
+	})
+	if err != nil {
+		t.Fatal("user not created:", err)
+	}
+
+	// Check that the account has a trial plan, not basic.
+	var planID string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT ap.plan_id FROM account_plans ap
+			JOIN accounts a ON a.id = ap.account_id
+			WHERE a.created_by = ? AND ap.ended_at IS NULL`, userID).Scan(&planID)
+	})
+	if err != nil {
+		t.Fatal("no active account plan:", err)
+	}
+	if !strings.Contains(planID, "trial") {
+		t.Fatalf("expected trial plan, got %q", planID)
+	}
+
+	// Verify trial_expires_at is set.
+	var trialExpires *string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT trial_expires_at FROM account_plans ap
+			JOIN accounts a ON a.id = ap.account_id
+			WHERE a.created_by = ? AND ap.ended_at IS NULL`, userID).Scan(&trialExpires)
+	})
+	if err != nil {
+		t.Fatal("failed to check trial_expires_at:", err)
+	}
+	if trialExpires == nil {
+		t.Fatal("trial_expires_at should be set")
+	}
+}
+
+func TestNonIOSNewUserDoesNotGetTrial(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	port := s.httpPort()
+	const testEmail = "noios-trial@example.com"
+
+	// POST from app_token flow but with a non-iOS User-Agent.
+	form := url.Values{}
+	form.Set("email", testEmail)
+	form.Set("response_mode", "app_token")
+	form.Set("callback_uri", "exedev-app://auth")
+	req, _ := http.NewRequest("POST",
+		fmt.Sprintf("http://127.0.0.1:%d/auth", port),
+		strings.NewReader(form.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	// Verify the user was created with a basic plan (not trial).
+	var userID string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, testEmail).Scan(&userID)
+	})
+	if err != nil {
+		t.Fatal("user not created:", err)
+	}
+
+	var planID string
+	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT ap.plan_id FROM account_plans ap
+			JOIN accounts a ON a.id = ap.account_id
+			WHERE a.created_by = ? AND ap.ended_at IS NULL`, userID).Scan(&planID)
+	})
+	if err != nil {
+		t.Fatal("no active account plan:", err)
+	}
+	if strings.Contains(planID, "trial") {
+		t.Fatalf("expected basic plan (not trial), got %q", planID)
 	}
 }
 

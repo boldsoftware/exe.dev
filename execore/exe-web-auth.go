@@ -1295,27 +1295,27 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user already has a valid exe.dev auth cookie
 	if userID, err := s.validateAuthCookie(r); err == nil {
-		// If this is an app token flow and user is already authed, issue token directly.
-		if s.completeAuthWithAppToken(w, r, userID, flow, false) {
+		// For app token flows (iOS): always show the sign-in page so the user can
+		// choose which account to use, even if they already have a session cookie
+		// in the system browser.
+		if !flow.isAppTokenFlow() {
+			// Apply invite code for login-with-exe users who visit with an invite code.
+			if code := r.URL.Query().Get("invite"); code != "" {
+				s.maybeApplyInviteCode(r.Context(), s.lookupUnusedInviteCode(r.Context(), code), userID)
+			}
+
+			// If a prompt was passed (from the landing page "Start building" form),
+			// redirect to /new with the prompt so the user can create a VM.
+			if prompt := r.URL.Query().Get("prompt"); prompt != "" {
+				newURL := "/new?prompt=" + url.QueryEscape(prompt)
+				http.Redirect(w, r, newURL, http.StatusSeeOther)
+				return
+			}
+
+			// User is already authenticated, handle redirect
+			s.redirectAfterAuth(w, r, userID)
 			return
 		}
-
-		// Apply invite code for login-with-exe users who visit with an invite code.
-		if code := r.URL.Query().Get("invite"); code != "" {
-			s.maybeApplyInviteCode(r.Context(), s.lookupUnusedInviteCode(r.Context(), code), userID)
-		}
-
-		// If a prompt was passed (from the landing page "Start building" form),
-		// redirect to /new with the prompt so the user can create a VM.
-		if prompt := r.URL.Query().Get("prompt"); prompt != "" {
-			newURL := "/new?prompt=" + url.QueryEscape(prompt)
-			http.Redirect(w, r, newURL, http.StatusSeeOther)
-			return
-		}
-
-		// User is already authenticated, handle redirect
-		s.redirectAfterAuth(w, r, userID)
-		return
 	}
 
 	// Handle POST request (email submission)
@@ -1395,6 +1395,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		TeamInviteEmail: teamInviteEmail,
 		ResponseMode:    flow.ResponseMode,
 		CallbackURI:     flow.CallbackURI,
+		IsIOSApp:        isIOSAppRequest(r),
 	})
 }
 
@@ -1533,10 +1534,12 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// When creating a VM (hostname present), billing is checked post-verification instead.
 	// Google OAuth users skip billing at signup — Google login is sufficient anti-abuse friction.
 	// They hit billing when they try to create a VM.
+	// iOS app users skip billing at signup — they get a 7-day trial automatically.
 	willUseGoogleOAuth := s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
 	oidcProvider := s.shouldUseTeamOIDC(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
 	willUseOIDC := oidcProvider != nil
-	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC {
+	isIOS := isIOSAppRequest(r)
+	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC && !isIOS {
 		// Create pending registration to track email through Stripe.
 		// Generate the account ID now so it can be used as the Stripe customer ID
 		// and later as the canonical account ID when the user is created.
@@ -1676,6 +1679,18 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		// Check email quality and disable VM creation if disposable
 		if err := s.checkEmailQuality(context.WithoutCancel(r.Context()), userID, addr); err != nil {
 			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", addr)
+		}
+
+		// iOS app signups get an automatic 7-day trial (no credit card required).
+		if isIOS {
+			if err := s.grantIOSTrial(r.Context(), userID); err != nil {
+				s.slog().ErrorContext(r.Context(), "failed to grant iOS trial", "error", err, "user_id", userID)
+			} else {
+				s.slog().InfoContext(r.Context(), "iOS trial granted",
+					"user_id", userID,
+					"email", addr,
+				)
+			}
 		}
 	}
 

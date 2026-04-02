@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 )
@@ -278,4 +279,42 @@ func (s *Server) validateAppToken(ctx context.Context, token string) (string, er
 	}()
 
 	return appToken.UserID, nil
+}
+
+// isIOSAppRequest reports whether the request originates from the iOS app.
+// Belt-and-suspenders: checks both the app token flow parameter (response_mode=app_token)
+// and the User-Agent for iOS device indicators (iPhone, iPad, iPod).
+func isIOSAppRequest(r *http.Request) bool {
+	flow := parseAppTokenFlowParams(r)
+	if !flow.isAppTokenFlow() {
+		return false
+	}
+	ua := r.UserAgent()
+	return strings.Contains(ua, "iPhone") || strings.Contains(ua, "iPad") || strings.Contains(ua, "iPod")
+}
+
+// grantIOSTrial upgrades a user's account from the basic plan to a 7-day trial plan.
+// This is called when a new user signs up through the iOS app.
+func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
+	plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
+	trialDays := plan.Quotas.TrialDays
+	if trialDays == 0 {
+		trialDays = 7
+	}
+	trialEnd := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
+
+	return s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get account for iOS trial: %w", err)
+		}
+		changedBy := "ios_signup"
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      acct.ID,
+			PlanID:         entitlement.PlanID(entitlement.CategoryTrial),
+			At:             time.Now(),
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      changedBy,
+		})
+	})
 }
