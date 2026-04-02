@@ -56,9 +56,11 @@ type accountingTransport struct {
 
 	// sseModel and sseMessageID track the model/id from message_start events,
 	// since Anthropic SSE sends model/id in message_start but final usage in message_delta.
-	sseModel      string
-	sseMessageID  string
-	sseStartUsage *anthropicUsageData // usage from message_start, merged into message_delta
+	sseModel         string
+	sseMessageID     string
+	sseStartUsage    *anthropicUsageData // usage from message_start, merged into message_delta
+	sseDataLineCount int                 // number of SSE data lines received
+	sseError         *anthropicSSEError  // error event from Anthropic SSE stream, if any
 }
 
 // getBodyCannotReplay is an http.Request.GetBody implementation that returns a sentinel error.
@@ -405,6 +407,8 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 	usageDebit := UsageDebit{Created: time.Now()}
 	ctx := m.incomingReq.Context()
 
+	m.sseDataLineCount++
+
 	switch m.provider {
 	case llmpricing.ProviderAnthropic:
 		// Anthropic SSE has two relevant event types:
@@ -419,9 +423,17 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			Type    string                      `json:"type"`
 			Message *anthropicResponseUsageInfo `json:"message"`
 			Usage   *anthropicUsageData         `json:"usage"`
+			Error   *anthropicSSEError          `json:"error"`
 		}
 		if err := json.Unmarshal(data, &envelope); err != nil {
 			// SSE events that aren't JSON are common (empty lines, etc.)
+			return nil
+		}
+
+		// Anthropic sends errors within the SSE stream as {"type":"error","error":{...}}.
+		// These have HTTP 200 status but contain no usage data.
+		if envelope.Type == "error" && envelope.Error != nil {
+			m.sseError = envelope.Error
 			return nil
 		}
 
@@ -558,8 +570,25 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 		if m.incomingReq != nil {
 			ctx = m.incomingReq.Context()
 		}
-		m.log.ErrorContext(ctx, "SSE stream completed without usage data",
-			"box", m.boxName, "user_id", m.userID, "provider", string(m.provider))
+		attrs := []any{
+			"box", m.boxName,
+			"user_id", m.userID,
+			"provider", string(m.provider),
+			"sse_data_lines", m.sseDataLineCount,
+		}
+		switch {
+		case m.sseError != nil:
+			// Anthropic returned an error within the SSE stream (e.g. overloaded_error).
+			// Expected during capacity issues — warn, not error.
+			attrs = append(attrs, "error_type", m.sseError.Type, "error_message", m.sseError.Message)
+			m.log.WarnContext(ctx, "SSE stream completed with upstream error", attrs...)
+		case m.sseDataLineCount == 0:
+			// No SSE events received at all — empty response / connection dropped.
+			m.log.WarnContext(ctx, "SSE stream completed with no events", attrs...)
+		default:
+			// Received events but no usage data — stream interrupted before message_delta.
+			m.log.ErrorContext(ctx, "SSE stream completed without usage data", attrs...)
+		}
 		return
 	}
 
@@ -662,6 +691,13 @@ func billableOverageFromDebit(costUSD, postDebitAvailable float64) float64 {
 
 func costUSDToMicrocents(costUSD float64) tender.Value {
 	return tender.Mint(0, int64(math.Round(costUSD*1_000_000)))
+}
+
+// anthropicSSEError represents an error event received in an Anthropic SSE stream.
+// Anthropic sends these as {"type":"error","error":{"type":"overloaded_error","message":"..."}}.
+type anthropicSSEError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.

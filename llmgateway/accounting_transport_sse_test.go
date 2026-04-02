@@ -808,3 +808,198 @@ func TestSSE_RapidDisconnectReconnect(t *testing.T) {
 		}(i)
 	}
 }
+
+// TestSSE_AnthropicErrorEvent verifies that an Anthropic error event
+// (e.g. overloaded_error) is detected, logged as a warning (not error),
+// and the stream still forwards bytes correctly.
+func TestSSE_AnthropicErrorEvent(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	var raw bytes.Buffer
+	raw.WriteString("event: error\n")
+	raw.WriteString(`data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)
+	raw.WriteString("\n\n")
+
+	expected := raw.Bytes()
+
+	backend := sseBackend(t, []string{string(expected)})
+	mockURL, _ := url.Parse(backend.URL)
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[],"stream":true}`))
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = mockURL.Scheme
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	// Bytes should be forwarded as-is.
+	if !bytes.Equal(rr.Body.Bytes(), expected) {
+		t.Errorf("byte mismatch:\ngot:    %q\nexpect: %q", rr.Body.Bytes(), expected)
+	}
+
+	// Should have captured the error.
+	if transport.sseError == nil {
+		t.Fatal("sseError should be set")
+	}
+	if transport.sseError.Type != "overloaded_error" {
+		t.Errorf("sseError.Type = %q, want %q", transport.sseError.Type, "overloaded_error")
+	}
+
+	// Should log a warning, not an error.
+	warnRec := logs.findRecord("SSE stream completed with upstream error")
+	if warnRec == nil {
+		t.Fatal("expected 'SSE stream completed with upstream error' log")
+	}
+	if warnRec.Level != slog.LevelWarn {
+		t.Errorf("log level = %v, want %v", warnRec.Level, slog.LevelWarn)
+	}
+	attrs := attrMap(warnRec)
+	assertAttr(t, attrs, "error_type", "overloaded_error")
+	assertAttr(t, attrs, "error_message", "Overloaded")
+
+	// Should NOT log the generic error message.
+	if logs.findRecord("SSE stream completed without usage data") != nil {
+		t.Error("should not log 'SSE stream completed without usage data' for error events")
+	}
+}
+
+// TestSSE_EmptyResponse verifies that a stream with no SSE events at all
+// is logged as a warning (not error) with sse_events=0.
+func TestSSE_EmptyResponse(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	// Backend sends SSE headers but no data at all.
+	backend := sseBackend(t, nil)
+	mockURL, _ := url.Parse(backend.URL)
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[],"stream":true}`))
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = mockURL.Scheme
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200", rr.Code)
+	}
+
+	// Should log a warning about no events.
+	warnRec := logs.findRecord("SSE stream completed with no events")
+	if warnRec == nil {
+		t.Fatal("expected 'SSE stream completed with no events' log")
+	}
+	if warnRec.Level != slog.LevelWarn {
+		t.Errorf("log level = %v, want %v", warnRec.Level, slog.LevelWarn)
+	}
+
+	// Should NOT log the generic error.
+	if logs.findRecord("SSE stream completed without usage data") != nil {
+		t.Error("should not log 'SSE stream completed without usage data' for empty responses")
+	}
+}
+
+// TestSSE_InterruptedStream verifies that a stream with events but no
+// usage data (interrupted before message_delta) is logged as an error
+// with the event count included.
+func TestSSE_InterruptedStream(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	// Send message_start and some content, but no message_delta with usage.
+	var raw bytes.Buffer
+	raw.WriteString("data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-4-6\",\"id\":\"msg_interrupted\",\"usage\":{\"input_tokens\":100,\"output_tokens\":0}}}\n\n")
+	raw.WriteString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hello\"}}\n\n")
+	raw.WriteString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\" world\"}}\n\n")
+
+	backend := sseBackend(t, []string{raw.String()})
+	mockURL, _ := url.Parse(backend.URL)
+	incomingReq := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-opus-4-6","messages":[],"stream":true}`))
+	incomingReq.Header.Set("Content-Type", "application/json")
+	incomingReq.RemoteAddr = "127.0.0.1:12345"
+
+	transport := &accountingTransport{
+		RoundTripper: http.DefaultTransport,
+		provider:     llmpricing.ProviderAnthropic,
+		log:          logger,
+		incomingReq:  incomingReq,
+		boxName:      "test-box",
+		userID:       "test-user",
+	}
+
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: -1,
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = mockURL.Scheme
+			r.Out.URL.Host = mockURL.Host
+			r.Out.Host = mockURL.Host
+		},
+		Transport:      transport,
+		ModifyResponse: transport.modifyResponse,
+	}
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, incomingReq)
+	transport.WaitAndAddSSEAttributes()
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200", rr.Code)
+	}
+
+	// Should log an error (this is the concerning pattern — real usage with no billing).
+	errRec := logs.findRecord("SSE stream completed without usage data")
+	if errRec == nil {
+		t.Fatal("expected 'SSE stream completed without usage data' log")
+	}
+	if errRec.Level != slog.LevelError {
+		t.Errorf("log level = %v, want %v", errRec.Level, slog.LevelError)
+	}
+	attrs := attrMap(errRec)
+	if events, ok := attrs["sse_data_lines"].(int64); !ok || events != 3 {
+		t.Errorf("sse_data_lines = %v, want 3", attrs["sse_data_lines"])
+	}
+}
