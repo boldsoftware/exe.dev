@@ -208,7 +208,11 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	})
 	wg.Wait()
 	if boxErr != nil {
-		ps.Lg.ErrorContext(r.Context(), "Failed to look up box", "error", boxErr, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
+		level := slog.LevelError
+		if errors.Is(boxErr, context.Canceled) {
+			level = slog.LevelWarn
+		}
+		ps.Lg.Log(r.Context(), level, "Failed to look up box", "error", boxErr, "box_name", boxName, "elapsed", time.Since(start).Round(time.Millisecond))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
