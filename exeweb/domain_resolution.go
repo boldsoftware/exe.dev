@@ -107,7 +107,6 @@ func (dr *DomainResolver) ResolveCustomDomainBoxName(ctx context.Context, host s
 
 	cname = domz.Canonicalize(cname)
 	if cname != host {
-		dr.checkWildcardCNAME(ctx, host, cname)
 		return dr.boxNameFromCNAME(ctx, host, cname)
 	}
 
@@ -177,6 +176,21 @@ func parentDomain(host string) string {
 		return ""
 	}
 	return after
+}
+
+// CheckWildcardCNAME looks up the CNAME for host and, if found,
+// checks whether it's likely the result of a wildcard CNAME record.
+// This is intended for cert-issuance paths only, not every request.
+func (dr *DomainResolver) CheckWildcardCNAME(ctx context.Context, host string) {
+	cname, err := dr.lookupCNAME(ctx, host)
+	if err != nil {
+		return
+	}
+	cname = domz.Canonicalize(cname)
+	if cname == host {
+		return
+	}
+	dr.checkWildcardCNAME(ctx, host, cname)
 }
 
 // checkWildcardCNAME detects probable wildcard CNAME records.

@@ -119,7 +119,40 @@ func TestCheckWildcardCNAME(t *testing.T) {
 	}
 }
 
-func TestResolveCustomDomainBoxNameLogsWildcardCNAME(t *testing.T) {
+func TestCheckWildcardCNAMEFromHost(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	lg := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	dr := &DomainResolver{
+		Lg:  lg,
+		Env: ptrTo(stage.Prod()),
+		LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
+			switch host {
+			case "random.attacker.com":
+				return "mybox.exe.xyz", nil
+			case "attacker.com":
+				// Same target — this is a wildcard CNAME (*.attacker.com)
+				return "mybox.exe.xyz", nil
+			default:
+				return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+			}
+		},
+	}
+
+	dr.CheckWildcardCNAME(context.Background(), "random.attacker.com")
+
+	logged := buf.String()
+	if !strings.Contains(logged, "probable wildcard CNAME detected") {
+		t.Errorf("expected wildcard CNAME warning in log, got: %q", logged)
+	}
+	if !strings.Contains(logged, "attacker.com") {
+		t.Errorf("expected parent domain in log, got: %q", logged)
+	}
+}
+
+func TestResolveCustomDomainBoxNameNoWildcardCheck(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
@@ -139,7 +172,6 @@ func TestResolveCustomDomainBoxNameLogsWildcardCNAME(t *testing.T) {
 			case "random.attacker.com":
 				return "mybox.exe.xyz", nil
 			case "attacker.com":
-				// Same target — this is a wildcard CNAME (*.attacker.com)
 				return "mybox.exe.xyz", nil
 			default:
 				return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
@@ -156,11 +188,8 @@ func TestResolveCustomDomainBoxNameLogsWildcardCNAME(t *testing.T) {
 	}
 
 	logged := buf.String()
-	if !strings.Contains(logged, "probable wildcard CNAME detected") {
-		t.Errorf("expected wildcard CNAME warning in log, got: %q", logged)
-	}
-	if !strings.Contains(logged, "attacker.com") {
-		t.Errorf("expected parent domain in log, got: %q", logged)
+	if strings.Contains(logged, "probable wildcard CNAME detected") {
+		t.Errorf("ResolveCustomDomainBoxName should not check for wildcard CNAMEs, got: %q", logged)
 	}
 }
 

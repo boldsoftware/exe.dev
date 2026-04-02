@@ -480,7 +480,9 @@ func (ps *ProxyServer) ValidateHostForTLSCertWithBoxName(ctx context.Context, ho
 		return "", nil
 	}
 
-	boxName, err := ps.domainResolver().ResolveCustomDomainBoxName(ctx, host)
+	dr := ps.domainResolver()
+	dr.CheckWildcardCNAME(ctx, host)
+	boxName, err := dr.ResolveCustomDomainBoxName(ctx, host)
 	if err != nil {
 		return "", err
 	}
