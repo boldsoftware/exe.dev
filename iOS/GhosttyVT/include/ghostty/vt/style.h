@@ -115,7 +115,7 @@ typedef struct {
  *
  * @ingroup style
  */
-void ghostty_style_default(GhosttyStyle* style);
+GHOSTTY_API void ghostty_style_default(GhosttyStyle* style);
 
 /**
  * Check if a style is the default style.
@@ -127,7 +127,7 @@ void ghostty_style_default(GhosttyStyle* style);
  *
  * @ingroup style
  */
-bool ghostty_style_is_default(const GhosttyStyle* style);
+GHOSTTY_API bool ghostty_style_is_default(const GhosttyStyle* style);
 
 #ifdef __cplusplus
 }

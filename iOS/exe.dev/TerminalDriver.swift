@@ -11,8 +11,22 @@ actor TerminalDriver {
     }
 
     func resize(cols: UInt16, rows: UInt16) -> TerminalScreenState? {
+        resize(cols: cols, rows: rows, cellWidthPx: 0, cellHeightPx: 0)
+    }
+
+    func resize(
+        cols: UInt16,
+        rows: UInt16,
+        cellWidthPx: UInt32,
+        cellHeightPx: UInt32
+    ) -> TerminalScreenState? {
         guard cols != emulator.cols || rows != emulator.rows else { return nil }
-        emulator.resize(cols: cols, rows: rows)
+        emulator.resize(
+            cols: cols,
+            rows: rows,
+            cellWidthPx: cellWidthPx,
+            cellHeightPx: cellHeightPx
+        )
         return snapshot()
     }
 

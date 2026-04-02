@@ -122,11 +122,17 @@ nonisolated final class TerminalEmulator {
     }
 
     /// Resize the terminal grid.
-    func resize(cols: UInt16, rows: UInt16) {
+    func resize(cols: UInt16, rows: UInt16, cellWidthPx: UInt32, cellHeightPx: UInt32) {
         guard cols > 0, rows > 0 else { return }
         self.cols = cols
         self.rows = rows
-        ghostty_terminal_resize(terminal, cols, rows)
+        _ = ghostty_terminal_resize(
+            terminal,
+            cols,
+            rows,
+            max(cellWidthPx, 1),
+            max(cellHeightPx, 1)
+        )
     }
 
     /// Encode a key press and return the escape sequence bytes to send to the PTY.

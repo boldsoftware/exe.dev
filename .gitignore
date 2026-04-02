@@ -12,6 +12,7 @@ node_modules/
 .nodeenv/
 deps/sshpiper/sshpiperd
 deps/sshpiper/metrics
+deps/ghostty/
 /cmd/exed/exed
 *.cover
 # codex seems to need a local go cache because of its sandbox.

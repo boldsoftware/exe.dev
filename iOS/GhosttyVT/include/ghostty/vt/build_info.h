@@ -23,6 +23,7 @@
  * @{
  */
 
+#include <stddef.h>
 #include <stdbool.h>
 
 #include <ghostty/vt/types.h>
@@ -77,6 +78,42 @@ typedef enum {
    * Output type: GhosttyOptimizeMode *
    */
   GHOSTTY_BUILD_INFO_OPTIMIZE = 4,
+
+  /**
+   * The full version string (e.g. "1.2.3" or "1.2.3-dev+abcdef").
+   *
+   * Output type: GhosttyString *
+   */
+  GHOSTTY_BUILD_INFO_VERSION_STRING = 5,
+
+  /**
+   * The major version number.
+   *
+   * Output type: size_t *
+   */
+  GHOSTTY_BUILD_INFO_VERSION_MAJOR = 6,
+
+  /**
+   * The minor version number.
+   *
+   * Output type: size_t *
+   */
+  GHOSTTY_BUILD_INFO_VERSION_MINOR = 7,
+
+  /**
+   * The patch version number.
+   *
+   * Output type: size_t *
+   */
+  GHOSTTY_BUILD_INFO_VERSION_PATCH = 8,
+
+  /**
+   * The build metadata string (e.g. commit hash). Has zero length if
+   * no build metadata is present.
+   *
+   * Output type: GhosttyString *
+   */
+  GHOSTTY_BUILD_INFO_VERSION_BUILD = 9,
 } GhosttyBuildInfo;
 
 /**
@@ -92,7 +129,7 @@ typedef enum {
  *
  * @ingroup build_info
  */
-GhosttyResult ghostty_build_info(GhosttyBuildInfo data, void *out);
+GHOSTTY_API GhosttyResult ghostty_build_info(GhosttyBuildInfo data, void *out);
 
 #ifdef __cplusplus
 }

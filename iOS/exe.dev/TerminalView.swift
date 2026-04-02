@@ -21,7 +21,7 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
 
     /// Called when the view's bounds change (drawer toggle, rotation, etc.)
     /// with the new (cols, rows).
-    var onGridResize: ((UInt16, UInt16) -> Void)?
+    var onGridResize: ((UInt16, UInt16, UInt32, UInt32) -> Void)?
 
     /// Track the last reported grid size to avoid redundant callbacks.
     private var lastReportedGrid: (cols: Int, rows: Int) = (0, 0)
@@ -100,9 +100,15 @@ class TerminalUIView: UIView, UIKeyInput, UITextInputTraits {
     override func layoutSubviews() {
         super.layoutSubviews()
         let (cols, rows) = gridSize
+        let cell = cellSize
         if cols != lastReportedGrid.cols || rows != lastReportedGrid.rows {
             lastReportedGrid = (cols, rows)
-            onGridResize?(UInt16(cols), UInt16(rows))
+            onGridResize?(
+                UInt16(cols),
+                UInt16(rows),
+                max(UInt32(ceil(cell.width)), 1),
+                max(UInt32(ceil(cell.height)), 1)
+            )
         }
     }
 
@@ -354,7 +360,7 @@ struct TerminalViewRepresentable: UIViewRepresentable {
     let screenState: TerminalScreenState
     let onInput: (String) -> Void
     let onSendKey: (GhosttyKey, GhosttyKeyAction, GhosttyMods, String?, UInt32) -> Void
-    let onResize: (UInt16, UInt16) -> Void
+    let onResize: (UInt16, UInt16, UInt32, UInt32) -> Void
 
     func makeUIView(context: Context) -> TerminalUIView {
         let view = TerminalUIView()
@@ -510,12 +516,17 @@ class TerminalViewModel {
         }
     }
 
-    func resize(cols: UInt16, rows: UInt16) {
+    func resize(cols: UInt16, rows: UInt16, cellWidthPx: UInt32, cellHeightPx: UInt32) {
         connection?.sendResize(cols: cols, rows: rows)
         let gen = generation
         let currentDriver = driver
         Task { @MainActor [weak self] in
-            let updated = await currentDriver.resize(cols: cols, rows: rows)
+            let updated = await currentDriver.resize(
+                cols: cols,
+                rows: rows,
+                cellWidthPx: cellWidthPx,
+                cellHeightPx: cellHeightPx
+            )
             guard let self, self.generation == gen, let updated else { return }
             self.screenState = updated
         }
@@ -581,8 +592,13 @@ struct VMTerminalView: View {
                         viewModel.sendKeyEvent(key: key, action: action, mods: mods,
                                                text: text, codepoint: codepoint)
                     },
-                    onResize: { cols, rows in
-                        viewModel.resize(cols: cols, rows: rows)
+                    onResize: { cols, rows, cellWidthPx, cellHeightPx in
+                        viewModel.resize(
+                            cols: cols,
+                            rows: rows,
+                            cellWidthPx: cellWidthPx,
+                            cellHeightPx: cellHeightPx
+                        )
                     }
                 )
             }

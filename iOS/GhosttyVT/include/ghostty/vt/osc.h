@@ -21,7 +21,7 @@
  *
  * @ingroup osc
  */
-typedef struct GhosttyOscParser *GhosttyOscParser;
+typedef struct GhosttyOscParserImpl *GhosttyOscParser;
 
 /**
  * Opaque handle to a single OSC command.
@@ -31,7 +31,7 @@ typedef struct GhosttyOscParser *GhosttyOscParser;
  *
  * @ingroup osc
  */
-typedef struct GhosttyOscCommand *GhosttyOscCommand;
+typedef struct GhosttyOscCommandImpl *GhosttyOscCommand;
 
 /** @defgroup osc OSC Parser
  *
@@ -123,7 +123,7 @@ typedef enum {
  * 
  * @ingroup osc
  */
-GhosttyResult ghostty_osc_new(const GhosttyAllocator *allocator, GhosttyOscParser *parser);
+GHOSTTY_API GhosttyResult ghostty_osc_new(const GhosttyAllocator *allocator, GhosttyOscParser *parser);
 
 /**
  * Free an OSC parser instance.
@@ -135,7 +135,7 @@ GhosttyResult ghostty_osc_new(const GhosttyAllocator *allocator, GhosttyOscParse
  * 
  * @ingroup osc
  */
-void ghostty_osc_free(GhosttyOscParser parser);
+GHOSTTY_API void ghostty_osc_free(GhosttyOscParser parser);
 
 /**
  * Reset an OSC parser instance to its initial state.
@@ -148,7 +148,7 @@ void ghostty_osc_free(GhosttyOscParser parser);
  * 
  * @ingroup osc
  */
-void ghostty_osc_reset(GhosttyOscParser parser);
+GHOSTTY_API void ghostty_osc_reset(GhosttyOscParser parser);
 
 /**
  * Parse the next byte in an OSC sequence.
@@ -165,7 +165,7 @@ void ghostty_osc_reset(GhosttyOscParser parser);
  * 
  * @ingroup osc
  */
-void ghostty_osc_next(GhosttyOscParser parser, uint8_t byte);
+GHOSTTY_API void ghostty_osc_next(GhosttyOscParser parser, uint8_t byte);
 
 /**
  * Finalize OSC parsing and retrieve the parsed command.
@@ -195,7 +195,7 @@ void ghostty_osc_next(GhosttyOscParser parser, uint8_t byte);
  * 
  * @ingroup osc
  */
-GhosttyOscCommand ghostty_osc_end(GhosttyOscParser parser, uint8_t terminator);
+GHOSTTY_API GhosttyOscCommand ghostty_osc_end(GhosttyOscParser parser, uint8_t terminator);
 
 /**
  * Get the type of an OSC command.
@@ -209,7 +209,7 @@ GhosttyOscCommand ghostty_osc_end(GhosttyOscParser parser, uint8_t terminator);
  * 
  * @ingroup osc
  */
-GhosttyOscCommandType ghostty_osc_command_type(GhosttyOscCommand command);
+GHOSTTY_API GhosttyOscCommandType ghostty_osc_command_type(GhosttyOscCommand command);
 
 /**
  * Extract data from an OSC command.
@@ -226,7 +226,7 @@ GhosttyOscCommandType ghostty_osc_command_type(GhosttyOscCommand command);
  * 
  * @ingroup osc
  */
-bool ghostty_osc_command_data(GhosttyOscCommand command, GhosttyOscCommandData data, void *out);
+GHOSTTY_API bool ghostty_osc_command_data(GhosttyOscCommand command, GhosttyOscCommandData data, void *out);
 
 /** @} */
 

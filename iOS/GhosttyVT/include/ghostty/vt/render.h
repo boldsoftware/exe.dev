@@ -86,21 +86,21 @@ extern "C" {
  *
  * @ingroup render
  */
-typedef struct GhosttyRenderState* GhosttyRenderState;
+typedef struct GhosttyRenderStateImpl* GhosttyRenderState;
 
 /**
  * Opaque handle to a render-state row iterator.
  *
  * @ingroup render
  */
-typedef struct GhosttyRenderStateRowIterator* GhosttyRenderStateRowIterator;
+typedef struct GhosttyRenderStateRowIteratorImpl* GhosttyRenderStateRowIterator;
 
 /**
  * Opaque handle to render-state row cells.
  *
  * @ingroup render
  */
-typedef struct GhosttyRenderStateRowCells* GhosttyRenderStateRowCells;
+typedef struct GhosttyRenderStateRowCellsImpl* GhosttyRenderStateRowCells;
 
 /**
  * Dirty state of a render state after update.
@@ -299,7 +299,7 @@ typedef struct {
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_new(const GhosttyAllocator* allocator,
+GHOSTTY_API GhosttyResult ghostty_render_state_new(const GhosttyAllocator* allocator,
                                        GhosttyRenderState* state);
 
 /**
@@ -312,7 +312,7 @@ GhosttyResult ghostty_render_state_new(const GhosttyAllocator* allocator,
  *
  * @ingroup render
  */
-void ghostty_render_state_free(GhosttyRenderState state);
+GHOSTTY_API void ghostty_render_state_free(GhosttyRenderState state);
 
 /**
  * Update a render state instance from a terminal.
@@ -328,7 +328,7 @@ void ghostty_render_state_free(GhosttyRenderState state);
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_update(GhosttyRenderState state,
+GHOSTTY_API GhosttyResult ghostty_render_state_update(GhosttyRenderState state,
                                           GhosttyTerminal terminal);
 
 /**
@@ -345,7 +345,7 @@ GhosttyResult ghostty_render_state_update(GhosttyRenderState state,
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_get(GhosttyRenderState state,
+GHOSTTY_API GhosttyResult ghostty_render_state_get(GhosttyRenderState state,
                                        GhosttyRenderStateData data,
                                        void* out);
 
@@ -364,7 +364,7 @@ GhosttyResult ghostty_render_state_get(GhosttyRenderState state,
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_set(GhosttyRenderState state,
+GHOSTTY_API GhosttyResult ghostty_render_state_set(GhosttyRenderState state,
                                        GhosttyRenderStateOption option,
                                        const void* value);
 
@@ -383,7 +383,7 @@ GhosttyResult ghostty_render_state_set(GhosttyRenderState state,
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_colors_get(GhosttyRenderState state,
+GHOSTTY_API GhosttyResult ghostty_render_state_colors_get(GhosttyRenderState state,
                                               GhosttyRenderStateColors* out_colors);
 
 /**
@@ -400,7 +400,7 @@ GhosttyResult ghostty_render_state_colors_get(GhosttyRenderState state,
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_iterator_new(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_iterator_new(
     const GhosttyAllocator* allocator,
     GhosttyRenderStateRowIterator* out_iterator);
 
@@ -411,7 +411,7 @@ GhosttyResult ghostty_render_state_row_iterator_new(
  *
  * @ingroup render
  */
-void ghostty_render_state_row_iterator_free(GhosttyRenderStateRowIterator iterator);
+GHOSTTY_API void ghostty_render_state_row_iterator_free(GhosttyRenderStateRowIterator iterator);
 
 /**
  * Move a render-state row iterator to the next row.
@@ -425,7 +425,7 @@ void ghostty_render_state_row_iterator_free(GhosttyRenderStateRowIterator iterat
  *
  * @ingroup render
  */
-bool ghostty_render_state_row_iterator_next(GhosttyRenderStateRowIterator iterator);
+GHOSTTY_API bool ghostty_render_state_row_iterator_next(GhosttyRenderStateRowIterator iterator);
 
 /**
  * Get a value from the current row in a render-state row iterator.
@@ -443,7 +443,7 @@ bool ghostty_render_state_row_iterator_next(GhosttyRenderStateRowIterator iterat
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_get(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_get(
     GhosttyRenderStateRowIterator iterator,
     GhosttyRenderStateRowData data,
     void* out);
@@ -465,7 +465,7 @@ GhosttyResult ghostty_render_state_row_get(
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_set(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_set(
     GhosttyRenderStateRowIterator iterator,
     GhosttyRenderStateRowOption option,
     const void* value);
@@ -487,7 +487,7 @@ GhosttyResult ghostty_render_state_row_set(
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_cells_new(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_cells_new(
     const GhosttyAllocator* allocator,
     GhosttyRenderStateRowCells* out_cells);
 
@@ -544,7 +544,7 @@ typedef enum {
  *
  * @ingroup render
  */
-bool ghostty_render_state_row_cells_next(GhosttyRenderStateRowCells cells);
+GHOSTTY_API bool ghostty_render_state_row_cells_next(GhosttyRenderStateRowCells cells);
 
 /**
  * Move a render-state row cells iterator to a specific column.
@@ -560,7 +560,7 @@ bool ghostty_render_state_row_cells_next(GhosttyRenderStateRowCells cells);
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_cells_select(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_cells_select(
     GhosttyRenderStateRowCells cells, uint16_t x);
 
 /**
@@ -580,7 +580,7 @@ GhosttyResult ghostty_render_state_row_cells_select(
  *
  * @ingroup render
  */
-GhosttyResult ghostty_render_state_row_cells_get(
+GHOSTTY_API GhosttyResult ghostty_render_state_row_cells_get(
     GhosttyRenderStateRowCells cells,
     GhosttyRenderStateRowCellsData data,
     void* out);
@@ -592,7 +592,7 @@ GhosttyResult ghostty_render_state_row_cells_get(
  *
  * @ingroup render
  */
-void ghostty_render_state_row_cells_free(GhosttyRenderStateRowCells cells);
+GHOSTTY_API void ghostty_render_state_row_cells_free(GhosttyRenderStateRowCells cells);
 
 /** @} */
 

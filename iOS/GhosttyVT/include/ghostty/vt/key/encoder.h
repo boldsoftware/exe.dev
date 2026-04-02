@@ -22,7 +22,7 @@
  *
  * @ingroup key
  */
-typedef struct GhosttyKeyEncoder *GhosttyKeyEncoder;
+typedef struct GhosttyKeyEncoderImpl *GhosttyKeyEncoder;
 
 /**
  * Kitty keyboard protocol flags.
@@ -119,7 +119,7 @@ typedef enum {
  *
  * @ingroup key
  */
-GhosttyResult ghostty_key_encoder_new(const GhosttyAllocator *allocator, GhosttyKeyEncoder *encoder);
+GHOSTTY_API GhosttyResult ghostty_key_encoder_new(const GhosttyAllocator *allocator, GhosttyKeyEncoder *encoder);
 
 /**
  * Free a key encoder instance.
@@ -131,7 +131,7 @@ GhosttyResult ghostty_key_encoder_new(const GhosttyAllocator *allocator, Ghostty
  *
  * @ingroup key
  */
-void ghostty_key_encoder_free(GhosttyKeyEncoder encoder);
+GHOSTTY_API void ghostty_key_encoder_free(GhosttyKeyEncoder encoder);
 
 /**
  * Set an option on the key encoder.
@@ -154,7 +154,7 @@ void ghostty_key_encoder_free(GhosttyKeyEncoder encoder);
  *
  * @ingroup key
  */
-void ghostty_key_encoder_setopt(GhosttyKeyEncoder encoder, GhosttyKeyEncoderOption option, const void *value);
+GHOSTTY_API void ghostty_key_encoder_setopt(GhosttyKeyEncoder encoder, GhosttyKeyEncoderOption option, const void *value);
 
 /**
  * Set encoder options from a terminal's current state.
@@ -173,7 +173,7 @@ void ghostty_key_encoder_setopt(GhosttyKeyEncoder encoder, GhosttyKeyEncoderOpti
  *
  * @ingroup key
  */
-void ghostty_key_encoder_setopt_from_terminal(GhosttyKeyEncoder encoder, GhosttyTerminal terminal);
+GHOSTTY_API void ghostty_key_encoder_setopt_from_terminal(GhosttyKeyEncoder encoder, GhosttyTerminal terminal);
 
 /**
  * Encode a key event into a terminal escape sequence.
@@ -240,6 +240,6 @@ void ghostty_key_encoder_setopt_from_terminal(GhosttyKeyEncoder encoder, Ghostty
  *
  * @ingroup key
  */
-GhosttyResult ghostty_key_encoder_encode(GhosttyKeyEncoder encoder, GhosttyKeyEvent event, char *out_buf, size_t out_buf_size, size_t *out_len);
+GHOSTTY_API GhosttyResult ghostty_key_encoder_encode(GhosttyKeyEncoder encoder, GhosttyKeyEvent event, char *out_buf, size_t out_buf_size, size_t *out_len);
 
 #endif /* GHOSTTY_VT_KEY_ENCODER_H */
