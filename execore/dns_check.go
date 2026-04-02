@@ -30,6 +30,9 @@ type dnsCheckResult struct {
 	// Whether the CNAME points to *.exe.xyz
 	CNAMEPointsToExe bool `json:"cnamePointsToExe"`
 
+	// Whether a wildcard CNAME was detected
+	WildcardCNAME bool `json:"wildcardCname,omitempty"`
+
 	// The resolved box name, if any
 	BoxName string `json:"boxName,omitempty"`
 
@@ -108,6 +111,11 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 				result.BoxName = boxName
 			}
 		}
+	}
+
+	// Step 1b: Wildcard CNAME detection
+	if result.CNAME != "" {
+		result.WildcardCNAME = detectWildcardCNAME(ctx, domain, result.CNAME)
 	}
 
 	// Step 2: A record lookup
@@ -190,6 +198,33 @@ func (s *Server) isExeIP(addr netip.Addr) bool {
 	}
 	for _, info := range s.PublicIPs {
 		if addr == info.IP {
+			return true
+		}
+	}
+	return false
+}
+
+// detectWildcardCNAME checks whether the CNAME for domain is the result of a
+// wildcard record by probing a sibling and a child name that should not exist.
+// If either resolves to the same CNAME target, a wildcard is likely.
+func detectWildcardCNAME(ctx context.Context, domain, cname string) bool {
+	// Build probe names.
+	// For "blog.example.com" → sibling "exe-cname-sibling.example.com"
+	//                         → child  "exe-cname-child.blog.example.com"
+	parts := strings.SplitN(domain, ".", 2)
+	var probes []string
+	if len(parts) == 2 {
+		probes = append(probes, "exe-cname-sibling."+parts[1])
+	}
+	probes = append(probes, "exe-cname-child."+domain)
+
+	for _, probe := range probes {
+		probeCNAME, err := dnsresolver.LookupCNAME(ctx, probe)
+		if err != nil {
+			continue
+		}
+		probeCNAME = domz.Canonicalize(probeCNAME)
+		if probeCNAME == cname {
 			return true
 		}
 	}

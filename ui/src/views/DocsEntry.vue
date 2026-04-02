@@ -304,7 +304,13 @@ function renderDNSResult(d: any): string {
     html += dnsRow('CNAME', d.domain, vmFQDN, actual, ok)
   }
 
-  html += '</tbody></table></div>'
+  html += '</tbody></table>'
+
+  if (d.wildcardCname) {
+    html += '<p class="dns-wildcard-warn">⚠ We recommend against wildcard CNAME records, as they can allow for certificate issuance abuse.</p>'
+  }
+
+  html += '</div>'
   return html
 }
 
@@ -964,6 +970,25 @@ table.dns-table {
   font-size: 16px;
   width: 32px;
   font-weight: 700;
+}
+
+.dns-wildcard-warn {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dns-wildcard-warn {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+  }
 }
 
 @media (max-width: 768px) {
