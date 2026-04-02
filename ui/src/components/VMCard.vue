@@ -7,6 +7,7 @@
       <span v-if="box.totalShareCount > 0" class="share-badge" :title="`Shared with ${box.sharedUserCount} user(s) and ${box.shareLinkCount} link(s)`">
         👥 {{ box.totalShareCount }}
       </span>
+      <span v-if="box.isTeamShared" class="team-badge" title="Shared with your team">TEAM</span>
       <span v-if="box.proxyShare === 'public'" class="public-badge">PUBLIC</span>
       <span class="box-tags">
         <span v-for="tag in box.displayTags" :key="tag" class="tag">#{{ tag }}</span>
@@ -84,7 +85,7 @@
             #{{ tag }}
             <button class="tag-remove" @click="$emit('action', { type: 'remove-tag', boxName: box.name, extra: tag })">&times;</button>
           </span>
-          <button class="inline-btn" @click="$emit('action', { type: 'add-tag', boxName: box.name })">+ tag</button>
+          <button class="detail-btn" @click="$emit('action', { type: 'add-tag', boxName: box.name })">Add Tag</button>
         </span>
       </div>
 
@@ -142,6 +143,9 @@
         <button class="action-btn-expanded" @click="$emit('action', { type: 'share', boxName: box.name })">
           <i class="pi pi-share-alt"></i> Share
         </button>
+        <button v-if="hasTeam" class="action-btn-expanded" @click="$emit('action', { type: 'share-team', boxName: box.name })">
+          <i class="pi pi-users"></i> {{ box.isTeamShared ? 'Unshare Team' : 'Share with Team' }}
+        </button>
         <button class="action-btn-expanded" @click="$emit('action', { type: 'share-link', boxName: box.name })">
           <i class="pi pi-link"></i> Share Link
         </button>
@@ -175,6 +179,7 @@ const showCreationLog = ref(false)
 defineProps<{
   box: BoxInfo
   expanded: boolean
+  hasTeam: boolean
 }>()
 
 const emit = defineEmits<{
@@ -220,6 +225,17 @@ function onRowClick(event: MouseEvent) {
   color: var(--badge-share-text);
   border-radius: 3px;
   font-size: 11px;
+}
+
+.team-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  background: var(--badge-share-bg);
+  color: var(--badge-share-text);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .public-badge {
@@ -327,21 +343,6 @@ function onRowClick(event: MouseEvent) {
 .detail-item {
   display: flex;
   gap: 8px;
-}
-
-.inline-btn {
-  background: none;
-  border: none;
-  color: var(--primary-color);
-  cursor: pointer;
-  font-size: 11px;
-  font-family: inherit;
-  padding: 0 2px;
-  text-decoration: underline;
-}
-
-.inline-btn:hover {
-  color: var(--primary-hover);
 }
 
 .detail-btn {

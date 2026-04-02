@@ -124,6 +124,13 @@ FROM box_team_shares bts
 JOIN teams t ON bts.team_id = t.team_id
 WHERE bts.box_id = ?;
 
+-- name: ListTeamSharedBoxIDsForUser :many
+-- Returns the box IDs of the user's own boxes that have been shared with their team.
+SELECT bts.box_id
+FROM box_team_shares bts
+JOIN boxes b ON bts.box_id = b.id
+WHERE b.created_by_user_id = ?;
+
 -- name: ListAllTeams :many
 SELECT t.team_id, t.display_name, t.created_at,
        (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.team_id) as member_count
@@ -228,3 +235,17 @@ WHERE b.name = @box_name
 AND tm_requester.user_id = @user_id
 AND b.created_by_user_id != @user_id
 AND json_extract(b.routes, '$.team_ssh') = 1;
+
+-- name: ListBoxesSharedWithUserTeam :many
+-- Lists boxes that have been shared with the team that the given user belongs to.
+-- Excludes boxes owned by the requesting user (those show in "My VMs").
+SELECT b.name, b.status, b.image, b.created_at, b.updated_at, b.region, b.tags,
+       u.email as owner_email, bts.created_at as shared_at
+FROM box_team_shares bts
+JOIN boxes b ON bts.box_id = b.id
+JOIN users u ON b.created_by_user_id = u.user_id
+JOIN team_members tm ON bts.team_id = tm.team_id
+WHERE tm.user_id = @user_id
+AND b.created_by_user_id != @user_id
+AND b.status != 'failed'
+ORDER BY bts.created_at DESC;

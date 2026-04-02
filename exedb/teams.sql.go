@@ -892,6 +892,66 @@ func (q *Queries) ListBoxIDsForUser(ctx context.Context, createdByUserID string)
 	return items, nil
 }
 
+const listBoxesSharedWithUserTeam = `-- name: ListBoxesSharedWithUserTeam :many
+SELECT b.name, b.status, b.image, b.created_at, b.updated_at, b.region, b.tags,
+       u.email as owner_email, bts.created_at as shared_at
+FROM box_team_shares bts
+JOIN boxes b ON bts.box_id = b.id
+JOIN users u ON b.created_by_user_id = u.user_id
+JOIN team_members tm ON bts.team_id = tm.team_id
+WHERE tm.user_id = ?1
+AND b.created_by_user_id != ?1
+AND b.status != 'failed'
+ORDER BY bts.created_at DESC
+`
+
+type ListBoxesSharedWithUserTeamRow struct {
+	Name       string     `db:"name" json:"name"`
+	Status     string     `db:"status" json:"status"`
+	Image      string     `db:"image" json:"image"`
+	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt  *time.Time `db:"updated_at" json:"updated_at"`
+	Region     string     `db:"region" json:"region"`
+	Tags       string     `db:"tags" json:"tags"`
+	OwnerEmail string     `db:"owner_email" json:"owner_email"`
+	SharedAt   time.Time  `db:"shared_at" json:"shared_at"`
+}
+
+// Lists boxes that have been shared with the team that the given user belongs to.
+// Excludes boxes owned by the requesting user (those show in "My VMs").
+func (q *Queries) ListBoxesSharedWithUserTeam(ctx context.Context, userID string) ([]ListBoxesSharedWithUserTeamRow, error) {
+	rows, err := q.query(ctx, q.listBoxesSharedWithUserTeamStmt, listBoxesSharedWithUserTeam, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBoxesSharedWithUserTeamRow{}
+	for rows.Next() {
+		var i ListBoxesSharedWithUserTeamRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Region,
+			&i.Tags,
+			&i.OwnerEmail,
+			&i.SharedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIPShardsForTeam = `-- name: ListIPShardsForTeam :many
 SELECT bis.ip_shard
 FROM box_ip_shard bis
@@ -970,6 +1030,37 @@ func (q *Queries) ListTeamBoxesForAdmin(ctx context.Context, adminUserID string)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTeamSharedBoxIDsForUser = `-- name: ListTeamSharedBoxIDsForUser :many
+SELECT bts.box_id
+FROM box_team_shares bts
+JOIN boxes b ON bts.box_id = b.id
+WHERE b.created_by_user_id = ?
+`
+
+// Returns the box IDs of the user's own boxes that have been shared with their team.
+func (q *Queries) ListTeamSharedBoxIDsForUser(ctx context.Context, createdByUserID string) ([]int64, error) {
+	rows, err := q.query(ctx, q.listTeamSharedBoxIDsForUserStmt, listTeamSharedBoxIDsForUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var box_id int64
+		if err := rows.Scan(&box_id); err != nil {
+			return nil, err
+		}
+		items = append(items, box_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

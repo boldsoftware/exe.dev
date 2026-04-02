@@ -58,6 +58,7 @@ export interface BoxInfo {
   shareLinks: { token: string; url: string }[]
   displayTags: string[]
   hasCreationLog: boolean
+  isTeamShared: boolean
 }
 
 export interface SharedBoxInfo {
@@ -69,6 +70,15 @@ export interface SharedBoxInfo {
 export interface TeamBoxInfo {
   name: string
   creatorEmail: string
+  status: string
+  proxyURL: string
+  sshCommand: string
+  displayTags: string[]
+}
+
+export interface TeamSharedBoxInfo {
+  name: string
+  ownerEmail: string
   status: string
   proxyURL: string
   sshCommand: string
@@ -185,7 +195,9 @@ export interface DashboardData {
   user: UserInfo
   boxes: BoxInfo[]
   sharedBoxes: SharedBoxInfo[]
+  teamSharedBoxes: TeamSharedBoxInfo[]
   teamBoxes: TeamBoxInfo[]
+  hasTeam: boolean
   inviteCount: number
   canRequestInvites: boolean
   sshCommand: string

@@ -924,6 +924,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listBoxIDsForUserStmt, err = db.PrepareContext(ctx, listBoxIDsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListBoxIDsForUser: %w", err)
 	}
+	if q.listBoxesSharedWithUserTeamStmt, err = db.PrepareContext(ctx, listBoxesSharedWithUserTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query ListBoxesSharedWithUserTeam: %w", err)
+	}
 	if q.listEmailBouncesStmt, err = db.PrepareContext(ctx, listEmailBounces); err != nil {
 		return nil, fmt.Errorf("error preparing query ListEmailBounces: %w", err)
 	}
@@ -968,6 +971,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTeamBoxesForAdminStmt, err = db.PrepareContext(ctx, listTeamBoxesForAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForAdmin: %w", err)
+	}
+	if q.listTeamSharedBoxIDsForUserStmt, err = db.PrepareContext(ctx, listTeamSharedBoxIDsForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTeamSharedBoxIDsForUser: %w", err)
 	}
 	if q.listUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, listUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedInviteCodesForUser: %w", err)
@@ -2717,6 +2723,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listBoxIDsForUserStmt: %w", cerr)
 		}
 	}
+	if q.listBoxesSharedWithUserTeamStmt != nil {
+		if cerr := q.listBoxesSharedWithUserTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listBoxesSharedWithUserTeamStmt: %w", cerr)
+		}
+	}
 	if q.listEmailBouncesStmt != nil {
 		if cerr := q.listEmailBouncesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listEmailBouncesStmt: %w", cerr)
@@ -2790,6 +2801,11 @@ func (q *Queries) Close() error {
 	if q.listTeamBoxesForAdminStmt != nil {
 		if cerr := q.listTeamBoxesForAdminStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamBoxesForAdminStmt: %w", cerr)
+		}
+	}
+	if q.listTeamSharedBoxIDsForUserStmt != nil {
+		if cerr := q.listTeamSharedBoxIDsForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTeamSharedBoxIDsForUserStmt: %w", cerr)
 		}
 	}
 	if q.listUnusedInviteCodesForUserStmt != nil {
@@ -3536,6 +3552,7 @@ type Queries struct {
 	listBillingCreditsForAccountStmt           *sql.Stmt
 	listBillingEventsForAccountStmt            *sql.Stmt
 	listBoxIDsForUserStmt                      *sql.Stmt
+	listBoxesSharedWithUserTeamStmt            *sql.Stmt
 	listEmailBouncesStmt                       *sql.Stmt
 	listEmailQualityBypassStmt                 *sql.Stmt
 	listGiftCreditsStmt                        *sql.Stmt
@@ -3551,6 +3568,7 @@ type Queries struct {
 	listStripeWebhookEventsByTypeStmt          *sql.Stmt
 	listSubscriptionEventsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
+	listTeamSharedBoxIDsForUserStmt            *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
@@ -3938,6 +3956,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listBillingCreditsForAccountStmt:           q.listBillingCreditsForAccountStmt,
 		listBillingEventsForAccountStmt:            q.listBillingEventsForAccountStmt,
 		listBoxIDsForUserStmt:                      q.listBoxIDsForUserStmt,
+		listBoxesSharedWithUserTeamStmt:            q.listBoxesSharedWithUserTeamStmt,
 		listEmailBouncesStmt:                       q.listEmailBouncesStmt,
 		listEmailQualityBypassStmt:                 q.listEmailQualityBypassStmt,
 		listGiftCreditsStmt:                        q.listGiftCreditsStmt,
@@ -3953,6 +3972,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listStripeWebhookEventsByTypeStmt:          q.listStripeWebhookEventsByTypeStmt,
 		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
+		listTeamSharedBoxIDsForUserStmt:            q.listTeamSharedBoxIDsForUserStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,

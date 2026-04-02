@@ -45,6 +45,7 @@ type jsonBoxInfo struct {
 	ShareLinks      []jsonShareLink `json:"shareLinks"`
 	DisplayTags     []string        `json:"displayTags"`
 	HasCreationLog  bool            `json:"hasCreationLog"`
+	IsTeamShared    bool            `json:"isTeamShared"`
 }
 
 type jsonShareLink struct {
@@ -67,16 +68,27 @@ type jsonTeamBox struct {
 	DisplayTags  []string `json:"displayTags"`
 }
 
+type jsonTeamSharedBox struct {
+	Name        string   `json:"name"`
+	OwnerEmail  string   `json:"ownerEmail"`
+	Status      string   `json:"status"`
+	ProxyURL    string   `json:"proxyURL"`
+	SSHCommand  string   `json:"sshCommand"`
+	DisplayTags []string `json:"displayTags"`
+}
+
 type jsonDashboardData struct {
-	User              jsonUserInfo    `json:"user"`
-	Boxes             []jsonBoxInfo   `json:"boxes"`
-	SharedBoxes       []jsonSharedBox `json:"sharedBoxes"`
-	TeamBoxes         []jsonTeamBox   `json:"teamBoxes"`
-	InviteCount       int64           `json:"inviteCount"`
-	CanRequestInvites bool            `json:"canRequestInvites"`
-	SSHCommand        string          `json:"sshCommand"`
-	ReplHost          string          `json:"replHost"`
-	ShowIntegrations  bool            `json:"showIntegrations"`
+	User              jsonUserInfo        `json:"user"`
+	Boxes             []jsonBoxInfo       `json:"boxes"`
+	SharedBoxes       []jsonSharedBox     `json:"sharedBoxes"`
+	TeamSharedBoxes   []jsonTeamSharedBox `json:"teamSharedBoxes"`
+	TeamBoxes         []jsonTeamBox       `json:"teamBoxes"`
+	HasTeam           bool                `json:"hasTeam"`
+	InviteCount       int64               `json:"inviteCount"`
+	CanRequestInvites bool                `json:"canRequestInvites"`
+	SSHCommand        string              `json:"sshCommand"`
+	ReplHost          string              `json:"replHost"`
+	ShowIntegrations  bool                `json:"showIntegrations"`
 }
 
 type jsonUserInfo struct {
@@ -320,6 +332,13 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	// instead of 6 queries per box (N+1 elimination).
 	pendingCounts, activeShareCounts, linkCounts, pendingEmails, activeEmails, shareLinksAll := s.batchShareData(r.Context(), user.UserID)
 
+	// Batch-fetch which of the user's boxes are team-shared
+	teamSharedBoxIDs, _ := withRxRes1(s, r.Context(), (*exedb.Queries).ListTeamSharedBoxIDsForUser, user.UserID)
+	teamSharedSet := make(map[int64]bool, len(teamSharedBoxIDs))
+	for _, id := range teamSharedBoxIDs {
+		teamSharedSet[id] = true
+	}
+
 	boxes := make([]jsonBoxInfo, 0, len(boxResults))
 	for _, result := range boxResults {
 		box := exedb.Box{
@@ -388,6 +407,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			ShareLinks:      nonNil(shareLinks),
 			DisplayTags:     nonNil(box.GetTags()),
 			HasCreationLog:  box.CreationLog != nil && *box.CreationLog != "",
+			IsTeamShared:    teamSharedSet[int64(box.ID)],
 		})
 	}
 
@@ -402,10 +422,44 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 		})
 	}
 
-	// Team boxes
+	// Team-shared boxes (boxes shared with the user's team via `share add <vm> team`)
+	teamSharedResults, _ := withRxRes1(s, r.Context(), (*exedb.Queries).ListBoxesSharedWithUserTeam, user.UserID)
+	// Build a set of box names from own boxes + individually shared to deduplicate
+	ownBoxNames := make(map[string]bool, len(boxes))
+	for _, b := range boxes {
+		ownBoxNames[b.Name] = true
+	}
+	sharedBoxNames := make(map[string]bool, len(sharedBoxes))
+	for _, b := range sharedBoxes {
+		sharedBoxNames[b.Name] = true
+	}
+	teamSharedBoxes := make([]jsonTeamSharedBox, 0, len(teamSharedResults))
+	for _, result := range teamSharedResults {
+		if ownBoxNames[result.Name] || sharedBoxNames[result.Name] {
+			continue
+		}
+		teamSharedBoxes = append(teamSharedBoxes, jsonTeamSharedBox{
+			Name:        result.Name,
+			OwnerEmail:  result.OwnerEmail,
+			Status:      result.Status,
+			ProxyURL:    s.boxProxyAddress(result.Name),
+			SSHCommand:  s.boxSSHConnectionCommand(result.Name),
+			DisplayTags: nonNil(parseTags(result.Tags)),
+		})
+	}
+
+	// Team boxes (admin view of all team members' boxes)
 	teamBoxResults, _ := s.ListTeamBoxesForAdmin(r.Context(), user.UserID)
+	// Deduplicate: exclude boxes already in team-shared or individually shared
+	teamSharedNames := make(map[string]bool, len(teamSharedBoxes))
+	for _, b := range teamSharedBoxes {
+		teamSharedNames[b.Name] = true
+	}
 	teamBoxes := make([]jsonTeamBox, 0, len(teamBoxResults))
 	for _, result := range teamBoxResults {
+		if ownBoxNames[result.Name] || sharedBoxNames[result.Name] || teamSharedNames[result.Name] {
+			continue
+		}
 		teamBoxes = append(teamBoxes, jsonTeamBox{
 			Name:         result.Name,
 			CreatorEmail: result.CreatorEmail,
@@ -416,6 +470,10 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 		})
 	}
 
+	// Check if user is on a team
+	team, _ := s.GetTeamForUser(r.Context(), user.UserID)
+	hasTeam := team != nil
+
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
 	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
@@ -424,7 +482,9 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 		User:              newJSONUserInfo(user),
 		Boxes:             boxes,
 		SharedBoxes:       sharedBoxes,
+		TeamSharedBoxes:   teamSharedBoxes,
 		TeamBoxes:         teamBoxes,
+		HasTeam:           hasTeam,
 		InviteCount:       inviteCount,
 		CanRequestInvites: canRequestInvites,
 		SSHCommand:        s.replSSHConnectionCommand(),

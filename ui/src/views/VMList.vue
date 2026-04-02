@@ -42,6 +42,7 @@
             v-for="box in sortedBoxes"
             :key="box.name"
             :box="box"
+            :has-team="hasTeam"
             :expanded="expandedBoxes.has(box.name)"
             @toggle="toggleExpand(box.name)"
             @action="handleAction"
@@ -61,6 +62,7 @@
               v-for="box in group.boxes"
               :key="box.name"
               :box="box"
+              :has-team="hasTeam"
               :expanded="expandedBoxes.has(box.name)"
               @toggle="toggleExpand(box.name)"
               @action="handleAction"
@@ -92,7 +94,26 @@
       </div>
     </div>
 
-    <!-- Team VMs -->
+    <!-- Team-shared VMs -->
+    <div v-if="teamSharedBoxes.length > 0" class="shared-section">
+      <h2 class="section-title">Shared with your team</h2>
+      <div class="boxes-list">
+        <div v-for="box in teamSharedBoxes" :key="box.name" class="shared-row">
+          <StatusDot :status="box.status" />
+          <span class="box-name">{{ box.name }}</span>
+          <span class="shared-owner">by {{ box.ownerEmail }}</span>
+          <span v-if="box.displayTags && box.displayTags.length" class="box-tags">
+            <span v-for="tag in box.displayTags" :key="tag" class="tag">#{{ tag }}</span>
+          </span>
+          <CopyButton :text="box.sshCommand" title="SSH" />
+          <a :href="box.proxyURL" class="action-link" target="_blank" rel="noopener noreferrer">
+            <i class="pi pi-external-link"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Team VMs (admin view) -->
     <div v-if="teamBoxes.length > 0" class="shared-section">
       <h2 class="section-title">Team VMs</h2>
       <div class="boxes-list">
@@ -242,7 +263,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, shellQuote } from '../api/client'
+import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
@@ -257,7 +278,9 @@ const loading = ref(true)
 const loadError = ref('')
 const boxes = ref<BoxInfo[]>([])
 const sharedBoxes = ref<SharedBoxInfo[]>([])
+const teamSharedBoxes = ref<TeamSharedBoxInfo[]>([])
 const teamBoxes = ref<TeamBoxInfo[]>([])
+const hasTeam = ref(false)
 const searchQuery = ref((route.query.filter as string) || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
@@ -494,7 +517,9 @@ async function loadDashboard() {
     const data = await fetchDashboard()
     boxes.value = data.boxes
     sharedBoxes.value = data.sharedBoxes
+    teamSharedBoxes.value = data.teamSharedBoxes || []
     teamBoxes.value = data.teamBoxes
+    hasTeam.value = data.hasTeam || false
     sshCommand.value = data.sshCommand
     // Default prompt VM to first shelley-enabled box
     const sb = data.boxes.filter(b => b.shelleyURL)
@@ -592,6 +617,24 @@ function handleAction(action: ActionEvent) {
         description: 'Sharing allows the given user to access this VM\'s web server. <a href="/docs/sharing" target="_blank" rel="noopener noreferrer">Docs</a>',
       })
       break
+    case 'share-team': {
+      const box = boxes.value.find(b => b.name === action.boxName)
+      if (box && box.isTeamShared) {
+        openModal({
+          title: 'Unshare from Team',
+          command: `share remove ${q} team`,
+          description: 'Remove team access to this VM\'s web server.',
+          danger: true,
+        })
+      } else {
+        openModal({
+          title: 'Share with Team',
+          command: `share add ${q} team`,
+          description: 'Share this VM\'s web server with all members of your team.',
+        })
+      }
+      break
+    }
     case 'share-link':
       openModal({
         title: 'Create Share Link',
@@ -697,7 +740,9 @@ async function onModalSuccess() {
     const data = await fetchDashboard()
     boxes.value = data.boxes
     sharedBoxes.value = data.sharedBoxes
+    teamSharedBoxes.value = data.teamSharedBoxes || []
     teamBoxes.value = data.teamBoxes
+    hasTeam.value = data.hasTeam || false
   } catch (err) {
     console.error('Failed to reload dashboard:', err)
   }
