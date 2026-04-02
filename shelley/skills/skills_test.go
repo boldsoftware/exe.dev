@@ -335,7 +335,7 @@ func TestDiscoverInTree(t *testing.T) {
 	}
 
 	// Test with git root
-	skills := DiscoverInTree(tmpDir, tmpDir)
+	skills, _ := DiscoverInTree(tmpDir, tmpDir)
 
 	if len(skills) != 2 {
 		t.Fatalf("expected 2 skills, got %d: %v", len(skills), skillNames(skills))
@@ -365,7 +365,7 @@ func TestDiscoverInTreeNoGitRoot(t *testing.T) {
 	// When no git root, should search from working dir
 	tmpDir := t.TempDir()
 
-	// Create a skill
+	// Create a valid skill
 	skillDir := filepath.Join(tmpDir, "my-skill")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -374,14 +374,31 @@ func TestDiscoverInTreeNoGitRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create an empty skill (suppresses builtins but won't parse)
+	emptyDir := filepath.Join(tmpDir, "suppressed")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(emptyDir, "SKILL.md"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	// Test with empty git root
-	skills := DiscoverInTree(tmpDir, "")
+	skills, names := DiscoverInTree(tmpDir, "")
 
 	if len(skills) != 1 {
-		t.Fatalf("expected 1 skill, got %d", len(skills))
+		t.Fatalf("expected 1 parsed skill, got %d", len(skills))
 	}
 	if skills[0].Name != "my-skill" {
 		t.Errorf("expected my-skill, got %s", skills[0].Name)
+	}
+
+	// names should include both valid and empty skills
+	if !names["my-skill"] {
+		t.Error("expected names to include my-skill")
+	}
+	if !names["suppressed"] {
+		t.Error("expected names to include suppressed (empty SKILL.md)")
 	}
 }
 
@@ -553,7 +570,7 @@ func TestSkillsFoundRegardlessOfWorkingDir(t *testing.T) {
 
 	// DiscoverInTree from the project dir should NOT find user-level skills
 	// (they're in hidden directories which are skipped)
-	treeSkills := DiscoverInTree(projectDir, projectDir)
+	treeSkills, _ := DiscoverInTree(projectDir, projectDir)
 	if len(treeSkills) != 0 {
 		t.Errorf("expected 0 tree skills from unrelated project, got %d", len(treeSkills))
 	}

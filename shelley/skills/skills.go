@@ -425,12 +425,16 @@ func ProjectSkillsDirs(workingDir, gitRoot string) []string {
 
 // DiscoverInTree finds all skills by walking the directory tree looking for SKILL.md files.
 // If gitRoot is provided, it searches from gitRoot. Otherwise, it searches from workingDir downward.
-func DiscoverInTree(workingDir, gitRoot string) []Skill {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// It returns both the parsed skills and the set of all SKILL.md parent directory names
+// encountered during the walk (including unparseable/empty ones). This avoids needing
+// a second walk just to collect names.
+func DiscoverInTree(workingDir, gitRoot string) ([]Skill, map[string]bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	var skills []Skill
 	seen := make(map[string]bool)
+	allNames := make(map[string]bool)
 
 	// Determine root to search from
 	searchRoot := gitRoot
@@ -461,6 +465,9 @@ func DiscoverInTree(workingDir, gitRoot string) []Skill {
 			return nil
 		}
 
+		// Record the name regardless of parseability (for builtin suppression)
+		allNames[filepath.Base(filepath.Dir(path))] = true
+
 		// Avoid duplicates
 		absPath, err := filepath.Abs(path)
 		if err != nil {
@@ -486,7 +493,7 @@ func DiscoverInTree(workingDir, gitRoot string) []Skill {
 		return nil
 	})
 
-	return skills
+	return skills, allNames
 }
 
 // ListAll returns all available skills (built-in + filesystem), deduplicated by name.
@@ -507,11 +514,14 @@ func ListAll(workingDir, gitRoot string) []Skill {
 	all := Discover(dirs)
 
 	// Add tree-discovered skills, deduplicated by name (first-seen wins).
+	// DiscoverInTree also returns all SKILL.md names it encountered
+	// (including unparseable/empty ones) so we don't need a second walk.
 	seen := make(map[string]bool)
 	for _, s := range all {
 		seen[s.Name] = true
 	}
-	for _, s := range DiscoverInTree(workingDir, gitRoot) {
+	treeSkills, treeNames := DiscoverInTree(workingDir, gitRoot)
+	for _, s := range treeSkills {
 		if !seen[s.Name] {
 			all = append(all, s)
 			seen[s.Name] = true
@@ -523,7 +533,10 @@ func ListAll(workingDir, gitRoot string) []Skill {
 	// even an empty one — takes precedence over a built-in skill of the
 	// same name. This lets users suppress a built-in skill by placing an
 	// empty SKILL.md in the matching directory.
-	fsNames := filesystemSkillNames(dirs, workingDir, gitRoot)
+	fsNames := dirSkillNames(dirs)
+	for name := range treeNames {
+		fsNames[name] = true
+	}
 	for _, s := range all {
 		fsNames[s.Name] = true
 	}
@@ -558,7 +571,8 @@ func FindByName(name, workingDir string) (string, error) {
 			return string(content), nil
 		}
 	}
-	for _, s := range DiscoverInTree(workingDir, gitRoot) {
+	treeSkills, treeNames := DiscoverInTree(workingDir, gitRoot)
+	for _, s := range treeSkills {
 		if s.Name == name {
 			content, err := os.ReadFile(s.Path)
 			if err != nil {
@@ -571,7 +585,10 @@ func FindByName(name, workingDir string) (string, error) {
 	// If a SKILL.md exists on the filesystem for this name but didn't
 	// parse (e.g. it's empty), the user is deliberately suppressing
 	// the built-in skill. Don't fall through.
-	fsNames := filesystemSkillNames(dirs, workingDir, gitRoot)
+	fsNames := dirSkillNames(dirs)
+	for n := range treeNames {
+		fsNames[n] = true
+	}
 	if fsNames[name] {
 		// Distinguish intentional suppression (empty file) from parse errors.
 		for _, dir := range dirs {
@@ -602,15 +619,12 @@ func FindByName(name, workingDir string) (string, error) {
 	return "", fmt.Errorf("skill %q not found", name)
 }
 
-// filesystemSkillNames returns the set of names that have a SKILL.md file on
-// the filesystem, regardless of whether the file is valid/non-empty. This is
-// used to determine which built-in skills are suppressed: an empty SKILL.md in
-// a directory like ~/.config/shelley/schedule/ prevents the built-in "schedule"
-// skill from appearing.
-func filesystemSkillNames(dirs []string, workingDir, gitRoot string) map[string]bool {
+// dirSkillNames returns the set of skill names found in the given skill
+// directories (not the project tree — tree names come from DiscoverInTree).
+// An empty SKILL.md in a directory like ~/.config/shelley/schedule/ prevents
+// the built-in "schedule" skill from appearing.
+func dirSkillNames(dirs []string) map[string]bool {
 	names := make(map[string]bool)
-
-	// Scan skill directories for subdirs containing any SKILL.md.
 	for _, dir := range dirs {
 		dir = expandPath(dir)
 		entries, err := os.ReadDir(dir)
@@ -627,36 +641,6 @@ func filesystemSkillNames(dirs []string, workingDir, gitRoot string) map[string]
 			}
 		}
 	}
-
-	// Also scan the project tree for any SKILL.md files.
-	searchRoot := gitRoot
-	if searchRoot == "" {
-		searchRoot = workingDir
-	}
-	if searchRoot != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
-			if ctx.Err() != nil {
-				return filepath.SkipAll
-			}
-			if err != nil {
-				return nil
-			}
-			if info.IsDir() {
-				n := info.Name()
-				if n != "." && (strings.HasPrefix(n, ".") || n == "node_modules" || n == "vendor") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if strings.ToLower(info.Name()) == "skill.md" {
-				names[filepath.Base(filepath.Dir(path))] = true
-			}
-			return nil
-		})
-	}
-
 	return names
 }
 

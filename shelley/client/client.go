@@ -180,12 +180,22 @@ func cmdChat(cc *clientConfig, args []string) {
 		os.Exit(1)
 	}
 
+	// Default cwd to the caller's working directory for new conversations,
+	// so the server doesn't fall back to its own cwd (which may be unrelated
+	// and cause expensive filesystem walks).
+	effectiveCwd := *cwd
+	if effectiveCwd == "" && *convID == "" {
+		if wd, err := os.Getwd(); err == nil {
+			effectiveCwd = wd
+		}
+	}
+
 	reqBody := map[string]string{"message": *prompt}
 	if *model != "" {
 		reqBody["model"] = *model
 	}
-	if *cwd != "" {
-		reqBody["cwd"] = *cwd
+	if effectiveCwd != "" {
+		reqBody["cwd"] = effectiveCwd
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

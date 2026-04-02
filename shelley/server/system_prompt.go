@@ -319,7 +319,7 @@ func isGuidanceFile(lowerName string) bool {
 
 // findSubdirGuidanceFiles returns guidance files in subdirectories of root (not root itself).
 func findSubdirGuidanceFiles(root string) []string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	var found []string
