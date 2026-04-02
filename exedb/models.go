@@ -235,6 +235,7 @@ type Integration struct {
 	Config        string     `db:"config" json:"config"`
 	CreatedAt     *time.Time `db:"created_at" json:"created_at"`
 	Attachments   string     `db:"attachments" json:"attachments"`
+	TeamID        *string    `db:"team_id" json:"team_id"`
 }
 
 type InviteCode struct {

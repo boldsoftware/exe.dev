@@ -1,0 +1,39 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --team --name=shared-mcp --target=https://example.com --header=X-Auth:secret
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --team --name=shared-mcp --target=https://example.com --header=X-Auth:secret
+Added team integration shared-mcp
+
+To use this integration, attach it to a tag:
+  integrations attach shared-mcp tag:<tag-name>
+
+Usage from a VM:
+  curl http://shared-mcp.team.exe.cloud/
+PROMPT ▶ integrations list
+shared-mcp  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+PROMPT ▶ integrations attach shared-mcp tag:production
+Attached shared-mcp to tag:production
+PROMPT ▶ integrations attach shared-mcp vm:myvm
+team integrations only support tag:<name> attachments, got "vm:myvm"
+PROMPT ▶ integrations attach shared-mcp auto:all
+team integrations only support tag:<name> attachments, got "auto:all"
+PROMPT ▶ integrations detach shared-mcp tag:production
+Detached shared-mcp from tag:production
+PROMPT ▶ integrations rename shared-mcp better-mcp
+Renamed integration shared-mcp to better-mcp
+PROMPT ▶ integrations list
+better-mcp  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+PROMPT ▶ integrations remove better-mcp
+Removed integration better-mcp
+PROMPT ▶ integrations list
+No integrations configured.
+PROMPT ▶ exit
+Goodbye!

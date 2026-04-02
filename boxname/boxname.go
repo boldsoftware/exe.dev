@@ -58,7 +58,8 @@ var reserved = []string{
 	"boxname", "box-name", "boxnames", "box-names", "my-box", "mybox", "your-box", "yourbox", "our-box", "ourbox",
 	"vm-name", "vmname", "vm-names", "vmnames", "my-vm", "myvm", "your-vm", "yourvm", "our-vm", "ourvm",
 	"mail",     // reserved for mail server subdomain (mail.exe.xyz)
-	"team-int", // reserved for *.team-int.exe.xyz integration proxy domain
+	"team-int", // reserved for *.team-int.exe.xyz
+	"team",     // reserved for *.team.exe.xyz integration proxy domain
 }
 
 var JobsRelated = []string{"job", "jobs", "career", "careers", "apply", "work", "position", "positions", "opening", "openings", "hire", "hiring", "role", "roles", "join"}

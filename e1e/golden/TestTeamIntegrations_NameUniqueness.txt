@@ -1,0 +1,49 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret
+Added integration myproxy
+
+To use this integration, attach it to a VM first:
+  integrations attach myproxy vm:<vm-name>
+
+Usage from a VM:
+  curl http://myproxy.int.exe.cloud/
+PROMPT ▶ integrations add http-proxy --team --name=myproxy --target=https://other.com --header=X-Other:val
+name "myproxy" is already in use
+PROMPT ▶ integrations remove myproxy
+Removed integration myproxy
+PROMPT ▶ integrations add http-proxy --team --name=teamproxy --target=https://example.com --header=X-Auth:secret
+Added team integration teamproxy
+
+To use this integration, attach it to a tag:
+  integrations attach teamproxy tag:<tag-name>
+
+Usage from a VM:
+  curl http://teamproxy.team.exe.cloud/
+PROMPT ▶ integrations add http-proxy --name=teamproxy --target=https://other.com --header=X-Other:val
+name "teamproxy" is already in use
+PROMPT ▶ integrations add http-proxy --name=personal1 --target=https://example.com --header=X-Auth:s
+Added integration personal1
+
+To use this integration, attach it to a VM first:
+  integrations attach personal1 vm:<vm-name>
+
+Usage from a VM:
+  curl http://personal1.int.exe.cloud/
+PROMPT ▶ integrations rename personal1 teamproxy
+name "teamproxy" is already in use
+PROMPT ▶ integrations remove personal1
+Removed integration personal1
+PROMPT ▶ integrations remove teamproxy
+Removed integration teamproxy
+PROMPT ▶ exit
+Goodbye!

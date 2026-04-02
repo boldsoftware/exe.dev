@@ -259,7 +259,8 @@ def _annotate_results(json_results, shard):
 def _push_golden_recovery_branch():
     """Push golden file changes to a recovery branch for easy cherry-picking."""
     build_id = os.environ.get("BUILDKITE_BUILD_ID", "unknown")
-    branch = f"golden-{build_id}"
+    shard = os.environ.get("E1E_SHARD", "")
+    branch = f"golden-{build_id}-{shard}" if shard else f"golden-{build_id}"
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import github_token

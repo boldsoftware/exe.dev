@@ -56,7 +56,7 @@ Add a new integration
 
 **Usage:**
 ```
-integrations add <type> --name=<name> [args...]
+integrations add <type> --name=<name> [--team] [args...]
 ```
 
 **Options:**
@@ -66,6 +66,7 @@ integrations add <type> --name=<name> [args...]
 - `--name`: integration name (required)
 - `--repository`: GitHub repository in owner/repo format (required for github)
 - `--target`: target URL (required for http-proxy)
+- `--team`: create as a team integration
 
 ### integrations remove
 
@@ -81,11 +82,12 @@ integrations remove <name>
 Attach an integration to a VM, tag, or all VMs
 
 A <spec> controls where the integration is mounted:
-  vm:<vm-name>   attach to a specific VM
+  vm:<vm-name>   attach to a specific VM (personal only)
   tag:<tag-name> attach to every VM with the given tag
-  auto:all       attach to all current and future VMs
+  auto:all       attach to all current and future VMs (personal only)
 
 You can attach the same integration multiple times with different specs.
+Team integrations only support tag:<tag-name>.
 
 **Usage:**
 ```
@@ -97,6 +99,7 @@ integrations attach <name> <spec>
 int attach my-mcp vm:dev1
 int attach my-mcp tag:production
 int attach my-mcp auto:all
+int attach shared-mcp tag:production
 ```
 
 ### integrations detach

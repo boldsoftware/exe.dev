@@ -285,6 +285,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTeamStmt, err = db.PrepareContext(ctx, deleteTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeam: %w", err)
 	}
+	if q.deleteTeamIntegrationStmt, err = db.PrepareContext(ctx, deleteTeamIntegration); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeamIntegration: %w", err)
+	}
 	if q.deleteTeamMemberStmt, err = db.PrepareContext(ctx, deleteTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeamMember: %w", err)
 	}
@@ -479,6 +482,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getIntegrationByOwnerAndNameStmt, err = db.PrepareContext(ctx, getIntegrationByOwnerAndName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIntegrationByOwnerAndName: %w", err)
+	}
+	if q.getIntegrationByTeamAndNameStmt, err = db.PrepareContext(ctx, getIntegrationByTeamAndName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetIntegrationByTeamAndName: %w", err)
 	}
 	if q.getInviteCodeByCodeStmt, err = db.PrepareContext(ctx, getInviteCodeByCode); err != nil {
 		return nil, fmt.Errorf("error preparing query GetInviteCodeByCode: %w", err)
@@ -942,6 +948,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listIPShardsForUserStmt, err = db.PrepareContext(ctx, listIPShardsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIPShardsForUser: %w", err)
 	}
+	if q.listIntegrationsByTeamStmt, err = db.PrepareContext(ctx, listIntegrationsByTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIntegrationsByTeam: %w", err)
+	}
 	if q.listIntegrationsByUserStmt, err = db.PrepareContext(ctx, listIntegrationsByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIntegrationsByUser: %w", err)
 	}
@@ -1124,6 +1133,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
+	}
+	if q.updateTeamIntegrationAttachmentsStmt, err = db.PrepareContext(ctx, updateTeamIntegrationAttachments); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTeamIntegrationAttachments: %w", err)
+	}
+	if q.updateTeamIntegrationNameStmt, err = db.PrepareContext(ctx, updateTeamIntegrationName); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTeamIntegrationName: %w", err)
 	}
 	if q.updateTeamLimitsStmt, err = db.PrepareContext(ctx, updateTeamLimits); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTeamLimits: %w", err)
@@ -1637,6 +1652,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteTeamStmt: %w", cerr)
 		}
 	}
+	if q.deleteTeamIntegrationStmt != nil {
+		if cerr := q.deleteTeamIntegrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamIntegrationStmt: %w", cerr)
+		}
+	}
 	if q.deleteTeamMemberStmt != nil {
 		if cerr := q.deleteTeamMemberStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTeamMemberStmt: %w", cerr)
@@ -1960,6 +1980,11 @@ func (q *Queries) Close() error {
 	if q.getIntegrationByOwnerAndNameStmt != nil {
 		if cerr := q.getIntegrationByOwnerAndNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIntegrationByOwnerAndNameStmt: %w", cerr)
+		}
+	}
+	if q.getIntegrationByTeamAndNameStmt != nil {
+		if cerr := q.getIntegrationByTeamAndNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getIntegrationByTeamAndNameStmt: %w", cerr)
 		}
 	}
 	if q.getInviteCodeByCodeStmt != nil {
@@ -2732,6 +2757,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIPShardsForUserStmt: %w", cerr)
 		}
 	}
+	if q.listIntegrationsByTeamStmt != nil {
+		if cerr := q.listIntegrationsByTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIntegrationsByTeamStmt: %w", cerr)
+		}
+	}
 	if q.listIntegrationsByUserStmt != nil {
 		if cerr := q.listIntegrationsByUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIntegrationsByUserStmt: %w", cerr)
@@ -3037,6 +3067,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
 		}
 	}
+	if q.updateTeamIntegrationAttachmentsStmt != nil {
+		if cerr := q.updateTeamIntegrationAttachmentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTeamIntegrationAttachmentsStmt: %w", cerr)
+		}
+	}
+	if q.updateTeamIntegrationNameStmt != nil {
+		if cerr := q.updateTeamIntegrationNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTeamIntegrationNameStmt: %w", cerr)
+		}
+	}
 	if q.updateTeamLimitsStmt != nil {
 		if cerr := q.updateTeamLimitsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTeamLimitsStmt: %w", cerr)
@@ -3283,6 +3323,7 @@ type Queries struct {
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamStmt                             *sql.Stmt
+	deleteTeamIntegrationStmt                  *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
 	deleteTeamSSOProviderStmt                  *sql.Stmt
 	deleteTemplateStmt                         *sql.Stmt
@@ -3348,6 +3389,7 @@ type Queries struct {
 	getIPShardByBoxNameStmt                    *sql.Stmt
 	getIntegrationStmt                         *sql.Stmt
 	getIntegrationByOwnerAndNameStmt           *sql.Stmt
+	getIntegrationByTeamAndNameStmt            *sql.Stmt
 	getInviteCodeByCodeStmt                    *sql.Stmt
 	getInviteCodeByIDStmt                      *sql.Stmt
 	getInviteCodeStatsForUserStmt              *sql.Stmt
@@ -3502,6 +3544,7 @@ type Queries struct {
 	listGitHubUserTokensNeedingRenewalStmt     *sql.Stmt
 	listIPShardsForTeamStmt                    *sql.Stmt
 	listIPShardsForUserStmt                    *sql.Stmt
+	listIntegrationsByTeamStmt                 *sql.Stmt
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
@@ -3563,6 +3606,8 @@ type Queries struct {
 	updateSSHKeyLastUsedStmt                   *sql.Stmt
 	updateTagResolutionCheckedStmt             *sql.Stmt
 	updateTagResolutionDigestStmt              *sql.Stmt
+	updateTeamIntegrationAttachmentsStmt       *sql.Stmt
+	updateTeamIntegrationNameStmt              *sql.Stmt
 	updateTeamLimitsStmt                       *sql.Stmt
 	updateTeamMemberRoleStmt                   *sql.Stmt
 	updateTeamSSOProviderStmt                  *sql.Stmt
@@ -3680,6 +3725,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamStmt:                             q.deleteTeamStmt,
+		deleteTeamIntegrationStmt:                  q.deleteTeamIntegrationStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
 		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
 		deleteTemplateStmt:                         q.deleteTemplateStmt,
@@ -3745,6 +3791,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getIPShardByBoxNameStmt:                    q.getIPShardByBoxNameStmt,
 		getIntegrationStmt:                         q.getIntegrationStmt,
 		getIntegrationByOwnerAndNameStmt:           q.getIntegrationByOwnerAndNameStmt,
+		getIntegrationByTeamAndNameStmt:            q.getIntegrationByTeamAndNameStmt,
 		getInviteCodeByCodeStmt:                    q.getInviteCodeByCodeStmt,
 		getInviteCodeByIDStmt:                      q.getInviteCodeByIDStmt,
 		getInviteCodeStatsForUserStmt:              q.getInviteCodeStatsForUserStmt,
@@ -3899,6 +3946,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listGitHubUserTokensNeedingRenewalStmt:     q.listGitHubUserTokensNeedingRenewalStmt,
 		listIPShardsForTeamStmt:                    q.listIPShardsForTeamStmt,
 		listIPShardsForUserStmt:                    q.listIPShardsForUserStmt,
+		listIntegrationsByTeamStmt:                 q.listIntegrationsByTeamStmt,
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
@@ -3960,6 +4008,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateSSHKeyLastUsedStmt:                   q.updateSSHKeyLastUsedStmt,
 		updateTagResolutionCheckedStmt:             q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:              q.updateTagResolutionDigestStmt,
+		updateTeamIntegrationAttachmentsStmt:       q.updateTeamIntegrationAttachmentsStmt,
+		updateTeamIntegrationNameStmt:              q.updateTeamIntegrationNameStmt,
 		updateTeamLimitsStmt:                       q.updateTeamLimitsStmt,
 		updateTeamMemberRoleStmt:                   q.updateTeamMemberRoleStmt,
 		updateTeamSSOProviderStmt:                  q.updateTeamSSOProviderStmt,

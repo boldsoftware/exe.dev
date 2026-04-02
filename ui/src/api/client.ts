@@ -104,6 +104,7 @@ export interface IntegrationInfo {
   hasBasicAuth: boolean
   repositories: string[]
   attachments: string[]
+  isTeam: boolean
 }
 
 export interface GitHubAccountInfo {
@@ -210,6 +211,7 @@ export interface IntegrationsData {
   boxes: { name: string; status: string }[]
   integrationScheme: string
   boxHost: string
+  hasTeam: boolean
 }
 
 // Fetch page data from API endpoints

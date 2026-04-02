@@ -1,0 +1,57 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --team --name=team-shared --target=https://example.com --header=X-Auth:secret
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --team --name=team-shared --target=https://example.com --header=X-Auth:secret
+Added team integration team-shared
+
+To use this integration, attach it to a tag:
+  integrations attach team-shared tag:<tag-name>
+
+Usage from a VM:
+  curl http://team-shared.team.exe.cloud/
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+integrations list
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations list
+team-shared  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+PROMPT ▶ integrations attach team-shared tag:staging
+Attached team-shared to tag:staging
+PROMPT ▶ integrations detach team-shared tag:staging
+Detached team-shared from tag:staging
+PROMPT ▶ integrations add http-proxy --name=team-shared --target=https://other.com --header=X:y
+name "team-shared" is already in use
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+integrations remove team-shared
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations remove team-shared
+Removed integration team-shared
+PROMPT ▶ exit
+Goodbye!

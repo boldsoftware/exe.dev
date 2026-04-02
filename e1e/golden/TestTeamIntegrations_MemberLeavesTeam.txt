@@ -1,0 +1,83 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --team --name=survive-leave --target=https://example.com --header=X-Auth:secret
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --team --name=survive-leave --target=https://example.com --header=X-Auth:secret
+Added team integration survive-leave
+
+To use this integration, attach it to a tag:
+  integrations attach survive-leave tag:<tag-name>
+
+Usage from a VM:
+  curl http://survive-leave.team.exe.cloud/
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+integrations list
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations list
+survive-leave  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+team remove teamint-member@test.example
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team remove teamint-member@test.example
+Removed teamint-member@test.example from the team
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+integrations list
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations list
+survive-leave  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+PROMPT ▶
+
+●
+● ssh localhost
+●
+
+integrations list
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations list
+No integrations configured.
+PROMPT ▶ exit
+Goodbye!
+integrations remove survive-leave
+Removed integration survive-leave
+PROMPT ▶ exit
+Goodbye!

@@ -97,8 +97,8 @@ type Service struct {
 	integrationHostSuffixes []string
 
 	// teamIntHostSuffix is the domain suffix for team integration proxy
-	// requests (e.g., ".team-int.exe.xyz"). Team integrations are not yet
-	// implemented; requests matching this suffix are rejected with 501.
+	// requests (e.g., ".team.exe.xyz"). Team integrations are looked
+	// up via exed's /_/team-integration-config endpoint.
 	teamIntHostSuffix string
 
 	gatewayRequests *prometheus.CounterVec
@@ -217,17 +217,17 @@ func (s *Service) Start(ctx context.Context) error {
 	// to the normal mux.
 	var mainHandler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if name, suffix, ok := s.integrationHostName(r.Host); ok {
-			if suffix == s.teamIntHostSuffix {
-				integrationError(w, r, "team integrations are not yet available", http.StatusNotImplemented)
-				return
-			}
 			// In production, redirect plain HTTP to HTTPS.
 			if r.TLS == nil && !s.gatewayDev {
 				u := "https://" + r.Host + r.URL.RequestURI()
 				http.Redirect(w, r, u, http.StatusMovedPermanently)
 				return
 			}
-			s.handleIntegrationProxy(w, r, name)
+			if suffix == s.teamIntHostSuffix {
+				s.handleTeamIntegrationProxy(w, r, name)
+			} else {
+				s.handleIntegrationProxy(w, r, name)
+			}
 			return
 		}
 		mux.ServeHTTP(w, r)
@@ -383,10 +383,10 @@ func (s *Service) fetchAndStoreIntegrationCert(ctx context.Context) error {
 }
 
 // integrationDomainFromSuffix extracts the domain label from a suffix like ".int.exe.xyz".
-// Returns "int" for ".int.exe.xyz", "team-int" for ".team-int.exe.xyz", etc.
+// Returns "int" for ".int.exe.xyz", "team" for ".team.exe.xyz", etc.
 // For the legacy backward-compat suffix ".int.exe.cloud", also returns "int".
 func integrationDomainFromSuffix(suffix string) string {
-	// suffix is like ".int.exe.xyz" or ".team-int.exe.cloud"
+	// suffix is like ".int.exe.xyz" or ".team.exe.cloud"
 	// Trim leading dot, split on first dot.
 	s := strings.TrimPrefix(suffix, ".")
 	if i := strings.Index(s, "."); i > 0 {
@@ -397,12 +397,12 @@ func integrationDomainFromSuffix(suffix string) string {
 
 // integrationCertEndpoints maps domain labels to their exed cert endpoints.
 var integrationCertEndpoints = map[string]string{
-	"int":      "/_/integration-cert",
-	"team-int": "/_/team-integration-cert",
+	"int":  "/_/integration-cert",
+	"team": "/_/team-integration-cert",
 }
 
 // fetchIntegrationCertPEM does the HTTP request to exed's cert endpoint
-// for the given integration domain (e.g., "int" or "team-int").
+// for the given integration domain (e.g., "int" or "team").
 func (s *Service) fetchIntegrationCertPEM(ctx context.Context, domain string) ([]byte, error) {
 	endpoint, ok := integrationCertEndpoints[domain]
 	if !ok {
@@ -847,6 +847,101 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	proxy.ServeHTTP(w, r)
 }
 
+// handleTeamIntegrationProxy handles requests to *.team.{boxHost}.
+// It looks up team integration config from exed and proxies like personal integrations.
+func (s *Service) handleTeamIntegrationProxy(w http.ResponseWriter, r *http.Request, integrationName string) {
+	if !isValidIntegrationName(integrationName) {
+		integrationError(w, r, "invalid integration name", http.StatusBadRequest)
+		return
+	}
+
+	sourceIP := requestSourceIP(r)
+	_, vmName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "team integration proxy: failed to lookup box by IP", "ip", sourceIP, "error", err)
+		integrationError(w, r, "Failed to identify box", http.StatusInternalServerError)
+		return
+	}
+	if vmName == "" {
+		s.log.ErrorContext(r.Context(), "team integration proxy: no box found for IP", "ip", sourceIP)
+		integrationError(w, r, "No box found for this IP", http.StatusForbidden)
+		return
+	}
+
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", vmName))
+	sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
+	sloghttp.AddCustomAttributes(r, slog.String("request_type", "team_integration_proxy"))
+	if host := r.Host; host != "" {
+		sloghttp.AddCustomAttributes(r, slog.String("integration_host", host))
+	}
+
+	cfg, ok := s.getTeamIntegrationConfig(r.Context(), vmName, integrationName)
+	if !ok {
+		integrationError(w, r, "team integration not found or not attached to this VM", http.StatusForbidden)
+		return
+	}
+
+	// Gateway integration: forward to exed instead of proxying externally.
+	if cfg.gatewayPath != "" {
+		s.handleGatewayIntegration(w, r, vmName, integrationName, cfg.gatewayPath)
+		return
+	}
+
+	if len(cfg.allowedPathPrefixes) > 0 && !pathMatchesPrefixes(r.URL.Path, cfg.allowedPathPrefixes, cfg.routes) {
+		integrationError(w, r, "path does not match any configured repository", http.StatusForbidden)
+		return
+	}
+
+	proxyStart := time.Now()
+	proxy := &httputil.ReverseProxy{
+		Transport: s.integrationTransport(),
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			reqPath := r.URL.Path
+			routed := false
+			for _, rt := range cfg.routes {
+				if strings.HasPrefix(reqPath, rt.pathPrefix) {
+					pr.SetURL(rt.target)
+					pr.Out.URL.Path = strings.TrimPrefix(reqPath, rt.stripPrefix)
+					routed = true
+					break
+				}
+			}
+			if !routed {
+				pr.SetURL(cfg.target)
+				if r.URL.Path != "" && r.URL.Path != "/" {
+					pr.Out.URL.Path = strings.TrimSuffix(cfg.target.Path, "/") + r.URL.Path
+				} else {
+					pr.Out.URL.Path = cfg.target.Path
+				}
+			}
+			pr.Out.URL.RawQuery = r.URL.RawQuery
+			pr.Out.Host = pr.Out.URL.Host
+			for k, v := range cfg.headers {
+				pr.Out.Header.Set(k, v)
+			}
+			if cfg.basicAuth != nil {
+				pr.Out.SetBasicAuth(cfg.basicAuth.User, cfg.basicAuth.Pass)
+			}
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			sloghttp.AddCustomAttributes(r, slog.Int("upstream_status", resp.StatusCode))
+			sloghttp.AddCustomAttributes(r, slog.Int64("upstream_content_length", resp.ContentLength))
+			sloghttp.AddCustomAttributes(r, slog.String("upstream_latency", time.Since(proxyStart).String()))
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return
+			}
+			s.log.WarnContext(r.Context(), "team integration proxy upstream error",
+				"error", err, "vm_name", vmName, "integration", integrationName)
+			integrationError(w, r, "integration proxy: upstream request failed", http.StatusBadGateway)
+		},
+	}
+
+	proxy.ServeHTTP(w, r)
+}
+
 // handleGatewayIntegration forwards an integration request to exed at the
 // given gateway path, adding the X-Exedev-Box header for authentication.
 func (s *Service) handleGatewayIntegration(w http.ResponseWriter, r *http.Request, vmName, integrationName, gatewayPath string) {
@@ -966,6 +1061,112 @@ func (s *Service) fetchIntegrationConfig(ctx context.Context, vmName, integratio
 		rtTarget, err := url.Parse(rt.Target)
 		if err != nil {
 			s.log.ErrorContext(ctx, "integration config: bad route target URL", "error", err, "target", rt.Target)
+			return negative
+		}
+		entry.routes = append(entry.routes, routeEntry{
+			pathPrefix:  rt.PathPrefix,
+			stripPrefix: rt.StripPrefix,
+			target:      rtTarget,
+		})
+	}
+
+	return entry
+}
+
+// getTeamIntegrationConfig returns cached team integration config, fetching from exed on miss.
+func (s *Service) getTeamIntegrationConfig(ctx context.Context, vmName, integrationName string) (integrationCacheEntry, bool) {
+	// Use a distinct cache key prefix to avoid collisions with personal integrations.
+	key := integrationCacheKey{vmName: "team:" + vmName, integrationName: integrationName}
+
+	s.integrationCacheMu.Lock()
+	if e, ok := s.integrationCache[key]; ok && time.Since(e.fetchedAt) < IntegrationCacheTTL {
+		s.integrationCacheMu.Unlock()
+		return *e, e.ok
+	}
+	s.integrationCacheMu.Unlock()
+
+	entry, _, _ := s.integrationSF.Do(key, func() (*integrationCacheEntry, error) {
+		e := s.fetchTeamIntegrationConfig(ctx, vmName, integrationName)
+		s.integrationCacheMu.Lock()
+		s.integrationCache[key] = e
+		s.integrationCacheMu.Unlock()
+		return e, nil
+	})
+
+	return *entry, entry.ok
+}
+
+// fetchTeamIntegrationConfig does the HTTP request to exed's team-integration-config endpoint.
+func (s *Service) fetchTeamIntegrationConfig(ctx context.Context, vmName, integrationName string) *integrationCacheEntry {
+	negative := &integrationCacheEntry{ok: false, fetchedAt: time.Now()}
+
+	u := fmt.Sprintf("%s/_/team-integration-config?vm_name=%s&integration=%s",
+		strings.TrimRight(s.exedURL, "/"),
+		url.QueryEscape(vmName),
+		url.QueryEscape(integrationName),
+	)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		s.log.ErrorContext(ctx, "team integration config: request build failed", "error", err)
+		return negative
+	}
+	tracing.SetTraceIDHeader(ctx, req.Header)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.log.ErrorContext(ctx, "team integration config: request failed", "error", err)
+		return negative
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		OK                  bool              `json:"ok"`
+		Target              string            `json:"target"`
+		Headers             map[string]string `json:"headers"`
+		BasicAuth           *basicAuthConfig  `json:"basic_auth"`
+		AllowedPathPrefixes []string          `json:"allowed_path_prefixes"`
+		Routes              []struct {
+			PathPrefix  string `json:"path_prefix"`
+			StripPrefix string `json:"strip_prefix"`
+			Target      string `json:"target"`
+		} `json:"routes"`
+		GatewayPath string `json:"gateway_path"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		s.log.ErrorContext(ctx, "team integration config: decode failed", "error", err)
+		return negative
+	}
+	if !result.OK {
+		return negative
+	}
+
+	if result.GatewayPath != "" {
+		return &integrationCacheEntry{
+			ok:          true,
+			gatewayPath: result.GatewayPath,
+			fetchedAt:   time.Now(),
+		}
+	}
+
+	targetURL, err := url.Parse(result.Target)
+	if err != nil {
+		s.log.ErrorContext(ctx, "team integration config: bad target URL", "error", err, "target", result.Target)
+		return negative
+	}
+
+	entry := &integrationCacheEntry{
+		ok:                  true,
+		target:              targetURL,
+		headers:             result.Headers,
+		basicAuth:           result.BasicAuth,
+		allowedPathPrefixes: result.AllowedPathPrefixes,
+		fetchedAt:           time.Now(),
+	}
+
+	for _, rt := range result.Routes {
+		rtTarget, err := url.Parse(rt.Target)
+		if err != nil {
+			s.log.ErrorContext(ctx, "team integration config: bad route target URL", "error", err, "target", rt.Target)
 			return negative
 		}
 		entry.routes = append(entry.routes, routeEntry{

@@ -122,7 +122,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Validate that all named integrations exist before creating the VM.
 	var integrations []exedb.Integration
 	for _, name := range integrationNames {
-		ig, err := ss.getIntegrationByName(ctx, cc, user.ID, name)
+		ig, err := ss.findIntegrationByName(ctx, cc, name)
 		if err != nil {
 			return err
 		}

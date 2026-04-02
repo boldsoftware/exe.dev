@@ -95,6 +95,7 @@
           <div class="integration-info">
             <div class="integration-header">
               <span class="integration-name">{{ ig.name }}</span>
+              <span v-if="ig.isTeam" class="badge badge-team">team</span>
               <span v-if="ig.repositories.length > 0" class="text-muted">
                 {{ ig.repositories.join(', ') }}
               </span>
@@ -110,12 +111,12 @@
             </div>
             <div v-if="ig.repositories.length > 0" class="usage-rows">
               <div class="usage-row">
-                <code>git clone {{ integrationScheme }}://{{ ig.name }}.int.{{ boxHost }}/{{ ig.repositories[0] }}.git</code>
-                <CopyButton :text="`git clone ${integrationScheme}://${ig.name}.int.${boxHost}/${ig.repositories[0]}.git`" title="Copy" />
+                <code>git clone {{ integrationScheme }}://{{ ig.name }}.{{ ig.isTeam ? 'team' : 'int' }}.{{ boxHost }}/{{ ig.repositories[0] }}.git</code>
+                <CopyButton :text="`git clone ${integrationScheme}://${ig.name}.${ig.isTeam ? 'team' : 'int'}.${boxHost}/${ig.repositories[0]}.git`" title="Copy" />
               </div>
               <div class="usage-row">
-                <code>GH_HOST={{ ig.name }}.int.{{ boxHost }} gh repo view {{ ig.repositories[0] }}</code>
-                <CopyButton :text="`GH_HOST=${ig.name}.int.${boxHost} gh repo view ${ig.repositories[0]}`" title="Copy" />
+                <code>GH_HOST={{ ig.name }}.{{ ig.isTeam ? 'team' : 'int' }}.{{ boxHost }} gh repo view {{ ig.repositories[0] }}</code>
+                <CopyButton :text="`GH_HOST=${ig.name}.${ig.isTeam ? 'team' : 'int'}.${boxHost} gh repo view ${ig.repositories[0]}`" title="Copy" />
               </div>
             </div>
           </div>
@@ -149,6 +150,7 @@
           <div class="integration-info">
             <div class="integration-header">
               <span class="integration-name">{{ ig.name }}</span>
+              <span v-if="ig.isTeam" class="badge badge-team">team</span>
               <span class="text-muted">{{ ig.target }}</span>
               <span v-if="ig.hasHeader" class="badge badge-blue">header</span>
               <span v-if="ig.hasBasicAuth" class="badge badge-yellow">auth</span>
@@ -164,8 +166,8 @@
             </div>
             <div class="usage-rows">
               <div class="usage-row">
-                <code>{{ integrationScheme }}://{{ ig.name }}.int.{{ boxHost }}/</code>
-                <CopyButton :text="`${integrationScheme}://${ig.name}.int.${boxHost}/`" title="Copy" />
+                <code>{{ integrationScheme }}://{{ ig.name }}.{{ ig.isTeam ? 'team' : 'int' }}.{{ boxHost }}/</code>
+                <CopyButton :text="`${integrationScheme}://${ig.name}.${ig.isTeam ? 'team' : 'int'}.${boxHost}/`" title="Copy" />
               </div>
             </div>
           </div>
@@ -259,6 +261,13 @@
           <div class="form-row">
             <label>Name</label>
             <input v-model="ghModal.name" class="form-input" :placeholder="ghModal.repo ? ghModal.repo.replace(/\//g, '-') : 'integration-name'" />
+          </div>
+          <div v-if="data?.hasTeam" class="form-row">
+            <div class="form-row-check">
+              <input type="checkbox" v-model="ghModal.team" id="gh-team-check" />
+              <label for="gh-team-check">Team integration</label>
+              <span class="text-muted">— shared with all team members</span>
+            </div>
           </div>
           <div class="form-row">
             <label>Attach to</label>
@@ -354,6 +363,13 @@
           <div class="form-row">
             <label>Name</label>
             <input v-model="proxyModal.name" class="form-input" placeholder="my-api" />
+          </div>
+          <div v-if="data?.hasTeam" class="form-row">
+            <div class="form-row-check">
+              <input type="checkbox" v-model="proxyModal.team" id="proxy-team-check" />
+              <label for="proxy-team-check">Team integration</label>
+              <span class="text-muted">— shared with all team members</span>
+            </div>
           </div>
           <div class="form-row">
             <label>Target URL</label>
@@ -571,6 +587,7 @@ const ghModal = reactive({
   visible: false,
   repo: '',
   name: '',
+  team: false,
   attachments: [] as string[],
   tagVMs: [] as string[],
   running: false,
@@ -594,6 +611,7 @@ const proxyModal = reactive({
   basicPass: '',
   bearer: '',
   header: '',
+  team: false,
   attachments: [] as string[],
   tagVMs: [] as string[],
   running: false,
@@ -611,6 +629,7 @@ const proxyTagVMInputRef = ref<HTMLInputElement | null>(null)
 const attachModal = reactive({
   visible: false,
   name: '',
+  isTeam: false,
   currentAttachments: [] as string[],
   removing: '' as string,
   error: '',
@@ -658,7 +677,10 @@ function filterAttachOptions(search: string, selected: string[]) {
     .filter(o => !q || o.value.toLowerCase().includes(q) || o.sublabel.toLowerCase().includes(q))
 }
 
-const filteredAttachModalOptions = computed(() => filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments))
+const filteredAttachModalOptions = computed(() => {
+  const opts = filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments)
+  return attachModal.isTeam ? opts.filter(o => o.value.startsWith('tag:')) : opts
+})
 
 // VM options for tagging (used in both add modals)
 // Helper: get tags for a VM
@@ -683,8 +705,14 @@ function filterVMOptions(search: string, selected: string[]) {
     .filter(vm => !q || vm.name.toLowerCase().includes(q) || vm.tags.some(t => t.toLowerCase().includes(q)))
 }
 
-const filteredGhAttachOptions = computed(() => filterAttachOptions(ghAttachSearch.value, ghModal.attachments))
-const filteredProxyAttachOptions = computed(() => filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments))
+const filteredGhAttachOptions = computed(() => {
+  const opts = filterAttachOptions(ghAttachSearch.value, ghModal.attachments)
+  return ghModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
+})
+const filteredProxyAttachOptions = computed(() => {
+  const opts = filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments)
+  return proxyModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
+})
 const filteredGhTagVMOptions = computed(() => filterVMOptions(ghTagVMSearch.value, ghModal.tagVMs))
 const filteredProxyTagVMOptions = computed(() => filterVMOptions(proxyTagVMSearch.value, proxyModal.tagVMs))
 
@@ -731,6 +759,7 @@ const ghBuiltCommands = computed(() => {
   if (!ghModal.repo) return [] as string[]
   const name = ghEffectiveName.value
   let cmd = `integrations add github --name=${shellQuote(name)} --repository=${shellQuote(ghModal.repo)}`
+  if (ghModal.team) cmd += ' --team'
   for (const a of ghModal.attachments) {
     cmd += ` --attach=${shellQuote(a)}`
   }
@@ -745,6 +774,18 @@ const ghBuiltCommands = computed(() => {
 })
 
 // Auto-detect basic auth credentials in pasted target URL
+// When team is toggled on, remove non-tag attachments
+watch(() => proxyModal.team, (isTeam) => {
+  if (isTeam) {
+    proxyModal.attachments = proxyModal.attachments.filter(a => a.startsWith('tag:'))
+  }
+})
+watch(() => ghModal.team, (isTeam) => {
+  if (isTeam) {
+    ghModal.attachments = ghModal.attachments.filter(a => a.startsWith('tag:'))
+  }
+})
+
 watch(() => proxyModal.target, (newTarget) => {
   if (proxyModal.authMethod !== 'none' && proxyModal.authMethod !== 'basic') return
   try {
@@ -801,6 +842,7 @@ const proxyBuiltCommands = computed(() => {
   const name = proxyModal.name.trim()
   const target = proxyEffectiveTarget()
   let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(target)}`
+  if (proxyModal.team) cmd += ' --team'
   if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
     cmd += ` --bearer=${shellQuote(proxyModal.bearer.trim())}`
   } else if (proxyModal.authMethod === 'header' && proxyModal.header.trim()) {
@@ -1023,6 +1065,7 @@ function attachViaCommand(name: string) {
   const ig = [...(data.value?.githubIntegrations || []), ...(data.value?.proxyIntegrations || [])].find(i => i.name === name)
   attachModal.visible = true
   attachModal.name = name
+  attachModal.isTeam = ig?.isTeam || false
   attachModal.currentAttachments = [...(ig?.attachments || [])]
   attachModal.removing = ''
   attachModal.error = ''
@@ -1051,6 +1094,7 @@ async function openAddGitHubRepo() {
   ghModal.visible = true
   ghModal.repo = ''
   ghModal.name = ''
+  ghModal.team = false
   ghModal.attachments = []
   ghModal.tagVMs = []
   ghModal.running = false
@@ -1120,6 +1164,7 @@ function openAddHTTPProxy() {
   proxyModal.basicPass = ''
   proxyModal.bearer = ''
   proxyModal.header = ''
+  proxyModal.team = false
   proxyModal.attachments = []
   proxyModal.tagVMs = []
   proxyModal.running = false
@@ -1459,6 +1504,42 @@ function confirmUnlinkGitHub(installationID: number) {
 .badge-yellow {
   background: var(--badge-public-bg);
   color: var(--badge-public-text);
+}
+
+.badge-team {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-team {
+    background: #312e81;
+    color: #c7d2fe;
+  }
+}
+
+.form-row-check {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.form-row-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  top: 1px;
+}
+
+.form-row-check label {
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.form-row-check .text-muted {
+  margin-left: 2px;
 }
 
 /* Modal overlay */

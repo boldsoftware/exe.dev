@@ -81,7 +81,7 @@ func TestIntegrationsCommand(t *testing.T) {
 
 	// Test validation: duplicate name.
 	pty.SendLine("integrations add http-proxy --name=otherproxy --target=https://dup.com --header=X:y")
-	pty.Want("already be in use")
+	pty.Want("already in use")
 	pty.WantPrompt()
 
 	// Test validation: invalid name (uppercase).
@@ -305,4 +305,224 @@ func TestIntegrationsRename(t *testing.T) {
 	pty.SendLine("integrations remove betterproxy")
 	pty.Want("Removed")
 	pty.WantPrompt()
+}
+
+// TestTeamIntegrations tests team integration CRUD, name uniqueness, cross-user
+// visibility, and behavior when a member leaves the team.
+func TestTeamIntegrations(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	// Register owner and member, create a team.
+	ownerPTY, _, ownerKey, ownerEmail := registerForExeDevWithEmail(t, "teamint-owner@test.example")
+	ownerPTY.Disconnect()
+	memberPTY, _, memberKey, memberEmail := registerForExeDevWithEmail(t, "teamint-member@test.example")
+	memberPTY.Disconnect()
+
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKey, "team_int_crud", "IntTeam", ownerEmail)
+	addTeamMember(t, "team_int_crud", memberEmail)
+
+	// Also register a solo user who is NOT in a team.
+	soloPTY, _, soloKey, _ := registerForExeDevWithEmail(t, "teamint-solo@test.example")
+	soloPTY.Disconnect()
+
+	t.Run("BasicCRUD", func(t *testing.T) {
+		pty := sshToExeDev(t, ownerKey)
+
+		// Add a team integration.
+		pty.SendLine("integrations add http-proxy --team --name=shared-mcp --target=https://example.com --header=X-Auth:secret")
+		pty.Want("Added team integration shared-mcp")
+		pty.Want("tag:")
+		pty.WantPrompt()
+
+		// List should show the team integration with (team) label.
+		pty.SendLine("integrations list")
+		pty.Want("shared-mcp")
+		pty.Want("(team)")
+		pty.WantPrompt()
+
+		// Attach team integration to a tag (no --team flag needed).
+		pty.SendLine("integrations attach shared-mcp tag:production")
+		pty.Want("Attached shared-mcp to tag:production")
+		pty.WantPrompt()
+
+		// Cannot attach team integration with vm: spec.
+		pty.SendLine("integrations attach shared-mcp vm:myvm")
+		pty.Want("team integrations only support tag:")
+		pty.WantPrompt()
+
+		// Cannot attach team integration with auto:all.
+		pty.SendLine("integrations attach shared-mcp auto:all")
+		pty.Want("team integrations only support tag:")
+		pty.WantPrompt()
+
+		// Detach team integration (no --team flag needed).
+		pty.SendLine("integrations detach shared-mcp tag:production")
+		pty.Want("Detached shared-mcp from tag:production")
+		pty.WantPrompt()
+
+		// Rename team integration (no --team flag needed).
+		pty.SendLine("integrations rename shared-mcp better-mcp")
+		pty.Want("Renamed integration shared-mcp to better-mcp")
+		pty.WantPrompt()
+
+		// List shows renamed.
+		pty.SendLine("integrations list")
+		pty.Want("better-mcp")
+		pty.Want("(team)")
+		pty.WantPrompt()
+
+		// Remove team integration (no --team flag needed).
+		pty.SendLine("integrations remove better-mcp")
+		pty.Want("Removed integration better-mcp")
+		pty.WantPrompt()
+
+		// List should be empty now.
+		pty.SendLine("integrations list")
+		pty.Want("No integrations configured.")
+		pty.WantPrompt()
+		pty.Disconnect()
+	})
+
+	t.Run("NameUniqueness", func(t *testing.T) {
+		pty := sshToExeDev(t, ownerKey)
+
+		// Create a personal integration.
+		pty.SendLine("integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret")
+		pty.Want("Added integration myproxy")
+		pty.WantPrompt()
+
+		// Cannot create a team integration with the same name.
+		pty.SendLine("integrations add http-proxy --team --name=myproxy --target=https://other.com --header=X-Other:val")
+		pty.Want("already in use")
+		pty.WantPrompt()
+
+		// Clean up and do the reverse: team first, personal second.
+		pty.SendLine("integrations remove myproxy")
+		pty.Want("Removed")
+		pty.WantPrompt()
+
+		pty.SendLine("integrations add http-proxy --team --name=teamproxy --target=https://example.com --header=X-Auth:secret")
+		pty.Want("Added team integration teamproxy")
+		pty.WantPrompt()
+
+		// Cannot create personal integration with the same name as team integration.
+		pty.SendLine("integrations add http-proxy --name=teamproxy --target=https://other.com --header=X-Other:val")
+		pty.Want("already in use")
+		pty.WantPrompt()
+
+		// Cannot rename personal integration to a team integration name.
+		pty.SendLine("integrations add http-proxy --name=personal1 --target=https://example.com --header=X-Auth:s")
+		pty.Want("Added integration personal1")
+		pty.WantPrompt()
+		pty.SendLine("integrations rename personal1 teamproxy")
+		pty.Want("already in use")
+		pty.WantPrompt()
+
+		// Clean up.
+		pty.SendLine("integrations remove personal1")
+		pty.Want("Removed")
+		pty.WantPrompt()
+		pty.SendLine("integrations remove teamproxy")
+		pty.Want("Removed")
+		pty.WantPrompt()
+		pty.Disconnect()
+	})
+
+	t.Run("CrossUserVisibility", func(t *testing.T) {
+		// Owner creates a team integration.
+		pty := sshToExeDev(t, ownerKey)
+		pty.SendLine("integrations add http-proxy --team --name=team-shared --target=https://example.com --header=X-Auth:secret")
+		pty.Want("Added team integration team-shared")
+		pty.WantPrompt()
+		pty.Disconnect()
+
+		// Member should see it in their list.
+		mpty := sshToExeDev(t, memberKey)
+		mpty.SendLine("integrations list")
+		mpty.Want("team-shared")
+		mpty.Want("(team)")
+		mpty.WantPrompt()
+
+		// Member can attach it to a tag.
+		mpty.SendLine("integrations attach team-shared tag:staging")
+		mpty.Want("Attached team-shared to tag:staging")
+		mpty.WantPrompt()
+
+		// Member can detach it.
+		mpty.SendLine("integrations detach team-shared tag:staging")
+		mpty.Want("Detached team-shared from tag:staging")
+		mpty.WantPrompt()
+
+		// Member cannot create a personal integration with the same name.
+		mpty.SendLine("integrations add http-proxy --name=team-shared --target=https://other.com --header=X:y")
+		mpty.Want("already in use")
+		mpty.WantPrompt()
+		mpty.Disconnect()
+
+		// Owner cleans up.
+		pty = sshToExeDev(t, ownerKey)
+		pty.SendLine("integrations remove team-shared")
+		pty.Want("Removed")
+		pty.WantPrompt()
+		pty.Disconnect()
+	})
+
+	t.Run("MemberLeavesTeam", func(t *testing.T) {
+		// Owner creates a team integration.
+		pty := sshToExeDev(t, ownerKey)
+		pty.SendLine("integrations add http-proxy --team --name=survive-leave --target=https://example.com --header=X-Auth:secret")
+		pty.Want("Added team integration survive-leave")
+		pty.WantPrompt()
+		pty.Disconnect()
+
+		// Verify member sees it.
+		mpty := sshToExeDev(t, memberKey)
+		mpty.SendLine("integrations list")
+		mpty.Want("survive-leave")
+		mpty.Want("(team)")
+		mpty.WantPrompt()
+		mpty.Disconnect()
+
+		// Remove member from team.
+		enableRootSupport(t, ownerEmail)
+		pty = sshToExeDev(t, ownerKey)
+		pty.SendLine("team remove " + memberEmail)
+		pty.Want("Removed")
+		pty.WantPrompt()
+		pty.Disconnect()
+
+		// Integration should still exist for the owner.
+		pty = sshToExeDev(t, ownerKey)
+		pty.SendLine("integrations list")
+		pty.Want("survive-leave")
+		pty.Want("(team)")
+		pty.WantPrompt()
+
+		// Member should no longer see it.
+		mpty = sshToExeDev(t, memberKey)
+		mpty.SendLine("integrations list")
+		mpty.Want("No integrations configured.")
+		mpty.WantPrompt()
+		mpty.Disconnect()
+
+		// Add member back and clean up.
+		addTeamMember(t, "team_int_crud", memberEmail)
+		pty.SendLine("integrations remove survive-leave")
+		pty.Want("Removed")
+		pty.WantPrompt()
+		pty.Disconnect()
+	})
+
+	t.Run("NoTeamFlag", func(t *testing.T) {
+		// Solo user (not in a team) cannot use --team.
+		pty := sshToExeDev(t, soloKey)
+		pty.SendLine("integrations add http-proxy --team --name=nope --target=https://example.com --header=X:y")
+		pty.Want("--team requires being in a team")
+		pty.WantPrompt()
+		pty.Disconnect()
+	})
 }

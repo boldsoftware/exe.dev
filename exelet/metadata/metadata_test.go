@@ -349,15 +349,23 @@ func TestIntegrationHostNameMultipleSuffixes(t *testing.T) {
 	}
 }
 
-func TestTeamIntReturns501(t *testing.T) {
+func TestTeamIntProxiesToExed(t *testing.T) {
+	// Team integration requests should be proxied to exed's team-integration-config endpoint.
+	// When exed returns {ok: false}, the proxy should return 403.
+	exedCalled := false
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("exed should not be called for team-int requests")
+		if r.URL.Path == "/_/team-integration-config" {
+			exedCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"ok": false}`))
+			return
+		}
 	}))
 	defer fakeExed.Close()
 
 	log := slog.Default()
 	svc, err := NewService(log, &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0",
-		[]string{".int.exe.cloud", ".team-int.exe.cloud"}, ".team-int.exe.cloud", "", true, nil)
+		[]string{".int.exe.cloud", ".team.exe.cloud"}, ".team.exe.cloud", "", true, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -366,17 +374,17 @@ func TestTeamIntReturns501(t *testing.T) {
 	}
 	defer svc.Stop(context.Background())
 
-	req := httptest.NewRequest("GET", "http://mirror.team-int.exe.cloud/anything", nil)
-	req.Host = "mirror.team-int.exe.cloud"
+	req := httptest.NewRequest("GET", "http://mirror.team.exe.cloud/anything", nil)
+	req.Host = "mirror.team.exe.cloud"
 	req.RemoteAddr = "10.42.0.2:12345"
 	rr := httptest.NewRecorder()
 	svc.server.Handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("expected 501, got %d: %s", rr.Code, rr.Body.String())
+	if !exedCalled {
+		t.Error("expected exed team-integration-config to be called")
 	}
-	if !strings.Contains(rr.Body.String(), "not yet available") {
-		t.Errorf("expected 'not yet available' in body, got: %s", rr.Body.String())
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

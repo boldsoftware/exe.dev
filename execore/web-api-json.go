@@ -218,6 +218,7 @@ type jsonIntegrationInfo struct {
 	HasBasicAuth bool     `json:"hasBasicAuth"`
 	Repositories []string `json:"repositories"`
 	Attachments  []string `json:"attachments"`
+	IsTeam       bool     `json:"isTeam"`
 }
 
 type jsonGitHubAccount struct {
@@ -239,6 +240,7 @@ type jsonIntegrationsData struct {
 	Boxes              []jsonBoxMinimal      `json:"boxes"`
 	IntegrationScheme  string                `json:"integrationScheme"`
 	BoxHost            string                `json:"boxHost"`
+	HasTeam            bool                  `json:"hasTeam"`
 }
 
 type jsonBoxMinimal struct {
@@ -738,6 +740,42 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 		integrations = append(integrations, info)
 	}
 
+	// Fetch team integrations if user is in a team.
+	var hasTeam bool
+	if team, err := s.GetTeamForUser(r.Context(), userID); err == nil && team != nil {
+		hasTeam = true
+		teamIntegrations, _ := withRxRes1(s, r.Context(), (*exedb.Queries).ListIntegrationsByTeam, &team.TeamID)
+		for _, ig := range teamIntegrations {
+			info := jsonIntegrationInfo{
+				Name:        ig.Name,
+				Type:        ig.Type,
+				Attachments: nonNil(ig.GetAttachments()),
+				IsTeam:      true,
+			}
+			switch ig.Type {
+			case "http-proxy":
+				var cfg httpProxyConfig
+				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+					info.HasHeader = cfg.Header != ""
+					parsedURL, _ := url.Parse(cfg.Target)
+					if parsedURL != nil && parsedURL.User != nil {
+						info.HasBasicAuth = true
+						parsedURL.User = nil
+						info.Target = parsedURL.String()
+					} else {
+						info.Target = cfg.Target
+					}
+				}
+			case "github":
+				var cfg githubIntegrationConfig
+				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+					info.Repositories = nonNil(cfg.Repositories)
+				}
+			}
+			integrations = append(integrations, info)
+		}
+	}
+
 	var ghIntegrations, proxyIntegrations []jsonIntegrationInfo
 	for _, ig := range integrations {
 		switch ig.Type {
@@ -814,6 +852,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 		Boxes:              nonNil(profileBoxes),
 		IntegrationScheme:  s.integrationScheme(),
 		BoxHost:            s.env.BoxHost,
+		HasTeam:            hasTeam,
 	})
 }
 

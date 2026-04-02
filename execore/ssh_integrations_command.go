@@ -42,7 +42,7 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 			{
 				Name:              "add",
 				Description:       "Add a new integration",
-				Usage:             "integrations add <type> --name=<name> [args...]",
+				Usage:             "integrations add <type> --name=<name> [--team] [args...]",
 				Handler:           ss.handleIntegrationsAdd,
 				HasPositionalArgs: true,
 				FlagSetFunc:       addIntegrationFlags,
@@ -58,10 +58,11 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 				Name: "attach",
 				Description: "Attach an integration to a VM, tag, or all VMs" +
 					"\r\n\r\nA <spec> controls where the integration is mounted:\r\n" +
-					"  vm:<vm-name>   attach to a specific VM\r\n" +
+					"  vm:<vm-name>   attach to a specific VM (personal only)\r\n" +
 					"  tag:<tag-name> attach to every VM with the given tag\r\n" +
-					"  auto:all       attach to all current and future VMs\r\n\r\n" +
-					"You can attach the same integration multiple times with different specs.",
+					"  auto:all       attach to all current and future VMs (personal only)\r\n\r\n" +
+					"You can attach the same integration multiple times with different specs.\r\n" +
+					"Team integrations only support tag:<tag-name>.",
 				Usage:             "integrations attach <name> <spec>",
 				Handler:           ss.handleIntegrationsAttach,
 				HasPositionalArgs: true,
@@ -69,6 +70,7 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 					"int attach my-mcp vm:dev1",
 					"int attach my-mcp tag:production",
 					"int attach my-mcp auto:all",
+					"int attach shared-mcp tag:production",
 				},
 			},
 			{
@@ -89,17 +91,89 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 	}
 }
 
-// getIntegrationByName looks up an integration by name for the given user.
-// Returns a user-facing error if not found.
-func (ss *SSHServer) getIntegrationByName(ctx context.Context, cc *exemenu.CommandContext, userID, name string) (exedb.Integration, error) {
+// findIntegrationByName looks up an integration by name, searching personal
+// integrations first, then team integrations (if the user is in a team).
+// Returns the integration and a user-facing error if not found.
+func (ss *SSHServer) findIntegrationByName(ctx context.Context, cc *exemenu.CommandContext, name string) (exedb.Integration, error) {
+	// Try personal first.
 	ig, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByOwnerAndName, exedb.GetIntegrationByOwnerAndNameParams{
-		OwnerUserID: userID,
+		OwnerUserID: cc.User.ID,
 		Name:        name,
 	})
-	if err != nil {
-		return exedb.Integration{}, cc.Errorf("integration %q not found", name)
+	if err == nil {
+		return ig, nil
 	}
-	return ig, nil
+
+	// Try team.
+	team, teamErr := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if teamErr == nil && team != nil {
+		ig, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByTeamAndName, exedb.GetIntegrationByTeamAndNameParams{
+			TeamID: &team.TeamID,
+			Name:   name,
+		})
+		if err == nil {
+			return ig, nil
+		}
+	}
+
+	return exedb.Integration{}, cc.Errorf("integration %q not found", name)
+}
+
+// resolveTeamFlag checks the --team flag and returns the team ID if set.
+// Returns an error if --team is set but the user is not in a team.
+func (ss *SSHServer) resolveTeamFlag(ctx context.Context, cc *exemenu.CommandContext) (isTeam bool, teamID string, err error) {
+	if cc.FlagSet == nil {
+		return false, "", nil
+	}
+	teamFlag := cc.FlagSet.Lookup("team")
+	if teamFlag == nil {
+		return false, "", nil
+	}
+	if teamFlag.Value.String() != "true" {
+		return false, "", nil
+	}
+	team, teamErr := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if teamErr != nil || team == nil {
+		return false, "", cc.Errorf("--team requires being in a team")
+	}
+	return true, team.TeamID, nil
+}
+
+// checkIntegrationNameAvailable checks that no personal or team integration
+// with the given name exists for this user. Returns a user-facing error if
+// the name is already taken.
+func (ss *SSHServer) checkIntegrationNameAvailable(ctx context.Context, cc *exemenu.CommandContext, name string) error {
+	// Check personal.
+	_, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByOwnerAndName, exedb.GetIntegrationByOwnerAndNameParams{
+		OwnerUserID: cc.User.ID,
+		Name:        name,
+	})
+	if err == nil {
+		return cc.Errorf("name %q is already in use", name)
+	}
+
+	// Check team.
+	team, teamErr := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if teamErr == nil && team != nil {
+		_, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByTeamAndName, exedb.GetIntegrationByTeamAndNameParams{
+			TeamID: &team.TeamID,
+			Name:   name,
+		})
+		if err == nil {
+			return cc.Errorf("name %q is already in use", name)
+		}
+	}
+
+	return nil
+}
+
+// parseTeamAttachmentSpec validates an attachment spec for a team integration.
+// Team integrations only support tag:<name>.
+func parseTeamAttachmentSpec(spec string) (string, error) {
+	if strings.HasPrefix(spec, "tag:") && len(spec) > 4 {
+		return spec, nil
+	}
+	return "", fmt.Errorf("team integrations only support tag:<name> attachments, got %q", spec)
 }
 
 func (ss *SSHServer) handleIntegrationsHelp(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -114,6 +188,13 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 	integrations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListIntegrationsByUser, cc.User.ID)
 	if err != nil {
 		return err
+	}
+
+	// Fetch team integrations if the user is in a team.
+	var teamIntegrations []exedb.Integration
+	team, _ := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if team != nil {
+		teamIntegrations, _ = withRxRes1(ss.server, ctx, (*exedb.Queries).ListIntegrationsByTeam, &team.TeamID)
 	}
 
 	// Only show the synthetic "notify" integration if the user has push tokens.
@@ -132,18 +213,26 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 			})
 		}
 		for _, ig := range integrations {
-			item := map[string]any{
+			items = append(items, map[string]any{
 				"name":        ig.Name,
 				"type":        ig.Type,
 				"config":      json.RawMessage(ig.Config),
 				"attachments": ig.GetAttachments(),
-			}
-			items = append(items, item)
+			})
+		}
+		for _, ig := range teamIntegrations {
+			items = append(items, map[string]any{
+				"name":        ig.Name,
+				"type":        ig.Type,
+				"config":      json.RawMessage(ig.Config),
+				"attachments": ig.GetAttachments(),
+				"team":        true,
+			})
 		}
 		cc.WriteJSON(items)
 		return nil
 	}
-	if !showNotify && len(integrations) == 0 {
+	if !showNotify && len(integrations) == 0 && len(teamIntegrations) == 0 {
 		cc.Writeln("No integrations configured.")
 		return nil
 	}
@@ -157,6 +246,14 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 			attachStr = strings.Join(attachments, " ")
 		}
 		cc.Writeln("%s  %s  %s  %s", ig.Name, ig.Type, summarizeConfig(ig.Type, ig.Config), attachStr)
+	}
+	for _, ig := range teamIntegrations {
+		attachments := ig.GetAttachments()
+		attachStr := "(none)"
+		if len(attachments) > 0 {
+			attachStr = strings.Join(attachments, " ")
+		}
+		cc.Writeln("%s  %s  %s  %s  (team)", ig.Name, ig.Type, summarizeConfig(ig.Type, ig.Config), attachStr)
 	}
 	return nil
 }
@@ -205,8 +302,13 @@ type httpProxyConfig struct {
 
 // printIntegrationUsage prints usage instructions after creating an integration.
 // For github integrations, repositories should be the list of repos; for other types, nil.
-func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name, attachments string, repositories []string) {
-	intHost := name + ".int." + ss.server.env.BoxHost
+func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name, attachments string, repositories []string, teamID *string) {
+	var intHost string
+	if teamID != nil {
+		intHost = name + ".team." + ss.server.env.BoxHost
+	} else {
+		intHost = name + ".int." + ss.server.env.BoxHost
+	}
 
 	// Parse attachments to find a VM name for the example.
 	var specList []string
@@ -226,8 +328,13 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 
 	cc.Writeln("")
 	if !hasAttachments {
-		cc.Writeln("To use this integration, attach it to a VM first:")
-		cc.Writeln("  integrations attach %s vm:<vm-name>", name)
+		if teamID != nil {
+			cc.Writeln("To use this integration, attach it to a tag:")
+			cc.Writeln("  integrations attach %s tag:<tag-name>", name)
+		} else {
+			cc.Writeln("To use this integration, attach it to a VM first:")
+			cc.Writeln("  integrations attach %s vm:<vm-name>", name)
+		}
 		cc.Writeln("")
 	}
 
@@ -281,28 +388,45 @@ func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.Comm
 		return cc.Errorf("unknown integration type %q (known types: %s)", typeName, strings.Join(knownIntegrationTypeNames(), ", "))
 	}
 
+	isTeam, teamID, err := ss.resolveTeamFlag(ctx, cc)
+	if err != nil {
+		return err
+	}
+
 	// Parse optional --attach flags (can be repeated).
 	var attachments string
 	if attachVal, ok := cc.FlagSet.Lookup("attach").Value.(*stringSliceFlag); ok && len(attachVal.values) > 0 {
 		var specs []string
 		for _, raw := range attachVal.values {
-			spec, err := parseAttachmentSpec(raw)
+			var spec string
+			if isTeam {
+				spec, err = parseTeamAttachmentSpec(raw)
+			} else {
+				spec, err = parseAttachmentSpec(raw)
+			}
 			if err != nil {
 				return cc.Errorf("%v", err)
 			}
-			if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
-				return err
+			if !isTeam {
+				if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
+					return err
+				}
 			}
 			specs = append(specs, spec)
 		}
 		attachments = exedb.AttachmentsJSON(specs)
 	}
 
+	var teamIDPtr *string
+	if isTeam {
+		teamIDPtr = &teamID
+	}
+
 	switch typeName {
 	case "http-proxy":
-		return ss.handleAddHTTPProxy(ctx, cc, attachments)
+		return ss.handleAddHTTPProxy(ctx, cc, attachments, teamIDPtr)
 	case "github":
-		return ss.handleAddGitHub(ctx, cc, attachments)
+		return ss.handleAddGitHub(ctx, cc, attachments, teamIDPtr)
 	default:
 		return cc.Errorf("unknown integration type %q", typeName)
 	}
@@ -316,6 +440,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
 	fs.Var(&stringSliceFlag{}, "attach", "attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated")
+	fs.Bool("team", false, "create as a team integration")
 	return fs
 }
 
@@ -328,7 +453,7 @@ func knownIntegrationTypeNames() []string {
 	return names
 }
 
-func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.CommandContext, attachments string) error {
+func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.CommandContext, attachments string, teamID *string) error {
 	name := cc.FlagSet.Lookup("name").Value.String()
 	target := cc.FlagSet.Lookup("target").Value.String()
 	header := cc.FlagSet.Lookup("header").Value.String()
@@ -339,6 +464,9 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	}
 	if err := validateIntegrationName(name); err != nil {
 		return cc.Errorf("invalid name: %v", err)
+	}
+	if err := ss.checkIntegrationNameAvailable(ctx, cc, name); err != nil {
+		return err
 	}
 	if target == "" {
 		return cc.Errorf("--target is required")
@@ -387,18 +515,23 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 			Config:        string(cfgJSON),
 			Name:          name,
 			Attachments:   attachments,
+			TeamID:        teamID,
 		})
 	})
 	if err != nil {
 		return cc.Errorf("failed to add integration (name %q may already be in use)", name)
 	}
 
-	cc.Writeln("Added integration %s", name)
-	ss.printIntegrationUsage(cc, "http-proxy", name, attachments, nil)
+	if teamID != nil {
+		cc.Writeln("Added team integration %s", name)
+	} else {
+		cc.Writeln("Added integration %s", name)
+	}
+	ss.printIntegrationUsage(cc, "http-proxy", name, attachments, nil, teamID)
 	return nil
 }
 
-func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandContext, attachments string) error {
+func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandContext, attachments string, teamID *string) error {
 	name := cc.FlagSet.Lookup("name").Value.String()
 	repositoryFlag := cc.FlagSet.Lookup("repository").Value.String()
 
@@ -407,6 +540,9 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	}
 	if err := validateIntegrationName(name); err != nil {
 		return cc.Errorf("invalid name: %v", err)
+	}
+	if err := ss.checkIntegrationNameAvailable(ctx, cc, name); err != nil {
+		return err
 	}
 	if repositoryFlag == "" {
 		return cc.Errorf("--repository is required (e.g. owner/repo or owner/repo1,owner/repo2)")
@@ -444,14 +580,11 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 	}
 
 	// Look up the installation for this repo owner.
-	// Check this before the server-level config so that users who haven't
-	// connected GitHub get a more actionable error message.
 	ghInstall, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetGitHubInstallationByTarget, exedb.GetGitHubInstallationByTargetParams{
 		UserID:             cc.User.ID,
 		GitHubAccountLogin: repoOwner,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		// List what's connected to give a helpful error.
 		accounts, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).ListGitHubInstallations, cc.User.ID)
 		if len(accounts) == 0 {
 			return cc.Errorf("no GitHub account connected; run: integrations setup github")
@@ -495,14 +628,19 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 			Config:        string(cfgJSON),
 			Name:          name,
 			Attachments:   attachments,
+			TeamID:        teamID,
 		})
 	})
 	if err != nil {
 		return cc.Errorf("failed to add integration (name %q may already be in use)", name)
 	}
 
-	cc.Writeln("Added integration %s", name)
-	ss.printIntegrationUsage(cc, "github", name, attachments, repositories)
+	if teamID != nil {
+		cc.Writeln("Added team integration %s", name)
+	} else {
+		cc.Writeln("Added integration %s", name)
+	}
+	ss.printIntegrationUsage(cc, "github", name, attachments, repositories, teamID)
 	return nil
 }
 
@@ -519,17 +657,27 @@ func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.C
 	if isBuiltinIntegration(cc.Args[0]) {
 		return cc.Errorf("%s is a built-in integration and cannot be removed", cc.Args[0])
 	}
-	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, cc.Args[0])
+
+	ig, err := ss.findIntegrationByName(ctx, cc, cc.Args[0])
 	if err != nil {
 		return err
 	}
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.DeleteIntegration(ctx, exedb.DeleteIntegrationParams{
-			IntegrationID: ig.IntegrationID,
-			OwnerUserID:   cc.User.ID,
+	if ig.IsTeam() {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteTeamIntegration(ctx, exedb.DeleteTeamIntegrationParams{
+				IntegrationID: ig.IntegrationID,
+				TeamID:        ig.TeamID,
+			})
 		})
-	})
+	} else {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteIntegration(ctx, exedb.DeleteIntegrationParams{
+				IntegrationID: ig.IntegrationID,
+				OwnerUserID:   cc.User.ID,
+			})
+		})
+	}
 	if err != nil {
 		return err
 	}
@@ -583,21 +731,24 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 	}
 	rawSpec := cc.Args[1]
 
-	spec, err := parseAttachmentSpec(rawSpec)
+	ig, err := ss.findIntegrationByName(ctx, cc, name)
+	if err != nil {
+		return err
+	}
+
+	var spec string
+	if ig.IsTeam() {
+		spec, err = parseTeamAttachmentSpec(rawSpec)
+	} else {
+		spec, err = parseAttachmentSpec(rawSpec)
+		if err == nil {
+			err = ss.validateAttachmentSpec(ctx, cc, spec)
+		}
+	}
 	if err != nil {
 		return cc.Errorf("%v", err)
 	}
 
-	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, name)
-	if err != nil {
-		return err
-	}
-
-	if err := ss.validateAttachmentSpec(ctx, cc, spec); err != nil {
-		return err
-	}
-
-	// Add to attachments list, checking for duplicates.
 	attachments := ig.GetAttachments()
 	for _, a := range attachments {
 		if a == spec {
@@ -606,13 +757,23 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 	}
 	attachments = append(attachments, spec)
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
-			Attachments:   exedb.AttachmentsJSON(attachments),
-			IntegrationID: ig.IntegrationID,
-			OwnerUserID:   cc.User.ID,
+	if ig.IsTeam() {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateTeamIntegrationAttachments(ctx, exedb.UpdateTeamIntegrationAttachmentsParams{
+				Attachments:   exedb.AttachmentsJSON(attachments),
+				IntegrationID: ig.IntegrationID,
+				TeamID:        ig.TeamID,
+			})
 		})
-	})
+	} else {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+				Attachments:   exedb.AttachmentsJSON(attachments),
+				IntegrationID: ig.IntegrationID,
+				OwnerUserID:   cc.User.ID,
+			})
+		})
+	}
 	if err != nil {
 		return cc.Errorf("failed to attach %s via %s", name, spec)
 	}
@@ -631,17 +792,21 @@ func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.C
 	}
 	rawSpec := cc.Args[1]
 
-	spec, err := parseAttachmentSpec(rawSpec)
-	if err != nil {
-		return cc.Errorf("%v", err)
-	}
-
-	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, name)
+	ig, err := ss.findIntegrationByName(ctx, cc, name)
 	if err != nil {
 		return err
 	}
 
-	// Remove the spec from the attachments list.
+	var spec string
+	if ig.IsTeam() {
+		spec, err = parseTeamAttachmentSpec(rawSpec)
+	} else {
+		spec, err = parseAttachmentSpec(rawSpec)
+	}
+	if err != nil {
+		return cc.Errorf("%v", err)
+	}
+
 	attachments := ig.GetAttachments()
 	found := false
 	newAttachments := make([]string, 0, len(attachments))
@@ -656,13 +821,23 @@ func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.C
 		return cc.Errorf("%s is not attached via %s", name, spec)
 	}
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
-			Attachments:   exedb.AttachmentsJSON(newAttachments),
-			IntegrationID: ig.IntegrationID,
-			OwnerUserID:   cc.User.ID,
+	if ig.IsTeam() {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateTeamIntegrationAttachments(ctx, exedb.UpdateTeamIntegrationAttachmentsParams{
+				Attachments:   exedb.AttachmentsJSON(newAttachments),
+				IntegrationID: ig.IntegrationID,
+				TeamID:        ig.TeamID,
+			})
 		})
-	})
+	} else {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateIntegrationAttachments(ctx, exedb.UpdateIntegrationAttachmentsParams{
+				Attachments:   exedb.AttachmentsJSON(newAttachments),
+				IntegrationID: ig.IntegrationID,
+				OwnerUserID:   cc.User.ID,
+			})
+		})
+	}
 	if err != nil {
 		return cc.Errorf("failed to detach %s from %s", name, spec)
 	}
@@ -684,19 +859,32 @@ func (ss *SSHServer) handleIntegrationsRename(ctx context.Context, cc *exemenu.C
 	if err := validateIntegrationName(newName); err != nil {
 		return cc.Errorf("invalid name: %v", err)
 	}
+	if err := ss.checkIntegrationNameAvailable(ctx, cc, newName); err != nil {
+		return err
+	}
 
-	ig, err := ss.getIntegrationByName(ctx, cc, cc.User.ID, oldName)
+	ig, err := ss.findIntegrationByName(ctx, cc, oldName)
 	if err != nil {
 		return err
 	}
 
-	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateIntegrationName(ctx, exedb.UpdateIntegrationNameParams{
-			Name:          newName,
-			IntegrationID: ig.IntegrationID,
-			OwnerUserID:   cc.User.ID,
+	if ig.IsTeam() {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateTeamIntegrationName(ctx, exedb.UpdateTeamIntegrationNameParams{
+				Name:          newName,
+				IntegrationID: ig.IntegrationID,
+				TeamID:        ig.TeamID,
+			})
 		})
-	})
+	} else {
+		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpdateIntegrationName(ctx, exedb.UpdateIntegrationNameParams{
+				Name:          newName,
+				IntegrationID: ig.IntegrationID,
+				OwnerUserID:   cc.User.ID,
+			})
+		})
+	}
 	if err != nil {
 		return cc.Errorf("failed to rename (name %q may already be in use)", newName)
 	}

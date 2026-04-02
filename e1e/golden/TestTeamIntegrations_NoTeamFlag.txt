@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+integrations add http-proxy --team --name=nope --target=https://example.com --header=X:y
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ integrations add http-proxy --team --name=nope --target=https://example.com --header=X:y
+--team requires being in a team
+PROMPT ▶ exit
+Goodbye!

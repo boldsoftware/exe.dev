@@ -118,10 +118,9 @@ func TestIntegrationsProxy(t *testing.T) {
 		curlRetry(t, "-o /dev/null -w '%{http_code}' http://doesnotexist.int.exe.cloud/", "403")
 	})
 
-	t.Run("team_int_not_implemented", func(t *testing.T) {
-		// Use --resolve to bypass public DNS; the *.team-int.exe.cloud wildcard
-		// may not be available in all environments.
-		curlRetry(t, "--resolve echoproxy.team-int.exe.cloud:80:169.254.169.254 -o /dev/null -w '%{http_code}' http://echoproxy.team-int.exe.cloud/", "501")
+	t.Run("team_int_no_team", func(t *testing.T) {
+		// Team integration requests for a user not in a team should return 403.
+		curlRetry(t, "-o /dev/null -w '%{http_code}' http://echoproxy.team.exe.cloud/", "403")
 	})
 
 	t.Run("removed_integration", func(t *testing.T) {

@@ -295,7 +295,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 // Format: naNNN.{domain} where NNN is a shard number (001-1016)
 // For box names, returns the CNAME and chases it to get the A record.
 // For *.xterm.{boxHost} and *.shelley.{boxHost}, returns the box CNAME and A.
-// For *.int.{boxHost} and *.team-int.{boxHost}, returns the metadata IP (169.254.169.254).
+// For *.int.{boxHost} and *.team.{boxHost}, returns the metadata IP (169.254.169.254).
 // For the base domain ({boxHost}), returns the lobby IP.
 // For mail.{boxHost}, returns the lobby IP (mail server).
 func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
@@ -323,10 +323,10 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return s.lookupBoxA(ctx, box+"."+s.boxHost, fqdn, class)
 	}
 
-	// Check for integration wildcard (*.int.{boxHost} or *.team-int.{boxHost})
+	// Check for integration wildcard (*.int.{boxHost} or *.team.{boxHost})
 	// e.g., "myproxy.int.exe.xyz" → 169.254.169.254 (metadata service)
 	intSuffix := ".int." + s.boxHost
-	teamIntSuffix := ".team-int." + s.boxHost
+	teamIntSuffix := ".team." + s.boxHost
 	if strings.HasSuffix(qname, intSuffix) || strings.HasSuffix(qname, teamIntSuffix) {
 		return s.lookupMetadataA(fqdn, class)
 	}

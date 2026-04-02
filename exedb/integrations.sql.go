@@ -23,8 +23,22 @@ func (q *Queries) DeleteIntegration(ctx context.Context, arg DeleteIntegrationPa
 	return err
 }
 
+const deleteTeamIntegration = `-- name: DeleteTeamIntegration :exec
+DELETE FROM integrations WHERE integration_id = ? AND team_id = ?
+`
+
+type DeleteTeamIntegrationParams struct {
+	IntegrationID string  `db:"integration_id" json:"integration_id"`
+	TeamID        *string `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) DeleteTeamIntegration(ctx context.Context, arg DeleteTeamIntegrationParams) error {
+	_, err := q.exec(ctx, q.deleteTeamIntegrationStmt, deleteTeamIntegration, arg.IntegrationID, arg.TeamID)
+	return err
+}
+
 const getIntegration = `-- name: GetIntegration :one
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
 FROM integrations
 WHERE integration_id = ?
 `
@@ -40,14 +54,15 @@ func (q *Queries) GetIntegration(ctx context.Context, integrationID string) (Int
 		&i.Config,
 		&i.CreatedAt,
 		&i.Attachments,
+		&i.TeamID,
 	)
 	return i, err
 }
 
 const getIntegrationByOwnerAndName = `-- name: GetIntegrationByOwnerAndName :one
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
 FROM integrations
-WHERE owner_user_id = ? AND name = ?
+WHERE owner_user_id = ? AND name = ? AND team_id IS NULL
 `
 
 type GetIntegrationByOwnerAndNameParams struct {
@@ -66,22 +81,51 @@ func (q *Queries) GetIntegrationByOwnerAndName(ctx context.Context, arg GetInteg
 		&i.Config,
 		&i.CreatedAt,
 		&i.Attachments,
+		&i.TeamID,
+	)
+	return i, err
+}
+
+const getIntegrationByTeamAndName = `-- name: GetIntegrationByTeamAndName :one
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+FROM integrations
+WHERE team_id = ? AND name = ?
+`
+
+type GetIntegrationByTeamAndNameParams struct {
+	TeamID *string `db:"team_id" json:"team_id"`
+	Name   string  `db:"name" json:"name"`
+}
+
+func (q *Queries) GetIntegrationByTeamAndName(ctx context.Context, arg GetIntegrationByTeamAndNameParams) (Integration, error) {
+	row := q.queryRow(ctx, q.getIntegrationByTeamAndNameStmt, getIntegrationByTeamAndName, arg.TeamID, arg.Name)
+	var i Integration
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.OwnerUserID,
+		&i.Type,
+		&i.Name,
+		&i.Config,
+		&i.CreatedAt,
+		&i.Attachments,
+		&i.TeamID,
 	)
 	return i, err
 }
 
 const insertIntegration = `-- name: InsertIntegration :exec
-INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments, team_id)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertIntegrationParams struct {
-	IntegrationID string `db:"integration_id" json:"integration_id"`
-	OwnerUserID   string `db:"owner_user_id" json:"owner_user_id"`
-	Type          string `db:"type" json:"type"`
-	Config        string `db:"config" json:"config"`
-	Name          string `db:"name" json:"name"`
-	Attachments   string `db:"attachments" json:"attachments"`
+	IntegrationID string  `db:"integration_id" json:"integration_id"`
+	OwnerUserID   string  `db:"owner_user_id" json:"owner_user_id"`
+	Type          string  `db:"type" json:"type"`
+	Config        string  `db:"config" json:"config"`
+	Name          string  `db:"name" json:"name"`
+	Attachments   string  `db:"attachments" json:"attachments"`
+	TeamID        *string `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationParams) error {
@@ -92,12 +136,13 @@ func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationPa
 		arg.Config,
 		arg.Name,
 		arg.Attachments,
+		arg.TeamID,
 	)
 	return err
 }
 
 const listAllIntegrations = `-- name: ListAllIntegrations :many
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
 FROM integrations
 ORDER BY created_at DESC, rowid DESC
 `
@@ -119,6 +164,46 @@ func (q *Queries) ListAllIntegrations(ctx context.Context) ([]Integration, error
 			&i.Config,
 			&i.CreatedAt,
 			&i.Attachments,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIntegrationsByTeam = `-- name: ListIntegrationsByTeam :many
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+FROM integrations
+WHERE team_id = ?
+ORDER BY created_at DESC, rowid DESC
+`
+
+func (q *Queries) ListIntegrationsByTeam(ctx context.Context, teamID *string) ([]Integration, error) {
+	rows, err := q.query(ctx, q.listIntegrationsByTeamStmt, listIntegrationsByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Integration{}
+	for rows.Next() {
+		var i Integration
+		if err := rows.Scan(
+			&i.IntegrationID,
+			&i.OwnerUserID,
+			&i.Type,
+			&i.Name,
+			&i.Config,
+			&i.CreatedAt,
+			&i.Attachments,
+			&i.TeamID,
 		); err != nil {
 			return nil, err
 		}
@@ -134,9 +219,9 @@ func (q *Queries) ListAllIntegrations(ctx context.Context) ([]Integration, error
 }
 
 const listIntegrationsByUser = `-- name: ListIntegrationsByUser :many
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
 FROM integrations
-WHERE owner_user_id = ?
+WHERE owner_user_id = ? AND team_id IS NULL
 ORDER BY created_at DESC, rowid DESC
 `
 
@@ -157,6 +242,7 @@ func (q *Queries) ListIntegrationsByUser(ctx context.Context, ownerUserID string
 			&i.Config,
 			&i.CreatedAt,
 			&i.Attachments,
+			&i.TeamID,
 		); err != nil {
 			return nil, err
 		}
@@ -198,5 +284,35 @@ type UpdateIntegrationNameParams struct {
 
 func (q *Queries) UpdateIntegrationName(ctx context.Context, arg UpdateIntegrationNameParams) error {
 	_, err := q.exec(ctx, q.updateIntegrationNameStmt, updateIntegrationName, arg.Name, arg.IntegrationID, arg.OwnerUserID)
+	return err
+}
+
+const updateTeamIntegrationAttachments = `-- name: UpdateTeamIntegrationAttachments :exec
+UPDATE integrations SET attachments = ? WHERE integration_id = ? AND team_id = ?
+`
+
+type UpdateTeamIntegrationAttachmentsParams struct {
+	Attachments   string  `db:"attachments" json:"attachments"`
+	IntegrationID string  `db:"integration_id" json:"integration_id"`
+	TeamID        *string `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) UpdateTeamIntegrationAttachments(ctx context.Context, arg UpdateTeamIntegrationAttachmentsParams) error {
+	_, err := q.exec(ctx, q.updateTeamIntegrationAttachmentsStmt, updateTeamIntegrationAttachments, arg.Attachments, arg.IntegrationID, arg.TeamID)
+	return err
+}
+
+const updateTeamIntegrationName = `-- name: UpdateTeamIntegrationName :exec
+UPDATE integrations SET name = ? WHERE integration_id = ? AND team_id = ?
+`
+
+type UpdateTeamIntegrationNameParams struct {
+	Name          string  `db:"name" json:"name"`
+	IntegrationID string  `db:"integration_id" json:"integration_id"`
+	TeamID        *string `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) UpdateTeamIntegrationName(ctx context.Context, arg UpdateTeamIntegrationNameParams) error {
+	_, err := q.exec(ctx, q.updateTeamIntegrationNameStmt, updateTeamIntegrationName, arg.Name, arg.IntegrationID, arg.TeamID)
 	return err
 }

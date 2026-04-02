@@ -324,6 +324,99 @@ func (s *Server) mintGitHubToken(ctx context.Context, cfg githubIntegrationConfi
 	return iat.Token, nil
 }
 
+// handleTeamIntegrationConfig serves GET /_/team-integration-config?vm_name={name}&integration={name}.
+// Exelets call this to look up a team integration's proxy configuration.
+// Team integrations are looked up by the team of the box owner, and must
+// match via tag:* attachments.
+func (s *Server) handleTeamIntegrationConfig(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Security: only accept from Tailscale IPs or in GatewayDev mode.
+	host := domz.StripPort(r.RemoteAddr)
+	remoteIP, err := netip.ParseAddr(host)
+	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vmName := r.URL.Query().Get("vm_name")
+	integrationName := r.URL.Query().Get("integration")
+	if vmName == "" || integrationName == "" {
+		http.Error(w, "missing vm_name or integration parameter", http.StatusBadRequest)
+		return
+	}
+
+	sloghttp.AddCustomAttributes(r, slog.String("vm_name", vmName))
+	sloghttp.AddCustomAttributes(r, slog.String("integration", integrationName))
+	sloghttp.AddCustomAttributes(r, slog.String("request_type", "team_integration_config"))
+
+	notFound := func(reason string) {
+		sloghttp.AddCustomAttributes(r, slog.String("integration_result", reason))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
+	}
+
+	box, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).BoxNamed, vmName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			notFound("box_not_found")
+			return
+		}
+		s.slog().ErrorContext(ctx, "team integration config: box lookup failed", "error", err, "vm_name", vmName)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	sloghttp.AddCustomAttributes(r, slog.Int("box_id", box.ID))
+
+	// Look up the team for the box owner.
+	team, err := s.GetTeamForUser(ctx, box.CreatedByUserID)
+	if err != nil || team == nil {
+		notFound("owner_not_in_team")
+		return
+	}
+
+	integration, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIntegrationByTeamAndName, exedb.GetIntegrationByTeamAndNameParams{
+		TeamID: &team.TeamID,
+		Name:   integrationName,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			notFound("team_integration_not_found")
+			return
+		}
+		s.slog().ErrorContext(ctx, "team integration config: lookup failed", "error", err, "vm_name", vmName, "integration", integrationName)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if !exedb.IntegrationMatchesBox(&integration, &box) {
+		notFound("not_attached")
+		return
+	}
+
+	sloghttp.AddCustomAttributes(r, slog.String("integration_type", integration.Type))
+	sloghttp.AddCustomAttributes(r, slog.String("integration_result", "ok"))
+
+	resp, err := s.buildProxyConfig(ctx, integration.OwnerUserID, integration.Type, integration.Config)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "team integration config: failed to build proxy config",
+			"error", err,
+			"vm_name", vmName,
+			"integration", integrationName,
+			"integration_type", integration.Type,
+			"owner_user_id", integration.OwnerUserID,
+		)
+		sloghttp.AddCustomAttributes(r, slog.String("integration_result", "build_config_error"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(integrationConfigResponse{OK: false})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 // handleIntegrationCert serves GET /_/integration-cert.
 // Exelets call this to fetch the wildcard TLS certificate for *.int.{BoxHost}.
 func (s *Server) handleIntegrationCert(w http.ResponseWriter, r *http.Request) {
@@ -331,9 +424,9 @@ func (s *Server) handleIntegrationCert(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTeamIntegrationCert serves GET /_/team-integration-cert.
-// Exelets call this to fetch the wildcard TLS certificate for *.team-int.{BoxHost}.
+// Exelets call this to fetch the wildcard TLS certificate for *.team.{BoxHost}.
 func (s *Server) handleTeamIntegrationCert(w http.ResponseWriter, r *http.Request) {
-	s.serveIntegrationCert(w, r, "team-int")
+	s.serveIntegrationCert(w, r, "team")
 }
 
 func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, domain string) {

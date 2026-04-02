@@ -73,7 +73,7 @@ PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com
 PROMPT ▶ integrations add unknown-type
 unknown integration type "unknown-type" (known types: github, http-proxy)
 PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://dup.com --header=X:y
-failed to add integration (name "otherproxy" may already be in use)
+name "otherproxy" is already in use
 PROMPT ▶ integrations add http-proxy --name=BadName --target=https://x.com --header=X-Foo:bar
 invalid name: name must be lowercase (got "BadName")
 PROMPT ▶ integrations add http-proxy --name=-bad --target=https://x.com --header=X-Foo:bar
@@ -119,11 +119,12 @@ Subcommands:
   attach   - Attach an integration to a VM, tag, or all VMs
 
 A <spec> controls where the integration is mounted:
-  vm:<vm-name>   attach to a specific VM
+  vm:<vm-name>   attach to a specific VM (personal only)
   tag:<tag-name> attach to every VM with the given tag
-  auto:all       attach to all current and future VMs
+  auto:all       attach to all current and future VMs (personal only)
 
 You can attach the same integration multiple times with different specs.
+Team integrations only support tag:<tag-name>.
   detach   - Detach an integration from a VM, tag, or all VMs
   rename   - Rename an integration
 PROMPT ▶ integrations remove otherproxy

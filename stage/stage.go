@@ -496,8 +496,8 @@ func (e Env) BoxShelleySub(sub string) string { return sub + ".shelley." + e.Box
 func (e Env) IntegrationHostSuffix() string { return ".int." + e.BoxHost }
 
 // TeamIntHostSuffix returns the domain suffix for team integration proxy requests
-// (e.g., ".team-int.exe.xyz" in prod, ".team-int.exe.cloud" in local/test).
-func (e Env) TeamIntHostSuffix() string { return ".team-int." + e.BoxHost }
+// (e.g., ".team.exe.xyz" in prod, ".team.exe.cloud" in local/test).
+func (e Env) TeamIntHostSuffix() string { return ".team." + e.BoxHost }
 
 // ShardIsValid reports whether shard is within the valid range for this stage.
 func (e Env) ShardIsValid(shard int) bool {

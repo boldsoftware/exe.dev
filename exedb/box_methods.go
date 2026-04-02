@@ -106,9 +106,15 @@ func AttachmentsJSON(attachments []string) string {
 	return string(data)
 }
 
+// IsTeam reports whether this integration belongs to a team.
+func (ig *Integration) IsTeam() bool {
+	return ig.TeamID != nil
+}
+
 // IntegrationMatchesBox checks if an integration's attachments match a given box.
-// The box must belong to the same owner as the integration.
+// For personal integrations, the box must belong to the same owner.
 // Match logic: any of vm:<box.Name>, tag:<any-box-tag>, or auto:all matches.
+// Team integrations only support tag:* attachments.
 func IntegrationMatchesBox(ig *Integration, box *Box) bool {
 	for _, a := range ig.GetAttachments() {
 		if a == "auto:all" {
