@@ -1296,7 +1296,7 @@ function makeDevExeDashboard() {
               { color: "orange", value: 150 },
               { color: "red", value: 300 },
             ])
-        ).thresholdsStyle(new GraphThresholdsStyleConfigBuilder().mode(GraphGradientMode.Line)),
+        ).thresholdsStyle(new GraphThresholdsStyleConfigBuilder().mode(GraphThresholdsStyleMode.Line)),
       gridPos: { w: 8, h: 6 },
     }
   );
