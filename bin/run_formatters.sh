@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 # Shell formatting
 echo "Checking Shell formatting..."
-go tool shfmt -i 4 -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|deps/)')
+go tool shfmt -i 4 -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|deps/sshpiper)')
 
 # Go formatting with gofumpt
 echo "Checking Go formatting..."
@@ -20,7 +20,7 @@ echo "Formatting Go code with gofumpt..."
 # time find . -name "*.go" -not -path "./deps/sshpiper/*" -exec gofumpt -extra -w {} +
 # time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^deps/sshpiper')
 # Exclude generated files since they may have different formatting from code generators
-git ls-files -- "*.go" | grep -v -E '^deps/' | grep -v -E '(_string|\.gen|\.pb)\.go$' | grep -v -E '^(shelley/)?db/generated/' | xargs -P $(nproc) -n 20 go tool gofumpt -extra -w
+git ls-files -- "*.go" | grep -v -E '^deps/sshpiper' | grep -v -E '(_string|\.gen|\.pb)\.go$' | grep -v -E '^(shelley/)?db/generated/' | xargs -P $(nproc) -n 20 go tool gofumpt -extra -w
 echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."
