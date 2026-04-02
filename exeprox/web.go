@@ -397,10 +397,9 @@ func (wp *WebProxy) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate
 	// time-sensitive; any delay risks Let's Encrypt timing out the
 	// challenge, causing certificate issuance to fail.
 	if len(hello.SupportedProtos) == 1 && hello.SupportedProtos[0] == acme.ALPNProto {
-		wp.lg().InfoContext(hello.Context(), "ACME ALPN validation request", "serverName", serverName)
 		cert, err := wp.exeproxData().TopLevelCert(hello.Context(), hello)
 		if err != nil {
-			wp.lg().ErrorContext(hello.Context(), "ACME ALPN cert retrieval failed", "serverName", serverName, "error", err)
+			wp.lg().ErrorContext(hello.Context(), "top level cert retrieval failed", "serverName", serverName, "error", err)
 		}
 		return cert, err
 	}
