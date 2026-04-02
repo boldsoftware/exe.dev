@@ -216,6 +216,16 @@ func newUnstartedServer(t testing.TB) *Server {
 				"data":     []map[string]any{},
 				"has_more": false,
 			})
+		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/customers/"):
+			// Retrieve customer (used by GetPaymentMethod)
+			customerID := strings.TrimPrefix(r.URL.Path, "/v1/customers/")
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":     customerID,
+				"object": "customer",
+				"invoice_settings": map[string]any{
+					"default_payment_method": nil,
+				},
+			})
 		case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/products/"):
 			// Get product (used by InstallPrices when BootstrapStripeCatalog is true)
 			productID := strings.TrimPrefix(r.URL.Path, "/v1/products/")

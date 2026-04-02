@@ -5304,9 +5304,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			Email     string
 			PlanID    string
 		}
-		PlanHistory []planHistoryRow
-		Events      []eventRow
-		Credits     []creditRow
+		PlanHistory   []planHistoryRow
+		Events        []eventRow
+		Credits       []creditRow
+		PaymentMethod *billing.PaymentMethodInfo
 	}
 
 	var accounts []accountInfo
@@ -5465,6 +5466,13 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				}
 				purchases = append(purchases, p)
 			}
+		}
+
+		// Payment method.
+		if pm, err := s.billing.GetPaymentMethod(ctx, a.ID); err != nil {
+			s.slog().WarnContext(ctx, "failed to get payment method", "error", err, "account_id", a.ID)
+		} else {
+			info.PaymentMethod = pm
 		}
 
 		accounts = append(accounts, info)

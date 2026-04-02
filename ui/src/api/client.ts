@@ -137,6 +137,16 @@ export interface PendingTeamInvite {
   vmCount: number
 }
 
+export interface PaymentMethodInfo {
+  type: string
+  brand?: string
+  last4?: string
+  expMonth?: number
+  expYear?: number
+  email?: string
+  displayLabel: string
+}
+
 export interface CreditInfo {
   planName: string
   selfServeBilling: boolean
@@ -159,6 +169,8 @@ export interface CreditInfo {
   ledgerBalanceUSD: number
   purchases: { amount: string; date: string; receiptURL: string }[]
   gifts: { amount: string; reason: string; date: string }[]
+  paymentMethod: PaymentMethodInfo | null
+  paymentMethodManagedByTeam: boolean
 }
 
 export interface UserInfo {

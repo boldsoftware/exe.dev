@@ -157,28 +157,40 @@ type jsonPendingInvite struct {
 	VMCount   int64  `json:"vmCount"`
 }
 
+type jsonPaymentMethod struct {
+	Type         string `json:"type"`
+	Brand        string `json:"brand,omitempty"`
+	Last4        string `json:"last4,omitempty"`
+	ExpMonth     int    `json:"expMonth,omitempty"`
+	ExpYear      int    `json:"expYear,omitempty"`
+	Email        string `json:"email,omitempty"`
+	DisplayLabel string `json:"displayLabel"`
+}
+
 type jsonCreditInfo struct {
-	PlanName                string            `json:"planName"`
-	SelfServeBilling        bool              `json:"selfServeBilling"`
-	PaidPlan                bool              `json:"paidPlan"`
-	SkipBilling             bool              `json:"skipBilling"`
-	BillingStatus           string            `json:"billingStatus"`
-	ShelleyCreditsAvailable float64           `json:"shelleyCreditsAvailable"`
-	ShelleyCreditsMax       float64           `json:"shelleyCreditsMax"`
-	ExtraCreditsUSD         float64           `json:"extraCreditsUSD"`
-	TotalCreditsUSD         float64           `json:"totalCreditsUSD"`
-	TotalRemainingPct       float64           `json:"totalRemainingPct"`
-	MonthlyAvailableUSD     float64           `json:"monthlyAvailableUSD"`
-	MonthlyUsedUSD          float64           `json:"monthlyUsedUSD"`
-	MonthlyUsedPct          float64           `json:"monthlyUsedPct"`
-	UsedCreditsUSD          float64           `json:"usedCreditsUSD"`
-	TotalCapacityUSD        float64           `json:"totalCapacityUSD"`
-	UsedBarPct              float64           `json:"usedBarPct"`
-	HasShelleyFreeCreditPct bool              `json:"hasShelleyFreeCreditPct"`
-	MonthlyCreditsResetAt   string            `json:"monthlyCreditsResetAt"`
-	LedgerBalanceUSD        float64           `json:"ledgerBalanceUSD"`
-	Purchases               []jsonPurchaseRow `json:"purchases"`
-	Gifts                   []jsonGiftRow     `json:"gifts"`
+	PlanName                   string             `json:"planName"`
+	SelfServeBilling           bool               `json:"selfServeBilling"`
+	PaidPlan                   bool               `json:"paidPlan"`
+	SkipBilling                bool               `json:"skipBilling"`
+	BillingStatus              string             `json:"billingStatus"`
+	ShelleyCreditsAvailable    float64            `json:"shelleyCreditsAvailable"`
+	ShelleyCreditsMax          float64            `json:"shelleyCreditsMax"`
+	ExtraCreditsUSD            float64            `json:"extraCreditsUSD"`
+	TotalCreditsUSD            float64            `json:"totalCreditsUSD"`
+	TotalRemainingPct          float64            `json:"totalRemainingPct"`
+	MonthlyAvailableUSD        float64            `json:"monthlyAvailableUSD"`
+	MonthlyUsedUSD             float64            `json:"monthlyUsedUSD"`
+	MonthlyUsedPct             float64            `json:"monthlyUsedPct"`
+	UsedCreditsUSD             float64            `json:"usedCreditsUSD"`
+	TotalCapacityUSD           float64            `json:"totalCapacityUSD"`
+	UsedBarPct                 float64            `json:"usedBarPct"`
+	HasShelleyFreeCreditPct    bool               `json:"hasShelleyFreeCreditPct"`
+	MonthlyCreditsResetAt      string             `json:"monthlyCreditsResetAt"`
+	LedgerBalanceUSD           float64            `json:"ledgerBalanceUSD"`
+	Purchases                  []jsonPurchaseRow  `json:"purchases"`
+	Gifts                      []jsonGiftRow      `json:"gifts"`
+	PaymentMethod              *jsonPaymentMethod `json:"paymentMethod"`
+	PaymentMethodManagedByTeam bool               `json:"paymentMethodManagedByTeam,omitempty"`
 }
 
 type jsonPurchaseRow struct {
@@ -606,6 +618,46 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		jsonGifts[i] = jsonGiftRow{Amount: g.Amount, Reason: g.Reason, Date: g.Date}
 	}
 
+	// Payment method — fetch for self-serve billing users, or from the team billing owner.
+	var paymentMethod *jsonPaymentMethod
+	var paymentMethodManagedByTeam bool
+	if selfServeBilling && account.ID != "" {
+		pm, err := s.billing.GetPaymentMethod(r.Context(), account.ID)
+		if err != nil {
+			s.slog().WarnContext(r.Context(), "failed to get payment method", "error", err, "account_id", account.ID)
+		} else if pm != nil {
+			paymentMethod = &jsonPaymentMethod{
+				Type:         pm.Type,
+				Brand:        pm.Brand,
+				Last4:        pm.Last4,
+				ExpMonth:     pm.ExpMonth,
+				ExpYear:      pm.ExpYear,
+				Email:        pm.Email,
+				DisplayLabel: pm.DisplayLabel,
+			}
+		}
+	}
+	// For team members (non-billing-owner), fetch the billing owner's payment method.
+	if paymentMethod == nil {
+		if ownerAccountID, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamBillingOwnerAccountID, userID); err == nil && ownerAccountID != "" {
+			pm, err := s.billing.GetPaymentMethod(r.Context(), ownerAccountID)
+			if err != nil {
+				s.slog().WarnContext(r.Context(), "failed to get team billing owner payment method", "error", err, "owner_account_id", ownerAccountID)
+			} else if pm != nil {
+				paymentMethod = &jsonPaymentMethod{
+					Type:         pm.Type,
+					Brand:        pm.Brand,
+					Last4:        pm.Last4,
+					ExpMonth:     pm.ExpMonth,
+					ExpYear:      pm.ExpYear,
+					Email:        pm.Email,
+					DisplayLabel: pm.DisplayLabel,
+				}
+				paymentMethodManagedByTeam = true
+			}
+		}
+	}
+
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
 	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
@@ -631,27 +683,29 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		InviteCount:        inviteCount,
 		CanRequestInvites:  canRequestInvites,
 		Credits: jsonCreditInfo{
-			PlanName:                planName,
-			SelfServeBilling:        selfServeBilling,
-			PaidPlan:                paidPlan,
-			SkipBilling:             skipBilling,
-			BillingStatus:           billingStatus,
-			ShelleyCreditsAvailable: shelleyCreditsAvailable,
-			ShelleyCreditsMax:       shelleyCreditsMax,
-			ExtraCreditsUSD:         extraCreditsUSD,
-			TotalCreditsUSD:         max(shelleyCreditsAvailable+extraCreditsUSD+giftCreditsUSD, 0),
-			TotalRemainingPct:       bar.totalRemainingPct,
-			MonthlyAvailableUSD:     bar.monthlyAvailable,
-			MonthlyUsedUSD:          max(shelleyCreditsMax-bar.monthlyAvailable, 0),
-			MonthlyUsedPct:          monthlyUsedPct(bar.monthlyAvailable, shelleyCreditsMax),
-			UsedCreditsUSD:          bar.usedCreditsUSD,
-			TotalCapacityUSD:        bar.totalCapacity,
-			UsedBarPct:              bar.usedBarPct,
-			HasShelleyFreeCreditPct: hasShelleyFreeCreditPct,
-			MonthlyCreditsResetAt:   nextUTCMonthStart().Format("15:04 on Jan 2"),
-			LedgerBalanceUSD:        max(float64(creditBalance.Microcents())/1_000_000, 0),
-			Purchases:               nonNil(purchases),
-			Gifts:                   nonNil(jsonGifts),
+			PlanName:                   planName,
+			SelfServeBilling:           selfServeBilling,
+			PaidPlan:                   paidPlan,
+			SkipBilling:                skipBilling,
+			BillingStatus:              billingStatus,
+			ShelleyCreditsAvailable:    shelleyCreditsAvailable,
+			ShelleyCreditsMax:          shelleyCreditsMax,
+			ExtraCreditsUSD:            extraCreditsUSD,
+			TotalCreditsUSD:            max(shelleyCreditsAvailable+extraCreditsUSD+giftCreditsUSD, 0),
+			TotalRemainingPct:          bar.totalRemainingPct,
+			MonthlyAvailableUSD:        bar.monthlyAvailable,
+			MonthlyUsedUSD:             max(shelleyCreditsMax-bar.monthlyAvailable, 0),
+			MonthlyUsedPct:             monthlyUsedPct(bar.monthlyAvailable, shelleyCreditsMax),
+			UsedCreditsUSD:             bar.usedCreditsUSD,
+			TotalCapacityUSD:           bar.totalCapacity,
+			UsedBarPct:                 bar.usedBarPct,
+			HasShelleyFreeCreditPct:    hasShelleyFreeCreditPct,
+			MonthlyCreditsResetAt:      nextUTCMonthStart().Format("15:04 on Jan 2"),
+			LedgerBalanceUSD:           max(float64(creditBalance.Microcents())/1_000_000, 0),
+			Purchases:                  nonNil(purchases),
+			Gifts:                      nonNil(jsonGifts),
+			PaymentMethod:              paymentMethod,
+			PaymentMethodManagedByTeam: paymentMethodManagedByTeam,
 		},
 	}
 

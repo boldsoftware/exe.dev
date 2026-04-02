@@ -30,6 +30,18 @@ table.info th { width: 200px; }
 <tr><th>Changed By</th><td>{{if .PlanChangedBy}}{{.PlanChangedBy}}{{else}}—{{end}}</td></tr>
 </table>
 
+{{if .PaymentMethod}}
+<h3>Payment Method</h3>
+<table class="info">
+<tr><th>Type</th><td>{{.PaymentMethod.Type}}</td></tr>
+<tr><th>Display</th><td>{{.PaymentMethod.DisplayLabel}}</td></tr>
+{{if .PaymentMethod.Brand}}<tr><th>Brand</th><td>{{.PaymentMethod.Brand}}</td></tr>{{end}}
+{{if .PaymentMethod.Last4}}<tr><th>Last 4</th><td>{{.PaymentMethod.Last4}}</td></tr>{{end}}
+{{if .PaymentMethod.ExpMonth}}<tr><th>Expires</th><td>{{.PaymentMethod.ExpMonth}}/{{.PaymentMethod.ExpYear}}</td></tr>{{end}}
+{{if .PaymentMethod.Email}}<tr><th>Email</th><td>{{.PaymentMethod.Email}}</td></tr>{{end}}
+</table>
+{{end}}
+
 {{if .ChildAccounts}}
 <h3>Team Members</h3>
 <table class="info">

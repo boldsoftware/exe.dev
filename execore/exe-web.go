@@ -1000,6 +1000,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Serve payment icons (static SVGs from ui/dist/payment-icons/)
+		if iconPath, ok := strings.CutPrefix(path, "/payment-icons/"); ok {
+			if iconPath != "" && !strings.Contains(iconPath, "..") && !strings.Contains(iconPath, "/") {
+				s.serveDashboardUIAsset(w, r, "payment-icons/"+iconPath)
+				return
+			}
+		}
+
 		// Serve embedded static assets under /static/
 		if filename, ok := strings.CutPrefix(path, "/static/"); ok {
 			// simple security check; our embed only exposes files inside static/

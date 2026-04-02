@@ -83,6 +83,28 @@
               </div>
             </div>
 
+            <!-- Payment method -->
+            <div v-if="data.credits.selfServeBilling && data.credits.paymentMethod" class="payment-method-section">
+              <div class="pm-heading">DEFAULT PAYMENT METHOD</div>
+              <div class="payment-method-callout">
+                <img :src="paymentIconUrl(data.credits.paymentMethod)" :alt="paymentBrandName(data.credits.paymentMethod)" class="pm-icon-img" />
+                <div class="pm-details">
+                  <span class="pm-brand-name">{{ paymentBrandName(data.credits.paymentMethod) }}</span>
+                  <span v-if="data.credits.paymentMethod.last4" class="pm-number">
+                    •••• {{ data.credits.paymentMethod.last4 }}
+                  </span>
+                  <span v-else-if="data.credits.paymentMethod.email" class="pm-email">
+                    {{ data.credits.paymentMethod.email }}
+                  </span>
+                  <span v-if="data.credits.paymentMethod.expMonth && data.credits.paymentMethod.expYear" class="pm-expiry">
+                    Exp {{ data.credits.paymentMethod.expMonth }}/{{ String(data.credits.paymentMethod.expYear).slice(-2) }}
+                  </span>
+                </div>
+                <span v-if="data.credits.paymentMethodManagedByTeam" class="pm-managed-badge">Managed by team</span>
+                <a v-else href="/billing/update?source=profile" class="pm-update-link">Update</a>
+              </div>
+            </div>
+
             <!-- Shelley Credits Section -->
             <div v-if="data.credits.hasShelleyFreeCreditPct" class="credits-grid">
               <!-- Monthly Allowance Card -->
@@ -475,6 +497,7 @@ import { fetchProfile, runCommand, shellQuote, type ProfileData } from '../api/c
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
+import Card from 'primevue/card'
 import ProgressBar from 'primevue/progressbar'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -642,6 +665,30 @@ const apiKeyUsageExample = computed(() => {
   }
   return `curl -X POST https://${host}/exec -H "Authorization: Bearer ${token}" -d 'whoami'`
 })
+
+function paymentBrandName(pm: { type: string; brand?: string }): string {
+  if (pm.brand) {
+    const names: Record<string, string> = {
+      visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express',
+      discover: 'Discover', diners: 'Diners Club', jcb: 'JCB',
+      unionpay: 'UnionPay', maestro: 'Maestro',
+    }
+    return names[pm.brand.toLowerCase()] ?? (pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1))
+  }
+  if (pm.type === 'link') return 'Link'
+  if (pm.type === 'paypal') return 'PayPal'
+  return pm.type.charAt(0).toUpperCase() + pm.type.slice(1)
+}
+
+function paymentIconUrl(pm: { type: string; brand?: string }): string {
+  const brand = pm.brand?.toLowerCase()
+  const base = '/payment-icons'
+  const supported = ['visa','mastercard','amex','discover','diners','jcb','maestro','unionpay','paypal']
+  if (brand && supported.includes(brand)) return `${base}/${brand}.svg`
+  if (pm.type === 'paypal') return `${base}/paypal.svg`
+  if (pm.type === 'link') return `${base}/link.svg`
+  return `${base}/default.svg`
+}
 
 function formatExpiry(iso: string | undefined): string {
   if (!iso) return 'Never'
@@ -1107,6 +1154,74 @@ async function toggleNewsletter(event: Event) {
 .active-tag {
   background: var(--text-color) !important;
   color: var(--surface-ground) !important;
+}
+
+.payment-method-section {
+  margin: 12px 0 16px;
+}
+.pm-heading {
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-color-secondary);
+  margin-bottom: 8px;
+}
+.payment-method-callout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--surface-section, var(--surface-ground));
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+}
+.pm-icon-img {
+  width: 48px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.pm-brand-name {
+  font-weight: 600;
+  font-size: 0.95em;
+}
+.pm-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+.pm-number {
+  font-family: monospace;
+  font-size: 0.9em;
+  letter-spacing: 0.04em;
+  color: var(--text-color-secondary);
+}
+.pm-email {
+  font-size: 0.9em;
+  color: var(--text-color-secondary);
+}
+.pm-expiry {
+  font-size: 0.85em;
+  color: var(--text-color-secondary);
+}
+.pm-update-link {
+  font-size: 0.85em;
+  color: var(--primary-color);
+  text-decoration: none;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.pm-update-link:hover { text-decoration: underline; }
+.pm-managed-badge {
+  font-size: 0.8em;
+  color: var(--text-color-secondary);
+  background: var(--surface-border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 /* Credit Cards Grid */
