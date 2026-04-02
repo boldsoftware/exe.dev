@@ -242,14 +242,18 @@
 
       <!-- Team Info -->
       <section v-if="data.teamInfo" class="card">
-        <h2 class="card-title">{{ data.teamInfo.displayName }}</h2>
+        <h2 class="card-title">Team</h2>
         <div class="info-grid">
           <div class="info-row">
-            <span class="info-label">Role:</span>
+            <span class="info-label">Name</span>
+            <span class="info-value">{{ data.teamInfo.displayName }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Role</span>
             <span class="info-value">{{ data.teamInfo.role }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">VMs:</span>
+            <span class="info-label">VMs</span>
             <span class="info-value">{{ data.teamInfo.boxCount }} / {{ data.teamInfo.maxBoxes }}</span>
           </div>
         </div>
