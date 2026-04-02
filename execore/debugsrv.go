@@ -5543,10 +5543,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	// the old bonus fields to avoid double-counting (the bonus is now counted
 	// via giftCreditsUSD).
 	if hasSignupGiftInLedger(giftEntries) {
+		shelleyCreditsAvailable = max(shelleyCreditsAvailable-bonusRemaining, 0)
 		bonusGrantAmount = 0
 		bonusRemaining = 0
-		// TODO: use plan.Quotas.SignupBonusCreditUSD instead of hardcoded 100
-		shelleyCreditsAvailable = max(shelleyCreditsAvailable-100, 0)
 	}
 	// Extra credits = total ledger balance minus gift credits (gifts are tracked separately).
 	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD

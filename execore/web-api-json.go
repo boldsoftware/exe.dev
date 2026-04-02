@@ -580,9 +580,9 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		giftCreditsUSD = giftCreditsUSDFromLedger(giftEntries)
 	}
 	if hasSignupGiftInLedger(giftEntries) {
+		shelleyCreditsAvailable = max(shelleyCreditsAvailable-bonusRemaining, 0)
 		bonusGrantAmount = 0
 		bonusRemaining = 0
-		shelleyCreditsAvailable = max(shelleyCreditsAvailable-100, 0)
 	}
 	extraCreditsUSD := float64(creditBalance.Microcents())/1_000_000 - giftCreditsUSD
 	if extraCreditsUSD < 0 {
