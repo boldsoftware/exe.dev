@@ -264,7 +264,9 @@ func summarizeConfig(typ, configJSON string) string {
 		var cfg httpProxyConfig
 		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
 			parts := []string{"target=" + redactURLPassword(cfg.Target)}
-			if cfg.Header != "" {
+			if cfg.PeerVM != "" {
+				parts = append(parts, "peer="+cfg.PeerVM)
+			} else if cfg.Header != "" {
 				parts = append(parts, "header="+cfg.Header)
 			}
 			return strings.Join(parts, " ")
@@ -298,6 +300,9 @@ type githubIntegrationConfig struct {
 type httpProxyConfig struct {
 	Target string `json:"target"`
 	Header string `json:"header"`
+	// PeerVM is set when the integration was created with --peer.
+	// It records which VM the auto-generated API key targets.
+	PeerVM string `json:"peer_vm,omitempty"`
 }
 
 // printIntegrationUsage prints usage instructions after creating an integration.
@@ -439,6 +444,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.String("header", "", "header to inject (e.g. X-Auth:secret)")
 	fs.String("bearer", "", `bearer token (shorthand for --header="Authorization:Bearer TOKEN")`)
 	fs.String("repository", "", "GitHub repository in owner/repo format (required for github)")
+	fs.Bool("peer", false, "authenticate with a generated API key scoped to the target VM")
 	fs.Var(&stringSliceFlag{}, "attach", "attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated")
 	fs.Bool("team", false, "create as a team integration")
 	return fs
@@ -458,6 +464,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	target := cc.FlagSet.Lookup("target").Value.String()
 	header := cc.FlagSet.Lookup("header").Value.String()
 	bearer := cc.FlagSet.Lookup("bearer").Value.String()
+	peerFlag := cc.FlagSet.Lookup("peer").Value.(flag.Getter).Get().(bool)
 
 	if name == "" {
 		return cc.Errorf("--name is required")
@@ -468,6 +475,19 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 	if err := ss.checkIntegrationNameAvailable(ctx, cc, name); err != nil {
 		return err
 	}
+
+	// --peer is mutually exclusive with --header and --bearer.
+	if peerFlag && (header != "" || bearer != "") {
+		return cc.Errorf("--peer is mutually exclusive with --header and --bearer")
+	}
+
+	if peerFlag {
+		if target == "" {
+			return cc.Errorf("--target is required with --peer")
+		}
+		return ss.handleAddHTTPProxyWithPeer(ctx, cc, name, target, attachments)
+	}
+
 	if target == "" {
 		return cc.Errorf("--target is required")
 	}
@@ -665,6 +685,10 @@ func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.C
 
 	if ig.IsTeam() {
 		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			// Delete any SSH keys linked to this integration (e.g. peer integrations).
+			if err := queries.DeleteSSHKeysByIntegrationID(ctx, &ig.IntegrationID); err != nil {
+				return err
+			}
 			return queries.DeleteTeamIntegration(ctx, exedb.DeleteTeamIntegrationParams{
 				IntegrationID: ig.IntegrationID,
 				TeamID:        ig.TeamID,
@@ -672,6 +696,10 @@ func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.C
 		})
 	} else {
 		err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			// Delete any SSH keys linked to this integration (e.g. peer integrations).
+			if err := queries.DeleteSSHKeysByIntegrationID(ctx, &ig.IntegrationID); err != nil {
+				return err
+			}
 			return queries.DeleteIntegration(ctx, exedb.DeleteIntegrationParams{
 				IntegrationID: ig.IntegrationID,
 				OwnerUserID:   cc.User.ID,

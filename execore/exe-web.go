@@ -73,6 +73,7 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux.HandleFunc("GET /_/integration-config", s.handleIntegrationConfig)
 	servMux.HandleFunc("GET /_/team-integration-config", s.handleTeamIntegrationConfig)
 	servMux.HandleFunc("GET /_/integration-cert", s.handleIntegrationCert)
+	servMux.HandleFunc("/_/peer-proxy", s.handlePeerProxy)
 	servMux.HandleFunc("GET /_/team-integration-cert", s.handleTeamIntegrationCert)
 	servMux.Handle("/", cop.Handler(s))
 
@@ -533,12 +534,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// /exelet-desired must be routed before isRequestOnMainPort because
-	// exelets reach exed through a TCP proxy whose port differs from
-	// exed's main listener port, causing isRequestOnMainPort to reject
-	// the request. Access is already restricted by requireLocalAccess.
+	// /exelet-desired and /_/peer-proxy must be routed before
+	// isRequestOnMainPort because exelets reach exed through a TCP
+	// proxy whose port differs from exed's main listener port,
+	// causing isRequestOnMainPort to reject the request.
 	if r.URL.Path == "/exelet-desired" {
 		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleExeletDesired)).ServeHTTP(w, r)
+		return
+	}
+	if r.URL.Path == "/_/peer-proxy" {
+		s.handlePeerProxy(w, r)
 		return
 	}
 

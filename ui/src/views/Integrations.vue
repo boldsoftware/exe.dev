@@ -152,7 +152,8 @@
               <span class="integration-name">{{ ig.name }}</span>
               <span v-if="ig.isTeam" class="badge badge-team">team</span>
               <span class="text-muted">{{ ig.target }}</span>
-              <span v-if="ig.hasHeader" class="badge badge-blue">header</span>
+              <span v-if="ig.peerVM" class="badge badge-green">peer: {{ ig.peerVM }}</span>
+              <span v-if="ig.hasHeader && !ig.peerVM" class="badge badge-blue">header</span>
               <span v-if="ig.hasBasicAuth" class="badge badge-yellow">auth</span>
             </div>
             <div class="integration-attachments">
@@ -373,9 +374,34 @@
           </div>
           <div class="form-row">
             <label>Target URL</label>
-            <input v-model="proxyModal.target" class="form-input" placeholder="https://api.example.com" />
+            <div class="target-url-wrapper" ref="proxyTargetRef">
+              <input
+                v-model="proxyModal.target"
+                class="form-input"
+                placeholder="https://api.example.com"
+                @focus="proxyTargetOpen = true"
+                @input="proxyTargetOpen = true"
+              />
+              <div v-if="proxyTargetOpen && filteredTargetVMs.length > 0" class="attach-dropdown">
+                <div
+                  v-for="vm in filteredTargetVMs"
+                  :key="vm.name"
+                  class="attach-option"
+                  @mousedown.prevent="selectTargetVM(vm.name)"
+                >
+                  <span>https://{{ vm.name }}.{{ boxHost }}/</span>
+                  <span class="attach-option-context">{{ vm.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="detectedPeerVM" class="peer-hint">
+              <label class="peer-check">
+                <input type="checkbox" v-model="proxyModal.usePeer" />
+                Use peer auth (auto-generate API key for <strong>{{ detectedPeerVM }}</strong>)
+              </label>
+            </div>
           </div>
-          <div class="form-row">
+          <div v-if="!proxyModal.usePeer" class="form-row">
             <label>Auth method</label>
             <select v-model="proxyModal.authMethod" class="form-input">
               <option value="none">None</option>
@@ -606,6 +632,7 @@ const proxyModal = reactive({
   visible: false,
   name: '',
   target: '',
+  usePeer: false,
   authMethod: 'none',
   basicUser: '',
   basicPass: '',
@@ -617,6 +644,9 @@ const proxyModal = reactive({
   running: false,
   result: null as { success: boolean; output: string; error: string } | null,
 })
+
+const proxyTargetRef = ref<HTMLElement | null>(null)
+const proxyTargetOpen = ref(false)
 
 const proxyAttachSearch = ref('')
 const proxyAttachOpen = ref(false)
@@ -709,6 +739,45 @@ const filteredGhAttachOptions = computed(() => {
   const opts = filterAttachOptions(ghAttachSearch.value, ghModal.attachments)
   return ghModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
 })
+// Target URL VM suggestions
+const filteredTargetVMs = computed(() => {
+  const boxes = data.value?.boxes || []
+  const q = proxyModal.target.toLowerCase().trim()
+  if (!q) return boxes.slice(0, 8)
+  return boxes.filter(b =>
+    b.name.toLowerCase().includes(q) ||
+    `https://${b.name}.${boxHost.value}/`.toLowerCase().includes(q)
+  ).slice(0, 8)
+})
+
+// Detect if the current target URL refers to one of the user's VMs
+const detectedPeerVM = computed(() => {
+  const raw = proxyModal.target.trim()
+  if (!raw) return ''
+  try {
+    const url = new URL(raw)
+    const host = boxHost.value
+    if (host && url.hostname.endsWith('.' + host)) {
+      const vmName = url.hostname.slice(0, -(host.length + 1))
+      if (vmName && !vmName.includes('.')) {
+        const boxes = data.value?.boxes || []
+        if (boxes.some(b => b.name === vmName)) {
+          return vmName
+        }
+      }
+    }
+  } catch {
+    // not a valid URL yet
+  }
+  return ''
+})
+
+function selectTargetVM(vmName: string) {
+  proxyModal.target = `https://${vmName}.${boxHost.value}/`
+  proxyModal.usePeer = true
+  proxyTargetOpen.value = false
+}
+
 const filteredProxyAttachOptions = computed(() => {
   const opts = filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments)
   return proxyModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
@@ -794,7 +863,6 @@ watch(() => proxyModal.target, (newTarget) => {
       proxyModal.authMethod = 'basic'
       proxyModal.basicUser = decodeURIComponent(url.username)
       proxyModal.basicPass = decodeURIComponent(url.password)
-      // Strip credentials from the displayed target URL
       url.username = ''
       url.password = ''
       proxyModal.target = url.toString()
@@ -802,6 +870,11 @@ watch(() => proxyModal.target, (newTarget) => {
   } catch {
     // Not a valid URL yet, ignore
   }
+})
+
+// Auto-toggle peer auth when target URL matches a user's VM
+watch(detectedPeerVM, (vm) => {
+  proxyModal.usePeer = !!vm
 })
 
 // Keep default tag:<name> attachment in sync with proxy name
@@ -843,7 +916,9 @@ const proxyBuiltCommands = computed(() => {
   const target = proxyEffectiveTarget()
   let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(target)}`
   if (proxyModal.team) cmd += ' --team'
-  if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
+  if (proxyModal.usePeer && detectedPeerVM.value) {
+    cmd += ' --peer'
+  } else if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
     cmd += ` --bearer=${shellQuote(proxyModal.bearer.trim())}`
   } else if (proxyModal.authMethod === 'header' && proxyModal.header.trim()) {
     cmd += ` --header=${shellQuote(proxyModal.header.trim())}`
@@ -992,6 +1067,9 @@ function onDocClick(e: MouseEvent) {
   }
   if (ghTagVMRef.value && !ghTagVMRef.value.contains(e.target as Node)) {
     ghTagVMOpen.value = false
+  }
+  if (proxyTargetRef.value && !proxyTargetRef.value.contains(e.target as Node)) {
+    proxyTargetOpen.value = false
   }
   if (proxyAttachRef.value && !proxyAttachRef.value.contains(e.target as Node)) {
     proxyAttachOpen.value = false
@@ -1159,6 +1237,7 @@ function openAddHTTPProxy() {
   proxyModal.visible = true
   proxyModal.name = ''
   proxyModal.target = ''
+  proxyModal.usePeer = false
   proxyModal.authMethod = 'none'
   proxyModal.basicUser = ''
   proxyModal.basicPass = ''
@@ -1540,6 +1619,37 @@ function confirmUnlinkGitHub(installationID: number) {
 
 .form-row-check .text-muted {
   margin-left: 2px;
+}
+
+.badge-green {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.target-url-wrapper {
+  position: relative;
+}
+
+.peer-hint {
+  margin-top: 6px;
+}
+
+.peer-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.peer-check input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.peer-check strong {
+  color: var(--text-primary);
 }
 
 /* Modal overlay */

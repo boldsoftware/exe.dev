@@ -125,11 +125,13 @@ func newJSONUserInfoWithNewsletter(user exedb.User) jsonUserInfo {
 }
 
 type jsonSSHKey struct {
-	PublicKey   string  `json:"publicKey"`
-	Comment     string  `json:"comment"`
-	Fingerprint string  `json:"fingerprint"`
-	AddedAt     *string `json:"addedAt"`
-	LastUsedAt  *string `json:"lastUsedAt"`
+	PublicKey     string  `json:"publicKey"`
+	Comment       string  `json:"comment"`
+	Fingerprint   string  `json:"fingerprint"`
+	AddedAt       *string `json:"addedAt"`
+	LastUsedAt    *string `json:"lastUsedAt"`
+	IntegrationID *string `json:"integrationId,omitempty"`
+	ApiKeyHint    *string `json:"apiKeyHint,omitempty"`
 }
 
 type jsonPasskey struct {
@@ -243,6 +245,7 @@ type jsonIntegrationInfo struct {
 	Repositories []string `json:"repositories"`
 	Attachments  []string `json:"attachments"`
 	IsTeam       bool     `json:"isTeam"`
+	PeerVM       string   `json:"peerVM,omitempty"`
 }
 
 type jsonGitHubAccount struct {
@@ -510,11 +513,13 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		}
 		for _, dbKey := range dbKeys {
 			sshKeys = append(sshKeys, jsonSSHKey{
-				PublicKey:   dbKey.PublicKey,
-				Comment:     dbKey.Comment,
-				Fingerprint: dbKey.Fingerprint,
-				AddedAt:     formatTimePtr(dbKey.AddedAt),
-				LastUsedAt:  formatTimePtr(dbKey.LastUsedAt),
+				PublicKey:     dbKey.PublicKey,
+				Comment:       dbKey.Comment,
+				Fingerprint:   dbKey.Fingerprint,
+				AddedAt:       formatTimePtr(dbKey.AddedAt),
+				LastUsedAt:    formatTimePtr(dbKey.LastUsedAt),
+				IntegrationID: dbKey.IntegrationID,
+				ApiKeyHint:    dbKey.ApiKeyHint,
 			})
 		}
 		return nil
@@ -836,6 +841,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			var cfg httpProxyConfig
 			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
 				info.HasHeader = cfg.Header != ""
+				info.PeerVM = cfg.PeerVM
 				parsedURL, _ := url.Parse(cfg.Target)
 				if parsedURL != nil && parsedURL.User != nil {
 					info.HasBasicAuth = true

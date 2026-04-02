@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"net/netip"
 	"net/url"
 	"strings"
@@ -204,6 +205,15 @@ func buildHTTPProxyConfig(configJSON string) (integrationConfigResponse, error) 
 	var cfg httpProxyConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return integrationConfigResponse{OK: false}, err
+	}
+
+	// Peer integrations route through exed's gateway proxy so the
+	// exelet doesn't need direct network access to the web proxy.
+	if cfg.PeerVM != "" {
+		return integrationConfigResponse{
+			OK:          true,
+			GatewayPath: "/_/peer-proxy",
+		}, nil
 	}
 
 	resp := integrationConfigResponse{
@@ -462,4 +472,75 @@ func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, do
 
 	w.Header().Set("Content-Type", "application/x-pem-file")
 	w.Write(pem)
+}
+
+// handlePeerProxy proxies integration requests from the exelet to the
+// target VM's web proxy. This avoids the exelet needing direct network
+// access to the web proxy — all traffic routes through exed.
+func (s *Server) handlePeerProxy(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vmName := r.Header.Get("X-Exedev-Box")
+	integrationName := r.Header.Get("X-Exedev-Integration")
+	if vmName == "" || integrationName == "" {
+		http.Error(w, "missing required headers", http.StatusBadRequest)
+		return
+	}
+
+	box, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).BoxNamed, vmName)
+	if err != nil {
+		http.Error(w, "box not found", http.StatusNotFound)
+		return
+	}
+
+	integration, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIntegrationByOwnerAndName, exedb.GetIntegrationByOwnerAndNameParams{
+		OwnerUserID: box.CreatedByUserID,
+		Name:        integrationName,
+	})
+	if err != nil {
+		http.Error(w, "integration not found", http.StatusNotFound)
+		return
+	}
+
+	if !exedb.IntegrationMatchesBox(&integration, &box) {
+		http.Error(w, "integration not attached", http.StatusForbidden)
+		return
+	}
+
+	var cfg httpProxyConfig
+	if err := json.Unmarshal([]byte(integration.Config), &cfg); err != nil {
+		http.Error(w, "bad integration config", http.StatusInternalServerError)
+		return
+	}
+
+	targetURL, err := url.Parse(cfg.Target)
+	if err != nil {
+		http.Error(w, "bad target URL", http.StatusInternalServerError)
+		return
+	}
+
+	origPath := r.Header.Get("X-Exedev-Original-Path")
+	if origPath == "" {
+		origPath = "/"
+	}
+	origQuery := r.Header.Get("X-Exedev-Original-Query")
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(targetURL)
+			pr.Out.URL.Path = origPath
+			pr.Out.URL.RawQuery = origQuery
+			pr.Out.Host = targetURL.Host
+			if cfg.Header != "" {
+				if name, value, ok := strings.Cut(cfg.Header, ":"); ok {
+					pr.Out.Header.Set(name, strings.TrimSpace(value))
+				}
+			}
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			s.slog().WarnContext(r.Context(), "peer proxy upstream error",
+				"error", err, "vm_name", vmName, "integration", integrationName)
+			http.Error(w, "peer proxy: upstream request failed", http.StatusBadGateway)
+		},
+	}
+	proxy.ServeHTTP(w, r)
 }

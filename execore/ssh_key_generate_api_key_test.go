@@ -381,3 +381,52 @@ func createTestUserWithGenerateAPIKeyPerm(t *testing.T, s *Server) (userID, emai
 
 	return userID, email, token
 }
+
+func TestSSHKeyGenerateAPIKeyHint(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	_, _, token := createTestUserWithGenerateAPIKeyPerm(t, s)
+
+	req, err := http.NewRequest("POST", s.httpURL()+"/exec", strings.NewReader("ssh-key generate-api-key --label=hint-test --json"))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !strings.HasPrefix(result.Token, "exe1.") {
+		t.Fatalf("expected exe1. prefix, got %q", result.Token)
+	}
+
+	// Check the SSH key has api_key_hint set.
+	var hint *string
+	err = s.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT api_key_hint FROM ssh_keys WHERE comment = 'hint-test'`).Scan(&hint)
+	})
+	if err != nil {
+		t.Fatalf("scanning api_key_hint: %v", err)
+	}
+	if hint == nil {
+		t.Fatal("expected api_key_hint to be set, got nil")
+	}
+	// Hint should be the first 4 chars of the token body (after "exe1.").
+	tokenBody := strings.TrimPrefix(result.Token, "exe1.")
+	expectedHint := tokenBody[:4]
+	if *hint != expectedHint {
+		t.Fatalf("expected hint %q, got %q", expectedHint, *hint)
+	}
+}

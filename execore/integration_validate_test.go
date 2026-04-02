@@ -79,6 +79,11 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://example.com:8080",          // non-standard port
 		"https://example.com:443",           // explicit standard port
 		"https://registry.example.com:5000", // registry-style port
+		"https://my-vm.exe.cloud",           // exe.dev VM
+		"https://my-vm.exe.cloud:8080",      // exe.dev VM with port
+		"https://my-vm.exe.dev",             // exe.dev domain
+		"https://my-vm.exe.xyz",             // exe.xyz domain
+		"https://my-vm.exe.xyz:3000",        // exe.xyz with port
 	}
 	for _, u := range good {
 		if err := validateTargetURL(u); err != nil {
@@ -100,13 +105,9 @@ func TestValidateTargetURL(t *testing.T) {
 		"https://corp.internal",          // .internal
 		"https://myhost.ts.net",          // Tailscale
 		"https://myhost.tail1234.ts.net", // Tailscale subdomain
-		"https://test.exe.cloud",         // exe.cloud
-		"https://test.exe.dev",           // exe.dev
 		"https://example.com/api",        // path not allowed
 		"https://api.example.com/v1/",    // path not allowed
 		"https://httpbin.org/anything",   // path not allowed
-		"https://evil.exe.cloud.",        // trailing dot bypass
-		"https://evil.exe.dev.",          // trailing dot bypass
 		"https://evil.ts.net.",           // trailing dot bypass
 		"https://localhost.",             // trailing dot bypass
 		"https://evil.internal.",         // trailing dot bypass

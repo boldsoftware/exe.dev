@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -443,6 +444,79 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 	}
 }
 
+func TestMetadataServiceIntegrationProxyPrivateIP(t *testing.T) {
+	// Start a local HTTP server that will have a private IP address.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, "hello from peer")
+	}))
+	defer upstream.Close()
+
+	makeFakeExed := func(target string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"ok":     true,
+				"target": target,
+			})
+		}))
+	}
+
+	// With gatewayDev=true (local/test), proxying to a private IP should work.
+	t.Run("gatewayDev=true", func(t *testing.T) {
+		fakeExed := makeFakeExed(upstream.URL)
+		defer fakeExed.Close()
+
+		svc, err := NewService(slog.Default(), &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", "", true, nil)
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		if err := svc.Start(context.Background()); err != nil {
+			t.Fatalf("failed to start service: %v", err)
+		}
+		defer svc.Stop(context.Background())
+
+		req := httptest.NewRequest("GET", "http://peer-proxy.int.exe.cloud/", nil)
+		req.Host = "peer-proxy.int.exe.cloud"
+		req.RemoteAddr = "10.42.0.2:12345"
+		rr := httptest.NewRecorder()
+		svc.server.Handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		if got := strings.TrimSpace(rr.Body.String()); got != "hello from peer" {
+			t.Errorf("expected 'hello from peer', got %q", got)
+		}
+	})
+
+	// With gatewayDev=false (production), proxying to a private IP should be blocked.
+	t.Run("gatewayDev=false", func(t *testing.T) {
+		fakeExed := makeFakeExed(upstream.URL)
+		defer fakeExed.Close()
+
+		svc, err := NewService(slog.Default(), &mockInstanceLookup{}, fakeExed.URL, "127.0.0.1:0", []string{".int.exe.cloud"}, "", "", false, nil)
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		if err := svc.Start(context.Background()); err != nil {
+			t.Fatalf("failed to start service: %v", err)
+		}
+		defer svc.Stop(context.Background())
+
+		req := httptest.NewRequest("GET", "https://peer-proxy.int.exe.cloud/", nil)
+		req.Host = "peer-proxy.int.exe.cloud"
+		req.RemoteAddr = "10.42.0.2:12345"
+		req.TLS = &tls.ConnectionState{}
+		rr := httptest.NewRecorder()
+		svc.server.Handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadGateway {
+			t.Fatalf("expected 502 (blocked private IP), got %d: %s", rr.Code, rr.Body.String())
+		}
+	})
+}
+
 func TestMetadataServiceIntegrationProxyPathFilter(t *testing.T) {
 	// Fake exed that serves /_/integration-config with allowed_path_prefixes.
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -865,7 +939,7 @@ func TestCheckLocalAddr(t *testing.T) {
 		wantProd bool // true = error expected in production
 		wantDev  bool // true = error expected in dev
 	}{
-		{"loopback", "127.0.0.1", false, true},
+		{"loopback", "127.0.0.1", false, false},
 		{"private-192", "192.168.1.50", false, false},
 		{"private-10", "10.0.0.5", false, false},
 		{"private-172", "172.16.0.1", false, false},

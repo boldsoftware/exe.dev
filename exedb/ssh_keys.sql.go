@@ -24,6 +24,15 @@ func (q *Queries) DeleteSSHKeyByID(ctx context.Context, arg DeleteSSHKeyByIDPara
 	return err
 }
 
+const deleteSSHKeysByIntegrationID = `-- name: DeleteSSHKeysByIntegrationID :exec
+DELETE FROM ssh_keys WHERE integration_id = ?
+`
+
+func (q *Queries) DeleteSSHKeysByIntegrationID(ctx context.Context, integrationID *string) error {
+	_, err := q.exec(ctx, q.deleteSSHKeysByIntegrationIDStmt, deleteSSHKeysByIntegrationID, integrationID)
+	return err
+}
+
 const getEmailBySSHKey = `-- name: GetEmailBySSHKey :one
 SELECT u.email
 FROM ssh_keys s
@@ -54,8 +63,29 @@ func (q *Queries) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string
 	return i, err
 }
 
+const getSSHKeyByIntegrationID = `-- name: GetSSHKeyByIntegrationID :one
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint, integration_id, api_key_hint FROM ssh_keys WHERE integration_id = ?
+`
+
+func (q *Queries) GetSSHKeyByIntegrationID(ctx context.Context, integrationID *string) (SSHKey, error) {
+	row := q.queryRow(ctx, q.getSSHKeyByIntegrationIDStmt, getSSHKeyByIntegrationID, integrationID)
+	var i SSHKey
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PublicKey,
+		&i.AddedAt,
+		&i.LastUsedAt,
+		&i.Comment,
+		&i.Fingerprint,
+		&i.IntegrationID,
+		&i.ApiKeyHint,
+	)
+	return i, err
+}
+
 const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
-SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint, integration_id, api_key_hint FROM ssh_keys
 WHERE user_id = ?
 ORDER BY id ASC
 `
@@ -77,6 +107,8 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]SSHKe
 			&i.LastUsedAt,
 			&i.Comment,
 			&i.Fingerprint,
+			&i.IntegrationID,
+			&i.ApiKeyHint,
 		); err != nil {
 			return nil, err
 		}
@@ -92,7 +124,7 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]SSHKe
 }
 
 const getSSHKeysForUserByComment = `-- name: GetSSHKeysForUserByComment :many
-SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = ? AND comment = ?
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint, integration_id, api_key_hint FROM ssh_keys WHERE user_id = ? AND comment = ?
 `
 
 type GetSSHKeysForUserByCommentParams struct {
@@ -117,6 +149,8 @@ func (q *Queries) GetSSHKeysForUserByComment(ctx context.Context, arg GetSSHKeys
 			&i.LastUsedAt,
 			&i.Comment,
 			&i.Fingerprint,
+			&i.IntegrationID,
+			&i.ApiKeyHint,
 		); err != nil {
 			return nil, err
 		}
@@ -132,7 +166,7 @@ func (q *Queries) GetSSHKeysForUserByComment(ctx context.Context, arg GetSSHKeys
 }
 
 const getSSHKeysForUserByFingerprint = `-- name: GetSSHKeysForUserByFingerprint :many
-SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint FROM ssh_keys WHERE user_id = ? AND fingerprint = ?
+SELECT id, user_id, public_key, added_at, last_used_at, comment, fingerprint, integration_id, api_key_hint FROM ssh_keys WHERE user_id = ? AND fingerprint = ?
 `
 
 type GetSSHKeysForUserByFingerprintParams struct {
@@ -157,6 +191,8 @@ func (q *Queries) GetSSHKeysForUserByFingerprint(ctx context.Context, arg GetSSH
 			&i.LastUsedAt,
 			&i.Comment,
 			&i.Fingerprint,
+			&i.IntegrationID,
+			&i.ApiKeyHint,
 		); err != nil {
 			return nil, err
 		}
@@ -302,6 +338,54 @@ func (q *Queries) InsertSSHKeyIfNotExists(ctx context.Context, arg InsertSSHKeyI
 		arg.Comment,
 		arg.Fingerprint,
 	)
+}
+
+const insertSSHKeyWithApiKeyHint = `-- name: InsertSSHKeyWithApiKeyHint :exec
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, api_key_hint) VALUES (?, ?, ?, ?, ?)
+`
+
+type InsertSSHKeyWithApiKeyHintParams struct {
+	UserID      string  `db:"user_id" json:"user_id"`
+	PublicKey   string  `db:"public_key" json:"public_key"`
+	Comment     string  `db:"comment" json:"comment"`
+	Fingerprint string  `db:"fingerprint" json:"fingerprint"`
+	ApiKeyHint  *string `db:"api_key_hint" json:"api_key_hint"`
+}
+
+func (q *Queries) InsertSSHKeyWithApiKeyHint(ctx context.Context, arg InsertSSHKeyWithApiKeyHintParams) error {
+	_, err := q.exec(ctx, q.insertSSHKeyWithApiKeyHintStmt, insertSSHKeyWithApiKeyHint,
+		arg.UserID,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+		arg.ApiKeyHint,
+	)
+	return err
+}
+
+const insertSSHKeyWithIntegration = `-- name: InsertSSHKeyWithIntegration :exec
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, integration_id, api_key_hint) VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type InsertSSHKeyWithIntegrationParams struct {
+	UserID        string  `db:"user_id" json:"user_id"`
+	PublicKey     string  `db:"public_key" json:"public_key"`
+	Comment       string  `db:"comment" json:"comment"`
+	Fingerprint   string  `db:"fingerprint" json:"fingerprint"`
+	IntegrationID *string `db:"integration_id" json:"integration_id"`
+	ApiKeyHint    *string `db:"api_key_hint" json:"api_key_hint"`
+}
+
+func (q *Queries) InsertSSHKeyWithIntegration(ctx context.Context, arg InsertSSHKeyWithIntegrationParams) error {
+	_, err := q.exec(ctx, q.insertSSHKeyWithIntegrationStmt, insertSSHKeyWithIntegration,
+		arg.UserID,
+		arg.PublicKey,
+		arg.Comment,
+		arg.Fingerprint,
+		arg.IntegrationID,
+		arg.ApiKeyHint,
+	)
+	return err
 }
 
 const updateSSHKeyComment = `-- name: UpdateSSHKeyComment :exec

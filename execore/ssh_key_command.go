@@ -407,6 +407,12 @@ func (ss *SSHServer) handleSSHKeyRemoveCmd(ctx context.Context, cc *exemenu.Comm
 
 	// Exactly one match - delete it
 	keyToDelete := matchingKeys[0]
+
+	// Prevent removing SSH keys that are linked to an integration.
+	if keyToDelete.IntegrationID != nil {
+		return cc.Errorf("this key is managed by an integration; remove the integration instead")
+	}
+
 	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.DeleteSSHKeyByID(ctx, exedb.DeleteSSHKeyByIDParams{
 			ID:     keyToDelete.ID,

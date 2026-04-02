@@ -146,14 +146,25 @@ func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exem
 		return cc.Errorf("a key named %q already exists; use a different --label", label)
 	}
 
+	// Compute hint: first 4 characters of the exe1 token body (after "exe1." prefix).
+	apiKeyHint := exe1Token
+	if body, ok := strings.CutPrefix(exe1Token, sshkey.Exe1TokenPrefix); ok {
+		if len(body) > 4 {
+			apiKeyHint = body[:4]
+		} else {
+			apiKeyHint = body
+		}
+	}
+
 	// Store public key + exe1 mapping in one transaction.
 	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		// Insert the SSH public key.
-		if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+		// Insert the SSH public key with API key hint.
+		if err := queries.InsertSSHKeyWithApiKeyHint(ctx, exedb.InsertSSHKeyWithApiKeyHintParams{
 			UserID:      cc.User.ID,
 			PublicKey:   gt.PublicKeyAuth,
 			Comment:     label,
 			Fingerprint: gt.Fingerprint,
+			ApiKeyHint:  &apiKeyHint,
 		}); err != nil {
 			return fmt.Errorf("inserting SSH key: %w", err)
 		}

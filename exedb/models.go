@@ -386,13 +386,15 @@ type ReleasedBoxName struct {
 }
 
 type SSHKey struct {
-	ID          int64      `db:"id" json:"id"`
-	UserID      string     `db:"user_id" json:"user_id"`
-	PublicKey   string     `db:"public_key" json:"public_key"`
-	AddedAt     *time.Time `db:"added_at" json:"added_at"`
-	LastUsedAt  *time.Time `db:"last_used_at" json:"last_used_at"`
-	Comment     string     `db:"comment" json:"comment"`
-	Fingerprint string     `db:"fingerprint" json:"fingerprint"`
+	ID            int64      `db:"id" json:"id"`
+	UserID        string     `db:"user_id" json:"user_id"`
+	PublicKey     string     `db:"public_key" json:"public_key"`
+	AddedAt       *time.Time `db:"added_at" json:"added_at"`
+	LastUsedAt    *time.Time `db:"last_used_at" json:"last_used_at"`
+	Comment       string     `db:"comment" json:"comment"`
+	Fingerprint   string     `db:"fingerprint" json:"fingerprint"`
+	IntegrationID *string    `db:"integration_id" json:"integration_id"`
+	ApiKeyHint    *string    `db:"api_key_hint" json:"api_key_hint"`
 }
 
 type ServerMetum struct {

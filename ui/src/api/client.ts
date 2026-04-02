@@ -91,6 +91,8 @@ export interface SSHKeyInfo {
   fingerprint: string
   addedAt: string | null
   lastUsedAt: string | null
+  integrationId?: string | null
+  apiKeyHint?: string | null
 }
 
 export interface PasskeyInfo {
@@ -115,6 +117,7 @@ export interface IntegrationInfo {
   repositories: string[]
   attachments: string[]
   isTeam: boolean
+  peerVM?: string
 }
 
 export interface GitHubAccountInfo {

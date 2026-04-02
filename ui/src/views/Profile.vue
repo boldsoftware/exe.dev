@@ -289,12 +289,17 @@
         <div v-if="data.sshKeys.length === 0" class="empty-msg">No SSH keys registered.</div>
         <div v-for="key in data.sshKeys" :key="key.fingerprint" class="ssh-key-row">
           <div class="ssh-key-info">
-            <div class="ssh-key-name">{{ key.comment }}</div>
+            <div class="ssh-key-name">
+              {{ key.comment }}
+              <span v-if="key.apiKeyHint" class="badge badge-muted">used by generated api key {{ key.apiKeyHint }}…</span>
+              <span v-if="key.integrationId" class="badge badge-muted">managed by integration</span>
+            </div>
             <div class="ssh-key-fp">{{ key.publicKey }}</div>
           </div>
           <div class="ssh-key-actions">
             <button class="btn btn-secondary" @click="renameSSHKey(key.comment, key.fingerprint)">Rename</button>
-            <button class="btn btn-danger" @click="removeSSHKey(key.publicKey)">Remove</button>
+            <button v-if="!key.integrationId" class="btn btn-danger" @click="removeSSHKey(key.publicKey)">Remove</button>
+            <span v-else class="text-muted" style="font-size: 11px;">remove via integration</span>
           </div>
         </div>
         <div style="margin-top: 12px;">
@@ -1500,6 +1505,19 @@ async function toggleNewsletter(event: Event) {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-muted {
+  font-size: 10px;
+  font-weight: 400;
+  padding: 1px 6px;
+  background: var(--surface-subtle);
+  color: var(--text-color-muted);
+  border-radius: 3px;
   white-space: nowrap;
 }
 

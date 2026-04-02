@@ -55,3 +55,15 @@ DELETE FROM ssh_keys WHERE id = ? AND user_id = ?;
 
 -- name: UpdateSSHKeyComment :exec
 UPDATE ssh_keys SET comment = ? WHERE id = ? AND user_id = ?;
+
+-- name: InsertSSHKeyWithIntegration :exec
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, integration_id, api_key_hint) VALUES (?, ?, ?, ?, ?, ?);
+
+-- name: DeleteSSHKeysByIntegrationID :exec
+DELETE FROM ssh_keys WHERE integration_id = ?;
+
+-- name: GetSSHKeyByIntegrationID :one
+SELECT * FROM ssh_keys WHERE integration_id = ?;
+
+-- name: InsertSSHKeyWithApiKeyHint :exec
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, api_key_hint) VALUES (?, ?, ?, ?, ?);

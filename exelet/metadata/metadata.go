@@ -952,6 +952,9 @@ func (s *Service) handleGatewayIntegration(w http.ResponseWriter, r *http.Reques
 			pr.Out.URL.Path = gatewayPath
 			pr.Out.Host = s.exedTargetURL.Host
 			pr.Out.Header.Set("X-Exedev-Box", vmName)
+			pr.Out.Header.Set("X-Exedev-Integration", integrationName)
+			pr.Out.Header.Set("X-Exedev-Original-Path", r.URL.Path)
+			pr.Out.Header.Set("X-Exedev-Original-Query", r.URL.RawQuery)
 			tracing.SetTraceIDHeader(pr.In.Context(), pr.Out.Header)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -1206,9 +1209,11 @@ func (s *Service) integrationTransport() *http.Transport {
 			if len(ips) == 0 {
 				return nil, fmt.Errorf("DNS returned no addresses for %q", host)
 			}
-			for _, ip := range ips {
-				if isPrivateIP(ip) {
-					return nil, fmt.Errorf("integration target resolves to private IP")
+			if !s.gatewayDev {
+				for _, ip := range ips {
+					if isPrivateIP(ip) {
+						return nil, fmt.Errorf("integration target resolves to private IP")
+					}
 				}
 			}
 
@@ -1222,11 +1227,13 @@ func (s *Service) integrationTransport() *http.Transport {
 			// Post-connect verification: check the actual remote IP (catches
 			// DNS rebinding) and the local IP (catches routing through the
 			// Tailscale interface to reach internal services).
-			if remoteAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
-				remoteIP, ok := netip.AddrFromSlice(remoteAddr.IP)
-				if !ok || isPrivateIP(remoteIP.Unmap()) {
-					conn.Close()
-					return nil, fmt.Errorf("integration target connected to private IP")
+			if !s.gatewayDev {
+				if remoteAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+					remoteIP, ok := netip.AddrFromSlice(remoteAddr.IP)
+					if !ok || isPrivateIP(remoteIP.Unmap()) {
+						conn.Close()
+						return nil, fmt.Errorf("integration target connected to private IP")
+					}
 				}
 			}
 			if err := s.checkLocalAddr(conn); err != nil {
@@ -1259,9 +1266,6 @@ func (s *Service) checkLocalAddr(conn net.Conn) error {
 	localIP = localIP.Unmap()
 
 	if s.gatewayDev {
-		if localIP.IsLoopback() {
-			return fmt.Errorf("integration target routed through loopback interface")
-		}
 		return nil
 	}
 

@@ -279,6 +279,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteSSHKeyByIDStmt, err = db.PrepareContext(ctx, deleteSSHKeyByID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyByID: %w", err)
 	}
+	if q.deleteSSHKeysByIntegrationIDStmt, err = db.PrepareContext(ctx, deleteSSHKeysByIntegrationID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSSHKeysByIntegrationID: %w", err)
+	}
 	if q.deleteTagResolutionStmt, err = db.PrepareContext(ctx, deleteTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTagResolution: %w", err)
 	}
@@ -579,6 +582,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHKeyByFingerprintStmt, err = db.PrepareContext(ctx, getSSHKeyByFingerprint); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeyByFingerprint: %w", err)
 	}
+	if q.getSSHKeyByIntegrationIDStmt, err = db.PrepareContext(ctx, getSSHKeyByIntegrationID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeyByIntegrationID: %w", err)
+	}
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
 	}
@@ -821,6 +827,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertSSHKeyIfNotExistsStmt, err = db.PrepareContext(ctx, insertSSHKeyIfNotExists); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyIfNotExists: %w", err)
+	}
+	if q.insertSSHKeyWithApiKeyHintStmt, err = db.PrepareContext(ctx, insertSSHKeyWithApiKeyHint); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSSHKeyWithApiKeyHint: %w", err)
+	}
+	if q.insertSSHKeyWithIntegrationStmt, err = db.PrepareContext(ctx, insertSSHKeyWithIntegration); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSSHKeyWithIntegration: %w", err)
 	}
 	if q.insertSignupIPCheckStmt, err = db.PrepareContext(ctx, insertSignupIPCheck); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSignupIPCheck: %w", err)
@@ -1648,6 +1660,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteSSHKeyByIDStmt: %w", cerr)
 		}
 	}
+	if q.deleteSSHKeysByIntegrationIDStmt != nil {
+		if cerr := q.deleteSSHKeysByIntegrationIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSSHKeysByIntegrationIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteTagResolutionStmt != nil {
 		if cerr := q.deleteTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTagResolutionStmt: %w", cerr)
@@ -2148,6 +2165,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHKeyByFingerprintStmt: %w", cerr)
 		}
 	}
+	if q.getSSHKeyByIntegrationIDStmt != nil {
+		if cerr := q.getSSHKeyByIntegrationIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeyByIntegrationIDStmt: %w", cerr)
+		}
+	}
 	if q.getSSHKeysForUserStmt != nil {
 		if cerr := q.getSSHKeysForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
@@ -2551,6 +2573,16 @@ func (q *Queries) Close() error {
 	if q.insertSSHKeyIfNotExistsStmt != nil {
 		if cerr := q.insertSSHKeyIfNotExistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSSHKeyIfNotExistsStmt: %w", cerr)
+		}
+	}
+	if q.insertSSHKeyWithApiKeyHintStmt != nil {
+		if cerr := q.insertSSHKeyWithApiKeyHintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSSHKeyWithApiKeyHintStmt: %w", cerr)
+		}
+	}
+	if q.insertSSHKeyWithIntegrationStmt != nil {
+		if cerr := q.insertSSHKeyWithIntegrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSSHKeyWithIntegrationStmt: %w", cerr)
 		}
 	}
 	if q.insertSignupIPCheckStmt != nil {
@@ -3337,6 +3369,7 @@ type Queries struct {
 	deletePushTokenStmt                        *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
+	deleteSSHKeysByIntegrationIDStmt           *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamStmt                             *sql.Stmt
 	deleteTeamIntegrationStmt                  *sql.Stmt
@@ -3437,6 +3470,7 @@ type Queries struct {
 	getRunningBoxesForUserStmt                 *sql.Stmt
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
+	getSSHKeyByIntegrationIDStmt               *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
 	getSSHKeysForUserByCommentStmt             *sql.Stmt
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
@@ -3518,6 +3552,8 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt               *sql.Stmt
 	insertSSHKeyForEmailUserIfNotExistsStmt    *sql.Stmt
 	insertSSHKeyIfNotExistsStmt                *sql.Stmt
+	insertSSHKeyWithApiKeyHintStmt             *sql.Stmt
+	insertSSHKeyWithIntegrationStmt            *sql.Stmt
 	insertSignupIPCheckStmt                    *sql.Stmt
 	insertSignupRejectionStmt                  *sql.Stmt
 	insertStripeWebhookEventStmt               *sql.Stmt
@@ -3741,6 +3777,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePushTokenStmt:                        q.deletePushTokenStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
+		deleteSSHKeysByIntegrationIDStmt:           q.deleteSSHKeysByIntegrationIDStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamStmt:                             q.deleteTeamStmt,
 		deleteTeamIntegrationStmt:                  q.deleteTeamIntegrationStmt,
@@ -3841,6 +3878,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getRunningBoxesForUserStmt:                 q.getRunningBoxesForUserStmt,
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
+		getSSHKeyByIntegrationIDStmt:               q.getSSHKeyByIntegrationIDStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByCommentStmt:             q.getSSHKeysForUserByCommentStmt,
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,
@@ -3922,6 +3960,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:               q.insertSSHKeyForEmailUserStmt,
 		insertSSHKeyForEmailUserIfNotExistsStmt:    q.insertSSHKeyForEmailUserIfNotExistsStmt,
 		insertSSHKeyIfNotExistsStmt:                q.insertSSHKeyIfNotExistsStmt,
+		insertSSHKeyWithApiKeyHintStmt:             q.insertSSHKeyWithApiKeyHintStmt,
+		insertSSHKeyWithIntegrationStmt:            q.insertSSHKeyWithIntegrationStmt,
 		insertSignupIPCheckStmt:                    q.insertSignupIPCheckStmt,
 		insertSignupRejectionStmt:                  q.insertSignupRejectionStmt,
 		insertStripeWebhookEventStmt:               q.insertStripeWebhookEventStmt,

@@ -64,6 +64,7 @@ integrations add <type> --name=<name> [--team] [args...]
 - `--bearer`: bearer token (shorthand for --header="Authorization:Bearer TOKEN")
 - `--header`: header to inject (e.g. X-Auth:secret)
 - `--name`: integration name (required)
+- `--peer`: authenticate with a generated API key scoped to the target VM
 - `--repository`: GitHub repository in owner/repo format (required for github)
 - `--target`: target URL (required for http-proxy)
 - `--team`: create as a team integration
