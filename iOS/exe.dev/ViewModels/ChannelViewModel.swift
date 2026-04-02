@@ -135,6 +135,7 @@ final class ChannelViewModel {
                 messages = []
                 isWorking = latest.working ?? false
             }
+            SharedConversationStore.saveConversationID(latest.conversationID, for: vmName)
             do {
                 try await syncEngine.loadConversation(
                     api: api, shelleyURL: shelleyURL,
@@ -183,6 +184,7 @@ final class ChannelViewModel {
             Task { await syncEngine.stopStream(conversationID: conversationID) }
         }
         conversationID = nil
+        SharedConversationStore.markNewConversation(for: vmName)
         pendingMessages = []
         messages = []
         isWorking = false
@@ -229,6 +231,7 @@ final class ChannelViewModel {
                     )
                     if let newID = response.conversationID {
                         conversationID = newID
+                        SharedConversationStore.saveConversationID(newID, for: vmName)
                         try await syncEngine.loadConversation(
                             api: api, shelleyURL: shelleyURL,
                             conversationID: newID, vmName: vmName
@@ -281,6 +284,7 @@ final class ChannelViewModel {
             conversationID = cachedID
             messages = []
         }
+        SharedConversationStore.saveConversationID(cachedID, for: vmName)
 
         isLoading = false
         fetchMessages()

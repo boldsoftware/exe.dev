@@ -54,6 +54,9 @@ final class APIClient: Sendable {
         if let teamVMs = decoded.teamVMs {
             vms.append(contentsOf: teamVMs)
         }
+        SharedVMStore.saveVMs(vms.map {
+            SharedVMSummary(vmName: $0.vmName, status: $0.status, shelleyURL: $0.shelleyURL)
+        })
         return vms
     }
 

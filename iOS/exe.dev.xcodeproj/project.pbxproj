@@ -6,8 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1B2C3DC2F60000100D0E001 /* exe.devShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F60000100D0E001 /* exe.devShareExtension.appex */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3DE2F60000100D0E001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 63979A192F539DFB00DA4764 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3DD2F60000100D0E001;
+			remoteInfo = exe.devShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1B2C3DB2F60000100D0E001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1B2C3DC2F60000100D0E001 /* exe.devShareExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		63979A212F539DFB00DA4764 /* exe.dev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = exe.dev.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D42F60000100D0E001 /* exe.devShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = exe.devShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -17,6 +46,13 @@
 				Info.plist,
 			);
 			target = 63979A202F539DFB00DA4764 /* exe.dev */;
+		};
+		A1B2C3D72F60000100D0E001 /* Exceptions for "exe.devShareExtension" folder in "exe.devShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A1B2C3DD2F60000100D0E001 /* exe.devShareExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -29,10 +65,30 @@
 			path = exe.dev;
 			sourceTree = "<group>";
 		};
+		A1B2C3D52F60000100D0E001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A1B2C3D62F60000100D0E001 /* exe.devShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1B2C3D72F60000100D0E001 /* Exceptions for "exe.devShareExtension" folder in "exe.devShareExtension" target */,
+			);
+			path = exe.devShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		63979A1E2F539DFB00DA4764 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D82F60000100D0E001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +102,8 @@
 			isa = PBXGroup;
 			children = (
 				63979A232F539DFB00DA4764 /* exe.dev */,
+				A1B2C3D52F60000100D0E001 /* Shared */,
+				A1B2C3D62F60000100D0E001 /* exe.devShareExtension */,
 				63979A222F539DFB00DA4764 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				63979A212F539DFB00DA4764 /* exe.dev.app */,
+				A1B2C3D42F60000100D0E001 /* exe.devShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,13 +127,16 @@
 				63979A1D2F539DFB00DA4764 /* Sources */,
 				63979A1E2F539DFB00DA4764 /* Frameworks */,
 				63979A1F2F539DFB00DA4764 /* Resources */,
+				A1B2C3DB2F60000100D0E001 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1B2C3DF2F60000100D0E001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				63979A232F539DFB00DA4764 /* exe.dev */,
+				A1B2C3D52F60000100D0E001 /* Shared */,
 			);
 			name = exe.dev;
 			packageProductDependencies = (
@@ -82,6 +144,29 @@
 			productName = exe.dev;
 			productReference = 63979A212F539DFB00DA4764 /* exe.dev.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A1B2C3DD2F60000100D0E001 /* exe.devShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3E22F60000100D0E001 /* Build configuration list for PBXNativeTarget "exe.devShareExtension" */;
+			buildPhases = (
+				A1B2C3DA2F60000100D0E001 /* Sources */,
+				A1B2C3D82F60000100D0E001 /* Frameworks */,
+				A1B2C3D92F60000100D0E001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D52F60000100D0E001 /* Shared */,
+				A1B2C3D62F60000100D0E001 /* exe.devShareExtension */,
+			);
+			name = exe.devShareExtension;
+			packageProductDependencies = (
+			);
+			productName = exe.devShareExtension;
+			productReference = A1B2C3D42F60000100D0E001 /* exe.devShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -94,6 +179,9 @@
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					63979A202F539DFB00DA4764 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					A1B2C3DD2F60000100D0E001 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -113,12 +201,20 @@
 			projectRoot = "";
 			targets = (
 				63979A202F539DFB00DA4764 /* exe.dev */,
+				A1B2C3DD2F60000100D0E001 /* exe.devShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		63979A1F2F539DFB00DA4764 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D92F60000100D0E001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +231,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3DA2F60000100D0E001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3DF2F60000100D0E001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3DD2F60000100D0E001 /* exe.devShareExtension */;
+			targetProxy = A1B2C3DE2F60000100D0E001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		63979A2A2F539DFC00DA4764 /* Debug */ = {
@@ -351,6 +462,68 @@
 			};
 			name = Release;
 		};
+		A1B2C3E02F60000100D0E001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = exe.devShareExtension/exe.devShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4735MG39D5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = exe.devShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.exe.exe-dev.ShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1B2C3E12F60000100D0E001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = exe.devShareExtension/exe.devShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4735MG39D5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = exe.devShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.exe.exe-dev.ShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -368,6 +541,15 @@
 			buildConfigurations = (
 				63979A2D2F539DFC00DA4764 /* Debug */,
 				63979A2E2F539DFC00DA4764 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3E22F60000100D0E001 /* Build configuration list for PBXNativeTarget "exe.devShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3E02F60000100D0E001 /* Debug */,
+				A1B2C3E12F60000100D0E001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

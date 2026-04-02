@@ -1,32 +1,5 @@
 import AuthenticationServices
 import Foundation
-import Security
-
-enum AppEnvironment {
-    case production
-    case staging
-
-    // Flip this when pointing the app at staging.
-    static let current: Self = .production
-
-    var webHost: String {
-        switch self {
-        case .production:
-            return "exe.dev"
-        case .staging:
-            return "exe-staging.dev"
-        }
-    }
-
-    var boxHost: String {
-        switch self {
-        case .production:
-            return "exe.xyz"
-        case .staging:
-            return "exe-staging.xyz"
-        }
-    }
-}
 
 @Observable
 final class AuthManager: NSObject {
@@ -37,14 +10,11 @@ final class AuthManager: NSObject {
     private(set) var isAuthenticated: Bool = false
     private(set) var token: String?
 
-    private static let service = "dev.\(webHost).app-token"
-    private static let account = "app-token"
-
     var baseURL: String = AuthManager.appBaseURL
 
     override init() {
         super.init()
-        token = Self.loadToken()
+        token = AuthTokenStore.loadToken()
         isAuthenticated = token != nil
     }
 
@@ -70,53 +40,15 @@ final class AuthManager: NSObject {
               let newToken = components.queryItems?.first(where: { $0.name == "token" })?.value
         else { return }
 
-        Self.saveToken(newToken)
+        AuthTokenStore.saveToken(newToken)
         token = newToken
         isAuthenticated = true
     }
 
     func signOut() {
-        Self.deleteToken()
+        AuthTokenStore.deleteToken()
         token = nil
         isAuthenticated = false
-    }
-
-    // MARK: - Keychain
-
-    private static func saveToken(_ token: String) {
-        deleteToken()
-        let data = Data(token.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    private static func loadToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    private static func deleteToken() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }
 

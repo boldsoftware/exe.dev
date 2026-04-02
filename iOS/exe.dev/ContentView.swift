@@ -13,6 +13,9 @@ struct ContentView: View {
                 syncEngine: syncEngine
             )
             .task {
+                await ShareUploadManager.shared.resumePendingShares()
+            }
+            .task {
                 await pushManager.requestPermissionAndRegister()
             }
             .task(id: pushManager.deviceToken) {

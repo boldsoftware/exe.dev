@@ -8,7 +8,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        Task {
+            await ShareUploadManager.shared.resumePendingShares()
+        }
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard SharedAppConfiguration.isKnownBackgroundUploadSessionIdentifier(identifier) else {
+            completionHandler()
+            return
+        }
+        ShareUploadManager.shared.registerBackgroundCompletionHandler(
+            completionHandler,
+            for: identifier
+        )
+        Task {
+            await ShareUploadManager.shared.resumePendingShares()
+        }
     }
 
     func application(
