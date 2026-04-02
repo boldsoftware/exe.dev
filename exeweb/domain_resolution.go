@@ -107,6 +107,7 @@ func (dr *DomainResolver) ResolveCustomDomainBoxName(ctx context.Context, host s
 
 	cname = domz.Canonicalize(cname)
 	if cname != host {
+		dr.checkWildcardCNAME(ctx, host, cname)
 		return dr.boxNameFromCNAME(ctx, host, cname)
 	}
 
@@ -161,6 +162,46 @@ func (dr *DomainResolver) apexPointsToPublicIP(ips []netip.Addr) bool {
 		}
 	}
 	return false
+}
+
+// parentDomain returns the parent domain of host by stripping the first label.
+// For example, parentDomain("x.y.z") returns "y.z".
+// It returns "" if host has fewer than 3 labels (e.g. "y.z" has no useful parent).
+func parentDomain(host string) string {
+	_, after, ok := strings.Cut(host, ".")
+	if !ok {
+		return ""
+	}
+	// Require at least 2 labels in the parent (i.e., host had 3+ labels).
+	if !strings.Contains(after, ".") {
+		return ""
+	}
+	return after
+}
+
+// checkWildcardCNAME detects probable wildcard CNAME records.
+// Given host X.Y.Z with CNAME target T, it checks whether the parent
+// domain Y.Z also has a CNAME pointing to T. If so, X.Y.Z is likely
+// the result of a wildcard CNAME (e.g. *.Y.Z -> T) which could allow
+// unbounded certificate issuance.
+func (dr *DomainResolver) checkWildcardCNAME(ctx context.Context, host, cname string) {
+	parent := parentDomain(host)
+	if parent == "" {
+		return
+	}
+	parentCNAME, err := dr.lookupCNAME(ctx, parent)
+	if err != nil {
+		// Parent has no CNAME or lookup failed — not a wildcard.
+		return
+	}
+	parentCNAME = domz.Canonicalize(parentCNAME)
+	if parentCNAME == cname {
+		dr.Lg.WarnContext(ctx, "probable wildcard CNAME detected",
+			"host", host,
+			"parent", parent,
+			"cname", cname,
+		)
+	}
 }
 
 // boxNameFromCname returns the box name to use for a CNAME.
