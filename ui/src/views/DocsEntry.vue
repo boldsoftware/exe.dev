@@ -307,7 +307,7 @@ function renderDNSResult(d: any): string {
   html += '</tbody></table>'
 
   if (d.wildcardCname) {
-    html += '<p class="dns-wildcard-warn">⚠ We recommend against wildcard CNAME records, as they can allow for certificate issuance abuse.</p>'
+    html += '<p class="dns-wildcard-warn">⚠ It\'ll work for now, but we recommend against wildcard CNAME records, as they can allow for certificate issuance abuse.</p>'
   }
 
   html += '</div>'
