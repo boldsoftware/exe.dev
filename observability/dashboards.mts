@@ -6637,6 +6637,36 @@ function makeRummydDashboard() {
     }
   );
 
+  // Cert issuance canary — rummyd fetches https://rummy-MM-DD.rummy.exe.cloud/
+  // once per hour. On a daily basis, we use a unique domain name, which should
+  // cause us to issue a new cert once a day, thereby verifying issuance is working.
+  // Code: cmd/rummyd/main.go (checkCertCanary).
+  addTimeseriesChart(
+    "ACME Cert Issuance Canary",
+    `rummy_cert_canary_up`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "2h",
+        summary: "ACME cert issuance canary failing",
+        description: "rummy_cert_canary_up has been 0 for 2+ hours. rummyd fetches https://rummy-MM-DD.rummy.exe.cloud/ hourly using a daily-rotating subdomain to force new TLS cert issuance. This failing means ACME certificate issuance may be broken. Code: cmd/rummyd/main.go (checkCertCanary).",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  addTimeseriesChart(
+    "ACME Cert Canary Latency",
+    `rummy_cert_canary_latency_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 6 },
+    }
+  );
+
   return dash;
 }
 
