@@ -320,20 +320,6 @@ exporters:
       compression: gzip
     marshaler: otlp_json
 
-  # ClickHouse exporter for logs and metrics
-  clickhouse:
-    database: default
-    endpoint: https://mjb7vf855d.us-west-2.aws.clickhouse.cloud:8443
-    password: "${CLICKHOUSE_PASSWORD}"
-    username: default
-    ttl: 17520h
-    timeout: 5s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
   # ClickHouse exporter for observability cluster
   clickhouse/observability:
     database: default
@@ -399,27 +385,27 @@ service:
     logs/staging-storage:
       receivers: [routing]
       processors: [filter/storage]
-      exporters: [file/staging, awss3/staging, clickhouse, clickhouse/observability]
+      exporters: [file/staging, awss3/staging, clickhouse/observability]
 
     # Production storage: file + S3
     logs/production-storage:
       receivers: [routing]
       processors: [filter/storage]
-      exporters: [file/production, awss3/production, clickhouse, clickhouse/observability]
+      exporters: [file/production, awss3/production, clickhouse/observability]
 
     # Unknown environment: file + S3 (no Honeycomb)
     logs/unknown:
       receivers: [routing]
-      exporters: [file/unknown, awss3/unknown, clickhouse, clickhouse/observability]
+      exporters: [file/unknown, awss3/unknown, clickhouse/observability]
 
     # Staging metrics: scrape prometheus endpoints, send to S3
     metrics/staging:
       receivers: [prometheus/staging]
       processors: [batch]
-      exporters: [awss3/staging-metrics, clickhouse, clickhouse/observability]
+      exporters: [awss3/staging-metrics, clickhouse/observability]
 
     # Production metrics: scrape prometheus endpoints, send to S3
     metrics/production:
       receivers: [prometheus/production]
       processors: [batch]
-      exporters: [awss3/production-metrics, clickhouse, clickhouse/observability]
+      exporters: [awss3/production-metrics, clickhouse/observability]
