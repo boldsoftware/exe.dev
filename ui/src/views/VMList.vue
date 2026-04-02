@@ -135,6 +135,7 @@
           <button class="prompt-close" aria-label="Close" @click="blurActiveElement(); copyModalOpen = false">&times;</button>
         </div>
         <div class="prompt-body">
+          <p class="modal-description">Create a full copy of this VM, including its disk.</p>
           <div class="prompt-field-label">Command</div>
           <div class="copy-cmd-display">
             <code>{{ copyDisplayCommand }}</code>
@@ -575,13 +576,13 @@ function handleAction(action: ActionEvent) {
       copyModalOpen.value = true
       break
     case 'rename':
-      openModal({ title: 'Rename VM', commandPrefix: `rename ${q}`, inputPlaceholder: 'new-name' })
+      openModal({ title: 'Rename VM', commandPrefix: `rename ${q}`, inputPlaceholder: 'new-name', description: 'Give this VM a new name. The SSH hostname and web URL will be updated.' })
       break
     case 'restart':
-      openModal({ title: 'Restart VM', command: `restart ${q}` })
+      openModal({ title: 'Restart VM', command: `restart ${q}`, description: 'Restart this VM.' })
       break
     case 'delete':
-      openModal({ title: 'Delete VM', command: `rm ${q}`, danger: true })
+      openModal({ title: 'Delete VM', command: `rm ${q}`, danger: true, description: 'Permanently delete this VM and all its data. This cannot be undone.' })
       break
     case 'share':
       openModal({
@@ -604,6 +605,7 @@ function handleAction(action: ActionEvent) {
       openModal({
         title: 'Remove Access',
         command: `share remove ${q} ${shellQuote(action.extra)}`,
+        description: 'Revoke this user\'s access to the VM\'s web server.',
         danger: true,
       })
       break
@@ -611,6 +613,7 @@ function handleAction(action: ActionEvent) {
       openModal({
         title: 'Remove Share Link',
         command: `share remove-link ${q} ${shellQuote(action.extra)}`,
+        description: 'Revoke this share link. Users who were added explicitly will keep access.',
         danger: true,
       })
       break
@@ -654,12 +657,14 @@ function handleAction(action: ActionEvent) {
         title: 'Add Tag',
         commandPrefix: `tag ${q}`,
         inputPlaceholder: 'tag name (e.g. prod)',
+        description: 'Tags are usually used for attaching integrations and organization.',
       })
       break
     case 'remove-tag':
       openModal({
         title: 'Remove Tag',
         command: `tag -d ${q} ${shellQuote(action.extra)}`,
+        description: 'Remove this tag from the VM.',
         danger: true,
       })
       break
@@ -1199,6 +1204,13 @@ async function submitPrompt() {
 .group-chevron {
   font-size: 10px;
   color: var(--text-color-muted);
+}
+
+.modal-description {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .copy-cmd-display {

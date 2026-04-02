@@ -1013,6 +1013,7 @@ function removeIntegration(name: string) {
   openModal({
     title: 'Remove Integration',
     command: `integrations remove ${shellQuote(name)}`,
+    description: 'Remove this integration and detach it from all VMs.',
     danger: true,
   })
 }
@@ -1041,6 +1042,7 @@ function detachSpec(integrationName: string, spec: string) {
   openModal({
     title: 'Detach Integration',
     command: `integrations detach ${shellQuote(integrationName)} ${shellQuote(spec)}`,
+    description: 'Detach this integration from the specified VM.',
   })
 }
 

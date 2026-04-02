@@ -725,6 +725,7 @@ function removeSSHKey(pubKey: string) {
   openModal({
     title: 'Remove SSH Key',
     command: `ssh-key remove ${shellQuote(pubKey)}`,
+    description: 'Remove this SSH key from your account. You won\'t be able to authenticate with it anymore. API keys (if any) generated from this key will no longer work.',
     danger: true,
   })
 }
@@ -735,6 +736,7 @@ function renameSSHKey(name: string, fingerprint: string) {
     commandPrefix: `ssh-key rename ${shellQuote('SHA256:' + fingerprint)}`,
     inputPlaceholder: 'new name',
     defaultValue: name,
+    description: 'Change the display name for this SSH key.',
   })
 }
 
@@ -742,6 +744,7 @@ function removeTeamMember(email: string) {
   openModal({
     title: 'Remove Team Member',
     command: `team remove ${shellQuote(email)}`,
+    description: 'Remove this member from your team. They will lose access to all team-shared VMs.',
     danger: true,
   })
 }
@@ -751,6 +754,7 @@ function inviteTeamMember() {
     title: 'Invite to Team',
     commandPrefix: 'team add',
     inputPlaceholder: 'user@example.com',
+    description: 'Invite a user to join your team. They\'ll get access to team-shared VMs.',
   })
 }
 
@@ -759,6 +763,7 @@ function transferVM() {
     title: 'Transfer VM',
     commandPrefix: 'team transfer',
     inputPlaceholder: 'vm-name user@example.com',
+    description: 'Transfer a VM to another team member. They will become the owner.',
   })
 }
 
@@ -766,6 +771,7 @@ function disableTeam() {
   openModal({
     title: 'Disable Team',
     command: 'team disable',
+    description: 'Disable your team. This will remove all team shares, cancel pending invites, and delete team auth/SSO configuration. Your VMs remain on your personal account.',
     danger: true,
   })
 }
