@@ -229,6 +229,28 @@ actor SyncEngine {
         try? saveAndNotify(kind: .vms)
     }
 
+    func creatingVMNames() -> [String] {
+        let vms = (try? modelContext.fetch(FetchDescriptor<StoredVM>())) ?? []
+        return vms.filter(\.isCreating).map(\.vmName).sorted()
+    }
+
+    func vmListItems() -> [VMListItem] {
+        let descriptor = FetchDescriptor<StoredVM>(
+            sortBy: [SortDescriptor(\.vmName)]
+        )
+        let vms = (try? modelContext.fetch(descriptor)) ?? []
+        return vms.map(VMListItem.init(from:))
+    }
+
+    func vmListItem(named vmName: String) -> VMListItem? {
+        let name = vmName
+        let predicate = #Predicate<StoredVM> { $0.vmName == name }
+        guard let vm = try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first else {
+            return nil
+        }
+        return VMListItem(from: vm)
+    }
+
     // MARK: - Unread Tracking
 
     struct VMUnreadInfo: Sendable {

@@ -547,7 +547,7 @@ class TerminalViewModel {
 
 /// The terminal tab view shown inside VMDetailView.
 struct VMTerminalView: View {
-    let vm: StoredVM
+    let vm: VMListItem
     let token: String?
 
     @State private var viewModel = TerminalViewModel()

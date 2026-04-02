@@ -49,7 +49,12 @@ let package = Package(
         .target(
             name: "VMListSupport",
             path: "exe.dev/Support",
-            sources: ["VMListGrouping.swift"]
+            sources: [
+                "VMCreationPolling.swift",
+                "VMDetailSnapshotResolver.swift",
+                "VMListGrouping.swift",
+                "VMListReloadPolicy.swift",
+            ]
         ),
         .testTarget(
             name: "ConversationDeltaReducerSupportTests",

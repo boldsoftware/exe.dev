@@ -2,20 +2,22 @@ import SwiftUI
 
 struct VMDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
-    let vm: StoredVM
+    let vmName: String
     let api: APIClient
     let syncEngine: SyncEngine
     let token: String?
 
     @State private var selectedTab = 0
     @State private var channelViewModel: ChannelViewModel
+    @State private var currentVM: VMListItem
     @State private var showingShare = false
 
-    init(vm: StoredVM, api: APIClient, syncEngine: SyncEngine, token: String?) {
-        self.vm = vm
+    init(vm: VMListItem, api: APIClient, syncEngine: SyncEngine, token: String?) {
+        self.vmName = vm.vmName
         self.api = api
         self.syncEngine = syncEngine
         self.token = token
+        _currentVM = State(initialValue: vm)
         _channelViewModel = State(initialValue: ChannelViewModel(
             vmName: vm.vmName,
             shelleyURL: vm.shelleyURL,
@@ -34,11 +36,11 @@ struct VMDetailView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .disabled(vm.isCreating)
+            .disabled(currentVM.isCreating)
 
             selectedContent
         }
-        .navigationTitle("# \(vm.vmName)")
+        .navigationTitle("# \(vmName)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -51,15 +53,23 @@ struct VMDetailView: View {
             }
         }
         .sheet(isPresented: $showingShare) {
-            ShareView(viewModel: ShareViewModel(vmName: vm.vmName, api: api))
+            ShareView(viewModel: ShareViewModel(vmName: vmName, api: api))
                 .presentationDetents([.medium, .large])
         }
         .task {
-            await syncEngine.markVMAsRead(vmName: vm.vmName)
+            await syncEngine.markVMAsRead(vmName: vmName)
+            await reloadVM()
         }
-        .onChange(of: vm.shelleyURL) { _, newURL in
-            if let newURL, channelViewModel.shelleyURL == nil {
+        .onReceive(NotificationCenter.default.publisher(for: .syncEngineDidSave)) { notification in
+            let kind = notification.userInfo?[SyncEngineSaveNotificationUserInfoKey.kind] as? String
+            guard VMListReloadPolicy.shouldReload(for: kind) else { return }
+            Task { await reloadVM() }
+        }
+        .onChange(of: currentVM.shelleyURL) { _, newURL in
+            if channelViewModel.shelleyURL != newURL {
                 channelViewModel.shelleyURL = newURL
+            }
+            if currentVM.shelleyURL != nil {
                 if selectedTab == 0 {
                     Task {
                         await channelViewModel.loadLatestConversation(
@@ -79,6 +89,7 @@ struct VMDetailView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active, selectedTab == 0 else { return }
             Task {
+                await reloadVM()
                 await channelViewModel.loadLatestConversation(reason: .appBecameActive)
             }
         }
@@ -86,8 +97,8 @@ struct VMDetailView: View {
 
     @ViewBuilder
     private var selectedContent: some View {
-        if vm.isCreating {
-            VMCreatingView(vmName: vm.vmName)
+        if currentVM.isCreating {
+            VMCreatingView(vmName: vmName)
         } else if selectedTab == 0 {
             ChannelView(viewModel: channelViewModel)
                 .environment(\.openURL, OpenURLAction { url in
@@ -99,7 +110,7 @@ struct VMDetailView: View {
                 })
                 .environment(\.authToken, token)
         } else if selectedTab == 1 {
-            if let url = URL(string: vm.httpsURL) {
+            if let url = URL(string: currentVM.httpsURL) {
                 VMWebView(url: url, token: token)
             } else {
                 ContentUnavailableView(
@@ -109,19 +120,28 @@ struct VMDetailView: View {
                 )
             }
         } else {
-            VMTerminalView(vm: vm, token: token)
+            VMTerminalView(vm: currentVM, token: token)
         }
+    }
+
+    @MainActor
+    private func reloadVM() async {
+        let refreshed = await syncEngine.vmListItem(named: vmName)
+        currentVM = VMDetailSnapshotResolver.resolveCurrent(
+            current: currentVM,
+            refreshed: refreshed
+        )
     }
 
     /// Returns true if the URL points to this VM's HTTPS proxy (e.g. ocean-horizon.exe.xyz:8000).
     private func isVMProxyURL(_ url: URL) -> Bool {
         guard let host = url.host else { return false }
         // Match the VM's proxy hostname (vmName.exe.xyz or similar).
-        if let proxyURL = URL(string: vm.httpsURL), let proxyHost = proxyURL.host {
+        if let proxyURL = URL(string: currentVM.httpsURL), let proxyHost = proxyURL.host {
             return host == proxyHost
         }
         // Fallback: match vmName as subdomain of a known exe domain.
-        return host.hasPrefix(vm.vmName + ".")
+        return host.hasPrefix(vmName + ".")
     }
 }
 

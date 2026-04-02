@@ -8,19 +8,19 @@ struct ChannelListView: View {
     var api: APIClient
     var syncEngine: SyncEngine
 
-    @Query(sort: \StoredVM.vmName) private var allVMs: [StoredVM]
+    @State private var allVMs: [VMListItem] = []
     @State private var isLoading = true
     @State private var error: String?
     @State private var selectedVMName: String?
     @State private var showingNewVM = false
     @State private var pollingTask: Task<Void, Never>?
     @State private var creationPollingTask: Task<Void, Never>?
-    @State private var cpSource: StoredVM?
+    @State private var cpSource: VMListItem?
     @State private var vmListScrollOffset: CGFloat = 0
 
-    private var creatingVMs: [StoredVM] { allVMs.filter(\.isCreating) }
+    private var creatingVMs: [VMListItem] { allVMs.filter(\.isCreating) }
     private var creatingVMNames: [String] { creatingVMs.map(\.vmName).sorted() }
-    private var vmSections: [VMListSection<StoredVM>] { VMListGrouping.sections(for: allVMs) }
+    private var vmSections: [VMListSection<VMListItem>] { VMListGrouping.sections(for: allVMs) }
     private var brandingOpacity: Double {
         guard !allVMs.isEmpty else { return 1 }
         let fadeDistance: CGFloat = 36
@@ -35,7 +35,7 @@ struct ChannelListView: View {
             if let name = selectedVMName,
                let vm = allVMs.first(where: { $0.vmName == name }) {
                 VMDetailView(vm: vm, api: api, syncEngine: syncEngine, token: auth.token)
-                    .id(name)
+                    .id(VMListReloadPolicy.detailIdentity(vmName: name, isCreating: vm.isCreating))
             } else {
                 ContentUnavailableView(
                     "Select a VM",
@@ -48,6 +48,29 @@ struct ChannelListView: View {
             if let newName {
                 Task { await syncEngine.markVMAsRead(vmName: newName) }
             }
+        }
+        .task {
+            await reloadVMsFromSyncEngine()
+            await loadVMs()
+            startPolling()
+            updateCreationPolling(for: creatingVMNames, reason: .observedListChange)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .syncEngineDidSave)) { notification in
+            let kind = notification.userInfo?[SyncEngineSaveNotificationUserInfoKey.kind] as? String
+            guard VMListReloadPolicy.shouldReload(for: kind) else { return }
+            Task { await reloadVMsFromSyncEngine() }
+        }
+        .onDisappear {
+            pollingTask?.cancel()
+            creationPollingTask?.cancel()
+            creationPollingTask = nil
+        }
+        .onChange(of: creatingVMNames) { _, newNames in
+            updateCreationPolling(for: newNames, reason: .observedListChange)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await loadVMs() }
         }
     }
 
@@ -91,23 +114,6 @@ struct ChannelListView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await loadVMs() }
-        .task {
-            await loadVMs()
-            startPolling()
-            updateCreationPolling(for: creatingVMNames)
-        }
-        .onDisappear {
-            pollingTask?.cancel()
-            creationPollingTask?.cancel()
-            creationPollingTask = nil
-        }
-        .onChange(of: creatingVMNames) { _, newNames in
-            updateCreationPolling(for: newNames)
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            Task { await loadVMs() }
-        }
         .overlay(alignment: .bottomTrailing) {
             Button {
                 showingNewVM = true
@@ -124,17 +130,14 @@ struct ChannelListView: View {
         .sheet(isPresented: $showingNewVM) {
             NewVMView(api: api) { hostname in
                 Task {
-                    // Insert placeholder immediately so it appears in the list.
-                    await syncEngine.insertCreatingVM(hostname: hostname)
-                    selectedVMName = hostname
+                    await handleCreatedVM(hostname: hostname)
                 }
             }
         }
         .sheet(item: $cpSource) { sourceVM in
             CopyVMView(api: api, sourceVMName: sourceVM.vmName) { newName in
                 Task {
-                    await syncEngine.insertCreatingVM(hostname: newName)
-                    selectedVMName = newName
+                    await handleCreatedVM(hostname: newName)
                 }
             }
         }
@@ -218,7 +221,7 @@ struct ChannelListView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func vmRow(_ vm: StoredVM) -> some View {
+    private func vmRow(_ vm: VMListItem) -> some View {
         HStack(spacing: 8) {
             Text(vm.vmName)
                 .font(.system(.body, design: .monospaced))
@@ -255,7 +258,7 @@ struct ChannelListView: View {
         .selectionDisabled(!vm.isRunning && !vm.isCreating)
     }
 
-    private func safariURL(for vm: StoredVM) -> URL? {
+    private func safariURL(for vm: VMListItem) -> URL? {
         guard !vm.httpsURL.isEmpty,
               let url = URL(string: vm.httpsURL),
               url.scheme != nil
@@ -270,9 +273,11 @@ struct ChannelListView: View {
         error = nil
         do {
             try await syncEngine.refreshVMs(api: api)
+            await reloadVMsFromSyncEngine()
             isLoading = false
         } catch {
             self.error = error.localizedDescription
+            await reloadVMsFromSyncEngine()
             isLoading = false
         }
     }
@@ -288,20 +293,50 @@ struct ChannelListView: View {
         }
     }
 
-    private func updateCreationPolling(for names: [String]) {
-        guard !names.isEmpty else {
+    @MainActor
+    private func handleCreatedVM(hostname: String) async {
+        await syncEngine.insertCreatingVM(hostname: hostname)
+        await reloadVMsFromSyncEngine()
+        selectedVMName = hostname
+        updateCreationPolling(for: [hostname], reason: .createdVM)
+        await loadVMs()
+    }
+
+    @MainActor
+    private func reloadVMsFromSyncEngine() async {
+        allVMs = await syncEngine.vmListItems()
+        if let selectedVMName,
+           !allVMs.contains(where: { $0.vmName == selectedVMName }) {
+            self.selectedVMName = nil
+        }
+    }
+
+    private func updateCreationPolling(
+        for names: [String],
+        reason: VMCreationPollingReason
+    ) {
+        switch VMCreationPolling.action(
+            hasRunningTask: creationPollingTask != nil,
+            observedCreatingVMNames: names,
+            reason: reason
+        ) {
+        case .keepCurrent:
+            return
+        case .cancel:
             creationPollingTask?.cancel()
             creationPollingTask = nil
             return
+        case .start:
+            creationPollingTask?.cancel()
         }
-
-        guard creationPollingTask == nil else { return }
 
         creationPollingTask = Task.detached(priority: .utility) { [api, syncEngine] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                if Task.isCancelled { break }
                 try? await syncEngine.refreshVMs(api: api)
+                if Task.isCancelled { break }
+                let pendingNames = await syncEngine.creatingVMNames()
+                if pendingNames.isEmpty { break }
+                try? await Task.sleep(for: .seconds(2))
             }
         }
     }

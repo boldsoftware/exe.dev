@@ -41,6 +41,20 @@ nonisolated struct VM: Identifiable, Decodable {
     }
 }
 
+nonisolated struct VMListItem: Identifiable, Equatable, Sendable {
+    let vmName: String
+    let status: String
+    let httpsURL: String
+    let shelleyURL: String?
+    let image: String?
+    let tags: [String]
+    let unreadCount: Int
+
+    var id: String { vmName }
+    var isRunning: Bool { status == "running" }
+    var isCreating: Bool { status == "creating" || status == "pending" || status == "building" }
+}
+
 // MARK: - Conversations
 
 nonisolated struct Conversation: Identifiable, Decodable {
@@ -407,6 +421,35 @@ nonisolated struct HostnameCheckResponse: Decodable {
 extension StoredVM: VMListGroupable {
     var vmListName: String { vmName }
     var vmListTags: [String] { displayTags }
+}
+
+extension VMListItem: VMListGroupable {
+    var vmListName: String { vmName }
+    var vmListTags: [String] { tags }
+}
+
+extension VMListItem: VMNamedSnapshot {}
+
+extension VMListItem {
+    nonisolated init(from vm: VM, unreadCount: Int = 0) {
+        self.vmName = vm.vmName
+        self.status = vm.status
+        self.httpsURL = vm.httpsURL
+        self.shelleyURL = vm.shelleyURL
+        self.image = vm.image
+        self.tags = vm.tags ?? []
+        self.unreadCount = unreadCount
+    }
+
+    nonisolated init(from vm: StoredVM) {
+        self.vmName = vm.vmName
+        self.status = vm.status
+        self.httpsURL = vm.httpsURL
+        self.shelleyURL = vm.shelleyURL
+        self.image = vm.image
+        self.tags = vm.displayTags
+        self.unreadCount = vm.unreadCount
+    }
 }
 
 @Model final class StoredConversation {

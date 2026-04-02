@@ -55,6 +55,7 @@ brief_*.md
 mlruns.db
 
 # Xcode
+iOS/.build/
 iOS/build/
 iOS/exe.dev.xcodeproj/xcuserdata/
 iOS/exe.dev.xcodeproj/project.xcworkspace/xcuserdata/
