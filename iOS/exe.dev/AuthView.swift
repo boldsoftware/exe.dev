@@ -13,7 +13,7 @@ struct AuthView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 120, height: 120)
 
-                Text("exe.dev")
+                Text(AuthManager.webHost)
                     .font(.system(size: 36, weight: .bold, design: .monospaced))
                 Text("Cloud development environments")
                     .font(.subheadline)
@@ -23,7 +23,7 @@ struct AuthView: View {
             Spacer()
 
             Button(action: { auth.signIn() }) {
-                Text("Sign in to exe.dev")
+                Text("Sign in to \(AuthManager.webHost)")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)

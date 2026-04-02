@@ -192,7 +192,7 @@ struct ChannelListView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 30, height: 30)
-                Text("exe.dev")
+                Text(AuthManager.webHost)
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
             }

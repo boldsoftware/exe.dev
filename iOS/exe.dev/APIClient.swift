@@ -212,7 +212,9 @@ final class APIClient: Sendable {
         if http.statusCode == 303 {
             let location = http.value(forHTTPHeaderField: "Location") ?? ""
             if location.contains("billing") {
-                throw APIError.serverMessage("Your plan does not allow VM creation. Please upgrade at exe.dev.")
+                throw APIError.serverMessage(
+                    "Your plan does not allow VM creation. Please upgrade at \(AuthManager.webHost)."
+                )
             }
             if location.contains("error=vm_limit") {
                 throw APIError.serverMessage("You've reached your VM limit.")

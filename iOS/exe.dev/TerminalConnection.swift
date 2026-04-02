@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages a WebSocket connection to the exe.dev terminal backend.
+/// Manages a WebSocket connection to the configured terminal backend.
 /// Protocol:
 ///   Server → Client: {"type": "output", "data": "<base64>"}
 ///   Client → Server: {"type": "input", "data": "<plaintext>"}
@@ -22,8 +22,8 @@ final class TerminalConnection: NSObject {
     ///   - sessionName: A session identifier (e.g. "ios-term")
     ///   - token: The auth token for cookie-based auth
     init(vmName: String, sessionName: String = "ios-term", token: String?) {
-        // Terminal WebSocket URL: wss://<vmname>.xterm.exe.xyz/terminal/ws/0?name=<session>
-        let host = "\(vmName).xterm.exe.xyz"
+        // Terminal WebSocket URL: wss://<vmname>.xterm.<box host>/terminal/ws/0?name=<session>
+        let host = "\(vmName).xterm.\(AuthManager.boxHost)"
         var components = URLComponents()
         components.scheme = "wss"
         components.host = host

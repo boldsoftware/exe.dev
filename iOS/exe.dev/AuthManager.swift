@@ -2,15 +2,45 @@ import AuthenticationServices
 import Foundation
 import Security
 
+enum AppEnvironment {
+    case production
+    case staging
+
+    // Flip this when pointing the app at staging.
+    static let current: Self = .production
+
+    var webHost: String {
+        switch self {
+        case .production:
+            return "exe.dev"
+        case .staging:
+            return "exe-staging.dev"
+        }
+    }
+
+    var boxHost: String {
+        switch self {
+        case .production:
+            return "exe.xyz"
+        case .staging:
+            return "exe-staging.xyz"
+        }
+    }
+}
+
 @Observable
 final class AuthManager: NSObject {
+    static let webHost = AppEnvironment.current.webHost
+    static let boxHost = AppEnvironment.current.boxHost
+    static let appBaseURL = "https://\(webHost)"
+
     private(set) var isAuthenticated: Bool = false
     private(set) var token: String?
 
-    private static let service = "dev.exe.app-token"
+    private static let service = "dev.\(webHost).app-token"
     private static let account = "app-token"
 
-    var baseURL: String = "https://exe.dev"
+    var baseURL: String = AuthManager.appBaseURL
 
     override init() {
         super.init()
