@@ -200,6 +200,9 @@ export interface VersionInfo {
   checked_at: string;
   error?: string;
   running_under_systemd: boolean; // True if INVOCATION_ID env var is set
+  headless_shell_current?: string; // e.g. "Chromium 141.0.7390.55"
+  headless_shell_latest?: string; // e.g. "Chromium 147.0.7727.24"
+  headless_shell_update: boolean; // True if latest > current
 }
 
 export interface CommitInfo {

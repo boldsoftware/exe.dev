@@ -415,6 +415,18 @@ class ApiService {
     return response.json();
   }
 
+  async upgradeHeadlessShell(): Promise<{ status: string; message: string; version: string }> {
+    const response = await fetch("/upgrade-headless-shell", {
+      method: "POST",
+      headers: { "X-Shelley-Request": "1" },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  }
+
   async exit(): Promise<{ status: string; message: string }> {
     const response = await fetch("/exit", {
       method: "POST",

@@ -325,6 +325,35 @@ func hasPrefix(a, b string) bool {
 	return len(a) >= len(b) && a[:len(b)] == b || len(b) >= len(a) && b[:len(a)] == a
 }
 
+func TestHeadlessShellHasUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		latest   string
+		expected bool
+	}{
+		{"newer major", "Chromium 141.0.7390.55", "Chromium 147.0.7727.24", true},
+		{"same version", "Chromium 141.0.7390.55", "Chromium 141.0.7390.55", false},
+		{"older version", "Chromium 147.0.7727.24", "Chromium 141.0.7390.55", false},
+		{"newer patch", "Chromium 141.0.7390.55", "Chromium 141.0.7390.56", true},
+		{"numeric not lexicographic", "Chromium 999.0.0.0", "Chromium 1001.0.0.0", true},
+		{"numeric not lexicographic reverse", "Chromium 1001.0.0.0", "Chromium 999.0.0.0", false},
+		{"empty current", "", "Chromium 141.0.7390.55", false},
+		{"empty latest", "Chromium 141.0.7390.55", "", false},
+		{"both empty", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := headlessShellHasUpdate(tt.current, tt.latest)
+			if result != tt.expected {
+				t.Errorf("headlessShellHasUpdate(%q, %q) = %v, want %v",
+					tt.current, tt.latest, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestIsPermissionError(t *testing.T) {
 	tests := []struct {
 		name     string

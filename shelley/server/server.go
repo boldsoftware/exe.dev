@@ -318,6 +318,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /version-check", http.HandlerFunc(s.handleVersionCheck))
 	mux.Handle("GET /version-changelog", http.HandlerFunc(s.handleVersionChangelog))
 	mux.Handle("POST /upgrade", http.HandlerFunc(s.handleUpgrade))
+	mux.Handle("POST /upgrade-headless-shell", http.HandlerFunc(s.handleUpgradeHeadlessShell))
 	mux.Handle("POST /exit", http.HandlerFunc(s.handleExit))
 	mux.Handle("GET /settings", http.HandlerFunc(s.handleGetSettings))
 	mux.Handle("POST /settings", http.HandlerFunc(s.handleSetSetting))

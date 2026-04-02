@@ -5514,6 +5514,34 @@ svg {
   background: var(--primary-dark);
 }
 
+.version-btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.version-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.version-headless-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.version-up-to-date {
+  color: var(--text-secondary);
+  font-size: 0.813rem;
+  margin-top: 0.25rem;
+}
+
+.version-success {
+  color: var(--success, #22c55e);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
 @media (max-width: 600px) {
   .version-modal-overlay {
     padding: 0;

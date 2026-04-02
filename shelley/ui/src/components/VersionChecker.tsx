@@ -21,6 +21,9 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [autoUpgrade, setAutoUpgrade] = useState(false);
   const [loadingAutoUpgrade, setLoadingAutoUpgrade] = useState(true);
+  const [upgradingHeadless, setUpgradingHeadless] = useState(false);
+  const [headlessError, setHeadlessError] = useState<string | null>(null);
+  const [headlessSuccess, setHeadlessSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +85,20 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
     setTimeout(() => {
       window.location.reload();
     }, 2000);
+  };
+
+  const handleUpgradeHeadlessShell = async () => {
+    setUpgradingHeadless(true);
+    setHeadlessError(null);
+    setHeadlessSuccess(null);
+    try {
+      const result = await api.upgradeHeadlessShell();
+      setHeadlessSuccess(result.message);
+    } catch (err) {
+      setHeadlessError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUpgradingHeadless(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -223,12 +240,43 @@ function VersionModal({ isOpen, onClose, versionInfo, isLoading }: VersionModalP
                 >
                   {upgrading
                     ? versionInfo.running_under_systemd
-                      ? "Upgrading & Restarting..."
-                      : "Upgrading & Killing..."
+                      ? "Upgrading Shelley & Restarting..."
+                      : "Upgrading Shelley & Killing..."
                     : versionInfo.running_under_systemd
-                      ? "Upgrade & Restart"
+                      ? "Upgrade Shelley & Restart"
                       : "Upgrade & Kill Shelley Server"}
                 </button>
+              </div>
+            )}
+
+            {/* Headless Shell (Browser) section */}
+            {versionInfo.headless_shell_current && (
+              <div className="version-headless-section">
+                <div className="version-info-row">
+                  <span className="version-label">Browser:</span>
+                  <span className="version-value">{versionInfo.headless_shell_current}</span>
+                </div>
+                {versionInfo.headless_shell_update && versionInfo.headless_shell_latest && (
+                  <div className="version-info-row">
+                    <span className="version-label">Latest:</span>
+                    <span className="version-value">{versionInfo.headless_shell_latest}</span>
+                  </div>
+                )}
+                {versionInfo.headless_shell_update ? (
+                  <div className="version-actions">
+                    {headlessError && <div className="version-error">{headlessError}</div>}
+                    {headlessSuccess && <div className="version-success">{headlessSuccess}</div>}
+                    <button
+                      onClick={handleUpgradeHeadlessShell}
+                      disabled={upgradingHeadless}
+                      className="version-btn version-btn-secondary"
+                    >
+                      {upgradingHeadless ? "Upgrading Browser..." : "Upgrade Browser"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="version-up-to-date">Browser is up to date</div>
+                )}
               </div>
             )}
           </div>

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,11 @@ type VersionInfo struct {
 	Error               string       `json:"error,omitempty"`
 	RunningUnderSystemd bool         `json:"running_under_systemd"` // True if INVOCATION_ID env var is set (systemd)
 	ReleaseInfo         *ReleaseInfo `json:"-"`                     // Internal, not exposed to JSON
+
+	// Headless shell (browser) version info
+	HeadlessShellCurrent string `json:"headless_shell_current,omitempty"` // e.g. "Chromium 141.0.7390.55"
+	HeadlessShellLatest  string `json:"headless_shell_latest,omitempty"`  // e.g. "Chromium 147.0.7727.24"
+	HeadlessShellUpdate  bool   `json:"headless_shell_update"`            // True if latest > current
 }
 
 // CommitInfo represents a commit in the changelog.
@@ -177,6 +183,13 @@ func (vc *VersionChecker) fetchVersionInfo(ctx context.Context) (*VersionInfo, e
 
 	// Check if latest has a newer minor version
 	info.HasUpdate = vc.isNewerMinor(currentInfo.Tag, latestRelease.TagName)
+
+	// Headless shell version info
+	info.HeadlessShellCurrent = getLocalHeadlessShellVersion(ctx)
+	if latestRelease.HeadlessShellVersion != "" && info.HeadlessShellCurrent != "" {
+		info.HeadlessShellLatest = latestRelease.HeadlessShellVersion
+		info.HeadlessShellUpdate = headlessShellHasUpdate(info.HeadlessShellCurrent, info.HeadlessShellLatest)
+	}
 
 	// For ShouldNotify, compare commit times if we have an update
 	if info.HasUpdate && currentInfo.CommitTime != "" {
@@ -308,6 +321,56 @@ func extractSHAFromTag(tag string) string {
 
 	// Convert back to 6-char hex SHA (short SHA)
 	return fmt.Sprintf("%06x", hexVal)
+}
+
+const headlessShellPath = "/headless-shell/headless-shell"
+
+// getLocalHeadlessShellVersion runs headless-shell --version and returns the output.
+// Returns empty string if the binary doesn't exist or fails.
+func getLocalHeadlessShellVersion(ctx context.Context) string {
+	cmd := exec.CommandContext(ctx, headlessShellPath, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// headlessShellHasUpdate compares two version strings like "Chromium 141.0.7390.55"
+// and returns true if latest is newer than current.
+func headlessShellHasUpdate(current, latest string) bool {
+	currentVer := strings.TrimPrefix(current, "Chromium ")
+	latestVer := strings.TrimPrefix(latest, "Chromium ")
+	if currentVer == "" || latestVer == "" {
+		return false
+	}
+
+	currentParts := strings.Split(currentVer, ".")
+	latestParts := strings.Split(latestVer, ".")
+
+	for i := 0; i < len(currentParts) && i < len(latestParts); i++ {
+		c, err1 := strconv.Atoi(currentParts[i])
+		l, err2 := strconv.Atoi(latestParts[i])
+		if err1 != nil || err2 != nil {
+			return false
+		}
+		if l > c {
+			return true
+		}
+		if l < c {
+			return false
+		}
+	}
+	return false
+}
+
+// findHeadlessShellURL finds the headless-shell download URL for the current platform.
+func findHeadlessShellURL(release *ReleaseInfo) string {
+	key := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+	if url, ok := release.HeadlessShellURLs[key]; ok {
+		return url
+	}
+	return ""
 }
 
 // fetchLatestRelease fetches the latest release info from GitHub Pages.
