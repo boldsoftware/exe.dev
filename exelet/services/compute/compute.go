@@ -206,42 +206,35 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 }
 
 // applyStartupNetworkLimits applies connection limits and bandwidth limits to
-// all running VMs. Uses a small worker pool to parallelize across VMs — each VM
-// operates on its own tap/ifb interfaces with no cross-VM dependencies. The
-// concurrency is kept low (4 workers) to avoid CPU spikes from overwhelming
-// the kernel's netlink and xtables subsystems.
+// all running VMs. Runs serially to minimize contention on the kernel's RTNL
+// lock and xtables lock. Each iptables/tc/ip-link invocation acquires these
+// global locks, and running them in parallel causes sustained lock contention
+// that stalls other kernel subsystems (e.g. node_exporter reading /proc/net/dev
+// hangs for 30-45s, causing false "host down" alerts from Prometheus).
+//
+// In practice this is fast: bandwidth setup checks if the IFB is already
+// configured (kernel state survives exelet restarts) and skips the ~8 netlink
+// operations when nothing changed. Connection limit checks use iptables -C.
 func (s *Service) applyStartupNetworkLimits(ctx context.Context, instances []*api.Instance) {
-	const maxWorkers = 4
-	sem := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-
-	for _, i := range instances {
-		if i.State == api.VMState_STOPPED || i.State == api.VMState_CREATING {
+	for _, inst := range instances {
+		if inst.State == api.VMState_STOPPED || inst.State == api.VMState_CREATING {
 			continue
 		}
 
-		wg.Add(1)
-		sem <- struct{}{} // acquire worker slot
-		go func(inst *api.Instance) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
-				ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
-				ip, _, err := net.ParseCIDR(ipStr)
-				if err != nil {
-					s.log.WarnContext(ctx, "failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
-				} else if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
-					s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "ip", ip.String(), "error", err)
-				}
+		if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+			ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
+			ip, _, err := net.ParseCIDR(ipStr)
+			if err != nil {
+				s.log.WarnContext(ctx, "failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
+			} else if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
+				s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "ip", ip.String(), "error", err)
 			}
-			if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
-				s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
-			}
-		}(i)
+		}
+		if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
+			s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
+		}
 	}
 
-	wg.Wait()
 	s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))
 }
 

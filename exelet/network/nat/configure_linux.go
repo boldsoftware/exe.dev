@@ -904,6 +904,42 @@ func (n *NAT) removeConnLimit(ctx context.Context, ip string) error {
 	return nil
 }
 
+// bandwidthAlreadyConfigured checks whether the IFB device for a TAP already
+// exists with the correct HTB rate. When the IFB setup survives across exelet
+// restarts (it's kernel state), we can skip the expensive teardown/recreation
+// cycle which involves ~8 netlink/tc operations and contends on the RTNL lock.
+func (n *NAT) bandwidthAlreadyConfigured(ctx context.Context, tapName string) bool {
+	ifbName := getIfbName(tapName)
+
+	// Check if the IFB device exists and is UP.
+	out, err := exec.CommandContext(ctx, "ip", "-o", "link", "show", ifbName).CombinedOutput()
+	if err != nil {
+		return false
+	}
+	if !strings.Contains(string(out), "UP") {
+		return false
+	}
+
+	// Check if TAP has an ingress qdisc attached.
+	out, err = exec.CommandContext(ctx, "tc", "qdisc", "show", "dev", tapName, "ingress").CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "ingress") {
+		return false
+	}
+
+	// Check if the IFB has an HTB qdisc with the correct rate.
+	out, err = exec.CommandContext(ctx, "tc", "class", "show", "dev", ifbName).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "htb") {
+		return false
+	}
+	// tc shows rate as e.g. "rate 100Mbit" — normalize our config value for comparison.
+	// Our config uses "100mbit", tc shows "100Mbit". Case-insensitive check.
+	if !strings.Contains(strings.ToLower(string(out)), strings.ToLower(n.bandwidthRate)) {
+		return false
+	}
+
+	return true
+}
+
 // applyBandwidthLimit limits upload bandwidth FROM the VM using an IFB device.
 //
 // From the host's perspective:
@@ -920,6 +956,17 @@ func (n *NAT) applyBandwidthLimit(ctx context.Context, tapName string) error {
 	}
 
 	ifbName := getIfbName(tapName)
+
+	// If bandwidth limiting is already configured correctly from a previous
+	// exelet run, skip the teardown/recreation. IFB devices and tc qdiscs are
+	// kernel state that survives process restarts. Skipping avoids ~8 netlink/tc
+	// operations per VM that contend on the RTNL lock and can stall other
+	// subsystems (e.g. node_exporter reading /proc/net/dev) for minutes at scale.
+	if n.bandwidthAlreadyConfigured(ctx, tapName) {
+		n.log.DebugContext(ctx, "bandwidth limit already configured, skipping", "tap", tapName, "ifb", ifbName)
+		return nil
+	}
+
 	n.log.DebugContext(ctx, "applying bandwidth limit", "tap", tapName, "ifb", ifbName, "rate", n.bandwidthRate)
 
 	// These remove the old IFB if it exists. Ignores the errors that come out when making a new VM.
