@@ -17,16 +17,16 @@ const prometheusBaseURL = "http://mon:9090"
 
 // HostMetrics is the per-host metrics returned by the hosts API.
 type HostMetrics struct {
-	Instance       string  `json:"instance"`
-	Hostname       string  `json:"hostname"`
-	Stage          string  `json:"stage"`
-	Role           string  `json:"role"`
-	Region         string  `json:"region"`
-	Up             *bool   `json:"up"`               // nil = unknown
-	CPUPercent     *float64 `json:"cpu_percent"`      // nil = unknown
-	CPUPressure    *float64 `json:"cpu_pressure"`     // PSI some%, nil = unknown
-	MemoryPressure *float64 `json:"memory_pressure"`  // PSI some%, nil = unknown
-	IOPressure     *float64 `json:"io_pressure"`      // PSI some%, nil = unknown
+	Instance       string   `json:"instance"`
+	Hostname       string   `json:"hostname"`
+	Stage          string   `json:"stage"`
+	Role           string   `json:"role"`
+	Region         string   `json:"region"`
+	Up             *bool    `json:"up"`              // nil = unknown
+	CPUPercent     *float64 `json:"cpu_percent"`     // nil = unknown
+	CPUPressure    *float64 `json:"cpu_pressure"`    // PSI some%, nil = unknown
+	MemoryPressure *float64 `json:"memory_pressure"` // PSI some%, nil = unknown
+	IOPressure     *float64 `json:"io_pressure"`     // PSI some%, nil = unknown
 }
 
 // HandleHosts handles GET /api/v1/hosts — returns host-level metrics from Prometheus.
@@ -217,7 +217,7 @@ func promQuery(ctx context.Context, _ *slog.Logger, query string) (map[string]pr
 		Data   struct {
 			ResultType string `json:"resultType"`
 			Result     []struct {
-				Metric map[string]string `json:"metric"`
+				Metric map[string]string  `json:"metric"`
 				Value  [2]json.RawMessage `json:"value"`
 			} `json:"result"`
 		} `json:"data"`
