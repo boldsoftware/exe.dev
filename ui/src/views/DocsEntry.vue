@@ -254,9 +254,10 @@ function initDNSChecker() {
 }
 
 function renderDNSResult(d: any): string {
-  const statusClass = d.status === 'ok' ? 'dns-status-ok' : d.status === 'partial' ? 'dns-status-warn' : 'dns-status-err'
-  const summaryText = d.status === 'ok' ? 'All good!' : d.status === 'partial' ? 'Almost there.' : 'Not quite.'
-  const summaryIcon = d.status === 'ok' ? '\u2713' : d.status === 'partial' ? '\u26a0' : '\u2717'
+  const hasWildcard = d.status === 'ok' && d.wildcardCname
+  const statusClass = hasWildcard ? 'dns-status-warn' : d.status === 'ok' ? 'dns-status-ok' : d.status === 'partial' ? 'dns-status-warn' : 'dns-status-err'
+  const summaryText = hasWildcard ? 'Well, sorta...' : d.status === 'ok' ? 'All good!' : d.status === 'partial' ? 'Almost there.' : 'Not quite.'
+  const summaryIcon = hasWildcard ? '\u26a0' : d.status === 'ok' ? '\u2713' : d.status === 'partial' ? '\u26a0' : '\u2717'
 
   let html = '<div class="dns-result-box ' + statusClass + '">'
   html += '<p class="dns-summary">' + summaryIcon + ' ' + summaryText + '</p>'
