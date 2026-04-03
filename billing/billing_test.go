@@ -536,3 +536,22 @@ func TestListGiftsEmpty(t *testing.T) {
 		t.Fatalf("len(gifts) = %d, want 0", len(gifts))
 	}
 }
+
+func TestParseInvoiceLinePlanName(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"1 × Individual Plan (at $20.00 / month)", "Individual"},
+		{"1 × Team Plan (at $50.00 / month)", "Team"},
+		{"1 x Enterprise Plan (at $100.00 / year)", "Enterprise"},
+		{"Individual Plan", "Individual"},
+		{"Something else entirely", "Something else entirely"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := parseInvoiceLinePlanName(tt.in)
+		if got != tt.want {
+			t.Errorf("parseInvoiceLinePlanName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

@@ -1153,22 +1153,30 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 			desc = "Subscription — " + t.Format("Jan 2006")
 		}
 
-		// Extract plan name from first line item description (e.g. "Individual" or "Team")
+		// Extract plan name and service period from first line item.
+		// Line item description is like "1 × Individual Plan (at $20.00 / month)".
+		// Line item Period has the actual service dates (invoice-level period is just the anchor).
 		var planName string
+		periodStart := time.Unix(inv.PeriodStart, 0).UTC()
+		periodEnd := time.Unix(inv.PeriodEnd, 0).UTC()
 		if inv.Lines != nil {
 			for _, li := range inv.Lines.Data {
 				if li.Description != "" {
-					planName = li.Description
-					break
+					planName = parseInvoiceLinePlanName(li.Description)
 				}
+				if li.Period != nil {
+					periodStart = time.Unix(li.Period.Start, 0).UTC()
+					periodEnd = time.Unix(li.Period.End, 0).UTC()
+				}
+				break
 			}
 		}
 
 		result = append(result, InvoiceInfo{
 			Description:      desc,
 			PlanName:         planName,
-			PeriodStart:      time.Unix(inv.PeriodStart, 0).UTC(),
-			PeriodEnd:        time.Unix(inv.PeriodEnd, 0).UTC(),
+			PeriodStart:      periodStart,
+			PeriodEnd:        periodEnd,
 			Date:             time.Unix(inv.Created, 0).UTC(),
 			AmountPaid:       inv.AmountPaid,
 			Currency:         string(inv.Currency),
@@ -1178,6 +1186,24 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 		})
 	}
 	return result, nil
+}
+
+// parseInvoiceLinePlanName extracts a clean plan name from a Stripe line item description.
+// Input like "1 × Individual Plan (at $20.00 / month)" returns "Individual".
+func parseInvoiceLinePlanName(desc string) string {
+	// Strip leading quantity: "1 × " or "1 x "
+	if i := strings.Index(desc, "×"); i >= 0 {
+		desc = strings.TrimSpace(desc[i+len("×"):])
+	} else if i := strings.Index(desc, " x "); i >= 0 {
+		desc = strings.TrimSpace(desc[i+3:])
+	}
+	// Strip trailing pricing: " (at $20.00 / month)"
+	if i := strings.Index(desc, " (at "); i >= 0 {
+		desc = strings.TrimSpace(desc[:i])
+	}
+	// Strip trailing " Plan" suffix for cleanliness
+	desc = strings.TrimSuffix(desc, " Plan")
+	return desc
 }
 
 // PlanCategoryGroup represents a group of subscribers on the same plan_id version.
