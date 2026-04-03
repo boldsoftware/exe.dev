@@ -78,8 +78,8 @@
                 <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
               </div>
               <div class="billing-header-right">
-                <a v-if="data.credits.selfServeBilling" href="/billing/update?source=profile" class="btn btn-secondary">Invoices</a>
-                <a href="/billing/update?source=profile" class="btn btn-secondary">Manage Plan</a>
+                <a v-if="data.credits.selfServeBilling && canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary">Invoices</a>
+                <a v-if="canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary">Manage Plan</a>
               </div>
             </div>
 
@@ -105,31 +105,11 @@
               </div>
             </div>
 
-            <!-- Shelley Credits Section -->
-            <div v-if="data.credits.hasShelleyFreeCreditPct" class="credits-grid">
-              <!-- Monthly Allowance Card -->
-              <div class="credit-card">
-                <div class="credit-card-title">MONTHLY ALLOWANCE</div>
-                <div class="credit-card-amount">${{ Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) }}</div>
-                <div class="credit-card-subtitle">remaining</div>
-                <div class="credit-card-detail">of ${{ Math.round(data.credits.shelleyCreditsMax) }} · </div>
-                <div class="credit-card-detail">Resets {{ data.credits.monthlyCreditsResetAt }}</div>
-              </div>
-
-              <!-- Extra Credits Card -->
-              <div class="credit-card">
-                <div class="credit-card-title">EXTRA CREDITS</div>
-                <div class="credit-card-amount">${{ Math.round(data.credits.ledgerBalanceUSD) }}</div>
-                <div class="credit-card-subtitle">balance</div>
-                <div class="credit-card-detail">Purchased · no expiry</div>
-              </div>
-            </div>
-
-            <!-- Monthly Usage Progress -->
+            <!-- Monthly Usage Progress (promoted above credits for visibility) -->
             <div v-if="data.credits.hasShelleyFreeCreditPct" class="usage-section">
               <div class="usage-header">
                 <span class="usage-label">Monthly Usage</span>
-                <span class="usage-pct">{{ Math.round(data.credits.monthlyUsedPct) }}% used</span>
+                <span class="usage-pct">${{ Math.round(data.credits.monthlyUsedUSD) }} / ${{ Math.round(data.credits.shelleyCreditsMax) }}</span>
               </div>
               <ProgressBar 
                 :value="Math.min(data.credits.monthlyUsedPct, 100)" 
@@ -137,8 +117,24 @@
                 :show-value="false"
               />
               <div class="usage-footer">
-                <span>${{ Math.round(data.credits.monthlyUsedUSD) }} used this month</span>
-                <span v-if="data.credits.ledgerBalanceUSD > 0">${{ Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) }} + ${{ Math.round(data.credits.ledgerBalanceUSD) }} extra available</span>
+                <span>Resets {{ data.credits.monthlyCreditsResetAt }}</span>
+              </div>
+            </div>
+
+            <!-- Shelley Credits Section (side-by-side on all screens) -->
+            <div v-if="data.credits.hasShelleyFreeCreditPct" class="credits-grid">
+              <!-- Monthly Allowance -->
+              <div class="credit-card">
+                <div class="credit-card-title">ALLOWANCE</div>
+                <div class="credit-card-amount" :class="{ 'credit-depleted': Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) <= 0 }">${{ Math.round(data.credits.shelleyCreditsMax - data.credits.monthlyUsedUSD) }}</div>
+                <div class="credit-card-detail">remaining of ${{ Math.round(data.credits.shelleyCreditsMax) }}</div>
+              </div>
+
+              <!-- Extra Credits -->
+              <div class="credit-card">
+                <div class="credit-card-title">EXTRA CREDITS</div>
+                <div class="credit-card-amount">${{ Math.round(data.credits.ledgerBalanceUSD) }}</div>
+                <div class="credit-card-detail">no expiry</div>
               </div>
             </div>
 
@@ -537,6 +533,15 @@ const creatingTeam = ref(false)
 // Billing state
 const selectedAmount = ref(25)
 
+// Whether the current user can manage billing (not a team member, or is the billing owner)
+const canManageBilling = computed(() => {
+  if (!data.value) return false
+  // No team = individual user, can always manage
+  if (!data.value.teamInfo) return true
+  // Team member: only billing owner can manage
+  return data.value.teamInfo.isBillingOwner
+})
+
 const usageBarSeverity = computed(() => {
   const pct = data.value?.credits.monthlyUsedPct ?? 0
   if (pct >= 90) return 'danger'
@@ -551,7 +556,7 @@ const transactionHistory = computed(() => {
   // Merge purchases and gifts
   const purchases = (data.value.credits.purchases || []).map(p => ({
     type: 'Purchase',
-    amount: p.amount,
+    amount: `$${p.amount}`,
     date: p.date,
     details: p.receiptURL,
     rawDate: new Date(p.date)
@@ -559,7 +564,7 @@ const transactionHistory = computed(() => {
   
   const gifts = (data.value.credits.gifts || []).map(g => ({
     type: 'Gift',
-    amount: g.amount,
+    amount: `$${g.amount}`,
     date: g.date || '',
     details: g.reason,
     rawDate: g.date ? new Date(g.date) : new Date(0)
@@ -1267,74 +1272,83 @@ async function toggleNewsletter(event: Event) {
   margin-left: auto;
 }
 
-/* Credit Cards Grid */
+/* Credit Cards Grid — always side-by-side */
 .credits-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 0;
   margin-bottom: 24px;
+  border-top: 1px solid var(--surface-border);
+  padding-top: 16px;
 }
 
 .credit-card {
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  padding: 20px;
+  padding: 0 12px;
+}
+
+.credit-card:first-child {
+  padding-left: 0;
+  border-right: 1px solid var(--surface-border);
+}
+
+.credit-card:last-child {
+  padding-right: 0;
 }
 
 .credit-card-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-color-muted);
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
+  letter-spacing: 0.8px;
+  margin-bottom: 6px;
 }
 
 .credit-card-amount {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1;
   margin-bottom: 4px;
 }
 
-.credit-card-subtitle {
-  font-size: 14px;
+.credit-card-amount.credit-depleted {
   color: var(--text-color-muted);
-  margin-bottom: 8px;
 }
 
 .credit-card-detail {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-color-muted);
   line-height: 1.5;
 }
 
 /* Usage Section */
 .usage-section {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .usage-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 13px;
+  margin-bottom: 6px;
+  font-size: 12px;
 }
 
 .usage-label {
-  font-weight: 500;
-}
-
-.usage-pct {
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
   color: var(--text-color-muted);
 }
 
-.usage-footer {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
+.usage-pct {
+  font-weight: 600;
   font-size: 12px;
+}
+
+.usage-footer {
+  margin-top: 4px;
+  font-size: 11px;
   color: var(--text-color-muted);
 }
 
@@ -1484,16 +1498,21 @@ async function toggleNewsletter(event: Event) {
 }
 
 @media (max-width: 768px) {
-  .credits-grid {
-    grid-template-columns: 1fr;
+  .billing-card-inner {
+    padding: 16px;
   }
-  
+
   .billing-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
   
+  .buy-section {
+    margin: 0 -16px 24px;
+    padding: 16px;
+  }
+
   .buy-form {
     flex-direction: column;
     align-items: stretch;
