@@ -14,6 +14,8 @@ cat >"$OUTPUT_FILE.tmp" <<EOF
 # TYPE zpool_fragmentation_percent gauge
 # HELP zpool_state ZFS pool state (1 = this is the current state)
 # TYPE zpool_state gauge
+# HELP zpool_arc_cache_hit_rate ZFS ARC cache hit rate (0.0–1.0)
+# TYPE zpool_arc_cache_hit_rate gauge
 EOF
 
 # All states the dashboard may query; lowercase to match zpool output after tolower.
@@ -50,6 +52,19 @@ EOF
         echo "zpool_state{pool=\"$POOL\",state=\"$STATE\"} $VALUE" >>"$OUTPUT_FILE.tmp"
     done
 done
+
+# ARC cache hit rate (global, not per-pool)
+ARC_HITS=$(awk '/^hits / {print $3}' /proc/spl/kstat/zfs/arcstats 2>/dev/null)
+ARC_MISSES=$(awk '/^misses / {print $3}' /proc/spl/kstat/zfs/arcstats 2>/dev/null)
+if [ -n "$ARC_HITS" ] && [ -n "$ARC_MISSES" ]; then
+    ARC_TOTAL=$((ARC_HITS + ARC_MISSES))
+    if [ "$ARC_TOTAL" -gt 0 ]; then
+        ARC_HIT_RATE=$(awk "BEGIN {printf \"%.6f\", $ARC_HITS / $ARC_TOTAL}")
+    else
+        ARC_HIT_RATE=0
+    fi
+    echo "zpool_arc_cache_hit_rate $ARC_HIT_RATE" >>"$OUTPUT_FILE.tmp"
+fi
 
 # Only write the file if we got at least one pool
 if grep -q 'zpool_capacity_percent{' "$OUTPUT_FILE.tmp"; then

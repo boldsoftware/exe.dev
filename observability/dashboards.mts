@@ -7338,7 +7338,7 @@ function makeOpsOverviewDashboard() {
       .gridPos(gp({ w: 6, h: 4 }))
       .withTarget(
         new DataqueryBuilder()
-          .expr(`sum(increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m])) / (sum(increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m])) + sum(increase(node_zfs_arc_misses{${STORAGE_FILTER}}[5m])))`)
+          .expr(`avg(zpool_arc_cache_hit_rate{${STORAGE_FILTER}})`)
           .legendFormat("Hit Rate")
           .instant()
       )
@@ -7387,9 +7387,9 @@ function makeOpsOverviewDashboard() {
 
   addTimeseriesChart(
     "ARC Cache Hit Rate",
-    `increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m]) / (increase(node_zfs_arc_hits{${STORAGE_FILTER}}[5m]) + increase(node_zfs_arc_misses{${STORAGE_FILTER}}[5m]))`,
+    `zpool_arc_cache_hit_rate{${STORAGE_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100),
+      panelCustomization: (x) => x.unit("percentunit").min(0).max(1),
       gridPos: { w: 8, h: 8 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
     }
