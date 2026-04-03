@@ -26,6 +26,7 @@ tmpkey*
 # so i can 'go test -c ./...', and 'go test -race -c && stress foo.test'
 *.test
 blog/assets/opus_conversations.json
+tracing/linter/cmd/slogcontext/slogcontext
 
 # exelet embedded fs (arch-specific)
 exelet/fs/amd64/*
