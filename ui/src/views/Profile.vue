@@ -78,8 +78,7 @@
                 <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
               </div>
               <div class="billing-header-right">
-                <a v-if="data.credits.selfServeBilling && canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary">Invoices</a>
-                <a v-if="canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary">Manage Plan</a>
+                <a v-if="canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary"><i class="pi pi-cog" style="font-size: 13px"></i> Manage Plan</a>
               </div>
             </div>
 
@@ -164,6 +163,32 @@
                 <input type="hidden" name="dollars" :value="selectedAmount" />
                 <button type="submit" class="buy-btn">Buy ${{ selectedAmount }}</button>
               </form>
+            </div>
+
+            <!-- Invoices (billing owners only) -->
+            <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="invoices-section">
+              <div class="invoices-header">
+                <span class="invoices-title">Invoices</span>
+                <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
+              </div>
+              <ul class="invoice-list">
+                <li v-for="inv in data.credits.invoices" :key="inv.date + inv.amount" class="invoice-item">
+                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : 'invoice-icon-open']">
+                    <i class="pi pi-file"></i>
+                  </div>
+                  <div class="invoice-info">
+                    <span class="invoice-desc">{{ inv.description }}</span>
+                    <span class="invoice-date">{{ inv.date }}</span>
+                  </div>
+                  <div class="invoice-right">
+                    <span class="invoice-amount">${{ inv.amount }}</span>
+                    <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
+                      <span :class="['invoice-status', inv.status === 'paid' ? 'invoice-status-paid' : 'invoice-status-open']">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
+                    </a>
+                    <span v-else :class="['invoice-status', inv.status === 'paid' ? 'invoice-status-paid' : 'invoice-status-open']">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'open' ? 'Open' : inv.status }}</span>
+                  </div>
+                </li>
+              </ul>
             </div>
 
             <!-- Transaction History -->
@@ -1432,9 +1457,114 @@ async function toggleNewsletter(event: Event) {
   filter: brightness(0.9);
 }
 
+/* Invoices Section */
+.invoices-section {
+  border-top: 1px solid var(--surface-border);
+  margin: 0 -24px 20px;
+  padding: 20px 24px 0;
+}
+.invoices-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.invoices-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.view-all-link {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  text-decoration: none;
+}
+.view-all-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+.invoice-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.invoice-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface-border);
+}
+.invoice-item:last-child {
+  border-bottom: none;
+}
+.invoice-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.invoice-icon-paid {
+  background: #e8f5e9;
+  color: #4CAF50;
+}
+.invoice-icon-open {
+  background: #fff3e0;
+  color: #f57c00;
+}
+.invoice-info {
+  flex: 1;
+  min-width: 0;
+}
+.invoice-desc {
+  font-size: 14px;
+  font-weight: 500;
+  display: block;
+}
+.invoice-date {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  display: block;
+}
+.invoice-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+.invoice-amount {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+.invoice-link {
+  text-decoration: none;
+}
+.invoice-link:hover .invoice-status {
+  text-decoration: underline;
+}
+.invoice-status {
+  font-size: 11px;
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.invoice-status-paid {
+  color: #4CAF50;
+  background: #e8f5e9;
+}
+.invoice-status-open {
+  color: #f57c00;
+  background: #fff3e0;
+}
+
 /* Transaction Section */
 .transaction-section {
-  margin-bottom: 24px;
+  border-top: 1px solid var(--surface-border);
+  margin: 0 -24px 20px;
+  padding: 20px 24px 0;
 }
 
 .transaction-header {
@@ -1636,6 +1766,16 @@ async function toggleNewsletter(event: Event) {
     flex: 1;
     padding: 8px 8px;
     min-width: 0;
+  }
+
+  .invoices-section {
+    margin: 0 -16px 20px;
+    padding: 16px 16px 0;
+  }
+
+  .transaction-section {
+    margin: 0 -16px 20px;
+    padding: 16px 16px 0;
   }
 }
 
