@@ -3233,7 +3233,7 @@ function makeHostsDashboard() {
         forDuration: "5m",
         summary: "Exelet replica DNS not resolving",
         description: "Replica hostname is not resolving on {{$labels.instance}}. The replica pair may be down or its Tailscale registration may have expired.",
-        labels: { signal: "strong" },
+        labels: { channel: "buzz" },
       },
       alertQueryOverride: `exelet_replica_dns_ok{role="exelet",stage="production"}`,
     }
