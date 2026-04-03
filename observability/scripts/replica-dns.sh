@@ -29,7 +29,7 @@ exelet-*) ;; # continue
     ;;
 esac
 
-REPLICA="${HOSTNAME}-replica"
+REPLICA="${HOSTNAME}-replica.crocodile-vector.ts.net"
 
 # Try to resolve the replica hostname.
 if getent hosts "$REPLICA" >/dev/null 2>&1; then
