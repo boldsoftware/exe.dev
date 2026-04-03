@@ -1086,6 +1086,32 @@ func (m *Manager) ReceiptURLs(ctx context.Context, customerID string) (map[strin
 	return result, nil
 }
 
+// ReceiptInfo holds a receipt URL and the charge creation time.
+type ReceiptInfo struct {
+	URL     string
+	Created time.Time
+}
+
+// ReceiptURLsAfter returns receipt URLs for credit-purchase charges created at or after since.
+func (m *Manager) ReceiptURLsAfter(ctx context.Context, customerID string, since time.Time) ([]ReceiptInfo, error) {
+	c := m.client()
+	params := &stripe.ChargeListParams{
+		Customer:     stripe.String(customerID),
+		CreatedRange: &stripe.RangeQueryParams{GreaterThanOrEqual: since.Unix()},
+	}
+	var result []ReceiptInfo
+	for charge, err := range c.V1Charges.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, fmt.Errorf("list charges: %w", err)
+		}
+		if charge.ReceiptURL == "" || charge.Metadata["type"] != "credit_purchase" {
+			continue
+		}
+		result = append(result, ReceiptInfo{URL: charge.ReceiptURL, Created: time.Unix(charge.Created, 0).UTC()})
+	}
+	return result, nil
+}
+
 // PlanCategoryGroup represents a group of subscribers on the same plan_id version.
 type PlanCategoryGroup struct {
 	PlanID   string

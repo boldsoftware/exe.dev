@@ -1,11 +1,13 @@
 package execore
 
 import (
+	"archive/zip"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -983,4 +985,61 @@ func nonNil[T any](s []T) []T {
 		return make([]T, 0)
 	}
 	return s
+}
+
+// handleReceiptsDownload streams a ZIP archive of receipt PDFs for the last 30 days.
+func (s *Server) handleReceiptsDownload(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		http.Error(w, "No billing account", http.StatusNotFound)
+		return
+	}
+
+	since := time.Now().AddDate(0, 0, -30)
+	receipts, err := s.billing.ReceiptURLsAfter(ctx, account.ID, since)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to fetch receipts for download", "error", err, "user_id", userID)
+		http.Error(w, "Failed to fetch receipts", http.StatusInternalServerError)
+		return
+	}
+	if len(receipts) == 0 {
+		http.Error(w, "No receipts in the last 30 days", http.StatusNotFound)
+		return
+	}
+
+	// Headers must be set before any body write; errors after this point are logged only.
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="receipts.zip"`)
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	fetchClient := &http.Client{Timeout: 30 * time.Second}
+	for i, receipt := range receipts {
+		filename := fmt.Sprintf("receipt-%s-%02d.pdf", receipt.Created.Format("2006-01-02"), i+1)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, receipt.URL, nil)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to build receipt request", "url", receipt.URL, "error", err)
+			continue
+		}
+		resp, err := fetchClient.Do(req)
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch receipt PDF", "url", receipt.URL, "error", err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			s.slog().WarnContext(ctx, "receipt PDF returned non-200", "url", receipt.URL, "status", resp.StatusCode)
+			continue
+		}
+		fw, err := zw.Create(filename)
+		if err != nil {
+			resp.Body.Close()
+			continue
+		}
+		_, _ = io.Copy(fw, resp.Body)
+		resp.Body.Close()
+	}
 }

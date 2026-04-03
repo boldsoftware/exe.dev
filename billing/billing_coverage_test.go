@@ -532,6 +532,57 @@ func TestExtractPaymentMethodInfo(t *testing.T) {
 	}
 }
 
+func TestReceiptURLsAfterLive(t *testing.T) {
+	m := newTestManager(t)
+	clock := m.startClock(t)
+	ctx := t.Context()
+
+	billingID := "exe_receipt_after_" + clock.ID()
+	if err := m.upsertCustomer(ctx, billingID, "receipts@example.com"); err != nil {
+		t.Fatalf("upsertCustomer: %v", err)
+	}
+
+	before := time.Now()
+
+	// Before purchase: no receipts.
+	got, err := m.ReceiptURLsAfter(ctx, billingID, before.Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("ReceiptURLsAfter before purchase: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 receipts before purchase, got %d", len(got))
+	}
+
+	// Create a credit purchase charge.
+	if err := stripeCompleteCreditPurchase(ctx, m, billingID, "pm_card_visa", tender.Mint(100, 0)); err != nil {
+		t.Fatalf("stripeCompleteCreditPurchase: %v", err)
+	}
+
+	// Since before the purchase: should return 1 receipt.
+	got, err = m.ReceiptURLsAfter(ctx, billingID, before.Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("ReceiptURLsAfter after purchase: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 receipt, got %d", len(got))
+	}
+	if got[0].URL == "" {
+		t.Fatal("receipt URL is empty")
+	}
+	if got[0].Created.IsZero() {
+		t.Fatal("receipt Created is zero")
+	}
+
+	// Since well after the purchase: should return 0 receipts.
+	got, err = m.ReceiptURLsAfter(ctx, billingID, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ReceiptURLsAfter with future since: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 receipts for future since, got %d", len(got))
+	}
+}
+
 func TestFormatCardLabel(t *testing.T) {
 	tests := []struct{ brand, last4, want string }{
 		{"visa", "4242", "Visa •••• 4242"},

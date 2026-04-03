@@ -164,7 +164,15 @@
             <div v-if="transactionHistory.length > 0" class="transaction-section">
               <div class="transaction-header">
                 <h4 class="subsection-title">Transaction History</h4>
-                <a href="#" class="view-all-link">View all →</a>
+                <div class="transaction-header-actions">
+                  <button
+                    v-if="receiptsAvailable"
+                    class="btn btn-secondary btn-small"
+                    :disabled="downloadingReceipts"
+                    @click="downloadReceipts"
+                  >{{ downloadingReceipts ? 'Downloading...' : 'Download all' }}</button>
+                  <a href="#" class="view-all-link">View all →</a>
+                </div>
               </div>
               <DataTable :value="transactionHistory" size="small" class="transaction-table">
                 <Column field="type" header="DESCRIPTION" />
@@ -560,6 +568,32 @@ const transactionHistory = computed(() => {
   // Combine and sort by date (newest first)
   return [...purchases, ...gifts].sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime())
 })
+
+const downloadingReceipts = ref(false)
+const receiptsAvailable = computed(() =>
+  (data.value?.credits?.purchases ?? []).some(p => p.receiptURL)
+)
+
+async function downloadReceipts() {
+  downloadingReceipts.value = true
+  try {
+    const resp = await fetch('/api/receipts/download', { credentials: 'same-origin' })
+    if (!resp.ok) throw new Error(await resp.text())
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'receipts.zip'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err: any) {
+    console.error('receipt download failed:', err)
+  } finally {
+    downloadingReceipts.value = false
+  }
+}
 
 // API Key modal
 const apiKeyModal = reactive({
@@ -1382,6 +1416,12 @@ async function toggleNewsletter(event: Event) {
 
 .transaction-header .subsection-title {
   margin: 0;
+}
+
+.transaction-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .view-all-link {

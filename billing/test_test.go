@@ -54,6 +54,13 @@ func newTestManager(t *testing.T) *Manager {
 		// from clobbering the first request's recording.
 		r.Header.Set("Replay-Id", fmt.Sprintf("req_%d", counter.Add(1)))
 
+		// Normalize time-based query params to make recordings stable across runs.
+		q := r.URL.Query()
+		if q.Get("created[gte]") != "" {
+			q.Set("created[gte]", "0")
+			r.URL.RawQuery = q.Encode()
+		}
+
 		// Normalize test names in request bodies
 		if r.Body != nil {
 			if body, ok := r.Body.(*httprr.Body); ok {
