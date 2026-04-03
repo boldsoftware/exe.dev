@@ -1173,14 +1173,36 @@ type PaymentMethodInfo struct {
 	DisplayLabel string // e.g. "Visa •••• 4242" or "Link (user@example.com)"
 }
 
-// GetPaymentMethod fetches the customer's default payment method from Stripe.
-// Returns (nil, nil) if no default payment method is set or the customer doesn't exist.
+// GetPaymentMethod fetches the payment method used for the customer's subscription from Stripe.
+// Returns (nil, nil) if no payment method is set or the customer doesn't exist.
 //
-// Stripe Checkout sets the payment method on the active subscription rather than
-// on customer.invoice_settings.default_payment_method, so we check both: the
-// customer-level default first, then fall back to the active subscription's default.
+// Stripe Checkout sets the payment method on the subscription (not on the
+// customer-level invoice_settings.default_payment_method), so we check the
+// subscription first. This ensures that when a user pays with a card that
+// isn't their customer-level default, we show the correct one.
 func (m *Manager) GetPaymentMethod(ctx context.Context, billingID string) (*PaymentMethodInfo, error) {
 	c := m.client()
+
+	// Prefer the subscription's payment method — this is the one actually
+	// being charged for the subscription. Check active, trialing, and
+	// past_due statuses (all represent a live subscription).
+	for _, status := range []string{"active", "trialing", "past_due"} {
+		subParams := &stripe.SubscriptionListParams{
+			Customer: &billingID,
+			Status:   new(status),
+		}
+		subParams.AddExpand("data.default_payment_method")
+		for sub, err := range c.V1Subscriptions.List(ctx, subParams).All(ctx) {
+			if err != nil {
+				return nil, fmt.Errorf("list %s subscriptions for payment method: %w", status, err)
+			}
+			if sub.DefaultPaymentMethod != nil {
+				return extractPaymentMethodInfo(sub.DefaultPaymentMethod), nil
+			}
+		}
+	}
+
+	// Fall back to the customer-level default payment method.
 	params := &stripe.CustomerRetrieveParams{}
 	params.AddExpand("invoice_settings.default_payment_method")
 
@@ -1192,25 +1214,8 @@ func (m *Manager) GetPaymentMethod(ctx context.Context, billingID string) (*Paym
 		return nil, fmt.Errorf("retrieve customer for payment method: %w", err)
 	}
 
-	// Prefer customer-level default payment method.
 	if customer.InvoiceSettings != nil && customer.InvoiceSettings.DefaultPaymentMethod != nil {
 		return extractPaymentMethodInfo(customer.InvoiceSettings.DefaultPaymentMethod), nil
-	}
-
-	// Fall back to the active subscription's default payment method, which is
-	// what Stripe Checkout sets when save_default_payment_method is not configured.
-	subParams := &stripe.SubscriptionListParams{
-		Customer: &billingID,
-		Status:   new("active"),
-	}
-	subParams.AddExpand("data.default_payment_method")
-	for sub, err := range c.V1Subscriptions.List(ctx, subParams).All(ctx) {
-		if err != nil {
-			return nil, fmt.Errorf("list subscriptions for payment method: %w", err)
-		}
-		if sub.DefaultPaymentMethod != nil {
-			return extractPaymentMethodInfo(sub.DefaultPaymentMethod), nil
-		}
 	}
 
 	return nil, nil
