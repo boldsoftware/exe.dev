@@ -6495,8 +6495,8 @@ function makeRummydDashboard() {
     new TextPanelBuilder()
       .title("About rummyd")
       .content(
-        `**rummyd** (Real User Monitoring) runs on [\`mon\`](http://mon.crocodile-vector.ts.net:9099/metrics) and SSH's to every production exeprox, ` +
-        `then curls \`https://blog.exe.dev/debug/gitsha\` from each one. ` +
+        `**rummyd** (Real User Monitoring) runs on [\`mon\`](http://mon.crocodile-vector.ts.net:9099/metrics) and hits each production exeprox's ` +
+        `\`/__exe.dev/blog/debug/gitsha\` endpoint, which proxies to \`https://blog.exe.dev/debug/gitsha\`. ` +
         `This verifies the full request path from each proxy through to the blog backend. ` +
         `Alerts fire to #buzz if the blog is unreachable from any exeprox or if rummyd itself stops running.`
       )
@@ -6636,13 +6636,13 @@ function makeRummydDashboard() {
         condition: "lt",
         forDuration: "5m",
         summary: "blog.exe.dev unreachable from {{ $labels.host }}",
-        description: "{{ $labels.host }} cannot reach blog.exe.dev (rummy_blog_up=0 for 5+ minutes). rummyd on mon SSHs to the exeprox and curls blog.exe.dev/debug/gitsha. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
+        description: "{{ $labels.host }} cannot reach blog.exe.dev (rummy_blog_up=0 for 5+ minutes). rummyd on mon hits each exeprox's /__exe.dev/blog/debug/gitsha endpoint over Tailscale. If multiple hosts alert simultaneously, the blog backend is likely down, not the proxies.",
         labels: { channel: "buzz" },
       },
     }
   );
 
-  // Curl-only latency (HTTP time, excludes SSH overhead)
+  // Upstream latency (X-Upstream-Duration from exeprox proxy)
   addTimeseriesChart(
     "Blog Curl Latency",
     `rummy_blog_curl_latency_seconds`,
@@ -6653,9 +6653,9 @@ function makeRummydDashboard() {
     }
   );
 
-  // Total latency including SSH connect + curl
+  // Total latency including rummyd-to-exeprox round trip
   addTimeseriesChart(
-    "Blog Total Latency (SSH + Curl)",
+    "Blog Total Latency",
     `rummy_blog_total_latency_seconds`,
     {
       panelCustomization: (x) => x.unit("s").min(0),

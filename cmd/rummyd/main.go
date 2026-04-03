@@ -1,6 +1,6 @@
 // rummyd is a Real User Monitoring daemon that checks blog rendering
-// across all exeprox machines by SSH'ing to each one and fetching
-// https://blog.exe.dev/debug/gitsha.
+// across all exeprox machines by hitting each one's /__exe.dev/blog
+// endpoint, which fetches https://blog.exe.dev/debug/gitsha externally.
 package main
 
 import (
@@ -10,10 +10,12 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,12 +44,12 @@ func main() {
 
 	blogCurlLatency := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "rummy_blog_curl_latency_seconds",
-		Help: "HTTP-only latency of fetching blog.exe.dev/debug/gitsha (curl time_total, excludes SSH).",
+		Help: "Upstream latency (X-Upstream-Duration from exeprox) of fetching blog.exe.dev/debug/gitsha.",
 	}, []string{"host", "latitude", "longitude", "city"})
 
 	blogTotalLatency := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "rummy_blog_total_latency_seconds",
-		Help: "Total wall-clock latency including SSH connect + curl.",
+		Help: "Total wall-clock latency of the check request to exeprox.",
 	}, []string{"host", "latitude", "longitude", "city"})
 
 	blogGitSHA := prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -345,7 +347,7 @@ var indexTmpl = template.Must(template.New("index").Funcs(template.FuncMap{
 <h1>rummyd — Real User Monitoring</h1>
 <p class="meta">Last blog check: {{ago .LastCheck}} · Page auto-refreshes every 60s</p>
 
-<h2>Blog Checks (via exeprox SSH)</h2>
+<h2>Blog Checks (via exeprox)</h2>
 <table>
 <tr><th>Host</th><th>City</th><th>Status</th><th>Curl Latency</th><th>Total Latency</th><th>Git SHA</th><th>Checked</th></tr>
 {{range .Hosts}}
@@ -380,85 +382,69 @@ func (s *statusPage) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	indexTmpl.Execute(w, s.snapshot())
 }
 
-// checkHost SSH's to the given host and curls blog.exe.dev/debug/gitsha.
+// checkHost hits the exeprox's /__exe.dev/blog endpoint to check blog reachability.
+// The exeprox fetches blog.exe.dev/debug/gitsha externally and reports the result.
 func checkHost(host string, blogUp, blogCurlLatency, blogTotalLatency, blogGitSHA *prometheus.GaugeVec, checksTotal *prometheus.CounterVec, sp *statusPage) {
-	// 30s overall deadline: covers SSH connect + remote curl + any hangs.
-	// SSH ConnectTimeout=10 covers TCP connect; curl --max-time=10 covers
-	// the HTTP request; the context is a hard backstop for the whole thing.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	start := time.Now()
 
-	// curl -w '\n%{time_total}' appends the HTTP time_total (seconds) after
-	// the response body, so we get the SHA on the first line and the curl
-	// latency (excluding SSH overhead) on the last line.
-	// The remote command is passed as a single string so that the quotes
-	// around the -w argument survive the remote shell.
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "ConnectTimeout=10",
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "BatchMode=yes",
-		"ubuntu@"+host,
-		`curl -sSf --max-time 10 -w '\n%{time_total}' https://blog.exe.dev/debug/gitsha`,
-	)
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	elapsed := time.Since(start)
-
 	lat, lon, city := locationForHost(host)
 	latStr := fmt.Sprintf("%.4f", lat)
 	lonStr := fmt.Sprintf("%.4f", lon)
 
-	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			switch ee.ExitCode() {
-			case 6:
-				detail = " (DNS resolution failed)"
-			case 22:
-				detail = " (HTTP error from blog)"
-			case 28:
-				detail = " (curl timeout)"
-			case 35:
-				detail = " (SSL connect error)"
-			case 60:
-				detail = " (SSL certificate problem)"
-			case 255:
-				detail = " (SSH connection failed)"
-			}
-		}
-		stderrStr := strings.TrimSpace(stderr.String())
-		if stderrStr != "" {
-			log.Printf("check %s: FAIL after %s (%v)%s: %s", host, elapsed, err, detail, stderrStr)
-		} else {
-			log.Printf("check %s: FAIL after %s (%v)%s", host, elapsed, err, detail)
-		}
+	failCheck := func(msg string, elapsed time.Duration) {
+		log.Printf("check %s: FAIL (%s)", host, msg)
 		blogUp.WithLabelValues(host).Set(0)
 		blogTotalLatency.WithLabelValues(host, latStr, lonStr, city).Set(elapsed.Seconds())
 		checksTotal.WithLabelValues(host, "fail").Inc()
-		sp.setHost(hostStatus{Host: host, City: city, Up: false, TotalLatency: elapsed.Seconds(), CheckedAt: time.Now(), Error: strings.TrimSpace(detail)})
+		sp.setHost(hostStatus{Host: host, City: city, Up: false, TotalLatency: elapsed.Seconds(), CheckedAt: time.Now(), Error: msg})
+	}
+
+	url := fmt.Sprintf("http://%s/__exe.dev/blog/debug/gitsha", host)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		failCheck(fmt.Sprintf("request creation: %v", err), 0)
 		return
 	}
 
-	// Parse: line 1 = body (git SHA), last line = curl time_total in seconds
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) < 2 {
-		log.Printf("check %s: FAIL (unexpected output: %q)", host, string(out))
-		blogUp.WithLabelValues(host).Set(0)
-		checksTotal.WithLabelValues(host, "fail").Inc()
-		sp.setHost(hostStatus{Host: host, City: city, Up: false, CheckedAt: time.Now(), Error: "unexpected output"})
+	resp, err := http.DefaultClient.Do(req)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		failCheck(err.Error(), elapsed)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		failCheck(fmt.Sprintf("reading body: %v", err), elapsed)
 		return
 	}
 
-	sha := strings.TrimSpace(lines[0])
-	curlSeconds, parseErr := strconv.ParseFloat(strings.TrimSpace(lines[len(lines)-1]), 64)
-	if parseErr != nil {
-		log.Printf("check %s: FAIL (bad curl time: %q)", host, lines[len(lines)-1])
-		blogUp.WithLabelValues(host).Set(0)
-		checksTotal.WithLabelValues(host, "fail").Inc()
-		sp.setHost(hostStatus{Host: host, City: city, Up: false, CheckedAt: time.Now(), Error: "bad curl time"})
+	if resp.StatusCode != http.StatusOK {
+		failCheck(fmt.Sprintf("HTTP %d", resp.StatusCode), elapsed)
+		return
+	}
+
+	sha := strings.TrimSpace(string(body))
+	if !validGitSHA(sha) {
+		failCheck(fmt.Sprintf("invalid SHA: %s", sha), elapsed)
+		return
+	}
+
+	// X-Upstream-Duration is the time the exeprox spent fetching from blog.exe.dev,
+	// analogous to the old curl time_total (HTTP latency excluding SSH overhead).
+	dur := resp.Header.Get("X-Upstream-Duration")
+	if dur == "" {
+		failCheck("missing X-Upstream-Duration header", elapsed)
+		return
+	}
+	curlSeconds, err := strconv.ParseFloat(dur, 64)
+	if err != nil {
+		failCheck(fmt.Sprintf("bad X-Upstream-Duration: %v", err), elapsed)
 		return
 	}
 
@@ -505,4 +491,10 @@ func checkCertCanary(up, latencyGauge, lastCheck prometheus.Gauge, sp *statusPag
 	latencyGauge.Set(elapsed.Seconds())
 	lastCheck.SetToCurrentTime()
 	sp.setCertCanary(certCanaryStatus{Domain: domain, Up: true, Latency: elapsed.Seconds(), CheckedAt: time.Now()})
+}
+
+var gitSHARe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+
+func validGitSHA(s string) bool {
+	return gitSHARe.MatchString(s)
 }
