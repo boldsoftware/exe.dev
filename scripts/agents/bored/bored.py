@@ -519,7 +519,7 @@ def check_for_self_update():
         # Rebuild UI
         ui_dir = os.path.join(EXE_REPO, "scripts", "agents", "bored", "ui")
         if os.path.isdir(ui_dir):
-            run_cmd(["npm", "ci"], cwd=ui_dir)
+            run_cmd(["pnpm", "install", "--frozen-lockfile"], cwd=ui_dir)
             run_cmd(["node", "build.js"], cwd=ui_dir)
             log.info("UI rebuilt")
 
