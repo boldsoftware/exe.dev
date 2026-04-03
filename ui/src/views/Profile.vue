@@ -1250,6 +1250,8 @@ async function toggleNewsletter(event: Event) {
   align-items: center;
   gap: 12px;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .pm-number {
   font-family: monospace;
@@ -1260,6 +1262,9 @@ async function toggleNewsletter(event: Event) {
 .pm-email {
   font-size: 0.9em;
   color: var(--text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pm-expiry {
   font-size: 0.85em;
@@ -1598,6 +1603,20 @@ async function toggleNewsletter(event: Event) {
     align-items: flex-start;
     gap: 12px;
   }
+
+  .payment-method-callout {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .pm-icon-img {
+    width: 36px;
+    height: 24px;
+  }
+
+  .pm-details {
+    gap: 8px;
+  }
   
   .buy-section {
     margin: 0 -16px 24px;
@@ -1611,6 +1630,12 @@ async function toggleNewsletter(event: Event) {
   
   .buy-amounts {
     width: 100%;
+  }
+
+  .amount-btn {
+    flex: 1;
+    padding: 8px 8px;
+    min-width: 0;
   }
 }
 
