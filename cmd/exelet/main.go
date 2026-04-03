@@ -354,8 +354,15 @@ func serveAction(clix *cli.Context) error {
 	})
 	log := slog.Default()
 
-	maintenanceMode := clix.Bool("maintenance")
+	// Start HTTP server (metrics, pprof, version) as early as possible so
+	// that the /metrics endpoint is scrapeable while the rest of the exelet
+	// is still initialising (network, storage, compute services, etc.).
 	httpAddr := clix.String("http-addr")
+	if _, err := exelet.StartHTTPServer(httpAddr, metricsRegistry, log); err != nil {
+		return err
+	}
+
+	maintenanceMode := clix.Bool("maintenance")
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
 	exedURL := clix.String("exed-url")
@@ -460,11 +467,6 @@ func serveAction(clix *cli.Context) error {
 	}
 	srv, err := exelet.NewExelet(cfg, log, env, opts...)
 	if err != nil {
-		return err
-	}
-
-	// start HTTP server
-	if _, err := srv.StartHTTPServer(httpAddr, srv.MetricsRegistry()); err != nil {
 		return err
 	}
 

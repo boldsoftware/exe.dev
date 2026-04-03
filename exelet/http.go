@@ -3,6 +3,7 @@ package exelet
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -15,9 +16,11 @@ import (
 )
 
 // StartHTTPServer starts the HTTP server with debug endpoints, version, and metrics.
+// It is a package-level function so it can be called before the Exelet is fully
+// initialized, ensuring metrics are available as early as possible during startup.
 // It returns the actual address the server is listening on (useful when addr uses port 0).
-func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (string, error) {
-	s.log.Info("starting HTTP server", "addr", addr)
+func StartHTTPServer(addr string, registry *prometheus.Registry, log *slog.Logger) (string, error) {
+	log.Info("starting HTTP server", "addr", addr)
 
 	mux := http.NewServeMux()
 
@@ -31,7 +34,7 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (st
 	})
 
 	// debug index
-	mux.HandleFunc("/debug", s.handleDebugIndex)
+	mux.HandleFunc("/debug", handleDebugIndex)
 
 	// pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -41,8 +44,8 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (st
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	// version endpoint
-	mux.HandleFunc("/debug/version", s.handleVersion)
-	mux.HandleFunc("/debug/gitsha", s.handleGitSHA)
+	mux.HandleFunc("/debug/version", handleVersion)
+	mux.HandleFunc("/debug/gitsha", handleGitSHA)
 
 	// prometheus metrics
 	if registry != nil {
@@ -55,7 +58,7 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (st
 	}
 
 	actualAddr := ln.Addr().String()
-	s.log.Info("http server listening", "addr", actualAddr)
+	log.Info("http server listening", "addr", actualAddr)
 
 	server := &http.Server{
 		Handler: mux,
@@ -63,14 +66,14 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) (st
 
 	go func() {
 		if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.log.Error("HTTP server error", "err", err)
+			log.Error("HTTP server error", "err", err)
 		}
 	}()
 
 	return actualAddr, nil
 }
 
-func (s *Exelet) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
+func handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><title>exelet debug</title></head><body>
@@ -85,13 +88,13 @@ func (s *Exelet) handleDebugIndex(w http.ResponseWriter, r *http.Request) {
 `)
 }
 
-func (s *Exelet) handleVersion(w http.ResponseWriter, r *http.Request) {
+func handleVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprintf(w, "%s\n", version.FullVersion())
 	fmt.Fprintf(w, "Git commit: %s\n", logging.GitCommit())
 }
 
-func (s *Exelet) handleGitSHA(w http.ResponseWriter, r *http.Request) {
+func handleGitSHA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, logging.GitCommit())
 }

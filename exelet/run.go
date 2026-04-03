@@ -64,6 +64,7 @@ func (s *Exelet) Run(ctx context.Context) error {
 	go s.grpcServer.Serve(l)
 
 	s.log.InfoContext(ctx, "exelet server ready", "version", version.FullVersion())
+	s.metrics.ready.Set(1)
 
 	s.slackFeed.ServiceStarted(ctx, "exelet")
 

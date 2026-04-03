@@ -9,9 +9,6 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-
-	"exe.dev/exelet/config"
-	"exe.dev/stage"
 )
 
 func TestHTTPServer(t *testing.T) {
@@ -19,29 +16,15 @@ func TestHTTPServer(t *testing.T) {
 		Level: slog.LevelDebug,
 	}))
 
-	cfg := &config.ExeletConfig{
-		Name:          "test",
-		ListenAddress: "127.0.0.1:0", // random port for grpc
-		DataDir:       t.TempDir(),
-	}
-
 	registry := prometheus.NewRegistry()
-	srv, err := NewExelet(cfg, log, stage.Test(), WithMetricsRegistry(registry))
-	if err != nil {
-		t.Fatalf("failed to create exelet: %v", err)
-	}
 
 	// Use port 0 for tests to avoid collisions
-	if _, err := srv.StartHTTPServer("127.0.0.1:0", srv.MetricsRegistry()); err != nil {
+	if _, err := StartHTTPServer("127.0.0.1:0", registry, log); err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
 	}
 
 	registry2 := prometheus.NewRegistry()
-	srv2, err := NewExelet(cfg, log, stage.Test(), WithMetricsRegistry(registry2))
-	if err != nil {
-		t.Fatalf("failed to create exelet: %v", err)
-	}
-	actualAddr, err := srv2.StartHTTPServer("127.0.0.1:0", srv2.MetricsRegistry())
+	actualAddr, err := StartHTTPServer("127.0.0.1:0", registry2, log)
 	if err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
 	}
