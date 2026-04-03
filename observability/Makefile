@@ -56,38 +56,10 @@ deploy-prometheus:
 	ssh ubuntu@mon sudo systemctl reload prometheus; \
 	echo "Prometheus configuration deployed and service restarted"
 
-# Deploy node-exporter to all hosts
-# Note: exed-01 uses port 19100 because exed listens on most ports for its proxy functionality
+# Deploy node-exporter to all hosts (or pass specific hosts via NODES=)
+# Configuration lives in deploy-node-exporter.py
 deploy-node-exporter:
-	@for host in $(HOSTS); do \
-		echo "Deploying node-exporter to $$host..."; \
-		if [ "$$host" = "exed-02" ] || [ "$$host" = "exed-staging-01" ]; then \
-			port=19100; \
-		else \
-			port=9100; \
-		fi; \
-		if [ "$$host" = "ci.crocodile-vector.ts.net" ]; then \
-			user=root; \
-		else \
-			user=ubuntu; \
-		fi; \
-		ssh $$user@$$host "bash -c \"if ! dpkg -l | grep -q prometheus-node-exporter; then \
-			echo 'Installing prometheus-node-exporter...'; \
-			sudo apt-get update && sudo apt-get install -y prometheus-node-exporter; \
-		else \
-			echo 'prometheus-node-exporter already installed'; \
-		fi && \
-		sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d && \
-		echo '[Service]' | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
-		echo 'ExecStart=' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
-		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter --collector.netdev.device-exclude='"'"'^(tap|ifb)'"'"' --collector.diskstats.device-exclude='"'"'^zd'"'"'' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
-		sudo systemctl daemon-reload && \
-		sudo systemctl enable prometheus-node-exporter && \
-		sudo systemctl restart prometheus-node-exporter && \
-		echo 'Verifying node-exporter is running...' && \
-		curl -s http://localhost:$$port/metrics | head -n 5\""; \
-		echo ""; \
-	done
+	python3 deploy-node-exporter.py $(NODES)
 
 # Exelet hosts (hosts with ZFS pools)
 EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02

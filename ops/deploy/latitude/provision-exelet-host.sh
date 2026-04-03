@@ -474,43 +474,10 @@ echo "IPv6 disabled"
 DISABLE_IPV6
 
     # Install and configure node_exporter for monitoring
+    # Config is single-sourced in observability/deploy-node-exporter.py
     echo ""
     echo "=== Installing node_exporter for monitoring ==="
-    ssh $SSH_OPTS "ubuntu@$host" 'bash -s' <<'NODE_EXPORTER_SCRIPT'
-set -euo pipefail
-if ! dpkg -l | grep -q prometheus-node-exporter; then
-    echo "Installing prometheus-node-exporter..."
-    sudo apt-get update && sudo apt-get install -y prometheus-node-exporter
-else
-    echo "prometheus-node-exporter already installed"
-fi
-
-# Create wrapper script that dynamically gets Tailscale IP at start time
-cat <<'WRAPPER' | sudo tee /usr/local/bin/node-exporter-wrapper > /dev/null
-#!/bin/bash
-TAILSCALE_IP=$(tailscale ip -4)
-if [ -z "$TAILSCALE_IP" ]; then
-    echo "ERROR: Failed to get Tailscale IP" >&2
-    exit 1
-fi
-exec /usr/bin/prometheus-node-exporter --web.listen-address=${TAILSCALE_IP}:9100 --collector.cgroups --collector.systemd "$@"
-WRAPPER
-sudo chmod +x /usr/local/bin/node-exporter-wrapper
-
-sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d
-cat <<EOF | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null
-[Unit]
-After=tailscaled.service
-Wants=tailscaled.service
-
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/node-exporter-wrapper
-EOF
-sudo systemctl daemon-reload
-sudo systemctl enable prometheus-node-exporter
-sudo systemctl restart prometheus-node-exporter
-NODE_EXPORTER_SCRIPT
+    python3 "${SCRIPT_DIR}/../../../observability/deploy-node-exporter.py" "$host"
 }
 
 # Wait for direct SSH to be available

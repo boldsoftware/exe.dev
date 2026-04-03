@@ -339,63 +339,12 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 fi
 
 # Install and configure node_exporter for monitoring
-# Note: exed listens on most ports for proxy, so use port 19100 instead of 9100
+# Config is single-sourced in observability/deploy-node-exporter.py
 echo ""
 echo "=========================================="
 echo "Installing node_exporter for monitoring"
 echo "=========================================="
-
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${MACHINE_NAME}" 'bash -s' <<'NODE_EXPORTER_SCRIPT'
-set -euo pipefail
-if ! dpkg -l | grep -q prometheus-node-exporter; then
-    echo "Installing prometheus-node-exporter..."
-    sudo apt-get update && sudo apt-get install -y prometheus-node-exporter
-else
-    echo "prometheus-node-exporter already installed"
-fi
-
-# Create wrapper script that dynamically gets Tailscale IP at start time
-# Note: exed uses port 19100 instead of 9100 because exed listens on most ports for proxy
-cat <<'WRAPPER' | sudo tee /usr/local/bin/node-exporter-wrapper > /dev/null
-#!/bin/bash
-TAILSCALE_IP=$(tailscale ip -4)
-if [ -z "$TAILSCALE_IP" ]; then
-    echo "ERROR: Failed to get Tailscale IP" >&2
-    exit 1
-fi
-exec /usr/bin/prometheus-node-exporter --web.listen-address=${TAILSCALE_IP}:19100 --collector.cgroups --collector.systemd --collector.netdev.device-exclude='^(tap|ifb)' --collector.diskstats.device-exclude='^zd' "$@"
-WRAPPER
-sudo chmod +x /usr/local/bin/node-exporter-wrapper
-
-sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d
-cat <<EOF | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null
-[Unit]
-After=tailscaled.service
-Wants=tailscaled.service
-
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/node-exporter-wrapper
-EOF
-sudo systemctl daemon-reload
-sudo systemctl enable prometheus-node-exporter
-sudo systemctl restart prometheus-node-exporter
-
-TAILSCALE_IP=$(tailscale ip -4)
-echo "node_exporter should be listening on Tailscale IP: $TAILSCALE_IP:19100"
-echo "Verifying node-exporter is running..."
-for i in $(seq 1 300); do
-    if curl -s http://${TAILSCALE_IP}:19100/metrics | head -n 3; then
-        break
-    fi
-    if [ $i -eq 300 ]; then
-        echo "ERROR: node-exporter failed to start after 30 seconds"
-        exit 1
-    fi
-    sleep 0.1
-done
-NODE_EXPORTER_SCRIPT
+python3 "${SCRIPT_DIR}/../../observability/deploy-node-exporter.py" "${MACHINE_NAME}"
 
 echo ""
 echo "=========================================="
