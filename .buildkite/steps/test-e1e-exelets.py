@@ -36,13 +36,11 @@ def main():
     os.environ["E1E_LOG_DIR"] = os.path.abspath("e1e-logs-exelets")
 
     json_results = "e1e-results-exelets.json"
-    junit_results = "e1e-results-exelets.xml"
 
     vm_concurrency = os.environ.get("E1E_EXELETS_VM_CONCURRENCY", os.environ.get("E1E_VM_CONCURRENCY", "10"))
     env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
     test_result = subprocess.run(
         ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
-         "--junitfile", junit_results,
          "--", "-race", "-count=1", "-timeout=15m", "-failfast",
          "./e1e/testinfra", "./e1e/exelets"],
         env=env,
@@ -50,7 +48,6 @@ def main():
 
     _annotate_results(json_results)
     _generate_gantt(json_results)
-    _upload_test_analytics(junit_results)
     _collect_coverage()
 
     sys.exit(test_result.returncode)
@@ -183,19 +180,6 @@ def _collect_coverage():
     dest = "coverage-exelets.txt"
     run(["cp", cover_file, dest])
     print(f"Coverage profile saved as {dest}", flush=True)
-
-
-def _upload_test_analytics(junit_file):
-    """Upload JUnit XML to Buildkite Test Analytics."""
-    if os.environ.get("BUILDKITE") != "true":
-        return
-    if not os.path.isfile(junit_file):
-        return
-    result = subprocess.run(
-        [".buildkite/steps/upload-test-analytics.sh", junit_file],
-    )
-    if result.returncode != 0:
-        print("WARNING: Test analytics upload failed (non-fatal)", flush=True)
 
 
 def _has_cmd(name):

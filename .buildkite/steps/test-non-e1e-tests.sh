@@ -61,7 +61,6 @@ esac
 
 # shellcheck disable=SC2086
 JSON_OUT="unit-results-${UNIT_TEST_SHARD:-all}.json"
-XML_OUT="unit-results-${UNIT_TEST_SHARD:-all}.xml"
 
 COVER_FLAGS=""
 if [ "${E1E_COVERAGE:-}" = "true" ]; then
@@ -70,8 +69,7 @@ if [ "${E1E_COVERAGE:-}" = "true" ]; then
     echo "Coverage mode: writing profile to $COVER_PROFILE"
 fi
 
-go tool gotestsum --format testname --jsonfile "$JSON_OUT" --junitfile "$XML_OUT" -- -race -count=1 ${COVER_FLAGS:+$COVER_FLAGS} ${RUN_FILTER:+$RUN_FILTER} $PKGS
+go tool gotestsum --format testname --jsonfile "$JSON_OUT" -- -race -count=1 ${COVER_FLAGS:+$COVER_FLAGS} ${RUN_FILTER:+$RUN_FILTER} $PKGS
 TEST_EXIT=$?
 python3 bin/ci-test-gantt "$JSON_OUT" "test-gantt-unit-${UNIT_TEST_SHARD:-all}.html" "unit tests (shard ${UNIT_TEST_SHARD:-all})" 2>/dev/null || true
-.buildkite/steps/upload-test-analytics.sh "$XML_OUT" || true
 exit $TEST_EXIT

@@ -53,10 +53,8 @@ def main():
     os.environ["E1E_LOG_DIR"] = os.path.abspath(log_artifact_dir)
 
     json_results = f"e1e-results{suffix}.json"
-    junit_results = f"e1e-results{suffix}.xml"
 
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
-           "--junitfile", junit_results,
            "--", "-race", "-timeout=15m", "-failfast"]
     if run_filter:
         cmd.extend(["-run", run_filter])
@@ -106,7 +104,6 @@ def main():
     if rec_result.returncode != 0:
         print("WARNING: asciinema recording generation failed (non-fatal)", flush=True)
 
-    _upload_test_analytics(junit_results)
     _collect_coverage(shard)
 
     sys.exit(test_result.returncode)
@@ -318,19 +315,6 @@ def _collect_coverage(shard):
     dest = f"coverage-e1e{suffix}.txt"
     run(["cp", cover_file, dest])
     print(f"Coverage profile saved as {dest}", flush=True)
-
-
-def _upload_test_analytics(junit_file):
-    """Upload JUnit XML to Buildkite Test Analytics."""
-    if os.environ.get("BUILDKITE") != "true":
-        return
-    if not os.path.isfile(junit_file):
-        return
-    result = subprocess.run(
-        [".buildkite/steps/upload-test-analytics.sh", junit_file],
-    )
-    if result.returncode != 0:
-        print("WARNING: Test analytics upload failed (non-fatal)", flush=True)
 
 
 def _has_cmd(name):
