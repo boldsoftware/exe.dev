@@ -205,6 +205,7 @@ type jsonCreditInfo struct {
 	LedgerBalanceUSD           float64            `json:"ledgerBalanceUSD"`
 	Purchases                  []jsonPurchaseRow  `json:"purchases"`
 	Gifts                      []jsonGiftRow      `json:"gifts"`
+	Invoices                   []jsonInvoiceRow   `json:"invoices"`
 	PaymentMethod              *jsonPaymentMethod `json:"paymentMethod"`
 	PaymentMethodManagedByTeam bool               `json:"paymentMethodManagedByTeam,omitempty"`
 }
@@ -219,6 +220,15 @@ type jsonGiftRow struct {
 	Amount string `json:"amount"`
 	Reason string `json:"reason"`
 	Date   string `json:"date"`
+}
+
+type jsonInvoiceRow struct {
+	Description      string `json:"description"`
+	Date             string `json:"date"`
+	Amount           string `json:"amount"` // formatted e.g. "20.00"
+	Status           string `json:"status"` // "paid", "open", etc.
+	HostedInvoiceURL string `json:"hostedInvoiceURL"`
+	InvoicePDF       string `json:"invoicePDF"`
 }
 
 type jsonProfileData struct {
@@ -601,7 +611,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			creditBalance = balance
 		}
 
-		cutoff := time.Now().AddDate(0, 0, -30)
+		cutoff := time.Now().AddDate(0, -6, 0)
 		credits, err := withRxRes1(s, r.Context(), (*exedb.Queries).ListBillingCreditsForAccount, account.ID)
 		if err == nil {
 			receiptURLs, _ := s.billing.ReceiptURLs(r.Context(), account.ID)
@@ -825,6 +835,25 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		}
 	}
 
+	// Invoices — only for billing owners (no team = individual = always; team = billing_owner only)
+	canManageBilling := profile.TeamInfo == nil || profile.TeamInfo.IsBillingOwner
+	if canManageBilling && account.ID != "" && selfServeBilling {
+		if invoices, err := s.billing.ListInvoices(r.Context(), account.ID); err == nil {
+			jsonInvoices := make([]jsonInvoiceRow, 0, len(invoices))
+			for _, inv := range invoices {
+				jsonInvoices = append(jsonInvoices, jsonInvoiceRow{
+					Description:      inv.Description,
+					Date:             inv.Date.Format("02 Jan 2006"),
+					Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
+					Status:           inv.Status,
+					HostedInvoiceURL: inv.HostedInvoiceURL,
+					InvoicePDF:       inv.InvoicePDF,
+				})
+			}
+			profile.Credits.Invoices = nonNil(jsonInvoices)
+		}
+	}
+
 	writeJSONOK(w, profile)
 }
 
@@ -1018,7 +1047,7 @@ func (s *Server) handleReceiptsDownload(w http.ResponseWriter, r *http.Request, 
 
 	fetchClient := &http.Client{Timeout: 30 * time.Second}
 	for i, receipt := range receipts {
-		filename := fmt.Sprintf("receipt-%s-%02d.pdf", receipt.Created.Format("2006-01-02"), i+1)
+		filename := fmt.Sprintf("receipt-%s-%02d.html", receipt.Created.Format("2006-01-02"), i+1)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, receipt.URL, nil)
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to build receipt request", "url", receipt.URL, "error", err)

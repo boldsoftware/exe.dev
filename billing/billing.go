@@ -1112,6 +1112,56 @@ func (m *Manager) ReceiptURLsAfter(ctx context.Context, customerID string, since
 	return result, nil
 }
 
+// InvoiceInfo holds the fields needed to display an invoice in the UI.
+type InvoiceInfo struct {
+	Description      string
+	Date             time.Time
+	AmountPaid       int64  // cents
+	Currency         string // e.g. "usd"
+	Status           string // "paid", "open", "draft", "void", "uncollectible"
+	HostedInvoiceURL string
+	InvoicePDF       string
+}
+
+// ListInvoices returns the customer's invoices from the last 6 months.
+func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]InvoiceInfo, error) {
+	c := m.client()
+
+	since := time.Now().AddDate(0, -6, 0)
+	params := &stripe.InvoiceListParams{
+		Customer:     stripe.String(customerID),
+		CreatedRange: &stripe.RangeQueryParams{GreaterThanOrEqual: since.Unix()},
+	}
+	params.ListParams.Limit = stripe.Int64(12) // at most 12 invoices in 6 months
+
+	var result []InvoiceInfo
+	for inv, err := range c.V1Invoices.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, fmt.Errorf("list invoices: %w", err)
+		}
+		// Skip drafts — only show finalized invoices
+		if inv.Status == stripe.InvoiceStatusDraft {
+			continue
+		}
+		desc := inv.Description
+		if desc == "" {
+			// Build description from billing reason and period
+			t := time.Unix(inv.PeriodEnd, 0).UTC()
+			desc = "Subscription — " + t.Format("Jan 2006")
+		}
+		result = append(result, InvoiceInfo{
+			Description:      desc,
+			Date:             time.Unix(inv.Created, 0).UTC(),
+			AmountPaid:       inv.AmountPaid,
+			Currency:         string(inv.Currency),
+			Status:           string(inv.Status),
+			HostedInvoiceURL: inv.HostedInvoiceURL,
+			InvoicePDF:       inv.InvoicePDF,
+		})
+	}
+	return result, nil
+}
+
 // PlanCategoryGroup represents a group of subscribers on the same plan_id version.
 type PlanCategoryGroup struct {
 	PlanID   string
