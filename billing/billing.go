@@ -735,6 +735,13 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	if err == nil && entitlement.BasePlan(activePlan.PlanID) == basePlan {
 		return nil
 	}
+	// Skip stale events: if the current plan was set by a newer event,
+	// don't let an older event overwrite it. This prevents the 60-day
+	// replay from applying old cancellation events to accounts that have
+	// since resubscribed (different subscription ID, newer timestamp).
+	if err == nil && eventAt.Before(activePlan.StartedAt) {
+		return nil
+	}
 
 	changedBy := "stripe:event"
 

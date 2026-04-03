@@ -259,3 +259,84 @@ func TestSetTrialExpiresAtBackfill(t *testing.T) {
 		t.Errorf("invite plan trial_expires_at changed from %v to %v", inviteExpiry, *plan2.TrialExpiresAt)
 	}
 }
+
+// TestSyncAccountPlanStaleEventSkipped verifies that an older cancellation
+// event does not overwrite a plan set by a newer activation event. This is
+// the bug where a customer with an old canceled sub and a current active sub
+// gets stuck on basic because Stripe returns events newest-first and the old
+// "canceled" event overwrites the newer "active" plan.
+func TestSyncAccountPlanStaleEventSkipped(t *testing.T) {
+	db := newTestDB(t)
+	logger := tslog.Slogger(t)
+	m := &Manager{DB: db, Logger: logger}
+
+	ctx := context.Background()
+	accountID := "exe_stale_test"
+	userID := "usr_stale_test"
+	createTestAccount(t, db, accountID, userID)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	newerEvent := now
+	olderEvent := now.Add(-30 * 24 * time.Hour)
+
+	// Process the newer "active" event first (as Stripe would deliver it).
+	if err := m.syncAccountPlan(ctx, accountID, "active", newerEvent, nil); err != nil {
+		t.Fatalf("syncAccountPlan(active, newer): %v", err)
+	}
+
+	plan, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan after active: %v", err)
+	}
+	if plan.PlanID != "individual:monthly:20260106" {
+		t.Fatalf("plan after active event = %q, want individual", plan.PlanID)
+	}
+
+	// Process the older "canceled" event (from an old subscription).
+	// This must NOT overwrite the newer active plan.
+	if err := m.syncAccountPlan(ctx, accountID, "canceled", olderEvent, nil); err != nil {
+		t.Fatalf("syncAccountPlan(canceled, older): %v", err)
+	}
+
+	plan, err = exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan after stale cancel: %v", err)
+	}
+	if plan.PlanID != "individual:monthly:20260106" {
+		t.Errorf("stale cancel overwrote plan: got %q, want individual:monthly:20260106", plan.PlanID)
+	}
+}
+
+// TestSyncAccountPlanNewerCancelApplied verifies that a genuinely newer
+// cancellation event still correctly downgrades the plan.
+func TestSyncAccountPlanNewerCancelApplied(t *testing.T) {
+	db := newTestDB(t)
+	logger := tslog.Slogger(t)
+	m := &Manager{DB: db, Logger: logger}
+
+	ctx := context.Background()
+	accountID := "exe_newcancel_test"
+	userID := "usr_newcancel_test"
+	createTestAccount(t, db, accountID, userID)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Activate subscription.
+	if err := m.syncAccountPlan(ctx, accountID, "active", now, nil); err != nil {
+		t.Fatalf("syncAccountPlan(active): %v", err)
+	}
+
+	// Cancel it with a newer timestamp — this should apply.
+	later := now.Add(5 * 24 * time.Hour)
+	if err := m.syncAccountPlan(ctx, accountID, "canceled", later, nil); err != nil {
+		t.Fatalf("syncAccountPlan(canceled, newer): %v", err)
+	}
+
+	plan, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan: %v", err)
+	}
+	if plan.PlanID != "basic:monthly:20260106" {
+		t.Errorf("newer cancel not applied: got %q, want basic:monthly:20260106", plan.PlanID)
+	}
+}
