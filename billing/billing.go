@@ -1115,6 +1115,9 @@ func (m *Manager) ReceiptURLsAfter(ctx context.Context, customerID string, since
 // InvoiceInfo holds the fields needed to display an invoice in the UI.
 type InvoiceInfo struct {
 	Description      string
+	PlanName         string    // e.g. "Individual", "Team" — from first line item
+	PeriodStart      time.Time // billing period start
+	PeriodEnd        time.Time // billing period end
 	Date             time.Time
 	AmountPaid       int64  // cents
 	Currency         string // e.g. "usd"
@@ -1149,8 +1152,23 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 			t := time.Unix(inv.PeriodEnd, 0).UTC()
 			desc = "Subscription — " + t.Format("Jan 2006")
 		}
+
+		// Extract plan name from first line item description (e.g. "Individual" or "Team")
+		var planName string
+		if inv.Lines != nil {
+			for _, li := range inv.Lines.Data {
+				if li.Description != "" {
+					planName = li.Description
+					break
+				}
+			}
+		}
+
 		result = append(result, InvoiceInfo{
 			Description:      desc,
+			PlanName:         planName,
+			PeriodStart:      time.Unix(inv.PeriodStart, 0).UTC(),
+			PeriodEnd:        time.Unix(inv.PeriodEnd, 0).UTC(),
 			Date:             time.Unix(inv.Created, 0).UTC(),
 			AmountPaid:       inv.AmountPaid,
 			Currency:         string(inv.Currency),

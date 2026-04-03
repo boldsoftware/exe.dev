@@ -177,8 +177,8 @@
                     <i class="pi pi-file"></i>
                   </div>
                   <div class="invoice-info">
-                    <span class="invoice-desc">{{ inv.description }}</span>
-                    <span class="invoice-date">{{ inv.date }}</span>
+                    <span class="invoice-desc">{{ inv.planName || inv.description }}</span>
+                    <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
                   </div>
                   <div class="invoice-right">
                     <span class="invoice-amount">${{ inv.amount }}</span>
@@ -1527,7 +1527,7 @@ async function toggleNewsletter(event: Event) {
   font-weight: 500;
   display: block;
 }
-.invoice-date {
+.invoice-period {
   font-size: 12px;
   color: var(--text-color-muted);
   display: block;

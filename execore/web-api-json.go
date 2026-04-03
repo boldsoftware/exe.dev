@@ -224,6 +224,9 @@ type jsonGiftRow struct {
 
 type jsonInvoiceRow struct {
 	Description      string `json:"description"`
+	PlanName         string `json:"planName"`
+	PeriodStart      string `json:"periodStart"`
+	PeriodEnd        string `json:"periodEnd"`
 	Date             string `json:"date"`
 	Amount           string `json:"amount"` // formatted e.g. "20.00"
 	Status           string `json:"status"` // "paid", "open", etc.
@@ -843,6 +846,9 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			for _, inv := range invoices {
 				jsonInvoices = append(jsonInvoices, jsonInvoiceRow{
 					Description:      inv.Description,
+					PlanName:         inv.PlanName,
+					PeriodStart:      inv.PeriodStart.Format("Jan 2"),
+					PeriodEnd:        inv.PeriodEnd.Format("Jan 2, 2006"),
 					Date:             inv.Date.Format("02 Jan 2006"),
 					Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
 					Status:           inv.Status,
