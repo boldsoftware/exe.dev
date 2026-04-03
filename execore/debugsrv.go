@@ -2057,8 +2057,8 @@ func (s *Server) handleDebugToggleRootSupport(w http.ResponseWriter, r *http.Req
 	}
 	s.slog().InfoContext(ctx, "root support toggled via debug page", "user_id", userID, "action", action)
 
-	// Redirect back to the users page
-	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
+	// Redirect back to the user's page.
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 
 func (s *Server) handleDebugToggleVMCreation(w http.ResponseWriter, r *http.Request) {
@@ -2302,7 +2302,7 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 		"max_usd", maxUSD,
 		"refresh_per_hour_usd", refreshUSD)
 
-	http.Redirect(w, r, "/debug/users", http.StatusSeeOther)
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 
 // handleDebugGiftCredits gifts credits to a user's billing account.
@@ -5651,6 +5651,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Name   string
 			Region string
 		}
+		IsLockedOut         bool
+		Limits              string
 		CanGrantTrial       bool
 		TrialExpiresAt      string // RFC3339, empty if no trial
 		TrialExpiresAtInput string // datetime-local format for HTML input
@@ -5669,6 +5671,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CreatedForLoginWithExe:   user.CreatedForLoginWithExe,
 		RootSupport:              user.RootSupport == 1,
 		VMCreationDisabled:       user.NewVmCreationDisabled,
+		IsLockedOut:              user.IsLockedOut,
+		Limits:                   ptrStr(user.Limits),
 		DiscordID:                ptrStr(user.DiscordID),
 		DiscordUsername:          ptrStr(user.DiscordUsername),
 		SignedUpWithInviteID:     formatInt64Ptr(user.SignedUpWithInviteID),

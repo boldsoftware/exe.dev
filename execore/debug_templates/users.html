@@ -52,41 +52,6 @@
 </thead>
 </table>
 
-<dialog id="limitsDialog">
-<form id="limitsForm">
-<p>Set per-vm resource limits for user:</p>
-<p><strong id="limitsEmailDisplay"></strong></p>
-<input type="hidden" name="user_id" id="limitsUserIdInput">
-<p>Memory (GiB): <input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8"></p>
-<p>Disk (GiB): <input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30"></p>
-<p>CPUs: <input type="number" name="max_cpus" id="maxCpusInput" min="0" step="1" placeholder="e.g., 4"></p>
-<p style="font-size: 11px; color: #666;">Leave blank or 0 to use defaults. Clear all to remove limits.</p>
-<p>
-<button type="submit" class="confirm-btn">Save</button>
-<button type="button" class="cancel-btn" id="limitsCancelBtn">Cancel</button>
-<button type="button" class="cancel-btn" id="limitsClearBtn" style="background:#dc3545;">Clear All</button>
-</p>
-</form>
-</dialog>
-
-<dialog id="toggleDialog">
-<form method="post" action="/debug/users/toggle-root-support">
-<p id="dialogMessage"></p>
-<p><strong id="emailDisplay"></strong></p>
-<input type="hidden" name="user_id" id="userIdInput">
-<input type="hidden" name="enable" id="enableInput">
-<div id="confirmSection" style="display:none;">
-<p>Type the email address to confirm:</p>
-<input type="text" name="confirm_email" id="confirmInput" autocomplete="off" placeholder="Type email to confirm">
-</div>
-<p>
-<button type="submit" class="confirm-btn" id="confirmBtn">Confirm</button>
-<button type="button" class="cancel-btn" id="cancelBtn">Cancel</button>
-</p>
-</form>
-</dialog>
-
-
 <script>
 var usersTable;
 
@@ -124,55 +89,26 @@ $(document).ready(function() {
             }},
             { data: 'credit_total_used_usd', className: 'credit-cell', render: function(d) { return d ? d.toFixed(2) : '-'; } },
             { data: 'credit_last_refresh_at', defaultContent: '-' },
-            { data: 'vm_creation_disabled', render: function(d, type, row) {
-                var isDisabled = !!d;
-                var status = isDisabled ? 'Yes' : 'No';
-                var btnClass = isDisabled ? 'disabled' : 'enabled';
-                var btnText = isDisabled ? 'Enable' : 'Disable';
-                return status + ' <button class="toggle-btn vm-toggle-btn ' + btnClass + '" ' +
-                    'data-userid="' + row.user_id + '" data-disabled="' + isDisabled + '">' + btnText + '</button>';
-            }},
-            { data: 'is_locked_out', render: function(d, type, row) {
-                var isLocked = !!d;
-                var status = isLocked ? 'Yes' : 'No';
-                var btnClass = isLocked ? 'enabled' : 'disabled';
-                var btnText = isLocked ? 'Unlock' : 'Lock';
-                return status + ' <button class="toggle-btn lockout-toggle-btn ' + btnClass + '" ' +
-                    'data-userid="' + row.user_id + '" data-locked="' + isLocked + '">' + btnText + '</button>';
-            }},
-            { data: null, render: function(d) {
-                var status = d.root_support ? 'Yes' : 'No';
-                var btnClass = d.root_support ? 'enabled' : 'disabled';
-                var btnText = d.root_support ? 'Disable' : 'Enable';
-                return status + ' <button class="toggle-btn root-toggle-btn ' + btnClass + '" ' +
-                    'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
-                    'data-enabled="' + d.root_support + '">' + btnText + '</button>';
-            }},
+            { data: 'vm_creation_disabled', render: function(d) { return d ? 'Yes' : 'No'; } },
+            { data: 'is_locked_out', render: function(d) { return d ? 'Yes' : 'No'; } },
+            { data: 'root_support', render: function(d) { return d ? 'Yes' : 'No'; } },
             { data: null, render: function(d) {
                 if (!d.discord_id) return '-';
                 if (d.discord_username) return d.discord_username + ' (' + d.discord_id + ')';
                 return d.discord_id;
             }},
-            { data: null, render: function(d) {
-                return d.invite_count + ' <button class="toggle-btn add-invite-btn" ' +
-                    'data-email="' + d.email + '">+1</button>';
-            }},
+            { data: 'invite_count' },
             { data: null, render: function(d) {
                 var limits = d.limits || '';
-                var summary = '-';
-                if (limits) {
-                    try {
-                        var p = JSON.parse(limits);
-                        var parts = [];
-                        if (p.max_memory) parts.push((p.max_memory / (1024*1024*1024)).toFixed(0) + 'GiB mem');
-                        if (p.max_disk) parts.push((p.max_disk / (1024*1024*1024)).toFixed(0) + 'GiB disk');
-                        if (p.max_cpus) parts.push(p.max_cpus + ' cpu');
-                        summary = parts.length ? parts.join(', ') : '-';
-                    } catch(e) { summary = 'invalid'; }
-                }
-                return summary + ' <button class="toggle-btn limits-btn" ' +
-                    'data-email="' + d.email + '" data-userid="' + d.user_id + '" ' +
-                    'data-limits="' + (limits ? encodeURIComponent(limits) : '') + '">Edit</button>';
+                if (!limits) return '-';
+                try {
+                    var p = JSON.parse(limits);
+                    var parts = [];
+                    if (p.max_memory) parts.push((p.max_memory / (1024*1024*1024)).toFixed(0) + 'GiB mem');
+                    if (p.max_disk) parts.push((p.max_disk / (1024*1024*1024)).toFixed(0) + 'GiB disk');
+                    if (p.max_cpus) parts.push(p.max_cpus + ' cpu');
+                    return parts.length ? parts.join(', ') : '-';
+                } catch(e) { return 'invalid'; }
             }}
         ],
         initComplete: function() {
@@ -198,209 +134,5 @@ $(document).ready(function() {
         });
 });
 
-// Toggle root support dialog
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('root-toggle-btn')) {
-        var email = e.target.dataset.email;
-        var userId = e.target.dataset.userid;
-        var isEnabled = e.target.dataset.enabled === 'true';
-        var enabling = !isEnabled;
-
-        document.getElementById('emailDisplay').textContent = email;
-        document.getElementById('userIdInput').value = userId;
-        document.getElementById('enableInput').value = enabling ? '1' : '0';
-
-        var confirmSection = document.getElementById('confirmSection');
-        var confirmInput = document.getElementById('confirmInput');
-        var confirmBtn = document.getElementById('confirmBtn');
-
-        if (enabling) {
-            document.getElementById('dialogMessage').textContent = 'Enable root support access for this user?';
-            confirmSection.style.display = 'block';
-            confirmInput.value = '';
-            confirmBtn.disabled = true;
-        } else {
-            document.getElementById('dialogMessage').textContent = 'Disable root support access for this user?';
-            confirmSection.style.display = 'none';
-            confirmBtn.disabled = false;
-        }
-        document.getElementById('toggleDialog').showModal();
-    }
-});
-document.getElementById('cancelBtn').addEventListener('click', function() {
-    document.getElementById('toggleDialog').close();
-});
-document.getElementById('confirmInput').addEventListener('input', function() {
-    var expected = document.getElementById('emailDisplay').textContent;
-    document.getElementById('confirmBtn').disabled = (this.value !== expected);
-});
-
-// Toggle VM creation disabled
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('vm-toggle-btn')) {
-        var userId = e.target.dataset.userid;
-        var currentlyDisabled = e.target.dataset.disabled === 'true';
-        var body = new URLSearchParams();
-        body.append('user_id', userId);
-        body.append('disable', currentlyDisabled ? '0' : '1');
-
-        fetch('/debug/users/toggle-vm-creation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) {
-                alert('Failed to update VM creation flag');
-                return;
-            }
-            if (usersTable) {
-                usersTable.ajax.reload(null, false);
-            }
-        }).catch(function(err) {
-            console.error('VM creation toggle failed', err);
-            alert('Failed to update VM creation flag');
-        });
-    }
-});
-
-// Toggle lockout status
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('lockout-toggle-btn')) {
-        var userId = e.target.dataset.userid;
-        var currentlyLocked = e.target.dataset.locked === 'true';
-        var body = new URLSearchParams();
-        body.append('user_id', userId);
-        body.append('lockout', currentlyLocked ? '0' : '1');
-
-        fetch('/debug/users/toggle-lockout', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) {
-                alert('Failed to update lockout status');
-                return;
-            }
-            if (usersTable) {
-                usersTable.ajax.reload(null, false);
-            }
-        }).catch(function(err) {
-            console.error('Lockout toggle failed', err);
-            alert('Failed to update lockout status');
-        });
-    }
-});
-
-// Add invite button
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('add-invite-btn')) {
-        var email = e.target.dataset.email;
-        var body = new URLSearchParams();
-        body.append('action', 'give_to_user');
-        body.append('email', email);
-        body.append('count', '1');
-        body.append('plan_type', 'trial');
-
-        fetch('/debug/invite', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: body.toString()
-        }).then(function(resp) {
-            if (!resp.ok) {
-                alert('Failed to add invite');
-                return;
-            }
-            if (usersTable) {
-                usersTable.ajax.reload(null, false);
-            }
-        }).catch(function(err) {
-            console.error('Add invite failed', err);
-            alert('Failed to add invite');
-        });
-    }
-});
-
-// Limits dialog
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('limits-btn')) {
-        var email = e.target.dataset.email;
-        var userId = e.target.dataset.userid;
-        var limits = e.target.dataset.limits ? decodeURIComponent(e.target.dataset.limits) : '';
-
-        document.getElementById('limitsEmailDisplay').textContent = email;
-        document.getElementById('limitsUserIdInput').value = userId;
-
-        // Parse existing limits
-        var memGiB = '', diskGiB = '', cpus = '';
-        if (limits) {
-            try {
-                var p = JSON.parse(limits);
-                if (p.max_memory) memGiB = (p.max_memory / (1024*1024*1024)).toFixed(0);
-                if (p.max_disk) diskGiB = (p.max_disk / (1024*1024*1024)).toFixed(0);
-                if (p.max_cpus) cpus = p.max_cpus;
-            } catch(e) {}
-        }
-        document.getElementById('maxMemoryInput').value = memGiB;
-        document.getElementById('maxDiskInput').value = diskGiB;
-        document.getElementById('maxCpusInput').value = cpus;
-
-        document.getElementById('limitsDialog').showModal();
-    }
-});
-
-document.getElementById('limitsCancelBtn').addEventListener('click', function() {
-    document.getElementById('limitsDialog').close();
-});
-
-document.getElementById('limitsClearBtn').addEventListener('click', function() {
-    document.getElementById('maxMemoryInput').value = '';
-    document.getElementById('maxDiskInput').value = '';
-    document.getElementById('maxCpusInput').value = '';
-});
-
-document.getElementById('limitsForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var userId = document.getElementById('limitsUserIdInput').value;
-    var memGiB = parseInt(document.getElementById('maxMemoryInput').value) || 0;
-    var diskGiB = parseInt(document.getElementById('maxDiskInput').value) || 0;
-    var cpus = parseInt(document.getElementById('maxCpusInput').value) || 0;
-
-    var limits = '';
-    if (memGiB || diskGiB || cpus) {
-        var obj = {};
-        if (memGiB) obj.max_memory = memGiB * 1024*1024*1024;
-        if (diskGiB) obj.max_disk = diskGiB * 1024*1024*1024;
-        if (cpus) obj.max_cpus = cpus;
-        limits = JSON.stringify(obj);
-    }
-
-    var body = new URLSearchParams();
-    body.append('user_id', userId);
-    body.append('limits', limits);
-
-    fetch('/debug/users/set-limits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString()
-    }).then(function(resp) {
-        if (!resp.ok) {
-            alert('Failed to update limits');
-            return;
-        }
-        document.getElementById('limitsDialog').close();
-        if (usersTable) {
-            usersTable.ajax.reload(null, false);
-        }
-    }).catch(function(err) {
-        console.error('Limits update failed', err);
-        alert('Failed to update limits');
-    });
-});
 </script>
 </body></html>

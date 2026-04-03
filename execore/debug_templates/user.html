@@ -27,8 +27,18 @@ table.info th { width: 200px; }
 <tr><th>Created At</th><td>{{.CreatedAt}}</td></tr>
 {{if .TeamID}}<tr><th>Team</th><td><a href="/debug/teams/{{.TeamID}}">{{.TeamName}}</a> ({{.TeamRole}})</td></tr>{{end}}
 <tr><th>Login-only Account</th><td>{{if .CreatedForLoginWithExe}}Yes{{else}}No{{end}}</td></tr>
-<tr><th>Root Support</th><td>{{if .RootSupport}}Yes{{else}}No{{end}}</td></tr>
-<tr><th>VM Creation Disabled</th><td>{{if .VMCreationDisabled}}Yes{{else}}No{{end}}</td></tr>
+<tr><th>Root Support</th><td>{{if .RootSupport}}Yes{{else}}No{{end}}
+<button class="toggle-btn root-toggle-btn {{if .RootSupport}}enabled{{else}}disabled{{end}}"
+data-enabled="{{.RootSupport}}">{{if .RootSupport}}Disable{{else}}Enable{{end}}</button>
+</td></tr>
+<tr><th>VM Creation Disabled</th><td>{{if .VMCreationDisabled}}Yes{{else}}No{{end}}
+<button class="toggle-btn vm-toggle-btn {{if .VMCreationDisabled}}disabled{{else}}enabled{{end}}"
+data-disabled="{{.VMCreationDisabled}}">{{if .VMCreationDisabled}}Enable{{else}}Disable{{end}}</button>
+</td></tr>
+<tr><th>Locked Out</th><td>{{if .IsLockedOut}}Yes{{else}}No{{end}}
+<button class="toggle-btn lockout-toggle-btn {{if .IsLockedOut}}disabled{{else}}enabled{{end}}"
+data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</button>
+</td></tr>
 {{if .PlanName}}<tr><th>Plan</th><td>{{.PlanName}}</td></tr>{{end}}
 {{if .DiscordID}}<tr><th>Discord</th><td>{{.DiscordUsername}} ({{.DiscordID}})</td></tr>{{end}}
 {{if .SignedUpWithInviteID}}<tr><th>Signed Up With Invite</th><td>{{.SignedUpWithInviteID}}</td></tr>{{end}}
@@ -46,6 +56,21 @@ table.info th { width: 200px; }
 <button type="submit" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Rename</button>
 </form>
 </div>
+</div>
+
+<div class="section">
+<h2>Resource Limits</h2>
+<p style="font-size:13px;color:#666;">Per-VM resource limits for this user. Leave blank or 0 to use defaults.</p>
+<form id="limitsForm" style="max-width: 300px;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<p><label>Memory (GiB):<br><input type="number" name="max_memory_gb" id="maxMemoryInput" min="0" step="1" placeholder="e.g., 8" style="width:100%;"></label></p>
+<p><label>Disk (GiB):<br><input type="number" name="max_disk_gb" id="maxDiskInput" min="0" step="1" placeholder="e.g., 30" style="width:100%;"></label></p>
+<p><label>CPUs:<br><input type="number" name="max_cpus" id="maxCpusInput" min="0" step="1" placeholder="e.g., 4" style="width:100%;"></label></p>
+<p>
+<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
+<button type="button" id="limitsClearBtn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Clear All</button>
+</p>
+</form>
 </div>
 
 <div class="section">
@@ -529,6 +554,23 @@ if (vmNames.length > 0) {
 </div>
 {{end}}
 
+<dialog id="rootSupportDialog">
+<form method="post" action="/debug/users/toggle-root-support">
+<p id="rootDialogMessage"></p>
+<p><strong>{{.Email}}</strong></p>
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<input type="hidden" name="enable" id="rootEnableInput">
+<div id="rootConfirmSection" style="display:none;">
+<p>Type the email address to confirm:</p>
+<input type="text" name="confirm_email" id="rootConfirmInput" autocomplete="off" placeholder="Type email to confirm">
+</div>
+<p>
+<button type="submit" class="confirm-btn" id="rootConfirmBtn">Confirm</button>
+<button type="button" class="cancel-btn" id="rootCancelBtn">Cancel</button>
+</p>
+</form>
+</dialog>
+
 <script>
 $(document).ready(function() {
     {{if .InvitePostSuccessful}}
@@ -562,5 +604,110 @@ $(document).ready(function() {
         this.textContent = allOpen ? 'expand all' : 'collapse all';
     });
 });
+
+// Root support toggle
+document.querySelector('.root-toggle-btn').addEventListener('click', function() {
+    var isEnabled = this.dataset.enabled === 'true';
+    var enabling = !isEnabled;
+    document.getElementById('rootEnableInput').value = enabling ? '1' : '0';
+    var confirmSection = document.getElementById('rootConfirmSection');
+    var confirmInput = document.getElementById('rootConfirmInput');
+    var confirmBtn = document.getElementById('rootConfirmBtn');
+    if (enabling) {
+        document.getElementById('rootDialogMessage').textContent = 'Enable root support access for this user?';
+        confirmSection.style.display = 'block';
+        confirmInput.value = '';
+        confirmBtn.disabled = true;
+    } else {
+        document.getElementById('rootDialogMessage').textContent = 'Disable root support access for this user?';
+        confirmSection.style.display = 'none';
+        confirmBtn.disabled = false;
+    }
+    document.getElementById('rootSupportDialog').showModal();
+});
+document.getElementById('rootCancelBtn').addEventListener('click', function() {
+    document.getElementById('rootSupportDialog').close();
+});
+document.getElementById('rootConfirmInput').addEventListener('input', function() {
+    document.getElementById('rootConfirmBtn').disabled = (this.value !== '{{.Email}}');
+});
+
+// VM creation toggle
+document.querySelector('.vm-toggle-btn').addEventListener('click', function() {
+    var currentlyDisabled = this.dataset.disabled === 'true';
+    var body = new URLSearchParams();
+    body.append('user_id', '{{.UserID}}');
+    body.append('disable', currentlyDisabled ? '0' : '1');
+    fetch('/debug/users/toggle-vm-creation', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) { resp.text().then(function(t) { alert('Failed to update VM creation flag: ' + t); }); return; }
+        window.location.reload();
+    }).catch(function() { alert('Failed to update VM creation flag'); });
+});
+
+// Lockout toggle
+document.querySelector('.lockout-toggle-btn').addEventListener('click', function() {
+    var currentlyLocked = this.dataset.locked === 'true';
+    if (!currentlyLocked && !confirm('Lock out this user? This will also stop all their running VMs.')) return;
+    var body = new URLSearchParams();
+    body.append('user_id', '{{.UserID}}');
+    body.append('lockout', currentlyLocked ? '0' : '1');
+    fetch('/debug/users/toggle-lockout', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString()
+    }).then(function(resp) {
+        if (!resp.ok) { resp.text().then(function(t) { alert('Failed to update lockout status: ' + t); }); return; }
+        window.location.reload();
+    }).catch(function() { alert('Failed to update lockout status'); });
+});
+
+// Limits form
+(function() {
+    var limits = '{{.Limits}}';
+    if (limits) {
+        try {
+            var p = JSON.parse(limits);
+            if (p.max_memory) document.getElementById('maxMemoryInput').value = (p.max_memory / (1024*1024*1024)).toFixed(0);
+            if (p.max_disk) document.getElementById('maxDiskInput').value = (p.max_disk / (1024*1024*1024)).toFixed(0);
+            if (p.max_cpus) document.getElementById('maxCpusInput').value = p.max_cpus;
+        } catch(e) {}
+    }
+
+    document.getElementById('limitsClearBtn').addEventListener('click', function() {
+        document.getElementById('maxMemoryInput').value = '';
+        document.getElementById('maxDiskInput').value = '';
+        document.getElementById('maxCpusInput').value = '';
+    });
+
+    document.getElementById('limitsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var memGiB = parseInt(document.getElementById('maxMemoryInput').value) || 0;
+        var diskGiB = parseInt(document.getElementById('maxDiskInput').value) || 0;
+        var cpus = parseInt(document.getElementById('maxCpusInput').value) || 0;
+        var limitsJSON = '';
+        if (memGiB || diskGiB || cpus) {
+            var obj = {};
+            if (memGiB) obj.max_memory = memGiB * 1024*1024*1024;
+            if (diskGiB) obj.max_disk = diskGiB * 1024*1024*1024;
+            if (cpus) obj.max_cpus = cpus;
+            limitsJSON = JSON.stringify(obj);
+        }
+        var body = new URLSearchParams();
+        body.append('user_id', '{{.UserID}}');
+        body.append('limits', limitsJSON);
+        fetch('/debug/users/set-limits', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) { resp.text().then(function(t) { alert('Failed to update limits: ' + t); }); return; }
+            window.location.reload();
+        }).catch(function() { alert('Failed to update limits'); });
+    });
+})();
 </script>
 </body></html>
