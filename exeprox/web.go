@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"exe.dev/domz"
+	"exe.dev/exedebug"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/metricsbag"
@@ -144,12 +146,15 @@ func (wp *WebProxy) setupHTTPServer() {
 }
 
 // httpToHTTPSHandler returns an HTTP handler that redirects all requests to HTTPS,
-// except for /__exe.dev/who which is served over plain HTTP.
+// except for /__exe.dev/who and /__exe.dev/blog/ which are served over plain HTTP.
 func (wp *WebProxy) httpToHTTPSHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/__exe.dev/who":
+		switch {
+		case r.URL.Path == "/__exe.dev/who":
 			wp.handleDebugWho(w, r)
+			return
+		case strings.HasPrefix(r.URL.Path, "/__exe.dev/blog/"):
+			wp.handleBlogProxy(w, r)
 			return
 		}
 		host, _, err := net.SplitHostPort(r.Host)
@@ -529,6 +534,50 @@ func (wp *WebProxy) handleHealth(w http.ResponseWriter, _ *http.Request) {
 func (wp *WebProxy) handleDebugWho(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
 	w.Write([]byte(hostname))
+}
+
+// handleBlogProxy proxies /__exe.dev/blog/* requests to blog.exe.dev,
+// reaching the blog externally from this exeprox's location.
+// This replaces SSH+curl for monitoring tools like rummyd.
+// Access is restricted to loopback and Tailscale IPs.
+func (wp *WebProxy) handleBlogProxy(w http.ResponseWriter, r *http.Request) {
+	exedebug.RequireLocalAccess(http.HandlerFunc(wp.serveBlogProxy)).ServeHTTP(w, r)
+}
+
+func (wp *WebProxy) serveBlogProxy(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/__exe.dev/blog")
+
+	target := "https://blog." + wp.env.WebHost + path
+	if q := r.URL.RawQuery; q != "" {
+		target += "?" + q
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	elapsed := time.Since(start)
+
+	w.Header().Set("X-Upstream-Duration", fmt.Sprintf("%.6f", elapsed.Seconds()))
+	for k, vv := range resp.Header {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // handleMetrics serves the /metrics HTTP request.

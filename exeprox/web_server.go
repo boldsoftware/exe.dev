@@ -62,6 +62,11 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(r.URL.Path, "/__exe.dev/blog/") {
+		wp.handleBlogProxy(w, r)
+		return
+	}
+
 	if isProxy {
 		metricsbag.SetLabel(r.Context(), exeweb.LabelProxy, "true")
 		ps.HandleProxyRequest(w, r)
