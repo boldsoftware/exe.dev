@@ -23,6 +23,7 @@ go build -o bin/shelley ./cmd/shelley
 
 echo "--- :chrome: Install Playwright browsers"
 cd ui
+export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/kite/playwright-browsers"
 npx playwright install chromium
 
 echo "--- :performing_arts: Run Playwright E2E tests"
