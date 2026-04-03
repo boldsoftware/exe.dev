@@ -841,23 +841,29 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	// Invoices — only for billing owners (no team = individual = always; team = billing_owner only)
 	canManageBilling := profile.TeamInfo == nil || profile.TeamInfo.IsBillingOwner
 	if canManageBilling && account.ID != "" && selfServeBilling {
-		if invoices, err := s.billing.ListInvoices(r.Context(), account.ID); err == nil {
-			jsonInvoices := make([]jsonInvoiceRow, 0, len(invoices))
-			for _, inv := range invoices {
-				jsonInvoices = append(jsonInvoices, jsonInvoiceRow{
-					Description:      inv.Description,
-					PlanName:         inv.PlanName,
-					PeriodStart:      inv.PeriodStart.Format("Jan 2"),
-					PeriodEnd:        inv.PeriodEnd.Format("Jan 2, 2006"),
-					Date:             inv.Date.Format("02 Jan 2006"),
-					Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
-					Status:           inv.Status,
-					HostedInvoiceURL: inv.HostedInvoiceURL,
-					InvoicePDF:       inv.InvoicePDF,
-				})
+		toRow := func(inv billing.InvoiceInfo) jsonInvoiceRow {
+			return jsonInvoiceRow{
+				Description:      inv.Description,
+				PlanName:         inv.PlanName,
+				PeriodStart:      inv.PeriodStart.Format("Jan 2"),
+				PeriodEnd:        inv.PeriodEnd.Format("Jan 2, 2006"),
+				Date:             inv.Date.Format("02 Jan 2006"),
+				Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
+				Status:           inv.Status,
+				HostedInvoiceURL: inv.HostedInvoiceURL,
+				InvoicePDF:       inv.InvoicePDF,
 			}
-			profile.Credits.Invoices = nonNil(jsonInvoices)
 		}
+		var jsonInvoices []jsonInvoiceRow
+		if upcoming, err := s.billing.UpcomingInvoice(r.Context(), account.ID); err == nil && upcoming != nil {
+			jsonInvoices = append(jsonInvoices, toRow(*upcoming))
+		}
+		if invoices, err := s.billing.ListInvoices(r.Context(), account.ID); err == nil {
+			for _, inv := range invoices {
+				jsonInvoices = append(jsonInvoices, toRow(inv))
+			}
+		}
+		profile.Credits.Invoices = nonNil(jsonInvoices)
 	}
 
 	writeJSONOK(w, profile)

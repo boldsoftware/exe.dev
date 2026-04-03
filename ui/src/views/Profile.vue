@@ -172,9 +172,9 @@
                 <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
               </div>
               <ul class="invoice-list">
-                <li v-for="inv in data.credits.invoices" :key="inv.date + inv.amount" class="invoice-item">
-                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : 'invoice-icon-open']">
-                    <i class="pi pi-file"></i>
+                <li v-for="inv in data.credits.invoices" :key="inv.status + inv.date + inv.amount" class="invoice-item">
+                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : inv.status === 'upcoming' ? 'invoice-icon-upcoming' : 'invoice-icon-open']">
+                    <i :class="inv.status === 'upcoming' ? 'pi pi-calendar' : 'pi pi-file'"></i>
                   </div>
                   <div class="invoice-info">
                     <span class="invoice-desc">{{ inv.planName || inv.description }}</span>
@@ -183,9 +183,9 @@
                   <div class="invoice-right">
                     <span class="invoice-amount">${{ inv.amount }}</span>
                     <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
-                      <span :class="['invoice-status', inv.status === 'paid' ? 'invoice-status-paid' : 'invoice-status-open']">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
+                      <span :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
                     </a>
-                    <span v-else :class="['invoice-status', inv.status === 'paid' ? 'invoice-status-paid' : 'invoice-status-open']">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'open' ? 'Open' : inv.status }}</span>
+                    <span v-else :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
                   </div>
                 </li>
               </ul>
@@ -1518,6 +1518,10 @@ async function toggleNewsletter(event: Event) {
   background: #fff3e0;
   color: #f57c00;
 }
+.invoice-icon-upcoming {
+  background: #e3f2fd;
+  color: #1976d2;
+}
 .invoice-info {
   flex: 1;
   min-width: 0;
@@ -1561,6 +1565,10 @@ async function toggleNewsletter(event: Event) {
 .invoice-status-open {
   color: #f57c00;
   background: #fff3e0;
+}
+.invoice-status-upcoming {
+  color: #1976d2;
+  background: #e3f2fd;
 }
 
 /* Transaction Section */

@@ -1188,6 +1188,45 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 	return result, nil
 }
 
+// UpcomingInvoice returns a preview of the customer's next invoice, or nil if there isn't one.
+func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*InvoiceInfo, error) {
+	c := m.client()
+	inv, err := c.V1Invoices.CreatePreview(ctx, &stripe.InvoiceCreatePreviewParams{
+		Customer: stripe.String(customerID),
+	})
+	if err != nil {
+		// No upcoming invoice (e.g. no active subscription) is not an error.
+		return nil, nil //nolint:nilerr
+	}
+
+	var planName string
+	periodStart := time.Unix(inv.PeriodStart, 0).UTC()
+	periodEnd := time.Unix(inv.PeriodEnd, 0).UTC()
+	if inv.Lines != nil {
+		for _, li := range inv.Lines.Data {
+			if li.Description != "" {
+				planName = parseInvoiceLinePlanName(li.Description)
+			}
+			if li.Period != nil {
+				periodStart = time.Unix(li.Period.Start, 0).UTC()
+				periodEnd = time.Unix(li.Period.End, 0).UTC()
+			}
+			break
+		}
+	}
+
+	return &InvoiceInfo{
+		Description: "Upcoming",
+		PlanName:    planName,
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd,
+		Date:        time.Unix(inv.Created, 0).UTC(),
+		AmountPaid:  inv.AmountDue,
+		Currency:    string(inv.Currency),
+		Status:      "upcoming",
+	}, nil
+}
+
 // parseInvoiceLinePlanName extracts a clean plan name from a Stripe line item description.
 // Input like "1 × Individual Plan (at $20.00 / month)" returns "Individual".
 func parseInvoiceLinePlanName(desc string) string {
