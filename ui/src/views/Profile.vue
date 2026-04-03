@@ -105,6 +105,16 @@
               </div>
             </div>
 
+            <!-- Team credits banner -->
+            <Message v-if="data.teamInfo && !pooledCreditsBannerDismissed" severity="info" :closable="true" @close="dismissPooledCreditsBanner" class="team-credits-banner">
+              <template #default>
+                <div class="team-credits-banner-content">
+                  <strong>Pooled team credits coming soon</strong>
+                  <span>Credits will be shared across your team and managed by your billing owner. For now, each member has their own balance.</span>
+                </div>
+              </template>
+            </Message>
+
             <!-- Monthly Usage Progress (promoted above credits for visibility) -->
             <div v-if="data.credits.hasShelleyFreeCreditPct" class="usage-section">
               <div class="usage-header">
@@ -514,6 +524,7 @@ import Card from 'primevue/card'
 import ProgressBar from 'primevue/progressbar'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Message from 'primevue/message'
 
 const loading = ref(true)
 const loadError = ref('')
@@ -532,6 +543,12 @@ const creatingTeam = ref(false)
 
 // Billing state
 const selectedAmount = ref(25)
+const pooledCreditsBannerDismissed = ref(localStorage.getItem('pooled-credits-banner-dismissed') === '1')
+
+function dismissPooledCreditsBanner() {
+  pooledCreditsBannerDismissed.value = true
+  localStorage.setItem('pooled-credits-banner-dismissed', '1')
+}
 
 // Whether the current user can manage billing (not a team member, or is the billing owner)
 const canManageBilling = computed(() => {
@@ -1484,6 +1501,27 @@ async function toggleNewsletter(event: Event) {
 .support-section a:hover {
   color: var(--text-color);
   text-decoration: underline;
+}
+
+/* Team credits banner */
+.team-credits-banner {
+  margin-bottom: 16px;
+}
+
+.team-credits-banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.team-credits-banner-content strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.team-credits-banner-content span {
+  font-size: 12px;
+  opacity: 0.85;
 }
 
 .learn-more-link {
