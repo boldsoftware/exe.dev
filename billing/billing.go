@@ -1139,8 +1139,8 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 		if err != nil {
 			return nil, fmt.Errorf("list invoices: %w", err)
 		}
-		// Skip drafts — only show finalized invoices
-		if inv.Status == stripe.InvoiceStatusDraft {
+		// Only show paid and open invoices
+		if inv.Status != stripe.InvoiceStatusPaid && inv.Status != stripe.InvoiceStatusOpen {
 			continue
 		}
 		desc := inv.Description

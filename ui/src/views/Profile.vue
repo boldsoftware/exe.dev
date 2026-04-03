@@ -1470,8 +1470,11 @@ async function toggleNewsletter(event: Event) {
   margin-bottom: 12px;
 }
 .invoices-title {
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-color-muted);
 }
 .view-all-link {
   font-size: 12px;
