@@ -1,7 +1,9 @@
 #!/bin/sh
 set -e
 
-REPO="boldsoftware/exe"
+BK_ORG="bold-software"
+BK_PIPELINE="exe-kite-queue"
+BK_API="https://buildkite.int.exe.xyz/v2/organizations/$BK_ORG/pipelines/$BK_PIPELINE"
 CLAUDE_TIMEOUT=86400 # 24h
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(pwd)"
@@ -11,9 +13,8 @@ STATE_DIR="${WATCH_CI_FLAKE_STATE_DIR:-$HOME/watch-ci-flake-state}"
 mkdir -p "$STATE_DIR"
 
 STATE_FILE="$STATE_DIR/.state"
-RUNS_FILE=$(mktemp)
-GH_ERR=$(mktemp)
-trap 'rm -f "$RUNS_FILE" "$GH_ERR"' EXIT INT TERM
+BUILDS_FILE=$(mktemp)
+trap 'rm -f "$BUILDS_FILE"' EXIT INT TERM
 
 DRY_RUN=false
 for arg in "$@"; do
@@ -22,12 +23,15 @@ for arg in "$@"; do
     esac
 done
 
+bk_get() {
+    curl -sS "$@"
+}
+
 # On first start (no state file), snapshot current failures so we only process future ones.
 if [ ! -f "$STATE_FILE" ]; then
     echo "watch-ci-flake: first run, snapshotting existing failures..."
-    if gh run list --repo "$REPO" --status failure \
-        --json databaseId --limit 100 >"$RUNS_FILE" 2>"$GH_ERR"; then
-        jq -r '.[].databaseId | tostring' "$RUNS_FILE" | sort -u >"$STATE_FILE"
+    if bk_get "$BK_API/builds?state=failed&per_page=100" >"$BUILDS_FILE" 2>/dev/null; then
+        jq -r '.[].number | tostring' "$BUILDS_FILE" | sort -u >"$STATE_FILE"
     else
         touch "$STATE_FILE"
     fi
@@ -35,7 +39,7 @@ fi
 
 processed=$(cat "$STATE_FILE")
 n_processed=$(echo "$processed" | grep -c '[0-9]' || true)
-echo "watch-ci-flake: loaded $n_processed processed runs, watching $REPO"
+echo "watch-ci-flake: loaded $n_processed processed builds, watching $BK_ORG/$BK_PIPELINE"
 
 is_processed() {
     echo "$processed" | grep -q "^$1$"
@@ -48,62 +52,59 @@ mark_processed() {
     mv "$tmp" "$STATE_FILE"
 }
 
-process_run() {
-    run_id="$1"
-    prompt=$(sed "s|{run_id}|$run_id|g; s|{workdir}|$WORKDIR|g; s|{state_dir}|$STATE_DIR|g; s|{hostname}|$(hostname)|g" "$SCRIPT_DIR/watch-ci-flake.md")
+process_build() {
+    build_number="$1"
+    prompt=$(sed "s|{build_number}|$build_number|g; s|{workdir}|$WORKDIR|g; s|{state_dir}|$STATE_DIR|g; s|{hostname}|$(hostname)|g" "$SCRIPT_DIR/watch-ci-flake.md")
     timeout --foreground "$CLAUDE_TIMEOUT" claude --dangerously-skip-permissions --model opus -p "$prompt"
 }
 
-if ! gh run list --repo "$REPO" --status failure \
-    --json databaseId,url,displayTitle,headBranch,createdAt \
-    --limit 100 >"$RUNS_FILE" 2>"$GH_ERR"; then
-    echo "watch-ci-flake: gh run list failed:" >&2
-    cat "$GH_ERR" >&2
+if ! bk_get "$BK_API/builds?state=failed&per_page=100" >"$BUILDS_FILE" 2>/dev/null; then
+    echo "watch-ci-flake: buildkite API request failed" >&2
     exit 1
 fi
 
-new_ids=$(jq -r 'sort_by(.createdAt) | .[].databaseId | tostring' "$RUNS_FILE")
+new_numbers=$(jq -r 'sort_by(.created_at) | .[].number | tostring' "$BUILDS_FILE")
 
 count=0
-for rid in $new_ids; do
-    if ! is_processed "$rid"; then
+for num in $new_numbers; do
+    if ! is_processed "$num"; then
         count=$((count + 1))
     fi
 done
 
 now=$(date +%H:%M:%S)
 if [ "$count" -eq 0 ]; then
-    total=$(echo "$new_ids" | grep -c '[0-9]' || true)
+    total=$(echo "$new_numbers" | grep -c '[0-9]' || true)
     echo "[$now] poll: $total failures, 0 new"
     exit 0
 fi
 
 echo "[$now] $count new failure(s)"
 
-for rid in $new_ids; do
-    if is_processed "$rid"; then
+for num in $new_numbers; do
+    if is_processed "$num"; then
         continue
     fi
 
-    title=$(jq -r --arg id "$rid" '.[] | select(.databaseId == ($id | tonumber)) | .displayTitle' "$RUNS_FILE")
-    branch=$(jq -r --arg id "$rid" '.[] | select(.databaseId == ($id | tonumber)) | .headBranch' "$RUNS_FILE")
-    url=$(jq -r --arg id "$rid" '.[] | select(.databaseId == ($id | tonumber)) | .url' "$RUNS_FILE")
+    message=$(jq -r --arg n "$num" '.[] | select(.number == ($n | tonumber)) | .message' "$BUILDS_FILE" | head -1)
+    branch=$(jq -r --arg n "$num" '.[] | select(.number == ($n | tonumber)) | .branch' "$BUILDS_FILE")
+    web_url=$(jq -r --arg n "$num" '.[] | select(.number == ($n | tonumber)) | .web_url' "$BUILDS_FILE")
 
     now=$(date +%H:%M:%S)
-    echo "[$now] -> $title ($branch): $url"
+    echo "[$now] -> $message ($branch): $web_url"
 
     t0=$(date +%s)
     if $DRY_RUN; then
-        echo "[$now] (dry-run) would process $rid"
+        echo "[$now] (dry-run) would process $num"
     else
-        process_run "$rid" || true
+        process_build "$num" || true
     fi
     elapsed=$(($(date +%s) - t0))
 
     now=$(date +%H:%M:%S)
-    echo "[$now] <- done (${elapsed}s): $url"
+    echo "[$now] <- done (${elapsed}s): $web_url"
 
     if ! $DRY_RUN; then
-        mark_processed "$rid"
+        mark_processed "$num"
     fi
 done
