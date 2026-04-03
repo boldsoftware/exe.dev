@@ -169,42 +169,35 @@
             <!-- Transaction History -->
             <div v-if="transactionHistory.length > 0" class="transaction-section">
               <div class="transaction-header">
-                <h4 class="subsection-title">Transaction History</h4>
-                <div class="transaction-header-actions">
-                  <button
-                    v-if="receiptsAvailable"
-                    class="btn btn-secondary btn-small"
-                    :disabled="downloadingReceipts"
-                    @click="downloadReceipts"
-                  >{{ downloadingReceipts ? 'Downloading...' : 'Download all' }}</button>
-                  <a href="#" class="view-all-link">View all →</a>
-                </div>
+                <span class="tx-section-title">Transaction History</span>
+                <button
+                  v-if="receiptsAvailable"
+                  class="btn btn-secondary btn-small tx-download-btn"
+                  :disabled="downloadingReceipts"
+                  @click="downloadReceipts"
+                ><i class="pi pi-download"></i> {{ downloadingReceipts ? 'Downloading...' : 'Download all' }}</button>
               </div>
-              <DataTable :value="transactionHistory" size="small" class="transaction-table">
-                <Column field="type" header="DESCRIPTION" />
-                <Column field="amount" header="AMOUNT" />
-                <Column field="date" header="DATE">
-                  <template #body="slotProps">
-                    {{ slotProps.data.date || '—' }}
-                  </template>
-                </Column>
-                <Column field="details" header="">
-                  <template #body="slotProps">
-                    <a 
-                      v-if="slotProps.data.type === 'Purchase' && slotProps.data.details" 
-                      :href="slotProps.data.details" 
-                      target="_blank" 
+              <ul class="tx-list">
+                <li v-for="tx in transactionHistory" :key="tx.type + tx.date + tx.amount" class="tx-item">
+                  <div :class="['tx-icon', tx.type === 'Purchase' ? 'tx-icon-purchase' : 'tx-icon-gift']">
+                    <i :class="tx.type === 'Purchase' ? 'pi pi-credit-card' : 'pi pi-gift'"></i>
+                  </div>
+                  <div class="tx-info">
+                    <span class="tx-type">{{ tx.type === 'Purchase' ? 'Credit Purchase' : 'Gift' }}<template v-if="tx.type === 'Gift' && tx.details"> &middot; {{ tx.details }}</template></span>
+                    <span class="tx-date">{{ tx.date || '\u2014' }}</span>
+                  </div>
+                  <div class="tx-right">
+                    <span class="tx-amount">{{ tx.amount }}</span>
+                    <a
+                      v-if="tx.type === 'Purchase' && tx.receiptURL"
+                      :href="tx.receiptURL"
+                      target="_blank"
                       rel="noopener noreferrer"
-                      class="receipt-link"
-                    >
-                      Receipt ↗
-                    </a>
-                    <span v-else-if="slotProps.data.type === 'Gift' && slotProps.data.details">
-                      {{ slotProps.data.details }}
-                    </span>
-                  </template>
-                </Column>
-              </DataTable>
+                      class="tx-receipt"
+                    >Receipt &#x2197;</a>
+                  </div>
+                </li>
+              </ul>
             </div>
 
             <!-- Support -->
@@ -522,8 +515,7 @@ import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
 import Card from 'primevue/card'
 import ProgressBar from 'primevue/progressbar'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+
 import Message from 'primevue/message'
 
 const loading = ref(true)
@@ -573,17 +565,19 @@ const transactionHistory = computed(() => {
   // Merge purchases and gifts
   const purchases = (data.value.credits.purchases || []).map(p => ({
     type: 'Purchase',
-    amount: `$${p.amount}`,
+    amount: `+$${p.amount}`,
     date: p.date,
-    details: p.receiptURL,
+    details: '',
+    receiptURL: p.receiptURL,
     rawDate: new Date(p.date)
   }))
   
   const gifts = (data.value.credits.gifts || []).map(g => ({
     type: 'Gift',
-    amount: `$${g.amount}`,
+    amount: `+$${g.amount}`,
     date: g.date || '',
     details: g.reason,
+    receiptURL: '',
     rawDate: g.date ? new Date(g.date) : new Date(0)
   }))
   
@@ -1445,38 +1439,97 @@ async function toggleNewsletter(event: Event) {
   margin-bottom: 12px;
 }
 
-.transaction-header .subsection-title {
+.tx-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-color-muted);
+}
+
+.tx-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tx-download-btn .pi {
+  font-size: 12px;
+}
+
+.tx-list {
+  list-style: none;
+  padding: 0;
   margin: 0;
 }
 
-.transaction-header-actions {
+.tx-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface-border);
+  gap: 12px;
 }
 
-.view-all-link {
-  font-size: 12px;
+.tx-item:last-child {
+  border-bottom: none;
+}
+
+.tx-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.tx-icon-purchase {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.tx-icon-gift {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.tx-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-type {
+  font-size: 13px;
+  font-weight: 500;
+  display: block;
+}
+
+.tx-date {
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+
+.tx-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.tx-amount {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+
+.tx-receipt {
+  font-size: 11px;
   color: var(--text-color-muted);
   text-decoration: none;
 }
 
-.view-all-link:hover {
-  color: var(--text-color);
-  text-decoration: underline;
-}
-
-.transaction-table {
-  font-size: 12px;
-}
-
-.receipt-link {
-  color: var(--text-color-muted);
-  text-decoration: none;
-  font-size: 12px;
-}
-
-.receipt-link:hover {
+.tx-receipt:hover {
   color: var(--text-color);
   text-decoration: underline;
 }
