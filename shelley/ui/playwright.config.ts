@@ -14,13 +14,13 @@ export default defineConfig({
   testDir: './e2e',
   globalSetup: './scripts/global-setup.ts',
   /* Run tests in files in parallel */
-  fullyParallel: false, // Keep simple for now
+  fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 1 : 0,
-  /* Single worker for predictable test database state */
-  workers: 1,
+  /* Use 2 workers in CI for speed; more causes contention on the shared server */
+  workers: process.env.CI ? 2 : 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

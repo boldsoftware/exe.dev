@@ -1358,6 +1358,7 @@ func TestServiceDoProxyPlainTextError(t *testing.T) {
 		APIKey:   "test-key",
 		Model:    GPT41,
 		ModelURL: server.URL + "/v1",
+		Backoff:  []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond},
 	}
 	req := &llm.Request{
 		Messages: []llm.Message{{

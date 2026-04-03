@@ -138,7 +138,7 @@ func (h *TestHarness) WaitToolResult() string {
 			}
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	h.t.Fatalf("WaitToolResult: timed out waiting for tool result")
@@ -197,7 +197,7 @@ func (h *TestHarness) WaitResponse() string {
 			return lastText
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	h.t.Fatalf("WaitResponse: timed out waiting for response (seen %d, need %d)", h.responsesCount, targetCount)

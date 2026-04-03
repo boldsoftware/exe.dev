@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"net"
 	"net/http"
@@ -418,7 +417,7 @@ func TestBrowserCrashRecovery(t *testing.T) {
 
 func TestReadImageToolResizesLargeImage(t *testing.T) {
 	ctx := context.Background()
-	browseTools := NewBrowseTools(ctx, 0, 2000)
+	browseTools := NewBrowseTools(ctx, 0, 200)
 	t.Cleanup(func() {
 		browseTools.Close()
 	})
@@ -426,11 +425,13 @@ func TestReadImageToolResizesLargeImage(t *testing.T) {
 	testDir := t.TempDir()
 	testImagePath := filepath.Join(testDir, "large_image.png")
 
-	img := image.NewRGBA(image.Rect(0, 0, 3000, 2500))
-	for y := 0; y < 2500; y++ {
-		for x := 0; x < 3000; x++ {
-			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
-		}
+	img := image.NewNRGBA(image.Rect(0, 0, 300, 250))
+	pix := img.Pix
+	for i := 0; i < len(pix); i += 4 {
+		pix[i] = 100
+		pix[i+1] = 150
+		pix[i+2] = 200
+		pix[i+3] = 255
 	}
 
 	f, err := os.Create(testImagePath)
@@ -469,11 +470,11 @@ func TestReadImageToolResizesLargeImage(t *testing.T) {
 		t.Fatalf("Failed to decode image config: %v", err)
 	}
 
-	if config.Width > 2000 || config.Height > 2000 {
-		t.Errorf("Image dimensions still exceed 2000 pixels: %dx%d", config.Width, config.Height)
+	if config.Width > 200 || config.Height > 200 {
+		t.Errorf("Image dimensions still exceed 200 pixels: %dx%d", config.Width, config.Height)
 	}
 
-	t.Logf("Large image resized from 3000x2500 to %dx%d", config.Width, config.Height)
+	t.Logf("Large image resized from 300x250 to %dx%d", config.Width, config.Height)
 }
 
 // TestIsPort80 tests the isPort80 function

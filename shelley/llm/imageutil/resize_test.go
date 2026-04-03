@@ -3,18 +3,20 @@ package imageutil
 import (
 	"bytes"
 	"image"
-	"image/color"
 	"image/jpeg"
 	"image/png"
 	"testing"
 )
 
 func createTestPNG(t *testing.T, width, height int) []byte {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
-		}
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	// Fill with a solid color using direct pixel buffer access (much faster than per-pixel Set).
+	pix := img.Pix
+	for i := 0; i < len(pix); i += 4 {
+		pix[i] = 100
+		pix[i+1] = 150
+		pix[i+2] = 200
+		pix[i+3] = 255
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -32,11 +34,11 @@ func TestResizeImage(t *testing.T) {
 		wantResize bool
 		wantMaxDim int
 	}{
-		{"small image", 800, 600, 2000, false, 800},
-		{"at limit", 2000, 2000, 2000, false, 2000},
-		{"width exceeds", 3000, 1000, 2000, true, 2000},
-		{"height exceeds", 1000, 3000, 2000, true, 2000},
-		{"both exceed", 3000, 3000, 2000, true, 2000},
+		{"small image", 80, 60, 200, false, 80},
+		{"at limit", 200, 200, 200, false, 200},
+		{"width exceeds", 300, 100, 200, true, 200},
+		{"height exceeds", 100, 300, 200, true, 200},
+		{"both exceed", 300, 300, 200, true, 200},
 	}
 
 	for _, tt := range tests {
@@ -72,11 +74,13 @@ func TestResizeImage(t *testing.T) {
 
 func TestResizeImageJPEG(t *testing.T) {
 	// Create a test JPEG image
-	img := image.NewRGBA(image.Rect(0, 0, 3000, 1000))
-	for y := 0; y < 1000; y++ {
-		for x := 0; x < 3000; x++ {
-			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
-		}
+	img := image.NewNRGBA(image.Rect(0, 0, 300, 100))
+	pix := img.Pix
+	for i := 0; i < len(pix); i += 4 {
+		pix[i] = 100
+		pix[i+1] = 150
+		pix[i+2] = 200
+		pix[i+3] = 255
 	}
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85}); err != nil {
@@ -84,7 +88,7 @@ func TestResizeImageJPEG(t *testing.T) {
 	}
 	data := buf.Bytes()
 
-	resized, format, didResize, err := ResizeImage(data, 2000)
+	resized, format, didResize, err := ResizeImage(data, 200)
 	if err != nil {
 		t.Fatalf("ResizeImage() error = %v", err)
 	}
@@ -100,8 +104,8 @@ func TestResizeImageJPEG(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to decode resized image: %v", err)
 	}
-	if config.Width > 2000 || config.Height > 2000 {
-		t.Errorf("Resized image %dx%d still exceeds max 2000", config.Width, config.Height)
+	if config.Width > 200 || config.Height > 200 {
+		t.Errorf("Resized image %dx%d still exceeds max 200", config.Width, config.Height)
 	}
 }
 
@@ -131,8 +135,8 @@ func TestResizeImageErrors(t *testing.T) {
 }
 
 func TestResizeImageNoResizeNeeded(t *testing.T) {
-	data := createTestPNG(t, 800, 600)
-	resized, format, didResize, err := ResizeImage(data, 2000)
+	data := createTestPNG(t, 80, 60)
+	resized, format, didResize, err := ResizeImage(data, 200)
 	if err != nil {
 		t.Fatalf("ResizeImage() error = %v", err)
 	}

@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+// Cancellation tests reload the page and inspect global state (sidebar),
+// so they must not run in parallel with other tests.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Conversation Cancellation', () => {
   test('should cancel long-running command and show cancelled state after reload', async ({ page }) => {
     // Start the server and navigate to it

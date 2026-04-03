@@ -299,12 +299,13 @@ var (
 // Service provides chat completions.
 // Fields should not be altered concurrently with calling any method on Service.
 type Service struct {
-	HTTPC     *http.Client // defaults to http.DefaultClient if nil
-	APIKey    string       // optional, if not set will try to load from env var
-	Model     Model        // defaults to DefaultModel if zero value
-	ModelURL  string       // optional, overrides Model.URL
-	MaxTokens int          // defaults to DefaultMaxTokens if zero
-	Org       string       // optional - organization ID
+	HTTPC     *http.Client    // defaults to http.DefaultClient if nil
+	APIKey    string          // optional, if not set will try to load from env var
+	Model     Model           // defaults to DefaultModel if zero value
+	ModelURL  string          // optional, overrides Model.URL
+	MaxTokens int             // defaults to DefaultMaxTokens if zero
+	Org       string          // optional - organization ID
+	Backoff   []time.Duration // retry backoff durations; defaults to {1s, 2s, 5s, 10s, 15s} if nil
 }
 
 var _ llm.Service = (*Service)(nil)
@@ -796,7 +797,10 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	fullURL := baseURL + "/chat/completions"
 
 	// Retry mechanism
-	backoff := []time.Duration{1 * time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 15 * time.Second}
+	backoff := s.Backoff
+	if backoff == nil {
+		backoff = []time.Duration{1 * time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 15 * time.Second}
+	}
 
 	// retry loop
 	var errs error // accumulated errors across all attempts
@@ -805,9 +809,18 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			return nil, fmt.Errorf("openai request failed after %d attempts (url=%s, model=%s): %w", attempts, fullURL, model.ModelName, errs)
 		}
 		if attempts > 0 {
-			sleep := backoff[min(attempts, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("openai request failed after %d attempts (context cancelled): %w", attempts, errs)
+			}
+			base := backoff[min(attempts, len(backoff)-1)]
+			jitter := time.Duration(rand.Int64N(max(min(int64(base), int64(time.Second)), 1)))
+			sleep := base + jitter
 			slog.WarnContext(ctx, "openai request sleep before retry", "sleep", sleep, "attempts", attempts)
-			time.Sleep(sleep)
+			select {
+			case <-time.After(sleep):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("openai request failed after %d attempts (context cancelled during backoff): %w", attempts, errs)
+			}
 		}
 
 		resp, err := client.CreateChatCompletion(ctx, req)

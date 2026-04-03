@@ -64,6 +64,7 @@ type Loop struct {
 	onToolProgress   llm.ToolProgressFunc
 	onStreamDelta    func(llm.StreamDelta)
 	onStreamDone     func()
+	notify           chan struct{} // signaled when a message is queued
 }
 
 // NewLoop creates a new Loop instance with the provided configuration
@@ -95,15 +96,21 @@ func NewLoop(config Config) *Loop {
 		onToolProgress:   config.OnToolProgress,
 		onStreamDelta:    config.OnStreamDelta,
 		onStreamDone:     config.OnStreamDone,
+		notify:           make(chan struct{}, 1),
 	}
 }
 
 // QueueUserMessage adds a user message to the queue to be processed
 func (l *Loop) QueueUserMessage(message llm.Message) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.messageQueue = append(l.messageQueue, message)
 	l.logger.Debug("queued user message", "content_count", len(message.Content))
+	l.mu.Unlock()
+	// Wake the run loop immediately.
+	select {
+	case l.notify <- struct{}{}:
+	default:
+	}
 }
 
 // GetUsage returns the total usage accumulated by this loop
@@ -170,11 +177,11 @@ func (l *Loop) Go(ctx context.Context) error {
 			}
 			l.logger.Debug("finished processing queued messages")
 		} else {
-			// No queued messages, wait a bit
+			// No queued messages, wait for a signal or context cancellation.
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(100 * time.Millisecond):
+			case <-l.notify:
 				// Continue loop
 			}
 		}

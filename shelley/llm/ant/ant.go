@@ -913,7 +913,9 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("anthropic request failed after %d attempts (context cancelled): %w", attempts, errs)
 			}
-			sleep := backoff[min(attempts-1, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
+			base := backoff[min(attempts-1, len(backoff)-1)]
+			jitter := time.Duration(rand.Int64N(max(min(int64(base), int64(time.Second)), 1)))
+			sleep := base + jitter
 			slog.WarnContext(ctx, "anthropic request sleep before retry", "sleep", sleep, "attempts", attempts)
 			select {
 			case <-time.After(sleep):

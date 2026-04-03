@@ -761,23 +761,27 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 			t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, body)
 		}
 
-		// Poll for async processing completion
-		// We need to wait for a request WITH a system prompt, not just any request
-		var lastReq *llm.Request
-		for i := 0; i < 50; i++ {
-			lastReq = predictableService.GetLastRequest()
-			if lastReq != nil && len(lastReq.System) > 0 {
+		// Poll for async processing completion.
+		// The loop fires both a conversation request (with system prompt)
+		// and a slug-generation request (without). Check all requests
+		// so we find the one with the system prompt regardless of order.
+		var matchedReq *llm.Request
+		for i := 0; i < 500; i++ {
+			for _, req := range predictableService.GetRecentRequests() {
+				if len(req.System) > 0 {
+					matchedReq = req
+					break
+				}
+			}
+			if matchedReq != nil {
 				break
 			}
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
-		if lastReq == nil {
-			t.Fatal("No request was sent to the LLM service after 5 seconds")
+		if matchedReq == nil {
+			t.Fatal("No request with a system prompt was sent to the LLM service after 5 seconds")
 		}
-
-		if len(lastReq.System) == 0 {
-			t.Fatal("System prompt was not included in the LLM request")
-		}
+		lastReq := matchedReq
 
 		// Verify system prompt contains expected content
 		systemText := ""
