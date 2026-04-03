@@ -161,6 +161,7 @@ type DB struct {
 	db      *sql.DB
 	dbPath  string // filesystem path to the database file (empty if unknown)
 	writer  chan *sql.Conn
+	stopped chan *sql.Conn // holds the writer conn while writes are stopped
 	readers chan *sql.Conn
 
 	// Sniff streams SQL activity to a connected HTTP client.
@@ -219,6 +220,7 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 		writer:   make(chan *sql.Conn, 1),
 		readers:  make(chan *sql.Conn, readerCount),
 		shutdown: shutdown,
+		stopped:  make(chan *sql.Conn, 1),
 	}
 	if err := p.Sniff.registerHook(conns[0]); err != nil {
 		shutdown()
@@ -291,6 +293,26 @@ func InitDB(db *sql.DB, numConns int) error {
 
 func (p *DB) Close() error {
 	return p.shutdown()
+}
+
+// StopWrites blocks new write transactions by holding the sole writer connection.
+// It waits for any in-flight write to complete before returning.
+// While stopped, Tx and Exec calls block until their context is cancelled
+// or StartWrites is called. Reads are unaffected.
+//
+// StopWrites and StartWrites must be called in strict alternation.
+// Calling StopWrites twice without an intervening StartWrites, or
+// calling StartWrites without a preceding StopWrites, will deadlock.
+//
+// These APIs are low level and dangerous.
+// Use extremely sparingly and carefully.
+func (p *DB) StopWrites() {
+	p.stopped <- <-p.writer
+}
+
+// StartWrites releases the writer connection, unblocking write transactions.
+func (p *DB) StartWrites() {
+	p.writer <- <-p.stopped
 }
 
 // dbPathFromDSN extracts the filesystem path from a SQLite DSN.

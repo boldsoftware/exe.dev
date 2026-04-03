@@ -897,3 +897,109 @@ func TestBusyHandling(t *testing.T) {
 		}
 	})
 }
+
+func TestStopStartWrites(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "teststopwrites.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	// Create a table.
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec("CREATE TABLE t (c INTEGER);")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop writes.
+	p.StopWrites()
+
+	// Writes should block; verify with a cancelled context.
+	shortCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	err = p.Tx(shortCtx, func(ctx context.Context, tx *Tx) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error from Tx while writes stopped")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		t.Fatalf("expected context canceled, got: %v", err)
+	}
+
+	// Exec should also block.
+	err = p.Exec(shortCtx, "SELECT 1;")
+	if err == nil {
+		t.Fatal("expected error from Exec while writes stopped")
+	}
+
+	// Reads still work.
+	err = p.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		var count int
+		return rx.QueryRow("SELECT count(*) FROM t;").Scan(&count)
+	})
+	if err != nil {
+		t.Fatalf("reads should work while writes stopped: %v", err)
+	}
+
+	// Start writes.
+	p.StartWrites()
+
+	// Writes work again.
+	err = p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Exec("INSERT INTO t (c) VALUES (1);")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("writes should work after StartWrites: %v", err)
+	}
+}
+
+func TestStopWritesWaitsForInflight(t *testing.T) {
+	p, err := New(filepath.Join(t.TempDir(), "teststopinflight.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	ctx := context.Background()
+
+	txStarted := make(chan struct{})
+	txRelease := make(chan struct{})
+
+	// Start a write transaction that blocks.
+	go func() {
+		p.Tx(ctx, func(ctx context.Context, tx *Tx) error {
+			close(txStarted)
+			<-txRelease
+			return nil
+		})
+	}()
+	<-txStarted
+
+	// StopWrites must wait for the in-flight tx.
+	stopped := make(chan struct{})
+	go func() {
+		p.StopWrites()
+		close(stopped)
+	}()
+
+	// Verify StopWrites hasn't returned yet.
+	select {
+	case <-stopped:
+		t.Fatal("StopWrites returned too early")
+	default:
+	}
+
+	// Release the transaction.
+	close(txRelease)
+
+	// Now StopWrites should complete.
+	<-stopped
+	p.StartWrites()
+}
