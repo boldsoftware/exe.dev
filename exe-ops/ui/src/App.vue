@@ -30,6 +30,12 @@
               <span class="sidebar-label">Deploy</span>
             </router-link>
           </li>
+          <li>
+            <router-link to="/hosts" class="nav-item" :class="{ active: $route.name === 'hosts' }" :title="sidebarCollapsed ? 'Hosts' : undefined">
+              <i class="pi pi-server nav-icon icon-cyan"></i>
+              <span class="sidebar-label">Hosts</span>
+            </router-link>
+          </li>
         </ul>
       </nav>
       <div class="sidebar-footer">

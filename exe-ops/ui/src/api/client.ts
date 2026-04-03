@@ -100,6 +100,26 @@ export async function fetchDeployStatus(id: string): Promise<DeployStatus> {
   return resp.json()
 }
 
+// Host metrics types
+export interface HostMetrics {
+  instance: string
+  hostname: string
+  stage: string
+  role: string
+  region: string
+  up: boolean | null
+  cpu_percent: number | null
+  memory_pressure: number | null
+  cpu_pressure: number | null
+  io_pressure: number | null
+}
+
+export async function fetchHosts(): Promise<HostMetrics[]> {
+  const resp = await fetch('/api/v1/hosts')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
 export async function startDeploy(req: DeployRequest): Promise<DeployStatus> {
   const resp = await fetch('/api/v1/deploys', {
     method: 'POST',

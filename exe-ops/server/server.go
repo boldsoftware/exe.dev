@@ -23,6 +23,9 @@ func New(uiFS fs.FS, log *slog.Logger, inv *inventory.Inventory, deployer *deplo
 	mux.HandleFunc("/api/v1/deploys", h.HandleDeploys)
 	mux.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
 
+	// Host metrics from Prometheus.
+	mux.HandleFunc("/api/v1/hosts", h.HandleHosts)
+
 	// Server version.
 	mux.HandleFunc("/api/v1/version", h.HandleServerVersion)
 
