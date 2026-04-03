@@ -143,29 +143,17 @@ func (m *Migrator) BuildInventory(ctx context.Context) error {
 }
 
 func (m *Migrator) resolveCurrentPool(ctx context.Context, t *exeletTarget, instanceID string) (string, error) {
-	// Probe the actual pool by attempting a migration to each known pool.
-	// The "already on pool" error from the server tells us the real current pool.
-	for _, pool := range m.pools {
-		_, err := t.client.MigrateStorageTier(ctx, &api.MigrateStorageTierRequest{
-			InstanceID: instanceID,
-			TargetPool: pool,
-		})
-		if err == nil {
-			// Migration actually started — cancel it immediately and return
-			// pool as "not this one". This shouldn't normally happen since
-			// we iterate all pools, but handle it defensively.
-			continue
-		}
-		if actualPool, ok := parseAlreadyOnPool(err); ok {
-			return actualPool, nil
-		}
-		// Any other error (NotFound, etc.) — try next pool
-	}
-
-	// Fallback: couldn't probe, use first pool with instances
+	// We can't cheaply determine which pool an instance is on without
+	// triggering a real migration. Assign the primary pool as a best guess;
+	// runMigration will self-correct via parseAlreadyOnPool if wrong.
 	tiers, err := t.client.ListStorageTiers(ctx, &api.ListStorageTiersRequest{})
 	if err != nil {
 		return "", err
+	}
+	for _, tier := range tiers.Tiers {
+		if tier.Primary {
+			return tier.Name, nil
+		}
 	}
 	if len(tiers.Tiers) > 0 {
 		return tiers.Tiers[0].Name, nil
@@ -280,6 +268,26 @@ func (m *Migrator) runMigration(ctx context.Context, t *exeletTarget, inst *inst
 		Live:       m.live,
 	})
 	if err != nil {
+		// If the circuit breaker is tripped, report and let the caller
+		// handle cooldown — don't spam the exelet.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.FailedPrecondition {
+			slog.ErrorContext(ctx, "circuit breaker tripped on exelet, skipping",
+				"instance", inst.id, "exelet", t.addr, "error", st.Message())
+			m.collector.Add(MigrationResult{
+				InstanceID:  inst.id,
+				Exelet:      t.addr,
+				SourcePool:  inst.currentPool,
+				TargetPool:  targetPool,
+				State:       "failed",
+				Error:       st.Message(),
+				StartedAt:   startTime,
+				CompletedAt: time.Now(),
+				Duration:    time.Since(startTime),
+				DurationStr: time.Since(startTime).Truncate(time.Millisecond).String(),
+			})
+			return
+		}
+
 		// If the instance is already on the target pool, update inventory
 		// with the actual pool and retry with a different target.
 		if actualPool, ok := parseAlreadyOnPool(err); ok {
