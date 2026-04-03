@@ -6,11 +6,14 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
 	"exe.dev/exelet/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type exeletTarget struct {
@@ -140,23 +143,29 @@ func (m *Migrator) BuildInventory(ctx context.Context) error {
 }
 
 func (m *Migrator) resolveCurrentPool(ctx context.Context, t *exeletTarget, instanceID string) (string, error) {
+	// Probe the actual pool by attempting a migration to each known pool.
+	// The "already on pool" error from the server tells us the real current pool.
+	for _, pool := range m.pools {
+		_, err := t.client.MigrateStorageTier(ctx, &api.MigrateStorageTierRequest{
+			InstanceID: instanceID,
+			TargetPool: pool,
+		})
+		if err == nil {
+			// Migration actually started — cancel it immediately and return
+			// pool as "not this one". This shouldn't normally happen since
+			// we iterate all pools, but handle it defensively.
+			continue
+		}
+		if actualPool, ok := parseAlreadyOnPool(err); ok {
+			return actualPool, nil
+		}
+		// Any other error (NotFound, etc.) — try next pool
+	}
+
+	// Fallback: couldn't probe, use first pool with instances
 	tiers, err := t.client.ListStorageTiers(ctx, &api.ListStorageTiersRequest{})
 	if err != nil {
 		return "", err
-	}
-
-	// Use GetTierMigrationStatus to see if there's a recent completed migration that tells us pool
-	// Otherwise we check the tier list. Since ListStorageTiers doesn't map instance->pool directly,
-	// we try a migrate dry-run approach: attempt to migrate to same pool to discover current pool.
-	// Actually, MigrateStorageTier response includes source_pool, so we can use that.
-	// But that's invasive. Instead, since we know the pools, just try each one.
-
-	// For now, assign to the first pool that has instances, or default to first pool.
-	// The MigrateStorageTierResponse will tell us the actual source pool.
-	for _, tier := range tiers.Tiers {
-		if tier.InstanceCount > 0 {
-			return tier.Name, nil
-		}
 	}
 	if len(tiers.Tiers) > 0 {
 		return tiers.Tiers[0].Name, nil
@@ -271,6 +280,33 @@ func (m *Migrator) runMigration(ctx context.Context, t *exeletTarget, inst *inst
 		Live:       m.live,
 	})
 	if err != nil {
+		// If the instance is already on the target pool, update inventory
+		// with the actual pool and retry with a different target.
+		if actualPool, ok := parseAlreadyOnPool(err); ok {
+			slog.DebugContext(ctx, "instance already on target pool, correcting inventory",
+				"instance", inst.id, "actual_pool", actualPool)
+			m.mu.Lock()
+			for i := range m.inventory {
+				if m.inventory[i].id == inst.id {
+					m.inventory[i].currentPool = actualPool
+					break
+				}
+			}
+			m.mu.Unlock()
+
+			// Retry with a different pool
+			retryPool := m.pickDifferentPool(actualPool)
+			if retryPool != "" {
+				slog.DebugContext(ctx, "retrying migration with corrected pool",
+					"instance", inst.id, "from", actualPool, "to", retryPool)
+				inst.currentPool = actualPool
+				m.runMigration(ctx, t, inst, retryPool)
+				return
+			}
+			// No other pool available — skip silently
+			return
+		}
+
 		m.collector.Add(MigrationResult{
 			InstanceID:  inst.id,
 			Exelet:      t.addr,
@@ -411,4 +447,25 @@ func (m *Migrator) pollMigration(ctx context.Context, t *exeletTarget, op *activ
 			}
 		}
 	}
+}
+
+// parseAlreadyOnPool extracts the pool name from an "already on pool X"
+// InvalidArgument gRPC error. Returns the pool name and true if matched.
+func parseAlreadyOnPool(err error) (string, bool) {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		return "", false
+	}
+	// Error format: "instance <id> is already on pool <pool>"
+	const marker = "is already on pool "
+	msg := st.Message()
+	idx := strings.Index(msg, marker)
+	if idx < 0 {
+		return "", false
+	}
+	pool := msg[idx+len(marker):]
+	if pool == "" {
+		return "", false
+	}
+	return pool, true
 }
