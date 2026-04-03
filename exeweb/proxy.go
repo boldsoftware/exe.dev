@@ -1109,6 +1109,7 @@ func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, ss
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Minute,
 	}
 }
 
