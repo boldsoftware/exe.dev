@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"exe.dev/exedb"
@@ -270,6 +271,54 @@ func TestPrivateExelet(t *testing.T) {
 		}
 		if ec.addr != exelet.addr {
 			t.Errorf("expected exelet %s, got %s", exelet.addr, ec.addr)
+		}
+	})
+
+	t.Run("affinity to public exelet skipped when team has assigned exelets", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			pubExelet.addr:  pubExelet,
+			privExelet.addr: privExelet,
+		}
+
+		userID := createTestUser(t, server, "affinity-team@example.com")
+		createTeam(t, server, "team-affinity", "Team Affinity", userID)
+
+		markPrivate(t, server, privExelet.addr)
+		assignTeamExelet(t, server, "team-affinity", privExelet.addr)
+
+		// Create existing VMs on the public exelet to establish affinity.
+		for i := range 3 {
+			err := exedb.WithTx(server.db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+				_, err := q.InsertBox(ctx, exedb.InsertBoxParams{
+					Ctrhost:         pubExelet.addr,
+					Name:            fmt.Sprintf("pub-box-%d", i),
+					Status:          "running",
+					Image:           "test",
+					CreatedByUserID: userID,
+					Region:          "pdx",
+				})
+				return err
+			})
+			if err != nil {
+				t.Fatalf("failed to insert box: %v", err)
+			}
+		}
+
+		// Despite affinity to public exelet, should land on team exelet.
+		for range 20 {
+			ec, _, err := server.selectExeletClient(ctx, userID)
+			if err != nil {
+				t.Fatalf("selectExeletClient: %v", err)
+			}
+			if ec.addr != privExelet.addr {
+				t.Fatalf("team member landed on %s, want team-assigned %s", ec.addr, privExelet.addr)
+			}
 		}
 	})
 

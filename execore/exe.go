@@ -4086,6 +4086,13 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
+		// If the user's team has assigned exelets, skip affinity to a
+		// non-team host so they land on their dedicated hardware.
+		if client != nil && len(teamExeletAddrs) > 0 && !teamExeletAddrs[maxHost] {
+			s.slog().DebugContext(ctx, "not selecting exelet because user has team-assigned exelets", "user", userID, "exelet", maxHost)
+			client = nil
+		}
+
 		if client != nil && !client.up.Load() {
 			s.slog().DebugContext(ctx, "not selecting exelet because it is down", "user", userID, "exelet", maxHost, "userVMCount", maxCnt)
 			client = nil
