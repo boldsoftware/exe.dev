@@ -2,6 +2,7 @@ package execore
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	crand "crypto/rand"
 	"database/sql"
@@ -4434,9 +4435,8 @@ func (s *Server) handleDebugSignupRejectPost(w http.ResponseWriter, r *http.Requ
 			reason = "Added via debug page"
 		}
 		addedBy := "debug"
-		lc := new(local.Client)
-		if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
-			addedBy = fmt.Sprintf("debug (%s)", who.UserProfile.LoginName)
+		if u := tailscaleUser(ctx, r.RemoteAddr); u != "" {
+			addedBy = fmt.Sprintf("debug (%s)", u)
 		}
 		err := withTx1(s, ctx, (*exedb.Queries).InsertEmailQualityBypass, exedb.InsertEmailQualityBypassParams{
 			Email:   email,
@@ -4518,12 +4518,7 @@ func (s *Server) handleDebugInvitePost(w http.ResponseWriter, r *http.Request) {
 
 	action := r.FormValue("action")
 
-	// Get admin identity from Tailscale
-	assignedBy := "debug"
-	lc := new(local.Client)
-	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
-		assignedBy = who.UserProfile.LoginName
-	}
+	assignedBy := cmp.Or(tailscaleUser(ctx, r.RemoteAddr), "debug")
 
 	switch action {
 	case "create":
@@ -4707,12 +4702,7 @@ func (s *Server) handleDebugInviteBulkPost(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get admin identity from Tailscale
-	assignedBy := "debug"
-	lc := new(local.Client)
-	if who, err := lc.WhoIs(ctx, r.RemoteAddr); err == nil && who.UserProfile != nil && who.UserProfile.LoginName != "" {
-		assignedBy = who.UserProfile.LoginName
-	}
+	assignedBy := cmp.Or(tailscaleUser(ctx, r.RemoteAddr), "debug")
 
 	codes := make([]string, 0, count)
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
@@ -6047,13 +6037,7 @@ func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	assignedBy := r.Header.Get("X-Webauth-User")
-	if assignedBy == "" {
-		assignedBy = r.Header.Get("Tailscale-User-Login")
-	}
-	if assignedBy == "" {
-		assignedBy = "debug-ui"
-	}
+	assignedBy := cmp.Or(tailscaleUser(ctx, r.RemoteAddr), "debug-ui")
 
 	if err := s.giveInvitesToUser(ctx, &user, count, "trial", assignedBy); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -7413,13 +7397,11 @@ func (s *Server) handleDebugDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	lc := new(local.Client)
-	who, err := lc.WhoIs(ctx, r.RemoteAddr)
-	if err != nil || who.UserProfile == nil || who.UserProfile.LoginName == "" {
+	deletedBy := tailscaleUser(ctx, r.RemoteAddr)
+	if deletedBy == "" {
 		http.Error(w, "user deletion requires a Tailscale user (not a tagged node)", http.StatusForbidden)
 		return
 	}
-	deletedBy := who.UserProfile.LoginName
 
 	userID := r.FormValue("user_id")
 	if userID == "" {
@@ -8054,6 +8036,18 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 	)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
+}
+
+// tailscaleUser returns the Tailscale login name of the user making the
+// request, or empty string if the identity can't be determined (e.g.
+// loopback connections, tagged nodes).
+func tailscaleUser(ctx context.Context, remoteAddr string) string {
+	lc := new(local.Client)
+	who, err := lc.WhoIs(ctx, remoteAddr)
+	if err != nil || who.UserProfile == nil {
+		return ""
+	}
+	return who.UserProfile.LoginName
 }
 
 // renderDebugTemplate renders a debug template to a browser.
