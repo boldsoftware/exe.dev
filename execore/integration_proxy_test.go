@@ -1,6 +1,8 @@
 package execore
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -48,4 +50,37 @@ func TestBuildHTTPProxyConfig(t *testing.T) {
 			t.Errorf("basic auth pass = %q, want testpass", resp.BasicAuth.Pass)
 		}
 	})
+}
+
+func TestHandlePeerProxy_RequiresTailscaleIP(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	s.env.GatewayDev = false // Production mode — requires Tailscale IP.
+
+	// Default httptest RemoteAddr is 192.0.2.1:1234, not a Tailscale IP.
+	req := httptest.NewRequest("POST", "/_/peer-proxy", nil)
+	w := httptest.NewRecorder()
+
+	s.handlePeerProxy(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for non-Tailscale IP, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlePeerProxy_GatewayDevBypass(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	s.env.GatewayDev = true
+
+	// With GatewayDev the Tailscale check is skipped; we should reach
+	// the next validation (missing headers → 400), not 401.
+	req := httptest.NewRequest("POST", "/_/peer-proxy", nil)
+	w := httptest.NewRecorder()
+
+	s.handlePeerProxy(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 (missing headers) with GatewayDev, got %d: %s", w.Code, w.Body.String())
+	}
 }

@@ -479,6 +479,15 @@ func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, do
 // access to the web proxy — all traffic routes through exed.
 func (s *Server) handlePeerProxy(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Security: only accept from Tailscale IPs or in GatewayDev mode.
+	host := domz.StripPort(r.RemoteAddr)
+	remoteIP, err := netip.ParseAddr(host)
+	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	vmName := r.Header.Get("X-Exedev-Box")
 	integrationName := r.Header.Get("X-Exedev-Integration")
 	if vmName == "" || integrationName == "" {
