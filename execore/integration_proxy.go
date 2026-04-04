@@ -90,18 +90,24 @@ type basicAuthConfig struct {
 	Pass string `json:"pass"`
 }
 
+// requireTailscaleOrDev wraps a handler to reject requests that don't
+// originate from a Tailscale IP, unless GatewayDev mode is enabled.
+func (s *Server) requireTailscaleOrDev(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := domz.StripPort(r.RemoteAddr)
+		remoteIP, err := netip.ParseAddr(host)
+		if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // handleIntegrationConfig serves GET /_/integration-config?vm_name={name}&integration={name}.
 // Exelets call this to look up an integration's proxy configuration.
 func (s *Server) handleIntegrationConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Security: only accept from Tailscale IPs or in GatewayDev mode.
-	host := domz.StripPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 
 	vmName := r.URL.Query().Get("vm_name")
 	integrationName := r.URL.Query().Get("integration")
@@ -341,14 +347,6 @@ func (s *Server) mintGitHubToken(ctx context.Context, cfg githubIntegrationConfi
 func (s *Server) handleTeamIntegrationConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Security: only accept from Tailscale IPs or in GatewayDev mode.
-	host := domz.StripPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	vmName := r.URL.Query().Get("vm_name")
 	integrationName := r.URL.Query().Get("integration")
 	if vmName == "" || integrationName == "" {
@@ -440,14 +438,6 @@ func (s *Server) handleTeamIntegrationCert(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, domain string) {
-	// Security: only accept from Tailscale IPs or in GatewayDev mode.
-	host := domz.StripPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	if s.wildcardCertManager == nil {
 		http.Error(w, "no wildcard certificate manager", http.StatusServiceUnavailable)
 		return
@@ -479,14 +469,6 @@ func (s *Server) serveIntegrationCert(w http.ResponseWriter, r *http.Request, do
 // access to the web proxy — all traffic routes through exed.
 func (s *Server) handlePeerProxy(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Security: only accept from Tailscale IPs or in GatewayDev mode.
-	host := domz.StripPort(r.RemoteAddr)
-	remoteIP, err := netip.ParseAddr(host)
-	if !s.env.GatewayDev && (err != nil || !tsaddr.IsTailscaleIP(remoteIP)) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 
 	vmName := r.Header.Get("X-Exedev-Box")
 	integrationName := r.Header.Get("X-Exedev-Integration")

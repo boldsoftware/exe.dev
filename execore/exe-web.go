@@ -70,11 +70,11 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux.Handle("/_/gateway/", lg)
 	servMux.HandleFunc("POST /_/gateway/email/send", s.handleVMEmailSend)
 	servMux.HandleFunc("POST /_/gateway/push/send", s.handleVMPushSend)
-	servMux.HandleFunc("GET /_/integration-config", s.handleIntegrationConfig)
-	servMux.HandleFunc("GET /_/team-integration-config", s.handleTeamIntegrationConfig)
-	servMux.HandleFunc("GET /_/integration-cert", s.handleIntegrationCert)
-	servMux.HandleFunc("/_/peer-proxy", s.handlePeerProxy)
-	servMux.HandleFunc("GET /_/team-integration-cert", s.handleTeamIntegrationCert)
+	servMux.HandleFunc("GET /_/integration-config", s.requireTailscaleOrDev(s.handleIntegrationConfig))
+	servMux.HandleFunc("GET /_/team-integration-config", s.requireTailscaleOrDev(s.handleTeamIntegrationConfig))
+	servMux.HandleFunc("GET /_/integration-cert", s.requireTailscaleOrDev(s.handleIntegrationCert))
+	servMux.HandleFunc("/_/peer-proxy", s.requireTailscaleOrDev(s.handlePeerProxy))
+	servMux.HandleFunc("GET /_/team-integration-cert", s.requireTailscaleOrDev(s.handleTeamIntegrationCert))
 	servMux.Handle("/", cop.Handler(s))
 
 	h := s.httpMetrics.Wrap(servMux)
@@ -543,7 +543,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/_/peer-proxy" {
-		s.handlePeerProxy(w, r)
+		s.requireTailscaleOrDev(s.handlePeerProxy)(w, r)
 		return
 	}
 

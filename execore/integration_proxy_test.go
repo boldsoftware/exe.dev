@@ -61,10 +61,27 @@ func TestHandlePeerProxy_RequiresTailscaleIP(t *testing.T) {
 	req := httptest.NewRequest("POST", "/_/peer-proxy", nil)
 	w := httptest.NewRecorder()
 
-	s.handlePeerProxy(w, req)
+	s.requireTailscaleOrDev(s.handlePeerProxy).ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for non-Tailscale IP, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlePeerProxy_TailscaleIPAllowed(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	s.env.GatewayDev = false // Production mode — requires Tailscale IP.
+
+	// Tailscale IP should pass auth and reach the next validation (missing headers → 400).
+	req := httptest.NewRequest("POST", "/_/peer-proxy", nil)
+	req.RemoteAddr = "100.64.0.1:1234"
+	w := httptest.NewRecorder()
+
+	s.requireTailscaleOrDev(s.handlePeerProxy).ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 (missing headers) for Tailscale IP, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -78,7 +95,7 @@ func TestHandlePeerProxy_GatewayDevBypass(t *testing.T) {
 	req := httptest.NewRequest("POST", "/_/peer-proxy", nil)
 	w := httptest.NewRecorder()
 
-	s.handlePeerProxy(w, req)
+	s.requireTailscaleOrDev(s.handlePeerProxy).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (missing headers) with GatewayDev, got %d: %s", w.Code, w.Body.String())
