@@ -1274,14 +1274,25 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		clientAddr = s.RemoteAddr().String() // fallback for direct connections
 	}
 
+	// When a PTY is allocated (ssh -t), the client terminal is in raw mode
+	// and expects CRLF line endings and ANSI colors. Without a PTY, strip
+	// ANSI and normalize line endings for piping/scripting.
+	var output io.Writer
+	_, _, isPty := s.Pty()
+	if isPty {
+		output = exemenu.NewCRLFWriter(s)
+	} else {
+		output = exemenu.NewANSIFilterWriter(s)
+	}
+
 	cc := &exemenu.CommandContext{
 		User: &exemenu.UserInfo{
 			ID:    user.UserID,
 			Email: user.Email,
 		},
 		PublicKey:  publicKey,
-		Args:       cmd[1:],                        // Skip the command name itself
-		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
+		Args:       cmd[1:], // Skip the command name itself
+		Output:     output,
 		SSHSession: NewSSHShell(s, clientAddr),
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.env.ReplDev,

@@ -833,6 +833,23 @@ func (fw *ANSIFilterWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// CRLFWriter wraps an io.Writer and translates \n to \r\n for raw-mode
+// terminals (e.g., ssh -t exec sessions with a PTY). Existing \r\n sequences
+// pass through unchanged.
+type CRLFWriter struct {
+	writer io.Writer
+}
+
+// NewCRLFWriter creates a writer that translates bare \n to \r\n.
+func NewCRLFWriter(w io.Writer) *CRLFWriter {
+	return &CRLFWriter{writer: w}
+}
+
+// Write implements io.Writer.
+func (fw *CRLFWriter) Write(p []byte) (n int, err error) {
+	return term.WriteCRLF(fw.writer, p)
+}
+
 // CompleteCommand provides tab completion for a given input line
 func (ct *CommandTree) CompleteCommand(line string, cursor int, cc *CommandContext) []string {
 	// Parse the line up to cursor position
