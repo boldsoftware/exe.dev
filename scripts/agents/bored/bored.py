@@ -43,6 +43,7 @@ DB_FILE = os.path.join(STATE_DIR, "bored.db")
 EXE_REPO = os.path.expanduser("~/exe")
 ISSUES_REPO = "boldsoftware/bots"
 CODE_REPO = "boldsoftware/exe"
+EXE_REMOTE_URL = "https://repo-exe-git.int.exe.xyz/boldsoftware/exe.git"
 PORT = 8000
 WHENCE = f"— bored on {os.uname().nodename}"
 CLAUDE_CMD = ["claude", "--dangerously-skip-permissions", "--model", "opus", "--effort", "high"]
@@ -51,6 +52,7 @@ RESERVATION_TIMEOUT = 900  # 15 minutes
 COOLDOWN_DURATION = 172800  # 48 hours
 WORKER_SLEEP = 30  # seconds between worker iterations
 GARDENING_BACKOFF = 600  # seconds to wait after gardening finds nothing
+FETCH_STALE_THRESHOLD = 48 * 3600  # alert if no successful fetch for this long
 CLAUDE_TIMEOUT = 21600  # 6h timeout for claude invocations
 NO_ISSUES = object()  # sentinel: gardening found nothing to work on
 ISSUE_ALREADY_QUEUED = object()  # sentinel: gardening picked an already-queued issue
@@ -492,6 +494,22 @@ AGENTS_PATH = "scripts/agents"
 DEPLOY_STATE_FILE = os.path.join(STATE_DIR, "last-deployed-agents-tree")
 
 
+_last_successful_fetch = [time.time()]  # mutable; set on each successful fetch
+_fetch_stale_alerted = [False]
+
+
+def _check_fetch_staleness():
+    """Alert once if the repo hasn't been fetched successfully in FETCH_STALE_THRESHOLD."""
+    age = time.time() - _last_successful_fetch[0]
+    if age >= FETCH_STALE_THRESHOLD and not _fetch_stale_alerted[0]:
+        _fetch_stale_alerted[0] = True
+        hours = age / 3600
+        send_alert(
+            "bored: repo stale",
+            f"No successful git fetch in {hours:.0f} hours.",
+        )
+
+
 def check_for_self_update():
     """Fetch origin and check if scripts/agents/ changed. If so, redeploy and exit.
 
@@ -507,7 +525,14 @@ def check_for_self_update():
         except FileNotFoundError:
             old_tree = git("rev-parse", "HEAD:" + AGENTS_PATH, cwd=EXE_REPO, check=False)
 
-        git("fetch", "origin", cwd=EXE_REPO)
+        try:
+            git("fetch", "origin", cwd=EXE_REPO)
+        except subprocess.CalledProcessError:
+            log.warning("git fetch failed, skipping self-update check")
+            _check_fetch_staleness()
+            return
+        _last_successful_fetch[0] = time.time()
+        _fetch_stale_alerted[0] = False
         git("reset", "--hard", "origin/main", cwd=EXE_REPO)
         new_tree = git("rev-parse", "HEAD:" + AGENTS_PATH, cwd=EXE_REPO, check=False)
 
@@ -550,7 +575,13 @@ def check_for_self_update():
 def gardening_pass(queued_issues=None):
     """Run a gardening pass across all open issues. Returns issue number (int) or 0."""
     # fetch+reset already done by check_for_self_update, but be safe
-    git("fetch", "origin", cwd=EXE_REPO)
+    try:
+        git("fetch", "origin", cwd=EXE_REPO)
+    except subprocess.CalledProcessError:
+        log.warning("git fetch failed in gardening pass, continuing with current HEAD")
+    else:
+        _last_successful_fetch[0] = time.time()
+        _fetch_stale_alerted[0] = False
     git("reset", "--hard", "origin/main", cwd=EXE_REPO)
 
     skip_note = ""
@@ -1262,6 +1293,9 @@ def main():
         git("worktree", "prune", cwd=EXE_REPO, check=False)
     except Exception:
         pass
+
+    # Ensure the remote points to the internal mirror
+    git("remote", "set-url", "origin", EXE_REMOTE_URL, cwd=EXE_REPO)
 
     # Reset any items stuck in transient states from a previous crash
     db = get_db()
