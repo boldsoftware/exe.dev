@@ -29,6 +29,7 @@ onMounted(async () => {
   terminal = new Terminal({
     fontSize: 13,
     fontFamily: "'JetBrains Mono', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+    convertEol: true,
     disableStdin: true,
     cursorBlink: false,
     scrollback: 5000,
