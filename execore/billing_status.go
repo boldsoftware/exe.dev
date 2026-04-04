@@ -73,7 +73,7 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 	// Check if user's plan grants VM creation
 	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMCreate, user.ID) {
 		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-		return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
+		return "Billing Required\n\nYou need to add billing information before creating a VM.\n\nVisit: " + billingURL
 	}
 
 	return ""

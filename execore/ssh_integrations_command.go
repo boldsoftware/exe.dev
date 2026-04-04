@@ -70,11 +70,11 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 			{
 				Name: "attach",
 				Description: "Attach an integration to a VM, tag, or all VMs" +
-					"\r\n\r\nA <spec> controls where the integration is mounted:\r\n" +
-					"  vm:<vm-name>   attach to a specific VM (personal only)\r\n" +
-					"  tag:<tag-name> attach to every VM with the given tag\r\n" +
-					"  auto:all       attach to all current and future VMs (personal only)\r\n\r\n" +
-					"You can attach the same integration multiple times with different specs.\r\n" +
+					"\n\nA <spec> controls where the integration is mounted:\n" +
+					"  vm:<vm-name>   attach to a specific VM (personal only)\n" +
+					"  tag:<tag-name> attach to every VM with the given tag\n" +
+					"  auto:all       attach to all current and future VMs (personal only)\n\n" +
+					"You can attach the same integration multiple times with different specs.\n" +
 					"Team integrations only support tag:<tag-name>.",
 				Usage:             "integrations attach <name> <spec>",
 				Handler:           ss.handleIntegrationsAttach,

@@ -81,7 +81,7 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		return err
 	}
 
-	fmt.Fprint(cc.Output, "\r\n")
+	cc.Write("\n")
 	return nil
 }
 

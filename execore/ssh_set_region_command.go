@@ -16,7 +16,7 @@ func (ss *SSHServer) handleSetRegionCommand(ctx context.Context, cc *exemenu.Com
 		for _, r := range available {
 			codes = append(codes, r.Code)
 		}
-		return cc.Errorf("usage: set-region <region-code>\r\navailable: %s", strings.Join(codes, ", "))
+		return cc.Errorf("usage: set-region <region-code>\navailable: %s", strings.Join(codes, ", "))
 	}
 
 	code := strings.ToLower(cc.Args[0])

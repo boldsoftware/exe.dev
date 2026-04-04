@@ -667,12 +667,12 @@ func (m *gameModel) View() string {
 	panel = append(panel, fmt.Sprintf("%s q    Quit%s", colorGray, colorReset))
 
 	// Top border of board
-	b.WriteString("\r\n")
+	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  %s╔════════════════════╗%s", colorBold, colorReset))
 	if len(panel) > 0 {
 		b.WriteString("  ")
 	}
-	b.WriteString("\r\n")
+	b.WriteString("\n")
 
 	// Board rows
 	for y := 0; y < boardHeight; y++ {
@@ -698,23 +698,23 @@ func (m *gameModel) View() string {
 			b.WriteString("  " + panel[panelIdx])
 		}
 
-		b.WriteString("\r\n")
+		b.WriteString("\n")
 	}
 
 	// Bottom border
 	b.WriteString(fmt.Sprintf("  %s╚════════════════════╝%s", colorBold, colorReset))
-	b.WriteString("\r\n")
+	b.WriteString("\n")
 
 	// Game over message
 	if m.gameOver {
-		b.WriteString("\r\n")
-		b.WriteString(fmt.Sprintf("  %s%s  ══ GAME OVER ══%s\r\n", colorBold, colorRed, colorReset))
-		b.WriteString(fmt.Sprintf("  %s  Score: %d%s\r\n", colorBold, m.score, colorReset))
-		b.WriteString(fmt.Sprintf("  %s  Press 'r' to restart%s\r\n", colorGray, colorReset))
-		b.WriteString(fmt.Sprintf("  %s  Press 'q' to quit%s\r\n", colorGray, colorReset))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  %s%s  ══ GAME OVER ══%s\n", colorBold, colorRed, colorReset))
+		b.WriteString(fmt.Sprintf("  %s  Score: %d%s\n", colorBold, m.score, colorReset))
+		b.WriteString(fmt.Sprintf("  %s  Press 'r' to restart%s\n", colorGray, colorReset))
+		b.WriteString(fmt.Sprintf("  %s  Press 'q' to quit%s\n", colorGray, colorReset))
 	}
 
-	b.WriteString("\r\n")
+	b.WriteString("\n")
 
 	return b.String()
 }

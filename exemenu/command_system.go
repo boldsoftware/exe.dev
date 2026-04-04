@@ -90,13 +90,13 @@ func (c *Command) Help(cc *CommandContext) error {
 	if cc.WantJSON() {
 		return c.helpJSON(cc)
 	}
-	cc.Writeln("\r\n\033[1;33mCommand: %s\033[0m", c.Name)
+	cc.Writeln("\n\033[1;33mCommand: %s\033[0m", c.Name)
 	if len(c.Aliases) > 0 {
 		cc.Writeln("Aliases: %s", strings.Join(c.Aliases, ", "))
 	}
-	cc.Writeln("\r\n%s", c.Description)
+	cc.Writeln("\n%s", c.Description)
 	if c.Usage != "" {
-		cc.Writeln("\r\n\033[1mUsage:\033[0m %s", c.Usage)
+		cc.Writeln("\n\033[1mUsage:\033[0m %s", c.Usage)
 	}
 	if c.FlagSetFunc != nil {
 		fs := c.FlagSetFunc()
@@ -111,7 +111,7 @@ func (c *Command) Help(cc *CommandContext) error {
 			hasFlags = true
 		})
 		if hasFlags {
-			cc.Writeln("\r\n\033[1mOptions:\033[0m")
+			cc.Writeln("\n\033[1mOptions:\033[0m")
 			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 			fs.VisitAll(func(f *flag.Flag) {
 				if f.Usage == "" {
@@ -124,25 +124,25 @@ func (c *Command) Help(cc *CommandContext) error {
 					}
 					usage = strings.TrimPrefix(usage, "[hidden] ")
 				}
-				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\r\n", f.Name, usage)
+				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\n", f.Name, usage)
 			})
 			tabw.Flush()
 		}
 	}
 	if len(c.Examples) > 0 {
-		cc.Writeln("\r\n\033[1mExamples:\033[0m")
+		cc.Writeln("\n\033[1mExamples:\033[0m")
 		for _, ex := range c.Examples {
 			cc.Writeln("  %s", ex)
 		}
 	}
 	if len(c.Subcommands) > 0 {
-		cc.Writeln("\r\n\033[1mSubcommands:\033[0m")
+		cc.Writeln("\n\033[1mSubcommands:\033[0m")
 		tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 		for _, sub := range c.Subcommands {
 			if sub.Hidden {
 				continue
 			}
-			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\r\n", sub.Name, sub.Description)
+			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\n", sub.Name, sub.Description)
 		}
 		tabw.Flush()
 	}
@@ -307,21 +307,15 @@ func (ctx *CommandContext) WriteJSON(x any) {
 		enc.SetIndent("", "  ")
 	}
 	if err := enc.Encode(x); err != nil {
-		fmt.Fprintf(ctx.Output, "failed to marshal JSON: %v\r\n", err)
+		fmt.Fprintf(ctx.Output, "failed to marshal JSON: %v\n", err)
 		return
 	}
-	data := buf.Bytes()
-	if ctx.IsInteractive() {
-		// Encoder.Encode adds a trailing \n; replace with \r\n for terminals.
-		data = bytes.TrimSuffix(data, []byte("\n"))
-		data = append(data, '\r', '\n')
-	}
-	ctx.Output.Write(data)
+	ctx.Output.Write(buf.Bytes())
 }
 
 func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, err error, slogDetails ...any) {
 	if cc.DevMode {
-		cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", err)
+		cc.Write("\033[1;31mRaw error (dev only):\n%v\033[0m\n\n", err)
 	}
 	traceID := tracing.TraceIDFromContext(ctx)
 	if traceID == "" {
@@ -375,15 +369,15 @@ func (ctx *CommandContext) WriteError(message string, args ...any) {
 		ctx.WriteJSON(errorOutput)
 		return
 	}
-	ctx.Write("\033[1;31m"+message+"\033[0m\r\n", args...)
+	ctx.Writeln("\033[1;31m"+message+"\033[0m", args...)
 }
 
-// Writeln writes a line with carriage return and newline
+// Writeln writes a line terminated by a newline.
 func (ctx *CommandContext) Writeln(format string, args ...any) {
 	if ctx.WantJSON() {
 		return
 	}
-	fmt.Fprintf(ctx.Output, format+"\r\n", args...)
+	fmt.Fprintf(ctx.Output, format+"\n", args...)
 }
 
 // ReadLine reads a line from the terminal (interactive mode only)
@@ -493,7 +487,7 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		if cmd.Hidden {
 			hidden = " [hidden]"
 		}
-		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\r\n", nameStr, cmd.Description, hidden)
+		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\n", nameStr, cmd.Description, hidden)
 
 		// Show subcommands if any exist
 		for _, sub := range cmd.Subcommands {
@@ -505,7 +499,7 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 			if sub.Hidden {
 				subHidden = " [hidden]"
 			}
-			fmt.Fprintf(tabw, "    \033[2m%s\033[0m\t    %s%s\r\n", subNameStr, sub.Description, subHidden)
+			fmt.Fprintf(tabw, "    \033[2m%s\033[0m\t    %s%s\n", subNameStr, sub.Description, subHidden)
 		}
 	}
 	tabw.Flush()

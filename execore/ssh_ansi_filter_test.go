@@ -22,7 +22,7 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 	shellDirectWriter := &shellOutput
 
 	// Create test content with ANSI codes (like what help command would output)
-	testContentWithANSI := "\033[1;33mCommand: help\033[0m\r\n\033[1mUsage:\033[0m show help\r\n\033[32mGreen text\033[0m"
+	testContentWithANSI := "\033[1;33mCommand: help\033[0m\n\033[1mUsage:\033[0m show help\n\033[32mGreen text\033[0m"
 
 	// Write to exec mode (should filter ANSI)
 	execFilterWriter.Write([]byte(testContentWithANSI))
@@ -63,9 +63,9 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 		Description: "Test command that outputs ANSI codes",
 		Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 			// Output content with ANSI codes like a real command would
-			cc.Write("\033[1;32mSuccess:\033[0m Command executed\r\n")
-			cc.Write("Regular text\r\n")
-			cc.Write("\033[31mError-like text\033[0m\r\n")
+			cc.Writeln("\033[1;32mSuccess:\033[0m Command executed")
+			cc.Writeln("Regular text")
+			cc.Writeln("\033[31mError-like text\033[0m")
 			return nil
 		},
 	}
@@ -173,7 +173,7 @@ func TestANSIFilterWriterDirectly(t *testing.T) {
 		},
 		{
 			name:     "real command output example",
-			input:    "\033[1;33mCommand: help\033[0m\r\n\033[1mUsage:\033[0m show help",
+			input:    "\033[1;33mCommand: help\033[0m\n\033[1mUsage:\033[0m show help",
 			expected: "Command: help\nUsage: show help",
 		},
 	}

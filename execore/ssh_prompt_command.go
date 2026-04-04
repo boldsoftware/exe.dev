@@ -138,22 +138,20 @@ type terminalOutput struct {
 }
 
 func (o *terminalOutput) WriteText(text string) {
-	text = strings.ReplaceAll(text, "\n", "\r\n")
-	o.cc.Write("\033[0m%s\r\n", text)
+	o.cc.Writeln("\033[0m%s", text)
 }
 
 func (o *terminalOutput) WriteToolCall(name, input string) {
-	o.cc.Write("\033[2m⚡ %s: %s\033[0m\r\n", name, input)
+	o.cc.Writeln("\033[2m⚡ %s: %s\033[0m", name, input)
 }
 
 func (o *terminalOutput) WriteToolResult(name, result string, isError bool) {
 	if isError {
-		result = strings.ReplaceAll(result, "\n", "\r\n")
-		o.cc.Write("\033[31m✗ %s: %s\033[0m\r\n", name, truncateForTerminal(result, 500))
+		o.cc.Writeln("\033[31m✗ %s: %s\033[0m", name, truncateForTerminal(result, 500))
 	} else {
 		lines := strings.Count(result, "\n")
 		if lines > 5 {
-			o.cc.Write("\033[2m  (%d lines)\033[0m\r\n", lines)
+			o.cc.Writeln("\033[2m  (%d lines)\033[0m", lines)
 		}
 	}
 }
@@ -162,13 +160,19 @@ func (o *terminalOutput) PromptUser(prompt string) (string, error) {
 	if o.cc.Terminal == nil {
 		return "", fmt.Errorf("not interactive")
 	}
-	prompt = strings.ReplaceAll(prompt, "\n", "\r\n")
+	// SetPrompt doesn't handle newlines (no CRLF translation, breaks cursor
+	// tracking). Print leading lines via Writeln and only set the final line
+	// as the prompt.
+	if i := strings.LastIndex(prompt, "\n"); i >= 0 {
+		o.cc.Writeln("%s", prompt[:i])
+		prompt = prompt[i+1:]
+	}
 	o.cc.SetPrompt(prompt)
 	return o.cc.ReadLine()
 }
 
 func (o *terminalOutput) WriteStatus(text string) {
-	o.cc.Write("\033[2m%s\033[0m\r\n", text)
+	o.cc.Writeln("\033[2m%s\033[0m", text)
 }
 
 func truncateForTerminal(s string, maxLen int) string {

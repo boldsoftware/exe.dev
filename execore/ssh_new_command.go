@@ -269,7 +269,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Show creation message with proper formatting
-	cc.Write("Creating \033[1m%s\033[0m using image \033[1m%s\033[0m...\r\n",
+	cc.Writeln("Creating \033[1m%s\033[0m using image \033[1m%s\033[0m...",
 		boxName, displayImage)
 
 	// Create channels for progress updates and completion
@@ -344,7 +344,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
 	// This makes the readline prompt visible in the repl ui.
 	if showSpinner {
-		cc.Write("\r\n\033[1A")
+		cc.Write("\n\033[1A")
 	}
 
 	shelleyConf, err := ss.makeShelleyConfig(boxName)
@@ -798,29 +798,29 @@ done:
 		[3]string{"SSH", "", details.SSHCommand}, // show SSH last, to make it most prominent
 	)
 	if cc.IsInteractive() {
-		cc.Write("Ready in %.1fs!\r\n\r\n", totalTime.Seconds())
+		cc.Write("Ready in %.1fs!\n\n", totalTime.Seconds())
 		for _, svc := range services {
 			parenthetical := ""
 			if svc[1] != "" {
 				parenthetical = " \033[2m(" + svc[1] + ")\033[0m"
 			}
-			cc.Write("\033[1m%s\033[0m%s\r\n%s\r\n\r\n", svc[0], parenthetical, svc[2])
+			cc.Write("\033[1m%s\033[0m%s\n%s\n\n", svc[0], parenthetical, svc[2])
 		}
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
-		cc.Write("\r\n")
+		cc.Write("\n")
 		for _, svc := range services {
 			parenthetical := ""
 			if svc[1] != "" {
 				parenthetical = " (" + svc[1] + ")"
 			}
-			cc.Write("%s%s\r\n%s\r\n\r\n", svc[0], parenthetical, svc[2])
+			cc.Write("%s%s\n%s\n\n", svc[0], parenthetical, svc[2])
 		}
 	}
 
 	// If prompt was provided, run it through Shelley
 	if prompt != "" {
-		cc.Write("\r\nSending prompt to Shelley...\r\n\r\n")
+		cc.Write("\nSending prompt to Shelley...\n\n")
 
 		// Get the box and SSH details for Shelley integration
 		var box *exedb.Box
@@ -847,9 +847,9 @@ done:
 			// We write out the error but don't fail.
 			cc.WriteError("Error running Shelley prompt: %v", err)
 			url := ss.server.shelleyURL(box.Name)
-			cc.Write("Connect to Shelly at %s\r\n", url)
+			cc.Writeln("Connect to Shelly at %s", url)
 		}
-		cc.Write("\r\n")
+		cc.Write("\n")
 	}
 
 	return nil

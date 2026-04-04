@@ -77,9 +77,9 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	if deleteMode {
-		cc.Write("Removed tag %q from %s\r\n", tagName, vmName)
+		cc.Writeln("Removed tag %q from %s", tagName, vmName)
 	} else {
-		cc.Write("Added tag %q to %s\r\n", tagName, vmName)
+		cc.Writeln("Added tag %q to %s", tagName, vmName)
 	}
 	return nil
 }

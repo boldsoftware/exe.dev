@@ -245,7 +245,7 @@ func (ss *SSHServer) handleShelleyPrompt(ctx context.Context, cc *exemenu.Comman
 	model := shelleyDefaultModel
 	if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, prompt, shelleyBaseURL, model); err != nil {
 		cc.WriteError("Error running Shelley prompt: %v", err)
-		cc.Write("Connect to Shelley at %s\r\n", shelleyBaseURL)
+		cc.Writeln("Connect to Shelley at %s", shelleyBaseURL)
 	}
 
 	return nil

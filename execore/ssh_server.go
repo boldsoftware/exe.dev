@@ -580,6 +580,9 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	ss.runMainShellWithReadline(shell, publicKey, user)
 }
 
+// displayWelcomeTip writes directly to the raw session with explicit \r\n,
+// because it runs before the term.Terminal (which handles CRLF translation)
+// is created.
 func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User) {
 	// Check what the user has done so far to determine what tips to show
 	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
@@ -692,7 +695,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		line, err := ss.readLineWithCompletion(terminal, replPrompt, user, publicKey, s)
 		switch {
 		case err == io.EOF:
-			fmt.Fprint(s, "Goodbye!\r\n")
+			fmt.Fprintf(terminal, "Goodbye!\n")
 			return
 		case err != nil:
 			return
@@ -706,7 +709,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		case err == errContinuationCancelled:
 			continue
 		case err == io.EOF:
-			fmt.Fprint(s, "Goodbye!\r\n")
+			fmt.Fprintf(terminal, "Goodbye!\n")
 			return
 		case err != nil:
 			return
@@ -731,7 +734,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 
 		parts, err := shlex.Split(line, true)
 		if err != nil {
-			fmt.Fprintf(s, "Error parsing command: %v\r\n", err)
+			fmt.Fprintf(terminal, "Error parsing command: %v\n", err)
 			continue
 		}
 		if len(parts) == 0 {
@@ -742,7 +745,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			User:       sessionUser,
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
-			Output:     s,
+			Output:     terminal,
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
 			DevMode:    ss.server.env.ReplDev,
@@ -1755,7 +1758,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, prompt stri
 				Region: user.Region,
 			},
 			PublicKey:  publicKey,
-			Output:     s,
+			Output:     terminal,
 			SSHSession: s,
 			Terminal:   terminal,
 			DevMode:    ss.server.env.ReplDev,
@@ -1855,14 +1858,14 @@ func longestCommonPrefix(strs []string) string {
 
 // showCompletions displays multiple completion options
 func (ss *SSHServer) showCompletions(terminal *term.Terminal, completions []string) {
-	terminal.Write([]byte("\r\n"))
+	fmt.Fprintf(terminal, "\n")
 	for i, completion := range completions {
-		terminal.Write([]byte(completion))
+		fmt.Fprintf(terminal, "%s", completion)
 		if i < len(completions)-1 {
-			terminal.Write([]byte("  "))
+			fmt.Fprintf(terminal, "  ")
 		}
 	}
-	terminal.Write([]byte("\r\n"))
+	fmt.Fprintf(terminal, "\n")
 }
 
 // normalizeBoxName extracts the box name from user input.

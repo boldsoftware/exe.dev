@@ -84,8 +84,8 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 		return err
 	}
 
-	cc.Write("🐌 Connected to Shelley\r\n")
-	cc.Write("🐌 Follow along at %s\r\n\r\n", shelleyUrl)
+	cc.Writeln("🐌 Connected to Shelley")
+	cc.Write("🐌 Follow along at %s\n\n", shelleyUrl)
 
 	// Stream the conversation and display agent messages
 	return ss.streamShelleyConversation(ctx, httpClient, conversationID, cc, box.Name, userID)
@@ -253,7 +253,7 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 						continue
 					}
 					if agentMsg.Text != "" {
-						cc.Write("🤖 %s\r\n", strings.TrimSpace(agentMsg.Text))
+						cc.Writeln("🤖 %s", strings.TrimSpace(agentMsg.Text))
 					}
 
 					// Check if this is end of turn
@@ -276,18 +276,18 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 					for _, content := range llmData.Content {
 						if content.Type == 2 && content.Text != "" {
 							// Text content
-							cc.Write("🤖 %s\r\n", strings.TrimSpace(content.Text))
+							cc.Writeln("🤖 %s", strings.TrimSpace(content.Text))
 						} else if content.Type == 5 && content.ToolName != "" {
 							// Tool use (Type 5 = ContentTypeToolUse)
-							cc.Write("🛠️ Calling '%s'...\r\n", content.ToolName)
+							cc.Writeln("🛠️ Calling '%s'...", content.ToolName)
 						}
 					}
 
 					// Check if this message marks end of turn
 					if llmData.EndOfTurn {
-						cc.Write("🏁 Shelley finished its turn. Continue the conversation at\r\n")
+						cc.Writeln("🏁 Shelley finished its turn. Continue the conversation at")
 						url := ss.server.shelleyURL(boxName)
-						cc.Write("  %s\r\n", url)
+						cc.Writeln("  %s", url)
 						done <- nil
 						return
 					}

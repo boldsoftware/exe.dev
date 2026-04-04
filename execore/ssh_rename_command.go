@@ -27,7 +27,7 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 
 	// Check if renaming to the same name
 	if oldName == newName {
-		cc.Write("%s is already named %s\r\n", oldName, newName)
+		cc.Writeln("%s is already named %s", oldName, newName)
 		return nil
 	}
 
@@ -234,6 +234,6 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 		})
 		return nil
 	}
-	cc.Write("Renamed %s to %s\r\n", oldName, newName)
+	cc.Writeln("Renamed %s to %s", oldName, newName)
 	return nil
 }

@@ -135,8 +135,8 @@ func TestCommandContext_HelperMethods(t *testing.T) {
 
 	// Test Writeln
 	ctx.Writeln("Line %d", 1)
-	if !strings.Contains(output.String(), "Line 1\r\n") {
-		t.Errorf("Writeln() did not add carriage return and newline")
+	if !strings.Contains(output.String(), "Line 1\n") {
+		t.Errorf("Writeln() did not add newline")
 	}
 
 	// Test non-interactive context

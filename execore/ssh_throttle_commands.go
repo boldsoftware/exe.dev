@@ -269,12 +269,16 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 
 	if show {
 		current := desiredstate.ParseOverrides(derefStr(box.CgroupOverrides))
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"vm": boxName, "overrides": current})
+			return nil
+		}
 		if len(current) == 0 {
-			fmt.Fprintf(cc.Output, "No cgroup overrides for VM %s\r\n", boxName)
+			cc.Writeln("No cgroup overrides for VM %s", boxName)
 		} else {
-			fmt.Fprintf(cc.Output, "Cgroup overrides for VM %s:\r\n", boxName)
+			cc.Writeln("Cgroup overrides for VM %s:", boxName)
 			for _, s := range current {
-				fmt.Fprintf(cc.Output, "  %s: %s\r\n", s.Path, s.Value)
+				cc.Writeln("  %s: %s", s.Path, s.Value)
 			}
 		}
 		return nil
@@ -288,7 +292,11 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 		if err != nil {
 			return cc.Errorf("failed to clear overrides: %v", err)
 		}
-		fmt.Fprintf(cc.Output, "Cleared all cgroup overrides for VM %s\r\n", boxName)
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"vm": boxName, "overrides": []desiredstate.CgroupSetting{}})
+			return nil
+		}
+		cc.Writeln("Cleared all cgroup overrides for VM %s", boxName)
 		return nil
 	}
 
@@ -308,12 +316,16 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("failed to set overrides: %v", err)
 	}
 
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{"vm": boxName, "overrides": merged})
+		return nil
+	}
 	if len(merged) == 0 {
-		fmt.Fprintf(cc.Output, "Cleared all cgroup overrides for VM %s\r\n", boxName)
+		cc.Writeln("Cleared all cgroup overrides for VM %s", boxName)
 	} else {
-		fmt.Fprintf(cc.Output, "Updated cgroup overrides for VM %s:\r\n", boxName)
+		cc.Writeln("Updated cgroup overrides for VM %s:", boxName)
 		for _, s := range merged {
-			fmt.Fprintf(cc.Output, "  %s: %s\r\n", s.Path, s.Value)
+			cc.Writeln("  %s: %s", s.Path, s.Value)
 		}
 	}
 	return nil
@@ -369,12 +381,16 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 
 	if show {
 		current := desiredstate.ParseOverrides(derefStr(user.CgroupOverrides))
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"user": user.Email, "user_id": user.UserID, "overrides": current})
+			return nil
+		}
 		if len(current) == 0 {
-			fmt.Fprintf(cc.Output, "No cgroup overrides for user %s (%s)\r\n", user.Email, user.UserID)
+			cc.Writeln("No cgroup overrides for user %s (%s)", user.Email, user.UserID)
 		} else {
-			fmt.Fprintf(cc.Output, "Cgroup overrides for user %s (%s):\r\n", user.Email, user.UserID)
+			cc.Writeln("Cgroup overrides for user %s (%s):", user.Email, user.UserID)
 			for _, s := range current {
-				fmt.Fprintf(cc.Output, "  %s: %s\r\n", s.Path, s.Value)
+				cc.Writeln("  %s: %s", s.Path, s.Value)
 			}
 		}
 		return nil
@@ -388,7 +404,11 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 		if err != nil {
 			return cc.Errorf("failed to clear overrides: %v", err)
 		}
-		fmt.Fprintf(cc.Output, "Cleared all cgroup overrides for user %s (%s)\r\n", user.Email, user.UserID)
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"user": user.Email, "user_id": user.UserID, "overrides": []desiredstate.CgroupSetting{}})
+			return nil
+		}
+		cc.Writeln("Cleared all cgroup overrides for user %s (%s)", user.Email, user.UserID)
 		return nil
 	}
 
@@ -408,12 +428,16 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 		return cc.Errorf("failed to set overrides: %v", err)
 	}
 
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{"user": user.Email, "user_id": user.UserID, "overrides": merged})
+		return nil
+	}
 	if len(merged) == 0 {
-		fmt.Fprintf(cc.Output, "Cleared all cgroup overrides for user %s (%s)\r\n", user.Email, user.UserID)
+		cc.Writeln("Cleared all cgroup overrides for user %s (%s)", user.Email, user.UserID)
 	} else {
-		fmt.Fprintf(cc.Output, "Updated cgroup overrides for user %s (%s):\r\n", user.Email, user.UserID)
+		cc.Writeln("Updated cgroup overrides for user %s (%s):", user.Email, user.UserID)
 		for _, s := range merged {
-			fmt.Fprintf(cc.Output, "  %s: %s\r\n", s.Path, s.Value)
+			cc.Writeln("  %s: %s", s.Path, s.Value)
 		}
 	}
 	return nil

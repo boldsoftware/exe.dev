@@ -475,7 +475,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true, // people who want this will find it; no need to clutter help
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				// ANSI escape sequence to clear screen and move cursor home
-				fmt.Fprint(cc.Output, "\033[2J\033[H")
+				cc.Write("\033[2J\033[H")
 				return nil
 			},
 		},
@@ -493,7 +493,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "Greetings, human",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
-				fmt.Fprint(cc.Output, "Hello!\r\n")
+				cc.Writeln("Hello!")
 				return nil
 			},
 		},
@@ -503,7 +503,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "She turned me into a VM",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
-				fmt.Fprint(cc.Output, "🦎\r\n")
+				cc.Writeln("🦎")
 				return nil
 			},
 		},
@@ -514,7 +514,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "No chicken is an island",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
-				fmt.Fprint(cc.Output, "🥚\r\n")
+				cc.Writeln("🥚")
 				return nil
 			},
 		},
@@ -525,7 +525,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "May flour",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
-				fmt.Fprint(cc.Output, "Nice try.\r\n")
+				cc.Writeln("Nice try.")
 				return nil
 			},
 		},
@@ -653,7 +653,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
-				fmt.Fprint(cc.Output, "Goodbye!\r\n")
+				cc.Writeln("Goodbye!")
 				return io.EOF
 			},
 		},
@@ -718,9 +718,9 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	// General help
-	cc.Writeln("\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n")
+	cc.Writeln("\n\033[1;33mEXE.DEV\033[0m commands:\n")
 	ss.commands.Help(cc)
-	cc.Writeln("\r\nRun \033[1mhelp <command>\033[0m for more details\r\n")
+	cc.Writeln("\nRun \033[1mhelp <command>\033[0m for more details\n")
 	return nil
 }
 
@@ -856,7 +856,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	if len(boxes) == 0 && len(teamBoxes) == 0 {
-		cc.Write("No VMs found. Create one with 'new'.\r\n")
+		cc.Writeln("No VMs found. Create one with 'new'.")
 		return nil
 	}
 
@@ -879,7 +879,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if b.CreatedAt != nil {
 				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[36m%s\033[0m\r\n",
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[36m%s\033[0m\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
@@ -899,7 +899,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if b.CreatedAt != nil {
 				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[90m%s\033[0m\r\n",
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[90m%s\033[0m\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
@@ -915,7 +915,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 
 	// Show user's own VMs
 	if len(boxes) > 0 {
-		cc.Write("\033[1;36mYour VMs:\033[0m\r\n")
+		cc.Writeln("\033[1;36mYour VMs:\033[0m")
 	}
 	for _, b := range boxes {
 		status := container.ContainerStatus(b.Status)
@@ -931,12 +931,12 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				cc.Write(" \033[36m#%s\033[0m", t)
 			}
 		}
-		cc.Write("\r\n")
+		cc.Write("\n")
 	}
 
 	// Show team VMs when -a is passed
 	if len(teamBoxes) > 0 {
-		cc.Write("\r\n\033[1;33mTeam VMs:\033[0m\r\n")
+		cc.Writeln("\n\033[1;33mTeam VMs:\033[0m")
 		for _, b := range teamBoxes {
 			status := container.ContainerStatus(b.Status)
 			cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", ss.server.env.BoxSub(b.Name), statusColor(status), status)
@@ -952,7 +952,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				}
 			}
 			cc.Write(" \033[90mby %s\033[0m", b.CreatorEmail)
-			cc.Write("\r\n")
+			cc.Write("\n")
 		}
 	}
 
@@ -979,7 +979,7 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 	// Check if user's plan grants VM run
 	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMRun, cc.User.ID) {
 		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-		return cc.Errorf("Billing Required\r\n\r\nYou need active billing to restart a VM.\r\n\r\nVisit: %s", billingURL)
+		return cc.Errorf("Billing Required\n\nYou need active billing to restart a VM.\n\nVisit: %s", billingURL)
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -1187,7 +1187,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if len(deleted) > 0 {
-		cc.Write("\033[1;32m%d VM(s) deleted successfully\033[0m\r\n", len(deleted))
+		cc.Writeln("\033[1;32m%d VM(s) deleted successfully\033[0m", len(deleted))
 	}
 	return nil
 }
@@ -1783,7 +1783,7 @@ doneParsingSSHFlags:
 	slog.InfoContext(ctx, "ssh command connecting to box", "addr", sshAddr, "user", boxSSHUser, "ctrhost", box.Ctrhost)
 
 	if cc.IsInteractive() {
-		cc.Write("\033[2mTip: connecting directly with \"ssh %s\" is typically faster.\033[0m\r\n", ss.server.env.BoxDest(box.Name))
+		cc.Writeln("\033[2mTip: connecting directly with \"ssh %s\" is typically faster.\033[0m", ss.server.env.BoxDest(box.Name))
 	}
 
 	sshConfig := &ssh.ClientConfig{

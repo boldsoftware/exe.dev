@@ -185,7 +185,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 
 	// Show copying message
 	if !cc.WantJSON() {
-		cc.Write("Copying \033[1m%s\033[0m to \033[1m%s\033[0m...\r\n", sourceVMName, newName)
+		cc.Writeln("Copying \033[1m%s\033[0m to \033[1m%s\033[0m...", sourceVMName, newName)
 	}
 
 	// Start timing
@@ -196,7 +196,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 
 	// Reserve space for spinner
 	if showSpinner {
-		cc.Write("\r\n\033[1A")
+		cc.Write("\n\033[1A")
 	}
 
 	// Generate SSH keys for the new instance
@@ -450,10 +450,10 @@ done:
 	}
 
 	// Show completion message
-	cc.Write("Created \033[1m%s\033[0m from \033[1m%s\033[0m in %.1fs\r\n", newName, sourceVMName, totalTime.Seconds())
-	cc.Write("\r\n")
-	cc.Write("\033[1m%s\033[0m\r\n\r\n", ss.server.boxProxyAddress(newName))
-	cc.Write("ssh \033[1m%s\033[0m\r\n\r\n", ss.server.env.BoxDest(newName))
+	cc.Write("Created \033[1m%s\033[0m from \033[1m%s\033[0m in %.1fs\n", newName, sourceVMName, totalTime.Seconds())
+	cc.Write("\n")
+	cc.Write("\033[1m%s\033[0m\n\n", ss.server.boxProxyAddress(newName))
+	cc.Write("ssh \033[1m%s\033[0m\n\n", ss.server.env.BoxDest(newName))
 
 	return nil
 }
