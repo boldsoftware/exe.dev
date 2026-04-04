@@ -357,6 +357,23 @@ func (sf *SlackFeed) PlanTierChanged(ctx context.Context, email, oldTierName, ne
 	}()
 }
 
+// DebugSQLExecuted notifies the ops channel that someone ran a raw write SQL
+// query from the debug UI. The actual query is not sent for privacy; traceID
+// is included so ops can cross-reference the logs for the full query.
+func (sf *SlackFeed) DebugSQLExecuted(ctx context.Context, who, reason, traceID string) {
+	message := fmt.Sprintf("debug SQL write by `%s` (trace `%s`): %s", who, traceID, reason)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack ops channel", "message", message)
+		return
+	}
+	go func() {
+		_, _, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackOpsChannel, slack.MsgOptionText(message, false))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post debug SQL notification to ops channel", "error", err)
+		}
+	}()
+}
+
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
 func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {

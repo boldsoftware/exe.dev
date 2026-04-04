@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><title>SQL Query</title>
+{{template "base-head"}}
+<style>
+textarea, input[type=text] { font: inherit; width: 100%; box-sizing: border-box; }
+.results { overflow-x: auto; }
+.results table { font-size: 12px; }
+.error { color: #c00; }
+.row-count { color: #666; margin: 4px 0; }
+.write-label { color: #dc3545; font-weight: bold; }
+#reason-row { display: none; margin-top: 4px; }
+</style>
+</head><body>
+<h1>SQL Query</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/sql-query">sql-query</a></p>
+<form id="sql-form" method="post">
+<textarea name="query" rows="6" placeholder="{{if .}}{{.TablesPlaceholder}}{{end}}">{{if .}}{{.Query}}{{end}}</textarea>
+<div style="margin-top:4px;">
+<label><input type="checkbox" id="write-cb" name="write" value="1" {{if .}}{{if .Write}}checked{{end}}{{end}}> <span class="write-label">Allow writes (notifies Slack)</span></label>
+</div>
+<div id="reason-row"{{if .}}{{if .Write}} style="display:block;"{{end}}{{end}}>
+<label>Reason: <input type="text" name="reason" placeholder="i solemnly swear i am up to no good" value="{{if .}}{{.Reason}}{{end}}"></label>
+</div>
+<button type="submit" class="save-btn" style="margin-top:4px;">Run</button>
+</form>
+<script>
+// Toggle the reason field visibility based on the write checkbox.
+(function() {
+    const cb = document.getElementById('write-cb');
+    const row = document.getElementById('reason-row');
+    cb.addEventListener('change', function() {
+        row.style.display = cb.checked ? 'block' : 'none';
+    });
+})();
+// Cmd/Ctrl+Enter in the query textarea submits the form.
+document.querySelector('textarea[name=query]').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        document.getElementById('sql-form').requestSubmit();
+    }
+});
+// Submit via fetch so we can set X-Requested-With for CSRF defense.
+// A cross-origin HTML form POST cannot set custom headers without a CORS preflight.
+document.getElementById('sql-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const resp = await fetch(window.location.pathname, {
+        method: 'POST',
+        headers: {'X-Requested-With': 'fetch'},
+        body: new FormData(form),
+    });
+    const html = await resp.text();
+    document.open();
+    document.write(html);
+    document.close();
+});
+</script>
+{{if .}}
+{{if .Error}}<p class="error">Error: {{.Error}}</p>{{end}}
+{{if .Columns}}
+<p class="row-count">{{len .Rows}} row{{if ne (len .Rows) 1}}s{{end}}{{if .Truncated}} (truncated to first 1000){{end}}</p>
+<div class="results">
+<table>
+<tr>{{range .Columns}}<th>{{.}}</th>{{end}}</tr>
+{{range .Rows}}<tr>{{range .}}<td>{{.}}</td>{{end}}</tr>{{end}}
+</table>
+</div>
+{{else if and .Write (not .Error)}}
+<p class="row-count">{{.RowsAffected}} row{{if ne .RowsAffected 1}}s{{end}} affected</p>
+{{end}}
+{{end}}
+</body></html>

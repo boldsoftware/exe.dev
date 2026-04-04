@@ -47,7 +47,9 @@ import (
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	"exe.dev/publicips"
 	"exe.dev/region"
+	"exe.dev/sqlite"
 	"exe.dev/stage"
+	"exe.dev/tracing"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"tailscale.com/client/local"
@@ -164,7 +166,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/regions", s.handleDebugRegions)
 	mux.HandleFunc("GET /debug/usage-api", s.handleDebugUsageAPI)
 
-	// SQL query stream
+	// SQL query tool & stream
+	mux.HandleFunc("GET /debug/sql-query", s.handleDebugSQLQueryForm)
+	mux.HandleFunc("POST /debug/sql-query", s.handleDebugSQLQueryExec)
 	mux.Handle("GET /debug/sql", &s.db.Sniff)
 
 	// pprof endpoints
@@ -9662,4 +9666,189 @@ func fmtUint64OrDash(v uint64) string {
 		return "\u2014"
 	}
 	return fmt.Sprintf("%d", v)
+}
+
+// formatSQLValue renders a raw SQL column value for display in the debug SQL
+// results table. []byte values are rendered with %q so text blobs remain
+// legible; blobs longer than 32 bytes are truncated to first and last 16 bytes
+// with a length indicator.
+func formatSQLValue(v any) string {
+	if v == nil {
+		return "NULL"
+	}
+	if b, ok := v.([]byte); ok {
+		if len(b) <= 32 {
+			return fmt.Sprintf("%q (%d bytes)", b, len(b))
+		}
+		return fmt.Sprintf("%q…%q (%d bytes)", b[:16], b[len(b)-16:], len(b))
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// debugSQLPage is the template data for /debug/sql-query.
+type debugSQLPage struct {
+	Query             string
+	Write             bool
+	Reason            string
+	TablesPlaceholder string
+	Columns           []string
+	Rows              [][]string
+	Error             string
+	RowsAffected      int
+	Truncated         bool
+}
+
+// debugSQLTablesPlaceholder returns a comma-separated list of user table
+// names prefixed with "Tables: ", suitable for use as a textarea placeholder.
+// Errors are logged and swallowed — the placeholder is purely decorative.
+func (s *Server) debugSQLTablesPlaceholder(ctx context.Context) string {
+	var tables []string
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return err
+			}
+			tables = append(tables, name)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		s.slog().WarnContext(ctx, "debug sql: listing tables failed", "error", err)
+		return ""
+	}
+	if len(tables) == 0 {
+		return ""
+	}
+	return "Tables: " + strings.Join(tables, ", ")
+}
+
+// handleDebugSQLQueryForm renders the SQL query tool page.
+func (s *Server) handleDebugSQLQueryForm(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if tailscaleUser(ctx, r.RemoteAddr) == "" && !s.env.WebDev {
+		http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
+		return
+	}
+	s.renderDebugTemplate(ctx, w, "sql-query.html", debugSQLPage{
+		TablesPlaceholder: s.debugSQLTablesPlaceholder(ctx),
+	})
+}
+
+// handleDebugSQLQueryExec runs a raw SQL query and returns the results.
+// Read-only queries use a reader connection; write queries require the "write"
+// checkbox plus a human-readable reason and use the writer connection. All
+// queries are logged; write attempts trigger a Slack notification (success or
+// failure) with the trace_id for log cross-reference.
+func (s *Server) handleDebugSQLQueryExec(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	// Require X-Requested-With as a lightweight CSRF check: cross-origin
+	// HTML form POSTs cannot set custom headers without a CORS preflight.
+	if r.Header.Get("X-Requested-With") == "" {
+		http.Error(w, "missing X-Requested-With header", http.StatusForbidden)
+		return
+	}
+	who := tailscaleUser(ctx, r.RemoteAddr)
+	if who == "" {
+		if !s.env.WebDev {
+			http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
+			return
+		}
+		who = "webdev"
+	}
+	query := strings.TrimSpace(r.FormValue("query"))
+	if query == "" {
+		http.Error(w, "query is required", http.StatusBadRequest)
+		return
+	}
+	allowWrite := r.FormValue("write") == "1"
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if allowWrite && reason == "" {
+		http.Error(w, "reason is required for write queries", http.StatusBadRequest)
+		return
+	}
+
+	const maxRows = 1000
+
+	data := debugSQLPage{
+		Query:             query,
+		Write:             allowWrite,
+		Reason:            reason,
+		TablesPlaceholder: s.debugSQLTablesPlaceholder(ctx),
+	}
+
+	scanRows := func(rows *sql.Rows) error {
+		var err error
+		data.Columns, err = rows.Columns()
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			if len(data.Rows) >= maxRows {
+				data.Truncated = true
+				break
+			}
+			vals := make([]any, len(data.Columns))
+			ptrs := make([]any, len(data.Columns))
+			for i := range vals {
+				ptrs[i] = &vals[i]
+			}
+			if err := rows.Scan(ptrs...); err != nil {
+				return err
+			}
+			row := make([]string, len(data.Columns))
+			for i, v := range vals {
+				row[i] = formatSQLValue(v)
+			}
+			data.Rows = append(data.Rows, row)
+		}
+		return rows.Err()
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	traceID := tracing.TraceIDFromContext(ctx)
+
+	var err error
+	if allowWrite {
+		s.slog().WarnContext(ctx, "debug SQL write query attempted", "who", who, "reason", reason, "query", query)
+		s.slackFeed.DebugSQLExecuted(ctx, who, reason, traceID)
+		err = s.db.Tx(queryCtx, func(ctx context.Context, tx *sqlite.Tx) error {
+			rows, err := tx.Rx.Query(query)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			if err := scanRows(rows); err != nil {
+				return err
+			}
+			if len(data.Columns) == 0 {
+				if err := tx.Rx.QueryRow("SELECT changes()").Scan(&data.RowsAffected); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	} else {
+		s.slog().InfoContext(ctx, "debug SQL query executed", "who", who, "query", query)
+		err = s.db.Rx(queryCtx, func(ctx context.Context, rx *sqlite.Rx) error {
+			rows, err := rx.Query(query)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return scanRows(rows)
+		})
+	}
+	if err != nil {
+		data.Error = err.Error()
+	}
+
+	s.renderDebugTemplate(ctx, w, "sql-query.html", data)
 }
