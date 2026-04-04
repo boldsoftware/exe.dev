@@ -182,3 +182,29 @@ func TestJoinContinuationLinesTransportError(t *testing.T) {
 		t.Errorf("expected transport error, got %v", err)
 	}
 }
+
+func TestJoinContinuationLinesHistory(t *testing.T) {
+	t.Parallel()
+	mock := &mockReadWriter{
+		toSend:       []byte("--flag1 val1 \\\r--flag2 val2\r"),
+		bytesPerRead: 1,
+	}
+	terminal := term.NewTerminal(mock, "> ")
+	// Simulate what ReadLine does: add the first line to history.
+	terminal.History.Add(`cmd \`)
+	got, err := joinContinuationLines(`cmd \`, terminal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "cmd --flag1 val1 --flag2 val2"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	// History should contain only the joined result, not the fragments.
+	if n := terminal.History.Len(); n != 1 {
+		t.Fatalf("history length = %d, want 1", n)
+	}
+	if h := terminal.History.At(0); h != want {
+		t.Errorf("history[0] = %q, want %q", h, want)
+	}
+}

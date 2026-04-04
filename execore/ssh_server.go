@@ -1632,6 +1632,12 @@ func endsWithContinuation(line string) bool {
 const contPrompt = "> "
 
 func joinContinuationLines(line string, terminal *term.Terminal) (string, error) {
+	if !endsWithContinuation(line) {
+		return line, nil
+	}
+	// Remove the first line's history entry; we'll replace all
+	// fragments with the joined result at the end.
+	terminal.History.RemoveLast()
 	for endsWithContinuation(line) {
 		line = strings.TrimRight(line, " \t")
 		line = line[:len(line)-1] // strip trailing backslash
@@ -1646,8 +1652,11 @@ func joinContinuationLines(line string, terminal *term.Terminal) (string, error)
 		case err != nil:
 			return "", err
 		}
+		// Remove the continuation fragment that ReadLine just added.
+		terminal.History.RemoveLast()
 		line += contLine
 	}
+	terminal.History.Add(line)
 	return line, nil
 }
 

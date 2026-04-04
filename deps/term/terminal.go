@@ -55,6 +55,10 @@ type History interface {
 	// index Len()-1 is the least-recently added entry.
 	// If index is < 0 or >= Len(), it panics.
 	At(idx int) string
+
+	// RemoveLast removes the most recently added entry.
+	// It is a no-op if the history is empty.
+	RemoveLast()
 }
 
 // Terminal contains the state for running a VT100 terminal that is capable of
@@ -1054,6 +1058,18 @@ func (s *stRingBuffer) Add(a string) {
 	if s.size < s.max {
 		s.size++
 	}
+}
+
+func (s *stRingBuffer) RemoveLast() {
+	if s.size == 0 {
+		return
+	}
+	s.entries[s.head] = ""
+	s.head--
+	if s.head < 0 {
+		s.head += s.max
+	}
+	s.size--
 }
 
 func (s *stRingBuffer) Len() int {
