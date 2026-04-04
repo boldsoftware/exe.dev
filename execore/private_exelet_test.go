@@ -420,6 +420,41 @@ func TestPrivateExelet(t *testing.T) {
 		}
 	})
 
+	t.Run("team exelet in different region overrides user region", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		nycRegion, _ := region.ByCode("nyc")
+
+		pdxExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		nycExelet := &exeletClient{addr: "tcp://exelet-nyc1-prod-01:9080", region: nycRegion}
+		nycExelet.up.Store(true)
+
+		server.exeletClients = map[string]*exeletClient{
+			pdxExelet.addr: pdxExelet,
+			nycExelet.addr: nycExelet,
+		}
+
+		// User is in PDX, team exelet is in NYC.
+		userID := createTestUser(t, server, "cross-region@example.com")
+		createTeam(t, server, "team-xregion", "Team Cross-Region", userID)
+
+		markPrivate(t, server, nycExelet.addr)
+		assignTeamExelet(t, server, "team-xregion", nycExelet.addr)
+
+		// Should land on the NYC team exelet despite user being in PDX.
+		for range 20 {
+			ec, _, err := server.selectExeletClient(ctx, userID)
+			if err != nil {
+				t.Fatalf("selectExeletClient: %v", err)
+			}
+			if ec.addr != nycExelet.addr {
+				t.Fatalf("team member landed on %s, want cross-region team exelet %s", ec.addr, nycExelet.addr)
+			}
+		}
+	})
+
 	t.Run("exeletAllowsUser unit tests", func(t *testing.T) {
 		t.Parallel()
 

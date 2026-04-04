@@ -4076,7 +4076,8 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
-		if client != nil && !client.regionAllowsUser(userRegion, userRegionInfo) {
+		// Team exelet assignments override region checks.
+		if client != nil && !teamExeletAddrs[maxHost] && !client.regionAllowsUser(userRegion, userRegionInfo) {
 			s.slog().DebugContext(ctx, "not selecting exelet because region requires match", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
 			client = nil
 		}
@@ -4130,7 +4131,7 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		usePreferred := len(teamExeletAddrs) == 0 || teamExeletAddrs[preferredAddr]
 		if usePreferred {
 			if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() &&
-				client.regionAllowsUser(userRegion, userRegionInfo) &&
+				(teamExeletAddrs[preferredAddr] || client.regionAllowsUser(userRegion, userRegionInfo)) &&
 				exeletAllowsUser(preferredAddr, privateExelets, teamExeletAddrs) {
 				s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
 				return client, preferredAddr, nil
@@ -4148,7 +4149,8 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		if !c.up.Load() {
 			continue
 		}
-		if !c.regionAllowsUser(userRegion, userRegionInfo) {
+		// Team exelet assignments override region checks.
+		if !teamExeletAddrs[c.addr] && !c.regionAllowsUser(userRegion, userRegionInfo) {
 			continue
 		}
 		if !exeletAllowsUser(c.addr, privateExelets, teamExeletAddrs) {
