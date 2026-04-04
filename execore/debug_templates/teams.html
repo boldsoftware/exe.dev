@@ -15,6 +15,13 @@ tr.shown td.details-control::before { content: '-'; }
 .member-table { width: 100%; margin: 5px 0; border-collapse: collapse; }
 .member-table th, .member-table td { padding: 4px 8px; font-size: 12px; border-bottom: 1px solid #eee; text-align: left; }
 .member-table th { background: #f5f5f5; }
+.exelet-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ddd; }
+.exelet-tag { display: inline-block; background: #e2e3e5; border-radius: 3px; padding: 2px 8px; margin: 2px; font-size: 0.85em; }
+.exelet-tag .remove-exelet { border: none; background: none; color: #dc3545; cursor: pointer; padding: 0 0 0 4px; font-size: 0.85em; }
+.exelet-assign { margin-top: 4px; display: inline-block; }
+.exelet-assign select { padding: 2px 4px; font-size: 0.85em; }
+.exelet-assign button { padding: 2px 8px; font-size: 0.85em; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; }
+.exelet-assign button:hover { background: #0056b3; }
 </style>
 </head><body>
 <h1>Teams</h1>
@@ -151,6 +158,32 @@ tr.shown td.details-control::before { content: '-'; }
 
 <script>
 var teamsTable;
+var allExelets = [];
+
+function formatExelets(d) {
+    var html = '<div class="exelet-section"><strong>Assigned Exelets:</strong> ';
+    if (d.exelet_addrs && d.exelet_addrs.length > 0) {
+        for (var i = 0; i < d.exelet_addrs.length; i++) {
+            html += '<span class="exelet-tag">' + d.exelet_addrs[i] +
+                '<button class="remove-exelet" data-teamid="' + d.team_id + '" data-address="' + d.exelet_addrs[i] + '" title="Remove">&times;</button>' +
+                '</span>';
+        }
+    } else {
+        html += '<em>None</em>';
+    }
+    if (allExelets.length > 0) {
+        html += '<div class="exelet-assign">' +
+            '<select class="exelet-select" data-teamid="' + d.team_id + '">';
+        for (var j = 0; j < allExelets.length; j++) {
+            var ex = allExelets[j];
+            var label = ex.address + (ex.is_private ? ' \uD83D\uDD12' : '');
+            html += '<option value="' + ex.address + '">' + label + '</option>';
+        }
+        html += '</select> <button class="assign-exelet-btn" data-teamid="' + d.team_id + '">Assign</button></div>';
+    }
+    html += '</div>';
+    return html;
+}
 
 function formatMembers(d) {
     if (!d.members || d.members.length === 0) {
@@ -195,7 +228,10 @@ $(document).ready(function() {
     teamsTable = $('#teamsTable').DataTable({
         ajax: {
             url: '/debug/teams?format=json',
-            dataSrc: ''
+            dataSrc: function(json) {
+                allExelets = json.exelets || [];
+                return json.teams || [];
+            }
         },
         pageLength: 50,
         order: [[3, 'desc']],
@@ -248,7 +284,7 @@ $(document).ready(function() {
             row.child.hide();
             tr.removeClass('shown');
         } else {
-            row.child(formatMembers(row.data())).show();
+            row.child(formatMembers(row.data()) + formatExelets(row.data())).show();
             tr.addClass('shown');
         }
     });
@@ -636,6 +672,53 @@ document.getElementById('ssoDeleteBtn').addEventListener('click', function() {
     }).catch(function(err) {
         alert('Failed to delete SSO: ' + err.message);
     });
+});
+
+// Assign exelet to team
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('assign-exelet-btn')) {
+        var teamId = e.target.dataset.teamid;
+        var select = e.target.parentElement.querySelector('.exelet-select');
+        var address = select.value;
+        if (!address) return;
+        var body = new URLSearchParams();
+        body.append('team_id', teamId);
+        body.append('address', address);
+        body.append('action', 'set');
+        fetch('/debug/exelets/set-team-exelet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+            teamsTable.ajax.reload(null, false);
+        }).catch(function(err) {
+            alert('Failed to assign exelet: ' + err.message);
+        });
+    }
+});
+
+// Remove exelet from team
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('remove-exelet')) {
+        var teamId = e.target.dataset.teamid;
+        var address = e.target.dataset.address;
+        if (!confirm('Remove ' + address + ' from this team?')) return;
+        var body = new URLSearchParams();
+        body.append('team_id', teamId);
+        body.append('address', address);
+        body.append('action', 'clear');
+        fetch('/debug/exelets/set-team-exelet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        }).then(function(resp) {
+            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+            teamsTable.ajax.reload(null, false);
+        }).catch(function(err) {
+            alert('Failed to remove exelet: ' + err.message);
+        });
+    }
 });
 </script>
 </body></html>

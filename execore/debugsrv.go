@@ -2843,32 +2843,26 @@ func formatInt64Ptr(v *int64) string {
 func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	type teamExeletInfo struct {
-		TeamID      string `json:"team_id"`
-		DisplayName string `json:"display_name"`
-	}
-
 	type exeletInfo struct {
-		Address       string           `json:"address"`
-		Hostname      string           `json:"hostname"`
-		Version       string           `json:"version"`
-		Available     bool             `json:"available"`
-		Status        string           `json:"status"`
-		IsPreferred   bool             `json:"is_preferred"`
-		IsPrivate     bool             `json:"is_private"`
-		Teams         []teamExeletInfo `json:"teams,omitempty"`
-		InstanceCount int              `json:"instance_count"`
-		InstanceLimit int              `json:"instance_limit"`
-		LoadAverage   string           `json:"load_average"`
-		MemFree       string           `json:"mem_free"`
-		SwapFree      string           `json:"swap_free"`
-		DiskFree      string           `json:"disk_free"`
-		RxRate        string           `json:"rx_rate"`
-		TxRate        string           `json:"tx_rate"`
-		Error         string           `json:"error,omitempty"`
-		DebugURL      string           `json:"debug_url"`
-		CgtopURL      string           `json:"cgtop_url"`
-		TierCount     int              `json:"tier_count"`
+		Address       string `json:"address"`
+		Hostname      string `json:"hostname"`
+		Version       string `json:"version"`
+		Available     bool   `json:"available"`
+		Status        string `json:"status"`
+		IsPreferred   bool   `json:"is_preferred"`
+		IsPrivate     bool   `json:"is_private"`
+		InstanceCount int    `json:"instance_count"`
+		InstanceLimit int    `json:"instance_limit"`
+		LoadAverage   string `json:"load_average"`
+		MemFree       string `json:"mem_free"`
+		SwapFree      string `json:"swap_free"`
+		DiskFree      string `json:"disk_free"`
+		RxRate        string `json:"rx_rate"`
+		TxRate        string `json:"tx_rate"`
+		Error         string `json:"error,omitempty"`
+		DebugURL      string `json:"debug_url"`
+		CgtopURL      string `json:"cgtop_url"`
+		TierCount     int    `json:"tier_count"`
 	}
 
 	// Get the preferred exelet setting
@@ -2879,22 +2873,6 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	if privAddrs, err := withRxRes0[[]string](s, ctx, (*exedb.Queries).ListPrivateExelets); err == nil {
 		for _, addr := range privAddrs {
 			privateExelets[addr] = true
-		}
-	}
-
-	// Build reverse map: exelet_addr -> []teamExeletInfo
-	allTeams, _ := withRxRes0[[]exedb.ListAllTeamsRow](s, ctx, (*exedb.Queries).ListAllTeams)
-	teamNames := make(map[string]string)
-	for _, t := range allTeams {
-		teamNames[t.TeamID] = t.DisplayName
-	}
-	exeletTeamMap := make(map[string][]teamExeletInfo)
-	if teamRows, err := withRxRes0[[]exedb.ListTeamExeletsRow](s, ctx, (*exedb.Queries).ListTeamExelets); err == nil {
-		for _, row := range teamRows {
-			exeletTeamMap[row.ExeletAddr] = append(exeletTeamMap[row.ExeletAddr], teamExeletInfo{
-				TeamID:      row.TeamID,
-				DisplayName: teamNames[row.TeamID],
-			})
 		}
 	}
 
@@ -2913,7 +2891,6 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				Version:     ec.client.Version(),
 				IsPreferred: addr == preferredAddr,
 				IsPrivate:   privateExelets[addr],
-				Teams:       exeletTeamMap[addr],
 			}
 			if u, err := url.Parse(addr); err == nil {
 				host := u.Hostname()
@@ -2989,11 +2966,9 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 
 	// HTML output
 	data := struct {
-		Exelets  []exeletInfo
-		AllTeams []exedb.ListAllTeamsRow
+		Exelets []exeletInfo
 	}{
-		Exelets:  exelets,
-		AllTeams: allTeams,
+		Exelets: exelets,
 	}
 
 	s.renderDebugTemplate(ctx, w, "exelets.html", data)
@@ -3126,7 +3101,8 @@ func (s *Server) handleDebugSetTeamExelet(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
 }
 
 // handleDebugExeletRecover restarts all VMs that should be running on a given exelet.
@@ -7044,6 +7020,11 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 			SSO                *ssoInfo     `json:"sso,omitempty"`
 			BillingAccountID   string       `json:"billing_account_id,omitempty"`
 			BillingOwnerUserID string       `json:"billing_owner_user_id,omitempty"`
+			ExeletAddrs        []string     `json:"exelet_addrs"`
+		}
+		type exeletEntry struct {
+			Address   string `json:"address"`
+			IsPrivate bool   `json:"is_private"`
 		}
 		var teamsJSON []teamInfo
 		for _, t := range teams {
@@ -7098,12 +7079,46 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			// Fetch assigned exelets for this team
+			if addrs, err := withRxRes1(s, ctx, (*exedb.Queries).ListTeamExeletsForTeam, t.TeamID); err == nil {
+				ti.ExeletAddrs = addrs
+			}
+			if ti.ExeletAddrs == nil {
+				ti.ExeletAddrs = []string{}
+			}
 			teamsJSON = append(teamsJSON, ti)
 		}
+
+		// Build list of all known exelets with private status.
+		privateExelets := make(map[string]bool)
+		if privAddrs, err := withRxRes0[[]string](s, ctx, (*exedb.Queries).ListPrivateExelets); err == nil {
+			for _, addr := range privAddrs {
+				privateExelets[addr] = true
+			}
+		}
+		var allExelets []exeletEntry
+		for addr := range s.exeletClients {
+			allExelets = append(allExelets, exeletEntry{
+				Address:   addr,
+				IsPrivate: privateExelets[addr],
+			})
+		}
+		sort.Slice(allExelets, func(i, j int) bool {
+			return allExelets[i].Address < allExelets[j].Address
+		})
+
+		result := struct {
+			Teams   []teamInfo    `json:"teams"`
+			Exelets []exeletEntry `json:"exelets"`
+		}{
+			Teams:   teamsJSON,
+			Exelets: allExelets,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(teamsJSON); err != nil {
+		if err := enc.Encode(result); err != nil {
 			s.slog().InfoContext(ctx, "Failed to encode teams", "error", err)
 		}
 		return
