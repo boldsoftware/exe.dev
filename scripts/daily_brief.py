@@ -303,13 +303,16 @@ def main_loop(verbose=False):
         # Generate brief shortly after midnight UTC.
         if now.hour == 0 and now.minute >= 5:
             yesterday = (now - datetime.timedelta(days=1)).date()
-            brief_path = os.path.join(os.getcwd(), f"brief_{yesterday.strftime('%Y_%m_%d')}.md")
-            if last_brief_date != yesterday and not os.path.exists(brief_path):
+            if last_brief_date != yesterday:
                 log(f"generating brief for {yesterday}")
                 commits = get_commits_for_date(yesterday)
                 if commits:
                     history = get_history(yesterday)
-                    brief = generate_brief(yesterday, commits, history, verbose=verbose)
+                    try:
+                        brief = generate_brief(yesterday, commits, history, verbose=verbose)
+                    except Exception as e:
+                        log(f"failed to generate brief: {e}")
+                        brief = None
                     if brief:
                         try:
                             post_to_slack(brief)
