@@ -541,13 +541,6 @@ def check_for_self_update():
 
         log.info("scripts/agents changed (%s -> %s), redeploying", old_tree[:7], new_tree[:7])
 
-        # Rebuild UI
-        ui_dir = os.path.join(EXE_REPO, "scripts", "agents", "bored", "ui")
-        if os.path.isdir(ui_dir):
-            run_cmd(["pnpm", "install", "--frozen-lockfile"], cwd=ui_dir)
-            run_cmd(["node", "build.js"], cwd=ui_dir)
-            log.info("UI rebuilt")
-
         # Update systemd service
         service_src = os.path.join(EXE_REPO, "scripts", "agents", "bored", "bored.service")
         if os.path.isfile(service_src):
@@ -1303,6 +1296,17 @@ def main():
     for row in stuck:
         log.info("resetting stale %s item %s to ready", row["status"], row["id"])
         db_update_item(row["id"], status="ready", error=None)
+
+    # Rebuild UI (done at startup so that after a self-update restart,
+    # the new code's build commands are used, not the old process's).
+    ui_dir = os.path.join(EXE_REPO, "scripts", "agents", "bored", "ui")
+    if os.path.isdir(ui_dir):
+        try:
+            run_cmd(["pnpm", "install", "--frozen-lockfile"], cwd=ui_dir)
+            run_cmd(["node", "build.js"], cwd=ui_dir)
+            log.info("UI rebuilt")
+        except Exception:
+            log.exception("UI build failed at startup")
 
     # Start background worker
     worker = threading.Thread(target=background_worker, daemon=True)
