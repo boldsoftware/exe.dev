@@ -147,16 +147,15 @@ func (c *entityCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
-	var loginUsers, devUsers, vms, usersWithVMs int64
-	var accountsActive, accountsPending int64
+	var users userTypeCounts
+	var billing billingStatusCounts
+	var vms, usersWithVMs int64
 
 	err := c.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
 		q := exedb.New(rx.Conn())
 		var err error
-		if loginUsers, err = q.CountLoginUsers(ctx); err != nil {
-			return err
-		}
-		if devUsers, err = q.CountDevUsers(ctx); err != nil {
+
+		if users, err = countUsersByType(q, ctx); err != nil {
 			return err
 		}
 		if vms, err = q.CountBoxes(ctx); err != nil {
@@ -165,10 +164,7 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 		if usersWithVMs, err = q.CountUsersWithBoxes(ctx); err != nil {
 			return err
 		}
-		if accountsActive, err = q.CountAccountsByBillingStatus(ctx, "active"); err != nil {
-			return err
-		}
-		if accountsPending, err = q.CountAccountsByBillingStatus(ctx, "pending"); err != nil {
+		if billing, err = countBillingStatuses(q, ctx); err != nil {
 			return err
 		}
 		return nil
@@ -178,10 +174,58 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(loginUsers), "login")
-	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(devUsers), "dev")
+	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(users.Login), "login")
+	ch <- prometheus.MustNewConstMetric(usersDesc, prometheus.GaugeValue, float64(users.Dev), "dev")
 	ch <- prometheus.MustNewConstMetric(vmsDesc, prometheus.GaugeValue, float64(vms))
 	ch <- prometheus.MustNewConstMetric(usersWithVMsDesc, prometheus.GaugeValue, float64(usersWithVMs))
-	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(accountsActive), "active")
-	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(accountsPending), "pending")
+	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Active), "active")
+	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Canceled), "canceled")
+	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Pending), "pending")
+}
+
+type billingStatusCounts struct {
+	Active, Canceled, Pending int64
+}
+
+// countBillingStatuses returns account counts grouped by billing status.
+func countBillingStatuses(q *exedb.Queries, ctx context.Context) (billingStatusCounts, error) {
+	rows, err := q.CountAccountsBillingStatuses(ctx)
+	if err != nil {
+		return billingStatusCounts{}, err
+	}
+	var c billingStatusCounts
+	for _, r := range rows {
+		switch r.BillingStatus {
+		case "active":
+			c.Active = r.Count
+		case "canceled":
+			c.Canceled = r.Count
+		case "pending":
+			c.Pending = r.Count
+		default:
+			slog.WarnContext(ctx, "unknown billing status", "status", r.BillingStatus)
+		}
+	}
+	return c, nil
+}
+
+type userTypeCounts struct {
+	Login, Dev int64
+}
+
+// countUsersByType returns user counts grouped by login vs dev.
+func countUsersByType(q *exedb.Queries, ctx context.Context) (userTypeCounts, error) {
+	rows, err := q.CountUsersByType(ctx)
+	if err != nil {
+		return userTypeCounts{}, err
+	}
+	var c userTypeCounts
+	for _, r := range rows {
+		if r.CreatedForLoginWithExe {
+			c.Login = r.Count
+		} else {
+			c.Dev = r.Count
+		}
+	}
+	return c, nil
 }

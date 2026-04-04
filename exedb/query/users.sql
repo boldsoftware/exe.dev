@@ -26,14 +26,12 @@ UPDATE users SET root_support = ? WHERE user_id = ?;
 -- name: GetUserRootSupport :one
 SELECT root_support FROM users WHERE user_id = ?;
 
--- name: CountLoginUsers :one
-SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1;
+-- name: CountUsersByType :many
+-- CountUsersByType returns user counts grouped by login vs dev in a single scan.
+SELECT created_for_login_with_exe, COUNT(*) AS count FROM users GROUP BY created_for_login_with_exe;
 
 -- name: CountUsersByRegion :many
 SELECT region, COUNT(*) AS count FROM users GROUP BY region;
-
--- name: CountDevUsers :one
-SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0;
 
 -- name: GetUserNewVMCreationDisabled :one
 SELECT new_vm_creation_disabled FROM users WHERE user_id = ?;

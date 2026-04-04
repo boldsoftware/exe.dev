@@ -5794,21 +5794,9 @@ func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	activeCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "active")
+	billing, err := withRxRes0(s, ctx, countBillingStatuses)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("count active: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	canceledCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "canceled")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("count canceled: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	pendingCount, err := withRxRes1(s, ctx, (*exedb.Queries).CountAccountsByBillingStatus, "pending")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("count pending: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("count billing statuses: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -5830,15 +5818,9 @@ func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	loginUsers, err := withRxRes0(s, ctx, (*exedb.Queries).CountLoginUsers)
+	users, err := withRxRes0(s, ctx, countUsersByType)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("count login users: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	devUsers, err := withRxRes0(s, ctx, (*exedb.Queries).CountDevUsers)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("count dev users: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("count users by type: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -5863,13 +5845,13 @@ func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request
 		PlanCounts    []planRow
 	}{
 		TotalAccounts: totalAccounts,
-		ActiveCount:   activeCount,
-		CanceledCount: canceledCount,
-		PendingCount:  pendingCount,
+		ActiveCount:   billing.Active,
+		CanceledCount: billing.Canceled,
+		PendingCount:  billing.Pending,
 		NoPlanCount:   noPlanCount,
 		NoUserCount:   noUserCount,
-		LoginUsers:    loginUsers,
-		DevUsers:      devUsers,
+		LoginUsers:    users.Login,
+		DevUsers:      users.Dev,
 		PlanCounts:    plans,
 	}
 	s.renderDebugTemplate(ctx, w, "billing-health.html", data)

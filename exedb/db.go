@@ -75,8 +75,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.consumeOAuthStateStmt, err = db.PrepareContext(ctx, consumeOAuthState); err != nil {
 		return nil, fmt.Errorf("error preparing query ConsumeOAuthState: %w", err)
 	}
-	if q.countAccountsByBillingStatusStmt, err = db.PrepareContext(ctx, countAccountsByBillingStatus); err != nil {
-		return nil, fmt.Errorf("error preparing query CountAccountsByBillingStatus: %w", err)
+	if q.countAccountsBillingStatusesStmt, err = db.PrepareContext(ctx, countAccountsBillingStatuses); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAccountsBillingStatuses: %w", err)
 	}
 	if q.countAccountsWithoutActivePlanStmt, err = db.PrepareContext(ctx, countAccountsWithoutActivePlan); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAccountsWithoutActivePlan: %w", err)
@@ -114,14 +114,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxesForUserStmt, err = db.PrepareContext(ctx, countBoxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesForUser: %w", err)
 	}
-	if q.countDevUsersStmt, err = db.PrepareContext(ctx, countDevUsers); err != nil {
-		return nil, fmt.Errorf("error preparing query CountDevUsers: %w", err)
-	}
 	if q.countEmailBouncesStmt, err = db.PrepareContext(ctx, countEmailBounces); err != nil {
 		return nil, fmt.Errorf("error preparing query CountEmailBounces: %w", err)
-	}
-	if q.countLoginUsersStmt, err = db.PrepareContext(ctx, countLoginUsers); err != nil {
-		return nil, fmt.Errorf("error preparing query CountLoginUsers: %w", err)
 	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
@@ -143,6 +137,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countUsersByRegionStmt, err = db.PrepareContext(ctx, countUsersByRegion); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsersByRegion: %w", err)
+	}
+	if q.countUsersByTypeStmt, err = db.PrepareContext(ctx, countUsersByType); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUsersByType: %w", err)
 	}
 	if q.countUsersWithBoxesStmt, err = db.PrepareContext(ctx, countUsersWithBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsersWithBoxes: %w", err)
@@ -1320,9 +1317,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing consumeOAuthStateStmt: %w", cerr)
 		}
 	}
-	if q.countAccountsByBillingStatusStmt != nil {
-		if cerr := q.countAccountsByBillingStatusStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countAccountsByBillingStatusStmt: %w", cerr)
+	if q.countAccountsBillingStatusesStmt != nil {
+		if cerr := q.countAccountsBillingStatusesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAccountsBillingStatusesStmt: %w", cerr)
 		}
 	}
 	if q.countAccountsWithoutActivePlanStmt != nil {
@@ -1385,19 +1382,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countBoxesForUserStmt: %w", cerr)
 		}
 	}
-	if q.countDevUsersStmt != nil {
-		if cerr := q.countDevUsersStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countDevUsersStmt: %w", cerr)
-		}
-	}
 	if q.countEmailBouncesStmt != nil {
 		if cerr := q.countEmailBouncesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countEmailBouncesStmt: %w", cerr)
-		}
-	}
-	if q.countLoginUsersStmt != nil {
-		if cerr := q.countLoginUsersStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countLoginUsersStmt: %w", cerr)
 		}
 	}
 	if q.countPendingBoxSharesStmt != nil {
@@ -1433,6 +1420,11 @@ func (q *Queries) Close() error {
 	if q.countUsersByRegionStmt != nil {
 		if cerr := q.countUsersByRegionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countUsersByRegionStmt: %w", cerr)
+		}
+	}
+	if q.countUsersByTypeStmt != nil {
+		if cerr := q.countUsersByTypeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUsersByTypeStmt: %w", cerr)
 		}
 	}
 	if q.countUsersWithBoxesStmt != nil {
@@ -3301,7 +3293,7 @@ type Queries struct {
 	closeAccountPlansByPlanIDStmt              *sql.Stmt
 	consumeCheckoutParamsStmt                  *sql.Stmt
 	consumeOAuthStateStmt                      *sql.Stmt
-	countAccountsByBillingStatusStmt           *sql.Stmt
+	countAccountsBillingStatusesStmt           *sql.Stmt
 	countAccountsWithoutActivePlanStmt         *sql.Stmt
 	countAccountsWithoutUserStmt               *sql.Stmt
 	countAllAccountsStmt                       *sql.Stmt
@@ -3314,9 +3306,7 @@ type Queries struct {
 	countBoxesStmt                             *sql.Stmt
 	countBoxesByRegionAndStatusStmt            *sql.Stmt
 	countBoxesForUserStmt                      *sql.Stmt
-	countDevUsersStmt                          *sql.Stmt
 	countEmailBouncesStmt                      *sql.Stmt
-	countLoginUsersStmt                        *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
 	countPendingBoxSharesByUserStmt            *sql.Stmt
 	countPendingTeamInvitesForUserStmt         *sql.Stmt
@@ -3324,6 +3314,7 @@ type Queries struct {
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
 	countUnusedInviteCodesForUserStmt          *sql.Stmt
 	countUsersByRegionStmt                     *sql.Stmt
+	countUsersByTypeStmt                       *sql.Stmt
 	countUsersWithBoxesStmt                    *sql.Stmt
 	createBoxEmailCreditStmt                   *sql.Stmt
 	createBoxShareStmt                         *sql.Stmt
@@ -3709,7 +3700,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		closeAccountPlansByPlanIDStmt:              q.closeAccountPlansByPlanIDStmt,
 		consumeCheckoutParamsStmt:                  q.consumeCheckoutParamsStmt,
 		consumeOAuthStateStmt:                      q.consumeOAuthStateStmt,
-		countAccountsByBillingStatusStmt:           q.countAccountsByBillingStatusStmt,
+		countAccountsBillingStatusesStmt:           q.countAccountsBillingStatusesStmt,
 		countAccountsWithoutActivePlanStmt:         q.countAccountsWithoutActivePlanStmt,
 		countAccountsWithoutUserStmt:               q.countAccountsWithoutUserStmt,
 		countAllAccountsStmt:                       q.countAllAccountsStmt,
@@ -3722,9 +3713,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxesStmt:                             q.countBoxesStmt,
 		countBoxesByRegionAndStatusStmt:            q.countBoxesByRegionAndStatusStmt,
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
-		countDevUsersStmt:                          q.countDevUsersStmt,
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
-		countLoginUsersStmt:                        q.countLoginUsersStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
 		countPendingBoxSharesByUserStmt:            q.countPendingBoxSharesByUserStmt,
 		countPendingTeamInvitesForUserStmt:         q.countPendingTeamInvitesForUserStmt,
@@ -3732,6 +3721,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
 		countUsersByRegionStmt:                     q.countUsersByRegionStmt,
+		countUsersByTypeStmt:                       q.countUsersByTypeStmt,
 		countUsersWithBoxesStmt:                    q.countUsersWithBoxesStmt,
 		createBoxEmailCreditStmt:                   q.createBoxEmailCreditStmt,
 		createBoxShareStmt:                         q.createBoxShareStmt,

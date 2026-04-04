@@ -111,26 +111,19 @@ SELECT
 FROM users u
 WHERE u.user_id = ?1;
 
--- name: CountAccountsByBillingStatus :one
--- CountAccountsByBillingStatus counts accounts with the given billing status.
--- For 'active' or 'canceled', counts accounts whose most recent billing event matches.
--- For 'pending', counts accounts with no billing events.
-SELECT COUNT(*) FROM accounts a
-WHERE (
-    ?1 = 'pending' AND NOT EXISTS (SELECT 1 FROM billing_events WHERE account_id = a.id)
-) OR (
-    ?1 != 'pending' AND EXISTS (
-        SELECT 1 FROM billing_events e1
-        WHERE e1.account_id = a.id
-        AND e1.event_type = ?1
-        AND e1.id = (
-            SELECT e2.id FROM billing_events e2
-            WHERE e2.account_id = a.id
-            ORDER BY e2.event_at DESC, e2.id DESC
-            LIMIT 1
-        )
-    )
-);
+-- name: CountAccountsBillingStatuses :many
+-- CountAccountsBillingStatuses returns account counts grouped by billing status
+-- (pending/active/canceled) in a single table scan.
+SELECT billing_status, COUNT(*) AS count FROM (
+    SELECT
+        CAST(COALESCE(
+            (SELECT e.event_type FROM billing_events e
+             WHERE e.account_id = a.id
+             ORDER BY e.event_at DESC, e.id DESC LIMIT 1),
+            'pending'
+        ) AS TEXT) AS billing_status
+    FROM accounts a
+) GROUP BY billing_status;
 
 -- name: SetAccountParentID :exec
 -- Sets the parent_id on a user's account to link them to a team billing owner's account.

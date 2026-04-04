@@ -677,8 +677,7 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	signupAccountID := signupAccount.ID
 
 	// Count accounts before billing update visits.
-	var accountCountBefore int64
-	accountCountBefore, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	billingBefore, err := withRxRes0(server, t.Context(), countBillingStatuses)
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
@@ -704,13 +703,12 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	}
 
 	// Visiting /billing/update must NOT create a new account (account already exists from signup).
-	var accountCountAfterFirst int64
-	accountCountAfterFirst, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	billingAfterFirst, err := withRxRes0(server, t.Context(), countBillingStatuses)
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
-	if accountCountAfterFirst != accountCountBefore {
-		t.Errorf("BUG: visiting /billing/update created a new account (count %d -> %d)", accountCountBefore, accountCountAfterFirst)
+	if billingAfterFirst.Pending != billingBefore.Pending {
+		t.Errorf("BUG: visiting /billing/update created a new account (count %d -> %d)", billingBefore.Pending, billingAfterFirst.Pending)
 	}
 
 	// Visit /billing/update second time (simulating user abandoning checkout and returning).
@@ -734,13 +732,12 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	}
 
 	// Verify NO new accounts were created on the second visit.
-	var accountCountAfterSecond int64
-	accountCountAfterSecond, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	billingAfterSecond, err := withRxRes0(server, t.Context(), countBillingStatuses)
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
-	if accountCountAfterSecond != accountCountAfterFirst {
-		t.Errorf("BUG: duplicate account on second visit (count %d -> %d)", accountCountAfterFirst, accountCountAfterSecond)
+	if billingAfterSecond.Pending != billingAfterFirst.Pending {
+		t.Errorf("BUG: duplicate account on second visit (count %d -> %d)", billingAfterFirst.Pending, billingAfterSecond.Pending)
 	}
 
 	// Visit a third time for good measure.
@@ -755,13 +752,12 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	}
 
 	// Verify still only one account.
-	var accountCountAfterThird int64
-	accountCountAfterThird, err = withRxRes1(server, t.Context(), (*exedb.Queries).CountAccountsByBillingStatus, "pending")
+	billingAfterThird, err := withRxRes0(server, t.Context(), countBillingStatuses)
 	if err != nil {
 		t.Fatalf("Failed to count accounts: %v", err)
 	}
-	if accountCountAfterThird != accountCountAfterFirst {
-		t.Errorf("BUG: duplicate account on third visit (count %d -> %d)", accountCountAfterFirst, accountCountAfterThird)
+	if billingAfterThird.Pending != billingAfterFirst.Pending {
+		t.Errorf("BUG: duplicate account on third visit (count %d -> %d)", billingAfterFirst.Pending, billingAfterThird.Pending)
 	}
 }
 

@@ -67,33 +67,47 @@ func (q *Queries) CloseAccountPlansByPlanID(ctx context.Context, arg CloseAccoun
 	return err
 }
 
-const countAccountsByBillingStatus = `-- name: CountAccountsByBillingStatus :one
-SELECT COUNT(*) FROM accounts a
-WHERE (
-    ?1 = 'pending' AND NOT EXISTS (SELECT 1 FROM billing_events WHERE account_id = a.id)
-) OR (
-    ?1 != 'pending' AND EXISTS (
-        SELECT 1 FROM billing_events e1
-        WHERE e1.account_id = a.id
-        AND e1.event_type = ?1
-        AND e1.id = (
-            SELECT e2.id FROM billing_events e2
-            WHERE e2.account_id = a.id
-            ORDER BY e2.event_at DESC, e2.id DESC
-            LIMIT 1
-        )
-    )
-)
+const countAccountsBillingStatuses = `-- name: CountAccountsBillingStatuses :many
+SELECT billing_status, COUNT(*) AS count FROM (
+    SELECT
+        CAST(COALESCE(
+            (SELECT e.event_type FROM billing_events e
+             WHERE e.account_id = a.id
+             ORDER BY e.event_at DESC, e.id DESC LIMIT 1),
+            'pending'
+        ) AS TEXT) AS billing_status
+    FROM accounts a
+) GROUP BY billing_status
 `
 
-// CountAccountsByBillingStatus counts accounts with the given billing status.
-// For 'active' or 'canceled', counts accounts whose most recent billing event matches.
-// For 'pending', counts accounts with no billing events.
-func (q *Queries) CountAccountsByBillingStatus(ctx context.Context, dollar_1 interface{}) (int64, error) {
-	row := q.queryRow(ctx, q.countAccountsByBillingStatusStmt, countAccountsByBillingStatus, dollar_1)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountAccountsBillingStatusesRow struct {
+	BillingStatus string `db:"billing_status" json:"billing_status"`
+	Count         int64  `db:"count" json:"count"`
+}
+
+// CountAccountsBillingStatuses returns account counts grouped by billing status
+// (pending/active/canceled) in a single table scan.
+func (q *Queries) CountAccountsBillingStatuses(ctx context.Context) ([]CountAccountsBillingStatusesRow, error) {
+	rows, err := q.query(ctx, q.countAccountsBillingStatusesStmt, countAccountsBillingStatuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountAccountsBillingStatusesRow{}
+	for rows.Next() {
+		var i CountAccountsBillingStatusesRow
+		if err := rows.Scan(&i.BillingStatus, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countAccountsWithoutActivePlan = `-- name: CountAccountsWithoutActivePlan :one

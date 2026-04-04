@@ -9,28 +9,6 @@ import (
 	"context"
 )
 
-const countDevUsers = `-- name: CountDevUsers :one
-SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 0
-`
-
-func (q *Queries) CountDevUsers(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countDevUsersStmt, countDevUsers)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countLoginUsers = `-- name: CountLoginUsers :one
-SELECT COUNT(*) FROM users WHERE created_for_login_with_exe = 1
-`
-
-func (q *Queries) CountLoginUsers(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countLoginUsersStmt, countLoginUsers)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countUsersByRegion = `-- name: CountUsersByRegion :many
 SELECT region, COUNT(*) AS count FROM users GROUP BY region
 `
@@ -50,6 +28,39 @@ func (q *Queries) CountUsersByRegion(ctx context.Context) ([]CountUsersByRegionR
 	for rows.Next() {
 		var i CountUsersByRegionRow
 		if err := rows.Scan(&i.Region, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countUsersByType = `-- name: CountUsersByType :many
+SELECT created_for_login_with_exe, COUNT(*) AS count FROM users GROUP BY created_for_login_with_exe
+`
+
+type CountUsersByTypeRow struct {
+	CreatedForLoginWithExe bool  `db:"created_for_login_with_exe" json:"created_for_login_with_exe"`
+	Count                  int64 `db:"count" json:"count"`
+}
+
+// CountUsersByType returns user counts grouped by login vs dev in a single scan.
+func (q *Queries) CountUsersByType(ctx context.Context) ([]CountUsersByTypeRow, error) {
+	rows, err := q.query(ctx, q.countUsersByTypeStmt, countUsersByType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountUsersByTypeRow{}
+	for rows.Next() {
+		var i CountUsersByTypeRow
+		if err := rows.Scan(&i.CreatedForLoginWithExe, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
