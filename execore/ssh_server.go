@@ -33,8 +33,10 @@ import (
 	"golang.org/x/term"
 )
 
-var errRegistrationCancelled = errors.New("Registration cancelled")
-var errContinuationCancelled = errors.New("continuation cancelled")
+var (
+	errRegistrationCancelled = errors.New("Registration cancelled")
+	errContinuationCancelled = errors.New("continuation cancelled")
+)
 
 // minimalConnMetadata implements ssh.ConnMetadata with just the fields we need
 type minimalConnMetadata struct {
