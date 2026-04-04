@@ -123,7 +123,7 @@ TS_OAUTH_CLIENT_ID="$TS_OAUTH_CLIENT_ID"
 TS_OAUTH_CLIENT_SECRET="$TS_OAUTH_CLIENT_SECRET"
 
 echo "Generating Tailscale auth key via OAuth..."
-OAUTH_RESPONSE=\$(curl -s -w "\n%{http_code}" -X POST \\
+OAUTH_RESPONSE=\$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" -X POST \\
     "https://api.tailscale.com/api/v2/oauth/token" \\
     -d "client_id=\${TS_OAUTH_CLIENT_ID}" \\
     -d "client_secret=\${TS_OAUTH_CLIENT_SECRET}" \\
@@ -131,6 +131,8 @@ OAUTH_RESPONSE=\$(curl -s -w "\n%{http_code}" -X POST \\
 
 OAUTH_HTTP=\$(echo "\$OAUTH_RESPONSE" | tail -n 1)
 OAUTH_BODY=\$(echo "\$OAUTH_RESPONSE" | head -n -1)
+
+echo "  OAuth HTTP status: \$OAUTH_HTTP"
 
 if [ "\$OAUTH_HTTP" != "200" ]; then
     echo "ERROR: Failed to get OAuth token. HTTP code: \$OAUTH_HTTP"
@@ -144,9 +146,8 @@ if [ -z "\$ACCESS_TOKEN" ] || [ "\$ACCESS_TOKEN" = "null" ]; then
     echo "Response body: \$OAUTH_BODY"
     exit 1
 fi
-
 echo "Creating Tailscale auth key..."
-KEY_RESPONSE=\$(curl -s -w "\n%{http_code}" -X POST \\
+KEY_RESPONSE=\$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" -X POST \\
     "https://api.tailscale.com/api/v2/tailnet/-/keys" \\
     -H "Authorization: Bearer \$ACCESS_TOKEN" \\
     -H "Content-Type: application/json" \\
@@ -166,6 +167,8 @@ KEY_RESPONSE=\$(curl -s -w "\n%{http_code}" -X POST \\
 KEY_HTTP=\$(echo "\$KEY_RESPONSE" | tail -n 1)
 KEY_BODY=\$(echo "\$KEY_RESPONSE" | head -n -1)
 
+echo "  Auth key HTTP status: \$KEY_HTTP"
+
 if [ "\$KEY_HTTP" != "200" ]; then
     echo "ERROR: Failed to create auth key. HTTP code: \$KEY_HTTP"
     echo "Response body: \$KEY_BODY"
@@ -178,7 +181,6 @@ if [ -z "\$AUTH_KEY" ] || [ "\$AUTH_KEY" = "null" ]; then
     echo "Response body: \$KEY_BODY"
     exit 1
 fi
-
 echo "Starting Tailscale with hostname: \${HOSTNAME}"
 sudo tailscale up --authkey="\$AUTH_KEY" --advertise-tags=tag:server --ssh --hostname="\${HOSTNAME}"
 echo "Tailscale up completed"
@@ -186,7 +188,11 @@ sleep 5
 sudo tailscale status
 TAILSCALE_SETUP
 
-    ssh $DIRECT_SSH_OPTS "$target" "/tmp/setup-tailscale.sh && rm -f /tmp/setup-tailscale.sh"
+    # Run the tailscale setup detached because `tailscale up` reconfigures
+    # networking which kills the SSH connection through the public IP.
+    # The caller waits for Tailscale SSH to become available via hostname.
+    ssh $DIRECT_SSH_OPTS "$target" "nohup /tmp/setup-tailscale.sh > /tmp/setup-tailscale.log 2>&1 &"
+    echo "Tailscale setup launched in background on remote host"
 }
 
 # Setup NVMe drives with swap and raidz1
@@ -480,54 +486,64 @@ DISABLE_IPV6
     python3 "${SCRIPT_DIR}/../../../observability/deploy-node-exporter.py" "$host"
 }
 
-# Wait for direct SSH to be available
-echo "Waiting for direct SSH to $PUBLIC_IP..."
-START_TIME=$(date +%s)
-while true; do
-    ELAPSED=$(($(date +%s) - START_TIME))
-    if [ $ELAPSED -ge 300 ]; then
-        echo "ERROR: Timed out waiting for SSH" >&2
-        exit 1
-    fi
-    if ssh $DIRECT_SSH_OPTS "ubuntu@$PUBLIC_IP" "echo 'SSH ready'" 2>/dev/null; then
-        echo "  Direct SSH connected!"
-        break
-    fi
-    echo "  Waiting... (${ELAPSED}s elapsed)"
-    sleep 10
-done
+# Check if Tailscale SSH is already reachable (re-run case)
+if ssh $SSH_OPTS "ubuntu@$HOSTNAME" "echo 'Tailscale SSH ready'" 2>/dev/null; then
+    echo "Tailscale SSH already accessible for $HOSTNAME — skipping Tailscale setup"
+else
+    # Wait for direct SSH to be available
+    echo "Waiting for direct SSH to $PUBLIC_IP..."
+    START_TIME=$(date +%s)
+    while true; do
+        ELAPSED=$(($(date +%s) - START_TIME))
+        if [ $ELAPSED -ge 300 ]; then
+            echo "ERROR: Timed out waiting for SSH" >&2
+            exit 1
+        fi
+        if ssh $DIRECT_SSH_OPTS "ubuntu@$PUBLIC_IP" "echo 'SSH ready'" 2>/dev/null; then
+            echo "  Direct SSH connected!"
+            break
+        fi
+        echo "  Waiting... (${ELAPSED}s elapsed)"
+        sleep 10
+    done
 
-# Setup Tailscale via direct SSH
-echo ""
-echo "=== Setting up Tailscale ==="
-setup_tailscale "ubuntu@$PUBLIC_IP" "$HOSTNAME"
+    # Setup Tailscale via direct SSH
+    echo ""
+    echo "=== Setting up Tailscale ==="
+    setup_tailscale "ubuntu@$PUBLIC_IP" "$HOSTNAME"
+
+    # Wait for Tailscale SSH to be available (proves tailscale setup succeeded)
+    echo ""
+    echo "Waiting for Tailscale SSH to be accessible..."
+    START_TIME=$(date +%s)
+    while true; do
+        ELAPSED=$(($(date +%s) - START_TIME))
+        if [ $ELAPSED -ge 180 ]; then
+            echo "ERROR: Timed out waiting for Tailscale SSH" >&2
+            echo "Check the setup log: ssh ubuntu@$PUBLIC_IP cat /tmp/setup-tailscale.log" >&2
+            exit 1
+        fi
+
+        if ssh $SSH_OPTS "ubuntu@$HOSTNAME" "echo 'Tailscale SSH ready'" 2>/dev/null; then
+            echo "  Tailscale SSH connected! (${ELAPSED}s elapsed)"
+            break
+        fi
+
+        echo "  Waiting for Tailscale... (${ELAPSED}s elapsed)"
+        sleep 10
+    done
+
+    # Verify tailscale setup completed successfully
+    echo ""
+    echo "=== Verifying Tailscale setup ==="
+    ssh $SSH_OPTS "ubuntu@$HOSTNAME" "cat /tmp/setup-tailscale.log && rm -f /tmp/setup-tailscale.sh /tmp/setup-tailscale.log" 2>/dev/null || true
+fi
 
 # Set root password
 echo ""
 echo "=== Setting root password ==="
-ssh $DIRECT_SSH_OPTS "ubuntu@$PUBLIC_IP" "echo 'root:$ROOT_PASSWORD' | sudo chpasswd"
+ssh $SSH_OPTS "ubuntu@$HOSTNAME" "echo 'root:$ROOT_PASSWORD' | sudo chpasswd"
 echo "Root password set"
-
-# Wait for Tailscale SSH to be available
-echo ""
-echo "Waiting for Tailscale SSH to be accessible..."
-START_TIME=$(date +%s)
-while true; do
-    ELAPSED=$(($(date +%s) - START_TIME))
-    if [ $ELAPSED -ge 120 ]; then
-        echo "ERROR: Timed out waiting for Tailscale SSH" >&2
-        echo "Direct SSH still available at: ssh ubuntu@$PUBLIC_IP" >&2
-        exit 1
-    fi
-
-    if ssh $SSH_OPTS "ubuntu@$HOSTNAME" "echo 'Tailscale SSH ready'" 2>/dev/null; then
-        echo "  Tailscale SSH connected! (${ELAPSED}s elapsed)"
-        break
-    fi
-
-    echo "  Waiting for Tailscale... (${ELAPSED}s elapsed)"
-    sleep 10
-done
 
 # Provision the server via Tailscale SSH
 provision_server "$HOSTNAME"

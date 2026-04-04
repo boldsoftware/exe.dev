@@ -1,7 +1,7 @@
 .PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-node-scripts deploy-notifications typecheck
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exed-staging-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
+HOSTS := mon exed-02 exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-lax-prod-05 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exed-staging-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
 
 # Dead hosts (terminated or unreachable)
 DEAD_HOSTS := exe-ctr-01 exe-ctr-06 exe-ctr-staging-01 exe-ctr-staging-02 exe-ctr-02
@@ -62,21 +62,23 @@ deploy-node-exporter:
 	python3 deploy-node-exporter.py $(NODES)
 
 # Exelet hosts (hosts with ZFS pools)
-EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
+EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-lax-prod-05 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
 
 # Exelet hosts with replica pairs (non-pdx, non-exe-ctr)
-REPLICA_EXELET_HOSTS := exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01
+REPLICA_EXELET_HOSTS := exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-lax-prod-05 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01
 
-# Deploy node textfile collector scripts to hosts
+# Max parallel deployments
+PARALLEL := 10
+
+# Deploy node textfile collector scripts to hosts (parallel)
 # - zpool-metrics: exelet hosts only (have ZFS pools)
 # - os-updates, system-health: all hosts
 deploy-node-scripts:
-	@trap 'echo "\nInterrupted"; exit 1' INT; \
-	for host in $(HOSTS); do \
-		echo "Deploying os-updates and system-health to $$host..."; \
-		user=ubuntu; \
-		scp scripts/os-updates.sh scripts/system-health.sh $$user@$$host:/tmp/ && \
-		ssh $$user@$$host "bash -c \" \
+	@_deploy_base() { \
+		host=$$1; \
+		echo "[$$host] Deploying os-updates and system-health..."; \
+		scp scripts/os-updates.sh scripts/system-health.sh ubuntu@$$host:/tmp/ && \
+		ssh ubuntu@$$host "bash -c \" \
 			sudo mkdir -p /var/lib/prometheus/node-exporter && \
 			sudo mv /tmp/os-updates.sh /usr/local/bin/os-updates.sh && \
 			sudo chmod +x /usr/local/bin/os-updates.sh && \
@@ -86,12 +88,13 @@ deploy-node-scripts:
 			sudo /usr/local/bin/system-health.sh && \
 			(sudo crontab -l 2>/dev/null | grep -v os-updates | grep -v system-health; \
 			 echo '*/15 * * * * /usr/local/bin/os-updates.sh'; \
-			 echo '* * * * * /usr/local/bin/system-health.sh') | sudo crontab - && \
-			echo 'Cron jobs installed:' && sudo crontab -l | grep -E 'os-updates|system-health'\""; \
-		echo ""; \
-	done; \
-	for host in $(EXELET_HOSTS); do \
-		echo "Deploying zpool-metrics to $$host..."; \
+			 echo '* * * * * /usr/local/bin/system-health.sh') | sudo crontab -\"" && \
+		echo "[$$host] os-updates and system-health done" || \
+		echo "[$$host] ERROR: os-updates/system-health failed"; \
+	}; \
+	_deploy_zpool() { \
+		host=$$1; \
+		echo "[$$host] Deploying zpool-metrics..."; \
 		scp scripts/zpool-metrics.sh ubuntu@$$host:/tmp/zpool-metrics.sh && \
 		ssh ubuntu@$$host "bash -c \" \
 			sudo mkdir -p /var/lib/prometheus/node-exporter && \
@@ -99,12 +102,13 @@ deploy-node-scripts:
 			sudo chmod +x /usr/local/bin/zpool-metrics.sh && \
 			sudo /usr/local/bin/zpool-metrics.sh && \
 			(sudo crontab -l 2>/dev/null | grep -v zpool-metrics; \
-			 echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab - && \
-			echo 'Cron job installed:' && sudo crontab -l | grep zpool-metrics\""; \
-		echo ""; \
-	done; \
-	for host in $(REPLICA_EXELET_HOSTS); do \
-		echo "Deploying replica-dns to $$host..."; \
+			 echo '* * * * * /usr/local/bin/zpool-metrics.sh') | sudo crontab -\"" && \
+		echo "[$$host] zpool-metrics done" || \
+		echo "[$$host] ERROR: zpool-metrics failed"; \
+	}; \
+	_deploy_replica() { \
+		host=$$1; \
+		echo "[$$host] Deploying replica-dns..."; \
 		scp scripts/replica-dns.sh ubuntu@$$host:/tmp/replica-dns.sh && \
 		ssh ubuntu@$$host "bash -c \" \
 			sudo mkdir -p /var/lib/prometheus/node-exporter && \
@@ -112,8 +116,19 @@ deploy-node-scripts:
 			sudo chmod +x /usr/local/bin/replica-dns.sh && \
 			sudo /usr/local/bin/replica-dns.sh && \
 			(sudo crontab -l 2>/dev/null | grep -v replica-dns; \
-			 echo '* * * * * /usr/local/bin/replica-dns.sh') | sudo crontab - && \
-			echo 'Cron job installed:' && sudo crontab -l | grep replica-dns\""; \
-		echo ""; \
-	done
+			 echo '* * * * * /usr/local/bin/replica-dns.sh') | sudo crontab -\"" && \
+		echo "[$$host] replica-dns done" || \
+		echo "[$$host] ERROR: replica-dns failed"; \
+	}; \
+	_deploy_host() { \
+		host=$$1; \
+		_deploy_base $$host; \
+		case " $(EXELET_HOSTS) " in *" $$host "*) _deploy_zpool $$host ;; esac; \
+		case " $(REPLICA_EXELET_HOSTS) " in *" $$host "*) _deploy_replica $$host ;; esac; \
+	}; \
+	export -f _deploy_base _deploy_zpool _deploy_replica _deploy_host; \
+	export EXELET_HOSTS="$(EXELET_HOSTS)"; \
+	export REPLICA_EXELET_HOSTS="$(REPLICA_EXELET_HOSTS)"; \
+	echo "Deploying node scripts to $(words $(HOSTS)) hosts ($(PARALLEL) parallel)..."; \
+	printf '%s\n' $(HOSTS) | xargs -P $(PARALLEL) -I {} bash -c '_deploy_host "$$@"' _ {}
 
