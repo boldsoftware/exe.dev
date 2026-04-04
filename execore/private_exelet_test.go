@@ -273,6 +273,104 @@ func TestPrivateExelet(t *testing.T) {
 		}
 	})
 
+	t.Run("team member prefers team-assigned exelet over public", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			pubExelet.addr:  pubExelet,
+			privExelet.addr: privExelet,
+		}
+
+		userID := createTestUser(t, server, "team-prefer@example.com")
+		createTeam(t, server, "team-delta", "Team Delta", userID)
+
+		markPrivate(t, server, privExelet.addr)
+		assignTeamExelet(t, server, "team-delta", privExelet.addr)
+
+		// Team member should always land on their private exelet,
+		// not be randomly scattered across public + private.
+		for range 20 {
+			ec, _, err := server.selectExeletClient(ctx, userID)
+			if err != nil {
+				t.Fatalf("selectExeletClient: %v", err)
+			}
+			if ec.addr != privExelet.addr {
+				t.Fatalf("team member landed on %s, want team-assigned %s", ec.addr, privExelet.addr)
+			}
+		}
+	})
+
+	t.Run("team member falls back to public when team exelet is down", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		privExelet.up.Store(false) // team exelet is down
+		server.exeletClients = map[string]*exeletClient{
+			pubExelet.addr:  pubExelet,
+			privExelet.addr: privExelet,
+		}
+
+		userID := createTestUser(t, server, "team-fallback@example.com")
+		createTeam(t, server, "team-epsilon", "Team Epsilon", userID)
+
+		markPrivate(t, server, privExelet.addr)
+		assignTeamExelet(t, server, "team-epsilon", privExelet.addr)
+
+		// Team exelet is down, should fall back to public.
+		ec, _, err := server.selectExeletClient(ctx, userID)
+		if err != nil {
+			t.Fatalf("selectExeletClient: %v", err)
+		}
+		if ec.addr != pubExelet.addr {
+			t.Fatalf("expected fallback to public %s, got %s", pubExelet.addr, ec.addr)
+		}
+	})
+
+	t.Run("preferred exelet skipped for team member with different team exelet", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			pubExelet.addr:  pubExelet,
+			privExelet.addr: privExelet,
+		}
+
+		userID := createTestUser(t, server, "team-nopref@example.com")
+		createTeam(t, server, "team-zeta", "Team Zeta", userID)
+
+		markPrivate(t, server, privExelet.addr)
+		assignTeamExelet(t, server, "team-zeta", privExelet.addr)
+
+		// Set the public exelet as globally preferred.
+		err := server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.SetPreferredExelet(ctx, pubExelet.addr)
+		})
+		if err != nil {
+			t.Fatalf("failed to set preferred exelet: %v", err)
+		}
+
+		// Team member should land on their private exelet, not the preferred public one.
+		for range 20 {
+			ec, _, err := server.selectExeletClient(ctx, userID)
+			if err != nil {
+				t.Fatalf("selectExeletClient: %v", err)
+			}
+			if ec.addr != privExelet.addr {
+				t.Fatalf("team member landed on %s, want team-assigned %s", ec.addr, privExelet.addr)
+			}
+		}
+	})
+
 	t.Run("exeletAllowsUser unit tests", func(t *testing.T) {
 		t.Parallel()
 

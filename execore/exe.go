@@ -4115,15 +4115,19 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		}
 	}
 
-	// Check for preferred exelet setting
+	// Check for preferred exelet setting.
+	// Skip the global preferred exelet if the user has team-assigned exelets,
+	// unless the preferred exelet is itself one of the team's exelets.
 	preferredAddr, err := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
 	if err == nil && preferredAddr != "" {
-		// Preferred exelet is configured, try to use it
-		if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() &&
-			client.regionAllowsUser(userRegion, userRegionInfo) &&
-			exeletAllowsUser(preferredAddr, privateExelets, teamExeletAddrs) {
-			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
-			return client, preferredAddr, nil
+		usePreferred := len(teamExeletAddrs) == 0 || teamExeletAddrs[preferredAddr]
+		if usePreferred {
+			if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() &&
+				client.regionAllowsUser(userRegion, userRegionInfo) &&
+				exeletAllowsUser(preferredAddr, privateExelets, teamExeletAddrs) {
+				s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
+				return client, preferredAddr, nil
+			}
 		}
 		// Preferred exelet is not available or down, log and fall back
 		slog.ErrorContext(ctx, "preferred exelet not available, falling back to hash-based selection",
@@ -4149,6 +4153,21 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	if len(ecs) == 0 {
 		s.slog().WarnContext(ctx, "no eligible exelets for user", "user", userID, "userRegion", userRegion, "totalExelets", len(s.exeletClients))
 		return nil, "", errors.New("no exelet clients available")
+	}
+
+	// If the user's team has assigned exelets, prefer those.
+	// Only fall back to the full set if none of the team exelets are eligible.
+	if len(teamExeletAddrs) > 0 {
+		var teamEcs []*exeletClient
+		for _, c := range ecs {
+			if teamExeletAddrs[c.addr] {
+				teamEcs = append(teamEcs, c)
+			}
+		}
+		if len(teamEcs) > 0 {
+			s.slog().DebugContext(ctx, "narrowing to team-assigned exelets", "user", userID, "teamExelets", len(teamEcs), "totalEligible", len(ecs))
+			ecs = teamEcs
+		}
 	}
 
 	slices.SortFunc(ecs, exeletUsageCmp)
