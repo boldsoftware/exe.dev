@@ -104,6 +104,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-all-pending-tier-migrations", s.handleDebugExeletCancelAllPendingTierMigrations)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/update-user-cgroup-parents", s.handleDebugExeletUpdateUserCgroupParents)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
+	mux.HandleFunc("POST /debug/exelets/set-private", s.handleDebugSetPrivateExelet)
+	mux.HandleFunc("POST /debug/exelets/set-team-exelet", s.handleDebugSetTeamExelet)
 	mux.HandleFunc("POST /debug/exelets/recover", s.handleDebugExeletRecover)
 	mux.HandleFunc("/debug/new-throttle", s.handleDebugNewThrottle)
 	mux.HandleFunc("POST /debug/new-throttle", s.handleDebugNewThrottlePost)
@@ -2841,29 +2843,60 @@ func formatInt64Ptr(v *int64) string {
 func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	type teamExeletInfo struct {
+		TeamID      string `json:"team_id"`
+		DisplayName string `json:"display_name"`
+	}
+
 	type exeletInfo struct {
-		Address       string `json:"address"`
-		Hostname      string `json:"hostname"`
-		Version       string `json:"version"`
-		Available     bool   `json:"available"`
-		Status        string `json:"status"`
-		IsPreferred   bool   `json:"is_preferred"`
-		InstanceCount int    `json:"instance_count"`
-		InstanceLimit int    `json:"instance_limit"`
-		LoadAverage   string `json:"load_average"`
-		MemFree       string `json:"mem_free"`
-		SwapFree      string `json:"swap_free"`
-		DiskFree      string `json:"disk_free"`
-		RxRate        string `json:"rx_rate"`
-		TxRate        string `json:"tx_rate"`
-		Error         string `json:"error,omitempty"`
-		DebugURL      string `json:"debug_url"`
-		CgtopURL      string `json:"cgtop_url"`
-		TierCount     int    `json:"tier_count"`
+		Address       string           `json:"address"`
+		Hostname      string           `json:"hostname"`
+		Version       string           `json:"version"`
+		Available     bool             `json:"available"`
+		Status        string           `json:"status"`
+		IsPreferred   bool             `json:"is_preferred"`
+		IsPrivate     bool             `json:"is_private"`
+		Teams         []teamExeletInfo `json:"teams,omitempty"`
+		InstanceCount int              `json:"instance_count"`
+		InstanceLimit int              `json:"instance_limit"`
+		LoadAverage   string           `json:"load_average"`
+		MemFree       string           `json:"mem_free"`
+		SwapFree      string           `json:"swap_free"`
+		DiskFree      string           `json:"disk_free"`
+		RxRate        string           `json:"rx_rate"`
+		TxRate        string           `json:"tx_rate"`
+		Error         string           `json:"error,omitempty"`
+		DebugURL      string           `json:"debug_url"`
+		CgtopURL      string           `json:"cgtop_url"`
+		TierCount     int              `json:"tier_count"`
 	}
 
 	// Get the preferred exelet setting
 	preferredAddr, _ := withRxRes0(s, ctx, (*exedb.Queries).GetPreferredExelet)
+
+	// Load private exelet and team exelet config for display.
+	privateExelets := make(map[string]bool)
+	if privAddrs, err := withRxRes0[[]string](s, ctx, (*exedb.Queries).ListPrivateExelets); err == nil {
+		for _, addr := range privAddrs {
+			privateExelets[addr] = true
+		}
+	}
+
+	// Build reverse map: exelet_addr -> []teamExeletInfo
+	allTeams, _ := withRxRes0[[]exedb.ListAllTeamsRow](s, ctx, (*exedb.Queries).ListAllTeams)
+	teamNames := make(map[string]string)
+	for _, t := range allTeams {
+		teamNames[t.TeamID] = t.DisplayName
+	}
+	exeletTeamMap := make(map[string][]teamExeletInfo)
+	if teamRows, err := withRxRes0[[]exedb.ListTeamExeletsRow](s, ctx, (*exedb.Queries).ListTeamExelets); err == nil {
+		for _, row := range teamRows {
+			exeletTeamMap[row.ExeletAddr] = append(exeletTeamMap[row.ExeletAddr], teamExeletInfo{
+				TeamID:      row.TeamID,
+				DisplayName: teamNames[row.TeamID],
+			})
+		}
+	}
 
 	var exelets []exeletInfo
 	var mu sync.Mutex
@@ -2879,6 +2912,8 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				Address:     addr,
 				Version:     ec.client.Version(),
 				IsPreferred: addr == preferredAddr,
+				IsPrivate:   privateExelets[addr],
+				Teams:       exeletTeamMap[addr],
 			}
 			if u, err := url.Parse(addr); err == nil {
 				host := u.Hostname()
@@ -2954,9 +2989,11 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 
 	// HTML output
 	data := struct {
-		Exelets []exeletInfo
+		Exelets  []exeletInfo
+		AllTeams []exedb.ListAllTeamsRow
 	}{
-		Exelets: exelets,
+		Exelets:  exelets,
+		AllTeams: allTeams,
 	}
 
 	s.renderDebugTemplate(ctx, w, "exelets.html", data)
@@ -3002,6 +3039,93 @@ func (s *Server) handleDebugSetPreferredExelet(w http.ResponseWriter, r *http.Re
 	}
 
 	// Redirect back to the exelets page
+	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
+}
+
+// handleDebugSetPrivateExelet marks or unmarks an exelet as private.
+// When private, no user is scheduled onto it unless their team has an
+// explicit team_exelets mapping.
+func (s *Server) handleDebugSetPrivateExelet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	address := r.FormValue("address")
+	if address == "" {
+		http.Error(w, "missing address", http.StatusBadRequest)
+		return
+	}
+	if _, ok := s.exeletClients[address]; !ok {
+		http.Error(w, fmt.Sprintf("unknown exelet address: %s", address), http.StatusBadRequest)
+		return
+	}
+
+	action := r.FormValue("action") // "set" or "clear"
+	switch action {
+	case "set":
+		if err := withTx1(s, ctx, (*exedb.Queries).InsertPrivateExelet, address); err != nil {
+			http.Error(w, fmt.Sprintf("failed to set private exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "exelet marked private via debug page", "address", address)
+	case "clear":
+		if err := withTx1(s, ctx, (*exedb.Queries).DeletePrivateExelet, address); err != nil {
+			http.Error(w, fmt.Sprintf("failed to clear private exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "exelet unmarked private via debug page", "address", address)
+	default:
+		http.Error(w, "action must be 'set' or 'clear'", http.StatusBadRequest)
+		return
+	}
+
+	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
+}
+
+// handleDebugSetTeamExelet assigns or removes an exelet for a team.
+// When a team has an exelet mapping and that exelet is private,
+// the team's members can be scheduled onto it.
+func (s *Server) handleDebugSetTeamExelet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	address := r.FormValue("address")
+	teamID := r.FormValue("team_id")
+	if address == "" || teamID == "" {
+		http.Error(w, "missing address or team_id", http.StatusBadRequest)
+		return
+	}
+	if _, ok := s.exeletClients[address]; !ok {
+		http.Error(w, fmt.Sprintf("unknown exelet address: %s", address), http.StatusBadRequest)
+		return
+	}
+
+	// Verify team exists.
+	if _, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, teamID); err != nil {
+		http.Error(w, fmt.Sprintf("unknown team: %s", teamID), http.StatusBadRequest)
+		return
+	}
+
+	action := r.FormValue("action") // "set" or "clear"
+	switch action {
+	case "set":
+		if err := withTx1(s, ctx, (*exedb.Queries).InsertTeamExelet, exedb.InsertTeamExeletParams{
+			TeamID:     teamID,
+			ExeletAddr: address,
+		}); err != nil {
+			http.Error(w, fmt.Sprintf("failed to set team exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "team exelet assigned via debug page", "team_id", teamID, "address", address)
+	case "clear":
+		if err := withTx1(s, ctx, (*exedb.Queries).DeleteTeamExelet, exedb.DeleteTeamExeletParams{
+			TeamID:     teamID,
+			ExeletAddr: address,
+		}); err != nil {
+			http.Error(w, fmt.Sprintf("failed to clear team exelet: %v", err), http.StatusInternalServerError)
+			return
+		}
+		s.slog().InfoContext(ctx, "team exelet removed via debug page", "team_id", teamID, "address", address)
+	default:
+		http.Error(w, "action must be 'set' or 'clear'", http.StatusBadRequest)
+		return
+	}
+
 	http.Redirect(w, r, "/debug/exelets", http.StatusSeeOther)
 }
 

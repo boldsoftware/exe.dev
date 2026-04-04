@@ -4008,6 +4008,9 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 // Two region constraints apply:
 //  1. Exelets in RequiresUserMatch regions are only available to users in that region.
 //  2. Users whose own region has RequiresUserMatch must stay in their region.
+//
+// Private exelet constraint: exelets marked private are excluded unless
+// the user belongs to a team with an explicit team_exelets mapping.
 func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exeletClient, string, error) {
 	// Look up the user's configured region for region-match filtering.
 	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
@@ -4018,6 +4021,25 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	userRegionInfo, err := region.ByCode(userRegion)
 	if err != nil {
 		return nil, "", fmt.Errorf("unknown user region %q: %w", userRegion, err)
+	}
+
+	// Load private exelet rules for scheduling.
+	privateExelets := make(map[string]bool)
+	if privAddrs, err := withRxRes0[[]string](s, ctx, (*exedb.Queries).ListPrivateExelets); err == nil {
+		for _, addr := range privAddrs {
+			privateExelets[addr] = true
+		}
+	}
+	// Look up the user's team and their assigned exelets.
+	var teamExeletAddrs map[string]bool
+	team, teamErr := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID)
+	if teamErr == nil {
+		if addrs, err := withRxRes1(s, ctx, (*exedb.Queries).ListTeamExeletsForTeam, team.TeamID); err == nil {
+			teamExeletAddrs = make(map[string]bool, len(addrs))
+			for _, addr := range addrs {
+				teamExeletAddrs[addr] = true
+			}
+		}
 	}
 
 	// Check for existing VMs for this user.
@@ -4059,6 +4081,11 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
+		if client != nil && !exeletAllowsUser(maxHost, privateExelets, teamExeletAddrs) {
+			s.slog().DebugContext(ctx, "not selecting exelet because it is private", "user", userID, "exelet", maxHost)
+			client = nil
+		}
+
 		if client != nil && !client.up.Load() {
 			s.slog().DebugContext(ctx, "not selecting exelet because it is down", "user", userID, "exelet", maxHost, "userVMCount", maxCnt)
 			client = nil
@@ -4093,7 +4120,8 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 	if err == nil && preferredAddr != "" {
 		// Preferred exelet is configured, try to use it
 		if client, ok := s.exeletClients[preferredAddr]; ok && client.up.Load() &&
-			client.regionAllowsUser(userRegion, userRegionInfo) {
+			client.regionAllowsUser(userRegion, userRegionInfo) &&
+			exeletAllowsUser(preferredAddr, privateExelets, teamExeletAddrs) {
 			s.slog().DebugContext(ctx, "selecting preferred exelet", "user", userID, "exelet", preferredAddr)
 			return client, preferredAddr, nil
 		}
@@ -4112,11 +4140,14 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		if !c.regionAllowsUser(userRegion, userRegionInfo) {
 			continue
 		}
+		if !exeletAllowsUser(c.addr, privateExelets, teamExeletAddrs) {
+			continue
+		}
 		ecs = append(ecs, c)
 	}
 
 	if len(ecs) == 0 {
-		s.slog().WarnContext(ctx, "no eligible exelets for user region", "user", userID, "userRegion", userRegion, "totalExelets", len(s.exeletClients))
+		s.slog().WarnContext(ctx, "no eligible exelets for user", "user", userID, "userRegion", userRegion, "totalExelets", len(s.exeletClients))
 		return nil, "", errors.New("no exelet clients available")
 	}
 
@@ -4195,6 +4226,23 @@ func (s *Server) updateExeletUsageHeartbeat(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// exeletAllowsUser reports whether an exelet may be used by the given user.
+// If the exelet is not private, it is allowed for everyone.
+// If the exelet is private, it is only allowed for members of a team
+// that has an explicit team_exelets mapping for that address.
+// userTeamID should be empty if the user is not on a team.
+//
+// privateExelets is the set of private exelet addresses (from ListPrivateExelets).
+// teamExelets is the list of exelet addresses assigned to the user's team
+// (from ListTeamExeletsForTeam); nil if the user has no team.
+func exeletAllowsUser(addr string, privateExelets, teamExelets map[string]bool) bool {
+	if !privateExelets[addr] {
+		return true // not private, everyone can use it
+	}
+	// Private exelet: only allowed if user's team has an explicit mapping.
+	return teamExelets[addr]
 }
 
 // extremeUsage provides usage measurements that indicate that

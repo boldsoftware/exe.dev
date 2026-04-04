@@ -267,6 +267,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingTeamInvitesByUserStmt, err = db.PrepareContext(ctx, deletePendingTeamInvitesByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingTeamInvitesByUser: %w", err)
 	}
+	if q.deletePrivateExeletStmt, err = db.PrepareContext(ctx, deletePrivateExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePrivateExelet: %w", err)
+	}
 	if q.deletePushTokenStmt, err = db.PrepareContext(ctx, deletePushToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePushToken: %w", err)
 	}
@@ -284,6 +287,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteTeamStmt, err = db.PrepareContext(ctx, deleteTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeam: %w", err)
+	}
+	if q.deleteTeamExeletStmt, err = db.PrepareContext(ctx, deleteTeamExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeamExelet: %w", err)
+	}
+	if q.deleteTeamExeletsByAddrStmt, err = db.PrepareContext(ctx, deleteTeamExeletsByAddr); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeamExeletsByAddr: %w", err)
+	}
+	if q.deleteTeamExeletsByTeamIDStmt, err = db.PrepareContext(ctx, deleteTeamExeletsByTeamID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTeamExeletsByTeamID: %w", err)
 	}
 	if q.deleteTeamIntegrationStmt, err = db.PrepareContext(ctx, deleteTeamIntegration); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTeamIntegration: %w", err)
@@ -807,6 +819,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPendingTeamInviteStmt, err = db.PrepareContext(ctx, insertPendingTeamInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingTeamInvite: %w", err)
 	}
+	if q.insertPrivateExeletStmt, err = db.PrepareContext(ctx, insertPrivateExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPrivateExelet: %w", err)
+	}
 	if q.insertRedirectStmt, err = db.PrepareContext(ctx, insertRedirect); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertRedirect: %w", err)
 	}
@@ -845,6 +860,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertTeamStmt, err = db.PrepareContext(ctx, insertTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTeam: %w", err)
+	}
+	if q.insertTeamExeletStmt, err = db.PrepareContext(ctx, insertTeamExelet); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTeamExelet: %w", err)
 	}
 	if q.insertTeamMemberStmt, err = db.PrepareContext(ctx, insertTeamMember); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTeamMember: %w", err)
@@ -972,6 +990,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listPlanVersionCountsStmt, err = db.PrepareContext(ctx, listPlanVersionCounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPlanVersionCounts: %w", err)
 	}
+	if q.listPrivateExeletsStmt, err = db.PrepareContext(ctx, listPrivateExelets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPrivateExelets: %w", err)
+	}
 	if q.listStripeWebhookEventsByTypeStmt, err = db.PrepareContext(ctx, listStripeWebhookEventsByType); err != nil {
 		return nil, fmt.Errorf("error preparing query ListStripeWebhookEventsByType: %w", err)
 	}
@@ -980,6 +1001,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTeamBoxesForAdminStmt, err = db.PrepareContext(ctx, listTeamBoxesForAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamBoxesForAdmin: %w", err)
+	}
+	if q.listTeamExeletsStmt, err = db.PrepareContext(ctx, listTeamExelets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTeamExelets: %w", err)
+	}
+	if q.listTeamExeletsForTeamStmt, err = db.PrepareContext(ctx, listTeamExeletsForTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTeamExeletsForTeam: %w", err)
 	}
 	if q.listTeamSharedBoxIDsForUserStmt, err = db.PrepareContext(ctx, listTeamSharedBoxIDsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamSharedBoxIDsForUser: %w", err)
@@ -1637,6 +1664,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePendingTeamInvitesByUserStmt: %w", cerr)
 		}
 	}
+	if q.deletePrivateExeletStmt != nil {
+		if cerr := q.deletePrivateExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePrivateExeletStmt: %w", cerr)
+		}
+	}
 	if q.deletePushTokenStmt != nil {
 		if cerr := q.deletePushTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePushTokenStmt: %w", cerr)
@@ -1665,6 +1697,21 @@ func (q *Queries) Close() error {
 	if q.deleteTeamStmt != nil {
 		if cerr := q.deleteTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTeamStmt: %w", cerr)
+		}
+	}
+	if q.deleteTeamExeletStmt != nil {
+		if cerr := q.deleteTeamExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamExeletStmt: %w", cerr)
+		}
+	}
+	if q.deleteTeamExeletsByAddrStmt != nil {
+		if cerr := q.deleteTeamExeletsByAddrStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamExeletsByAddrStmt: %w", cerr)
+		}
+	}
+	if q.deleteTeamExeletsByTeamIDStmt != nil {
+		if cerr := q.deleteTeamExeletsByTeamIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTeamExeletsByTeamIDStmt: %w", cerr)
 		}
 	}
 	if q.deleteTeamIntegrationStmt != nil {
@@ -2537,6 +2584,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPendingTeamInviteStmt: %w", cerr)
 		}
 	}
+	if q.insertPrivateExeletStmt != nil {
+		if cerr := q.insertPrivateExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPrivateExeletStmt: %w", cerr)
+		}
+	}
 	if q.insertRedirectStmt != nil {
 		if cerr := q.insertRedirectStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertRedirectStmt: %w", cerr)
@@ -2600,6 +2652,11 @@ func (q *Queries) Close() error {
 	if q.insertTeamStmt != nil {
 		if cerr := q.insertTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertTeamStmt: %w", cerr)
+		}
+	}
+	if q.insertTeamExeletStmt != nil {
+		if cerr := q.insertTeamExeletStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTeamExeletStmt: %w", cerr)
 		}
 	}
 	if q.insertTeamMemberStmt != nil {
@@ -2812,6 +2869,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listPlanVersionCountsStmt: %w", cerr)
 		}
 	}
+	if q.listPrivateExeletsStmt != nil {
+		if cerr := q.listPrivateExeletsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPrivateExeletsStmt: %w", cerr)
+		}
+	}
 	if q.listStripeWebhookEventsByTypeStmt != nil {
 		if cerr := q.listStripeWebhookEventsByTypeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listStripeWebhookEventsByTypeStmt: %w", cerr)
@@ -2825,6 +2887,16 @@ func (q *Queries) Close() error {
 	if q.listTeamBoxesForAdminStmt != nil {
 		if cerr := q.listTeamBoxesForAdminStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamBoxesForAdminStmt: %w", cerr)
+		}
+	}
+	if q.listTeamExeletsStmt != nil {
+		if cerr := q.listTeamExeletsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTeamExeletsStmt: %w", cerr)
+		}
+	}
+	if q.listTeamExeletsForTeamStmt != nil {
+		if cerr := q.listTeamExeletsForTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTeamExeletsForTeamStmt: %w", cerr)
 		}
 	}
 	if q.listTeamSharedBoxIDsForUserStmt != nil {
@@ -3357,12 +3429,16 @@ type Queries struct {
 	deletePendingTeamInviteStmt                *sql.Stmt
 	deletePendingTeamInvitesByTeamIDStmt       *sql.Stmt
 	deletePendingTeamInvitesByUserStmt         *sql.Stmt
+	deletePrivateExeletStmt                    *sql.Stmt
 	deletePushTokenStmt                        *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeysByIntegrationIDStmt           *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
 	deleteTeamStmt                             *sql.Stmt
+	deleteTeamExeletStmt                       *sql.Stmt
+	deleteTeamExeletsByAddrStmt                *sql.Stmt
+	deleteTeamExeletsByTeamIDStmt              *sql.Stmt
 	deleteTeamIntegrationStmt                  *sql.Stmt
 	deleteTeamMemberStmt                       *sql.Stmt
 	deleteTeamSSOProviderStmt                  *sql.Stmt
@@ -3537,6 +3613,7 @@ type Queries struct {
 	insertPendingRegistrationStmt              *sql.Stmt
 	insertPendingSSHKeyStmt                    *sql.Stmt
 	insertPendingTeamInviteStmt                *sql.Stmt
+	insertPrivateExeletStmt                    *sql.Stmt
 	insertRedirectStmt                         *sql.Stmt
 	insertReleasedBoxNameStmt                  *sql.Stmt
 	insertSSHKeyStmt                           *sql.Stmt
@@ -3550,6 +3627,7 @@ type Queries struct {
 	insertStripeWebhookEventStmt               *sql.Stmt
 	insertTagResolutionHistoryStmt             *sql.Stmt
 	insertTeamStmt                             *sql.Stmt
+	insertTeamExeletStmt                       *sql.Stmt
 	insertTeamMemberStmt                       *sql.Stmt
 	insertTeamSSOProviderStmt                  *sql.Stmt
 	insertTemplateStmt                         *sql.Stmt
@@ -3592,9 +3670,12 @@ type Queries struct {
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
+	listPrivateExeletsStmt                     *sql.Stmt
 	listStripeWebhookEventsByTypeStmt          *sql.Stmt
 	listSubscriptionEventsStmt                 *sql.Stmt
 	listTeamBoxesForAdminStmt                  *sql.Stmt
+	listTeamExeletsStmt                        *sql.Stmt
+	listTeamExeletsForTeamStmt                 *sql.Stmt
 	listTeamSharedBoxIDsForUserStmt            *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
@@ -3764,12 +3845,16 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingTeamInviteStmt:                q.deletePendingTeamInviteStmt,
 		deletePendingTeamInvitesByTeamIDStmt:       q.deletePendingTeamInvitesByTeamIDStmt,
 		deletePendingTeamInvitesByUserStmt:         q.deletePendingTeamInvitesByUserStmt,
+		deletePrivateExeletStmt:                    q.deletePrivateExeletStmt,
 		deletePushTokenStmt:                        q.deletePushTokenStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeysByIntegrationIDStmt:           q.deleteSSHKeysByIntegrationIDStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
 		deleteTeamStmt:                             q.deleteTeamStmt,
+		deleteTeamExeletStmt:                       q.deleteTeamExeletStmt,
+		deleteTeamExeletsByAddrStmt:                q.deleteTeamExeletsByAddrStmt,
+		deleteTeamExeletsByTeamIDStmt:              q.deleteTeamExeletsByTeamIDStmt,
 		deleteTeamIntegrationStmt:                  q.deleteTeamIntegrationStmt,
 		deleteTeamMemberStmt:                       q.deleteTeamMemberStmt,
 		deleteTeamSSOProviderStmt:                  q.deleteTeamSSOProviderStmt,
@@ -3944,6 +4029,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPendingRegistrationStmt:              q.insertPendingRegistrationStmt,
 		insertPendingSSHKeyStmt:                    q.insertPendingSSHKeyStmt,
 		insertPendingTeamInviteStmt:                q.insertPendingTeamInviteStmt,
+		insertPrivateExeletStmt:                    q.insertPrivateExeletStmt,
 		insertRedirectStmt:                         q.insertRedirectStmt,
 		insertReleasedBoxNameStmt:                  q.insertReleasedBoxNameStmt,
 		insertSSHKeyStmt:                           q.insertSSHKeyStmt,
@@ -3957,6 +4043,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertStripeWebhookEventStmt:               q.insertStripeWebhookEventStmt,
 		insertTagResolutionHistoryStmt:             q.insertTagResolutionHistoryStmt,
 		insertTeamStmt:                             q.insertTeamStmt,
+		insertTeamExeletStmt:                       q.insertTeamExeletStmt,
 		insertTeamMemberStmt:                       q.insertTeamMemberStmt,
 		insertTeamSSOProviderStmt:                  q.insertTeamSSOProviderStmt,
 		insertTemplateStmt:                         q.insertTemplateStmt,
@@ -3999,9 +4086,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
+		listPrivateExeletsStmt:                     q.listPrivateExeletsStmt,
 		listStripeWebhookEventsByTypeStmt:          q.listStripeWebhookEventsByTypeStmt,
 		listSubscriptionEventsStmt:                 q.listSubscriptionEventsStmt,
 		listTeamBoxesForAdminStmt:                  q.listTeamBoxesForAdminStmt,
+		listTeamExeletsStmt:                        q.listTeamExeletsStmt,
+		listTeamExeletsForTeamStmt:                 q.listTeamExeletsForTeamStmt,
 		listTeamSharedBoxIDsForUserStmt:            q.listTeamSharedBoxIDsForUserStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,

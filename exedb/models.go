@@ -362,6 +362,11 @@ type PendingTeamInvite struct {
 	AuthProvider     *string    `db:"auth_provider" json:"auth_provider"`
 }
 
+type PrivateExelet struct {
+	ExeletAddr string    `db:"exelet_addr" json:"exelet_addr"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+}
+
 type PushToken struct {
 	ID          int64      `db:"id" json:"id"`
 	UserID      string     `db:"user_id" json:"user_id"`
@@ -483,6 +488,12 @@ type Team struct {
 	Limits       *string   `db:"limits" json:"limits"`
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 	AuthProvider *string   `db:"auth_provider" json:"auth_provider"`
+}
+
+type TeamExelet struct {
+	TeamID     string    `db:"team_id" json:"team_id"`
+	ExeletAddr string    `db:"exelet_addr" json:"exelet_addr"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
 
 type TeamMember struct {

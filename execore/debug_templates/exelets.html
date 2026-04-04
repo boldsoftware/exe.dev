@@ -5,12 +5,21 @@
 .status-healthy { color: green; font-weight: bold; }
 .status-error { color: red; font-weight: bold; }
 .preferred { background: #d4edda; }
+.private { background: #fff3cd; }
+.preferred.private { background: #c3e6cb; }
 .set-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #007bff; background: #007bff; color: white; }
 .set-btn:hover { background: #0056b3; }
 .clear-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #dc3545; background: #dc3545; color: white; }
 .clear-btn:hover { background: #c82333; }
 .recover-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #28a745; background: #28a745; color: white; }
 .recover-btn:hover { background: #218838; }
+.private-btn { padding: 4px 12px; cursor: pointer; border-radius: 3px; border: 1px solid #ffc107; background: #ffc107; color: #212529; }
+.private-btn:hover { background: #e0a800; }
+.team-tag { display: inline-block; background: #e2e3e5; border-radius: 3px; padding: 1px 6px; margin: 1px; font-size: 0.85em; }
+.team-tag form { display: inline; }
+.team-assign { margin-top: 4px; }
+.team-assign select { padding: 2px 4px; font-size: 0.85em; }
+.team-assign button { padding: 2px 8px; font-size: 0.85em; cursor: pointer; }
 </style>
 </head><body>
 <h1>Exelets</h1>
@@ -20,9 +29,9 @@
 <p>No exelets configured.</p>
 {{else}}
 <table>
-<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GiB)</th><th>SwapFree (GiB)</th><th>DiskFree (GiB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Links</th><th>Actions</th></tr>
-{{range .Exelets}}
-<tr{{if .IsPreferred}} class="preferred"{{end}}>
+<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GiB)</th><th>SwapFree (GiB)</th><th>DiskFree (GiB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Links</th><th>Private / Teams</th><th>Actions</th></tr>
+{{range $exelet := .Exelets}}
+<tr{{if .IsPreferred}} class="preferred{{if .IsPrivate}} private{{end}}"{{else if .IsPrivate}} class="private"{{end}}>
 <td><code><a href="/debug/exelets/{{.Hostname}}">{{.Address}}</a></code></td>
 <td class="{{if eq .Status "error"}}status-error{{else}}status-healthy{{end}}">{{if eq .Status "error"}}error: {{.Error}}{{else}}{{.Status}}{{end}}</td>
 <td>{{.Available}}</td>
@@ -36,6 +45,45 @@
 <td>{{.TxRate}}</td>
 <td><a href="/debug/exelets/{{.Hostname}}">{{.TierCount}}</a></td>
 <td>{{if .DebugURL}}<a href="{{.DebugURL}}" target="_blank">debug</a> | <a href="{{.CgtopURL}}" target="_blank">cgtop</a>{{end}}</td>
+<td>
+{{if .IsPrivate}}
+🔒 Private
+<form method="post" action="/debug/exelets/set-private" style="display:inline;" onsubmit="return confirm('Make {{.Address}} public?');">
+<input type="hidden" name="address" value="{{.Address}}">
+<input type="hidden" name="action" value="clear">
+<button type="submit" class="clear-btn" style="padding:2px 8px;font-size:0.85em;">Make Public</button>
+</form>
+{{else}}
+<form method="post" action="/debug/exelets/set-private" style="display:inline;" onsubmit="return confirm('Make {{.Address}} private? No new VMs will be scheduled here unless a team is assigned.');">
+<input type="hidden" name="address" value="{{.Address}}">
+<input type="hidden" name="action" value="set">
+<button type="submit" class="private-btn" style="padding:2px 8px;font-size:0.85em;">Make Private</button>
+</form>
+{{end}}
+<br>
+{{range .Teams}}
+<span class="team-tag">{{.DisplayName}} ({{.TeamID}})
+<form method="post" action="/debug/exelets/set-team-exelet">
+<input type="hidden" name="address" value="{{$exelet.Address}}">
+<input type="hidden" name="team_id" value="{{.TeamID}}">
+<input type="hidden" name="action" value="clear">
+<button type="submit" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:0;font-size:0.85em;">✕</button>
+</form>
+</span>
+{{end}}
+{{if $.AllTeams}}
+<div class="team-assign">
+<form method="post" action="/debug/exelets/set-team-exelet" style="display:inline;">
+<input type="hidden" name="address" value="{{.Address}}">
+<input type="hidden" name="action" value="set">
+<select name="team_id">
+{{range $.AllTeams}}<option value="{{.TeamID}}">{{.DisplayName}}</option>{{end}}
+</select>
+<button type="submit" class="set-btn" style="padding:2px 8px;font-size:0.85em;">Assign Team</button>
+</form>
+</div>
+{{end}}
+</td>
 <td>
 {{if .IsPreferred}}
 ⭐ <form method="post" action="/debug/exelets/set-preferred" style="display: inline;" onsubmit="return confirm('Clear preferred exelet?');">
