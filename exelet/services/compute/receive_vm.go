@@ -185,7 +185,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	var sbLn net.Listener
 	sidebandAddr := ""
 	if sbLocalHost != "" {
-		if ln, err := net.Listen("tcp", "0.0.0.0:0"); err == nil {
+		if ln, err := net.Listen("tcp", net.JoinHostPort(sbLocalHost, "0")); err == nil {
 			sbLn = ln
 			port := ln.Addr().(*net.TCPAddr).Port
 			sidebandAddr = net.JoinHostPort(sbLocalHost, strconv.Itoa(port))
