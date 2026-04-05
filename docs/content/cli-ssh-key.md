@@ -45,10 +45,7 @@ ssh-key add <public-key>
 ```
 
 **Options:**
-- `--cmds`: comma-separated list of allowed commands (empty = all)
-- `--exp`: expiry duration (e.g. 30d, 1y) or 'never'
 - `--json`: output in JSON format
-- `--vm`: scope key to a VM
 
 **Examples:**
 ```

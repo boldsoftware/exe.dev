@@ -16,9 +16,9 @@ import (
 
 func sshKeyAddFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("ssh-key-add", flag.ContinueOnError)
-	fs.String("cmds", "", "comma-separated list of allowed commands (empty = all)")
-	fs.String("vm", "", "scope key to a VM")
-	fs.String("exp", "", "expiry duration (e.g. 30d, 1y) or 'never'")
+	fs.String("cmds", "", "[hidden] comma-separated list of allowed commands (empty = all)")
+	fs.String("vm", "", "[hidden] scope key to a VM")
+	fs.String("exp", "", "[hidden] expiry duration (e.g. 30d, 1y) or 'never'")
 	fs.Bool("json", false, "output in JSON format")
 	return fs
 }

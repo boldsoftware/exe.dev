@@ -643,6 +643,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if cc.User != nil {
 		ss.server.recordUserEventBestEffort(ctx, cc.User.ID, userEventHasRunHelp)
+		cc.ShowHiddenFlags = ss.server.UserHasExeSudo(ctx, cc.User.ID)
 	}
 
 	// RawArgs mode: manually extract --json and filter flags out of the

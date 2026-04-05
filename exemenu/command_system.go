@@ -92,19 +92,29 @@ func (c *Command) Help(cc *CommandContext) error {
 		fs := c.FlagSetFunc()
 		hasFlags := false
 		fs.VisitAll(func(f *flag.Flag) {
-			if !hasFlags {
-				cc.Writeln("\r\n\033[1mOptions:\033[0m")
-				hasFlags = true
+			if f.Usage == "" {
+				return
 			}
+			if strings.HasPrefix(f.Usage, "[hidden] ") && !cc.ShowHiddenFlags {
+				return
+			}
+			hasFlags = true
 		})
 		if hasFlags {
+			cc.Writeln("\r\n\033[1mOptions:\033[0m")
 			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 			fs.VisitAll(func(f *flag.Flag) {
-				// Skip hidden flags
-				if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
+				if f.Usage == "" {
 					return
 				}
-				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\r\n", f.Name, f.Usage)
+				usage := f.Usage
+				if strings.HasPrefix(usage, "[hidden] ") {
+					if !cc.ShowHiddenFlags {
+						return
+					}
+					usage = strings.TrimPrefix(usage, "[hidden] ")
+				}
+				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\r\n", f.Name, usage)
 			})
 			tabw.Flush()
 		}
@@ -144,12 +154,19 @@ func (c *Command) helpJSON(cc *CommandContext) error {
 		fs := c.FlagSetFunc()
 		var flags []map[string]string
 		fs.VisitAll(func(f *flag.Flag) {
-			if f.Usage == "" || strings.HasPrefix(f.Usage, "[hidden] ") {
+			if f.Usage == "" {
 				return
+			}
+			usage := f.Usage
+			if strings.HasPrefix(usage, "[hidden] ") {
+				if !cc.ShowHiddenFlags {
+					return
+				}
+				usage = strings.TrimPrefix(usage, "[hidden] ")
 			}
 			flags = append(flags, map[string]string{
 				"name":        f.Name,
-				"description": f.Usage,
+				"description": usage,
 			})
 		})
 		if len(flags) > 0 {
@@ -181,12 +198,13 @@ func (c *Command) helpJSON(cc *CommandContext) error {
 // CommandContext provides all the context a command needs to execute
 type CommandContext struct {
 	// Core context
-	User       *UserInfo
-	PublicKey  string
-	Args       []string
-	FlagSet    *flag.FlagSet // parsed flags for this command
-	SSHSession ShellSession
-	DevMode    bool // if true, show hidden commands in help and completions
+	User            *UserInfo
+	PublicKey       string
+	Args            []string
+	FlagSet         *flag.FlagSet // parsed flags for this command
+	SSHSession      ShellSession
+	DevMode         bool // if true, show hidden commands in help and completions
+	ShowHiddenFlags bool // if true, show [hidden] flags in help output
 
 	// I/O interfaces
 	Output   io.Writer      // where to write output
