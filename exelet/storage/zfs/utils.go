@@ -143,11 +143,23 @@ func (s *ZFS) mountInstanceFS(id string) (string, error) {
 		return "", fmt.Errorf("error creating mountpoint for %s: %w", id, err)
 	}
 
-	// mount
-	if err := unix.Mount(diskPath, mountpoint, "ext4", uintptr(0), ""); err != nil {
-		// already mounted
+	// Mount for host-side config writes only — no provisioning step executes binaries from here.
+	// The guest VM sees this filesystem via its own virtio block device attachment, not this mount.
+	mountFlags := uintptr(unix.MS_NOSYMFOLLOW | unix.MS_NODEV | unix.MS_NOSUID | unix.MS_NOEXEC)
+	if err := unix.Mount(diskPath, mountpoint, "ext4", mountFlags, ""); err != nil {
 		if err != unix.EBUSY {
 			return "", fmt.Errorf("error mounting instance FS %s: %w", id, err)
+		}
+		// Already mounted — remount to ensure hardening flags are applied.
+		// NB: MS_REMOUNT operates on whatever is currently mounted at this path,
+		// not necessarily diskPath. This is safe because the mountpoint is
+		// instance-ID-derived and protected by the instance lifecycle lock,
+		// so no other process can mount something else here.
+		s.log.Info("remounting with hardening flags", "id", id, "diskPath", diskPath, "mountpoint", mountpoint)
+		// NB: MS_BIND is not needed here because this is a device mount, not a bind mount.
+		// If this ever changes to a bind mount, MS_BIND must be ORed with MS_REMOUNT.
+		if err := unix.Mount("", mountpoint, "", unix.MS_REMOUNT|mountFlags, ""); err != nil {
+			return "", fmt.Errorf("error remounting instance FS %s with hardening flags: %w", id, err)
 		}
 	}
 
