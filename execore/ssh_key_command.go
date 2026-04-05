@@ -674,11 +674,25 @@ func (ss *SSHServer) completeSSHKeyName(compCtx *exemenu.CompletionContext, cc *
 		return nil
 	}
 
+	// Filter by tag scope: tag-scoped keys can only see peer keys with the same tag.
+	var callerTag string
+	if cc.PublicKey != "" {
+		if perms, err := ss.server.getSSHKeyPermsByPublicKey(context.Background(), cc.PublicKey); err == nil && perms != nil {
+			callerTag = perms.Tag
+		}
+	}
+
 	var completions []string
 	prefix := compCtx.CurrentWord
 	seen := make(map[string]bool)
 
 	for _, key := range keys {
+		if callerTag != "" {
+			keyPerms, _ := parseSSHKeyPerms(key.Permissions)
+			if keyPerms == nil || keyPerms.Tag != callerTag {
+				continue
+			}
+		}
 		if key.Comment != "" && !seen[key.Comment] && strings.HasPrefix(key.Comment, prefix) {
 			completions = append(completions, key.Comment)
 			seen[key.Comment] = true

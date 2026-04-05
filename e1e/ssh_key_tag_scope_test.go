@@ -110,7 +110,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), tagKey, "rm", preUntagged)
 		// rm itself may exit 0 (it collects per-VM errors), so check output.
 		_ = err
-		if !strings.Contains(string(out), "restricted to VMs with tag") {
+		if !strings.Contains(string(out), "not found") {
 			t.Errorf("expected tag restriction error, got: %s", out)
 		}
 		// Verify the VM still exists (root key sees it).
@@ -276,7 +276,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 		// rm should be denied.
 		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), tagKey, "rm", rootOnlyVM)
 		_ = err
-		if !strings.Contains(string(out), "restricted to VMs with tag") {
+		if !strings.Contains(string(out), "not found") {
 			t.Errorf("expected tag restriction for rm, got: %s", out)
 		}
 
@@ -331,7 +331,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 		if err == nil {
 			t.Fatalf("restart untagged VM should fail, got: %s", out)
 		}
-		if !strings.Contains(string(out), "restricted to VMs with tag") {
+		if !strings.Contains(string(out), "not found") {
 			t.Errorf("expected tag restriction error, got: %s", out)
 		}
 	})
@@ -342,7 +342,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 		if err == nil {
 			t.Fatalf("lock untagged VM should fail, got: %s", out)
 		}
-		if !strings.Contains(string(out), "restricted to VMs with tag") {
+		if !strings.Contains(string(out), "not found") {
 			t.Errorf("expected tag restriction, got: %s", out)
 		}
 	})
@@ -353,7 +353,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 		if err == nil {
 			t.Fatalf("rename untagged VM should fail, got: %s", out)
 		}
-		if !strings.Contains(string(out), "restricted to VMs with tag") {
+		if !strings.Contains(string(out), "not found") {
 			t.Errorf("expected tag restriction, got: %s", out)
 		}
 	})

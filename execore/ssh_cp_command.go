@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -396,15 +397,27 @@ done:
 
 	// Copy tags from source box if --copy-tags is true (the default)
 	copyTags := cc.FlagSet.Lookup("copy-tags").Value.String() == "true"
-	if copyTags {
-		if tags := sourceBox.GetTags(); len(tags) > 0 {
-			tagsJSON := exedb.TagsJSON(tags)
-			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxTags, exedb.UpdateBoxTagsParams{
-				Tags: tagsJSON,
-				ID:   boxID,
-			}); err != nil {
-				slog.WarnContext(ctx, "failed to copy tags from source box", "source", sourceVMName, "clone", newName, "error", err)
-			}
+	cloneTags := sourceBox.GetTags()
+	if !copyTags {
+		cloneTags = nil
+	}
+
+	// Tag-scoped keys: ensure the clone always carries the required tag,
+	// regardless of --copy-tags. Without this, `cp --copy-tags=false` would
+	// create an untagged VM that escapes the key's tag scope.
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		if !slices.Contains(cloneTags, perms.Tag) {
+			cloneTags = append(cloneTags, perms.Tag)
+		}
+	}
+
+	if len(cloneTags) > 0 {
+		tagsJSON := exedb.TagsJSON(cloneTags)
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxTags, exedb.UpdateBoxTagsParams{
+			Tags: tagsJSON,
+			ID:   boxID,
+		}); err != nil {
+			slog.WarnContext(ctx, "failed to set tags on cloned box", "source", sourceVMName, "clone", newName, "error", err)
 		}
 	}
 

@@ -113,13 +113,15 @@ func getSessionSSHKeyPerms(ctx context.Context) *SSHKeyPerms {
 
 // enforceTagScope checks whether the current SSH key's tag scope allows
 // access to the given box. Returns a user-facing error if denied, nil if OK.
+// The error message intentionally says "not found" rather than "restricted"
+// to avoid revealing whether the VM exists to a tag-scoped key holder.
 func enforceTagScope(ctx context.Context, box *exedb.Box) error {
 	perms := getSSHKeyPerms(ctx)
 	if perms == nil || perms.Tag == "" {
 		return nil
 	}
 	if !perms.AllowsBoxByTag(box.GetTags()) {
-		return fmt.Errorf("SSH key is restricted to VMs with tag %q", perms.Tag)
+		return fmt.Errorf("VM %q not found", box.Name)
 	}
 	return nil
 }

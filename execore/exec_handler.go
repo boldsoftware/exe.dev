@@ -3,6 +3,7 @@ package execore
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sshkey"
+
 	"github.com/anmitsu/go-shlex"
 )
 
@@ -89,6 +91,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	var userID, userEmail, rateLimitKey string
 	var tokenCmds []string
 	var skipCmdCheck bool
+	var keyPerms *SSHKeyPerms // DB-level permissions for the signing key
 
 	if strings.HasPrefix(token, AppTokenPrefix) {
 		// App token authentication.
@@ -126,6 +129,33 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		userEmail = user.Email
 		rateLimitKey = result.Fingerprint
 		tokenCmds = result.Cmds
+
+		// Look up DB-level permissions (tag, vm, exp) for the signing key.
+		// These are stored in the ssh_keys table, not in the token payload.
+		// Fail closed: if the DB lookup fails for any reason other than
+		// "key not found", reject the request rather than proceeding
+		// with nil (unrestricted) permissions.
+		dbKey, dbErr := withRxRes1(s, ctx, (*exedb.Queries).GetSSHKeyByFingerprint, result.Fingerprint)
+		if dbErr != nil && !errors.Is(dbErr, sql.ErrNoRows) {
+			s.slog().ErrorContext(ctx, "failed to look up SSH key permissions", "error", dbErr, "fingerprint", result.Fingerprint)
+			execJSONError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if dbErr == nil {
+			parsed, parseErr := parseSSHKeyPerms(dbKey.Permissions)
+			if parseErr != nil {
+				s.slog().ErrorContext(ctx, "failed to parse SSH key permissions", "error", parseErr, "fingerprint", result.Fingerprint)
+				execJSONError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if parsed != nil {
+				if parsed.IsExpired() {
+					execJSONError(w, "SSH key has expired", http.StatusForbidden)
+					return
+				}
+				keyPerms = parsed
+			}
+		}
 	}
 
 	// Rate limit.
@@ -192,6 +222,12 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	// Execute the command with timeout.
 	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+
+	// Inject DB-level key permissions (tag/vm scope) into context so that
+	// the command dispatch layer and per-handler enforceTagScope checks work.
+	if keyPerms != nil {
+		execCtx = withSSHKeyPerms(execCtx, keyPerms)
+	}
 
 	exitCode := ss.commands.ExecuteCommand(execCtx, cc, cmdParts)
 

@@ -477,7 +477,7 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 		}
 		if !perms.AllowsBoxByTag(box.GetTags()) {
 			slog.WarnContext(ctx, "SSH key tag restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "required_tag", perms.Tag)
-			return nil, fmt.Errorf("SSH key is restricted to VMs with tag %q", perms.Tag)
+			return nil, fmt.Errorf("VM %q not found", box.Name)
 		}
 	}
 

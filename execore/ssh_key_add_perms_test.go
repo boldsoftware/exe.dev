@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
 	"exe.dev/sshkey"
@@ -812,8 +813,8 @@ func TestSSHKeyPermsTagScopeEnforcement(t *testing.T) {
 		// Try to delete the untagged VM — rm writes per-VM errors but
 		// still returns rc=0 when no VMs were successfully deleted.
 		_ = ss.executeCommandWithLogging(ctx, cc, []string{"rm", "other-vm"})
-		if !strings.Contains(buf.String(), "restricted to VMs with tag") {
-			t.Errorf("expected tag restriction error, got: %s", buf.String())
+		if !strings.Contains(buf.String(), "not found") {
+			t.Errorf("expected 'not found' error for tag-scoped denial, got: %s", buf.String())
 		}
 		// Verify the VM was NOT deleted by checking ls with an unrestricted key.
 		pub2, _, err := ed25519.GenerateKey(rand.Reader)
@@ -1270,4 +1271,136 @@ func TestTagScopedCommandDispatchDenyByDefault(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHTTPSExecTagScopeEnforcement verifies that the HTTPS /exec endpoint
+// enforces tag-scope restrictions from the SSH key's DB permissions.
+// This is a regression test for a vulnerability where the /exec handler
+// only checked the token's cmds claim but not DB-level tag/vm restrictions.
+func TestHTTPSExecTagScopeEnforcement(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+
+	// Create a user with root support.
+	userID := "usr" + generateRegistrationToken()
+	email := userID + "@test.example.com"
+
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshPubKey, _ := ssh.NewPublicKey(pubKey)
+	sshPrivKey, _ := ssh.NewSignerFromKey(privKey)
+	pubKeyStr := string(ssh.MarshalAuthorizedKey(sshPubKey))
+	fingerprint := strings.TrimPrefix(ssh.FingerprintSHA256(sshPubKey), "SHA256:")
+
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email, root_support) VALUES (?, ?, 1)`, userID, email); err != nil {
+			return err
+		}
+		// Insert the key with tag-scope permissions.
+		if _, err := tx.Exec(
+			`INSERT INTO ssh_keys (user_id, public_key, fingerprint, permissions) VALUES (?, ?, ?, ?)`,
+			userID, pubKeyStr, fingerprint, `{"tag":"ci"}`,
+		); err != nil {
+			return err
+		}
+		// Create two VMs: one tagged "ci", one untagged.
+		if _, err := tx.Exec(
+			`INSERT INTO boxes (ctrhost, name, status, image, created_by_user_id, tags, region) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"host1", "tagged-vm", "running", "ubuntu:24.04", userID, `["ci"]`, "us",
+		); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO boxes (ctrhost, name, status, image, created_by_user_id, tags, region) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"host1", "untagged-vm", "running", "ubuntu:24.04", userID, `[]`, "us",
+		); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Generate a token signed by the tag-scoped key (with cmds allowing ls).
+	payload := []byte(`{"cmds":["ls","whoami"]}`)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	sigBlob := createSigBlob(t, sshPrivKey, payload, "v0@"+s.env.WebHost)
+	token := sshkey.TokenPrefix + payloadB64 + "." + sigBlob
+
+	// Run "ls --json" via /exec — should only return the tagged VM.
+	resp, body := execWithBearer(t, s, token, "ls --json")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		VMs []struct {
+			VMName string `json:"vm_name"`
+		} `json:"vms"`
+	}
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
+		t.Fatalf("parse ls JSON: %v\n%s", err, body)
+	}
+
+	var vmNames []string
+	for _, vm := range result.VMs {
+		vmNames = append(vmNames, vm.VMName)
+	}
+	if len(vmNames) != 1 || vmNames[0] != "tagged-vm" {
+		t.Errorf("expected only [tagged-vm], got %v", vmNames)
+	}
+
+	// whoami should work (AllowTagScoped: true) but only show the tag-scoped key.
+	resp2, body2 := execWithBearer(t, s, token, "whoami --json")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for whoami, got %d: %s", resp2.StatusCode, body2)
+	}
+
+	var whoami struct {
+		SSHKeys []struct {
+			Fingerprint string `json:"fingerprint"`
+		} `json:"ssh_keys"`
+	}
+	if err := json.Unmarshal([]byte(body2), &whoami); err != nil {
+		t.Fatalf("parse whoami JSON: %v\n%s", err, body2)
+	}
+	if len(whoami.SSHKeys) != 1 {
+		t.Errorf("expected 1 SSH key in whoami, got %d", len(whoami.SSHKeys))
+	}
+}
+
+// TestTagScopeEnforcedOnCpViaContextPerms verifies that enforceTagScope
+// correctly allows/denies access based on whether the box has the required tag.
+func TestTagScopeEnforcedOnCpViaContextPerms(t *testing.T) {
+	t.Parallel()
+
+	perms := &SSHKeyPerms{Tag: "ci"}
+
+	t.Run("box_without_tag_denied", func(t *testing.T) {
+		box := &exedb.Box{Name: "no-tag-vm", Tags: "[]"}
+		ctx := withSSHKeyPerms(context.Background(), perms)
+		if err := enforceTagScope(ctx, box); err == nil {
+			t.Error("expected error for box without tag, got nil")
+		}
+	})
+
+	t.Run("box_with_tag_allowed", func(t *testing.T) {
+		box := &exedb.Box{Name: "tagged-vm", Tags: `["ci"]`}
+		ctx := withSSHKeyPerms(context.Background(), perms)
+		if err := enforceTagScope(ctx, box); err != nil {
+			t.Errorf("expected nil for box with tag, got %v", err)
+		}
+	})
+
+	t.Run("no_perms_always_allowed", func(t *testing.T) {
+		box := &exedb.Box{Name: "any-vm", Tags: "[]"}
+		ctx := context.Background() // no perms
+		if err := enforceTagScope(ctx, box); err != nil {
+			t.Errorf("expected nil with no perms, got %v", err)
+		}
+	})
 }

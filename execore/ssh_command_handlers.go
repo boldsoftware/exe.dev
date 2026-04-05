@@ -1140,7 +1140,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		// Enforce SSH key tag scope.
 		if perms := getSSHKeyPerms(ctx); perms != nil && !perms.AllowsBoxByTag(box.GetTags()) {
 			failed = append(failed, boxName)
-			cc.WriteError("SSH key is restricted to VMs with tag %q", perms.Tag)
+			cc.WriteError("VM %q not found", boxName)
 			continue
 		}
 
@@ -1566,6 +1566,19 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 	boxes, err := withRxRes1(ss.server, context.Background(), (*exedb.Queries).BoxesForUser, cc.User.ID)
 	if err != nil {
 		return nil
+	}
+
+	// Filter by tag scope if the calling key is tag-scoped.
+	if cc.PublicKey != "" {
+		if perms, err := ss.server.getSSHKeyPermsByPublicKey(context.Background(), cc.PublicKey); err == nil && perms != nil && perms.Tag != "" {
+			var filtered []exedb.Box
+			for _, b := range boxes {
+				if perms.AllowsBoxByTag(b.GetTags()) {
+					filtered = append(filtered, b)
+				}
+			}
+			boxes = filtered
+		}
 	}
 
 	alreadySelected := make(map[string]bool)
