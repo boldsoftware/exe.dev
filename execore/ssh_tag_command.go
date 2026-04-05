@@ -20,6 +20,12 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("usage: tag [-d] <vm> <tag-name>")
 	}
 
+	// Tag-scoped keys cannot modify tags; the tag association is the basis of
+	// their access and letting them add/remove tags would be privilege escalation.
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		return cc.Errorf("SSH key scoped to tag %q cannot modify tags", perms.Tag)
+	}
+
 	vmName := ss.normalizeBoxName(cc.Args[0])
 	tagName := cc.Args[1]
 

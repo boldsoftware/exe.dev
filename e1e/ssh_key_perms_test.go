@@ -129,7 +129,8 @@ func TestSSHKeyPermissions(t *testing.T) {
 			t.Fatalf("ls should fail for restricted key, got: %s", out)
 		}
 
-		// Add a new unrestricted key using the restricted key.
+		// Add a new key using the restricted key (no explicit flags).
+		// The new key inherits the caller's cmds restriction.
 		newKeyPath, newPubKey, err := testinfra.GenSSHKey(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
@@ -140,11 +141,19 @@ func TestSSHKeyPermissions(t *testing.T) {
 			t.Fatalf("ssh-key add should succeed: %v\n%s", err, out)
 		}
 
-		// The new key (added without --cmds) should be unrestricted.
-		// This tests that the restriction is on the *key*, not the *user*.
+		// The new key inherits the restriction: "ls" should still be denied.
 		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), newKeyPath, "ls")
+		if err == nil {
+			t.Fatalf("inherited key should be denied ls, got: %s", out)
+		}
+		if !strings.Contains(string(out), "command not allowed by SSH key permissions") {
+			t.Errorf("expected permission denied error, got: %s", out)
+		}
+
+		// The inherited key should still allow whoami (inherited from caller).
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), newKeyPath, "whoami")
 		if err != nil {
-			t.Errorf("unrestricted key added by restricted key should work for ls: %v\n%s", err, out)
+			t.Errorf("inherited key should allow whoami: %v\n%s", err, out)
 		}
 
 		// Clean up

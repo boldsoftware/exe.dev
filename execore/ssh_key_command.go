@@ -279,17 +279,18 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 	// Parse permission flags.
 	cmdsFlag := cc.FlagSet.Lookup("cmds").Value.String()
 	vmFlag := cc.FlagSet.Lookup("vm").Value.String()
+	tagFlag := cc.FlagSet.Lookup("tag").Value.String()
 	expFlag := cc.FlagSet.Lookup("exp").Value.String()
 
 	// Permission flags on ssh-key add require root support privileges.
-	if cmdsFlag != "" || vmFlag != "" || expFlag != "" {
+	if cmdsFlag != "" || vmFlag != "" || tagFlag != "" || expFlag != "" {
 		if cc.User == nil || !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
-			return cc.Errorf("--cmds, --vm, and --exp flags require root support privileges")
+			return cc.Errorf("--cmds, --vm, --tag, and --exp flags require root support privileges")
 		}
 	}
 
 	// Build permissions JSON from flags.
-	permsJSON, err := ss.buildSSHKeyPermissions(ctx, cc, cmdsFlag, vmFlag, expFlag)
+	permsJSON, err := ss.buildSSHKeyPermissions(ctx, cc, cmdsFlag, vmFlag, tagFlag, expFlag)
 	if err != nil {
 		return err
 	}
@@ -393,10 +394,10 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 }
 
 // buildSSHKeyPermissions builds a permissions JSON string from the common
-// restriction flags (--cmds, --vm, --exp). Returns "" when no restrictions
+// restriction flags (--cmds, --vm, --tag, --exp). Returns "" when no restrictions
 // are specified. For SSH keys, empty --cmds means "*" (all commands), so
 // it is only stored when explicitly provided.
-func (ss *SSHServer) buildSSHKeyPermissions(ctx context.Context, cc *exemenu.CommandContext, cmdsFlag, vmFlag, expFlag string) (string, error) {
+func (ss *SSHServer) buildSSHKeyPermissions(ctx context.Context, cc *exemenu.CommandContext, cmdsFlag, vmFlag, tagFlag, expFlag string) (string, error) {
 	perms := make(map[string]any)
 
 	if cmdsFlag != "" {
@@ -411,12 +412,23 @@ func (ss *SSHServer) buildSSHKeyPermissions(ctx context.Context, cc *exemenu.Com
 		}
 	}
 
+	if vmFlag != "" && tagFlag != "" {
+		return "", cc.Errorf("--vm and --tag are mutually exclusive")
+	}
+
 	if vmFlag != "" {
 		vmName := ss.normalizeBoxName(vmFlag)
 		if _, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName); err != nil {
 			return "", cc.Errorf("VM %q not found or access denied", vmName)
 		}
 		perms["vm"] = vmName
+	}
+
+	if tagFlag != "" {
+		if !tagNameRe.MatchString(tagFlag) {
+			return "", cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_-]*", tagFlag)
+		}
+		perms["tag"] = tagFlag
 	}
 
 	if expFlag != "" && strings.ToLower(expFlag) != "never" {
@@ -428,6 +440,12 @@ func (ss *SSHServer) buildSSHKeyPermissions(ctx context.Context, cc *exemenu.Com
 			t := time.Now().Add(d)
 			perms["exp"] = t.Unix()
 		}
+	}
+
+	// Inherit restrictions from the calling key. A scoped key cannot
+	// create a less-restricted key — that would be privilege escalation.
+	if err := inheritCallerRestrictions(getSSHKeyPerms(ctx), perms); err != nil {
+		return "", cc.Errorf("%v", err)
 	}
 
 	if len(perms) == 0 {

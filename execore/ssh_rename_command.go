@@ -41,6 +41,9 @@ func (ss *SSHServer) handleRenameCommand(ctx context.Context, cc *exemenu.Comman
 	if err != nil {
 		return cc.Errorf("vm %q not found", oldName)
 	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
 	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))

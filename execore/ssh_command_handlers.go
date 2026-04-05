@@ -729,6 +729,17 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		boxes = slices.CompactFunc(filtered, func(a, b exedb.Box) bool { return a.Name == b.Name })
 	}
 
+	// Enforce SSH key tag scope: only show VMs with the required tag.
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		var tagFiltered []exedb.Box
+		for _, b := range boxes {
+			if perms.AllowsBoxByTag(b.GetTags()) {
+				tagFiltered = append(tagFiltered, b)
+			}
+		}
+		boxes = tagFiltered
+	}
+
 	if cc.WantJSON() {
 		vmList := []map[string]any{}
 		for _, vm := range boxes {
@@ -941,6 +952,9 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 	if err != nil {
 		return cc.Errorf("VM %q not found", boxName)
 	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
 	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
@@ -1092,6 +1106,13 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		if err != nil {
 			failed = append(failed, boxName)
 			cc.WriteError("VM %q not found", boxName)
+			continue
+		}
+
+		// Enforce SSH key tag scope.
+		if perms := getSSHKeyPerms(ctx); perms != nil && !perms.AllowsBoxByTag(box.GetTags()) {
+			failed = append(failed, boxName)
+			cc.WriteError("SSH key is restricted to VMs with tag %q", perms.Tag)
 			continue
 		}
 
@@ -1671,6 +1692,9 @@ doneParsingSSHFlags:
 	if err != nil {
 		return cc.Errorf("VM %q not found", name)
 	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	// Validate box has SSH credentials
 	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
@@ -1817,6 +1841,9 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 	if err != nil {
 		return cc.Errorf("failed to look up VM: %v", err)
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))

@@ -903,6 +903,9 @@ func (ss *SSHServer) handleTeamTransferCommand(ctx context.Context, cc *exemenu.
 	if err != nil {
 		return cc.Errorf("VM %q not found", boxName)
 	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	// Resolve target user — must be in the same team
 	ce := canonicalizeEmail(targetEmail)

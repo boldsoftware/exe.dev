@@ -29,6 +29,9 @@ func (ss *SSHServer) handleLockCommand(ctx context.Context, cc *exemenu.CommandC
 	if err != nil {
 		return cc.Errorf("vm %q not found", vmName)
 	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
 
@@ -72,6 +75,9 @@ func (ss *SSHServer) handleUnlockCommand(ctx context.Context, cc *exemenu.Comman
 	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
 	if err != nil {
 		return cc.Errorf("vm %q not found", vmName)
+	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))

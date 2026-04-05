@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -363,7 +364,10 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// Check SSH key permissions (expiry and VM restrictions).
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(pubKey))
 	keyPerms, err := p.server.getSSHKeyPermsByPublicKey(ctx, publicKeyStr)
-	if err != nil {
+	if errors.Is(err, errSSHKeyNotFound) {
+		// Key not in ssh_keys table — normal for ephemeral proxy keys.
+		keyPerms = nil
+	} else if err != nil {
 		slog.ErrorContext(ctx, "failed to look up SSH key permissions", "component", "piper-plugin", "key_fingerprint", keyFingerprint, "error", err)
 		return nil, fmt.Errorf("internal error checking SSH key permissions")
 	}
@@ -465,10 +469,16 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Enforce SSH key VM restriction.
-	if perms := getSSHKeyPerms(ctx); perms != nil && !perms.AllowsVM(box.Name) {
-		slog.WarnContext(ctx, "SSH key VM restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "allowed_vm", perms.VM)
-		return nil, fmt.Errorf("SSH key is restricted to VM %q", perms.VM)
+	// Enforce SSH key VM and tag restrictions.
+	if perms := getSSHKeyPerms(ctx); perms != nil {
+		if !perms.AllowsVM(box.Name) {
+			slog.WarnContext(ctx, "SSH key VM restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "allowed_vm", perms.VM)
+			return nil, fmt.Errorf("SSH key is restricted to VM %q", perms.VM)
+		}
+		if !perms.AllowsBoxByTag(box.GetTags()) {
+			slog.WarnContext(ctx, "SSH key tag restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "required_tag", perms.Tag)
+			return nil, fmt.Errorf("SSH key is restricted to VMs with tag %q", perms.Tag)
+		}
 	}
 
 	cl := getPiperConnLog(ctx)

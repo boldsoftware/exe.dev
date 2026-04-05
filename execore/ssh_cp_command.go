@@ -48,6 +48,9 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	if err != nil {
 		return cc.Errorf("vm %q not found", sourceVMName)
 	}
+	if err := enforceTagScope(ctx, sourceBox); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	// Ensure source VM has a container
 	if sourceBox.ContainerID == nil {

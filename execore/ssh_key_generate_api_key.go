@@ -18,6 +18,7 @@ func sshKeyAddFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("ssh-key-add", flag.ContinueOnError)
 	fs.String("cmds", "", "[hidden] comma-separated list of allowed commands (empty = all)")
 	fs.String("vm", "", "[hidden] scope key to a VM")
+	fs.String("tag", "", "[hidden] scope key to VMs with this tag")
 	fs.String("exp", "", "[hidden] expiry duration (e.g. 30d, 1y) or 'never'")
 	fs.Bool("json", false, "output in JSON format")
 	return fs
@@ -27,6 +28,7 @@ func generateAPIKeyFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("generate-api-key", flag.ContinueOnError)
 	fs.String("label", "", "label for this token's SSH key")
 	fs.String("vm", "", "scope key to a VM (authenticates to its HTTPS endpoints instead of exe.dev commands)")
+	fs.String("tag", "", "[hidden] scope key to VMs with this tag")
 	fs.String("cmds", "", "comma-separated list of allowed commands (empty = defaults)")
 	fs.String("exp", "", "expiry duration (e.g. 30d, 1y) or 'never'")
 	fs.Bool("json", false, "output in JSON format")
@@ -75,8 +77,13 @@ func parseDuration(s string) (time.Duration, error) {
 func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exemenu.CommandContext) error {
 	label := cc.FlagSet.Lookup("label").Value.String()
 	vmFlag := cc.FlagSet.Lookup("vm").Value.String()
+	tagFlag := cc.FlagSet.Lookup("tag").Value.String()
 	cmdsFlag := cc.FlagSet.Lookup("cmds").Value.String()
 	expFlag := cc.FlagSet.Lookup("exp").Value.String()
+
+	if vmFlag != "" && tagFlag != "" {
+		return cc.Errorf("--vm and --tag are mutually exclusive")
+	}
 
 	// Determine namespace.
 	namespace := "v0@" + ss.server.env.WebHost
@@ -103,6 +110,13 @@ func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exem
 		}
 	}
 
+	if tagFlag != "" {
+		if !tagNameRe.MatchString(tagFlag) {
+			return cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_-]*", tagFlag)
+		}
+		perms["tag"] = tagFlag
+	}
+
 	var expiresAt *time.Time
 	if expFlag != "" && strings.ToLower(expFlag) != "never" {
 		d, err := parseDuration(expFlag)
@@ -113,6 +127,26 @@ func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exem
 			t := time.Now().Add(d)
 			expiresAt = &t
 			perms["exp"] = t.Unix()
+		}
+	}
+
+	// Inherit restrictions from the calling key.
+	if err := inheritCallerRestrictions(getSSHKeyPerms(ctx), perms); err != nil {
+		return cc.Errorf("%v", err)
+	}
+
+	// Sync expiresAt with the (possibly inherited) exp value.
+	if expVal, ok := perms["exp"]; ok && expiresAt == nil {
+		var unix int64
+		switch v := expVal.(type) {
+		case int64:
+			unix = v
+		case float64:
+			unix = int64(v)
+		}
+		if unix > 0 {
+			t := time.Unix(unix, 0)
+			expiresAt = &t
 		}
 	}
 

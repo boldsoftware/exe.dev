@@ -295,6 +295,19 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
+	// If the SSH key is tag-scoped, automatically tag the new VM.
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		tagsJSON := exedb.TagsJSON([]string{perms.Tag})
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxTags, exedb.UpdateBoxTagsParams{
+			Tags: tagsJSON,
+			ID:   boxID,
+		}); err != nil {
+			// Clean up the pre-created box on failure.
+			_ = ss.server.cleanupPreCreatedBox(ctx, boxID)
+			return fmt.Errorf("failed to tag new VM: %w", err)
+		}
+	}
+
 	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
 	CommandLogAddAttr(ctx, slog.Int("vm_id", boxID))
 	CommandLogAddAttr(ctx, slog.String("exelet_host", exeletAddr))

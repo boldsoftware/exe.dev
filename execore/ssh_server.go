@@ -664,6 +664,19 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 	}()
 
+	// Cache the SSH key permissions at session start so that if the key is
+	// deleted mid-session, we can detect that a restricted key was removed
+	// (privilege-escalation attempt) vs. an unrestricted/proxy key.
+	if publicKey != "" {
+		sessionPerms, err := ss.server.getSSHKeyPermsByPublicKey(ctx, publicKey)
+		if err != nil && !errors.Is(err, errSSHKeyNotFound) {
+			ss.server.slog().ErrorContext(ctx, "failed to look up session SSH key permissions", "error", err)
+		}
+		if sessionPerms != nil {
+			ctx = withSessionSSHKeyPerms(ctx, sessionPerms)
+		}
+	}
+
 	// sessionUser is shared across all command invocations in this session so
 	// that commands like set-region can update fields (e.g. Region) and have
 	// subsequent commands within the same session see the updated values.
@@ -759,12 +772,25 @@ func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.
 	// which has its own token-based permission checks).
 	if cc.PublicKey != "" && !cc.ForceJSON {
 		perms, err := ss.server.getSSHKeyPermsByPublicKey(ctx, cc.PublicKey)
-		if err != nil {
+		if errors.Is(err, errSSHKeyNotFound) {
+			// Key was valid at authentication time but no longer exists in
+			// the database. This can happen legitimately for ephemeral proxy
+			// keys (which are never stored in ssh_keys), but also if a
+			// restricted key deletes itself to shed its restrictions.
+			// Deny access to prevent privilege escalation.
+			if sessionPerms := getSessionSSHKeyPerms(ctx); sessionPerms != nil {
+				ss.server.slog().WarnContext(ctx, "restricted SSH key deleted mid-session, denying command",
+					"public_key_prefix", truncateKey(cc.PublicKey))
+				cc.WriteError("SSH key has been revoked")
+				return 1
+			}
+			// Ephemeral proxy key (never in ssh_keys table) or unrestricted
+			// key that was deleted: allow with no restrictions.
+		} else if err != nil {
 			ss.server.slog().ErrorContext(ctx, "failed to look up SSH key permissions", "error", err)
 			cc.WriteError("internal error checking SSH key permissions")
 			return 1
-		}
-		if perms != nil {
+		} else if perms != nil {
 			if perms.IsExpired() {
 				cc.WriteError("SSH key has expired")
 				return 1
@@ -774,6 +800,8 @@ func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.
 				cc.WriteError("command not allowed by SSH key permissions")
 				return 1
 			}
+			// Store perms in context so handlers can enforce tag/VM scoping.
+			ctx = withSSHKeyPerms(ctx, perms)
 		}
 	}
 
@@ -1258,6 +1286,13 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	}
 
 	var ctx context.Context = s.Context()
+	// Cache the SSH key permissions at session start for fail-closed behavior
+	// if the key is deleted mid-execution (defense in depth).
+	if publicKey != "" {
+		if sessionPerms, err := ss.server.getSSHKeyPermsByPublicKey(ctx, publicKey); err == nil && sessionPerms != nil {
+			ctx = withSessionSSHKeyPerms(ctx, sessionPerms)
+		}
+	}
 	rc := ss.executeCommandWithLogging(ctx, cc, cmd)
 	if rc > 0 {
 		s.Close()
@@ -1854,6 +1889,14 @@ func shouldSaveToHistory(line string) bool {
 
 // redactCommand joins command parts into a string, replacing exe0/exe1
 // bearer tokens with [REDACTED].
+// truncateKey returns the first 20 chars of a public key for logging.
+func truncateKey(key string) string {
+	if len(key) > 20 {
+		return key[:20] + "..."
+	}
+	return key
+}
+
 func redactCommand(parts []string) string {
 	redacted := make([]string, len(parts))
 	for i, p := range parts {
