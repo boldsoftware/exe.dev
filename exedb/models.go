@@ -400,6 +400,7 @@ type SSHKey struct {
 	Fingerprint   string     `db:"fingerprint" json:"fingerprint"`
 	IntegrationID *string    `db:"integration_id" json:"integration_id"`
 	ApiKeyHint    *string    `db:"api_key_hint" json:"api_key_hint"`
+	Permissions   string     `db:"permissions" json:"permissions"`
 }
 
 type ServerMetum struct {

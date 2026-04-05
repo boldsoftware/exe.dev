@@ -14,6 +14,15 @@ import (
 	"exe.dev/sshkey"
 )
 
+func sshKeyAddFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("ssh-key-add", flag.ContinueOnError)
+	fs.String("cmds", "", "comma-separated list of allowed commands (empty = all)")
+	fs.String("vm", "", "scope key to a VM")
+	fs.String("exp", "", "expiry duration (e.g. 30d, 1y) or 'never'")
+	fs.Bool("json", false, "output in JSON format")
+	return fs
+}
+
 func generateAPIKeyFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("generate-api-key", flag.ContinueOnError)
 	fs.String("label", "", "label for this token's SSH key")
@@ -165,6 +174,7 @@ func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exem
 			Comment:     label,
 			Fingerprint: gt.Fingerprint,
 			ApiKeyHint:  &apiKeyHint,
+			Permissions: string(permsJSON),
 		}); err != nil {
 			return fmt.Errorf("inserting SSH key: %w", err)
 		}

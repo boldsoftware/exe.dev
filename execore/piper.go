@@ -360,6 +360,21 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 	cl.add(slog.String("user_id", userID))
 
+	// Check SSH key permissions (expiry and VM restrictions).
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(pubKey))
+	keyPerms, err := p.server.getSSHKeyPermsByPublicKey(ctx, publicKeyStr)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to look up SSH key permissions", "component", "piper-plugin", "key_fingerprint", keyFingerprint, "error", err)
+		return nil, fmt.Errorf("internal error checking SSH key permissions")
+	}
+	if keyPerms != nil && keyPerms.IsExpired() {
+		slog.WarnContext(ctx, "expired SSH key used", "component", "piper-plugin", "key_fingerprint", keyFingerprint)
+		return nil, fmt.Errorf("SSH key has expired")
+	}
+	if keyPerms != nil {
+		ctx = withSSHKeyPerms(ctx, keyPerms)
+	}
+
 	// Check for support access: ssh support+vmname@exe.cloud
 	if supportBoxName, isSupport := strings.CutPrefix(username, supportAccessPrefix); isSupport {
 		box := p.server.FindBoxForExeSudoer(ctx, userID, supportBoxName)
@@ -410,6 +425,12 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		return p.handleBoxAccess(ctx, box, userID, connID)
 	}
 
+	// A VM-restricted key must not reach the exed REPL.
+	if keyPerms != nil && keyPerms.VM != "" {
+		slog.WarnContext(ctx, "VM-restricted SSH key tried to access REPL", "component", "piper-plugin", "allowed_vm", keyPerms.VM)
+		return nil, fmt.Errorf("SSH key is restricted to VM %q", keyPerms.VM)
+	}
+
 	// For all other cases (interactive shell, registration, etc.),
 	// route to exed directly using ephemeral proxy authentication
 	//
@@ -443,6 +464,12 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userID, connID string) (*libplugin.Upstream, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
+	// Enforce SSH key VM restriction.
+	if perms := getSSHKeyPerms(ctx); perms != nil && !perms.AllowsVM(box.Name) {
+		slog.WarnContext(ctx, "SSH key VM restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "allowed_vm", perms.VM)
+		return nil, fmt.Errorf("SSH key is restricted to VM %q", perms.VM)
+	}
 
 	cl := getPiperConnLog(ctx)
 	cl.add(

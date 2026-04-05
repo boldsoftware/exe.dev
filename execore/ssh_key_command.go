@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -133,7 +135,7 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 				Description:       "Add a new SSH key to your account",
 				Usage:             "ssh-key add <public-key>",
 				Handler:           ss.handleSSHKeyAddCmd,
-				FlagSetFunc:       jsonOnlyFlags("ssh-key-add"),
+				FlagSetFunc:       sshKeyAddFlags,
 				HasPositionalArgs: true,
 				Examples: []string{
 					"ssh-key add 'ssh-ed25519 AAAA... my-laptop'",
@@ -274,6 +276,24 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 }
 
 func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	// Parse permission flags.
+	cmdsFlag := cc.FlagSet.Lookup("cmds").Value.String()
+	vmFlag := cc.FlagSet.Lookup("vm").Value.String()
+	expFlag := cc.FlagSet.Lookup("exp").Value.String()
+
+	// Permission flags on ssh-key add require root support privileges.
+	if cmdsFlag != "" || vmFlag != "" || expFlag != "" {
+		if cc.User == nil || !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
+			return cc.Errorf("--cmds, --vm, and --exp flags require root support privileges")
+		}
+	}
+
+	// Build permissions JSON from flags.
+	permsJSON, err := ss.buildSSHKeyPermissions(ctx, cc, cmdsFlag, vmFlag, expFlag)
+	if err != nil {
+		return err
+	}
+
 	// Read public key from args
 	args := strings.Join(cc.Args, " ")
 	args = strings.TrimSpace(args)
@@ -329,6 +349,7 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 			PublicKey:   canonicalKey,
 			Comment:     comment,
 			Fingerprint: sshkey.FingerprintForKey(parsedKey),
+			Permissions: permsJSON,
 		})
 		if err != nil {
 			return err
@@ -361,11 +382,63 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 		if comment != "" {
 			result["name"] = comment
 		}
+		if permsJSON != "" {
+			result["permissions"] = json.RawMessage(permsJSON)
+		}
 		cc.WriteJSON(result)
 		return nil
 	}
 	cc.Writeln("\033[1;32mAdded SSH key.\033[0m")
 	return nil
+}
+
+// buildSSHKeyPermissions builds a permissions JSON string from the common
+// restriction flags (--cmds, --vm, --exp). Returns "" when no restrictions
+// are specified. For SSH keys, empty --cmds means "*" (all commands), so
+// it is only stored when explicitly provided.
+func (ss *SSHServer) buildSSHKeyPermissions(ctx context.Context, cc *exemenu.CommandContext, cmdsFlag, vmFlag, expFlag string) (string, error) {
+	perms := make(map[string]any)
+
+	if cmdsFlag != "" {
+		var cmds []string
+		for _, p := range strings.Split(cmdsFlag, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				cmds = append(cmds, p)
+			}
+		}
+		if len(cmds) > 0 {
+			perms["cmds"] = cmds
+		}
+	}
+
+	if vmFlag != "" {
+		vmName := ss.normalizeBoxName(vmFlag)
+		if _, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName); err != nil {
+			return "", cc.Errorf("VM %q not found or access denied", vmName)
+		}
+		perms["vm"] = vmName
+	}
+
+	if expFlag != "" && strings.ToLower(expFlag) != "never" {
+		d, err := parseDuration(expFlag)
+		if err != nil {
+			return "", cc.Errorf("%v", err)
+		}
+		if d > 0 {
+			t := time.Now().Add(d)
+			perms["exp"] = t.Unix()
+		}
+	}
+
+	if len(perms) == 0 {
+		return "", nil
+	}
+
+	b, err := json.Marshal(perms)
+	if err != nil {
+		return "", fmt.Errorf("marshaling permissions: %w", err)
+	}
+	return string(b), nil
 }
 
 func (ss *SSHServer) handleSSHKeyRemoveCmd(ctx context.Context, cc *exemenu.CommandContext) error {

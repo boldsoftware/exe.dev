@@ -594,6 +594,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHKeyByIntegrationIDStmt, err = db.PrepareContext(ctx, getSSHKeyByIntegrationID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeyByIntegrationID: %w", err)
 	}
+	if q.getSSHKeyPermissionsByPublicKeyStmt, err = db.PrepareContext(ctx, getSSHKeyPermissionsByPublicKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeyPermissionsByPublicKey: %w", err)
+	}
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
 	}
@@ -2209,6 +2212,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHKeyByIntegrationIDStmt: %w", cerr)
 		}
 	}
+	if q.getSSHKeyPermissionsByPublicKeyStmt != nil {
+		if cerr := q.getSSHKeyPermissionsByPublicKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeyPermissionsByPublicKeyStmt: %w", cerr)
+		}
+	}
 	if q.getSSHKeysForUserStmt != nil {
 		if cerr := q.getSSHKeysForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
@@ -3538,6 +3546,7 @@ type Queries struct {
 	getSSHHostKeyStmt                          *sql.Stmt
 	getSSHKeyByFingerprintStmt                 *sql.Stmt
 	getSSHKeyByIntegrationIDStmt               *sql.Stmt
+	getSSHKeyPermissionsByPublicKeyStmt        *sql.Stmt
 	getSSHKeysForUserStmt                      *sql.Stmt
 	getSSHKeysForUserByCommentStmt             *sql.Stmt
 	getSSHKeysForUserByFingerprintStmt         *sql.Stmt
@@ -3954,6 +3963,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getSSHHostKeyStmt:                          q.getSSHHostKeyStmt,
 		getSSHKeyByFingerprintStmt:                 q.getSSHKeyByFingerprintStmt,
 		getSSHKeyByIntegrationIDStmt:               q.getSSHKeyByIntegrationIDStmt,
+		getSSHKeyPermissionsByPublicKeyStmt:        q.getSSHKeyPermissionsByPublicKeyStmt,
 		getSSHKeysForUserStmt:                      q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByCommentStmt:             q.getSSHKeysForUserByCommentStmt,
 		getSSHKeysForUserByFingerprintStmt:         q.getSSHKeysForUserByFingerprintStmt,

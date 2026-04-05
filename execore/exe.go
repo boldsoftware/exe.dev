@@ -3668,6 +3668,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 			PublicKey:   publicKey,
 			Comment:     comment,
 			Fingerprint: fingerprint,
+			Permissions: "",
 		}); err != nil {
 			return err
 		}

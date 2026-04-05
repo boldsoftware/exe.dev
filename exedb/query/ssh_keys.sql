@@ -23,8 +23,11 @@ WHERE s.public_key = ?;
 -- name: GetUserIDBySSHKey :one
 SELECT user_id FROM ssh_keys WHERE public_key = ?;
 
+-- name: GetSSHKeyPermissionsByPublicKey :one
+SELECT permissions FROM ssh_keys WHERE public_key = ?;
+
 -- name: InsertSSHKey :exec
-INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint) VALUES (?, ?, ?, ?);
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, permissions) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetUserWithSSHKey :one
 SELECT u.*
@@ -33,8 +36,8 @@ JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?;
 
 -- name: InsertSSHKeyIfNotExists :execresult
-INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint)
-VALUES (?, ?, ?, ?)
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, permissions)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(public_key) DO NOTHING;
 
 -- name: UpdateSSHKeyLastUsed :exec
@@ -42,7 +45,7 @@ ON CONFLICT(public_key) DO NOTHING;
 UPDATE ssh_keys SET last_used_at = DATE('now') WHERE public_key = ? AND (last_used_at IS NULL OR last_used_at < DATE('now'));
 
 -- name: GetSSHKeyByFingerprint :one
-SELECT user_id, public_key FROM ssh_keys WHERE fingerprint = ?;
+SELECT user_id, public_key, permissions FROM ssh_keys WHERE fingerprint = ?;
 
 -- name: GetSSHKeysForUserByComment :many
 SELECT * FROM ssh_keys WHERE user_id = ? AND comment = ?;
@@ -66,4 +69,4 @@ DELETE FROM ssh_keys WHERE integration_id = ?;
 SELECT * FROM ssh_keys WHERE integration_id = ?;
 
 -- name: InsertSSHKeyWithApiKeyHint :exec
-INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, api_key_hint) VALUES (?, ?, ?, ?, ?);
+INSERT INTO ssh_keys (user_id, public_key, comment, fingerprint, api_key_hint, permissions) VALUES (?, ?, ?, ?, ?, ?);

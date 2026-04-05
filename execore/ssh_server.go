@@ -755,6 +755,28 @@ func (ss *SSHServer) executeCommandWithLogging(ctx context.Context, cc *exemenu.
 		ctx = WithCommandLog(ctx, cl)
 	}
 
+	// Enforce SSH key permissions when running over SSH (not HTTPS /exec,
+	// which has its own token-based permission checks).
+	if cc.PublicKey != "" && !cc.ForceJSON {
+		perms, err := ss.server.getSSHKeyPermsByPublicKey(ctx, cc.PublicKey)
+		if err != nil {
+			ss.server.slog().ErrorContext(ctx, "failed to look up SSH key permissions", "error", err)
+			cc.WriteError("internal error checking SSH key permissions")
+			return 1
+		}
+		if perms != nil {
+			if perms.IsExpired() {
+				cc.WriteError("SSH key has expired")
+				return 1
+			}
+			resolvedCmd := ss.commands.ResolveCommandName(parts)
+			if !perms.AllowsCommand(resolvedCmd) {
+				cc.WriteError("command not allowed by SSH key permissions")
+				return 1
+			}
+		}
+	}
+
 	rc := ss.commands.ExecuteCommand(ctx, cc, parts)
 
 	// Build log attributes, redacting bearer tokens from exe0-to-exe1.
