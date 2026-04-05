@@ -369,7 +369,12 @@ def run_formatters(ref):
 # Per-user default flags, keyed by git config user.email.
 # Add your email and preferred defaults here.
 USER_DEFAULTS = {
-    "josharian@gmail.com":       ["--no-format", "--retries", "3"],
+    "josharian@gmail.com":       ["--no-format", "--retries", "3", "--post-success",
+                                  'git fetch --prune origin'
+                                  ' && gitdir=$(git rev-parse --path-format=absolute --git-dir)'
+                                  ' && commondir=$(git rev-parse --path-format=absolute --git-common-dir)'
+                                  ' && if [ "$gitdir" != "$commondir" ]; then git branch --set-upstream-to origin/main; else git checkout main; fi'
+                                  ' && git rebase --no-fork-point'],
     "philip@bold.dev":           ["--slug", "--no-generate"],
     "philip.zeyliger@gmail.com": ["--slug", "--no-generate"],
     "david@zentus.com":          [],
