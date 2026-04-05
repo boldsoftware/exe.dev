@@ -564,6 +564,12 @@ func BoxName(testName, testRunID string) string {
 	testName = dashes.ReplaceAllString(testName, "-")
 	testName = strings.Trim(testName, "-")
 	boxName := fmt.Sprintf("e1e-%s-%s-%s", testRunID, counter, testName)
+	// Truncate to satisfy the 52-character VM name limit.
+	// The counter already guarantees uniqueness.
+	const maxLen = 52
+	if len(boxName) > maxLen {
+		boxName = strings.TrimRight(boxName[:maxLen], "-")
+	}
 	AddCanonicalization(boxName, "BOX_NAME")
 	return boxName
 }
