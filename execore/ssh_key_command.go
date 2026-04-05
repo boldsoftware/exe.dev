@@ -211,12 +211,25 @@ func (ss *SSHServer) handleSSHKeyListCmd(ctx context.Context, cc *exemenu.Comman
 		Current     bool       `json:"current"`
 	}
 
+	// Tag-scoped keys can only see peer keys with the same tag scope.
+	callerTag := ""
+	if perms := getSSHKeyPerms(ctx); perms != nil {
+		callerTag = perms.Tag
+	}
+
 	ccPubKey := strings.TrimSpace(cc.PublicKey)
 	sshKeys := []sshKeyRow{}
 	for _, dbKey := range dbKeys {
 		pubKey := strings.TrimSpace(dbKey.PublicKey)
 		if pubKey == "" {
 			continue
+		}
+		// If the calling key is tag-scoped, only show keys with the same tag.
+		if callerTag != "" {
+			keyPerms, _ := parseSSHKeyPerms(dbKey.Permissions)
+			if keyPerms == nil || keyPerms.Tag != callerTag {
+				continue
+			}
 		}
 		isCurrent := pubKey == ccPubKey
 		sshKeys = append(sshKeys, sshKeyRow{
@@ -499,6 +512,14 @@ func (ss *SSHServer) handleSSHKeyRemoveCmd(ctx context.Context, cc *exemenu.Comm
 	// Exactly one match - delete it
 	keyToDelete := matchingKeys[0]
 
+	// Tag-scoped keys can only remove peer keys with the same tag scope.
+	if callerPerms := getSSHKeyPerms(ctx); callerPerms != nil && callerPerms.Tag != "" {
+		targetPerms, _ := parseSSHKeyPerms(keyToDelete.Permissions)
+		if targetPerms == nil || targetPerms.Tag != callerPerms.Tag {
+			return cc.Errorf("no matching SSH key found for %q", identifier)
+		}
+	}
+
 	// Prevent removing SSH keys that are linked to an integration.
 	if keyToDelete.IntegrationID != nil {
 		return cc.Errorf("this key is managed by an integration; remove the integration instead")
@@ -576,6 +597,14 @@ func (ss *SSHServer) handleSSHKeyRenameCmd(ctx context.Context, cc *exemenu.Comm
 	}
 
 	keyToRename := matchingKeys[0]
+
+	// Tag-scoped keys can only rename peer keys with the same tag scope.
+	if callerPerms := getSSHKeyPerms(ctx); callerPerms != nil && callerPerms.Tag != "" {
+		targetPerms, _ := parseSSHKeyPerms(keyToRename.Permissions)
+		if targetPerms == nil || targetPerms.Tag != callerPerms.Tag {
+			return cc.Errorf("no matching SSH key found for %q", oldName)
+		}
+	}
 
 	// Sanitize the new name (removes special characters like ; | $ etc.)
 	newName = sshkey.SanitizeComment(newName)

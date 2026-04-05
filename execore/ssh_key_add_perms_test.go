@@ -864,6 +864,133 @@ func TestSSHKeyPermsTagScopeEnforcement(t *testing.T) {
 	})
 }
 
+// TestSSHKeyTagScopedKeyVisibility verifies that tag-scoped keys can only
+// see and remove other keys with the same tag, and cannot modify integrations.
+func TestSSHKeyTagScopedKeyVisibility(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+
+	userID := "usr" + generateRegistrationToken()
+	email := userID + "@test.example.com"
+
+	// Create the tag-scoped key (ci).
+	pub1, _, _ := ed25519.GenerateKey(rand.Reader)
+	sshPub1, _ := ssh.NewPublicKey(pub1)
+	pubStr1 := string(ssh.MarshalAuthorizedKey(sshPub1))
+	fp1 := strings.TrimPrefix(ssh.FingerprintSHA256(sshPub1), "SHA256:")
+
+	// Create a second tag-scoped key with the same tag.
+	pub2, _, _ := ed25519.GenerateKey(rand.Reader)
+	sshPub2, _ := ssh.NewPublicKey(pub2)
+	pubStr2 := string(ssh.MarshalAuthorizedKey(sshPub2))
+	fp2 := strings.TrimPrefix(ssh.FingerprintSHA256(sshPub2), "SHA256:")
+
+	// Create an unrestricted key.
+	pub3, _, _ := ed25519.GenerateKey(rand.Reader)
+	sshPub3, _ := ssh.NewPublicKey(pub3)
+	pubStr3 := string(ssh.MarshalAuthorizedKey(sshPub3))
+	fp3 := strings.TrimPrefix(ssh.FingerprintSHA256(sshPub3), "SHA256:")
+
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint, comment, permissions) VALUES (?, ?, ?, ?, ?)`,
+			userID, pubStr1, fp1, "ci-key-1", `{"tag":"ci"}`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint, comment, permissions) VALUES (?, ?, ?, ?, ?)`,
+			userID, pubStr2, fp2, "ci-key-2", `{"tag":"ci"}`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint, comment) VALUES (?, ?, ?, ?)`,
+			userID, pubStr3, fp3, "my-laptop"); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ss := NewSSHServer(s)
+
+	t.Run("list_only_shows_same_tag_keys", func(t *testing.T) {
+		var buf strings.Builder
+		cc := &exemenu.CommandContext{
+			User:      &exemenu.UserInfo{ID: userID, Email: email},
+			PublicKey: pubStr1,
+			Output:    &buf,
+			Logger:    s.slog(),
+		}
+		rc := ss.executeCommandWithLogging(ctx, cc, []string{"ssh-key", "list", "--json"})
+		if rc != 0 {
+			t.Fatalf("ssh-key list failed: %s", buf.String())
+		}
+		output := buf.String()
+		// Should see both ci-key-1 and ci-key-2.
+		if !strings.Contains(output, "ci-key-1") {
+			t.Error("expected to see ci-key-1")
+		}
+		if !strings.Contains(output, "ci-key-2") {
+			t.Error("expected to see ci-key-2")
+		}
+		// Should NOT see my-laptop.
+		if strings.Contains(output, "my-laptop") {
+			t.Error("tag-scoped key should NOT see unrestricted key 'my-laptop'")
+		}
+	})
+
+	t.Run("remove_peer_tag_key_allowed", func(t *testing.T) {
+		var buf strings.Builder
+		cc := &exemenu.CommandContext{
+			User:      &exemenu.UserInfo{ID: userID, Email: email},
+			PublicKey: pubStr1,
+			Output:    &buf,
+			Logger:    s.slog(),
+		}
+		rc := ss.executeCommandWithLogging(ctx, cc, []string{"ssh-key", "remove", "ci-key-2"})
+		if rc != 0 {
+			t.Fatalf("expected success removing peer tag key, got rc=%d: %s", rc, buf.String())
+		}
+	})
+
+	t.Run("remove_unrestricted_key_denied", func(t *testing.T) {
+		var buf strings.Builder
+		cc := &exemenu.CommandContext{
+			User:      &exemenu.UserInfo{ID: userID, Email: email},
+			PublicKey: pubStr1,
+			Output:    &buf,
+			Logger:    s.slog(),
+		}
+		rc := ss.executeCommandWithLogging(ctx, cc, []string{"ssh-key", "remove", "my-laptop"})
+		if rc == 0 {
+			t.Fatalf("expected failure removing unrestricted key, got success: %s", buf.String())
+		}
+		if !strings.Contains(buf.String(), "no matching SSH key found") {
+			t.Errorf("expected 'no matching' error, got: %s", buf.String())
+		}
+	})
+
+	t.Run("integrations_attach_denied", func(t *testing.T) {
+		var buf strings.Builder
+		cc := &exemenu.CommandContext{
+			User:      &exemenu.UserInfo{ID: userID, Email: email},
+			PublicKey: pubStr1,
+			Output:    &buf,
+			Logger:    s.slog(),
+		}
+		rc := ss.executeCommandWithLogging(ctx, cc, []string{"integrations", "add", "http-proxy", "--name=x"})
+		if rc == 0 {
+			t.Fatalf("expected integrations add to be denied for tag-scoped key: %s", buf.String())
+		}
+		if !strings.Contains(buf.String(), "tag-scoped SSH keys cannot modify integrations") {
+			t.Errorf("expected integrations denial, got: %s", buf.String())
+		}
+	})
+}
+
 // TestSSHKeyDeleteSelfEscalation verifies that a restricted (tag-scoped) key
 // cannot escalate privileges by deleting itself from the database.
 // Before the fix, after deletion the per-command permission lookup returned

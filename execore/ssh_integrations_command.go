@@ -15,6 +15,17 @@ import (
 	"exe.dev/exemenu"
 )
 
+// denyTagScopedIntegrationsMutation returns a user-facing error if the calling
+// SSH key is tag-scoped. Tag-scoped keys may list integrations but must not
+// add, remove, attach, detach, or rename them — those are account-level
+// operations that could affect VMs outside the tag scope.
+func denyTagScopedIntegrationsMutation(ctx context.Context, cc *exemenu.CommandContext) error {
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		return cc.Errorf("tag-scoped SSH keys cannot modify integrations")
+	}
+	return nil
+}
+
 // integrationsCommand returns the command definition for the hidden integrations command.
 func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 	return &exemenu.Command{
@@ -385,6 +396,9 @@ var knownIntegrationTypes = map[string]bool{
 }
 
 func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if err := denyTagScopedIntegrationsMutation(ctx, cc); err != nil {
+		return err
+	}
 	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: integrations add <type> --name=<name> [args...]")
 	}
@@ -671,6 +685,9 @@ func isBuiltinIntegration(name string) bool {
 }
 
 func (ss *SSHServer) handleIntegrationsRemove(ctx context.Context, cc *exemenu.CommandContext) error {
+	if err := denyTagScopedIntegrationsMutation(ctx, cc); err != nil {
+		return err
+	}
 	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: integrations remove <name>")
 	}
@@ -750,6 +767,9 @@ func (ss *SSHServer) validateAttachmentSpec(ctx context.Context, cc *exemenu.Com
 }
 
 func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.CommandContext) error {
+	if err := denyTagScopedIntegrationsMutation(ctx, cc); err != nil {
+		return err
+	}
 	if len(cc.Args) != 2 {
 		return cc.Errorf("usage: integrations attach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
@@ -811,6 +831,9 @@ func (ss *SSHServer) handleIntegrationsAttach(ctx context.Context, cc *exemenu.C
 }
 
 func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.CommandContext) error {
+	if err := denyTagScopedIntegrationsMutation(ctx, cc); err != nil {
+		return err
+	}
 	if len(cc.Args) != 2 {
 		return cc.Errorf("usage: integrations detach <name> <spec>\n  <spec> is vm:<vm-name>, tag:<tag-name>, or auto:all")
 	}
@@ -875,6 +898,9 @@ func (ss *SSHServer) handleIntegrationsDetach(ctx context.Context, cc *exemenu.C
 }
 
 func (ss *SSHServer) handleIntegrationsRename(ctx context.Context, cc *exemenu.CommandContext) error {
+	if err := denyTagScopedIntegrationsMutation(ctx, cc); err != nil {
+		return err
+	}
 	if len(cc.Args) != 2 {
 		return cc.Errorf("usage: integrations rename <name> <new-name>")
 	}
