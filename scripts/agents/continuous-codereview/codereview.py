@@ -76,8 +76,6 @@ REVIEW_CONTENT_PROMPT = (
     "- **temporarily ignore** — skip for now; not persisted, so it may be re-raised in future reviews\n"
     "- **stet** — intentional, leave as-is; persisted in codereview notes, will not be re-raised\n"
     "- **add comments** — add comments to the code to improve clarity\n"
-    "- **file a follow-up** — file a GitHub issue to follow-up\n"
-    "\n"
     "Adding options is cheap — err on the side of giving the user more choices\n"
     "rather than fewer. Every item, including purely informational observations and\n"
     "clarity flags, must have options.\n"
