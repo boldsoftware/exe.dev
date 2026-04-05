@@ -259,15 +259,17 @@ func resizeCommandFlags() *flag.FlagSet {
 func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	commands := []*exemenu.Command{
 		{
-			Name:          "help",
-			Description:   "Show help information",
-			Handler:       ss.handleHelpCommand,
-			FlagSetFunc:   jsonOnlyFlags("help"), // not used at runtime (RawArgs), but picked up by doc generator
-			RawArgs:       true,
-			CompleterFunc: ss.completeCommandNames,
+			Name:           "help",
+			AllowTagScoped: true,
+			Description:    "Show help information",
+			Handler:        ss.handleHelpCommand,
+			FlagSetFunc:    jsonOnlyFlags("help"), // not used at runtime (RawArgs), but picked up by doc generator
+			RawArgs:        true,
+			CompleterFunc:  ss.completeCommandNames,
 		},
 		{
 			Name:              "doc",
+			AllowTagScoped:    true,
 			Description:       "Browse documentation",
 			Handler:           ss.handleDocCommand,
 			Usage:             "doc [slug]",
@@ -276,6 +278,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "ls",
+			AllowTagScoped:    true,
 			Description:       "List your VMs",
 			Handler:           ss.handleListCommand,
 			FlagSetFunc:       addAllFlag(addLongFlag(jsonOnlyFlags("ls"))),
@@ -284,10 +287,11 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
-			Name:        "new",
-			Description: "Create a new VM",
-			Handler:     ss.handleNewCommand,
-			FlagSetFunc: newCommandFlags,
+			Name:           "new",
+			AllowTagScoped: true,
+			Description:    "Create a new VM",
+			Handler:        ss.handleNewCommand,
+			FlagSetFunc:    newCommandFlags,
 			Examples: []string{
 				"new                                     # just give me a computer",
 				"new --name=b --image=ubuntu:22.04       # custom image and name",
@@ -298,6 +302,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "rm",
+			AllowTagScoped:    true,
 			Description:       "Delete a VM",
 			Handler:           ss.handleDeleteCommand,
 			FlagSetFunc:       jsonOnlyFlags("rm"),
@@ -307,6 +312,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "restart",
+			AllowTagScoped:    true,
 			Description:       "Restart a VM",
 			Handler:           ss.handleRestartCommand,
 			FlagSetFunc:       jsonOnlyFlags("restart"),
@@ -321,6 +327,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "rename",
 			Hidden:            false,
+			AllowTagScoped:    true,
 			Description:       "rename a vm",
 			Usage:             "rename <oldname> <newname>",
 			FlagSetFunc:       jsonOnlyFlags("rename"),
@@ -330,6 +337,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "tag",
+			AllowTagScoped:    true,
 			Description:       "Add or remove a tag on a VM",
 			Usage:             "tag [-d] <vm> <tag-name>",
 			FlagSetFunc:       tagCommandFlags,
@@ -343,6 +351,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "cp",
+			AllowTagScoped:    true,
 			Description:       "Copy an existing VM",
 			Usage:             "cp <source-vm> [new-name] [--copy-tags=false]",
 			FlagSetFunc:       cpCommandFlags,
@@ -356,11 +365,12 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
-			Name:        "hireme",
-			Aliases:     boxname.JobsRelated,
-			Hidden:      true,
-			Description: "Apply for a job at exe.dev",
-			Handler:     ss.handleJobCommand,
+			Name:           "hireme",
+			Aliases:        boxname.JobsRelated,
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "Apply for a job at exe.dev",
+			Handler:        ss.handleJobCommand,
 		},
 		{
 			Name:        "sudo",
@@ -372,6 +382,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "lock",
 			Hidden:            true,
+			AllowTagScoped:    true,
 			Description:       "Lock a VM to prevent deletion",
 			Usage:             "lock <vmname> [reason]",
 			Handler:           ss.handleLockCommand,
@@ -382,6 +393,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "unlock",
 			Hidden:            true,
+			AllowTagScoped:    true,
 			Description:       "Unlock a VM to allow deletion",
 			Usage:             "unlock <vmname>",
 			Handler:           ss.handleUnlockCommand,
@@ -391,16 +403,18 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		ss.shareCommand(),
 		{
-			Name:        "whoami",
-			Description: "Show your user information including email and all SSH keys.",
-			Usage:       "whoami",
-			Handler:     ss.handleWhoamiCommand,
-			FlagSetFunc: jsonOnlyFlags("whoami"),
+			Name:           "whoami",
+			AllowTagScoped: true,
+			Description:    "Show your user information including email and all SSH keys.",
+			Usage:          "whoami",
+			Handler:        ss.handleWhoamiCommand,
+			FlagSetFunc:    jsonOnlyFlags("whoami"),
 		},
 		ss.sshKeyCommand(),
 		{
 			Name:              "delete-ssh-key",
 			Hidden:            true,
+			AllowTagScoped:    true,
 			Description:       "Delete an SSH key (deprecated: use 'ssh-key remove' instead)",
 			Usage:             "delete-ssh-key <public-key>",
 			Handler:           ss.handleSSHKeyRemoveCmd,
@@ -429,6 +443,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "ssh",
+			AllowTagScoped:    true,
 			Description:       "SSH into a VM",
 			Usage:             "ssh [-l user] [user@]vmname [command...]",
 			Handler:           ss.handleSSHCommand,
@@ -437,9 +452,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
-			Name:        "clear",
-			Description: "Clear the screen",
-			Hidden:      true, // people who want this will find it; no need to clutter help
+			Name:           "clear",
+			Description:    "Clear the screen",
+			Hidden:         true,
+			AllowTagScoped: true, // people who want this will find it; no need to clutter help
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				// ANSI escape sequence to clear screen and move cursor home
 				fmt.Fprint(cc.Output, "\033[2J\033[H")
@@ -447,45 +463,50 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
-			Name:        "true",
-			Description: "Do nothing, successfully",
-			Hidden:      true,
-			Handler:     func(ctx context.Context, cc *exemenu.CommandContext) error { return nil },
+			Name:           "true",
+			Description:    "Do nothing, successfully",
+			Hidden:         true,
+			AllowTagScoped: true,
+			Handler:        func(ctx context.Context, cc *exemenu.CommandContext) error { return nil },
 		},
 		{
-			Name:        "hi",
-			Aliases:     []string{"hello"},
-			Hidden:      true,
-			Description: "Greetings, human",
+			Name:           "hi",
+			Aliases:        []string{"hello"},
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "Greetings, human",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				fmt.Fprint(cc.Output, "Hello!\r\n")
 				return nil
 			},
 		},
 		{
-			Name:        "newt",
-			Hidden:      true,
-			Description: "She turned me into a VM",
+			Name:           "newt",
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "She turned me into a VM",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				fmt.Fprint(cc.Output, "🦎\r\n")
 				return nil
 			},
 		},
 		{
-			Name:        "easter",
-			Aliases:     []string{"egg", "easter-egg"},
-			Hidden:      true,
-			Description: "No chicken is an island",
+			Name:           "easter",
+			Aliases:        []string{"egg", "easter-egg"},
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "No chicken is an island",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				fmt.Fprint(cc.Output, "🥚\r\n")
 				return nil
 			},
 		},
 		{
-			Name:        "april",
-			Aliases:     []string{"april-fools", "fools"},
-			Hidden:      true,
-			Description: "May flour",
+			Name:           "april",
+			Aliases:        []string{"april-fools", "fools"},
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "May flour",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				fmt.Fprint(cc.Output, "Nice try.\r\n")
 				return nil
@@ -493,6 +514,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "grant-support-root",
+			AllowTagScoped:    true,
 			Description:       "Allow exe.dev support to log in to a VM",
 			Usage:             "grant-support-root <vmname> on|off",
 			HasPositionalArgs: true,
@@ -610,15 +632,17 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			RequiresPTY: true,
 		},
 		{
-			Name:        "top",
-			Hidden:      true,
-			Description: "Live VM resource usage",
-			Handler:     ss.handleTopCommand,
-			RequiresPTY: true,
+			Name:           "top",
+			Hidden:         true,
+			AllowTagScoped: true,
+			Description:    "Live VM resource usage",
+			Handler:        ss.handleTopCommand,
+			RequiresPTY:    true,
 		},
 		{
-			Name:        "exit",
-			Description: "Exit",
+			Name:           "exit",
+			AllowTagScoped: true,
+			Description:    "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				fmt.Fprint(cc.Output, "Goodbye!\r\n")
 				return io.EOF
@@ -636,6 +660,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	if ss.server != nil {
 		ct.DevMode = ss.server.env.ReplDev
 		ct.SudoChecker = ss.server.UserHasExeSudo
+		ct.TagScopeChecker = func(ctx context.Context) bool {
+			p := getSSHKeyPerms(ctx)
+			return p != nil && p.Tag != ""
+		}
 	}
 	return ct
 }
@@ -1196,11 +1224,24 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	if err != nil {
 		return err
 	}
+
+	// Tag-scoped keys can only see peer keys with the same tag.
+	callerTag := ""
+	if perms := getSSHKeyPerms(ctx); perms != nil {
+		callerTag = perms.Tag
+	}
+
 	sshKeys := []sshKeyRow{}
 	for _, dbKey := range dbKeys {
 		pubKey := strings.TrimSpace(dbKey.PublicKey)
 		if pubKey == "" {
 			continue
+		}
+		if callerTag != "" {
+			keyPerms, _ := parseSSHKeyPerms(dbKey.Permissions)
+			if keyPerms == nil || keyPerms.Tag != callerTag {
+				continue
+			}
 		}
 		isCurrent := pubKey == ccPubKey
 		// DB stores fingerprint without prefix; add "SHA256:" for display
@@ -1311,6 +1352,9 @@ func (ss *SSHServer) handleGrantSupportRootCommand(ctx context.Context, cc *exem
 	}
 	if err != nil {
 		return err
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	err = withTx1(ss.server, ctx, (*exedb.Queries).SetBoxSupportAccessAllowed, exedb.SetBoxSupportAccessAllowedParams{
@@ -1758,7 +1802,9 @@ doneParsingSSHFlags:
 		// Exec mode - run command (no stdin needed)
 		cmd := strings.Join(cmdArgs, " ")
 		err := session.Run(cmd)
-		cc.SSHSession.Write([]byte("\r")) // return cursor to column 0
+		if cc.IsInteractive() {
+			cc.SSHSession.Write([]byte("\r")) // return cursor to column 0
+		}
 		if errorz.HasType[*ssh.ExitError](err) {
 			// Return nil since we already wrote output; exit code is informational
 			return nil

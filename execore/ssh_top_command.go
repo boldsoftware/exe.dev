@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -479,6 +480,33 @@ func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandCo
 		fetchFunc: func(ctx context.Context) ([]vmUsageRow, error) {
 			return ss.fetchVMUsageForUser(ctx, userID)
 		},
+	}
+
+	// Tag-scoped keys: filter to VMs with the required tag.
+	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
+		requiredTag := perms.Tag
+		inner := model.fetchFunc
+		model.fetchFunc = func(ctx context.Context) ([]vmUsageRow, error) {
+			rows, err := inner(ctx)
+			if err != nil {
+				return nil, err
+			}
+			// Look up tags for each VM to filter.
+			var filtered []vmUsageRow
+			for _, r := range rows {
+				box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+					Name:            r.Name,
+					CreatedByUserID: userID,
+				})
+				if err != nil {
+					continue
+				}
+				if slices.Contains(box.GetTags(), requiredTag) {
+					filtered = append(filtered, r)
+				}
+			}
+			return filtered, nil
+		}
 	}
 
 	input := &topSessionInput{session: cc.SSHSession}

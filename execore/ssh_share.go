@@ -34,14 +34,16 @@ func writeQRCode(w io.Writer, url string) {
 // shareCommand returns the command definition for the share command
 func (ss *SSHServer) shareCommand() *exemenu.Command {
 	return &exemenu.Command{
-		Name:        "share",
-		Description: "Share HTTPS VM access with others",
-		Usage:       "share <subcommand> <vm> [args...]",
-		Handler:     ss.handleShareHelp,
-		FlagSetFunc: jsonOnlyFlags("share"),
+		Name:           "share",
+		AllowTagScoped: true,
+		Description:    "Share HTTPS VM access with others",
+		Usage:          "share <subcommand> <vm> [args...]",
+		Handler:        ss.handleShareHelp,
+		FlagSetFunc:    jsonOnlyFlags("share"),
 		Subcommands: []*exemenu.Command{
 			{
 				Name:              "show",
+				AllowTagScoped:    true,
 				Description:       "Show current shares for a VM",
 				Usage:             "share show <vm>",
 				Handler:           ss.handleShareShowCmd,
@@ -51,6 +53,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "port",
+				AllowTagScoped:    true,
 				Description:       "Set the HTTP proxy port for a VM",
 				Usage:             "share port <vm> [port]",
 				Handler:           ss.handleSharePortCmd,
@@ -63,6 +66,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "set-public",
+				AllowTagScoped:    true,
 				Description:       "Make the HTTP proxy publicly accessible",
 				Usage:             "share set-public <vm>",
 				Handler:           ss.handleShareSetPublicCmd,
@@ -72,6 +76,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "set-private",
+				AllowTagScoped:    true,
 				Description:       "Restrict the HTTP proxy to authenticated users",
 				Usage:             "share set-private <vm>",
 				Handler:           ss.handleShareSetPrivateCmd,
@@ -81,6 +86,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "add",
+				AllowTagScoped:    true,
 				Description:       "Share VM with a user via email",
 				Usage:             "share add <vm> <email|team> [--message='...']",
 				Handler:           ss.handleShareAddCmd,
@@ -95,6 +101,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "remove",
+				AllowTagScoped:    true,
 				Description:       "Revoke a user's access to a VM",
 				Usage:             "share remove <vm> <email|team>",
 				Handler:           ss.handleShareRemoveCmd,
@@ -105,6 +112,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "add-link",
 				Aliases:           []string{"add-share-link"},
+				AllowTagScoped:    true,
 				Description:       "Create a shareable link for a VM",
 				Usage:             "share add-link <vm>",
 				Handler:           ss.handleShareAddLinkCmd,
@@ -115,6 +123,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			{
 				Name:              "remove-link",
 				Aliases:           []string{"remove-share-link"},
+				AllowTagScoped:    true,
 				Description:       "Revoke a shareable link",
 				Usage:             "share remove-link <vm> <token>",
 				Handler:           ss.handleShareRemoveLinkCmd,
@@ -124,6 +133,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 			},
 			{
 				Name:              "receive-email",
+				AllowTagScoped:    true,
 				Description:       "Enable or disable inbound email for a VM",
 				Usage:             "share receive-email <vm> [on|off]",
 				Handler:           ss.handleShareReceiveEmailCmd,
@@ -137,15 +147,17 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				},
 			},
 			{
-				Name:        "access",
-				Description: "Control team SSH and Shelley access to a VM",
-				Usage:       "share access <allow|disallow> <vm>",
-				Handler:     ss.handleShareAccessHelp,
-				FlagSetFunc: jsonOnlyFlags("share-access"),
-				Available:   ss.isInTeam,
+				Name:           "access",
+				AllowTagScoped: true,
+				Description:    "Control team SSH and Shelley access to a VM",
+				Usage:          "share access <allow|disallow> <vm>",
+				Handler:        ss.handleShareAccessHelp,
+				FlagSetFunc:    jsonOnlyFlags("share-access"),
+				Available:      ss.isInTeam,
 				Subcommands: []*exemenu.Command{
 					{
 						Name:              "allow",
+						AllowTagScoped:    true,
 						Description:       "Allow team members to SSH and access Shelley on a VM",
 						Usage:             "share access allow <vm>",
 						Handler:           ss.handleShareAccessAllowCmd,
@@ -156,6 +168,7 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 					},
 					{
 						Name:              "disallow",
+						AllowTagScoped:    true,
 						Description:       "Disallow team members from SSH and Shelley access to a VM",
 						Usage:             "share access disallow <vm>",
 						Handler:           ss.handleShareAccessDisallowCmd,
@@ -202,6 +215,9 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 	}
 	if err != nil {
 		return err
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	return ss.handleShareShow(ctx, cc, &box)
@@ -475,6 +491,9 @@ func (ss *SSHServer) getOwnedBox(ctx context.Context, cc *exemenu.CommandContext
 	if err != nil {
 		return exedb.Box{}, err
 	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return exedb.Box{}, cc.Errorf("%v", err)
+	}
 	return box, nil
 }
 
@@ -613,6 +632,9 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	}
 	if err != nil {
 		return err
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	// Handle team sharing
@@ -841,6 +863,9 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	if err != nil {
 		return err
 	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	// Handle team unsharing
 	if strings.ToLower(cc.Args[1]) == "team" {
@@ -979,6 +1004,9 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 	if err != nil {
 		return err
 	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	// Generate token
 	token := generateShareToken()
@@ -1043,6 +1071,21 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 	token := strings.TrimSpace(cc.Args[1])
+
+	// Enforce tag scope before modifying the share link.
+	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
+		Name:            boxName,
+		CreatedByUserID: cc.User.ID,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("VM %q not found or share link '%s' not found", boxName, token)
+	}
+	if err != nil {
+		return err
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
+	}
 
 	found, err := ss.deleteBoxShareLink(ctx, boxName, cc.User.ID, token)
 	if err != nil {
@@ -1113,6 +1156,9 @@ func (ss *SSHServer) handleShareReceiveEmailCmd(ctx context.Context, cc *exemenu
 	}
 	if err != nil {
 		return err
+	}
+	if err := enforceTagScope(ctx, &box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	emailAddr := fmt.Sprintf("anything@%s.%s", box.Name, ss.server.env.BoxHost)

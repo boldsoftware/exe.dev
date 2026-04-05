@@ -985,7 +985,7 @@ func TestSSHKeyTagScopedKeyVisibility(t *testing.T) {
 		if rc == 0 {
 			t.Fatalf("expected integrations add to be denied for tag-scoped key: %s", buf.String())
 		}
-		if !strings.Contains(buf.String(), "tag-scoped SSH keys cannot modify integrations") {
+		if !strings.Contains(buf.String(), "not allowed by SSH key permissions") && !strings.Contains(buf.String(), "tag-scoped SSH keys cannot modify integrations") {
 			t.Errorf("expected integrations denial, got: %s", buf.String())
 		}
 	})
@@ -1176,4 +1176,98 @@ func execWithBearer(t *testing.T, s *Server, token, cmd string) (*http.Response,
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp, string(body)
+}
+
+// TestTagScopedCommandDispatchDenyByDefault verifies that the command dispatch
+// layer blocks commands that don't have AllowTagScoped: true for tag-scoped keys.
+func TestTagScopedCommandDispatchDenyByDefault(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+
+	userID := "usr" + generateRegistrationToken()
+	email := userID + "@test.example.com"
+
+	pub1, _, _ := ed25519.GenerateKey(rand.Reader)
+	sshPub1, _ := ssh.NewPublicKey(pub1)
+	pubStr1 := string(ssh.MarshalAuthorizedKey(sshPub1))
+	fp1 := strings.TrimPrefix(ssh.FingerprintSHA256(sshPub1), "SHA256:")
+
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint, comment, permissions) VALUES (?, ?, ?, ?, ?)`,
+			userID, pubStr1, fp1, "ci-key", `{"tag":"ci"}`); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ss := NewSSHServer(s)
+
+	// Helper: run a command and return (rc, output).
+	run := func(cmd ...string) (int, string) {
+		var buf strings.Builder
+		cc := &exemenu.CommandContext{
+			User:      &exemenu.UserInfo{ID: userID, Email: email},
+			PublicKey: pubStr1,
+			Output:    &buf,
+			Logger:    s.slog(),
+		}
+		rc := ss.executeCommandWithLogging(ctx, cc, cmd)
+		return rc, buf.String()
+	}
+
+	// Commands that SHOULD be allowed for tag-scoped keys.
+	allowed := [][]string{
+		{"help"},
+		{"ls"},
+		{"whoami"},
+		{"ssh-key", "list"},
+		{"true"},
+		{"clear"},
+		{"exit"},
+		{"integrations", "list"},
+	}
+	for _, cmd := range allowed {
+		t.Run("allowed_"+strings.Join(cmd, "_"), func(t *testing.T) {
+			_, out := run(cmd...)
+			// These may fail for other reasons (no VM, etc), but must NOT
+			// fail with "command not allowed by SSH key permissions".
+			if strings.Contains(out, "command not allowed by SSH key permissions") {
+				t.Errorf("%v should be allowed for tag-scoped key but was denied: %s", cmd, out)
+			}
+		})
+	}
+
+	// Commands that MUST be denied for tag-scoped keys.
+	denied := [][]string{
+		{"defaults", "read", "dev.exe", "setup-script"},
+		{"exe0-to-exe1", "fake-token"},
+		{"browser"},
+		{"team"},
+		{"prompt"},
+		// Integration mutations.
+		{"integrations", "add", "http-proxy", "--name=x"},
+		{"integrations", "remove", "x"},
+		{"integrations", "attach", "x", "vm:foo"},
+		{"integrations", "detach", "x", "vm:foo"},
+		{"integrations", "rename", "x", "y"},
+		{"integrations", "setup", "github"},
+	}
+	for _, cmd := range denied {
+		t.Run("denied_"+strings.Join(cmd, "_"), func(t *testing.T) {
+			rc, out := run(cmd...)
+			if rc == 0 {
+				t.Errorf("%v should be denied for tag-scoped key but succeeded: %s", cmd, out)
+			}
+			if !strings.Contains(out, "command not allowed by SSH key permissions") {
+				t.Errorf("%v should be denied with permission error, got (rc=%d): %s", cmd, rc, out)
+			}
+		})
+	}
 }

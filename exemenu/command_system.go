@@ -37,7 +37,7 @@ type Command struct {
 	Hidden       bool // if true, command is hidden from help and completions
 	RequiresSudo bool // if true, command requires exe sudo privileges; must also be Hidden
 
-	// RequiresPTY means the command only makes sense when the client has
+// RequiresPTY means the command only makes sense when the client has
 	// allocated a PTY (e.g. `ssh -t` or an interactive shell). Commands that
 	// drive full-screen Bubble Tea UIs or stream terminal animations should
 	// set this so they fail fast when invoked from scripted/HTTP contexts.
@@ -49,6 +49,16 @@ type Command struct {
 	// a PTY on its own is not enough; the command must be invoked from the
 	// exe.dev REPL shell, not from exec mode.
 	RequiresInteractiveREPL bool
+
+	// AllowTagScoped marks a command as safe for tag-scoped SSH keys.
+	// Tag-scoped keys are restricted keys handed to untrusted agents;
+	// by default ALL commands are DENIED for tag-scoped keys. A command
+	// must explicitly opt in by setting AllowTagScoped: true.
+	//
+	// Commands that set this must either:
+	//   (a) not operate on VMs, or
+	//   (b) enforce tag scope on every VM they touch via enforceTagScope.
+	AllowTagScoped bool
 
 	// Deprecated: Pick one meaningful name instead.
 	Aliases []string
@@ -459,6 +469,10 @@ type CommandTree struct {
 	Commands    []*Command
 	DevMode     bool                                          // if true, show hidden commands in help and completions
 	SudoChecker func(ctx context.Context, userID string) bool // if set, used to enforce RequiresSudo on commands
+
+	// TagScopeChecker returns true if the current session is using a tag-scoped
+	// SSH key. When true, only commands with AllowTagScoped are permitted.
+	TagScopeChecker func(ctx context.Context) bool
 }
 
 func (ct *CommandTree) Help(cc *CommandContext) {
@@ -692,6 +706,13 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		if _, ok := cc.SSHSession.Pty(); !ok {
 			return cc.Errorf("%q requires an interactive terminal (PTY); re-run with `ssh -t`", cmd.Name)
 		}
+	}
+
+	// Enforce tag-scoped key restrictions at the command dispatch level.
+	// Tag-scoped keys are deny-by-default: only commands that explicitly
+	// set AllowTagScoped may run.
+	if !cmd.AllowTagScoped && ct.TagScopeChecker != nil && ct.TagScopeChecker(ctx) {
+		return cc.Errorf("command not allowed by SSH key permissions")
 	}
 
 	// The remaining command path parts after finding the command are the actual arguments

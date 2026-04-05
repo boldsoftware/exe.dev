@@ -23,13 +23,15 @@ import (
 // shelleyCommand returns the command definition for the shelley command
 func (ss *SSHServer) shelleyCommand() *exemenu.Command {
 	return &exemenu.Command{
-		Name:        "shelley",
-		Description: "Manage Shelley agent on VMs",
-		Usage:       "shelley <subcommand> [args...]",
-		Handler:     ss.handleShelleyHelp,
+		Name:           "shelley",
+		AllowTagScoped: true,
+		Description:    "Manage Shelley agent on VMs",
+		Usage:          "shelley <subcommand> [args...]",
+		Handler:        ss.handleShelleyHelp,
 		Subcommands: []*exemenu.Command{
 			{
 				Name:              "install",
+				AllowTagScoped:    true,
 				Description:       "Install or upgrade Shelley to the current version",
 				Usage:             "shelley install <vm>",
 				Handler:           ss.handleShelleyInstall,
@@ -38,6 +40,7 @@ func (ss *SSHServer) shelleyCommand() *exemenu.Command {
 			},
 			{
 				Name:              "prompt",
+				AllowTagScoped:    true,
 				Description:       "Send a prompt to Shelley on a VM",
 				Usage:             "shelley prompt <vm> <prompt>",
 				Handler:           ss.handleShelleyPrompt,
@@ -78,6 +81,9 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	}
 	if err != nil {
 		return fmt.Errorf("failed to look up VM: %w", err)
+	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	// Validate box has SSH credentials
@@ -197,6 +203,9 @@ func (ss *SSHServer) handleShelleyPrompt(ctx context.Context, cc *exemenu.Comman
 	}
 	if err != nil {
 		return fmt.Errorf("failed to look up VM: %w", err)
+	}
+	if err := enforceTagScope(ctx, box); err != nil {
+		return cc.Errorf("%v", err)
 	}
 
 	// Validate box has SSH credentials

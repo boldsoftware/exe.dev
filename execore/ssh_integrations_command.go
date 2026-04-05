@@ -29,18 +29,20 @@ func denyTagScopedIntegrationsMutation(ctx context.Context, cc *exemenu.CommandC
 // integrationsCommand returns the command definition for the hidden integrations command.
 func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 	return &exemenu.Command{
-		Name:        "integrations",
-		Aliases:     []string{"int"},
-		Description: "Manage integrations",
-		Usage:       "integrations <subcommand> [args...]",
-		Handler:     ss.handleIntegrationsHelp,
+		Name:           "integrations",
+		Aliases:        []string{"int"},
+		AllowTagScoped: true,
+		Description:    "Manage integrations",
+		Usage:          "integrations <subcommand> [args...]",
+		Handler:        ss.handleIntegrationsHelp,
 		Subcommands: []*exemenu.Command{
 			{
-				Name:        "list",
-				Description: "List your integrations",
-				Usage:       "integrations list",
-				Handler:     ss.handleIntegrationsList,
-				FlagSetFunc: jsonOnlyFlags("integrations-list"),
+				Name:           "list",
+				AllowTagScoped: true,
+				Description:    "List your integrations",
+				Usage:          "integrations list",
+				Handler:        ss.handleIntegrationsList,
+				FlagSetFunc:    jsonOnlyFlags("integrations-list"),
 			},
 			{
 				Name:              "setup",

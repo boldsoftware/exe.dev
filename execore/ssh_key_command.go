@@ -116,14 +116,16 @@ func (ss *SSHServer) resolveSSHKeyByNameOrFingerprint(ctx context.Context, userI
 // sshKeyCommand returns the command definition for the ssh-key command
 func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 	return &exemenu.Command{
-		Name:        "ssh-key",
-		Description: "Manage SSH keys for your account",
-		Usage:       "ssh-key <subcommand> [args...]",
-		Handler:     ss.handleSSHKeyHelp,
-		FlagSetFunc: jsonOnlyFlags("ssh-key"),
+		Name:           "ssh-key",
+		AllowTagScoped: true,
+		Description:    "Manage SSH keys for your account",
+		Usage:          "ssh-key <subcommand> [args...]",
+		Handler:        ss.handleSSHKeyHelp,
+		FlagSetFunc:    jsonOnlyFlags("ssh-key"),
 		Subcommands: []*exemenu.Command{
 			{
 				Name:              "list",
+				AllowTagScoped:    true,
 				Description:       "List all SSH keys associated with your account",
 				Usage:             "ssh-key list",
 				Handler:           ss.handleSSHKeyListCmd,
@@ -132,6 +134,7 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 			},
 			{
 				Name:              "add",
+				AllowTagScoped:    true,
 				Description:       "Add a new SSH key to your account",
 				Usage:             "ssh-key add <public-key>",
 				Handler:           ss.handleSSHKeyAddCmd,
@@ -154,6 +157,7 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 			},
 			{
 				Name:              "remove",
+				AllowTagScoped:    true,
 				Description:       "Remove an SSH key from your account",
 				Usage:             "ssh-key remove <name|fingerprint|public-key>",
 				Handler:           ss.handleSSHKeyRemoveCmd,
@@ -163,6 +167,7 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 			},
 			{
 				Name:              "rename",
+				AllowTagScoped:    true,
 				Description:       "Rename an SSH key",
 				Usage:             "ssh-key rename <old-name> <new-name>",
 				Handler:           ss.handleSSHKeyRenameCmd,
@@ -171,11 +176,12 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 				CompleterFunc:     ss.completeSSHKeyName,
 			},
 			{
-				Name:        "generate-api-key",
-				Description: "Generate an API key for the exe.dev HTTPS API or for a specific VM",
-				Usage:       "ssh-key generate-api-key [--label=NAME] [--vm=VMNAME] [--cmds=CMD1,CMD2] [--exp=30d]",
-				Handler:     ss.handleSSHKeyGenerateAPIKeyCmd,
-				FlagSetFunc: generateAPIKeyFlags,
+				Name:           "generate-api-key",
+				AllowTagScoped: true,
+				Description:    "Generate an API key for the exe.dev HTTPS API or for a specific VM",
+				Usage:          "ssh-key generate-api-key [--label=NAME] [--vm=VMNAME] [--cmds=CMD1,CMD2] [--exp=30d]",
+				Handler:        ss.handleSSHKeyGenerateAPIKeyCmd,
+				FlagSetFunc:    generateAPIKeyFlags,
 				Examples: []string{
 					"# Generate a key for the exe.dev API (lobby commands like ls, new, whoami):",
 					"ssh-key generate-api-key --label=ci --cmds=ls,new --exp=90d",
