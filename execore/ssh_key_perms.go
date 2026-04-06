@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"exe.dev/exedb"
@@ -48,6 +49,8 @@ func (p *SSHKeyPerms) IsExpired() bool {
 
 // AllowsCommand reports whether the key permits the given resolved command.
 // For SSH keys, nil Cmds means "*" (all commands).
+// A parent command in the Cmds list (e.g. "ssh-key") allows all of its
+// subcommands (e.g. "ssh-key add", "ssh-key list").
 func (p *SSHKeyPerms) AllowsCommand(resolvedCmd string) bool {
 	if p == nil || p.Cmds == nil {
 		return true
@@ -55,7 +58,28 @@ func (p *SSHKeyPerms) AllowsCommand(resolvedCmd string) bool {
 	if resolvedCmd == "" {
 		return false
 	}
-	return slices.Contains(p.Cmds, resolvedCmd)
+	for _, allowed := range p.Cmds {
+		if allowed == resolvedCmd {
+			return true
+		}
+		// Parent match: "ssh-key" allows "ssh-key add", "ssh-key list", etc.
+		if strings.HasPrefix(resolvedCmd, allowed+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsDirectSSH reports whether the key permits direct SSH/SCP access to VMs
+// (i.e., connections routed by sshpiper to a box, bypassing the REPL).
+// This is true when the key has no command restriction or when "ssh" is in the
+// allowed commands list. A key with --cmds=new (for example) must not be able
+// to SSH into any VM.
+func (p *SSHKeyPerms) AllowsDirectSSH() bool {
+	if p == nil || p.Cmds == nil {
+		return true
+	}
+	return slices.Contains(p.Cmds, "ssh")
 }
 
 // AllowsVM reports whether the key permits access to the given VM.
@@ -195,7 +219,7 @@ func inheritCallerRestrictions(callerPerms *SSHKeyPerms, newPerms map[string]any
 				}
 			}
 			for _, cmd := range newCmds {
-				if !slices.Contains(callerPerms.Cmds, cmd) {
+				if !callerCmdsAllow(callerPerms.Cmds, cmd) {
 					return fmt.Errorf("calling key does not allow command %q; cannot grant it to new key", cmd)
 				}
 			}
@@ -205,6 +229,18 @@ func inheritCallerRestrictions(callerPerms *SSHKeyPerms, newPerms map[string]any
 	}
 
 	return nil
+}
+
+// callerCmdsAllow checks whether the caller's command list permits the given
+// command. Like AllowsCommand, a parent entry ("ssh-key") allows any of its
+// subcommands ("ssh-key add").
+func callerCmdsAllow(callerCmds []string, cmd string) bool {
+	for _, allowed := range callerCmds {
+		if allowed == cmd || strings.HasPrefix(cmd, allowed+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // errSSHKeyNotFound is returned by getSSHKeyPermsByPublicKey when the public

@@ -448,7 +448,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 	// ── 17. Restriction inheritance: new key inherits caller's tag ──
 	t.Run("restriction_inheritance_tag", func(t *testing.T) {
 		// Create a tag key that also allows ssh-key add.
-		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key add,ls"})
+		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key,ls"})
 
 		// Add a key without explicit flags — it should inherit the ci tag.
 		newKeyPath, newPubKey, err := testinfra.GenSSHKey(t.TempDir())
@@ -495,7 +495,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 
 	// ── 17b. Cannot escalate by specifying a different tag ────────
 	t.Run("restriction_inheritance_different_tag_rejected", func(t *testing.T) {
-		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key add,ls"})
+		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key,ls"})
 
 		_, pubKey, err := testinfra.GenSSHKey(t.TempDir())
 		if err != nil {
@@ -514,7 +514,7 @@ func TestSSHKeyTagScope(t *testing.T) {
 
 	// ── 17c. Cmds-restricted key cannot grant commands it doesn't have ─
 	t.Run("restriction_inheritance_cmds_superset_rejected", func(t *testing.T) {
-		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key add,ls"})
+		escKey := addScopedKey(t, []string{"--tag=ci", "--cmds=ssh-key,ls"})
 
 		_, pubKey, err := testinfra.GenSSHKey(t.TempDir())
 		if err != nil {

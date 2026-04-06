@@ -238,7 +238,7 @@ func TestSSHKeyPermissions(t *testing.T) {
 	// 6. Combined restrictions: cmds + vm both enforced
 	// ---------------------------------------------------------------
 	t.Run("combined_cmds_and_vm", func(t *testing.T) {
-		// Key restricted to box1 AND only whoami.
+		// Key restricted to box1 AND only whoami (no ssh).
 		combinedKeyPath := addScopedKey(t, []string{"--cmds=whoami", "--vm=" + box1})
 
 		// Should be blocked from REPL (vm restriction takes priority at piper level).
@@ -254,11 +254,34 @@ func TestSSHKeyPermissions(t *testing.T) {
 			t.Fatalf("SSH to box2 should fail, got: %s", out)
 		}
 
-		// Should succeed on box1.
+		// Should also be blocked from box1 via direct SSH because cmds
+		// does not include "ssh".
 		cmd = Env.servers.BoxSSHCommand(Env.context(t), box1, combinedKeyPath, "echo", "hello")
 		out, err = cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("direct SSH to box1 should fail with cmds=whoami: %s", out)
+		}
+	})
+
+	t.Run("combined_cmds_ssh_and_vm", func(t *testing.T) {
+		// Key restricted to box1 AND cmds includes ssh.
+		combinedKeyPath := addScopedKey(t, []string{"--cmds=ssh", "--vm=" + box1})
+
+		// Direct SSH to box1 should succeed (ssh in cmds, vm matches).
+		cmd := Env.servers.BoxSSHCommand(Env.context(t), box1, combinedKeyPath, "echo", "hello-combined")
+		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Errorf("SSH to box1 should succeed: %v\n%s", err, out)
+			t.Fatalf("direct SSH to box1 should succeed with cmds=ssh,vm=box1: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "hello-combined") {
+			t.Errorf("expected 'hello-combined' in output, got: %s", out)
+		}
+
+		// Direct SSH to box2 should fail (vm restriction).
+		cmd = Env.servers.BoxSSHCommand(Env.context(t), box2, combinedKeyPath, "echo", "hello")
+		out, err = cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("SSH to box2 should fail with vm=%s: %s", box1, out)
 		}
 	})
 
@@ -332,7 +355,90 @@ func TestSSHKeyPermissions(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------
-	// 9. VM flag validated: non-existent VM rejected
+	// 9. Command restriction controls direct SSH access
+	// ---------------------------------------------------------------
+	t.Run("cmds_ssh_allows_direct_ssh", func(t *testing.T) {
+		// A key with --cmds=ssh should be able to SSH directly into a VM.
+		sshKeyPath := addScopedKey(t, []string{"--cmds=ssh"})
+
+		cmd := Env.servers.BoxSSHCommand(Env.context(t), box1, sshKeyPath, "echo", "hello-from-ssh-key")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("direct SSH to %s should succeed with cmds=ssh: %v\n%s", box1, err, out)
+		}
+		if !strings.Contains(string(out), "hello-from-ssh-key") {
+			t.Errorf("expected 'hello-from-ssh-key' in output, got: %s", out)
+		}
+	})
+
+	t.Run("cmds_ssh_allows_repl_ssh_command", func(t *testing.T) {
+		// A key with --cmds=ssh should also be able to use the REPL ssh command.
+		sshKeyPath := addScopedKey(t, []string{"--cmds=ssh"})
+
+		// The REPL's "ssh" command (ssh exe.dev ssh <vm> <cmd>) should work.
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), sshKeyPath, "ssh", box1, "echo", "hello-via-repl")
+		if err != nil {
+			t.Fatalf("REPL ssh command should succeed with cmds=ssh: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "hello-via-repl") {
+			t.Errorf("expected 'hello-via-repl' in output, got: %s", out)
+		}
+	})
+
+	t.Run("cmds_ssh_denies_other_repl_commands", func(t *testing.T) {
+		// A key with --cmds=ssh must NOT be able to run other REPL commands.
+		sshKeyPath := addScopedKey(t, []string{"--cmds=ssh"})
+
+		// ls should be denied.
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), sshKeyPath, "ls")
+		if err == nil {
+			t.Fatalf("ls should fail with cmds=ssh, got: %s", out)
+		}
+		if !strings.Contains(string(out), "command not allowed by SSH key permissions") {
+			t.Errorf("expected permission denied for ls, got: %s", out)
+		}
+
+		// whoami should be denied.
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), sshKeyPath, "whoami")
+		if err == nil {
+			t.Fatalf("whoami should fail with cmds=ssh, got: %s", out)
+		}
+		if !strings.Contains(string(out), "command not allowed by SSH key permissions") {
+			t.Errorf("expected permission denied for whoami, got: %s", out)
+		}
+	})
+
+	t.Run("cmds_non_ssh_denies_direct_ssh", func(t *testing.T) {
+		// A key with --cmds=ls,whoami (no "ssh") must NOT be able to SSH directly.
+		noSSHKeyPath := addScopedKey(t, []string{"--cmds=ls,whoami"})
+
+		// Direct SSH should fail.
+		cmd := Env.servers.BoxSSHCommand(Env.context(t), box1, noSSHKeyPath, "echo", "should-fail")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("direct SSH to %s should fail with cmds=ls,whoami: %s", box1, out)
+		}
+
+		// But REPL commands they're allowed should still work.
+		out, err = Env.servers.RunExeDevSSHCommand(Env.context(t), noSSHKeyPath, "whoami")
+		if err != nil {
+			t.Errorf("whoami should succeed with cmds=ls,whoami: %v\n%s", err, out)
+		}
+	})
+
+	t.Run("cmds_new_denies_direct_ssh", func(t *testing.T) {
+		// A key with --cmds=new must NOT be able to SSH into any VM.
+		newKeyPath := addScopedKey(t, []string{"--cmds=new"})
+
+		cmd := Env.servers.BoxSSHCommand(Env.context(t), box1, newKeyPath, "echo", "should-fail")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("direct SSH should fail with cmds=new: %s", out)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 10. VM flag validated: non-existent VM rejected
 	// ---------------------------------------------------------------
 	t.Run("vm_nonexistent_rejected", func(t *testing.T) {
 		_, testPubKey, err := testinfra.GenSSHKey(t.TempDir())
@@ -350,7 +456,7 @@ func TestSSHKeyPermissions(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------
-	// 10. Cross-user VM restriction: can't scope to someone else's VM
+	// 11. Cross-user VM restriction: can't scope to someone else's VM
 	// ---------------------------------------------------------------
 	t.Run("vm_cross_user_rejected", func(t *testing.T) {
 		// Register a second user with root support.
@@ -374,7 +480,7 @@ func TestSSHKeyPermissions(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------
-	// 11. Non-sudoer denied permission flags
+	// 12. Non-sudoer denied permission flags
 	// ---------------------------------------------------------------
 	t.Run("non_sudoer_denied_perms", func(t *testing.T) {
 		pty3, _, keyFile3, _ := registerForExeDevWithEmail(t, "perms-nonsudo@ssh-key-perms.example")

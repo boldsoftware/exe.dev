@@ -1251,7 +1251,6 @@ func TestTagScopedCommandDispatchDenyByDefault(t *testing.T) {
 		{"exe0-to-exe1", "fake-token"},
 		{"browser"},
 		{"team"},
-		{"prompt"},
 		// Integration mutations.
 		{"integrations", "add", "http-proxy", "--name=x"},
 		{"integrations", "remove", "x"},

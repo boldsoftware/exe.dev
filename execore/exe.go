@@ -2062,6 +2062,9 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 
 // UserHasExeSudo reports whether if the user has exe root_support privilege.
 func (s *Server) UserHasExeSudo(ctx context.Context, userID string) bool {
+	if s.db == nil {
+		return false
+	}
 	isRootSupport, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserRootSupport, userID)
 	return err == nil && isRootSupport == 1
 }

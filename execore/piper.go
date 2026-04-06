@@ -469,8 +469,12 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Enforce SSH key VM and tag restrictions.
+	// Enforce SSH key command, VM, and tag restrictions.
 	if perms := getSSHKeyPerms(ctx); perms != nil {
+		if !perms.AllowsDirectSSH() {
+			slog.WarnContext(ctx, "SSH key command restriction denied direct SSH", "component", "piper-plugin", "vm_name", box.Name, "allowed_cmds", perms.Cmds)
+			return nil, fmt.Errorf("SSH key does not allow direct SSH access")
+		}
 		if !perms.AllowsVM(box.Name) {
 			slog.WarnContext(ctx, "SSH key VM restriction denied access", "component", "piper-plugin", "vm_name", box.Name, "allowed_vm", perms.VM)
 			return nil, fmt.Errorf("SSH key is restricted to VM %q", perms.VM)
