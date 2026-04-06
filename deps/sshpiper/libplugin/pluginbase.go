@@ -3,6 +3,7 @@ package libplugin
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,58 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 )
+
+// AuthDenialError is returned by auth callbacks to explicitly deny an auth
+// attempt and show the user a banner explaining why. sshpiperd surfaces the
+// banner via SSH_MSG_USERAUTH_BANNER before the failure reply, then ends the
+// connection without offering any fallback auth methods.
+//
+// Plugins should return *AuthDenialError (rather than a generic error) when
+// they want the user to see a specific reason for the failure, e.g. "VM is
+// not running". Returning any other error falls back to the default auth
+// failure with no banner.
+//
+// The type is plugin-side only. At the gRPC boundary, the libplugin server
+// translates a returned *AuthDenialError into the AuthDenial proto field;
+// sshpiperd's plugin client then turns that field into a *ssh.AuthDenial,
+// which sshpiperd's auth wrappers handle by sending the banner and failing
+// the connection.
+type AuthDenialError struct {
+	// Banner is shown to the user via SSH_MSG_USERAUTH_BANNER. If empty,
+	// nothing is shown to the user; the denial is still effective.
+	Banner string
+	// Reason is logged server-side but never shown to the client.
+	Reason string
+}
+
+func (e *AuthDenialError) Error() string {
+	if e.Reason != "" {
+		return e.Reason
+	}
+	return "auth denied by plugin"
+}
+
+// Deny is a convenience constructor for an *AuthDenialError. Returning the
+// result from an auth callback tells sshpiperd to reject the attempt, show
+// the user the given banner via SSH_MSG_USERAUTH_BANNER, and end the
+// connection without offering any fallback auth methods. The reason is
+// logged server-side and never sent to the client.
+func Deny(banner, reason string) error {
+	return &AuthDenialError{Banner: banner, Reason: reason}
+}
+
+// asDenial returns the AuthDenial proto for a callback error if the error is
+// (or wraps) an *AuthDenialError, along with true. Otherwise it returns nil, false.
+func asDenial(err error) (*AuthDenial, bool) {
+	var de *AuthDenialError
+	if errors.As(err, &de) {
+		return &AuthDenial{
+			Banner: de.Banner,
+			Reason: de.Reason,
+		}, true
+	}
+	return nil, false
+}
 
 type ConnMetadata interface {
 	User() string
@@ -267,12 +320,13 @@ func (s *server) NoneAuth(ctx context.Context, req *NoneAuthRequest) (*NoneAuthR
 
 	upstream, err := s.config.NoClientAuthCallback(req.Meta)
 	if err != nil {
+		if denial, ok := asDenial(err); ok {
+			return &NoneAuthResponse{Result: &NoneAuthResponse_Denial{Denial: denial}}, nil
+		}
 		return nil, err
 	}
 
-	return &NoneAuthResponse{
-		Upstream: upstream,
-	}, nil
+	return &NoneAuthResponse{Result: &NoneAuthResponse_Upstream{Upstream: upstream}}, nil
 }
 
 func (s *server) PasswordAuth(ctx context.Context, req *PasswordAuthRequest) (*PasswordAuthResponse, error) {
@@ -282,12 +336,13 @@ func (s *server) PasswordAuth(ctx context.Context, req *PasswordAuthRequest) (*P
 
 	upstream, err := s.config.PasswordCallback(req.Meta, req.Password)
 	if err != nil {
+		if denial, ok := asDenial(err); ok {
+			return &PasswordAuthResponse{Result: &PasswordAuthResponse_Denial{Denial: denial}}, nil
+		}
 		return nil, err
 	}
 
-	return &PasswordAuthResponse{
-		Upstream: upstream,
-	}, nil
+	return &PasswordAuthResponse{Result: &PasswordAuthResponse_Upstream{Upstream: upstream}}, nil
 }
 
 func (s *server) PublicKeyAuth(ctx context.Context, req *PublicKeyAuthRequest) (*PublicKeyAuthResponse, error) {
@@ -297,12 +352,13 @@ func (s *server) PublicKeyAuth(ctx context.Context, req *PublicKeyAuthRequest) (
 
 	upstream, err := s.config.PublicKeyCallback(req.Meta, req.PublicKey)
 	if err != nil {
+		if denial, ok := asDenial(err); ok {
+			return &PublicKeyAuthResponse{Result: &PublicKeyAuthResponse_Denial{Denial: denial}}, nil
+		}
 		return nil, err
 	}
 
-	return &PublicKeyAuthResponse{
-		Upstream: upstream,
-	}, nil
+	return &PublicKeyAuthResponse{Result: &PublicKeyAuthResponse_Upstream{Upstream: upstream}}, nil
 }
 
 func (s *server) KeyboardInteractiveAuth(stream SshPiperPlugin_KeyboardInteractiveAuthServer) error {
@@ -367,15 +423,20 @@ func (s *server) KeyboardInteractiveAuth(stream SshPiperPlugin_KeyboardInteracti
 
 		return userInput.Answers[0], nil
 	})
+	finish := &KeyboardInteractiveFinishRequest{}
 	if err != nil {
-		return err
+		denial, ok := asDenial(err)
+		if !ok {
+			return err
+		}
+		finish.Result = &KeyboardInteractiveFinishRequest_Denial{Denial: denial}
+	} else {
+		finish.Result = &KeyboardInteractiveFinishRequest_Upstream{Upstream: upstream}
 	}
 
 	if err := stream.Send(&KeyboardInteractiveAuthMessage{
 		Message: &KeyboardInteractiveAuthMessage_FinishRequest{
-			FinishRequest: &KeyboardInteractiveFinishRequest{
-				Upstream: upstream,
-			},
+			FinishRequest: finish,
 		},
 	}); err != nil {
 		return err

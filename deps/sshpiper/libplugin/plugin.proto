@@ -56,6 +56,26 @@ message UpstreamRetryCurrentPluginAuth {
   map<string, string> meta = 1;
 }
 
+// AuthDenial tells sshpiperd to reject this auth attempt, show the user a
+// banner explaining why, and terminate the connection without offering any
+// fallback auth methods. It is used by plugins that want to surface a
+// context-specific failure reason (e.g. "VM is not running") without the
+// usual roundtrip through keyboard-interactive fallback messages.
+//
+// AuthDenial rides the `result` oneof on each auth response message
+// (NoneAuthResponse, PasswordAuthResponse, PublicKeyAuthResponse,
+// KeyboardInteractiveFinishRequest), so it is structurally mutually
+// exclusive with the `upstream` variant.
+message AuthDenial {
+  // Shown to the user via SSH_MSG_USERAUTH_BANNER before the failure reply.
+  // OpenSSH displays this unconditionally. sshpiperd caps banners at a
+  // generous maximum (see grpc.go) and truncates rather than rejects,
+  // because the banner is a UX channel.
+  string banner = 1;
+  // Reason is logged server-side but never shown to the client.
+  string reason = 2;
+}
+
 service SshPiperPlugin {
   rpc Logs(StartLogRequest) returns (stream Log) {}
   rpc ListCallbacks(ListCallbackRequest) returns (ListCallbackResponse) {}
@@ -118,7 +138,13 @@ message NoneAuthRequest {
 }
 
 message NoneAuthResponse {
-  Upstream upstream = 1;
+  // result is either an upstream to pipe to or a denial carrying a
+  // user-visible banner. Plugins that want to deny with a banner set the
+  // denial variant; plugins that want to accept set the upstream variant.
+  oneof result {
+    Upstream upstream = 1;
+    AuthDenial denial = 2;
+  }
 }
 
 message PasswordAuthRequest {
@@ -127,7 +153,11 @@ message PasswordAuthRequest {
 }
 
 message PasswordAuthResponse {
-  Upstream upstream = 1;
+  // See NoneAuthResponse.result.
+  oneof result {
+    Upstream upstream = 1;
+    AuthDenial denial = 2;
+  }
 }
 
 message PublicKeyAuthRequest {
@@ -136,7 +166,11 @@ message PublicKeyAuthRequest {
 }
 
 message PublicKeyAuthResponse {
-  Upstream upstream = 1;
+  // See NoneAuthResponse.result.
+  oneof result {
+    Upstream upstream = 1;
+    AuthDenial denial = 2;
+  }
 }
 
 message KeyboardInteractiveUserResponse {
@@ -162,7 +196,11 @@ message KeyboardInteractiveMetaResponse {
 }
 
 message KeyboardInteractiveFinishRequest {
-  Upstream upstream = 1;
+  // See NoneAuthResponse.result.
+  oneof result {
+    Upstream upstream = 1;
+    AuthDenial denial = 2;
+  }
 }
 
 message KeyboardInteractiveAuthMessage {

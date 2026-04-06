@@ -371,6 +371,36 @@ func (g *GrpcPlugin) createUpstream(conn ssh.ConnMetadata, challengeCtx ssh.Chal
 	}, nil
 }
 
+// maxDenialBannerBytes caps the size of a denial banner forwarded to the
+// downstream client. The banner is plugin-controlled and is sent before the
+// client has authenticated as a single SSH_MSG_USERAUTH_BANNER packet; SSH
+// limits a single packet's payload to ~32KB by spec, and many clients will
+// reject or truncate well below that. 4KB is generous for legitimate
+// "explain why auth failed" UX and well under any client's framing limit.
+// Oversized banners are truncated with a "[banner truncated]" suffix
+// rather than rejected outright, because the banner is a UX channel and a
+// partial message is more useful to the user than a hard failure.
+const maxDenialBannerBytes = 4096
+
+// denialError converts an AuthDenial from a plugin response into a
+// *ssh.AuthDenial, which sshpiper's auth callback wrappers recognize and
+// translate into an eager SendAuthBanner followed by a terminal connection
+// failure.
+func denialError(denial *libplugin.AuthDenial) error {
+	if denial == nil {
+		return nil
+	}
+	banner := denial.GetBanner()
+	if len(banner) > maxDenialBannerBytes {
+		log.Warnf("plugin denial banner is %d bytes; truncating to %d", len(banner), maxDenialBannerBytes)
+		banner = banner[:maxDenialBannerBytes] + "\n[banner truncated]\n"
+	}
+	return &ssh.AuthDenial{
+		Banner: banner,
+		Reason: denial.GetReason(),
+	}
+}
+
 func (g *GrpcPlugin) NoClientAuthCallback(conn ssh.ConnMetadata, challengeCtx ssh.ChallengeContext) (*ssh.Upstream, error) {
 	meta := toMeta(challengeCtx, conn)
 	reply, err := g.client.NoneAuth(context.Background(), &libplugin.NoneAuthRequest{
@@ -379,8 +409,11 @@ func (g *GrpcPlugin) NoClientAuthCallback(conn ssh.ConnMetadata, challengeCtx ss
 	if err != nil {
 		return nil, err
 	}
+	if denial := reply.GetDenial(); denial != nil {
+		return nil, denialError(denial)
+	}
 
-	return g.createUpstream(conn, challengeCtx, reply.Upstream)
+	return g.createUpstream(conn, challengeCtx, reply.GetUpstream())
 }
 
 func (g *GrpcPlugin) PasswordCallback(conn ssh.ConnMetadata, password []byte, challengeCtx ssh.ChallengeContext) (*ssh.Upstream, error) {
@@ -392,8 +425,11 @@ func (g *GrpcPlugin) PasswordCallback(conn ssh.ConnMetadata, password []byte, ch
 	if err != nil {
 		return nil, err
 	}
+	if denial := reply.GetDenial(); denial != nil {
+		return nil, denialError(denial)
+	}
 
-	return g.createUpstream(conn, challengeCtx, reply.Upstream)
+	return g.createUpstream(conn, challengeCtx, reply.GetUpstream())
 }
 
 func (g *GrpcPlugin) PublicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey, challengeCtx ssh.ChallengeContext) (*ssh.Upstream, error) {
@@ -405,8 +441,11 @@ func (g *GrpcPlugin) PublicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey,
 	if err != nil {
 		return nil, err
 	}
+	if denial := reply.GetDenial(); denial != nil {
+		return nil, denialError(denial)
+	}
 
-	return g.createUpstream(conn, challengeCtx, reply.Upstream)
+	return g.createUpstream(conn, challengeCtx, reply.GetUpstream())
 }
 
 func (g *GrpcPlugin) KeyboardInteractiveCallback(conn ssh.ConnMetadata, client ssh.KeyboardInteractiveChallenge, challengeCtx ssh.ChallengeContext) (*ssh.Upstream, error) {
@@ -466,6 +505,9 @@ func (g *GrpcPlugin) KeyboardInteractiveCallback(conn ssh.ConnMetadata, client s
 			}
 
 		} else if r := msg.GetFinishRequest(); r != nil {
+			if denial := r.GetDenial(); denial != nil {
+				return nil, denialError(denial)
+			}
 			if r.GetUpstream() != nil {
 				return g.createUpstream(conn, challengeCtx, r.GetUpstream())
 			}

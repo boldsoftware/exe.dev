@@ -311,7 +311,6 @@ func (p *PiperConn) authUpstream(downstream ConnMetadata, method string, upstrea
 		}
 
 		p.authFailures++
-
 		return p.updateAuthMethods(err)
 	}
 
@@ -320,11 +319,46 @@ func (p *PiperConn) authUpstream(downstream ConnMetadata, method string, upstrea
 	return nil
 }
 
+// AuthDenial is an error returned by an auth callback to deny the attempt,
+// show the user a banner explaining why, and fail the connection without
+// offering any further auth methods. The banner is delivered via
+// SSH_MSG_USERAUTH_BANNER before the failure reply.
+type AuthDenial struct {
+	Banner string
+	Reason string
+}
+
+func (d *AuthDenial) Error() string {
+	if d.Reason != "" {
+		return d.Reason
+	}
+	return "auth denied"
+}
+
+// handleAuthErr is the shared error-return path for the four auth callback
+// wrappers. If err is an *AuthDenial, it eager-sends the banner via the
+// connection's SendAuthBanner (rather than threading a *BannerError through
+// PartialSuccessError) and returns an empty PartialSuccessError so that
+// serverAuthenticate hits its "no authentication methods available" path
+// and terminates the connection.
+func (p *PiperConn) handleAuthErr(conn ConnMetadata, err error) error {
+	p.authFailures++
+	var denial *AuthDenial
+	if errors.As(err, &denial) {
+		if denial.Banner != "" {
+			if pre, ok := conn.(ServerPreAuthConn); ok {
+				_ = pre.SendAuthBanner(denial.Banner)
+			}
+		}
+		return &PartialSuccessError{}
+	}
+	return p.updateAuthMethods(err)
+}
+
 func (p *PiperConn) noClientAuthCallback(conn ConnMetadata) (*Permissions, error) {
 	u, err := p.config.NoClientAuthCallback(conn, p.challengeCtx)
 	if err != nil {
-		p.authFailures++
-		return nil, p.updateAuthMethods(err)
+		return nil, p.handleAuthErr(conn, err)
 	}
 
 	return nil, p.authUpstream(conn, "none", u)
@@ -333,8 +367,7 @@ func (p *PiperConn) noClientAuthCallback(conn ConnMetadata) (*Permissions, error
 func (p *PiperConn) passwordCallback(conn ConnMetadata, password []byte) (*Permissions, error) {
 	u, err := p.config.PasswordCallback(conn, password, p.challengeCtx)
 	if err != nil {
-		p.authFailures++
-		return nil, p.updateAuthMethods(err)
+		return nil, p.handleAuthErr(conn, err)
 	}
 
 	return nil, p.authUpstream(conn, "password", u)
@@ -343,8 +376,7 @@ func (p *PiperConn) passwordCallback(conn ConnMetadata, password []byte) (*Permi
 func (p *PiperConn) publicKeyCallback(conn ConnMetadata, key PublicKey) (*Permissions, error) {
 	u, err := p.config.PublicKeyCallback(conn, key, p.challengeCtx)
 	if err != nil {
-		p.authFailures++
-		return nil, p.updateAuthMethods(err)
+		return nil, p.handleAuthErr(conn, err)
 	}
 
 	return nil, p.authUpstream(conn, "publickey", u)
@@ -353,8 +385,7 @@ func (p *PiperConn) publicKeyCallback(conn ConnMetadata, key PublicKey) (*Permis
 func (p *PiperConn) keyboardInteractiveCallback(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
 	u, err := p.config.KeyboardInteractiveCallback(conn, client, p.challengeCtx)
 	if err != nil {
-		p.authFailures++
-		return nil, p.updateAuthMethods(err)
+		return nil, p.handleAuthErr(conn, err)
 	}
 
 	return nil, p.authUpstream(conn, "keyboard-interactive", u)
@@ -365,7 +396,6 @@ func (p *PiperConn) downstreamBannerCallback(conn ConnMetadata) string {
 }
 
 func (p *PiperConn) updateAuthMethods(emptyerr error) error {
-
 	if p.authFailures > p.maxAuthTries && p.maxAuthTries >= 0 {
 		return emptyerr
 	}
