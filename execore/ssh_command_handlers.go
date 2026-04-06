@@ -592,18 +592,21 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Aliases:     []string{"rick", "rickroll"},
 			Description: "🎵",
 			Handler:     ss.handleRollCommand,
+			RequiresPTY: true,
 		},
 		{
 			Name:        "game",
 			Hidden:      true,
 			Description: "Play a game",
 			Handler:     ss.handleGameCommand,
+			RequiresPTY: true,
 		},
 		{
 			Name:        "top",
 			Hidden:      true,
 			Description: "Live VM resource usage",
 			Handler:     ss.handleTopCommand,
+			RequiresPTY: true,
 		},
 		{
 			Name:        "exit",
@@ -1728,6 +1731,14 @@ doneParsingSSHFlags:
 			return cc.Errorf("command failed: %v", err)
 		}
 	} else {
+		// Interactive mode requires a real client-side PTY so we have
+		// sensible dimensions to forward to the remote session and so the
+		// remote shell isn't driven through a dumb byte pipe.
+		pty, hasPty := cc.SSHSession.Pty()
+		if !hasPty {
+			return cc.Errorf("interactive `ssh <vm>` requires a PTY; re-run with `ssh -t` or supply a command to run non-interactively")
+		}
+
 		// Interactive mode — mediate stdin through a pipe so that
 		// when the remote session ends, the x/crypto/ssh internal
 		// io.Copy goroutine doesn't silently eat the next keystroke.
@@ -1735,8 +1746,6 @@ doneParsingSSHFlags:
 		defer stopStdin()
 		session.Stdin = stdin
 
-		// Get PTY info from the client session and set it up first
-		pty, _ := cc.SSHSession.Pty()
 		if err := session.RequestPty(
 			// TODO(bmizerany): get actual terminal type from client (or env)? good enough for now
 			"xterm-256color",

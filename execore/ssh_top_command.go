@@ -470,18 +470,13 @@ func (t *topSessionInput) Read(p []byte) (int, error) {
 }
 
 func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.SSHSession == nil {
-		return fmt.Errorf("top requires a terminal session")
-	}
-
 	width, height := 80, 24
-	if pty, ok := cc.SSHSession.Pty(); ok {
-		if pty.Window.Width > 0 {
-			width = pty.Window.Width
-		}
-		if pty.Window.Height > 0 {
-			height = pty.Window.Height
-		}
+	pty, _ := cc.SSHSession.Pty()
+	if pty.Window.Width > 0 {
+		width = pty.Window.Width
+	}
+	if pty.Window.Height > 0 {
+		height = pty.Window.Height
 	}
 
 	userID := cc.User.ID

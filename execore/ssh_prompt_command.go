@@ -18,21 +18,18 @@ import (
 // promptCommand returns the hidden "prompt" command definition.
 func (ss *SSHServer) promptCommand() *exemenu.Command {
 	return &exemenu.Command{
-		Name:              "prompt",
-		Hidden:            true,
-		Description:       "Interactive AI assistant for exe.dev",
-		Usage:             "prompt [initial prompt]",
-		Handler:           ss.handlePromptCommand,
-		RawArgs:           true,
-		HasPositionalArgs: true,
+		Name:                    "prompt",
+		Hidden:                  true,
+		Description:             "Interactive AI assistant for exe.dev",
+		Usage:                   "prompt [initial prompt]",
+		Handler:                 ss.handlePromptCommand,
+		RawArgs:                 true,
+		HasPositionalArgs:       true,
+		RequiresInteractiveREPL: true,
 	}
 }
 
 func (ss *SSHServer) handlePromptCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Terminal == nil {
-		return cc.Errorf("prompt requires an interactive SSH session")
-	}
-
 	initialPrompt := strings.TrimSpace(strings.Join(cc.Args, " "))
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")

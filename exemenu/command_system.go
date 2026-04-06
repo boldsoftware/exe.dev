@@ -37,6 +37,19 @@ type Command struct {
 	Hidden       bool // if true, command is hidden from help and completions
 	RequiresSudo bool // if true, command requires exe sudo privileges; must also be Hidden
 
+	// RequiresPTY means the command only makes sense when the client has
+	// allocated a PTY (e.g. `ssh -t` or an interactive shell). Commands that
+	// drive full-screen Bubble Tea UIs or stream terminal animations should
+	// set this so they fail fast when invoked from scripted/HTTP contexts.
+	RequiresPTY bool
+
+	// RequiresInteractiveREPL means the command needs the in-REPL
+	// golang.org/x/term.Terminal (i.e. cc.Terminal != nil) because it calls
+	// ReadLine for user input. This is strictly stronger than RequiresPTY —
+	// a PTY on its own is not enough; the command must be invoked from the
+	// exe.dev REPL shell, not from exec mode.
+	RequiresInteractiveREPL bool
+
 	// Deprecated: Pick one meaningful name instead.
 	Aliases []string
 
@@ -593,6 +606,14 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		return cc.Errorf("exe.dev repl: command not found: %q", strings.Join(commandPath, " "))
 	}
 
+	// Defensive: every dispatch path should populate cc.User from a verified,
+	// non-locked-out account before we get here. If a caller ever forgets
+	// that step, fail closed rather than risk a nil dereference inside a
+	// handler.
+	if cc.User == nil {
+		return cc.Errorf("exe.dev repl: %q requires an authenticated user", cmd.Name)
+	}
+
 	// Check if command is available
 	if cmd.Available != nil && !cmd.Available(cc) {
 		return cc.Errorf("exe.dev repl: command not available: %q", strings.Join(commandPath, " "))
@@ -600,12 +621,27 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 
 	// Enforce RequiresSudo at the command dispatch level
 	if cmd.RequiresSudo && ct.SudoChecker != nil {
-		if cc.User == nil || !ct.SudoChecker(ctx, cc.User.ID) {
-			userDesc := "unknown"
-			if cc.User != nil {
-				userDesc = cc.User.Email
-			}
-			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", userDesc)
+		if !ct.SudoChecker(ctx, cc.User.ID) {
+			return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+		}
+	}
+
+	// Enforce RequiresInteractiveREPL. This is stricter than RequiresPTY and
+	// implies it (the REPL shell always runs with a PTY), so check it first
+	// to produce the more specific error message.
+	if cmd.RequiresInteractiveREPL && !cc.IsInteractive() {
+		return cc.Errorf("%q requires an interactive exe.dev shell session; connect to the exe.dev REPL and run it there", cmd.Name)
+	}
+
+	// Enforce RequiresPTY. The command must have a live SSH session with a
+	// client-allocated PTY so it can render terminal UIs / animations.
+	// RequiresInteractiveREPL implies RequiresPTY, so check it here too.
+	if cmd.RequiresPTY || cmd.RequiresInteractiveREPL {
+		if cc.SSHSession == nil {
+			return cc.Errorf("%q requires an interactive terminal (PTY); run it from the exe.dev shell or with `ssh -t`", cmd.Name)
+		}
+		if _, ok := cc.SSHSession.Pty(); !ok {
+			return cc.Errorf("%q requires an interactive terminal (PTY); re-run with `ssh -t`", cmd.Name)
 		}
 	}
 

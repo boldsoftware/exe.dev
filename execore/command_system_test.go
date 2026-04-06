@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"exe.dev/exemenu"
 	"exe.dev/tslog"
 	"github.com/gliderlabs/ssh"
+	"golang.org/x/term"
 )
 
 // MockOutput captures output for testing
@@ -26,7 +28,9 @@ func (m *MockOutput) String() string {
 }
 
 // mockShellSession is a minimal implementation of exemenu.ShellSession for testing
-type mockShellSession struct{}
+type mockShellSession struct {
+	hasPty bool
+}
 
 func (m *mockShellSession) Read(p []byte) (n int, err error)  { return 0, nil }
 func (m *mockShellSession) Write(p []byte) (n int, err error) { return len(p), nil }
@@ -35,7 +39,7 @@ func (m *mockShellSession) Push([]byte)                       {}
 func (m *mockShellSession) Context() context.Context          { return context.Background() }
 func (m *mockShellSession) Environ() []string                 { return nil }
 func (m *mockShellSession) User() string                      { return "test" }
-func (m *mockShellSession) Pty() (ssh.Pty, bool)              { return ssh.Pty{}, false }
+func (m *mockShellSession) Pty() (ssh.Pty, bool)              { return ssh.Pty{}, m.hasPty }
 func (m *mockShellSession) WaitWindowChange() bool            { return false }
 
 // Helper to create test context
@@ -1088,5 +1092,158 @@ func TestSudoCheckerEnforcement(t *testing.T) {
 	}
 	if sudoCalled {
 		t.Error("SudoChecker should not be called for non-sudo commands")
+	}
+}
+
+func TestRequiresPTYEnforcement(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalled bool
+	tree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{
+			{
+				Name:        "ptycmd",
+				RequiresPTY: true,
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					handlerCalled = true
+					return nil
+				},
+			},
+		},
+	}
+	user := &exemenu.UserInfo{ID: "u", Email: "u@test.com"}
+
+	// No SSH session: rejected.
+	handlerCalled = false
+	output := &MockOutput{}
+	cc := &exemenu.CommandContext{User: user, Output: output}
+	rc := tree.ExecuteCommand(context.Background(), cc, []string{"ptycmd"})
+	if rc == 0 || handlerCalled {
+		t.Errorf("expected rejection without SSH session, rc=%d handlerCalled=%v", rc, handlerCalled)
+	}
+	if !strings.Contains(output.String(), "PTY") {
+		t.Errorf("expected PTY error, got: %s", output.String())
+	}
+
+	// SSH session but no PTY: rejected.
+	handlerCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{User: user, Output: output, SSHSession: &mockShellSession{hasPty: false}}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"ptycmd"})
+	if rc == 0 || handlerCalled {
+		t.Errorf("expected rejection without PTY, rc=%d handlerCalled=%v", rc, handlerCalled)
+	}
+	if !strings.Contains(output.String(), "PTY") {
+		t.Errorf("expected PTY error, got: %s", output.String())
+	}
+
+	// SSH session with PTY: allowed.
+	handlerCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{User: user, Output: output, SSHSession: &mockShellSession{hasPty: true}}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"ptycmd"})
+	if rc != 0 || !handlerCalled {
+		t.Errorf("expected handler to run with PTY, rc=%d handlerCalled=%v output=%s", rc, handlerCalled, output.String())
+	}
+}
+
+func TestRequiresInteractiveREPLEnforcement(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalled bool
+	tree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{
+			{
+				Name:                    "replcmd",
+				RequiresInteractiveREPL: true,
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					handlerCalled = true
+					return nil
+				},
+			},
+		},
+	}
+	user := &exemenu.UserInfo{ID: "u", Email: "u@test.com"}
+
+	// Exec mode (no terminal, has PTY): rejected with REPL-specific error.
+	handlerCalled = false
+	output := &MockOutput{}
+	cc := &exemenu.CommandContext{User: user, Output: output, SSHSession: &mockShellSession{hasPty: true}}
+	rc := tree.ExecuteCommand(context.Background(), cc, []string{"replcmd"})
+	if rc == 0 || handlerCalled {
+		t.Errorf("expected rejection in exec mode, rc=%d handlerCalled=%v", rc, handlerCalled)
+	}
+	if !strings.Contains(output.String(), "exe.dev shell") {
+		t.Errorf("expected REPL error, got: %s", output.String())
+	}
+
+	// Interactive REPL with PTY: allowed.
+	handlerCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{
+		User:       user,
+		Output:     output,
+		Terminal:   term.NewTerminal(&bytes.Buffer{}, "> "),
+		SSHSession: &mockShellSession{hasPty: true},
+	}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"replcmd"})
+	if rc != 0 || !handlerCalled {
+		t.Errorf("expected handler to run in REPL, rc=%d handlerCalled=%v output=%s", rc, handlerCalled, output.String())
+	}
+
+	// Interactive terminal without PTY: rejected (RequiresInteractiveREPL
+	// implies RequiresPTY). In practice the REPL always has a PTY; this
+	// enforces the declared contract.
+	handlerCalled = false
+	output = &MockOutput{}
+	cc = &exemenu.CommandContext{
+		User:       user,
+		Output:     output,
+		Terminal:   term.NewTerminal(&bytes.Buffer{}, "> "),
+		SSHSession: &mockShellSession{hasPty: false},
+	}
+	rc = tree.ExecuteCommand(context.Background(), cc, []string{"replcmd"})
+	if rc == 0 || handlerCalled {
+		t.Errorf("expected rejection without PTY, rc=%d handlerCalled=%v", rc, handlerCalled)
+	}
+	if !strings.Contains(output.String(), "PTY") {
+		t.Errorf("expected PTY error, got: %s", output.String())
+	}
+}
+
+func TestNilUserDispatchRejection(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalled bool
+	tree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{
+			{
+				Name: "anycmd",
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					handlerCalled = true
+					return nil
+				},
+			},
+			{
+				Name: "help",
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+					handlerCalled = true
+					return nil
+				},
+			},
+		},
+	}
+
+	for _, name := range []string{"anycmd", "help"} {
+		handlerCalled = false
+		output := &MockOutput{}
+		cc := &exemenu.CommandContext{Output: output} // User: nil
+		rc := tree.ExecuteCommand(context.Background(), cc, []string{name})
+		if rc == 0 || handlerCalled {
+			t.Errorf("%q: expected rejection for nil user, rc=%d handlerCalled=%v", name, rc, handlerCalled)
+		}
+		if !strings.Contains(output.String(), "authenticated user") {
+			t.Errorf("%q: expected authenticated-user error, got: %s", name, output.String())
+		}
 	}
 }

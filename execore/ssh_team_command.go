@@ -29,18 +29,20 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 		Available:   ss.isInTeamOrSudoOrCanEnable,
 		Subcommands: []*exemenu.Command{
 			{
-				Name:        "enable",
-				Description: "Create a new team",
-				Usage:       "team enable",
-				Handler:     ss.handleTeamEnableCommand,
-				Available:   ss.canCreateTeam,
+				Name:                    "enable",
+				Description:             "Create a new team",
+				Usage:                   "team enable",
+				Handler:                 ss.handleTeamEnableCommand,
+				Available:               ss.canCreateTeam,
+				RequiresInteractiveREPL: true, // asks for confirmation + team name via ReadLine
 			},
 			{
-				Name:        "disable",
-				Description: "Disband your team",
-				Usage:       "team disable",
-				Handler:     ss.handleTeamDisableCommand,
-				Available:   ss.isTeamBillingOwner,
+				Name:                    "disable",
+				Description:             "Disband your team",
+				Usage:                   "team disable",
+				Handler:                 ss.handleTeamDisableCommand,
+				Available:               ss.isTeamBillingOwner,
+				RequiresInteractiveREPL: true, // asks for confirmation via ReadLine
 			},
 			{
 				Name:        "members",
@@ -236,10 +238,6 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 		return cc.Errorf("You are already in a team: %s", team.DisplayName)
 	}
 
-	if !cc.IsInteractive() {
-		return cc.Errorf("team enable requires an interactive session")
-	}
-
 	cc.Writeln("")
 	cc.Writeln("Teams lets you:")
 	cc.Writeln("  - Manage shared billing for your organization")
@@ -310,10 +308,6 @@ func (ss *SSHServer) handleTeamDisableCommand(ctx context.Context, cc *exemenu.C
 		cc.Writeln("Your team still has %d other member(s).", len(members)-1)
 		cc.Writeln("Remove all members with \033[1mteam remove <email>\033[0m before disabling.")
 		return nil
-	}
-
-	if !cc.IsInteractive() {
-		return cc.Errorf("team disable requires an interactive session")
 	}
 
 	cc.Writeln("")

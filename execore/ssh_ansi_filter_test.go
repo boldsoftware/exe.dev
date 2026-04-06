@@ -79,6 +79,7 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 	t.Run("exec mode filters ANSI", func(t *testing.T) {
 		var execOutput bytes.Buffer
 		execContext := &exemenu.CommandContext{
+			User:   &exemenu.UserInfo{ID: "usr_test", Email: "test@example.com"},
 			Output: exemenu.NewANSIFilterWriter(&execOutput), // This simulates handleExec behavior
 			Args:   []string{},
 		}
@@ -106,6 +107,7 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 	t.Run("shell mode preserves ANSI", func(t *testing.T) {
 		var shellOutput bytes.Buffer
 		shellContext := &exemenu.CommandContext{
+			User:   &exemenu.UserInfo{ID: "usr_test", Email: "test@example.com"},
 			Output: &shellOutput, // This simulates handleShell behavior (direct writer)
 			Args:   []string{},
 		}

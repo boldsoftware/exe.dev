@@ -1184,11 +1184,17 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
+		s.Exit(1)
+		return
+	}
+	if user == nil {
+		fmt.Fprintf(s, "Error: User not found\r\n")
+		s.Exit(1)
 		return
 	}
 
 	// Check if user is locked out
-	if user != nil && user.IsLockedOut {
+	if user.IsLockedOut {
 		traceID := tracing.TraceIDFromContext(s.Context())
 		ss.server.slog().WarnContext(s.Context(), "locked out user attempted SSH exec", "userID", user.UserID, "trace_id", traceID)
 		fmt.Fprintf(s, "contact support@exe.dev (trace: %s)\r\n", traceID)
