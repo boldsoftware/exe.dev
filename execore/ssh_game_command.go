@@ -34,15 +34,7 @@ func (t *gameSessionInput) Read(p []byte) (int, error) {
 }
 
 func (ss *SSHServer) handleGameCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	width, height := 80, 24
-	pty, _ := cc.SSHSession.Pty()
-	if pty.Window.Width > 0 {
-		width = pty.Window.Width
-	}
-	if pty.Window.Height > 0 {
-		height = pty.Window.Height
-	}
-
+	width, height := cc.PtySize()
 	model := newGameModel(width, height)
 
 	input := &gameSessionInput{session: cc.SSHSession}

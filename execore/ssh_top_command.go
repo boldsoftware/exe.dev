@@ -470,15 +470,7 @@ func (t *topSessionInput) Read(p []byte) (int, error) {
 }
 
 func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	width, height := 80, 24
-	pty, _ := cc.SSHSession.Pty()
-	if pty.Window.Width > 0 {
-		width = pty.Window.Width
-	}
-	if pty.Window.Height > 0 {
-		height = pty.Window.Height
-	}
-
+	width, height := cc.PtySize()
 	userID := cc.User.ID
 	model := &topModel{
 		width:     width,

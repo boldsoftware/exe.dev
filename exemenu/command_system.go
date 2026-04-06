@@ -386,6 +386,36 @@ func (ctx *CommandContext) IsSSHExec() bool {
 	return ctx.SSHSession != nil && !ctx.IsInteractive()
 }
 
+// PtySize returns the width and height of the client's PTY, falling back
+// to a sensible 80x24 default when there is no SSH session, no PTY, or
+// the reported dimensions are zero.
+//
+// SSH PTY dimensions are client-controlled, so we clamp them to an absurdly
+// large upper bound. The cap exists only to prevent a malicious client from
+// forcing multi-million-cell render buffers; no real terminal, no matter how
+// tiny the font or how vast the monitor, will hit it by accident.
+func (ctx *CommandContext) PtySize() (width, height int) {
+	const (
+		maxWidth  = 10000
+		maxHeight = 10000
+	)
+	width, height = 80, 24
+	if ctx.SSHSession == nil {
+		return width, height
+	}
+	pty, ok := ctx.SSHSession.Pty()
+	if !ok {
+		return width, height
+	}
+	if pty.Window.Width > 0 {
+		width = min(pty.Window.Width, maxWidth)
+	}
+	if pty.Window.Height > 0 {
+		height = min(pty.Window.Height, maxHeight)
+	}
+	return width, height
+}
+
 // ValidateCommand validates a command's configuration to catch common mistakes
 func ValidateCommand(cmd *Command) error {
 	if cmd.HasPositionalArgs && len(cmd.Subcommands) > 0 {

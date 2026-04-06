@@ -55,16 +55,7 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		return nil
 	}
 
-	width, height := 80, 24
-	if pty, ok := cc.SSHSession.Pty(); ok {
-		if pty.Window.Width > 0 {
-			width = pty.Window.Width
-		}
-		if pty.Window.Height > 0 {
-			height = pty.Window.Height
-		}
-	}
-
+	width, height := cc.PtySize()
 	title := entry.Title
 	if entry.Preview {
 		title += " [preview]"
