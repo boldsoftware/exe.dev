@@ -180,7 +180,7 @@ func (s *Service) Stop(ctx context.Context) error {
 	s.wg.Wait()
 
 	if s.workerPool != nil {
-		s.workerPool.Stop()
+		s.workerPool.StopWithContext(ctx)
 	}
 
 	if s.target != nil {

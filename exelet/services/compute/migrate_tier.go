@@ -323,8 +323,15 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 	}
 	addTierMigrationOp(op)
 
-	// Run migration in background, gated by worker semaphore
-	migCtx, migCancel := context.WithCancel(s.tierMigrationCtx)
+	// Run migration in background, gated by worker semaphore.
+	//
+	// Two contexts are used:
+	// - migCtx: independent context for the actual migration work. Only
+	//   cancelled by an explicit CancelTierMigration RPC, not by shutdown.
+	//   This ensures in-flight migrations run to completion during drain.
+	// - tierMigrationCtx: cancelled on Stop(). Pending migrations waiting
+	//   for a semaphore slot check this and bail out immediately.
+	migCtx, migCancel := context.WithCancel(context.Background())
 	op.mu.Lock()
 	op.cancel = migCancel
 	op.mu.Unlock()
@@ -335,7 +342,7 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 		defer migCancel()
 
 		// Acquire semaphore slot (blocks if all workers are busy).
-		// Check for cancellation while waiting.
+		// Check for both explicit cancellation and shutdown while waiting.
 		select {
 		case s.tierMigrationSem <- struct{}{}:
 		case <-migCtx.Done():
@@ -348,14 +355,34 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 				"op", op.OperationID, "instance", req.InstanceID)
 			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
 			return
+		case <-s.tierMigrationCtx.Done():
+			op.mu.Lock()
+			op.State = "cancelled"
+			op.CompletedAt = time.Now()
+			op.Error = "cancelled: exelet shutting down"
+			op.mu.Unlock()
+			s.log.InfoContext(context.Background(), "tier migration cancelled during shutdown",
+				"op", op.OperationID, "instance", req.InstanceID)
+			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
+			return
 		}
 		defer func() { <-s.tierMigrationSem }()
 
+		// Re-check shutdown after acquiring the semaphore. Migrations
+		// that haven't started yet should not begin during shutdown.
 		op.mu.Lock()
 		if migCtx.Err() != nil {
 			op.State = "cancelled"
 			op.CompletedAt = time.Now()
 			op.Error = "cancelled before start"
+			op.mu.Unlock()
+			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
+			return
+		}
+		if s.tierMigrationCtx.Err() != nil {
+			op.State = "cancelled"
+			op.CompletedAt = time.Now()
+			op.Error = "cancelled: exelet shutting down"
 			op.mu.Unlock()
 			time.AfterFunc(5*time.Minute, func() { removeTierMigrationOp(op.OperationID) })
 			return

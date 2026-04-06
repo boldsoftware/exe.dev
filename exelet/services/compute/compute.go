@@ -316,7 +316,16 @@ func (s *Service) Stop(ctx context.Context) error {
 	if s.tierMigrationCancel != nil {
 		s.tierMigrationCancel()
 	}
-	s.tierMigrationWg.Wait()
+	migDone := make(chan struct{})
+	go func() {
+		s.tierMigrationWg.Wait()
+		close(migDone)
+	}()
+	select {
+	case <-migDone:
+	case <-ctx.Done():
+		s.log.WarnContext(ctx, "shutdown context expired while waiting for tier migrations to drain")
+	}
 
 	if s.stopLogRotation != nil {
 		s.stopLogRotation()

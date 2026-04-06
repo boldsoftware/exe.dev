@@ -48,6 +48,7 @@ type WorkerPool struct {
 	isRestoring func(volumeID string) bool
 
 	mu           sync.Mutex
+	draining     bool         // set to true under mu when Stop is called; enqueuers check this
 	pendingQueue []VolumeInfo // tracks items waiting in jobsCh
 	activeJobs   map[string]*Job
 	workerCount  int
@@ -138,6 +139,14 @@ func (wp *WorkerPool) worker(id int) {
 		case volume, ok := <-wp.jobsCh:
 			if !ok {
 				return
+			}
+			// Authoritative drain check: if drainCtx fired between
+			// the select picking jobsCh and here, discard the job.
+			select {
+			case <-wp.drainCtx.Done():
+				wp.removeFromPending(volume.ID)
+				return
+			default:
 			}
 			wp.busyWorkers.Add(1)
 			wp.processVolume(volume)
@@ -404,7 +413,10 @@ func (wp *WorkerPool) removeFromPending(volumeID string) {
 	}
 }
 
-// QueueVolumes adds volumes to the replication queue
+// QueueVolumes adds volumes to the buffered job queue and returns the
+// number enqueued. Enqueued means placed in the channel buffer, not picked
+// up by a worker. During shutdown, enqueued jobs may be discarded by
+// draining workers.
 func (wp *WorkerPool) QueueVolumes(volumes []VolumeInfo) int {
 	// Sort by ID for determinism
 	sort.Slice(volumes, func(i, j int) bool {
@@ -414,6 +426,10 @@ func (wp *WorkerPool) QueueVolumes(volumes []VolumeInfo) int {
 	queued := 0
 	for _, v := range volumes {
 		wp.mu.Lock()
+		if wp.draining {
+			wp.mu.Unlock()
+			return queued
+		}
 		// Skip if already queued or being processed
 		if wp.isVolumeQueuedLocked(v.ID) {
 			wp.mu.Unlock()
@@ -427,6 +443,12 @@ func (wp *WorkerPool) QueueVolumes(volumes []VolumeInfo) int {
 		select {
 		case wp.jobsCh <- v:
 			queued++
+		case <-wp.drainCtx.Done():
+			wp.removeFromPending(v.ID)
+			wp.mu.Lock()
+			wp.metrics.SetQueueSize(len(wp.pendingQueue) + len(wp.activeJobs))
+			wp.mu.Unlock()
+			return queued
 		case <-wp.ctx.Done():
 			wp.removeFromPending(v.ID)
 			wp.mu.Lock()
@@ -461,10 +483,16 @@ func (wp *WorkerPool) isVolumeQueuedLocked(volumeID string) bool {
 // ErrAlreadyQueued is returned when a volume is already queued or being processed.
 var ErrAlreadyQueued = fmt.Errorf("volume already queued or in progress")
 
-// QueueVolume adds a single volume to the queue. Blocks until the volume
-// is accepted by a worker or the pool's context is cancelled.
+// QueueVolume adds a single volume to the buffered job queue. A nil return
+// means the job was enqueued, not that a worker has started processing it.
+// During shutdown the job may be discarded by a draining worker; callers
+// must not rely on nil meaning the replication will complete.
 func (wp *WorkerPool) QueueVolume(volume VolumeInfo) error {
 	wp.mu.Lock()
+	if wp.draining {
+		wp.mu.Unlock()
+		return fmt.Errorf("worker pool is draining")
+	}
 	if wp.isVolumeQueuedLocked(volume.ID) {
 		wp.mu.Unlock()
 		wp.log.Debug("skipping already queued volume", "volume_id", volume.ID)
@@ -476,6 +504,9 @@ func (wp *WorkerPool) QueueVolume(volume VolumeInfo) error {
 	select {
 	case wp.jobsCh <- volume:
 		return nil
+	case <-wp.drainCtx.Done():
+		wp.removeFromPending(volume.ID)
+		return fmt.Errorf("worker pool is draining")
 	case <-wp.ctx.Done():
 		wp.removeFromPending(volume.ID)
 		return wp.ctx.Err()
@@ -556,14 +587,27 @@ func (wp *WorkerPool) WaitVolumeIdle(ctx context.Context, volumeID string) {
 	}
 }
 
-// Stop stops the worker pool
+// Stop stops the worker pool with a default 5 minute drain timeout.
 func (wp *WorkerPool) Stop() {
-	// Signal workers to stop picking up new jobs and close the channel
-	// so any worker blocked on receive wakes up.
-	wp.drainCancel()
-	close(wp.jobsCh)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	wp.StopWithContext(ctx)
+}
 
-	// Wait for in-flight jobs to finish (up to 5 minutes).
+// StopWithContext stops the worker pool, respecting the given context's
+// deadline. In-flight jobs are allowed to finish; if ctx expires first
+// the worker context is force-cancelled to kill active ZFS commands.
+func (wp *WorkerPool) StopWithContext(ctx context.Context) {
+	// Mark draining under lock so no new enqueues can start.
+	wp.mu.Lock()
+	wp.draining = true
+	wp.mu.Unlock()
+
+	// Signal workers to stop picking up new jobs. The drainCtx.Done()
+	// case in the worker select loop will unblock any waiting workers.
+	wp.drainCancel()
+
+	// Wait for in-flight jobs to finish or context expiry.
 	done := make(chan struct{})
 	go func() {
 		wp.wg.Wait()
@@ -572,8 +616,8 @@ func (wp *WorkerPool) Stop() {
 
 	select {
 	case <-done:
-	case <-time.After(5 * time.Minute):
-		wp.log.Warn("timed out waiting for replication workers to drain, forcing stop")
+	case <-ctx.Done():
+		wp.log.WarnContext(ctx, "shutdown context expired waiting for replication workers to drain, forcing stop")
 		wp.cancel()
 		wp.wg.Wait()
 	}

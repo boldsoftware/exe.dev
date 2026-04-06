@@ -25,7 +25,20 @@ func (s *Exelet) Stop(ctx context.Context) error {
 
 	s.log.DebugContext(ctx, "waiting for services to shutdown")
 
-	wg.Wait()
+	// Respect the shutdown context deadline. If services don't finish
+	// in time, return the context error so the caller isn't blocked
+	// indefinitely (systemd's TimeoutStopSec is the final backstop).
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	return nil
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		s.log.WarnContext(ctx, "shutdown context expired, some services may still be stopping")
+		return ctx.Err()
+	}
 }
