@@ -11,6 +11,7 @@ LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 EnvironmentFile=-/etc/default/exelet
 KillMode=process
+TimeoutStopSec=660
 
 # Replication defaults (override via /etc/default/exelet)
 Environment=EXELET_STORAGE_REPLICATION_ENABLED=false
