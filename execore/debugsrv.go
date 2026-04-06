@@ -31,6 +31,7 @@ import (
 	"exe.dev/billing"
 	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
+	"exe.dev/desiredstate"
 	"exe.dev/email"
 	"exe.dev/execore/debug_templates"
 	"exe.dev/exedb"
@@ -96,6 +97,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
 	mux.HandleFunc("POST /debug/user/assign-enterprise", s.handleDebugAssignEnterprise)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
+	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
@@ -2207,6 +2209,80 @@ func (s *Server) handleDebugSetUserLimits(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleDebugSetUserCgroupOverrides sets cgroup overrides for a user.
+// Accepts cpu (number of cores) and memory (size like "128G") parameters.
+// This is equivalent to `ssh exe.dev throttle-user <user> --cpu=... --memory=...`.
+func (s *Server) handleDebugSetUserCgroupOverrides(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	cpuStr := r.FormValue("cpu")
+	memoryStr := r.FormValue("memory")
+	clearAll := r.FormValue("clear") == "1"
+
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get current overrides
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var settings []desiredstate.CgroupSetting
+	if !clearAll {
+		// Start with existing settings
+		settings = desiredstate.ParseOverrides(ptrStr(user.CgroupOverrides))
+
+		// Update CPU if provided
+		if cpuStr != "" {
+			cpuCores, parseErr := strconv.ParseFloat(cpuStr, 64)
+			if parseErr != nil || cpuCores < 0 {
+				http.Error(w, fmt.Sprintf("invalid cpu value: %s", cpuStr), http.StatusBadRequest)
+				return
+			}
+			settings = desiredstate.MergeOverrides(settings, []desiredstate.CgroupSetting{{
+				Path:  "cpu.max",
+				Value: desiredstate.CPUFractionToMax(cpuCores),
+			}})
+		}
+
+		// Update memory if provided
+		if memoryStr != "" {
+			memoryBytes, parseErr := parseSize(memoryStr)
+			if parseErr != nil {
+				http.Error(w, fmt.Sprintf("invalid memory value: %s (%v)", memoryStr, parseErr), http.StatusBadRequest)
+				return
+			}
+			settings = desiredstate.MergeOverrides(settings, []desiredstate.CgroupSetting{{
+				Path:  "memory.max",
+				Value: strconv.FormatUint(memoryBytes, 10),
+			}})
+		}
+	}
+
+	// Format and save
+	var overridesPtr *string
+	if formatted := desiredstate.FormatOverrides(settings); formatted != "" {
+		overridesPtr = &formatted
+	}
+
+	err = withTx1(s, ctx, (*exedb.Queries).SetUserCgroupOverrides, exedb.SetUserCgroupOverridesParams{
+		CgroupOverrides: overridesPtr,
+		UserID:          userID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to update cgroup overrides: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "user cgroup overrides updated via debug page", "user_id", userID, "cpu", cpuStr, "memory", memoryStr, "clear", clearAll)
+	http.Redirect(w, r, "/debug/user?userId="+userID, http.StatusSeeOther)
+}
+
 // handleDebugUpdateUserCredit updates a user's gateway credit settings.
 // Pass empty string for max/refresh to clear overrides and use defaults.
 func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Request) {
@@ -2652,6 +2728,13 @@ func formatTime(t *time.Time) string {
 		return "-"
 	}
 	return t.Format(time.RFC3339)
+}
+
+func formatTimeShort(t *time.Time) string {
+	if t == nil {
+		return "-"
+	}
+	return t.Format("2006-01-02")
 }
 
 func formatInt64Ptr(v *int64) string {
@@ -5059,6 +5142,11 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CanGrantTrial      bool
 		AllowDeleteUser    bool
 		DeleteBlockReasons []string
+		CgroupOverrides    string
+		CreatedAtShort     string
+		TeamID             string
+		TeamName           string
+		TeamRole           string
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5080,6 +5168,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		AllRegions:               region.All(),
 		AllowDeleteUser:          s.env.AllowDeleteUser,
 		CanGrantTrial:            true, // default true; overridden below if billing exists
+		CgroupOverrides:          ptrStr(user.CgroupOverrides),
+		CreatedAtShort:           formatTimeShort(user.CreatedAt),
 	}
 
 	if cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (entitlement.PlanCategory, error) {
@@ -5092,6 +5182,13 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 
 	if r, err := region.ByCode(user.Region); err == nil {
 		data.RegionDisplay = r.Display
+	}
+
+	// Fetch team info
+	if teamRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID); err == nil {
+		data.TeamID = teamRow.TeamID
+		data.TeamName = teamRow.DisplayName
+		data.TeamRole = teamRow.Role
 	}
 
 	for _, b := range boxes {

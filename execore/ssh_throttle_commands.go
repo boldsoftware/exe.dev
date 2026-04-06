@@ -17,6 +17,7 @@ import (
 func throttleVMFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("throttle-vm", flag.ContinueOnError)
 	fs.String("cpu", "", "CPU limit as fraction of 1 core (e.g. 0.1 = 10% of 1 CPU, 2.5 = 2.5 cores)")
+	fs.String("memory", "", "memory limit (e.g. '4G', '128GB', '4096M'; 0 or 'clear' to remove)")
 	fs.String("io", "", "symmetric IO bandwidth limit (e.g. '10M', '1G', '500K', or bytes; 0 or 'clear' to remove)")
 	fs.String("io-read", "", "IO read bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
 	fs.String("io-write", "", "IO write bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
@@ -29,6 +30,7 @@ func throttleVMFlags() *flag.FlagSet {
 func throttleUserFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("throttle-user", flag.ContinueOnError)
 	fs.String("cpu", "", "CPU limit as fraction of 1 core (e.g. 0.1 = 10% of 1 CPU, 2.5 = 2.5 cores)")
+	fs.String("memory", "", "memory limit (e.g. '4G', '128GB', '4096M'; 0 or 'clear' to remove)")
 	fs.String("io", "", "symmetric IO bandwidth limit (e.g. '10M', '1G', '500K', or bytes; 0 or 'clear' to remove)")
 	fs.String("io-read", "", "IO read bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
 	fs.String("io-write", "", "IO write bandwidth limit (e.g. '10M', '1G', '500K', or bytes)")
@@ -38,23 +40,24 @@ func throttleUserFlags() *flag.FlagSet {
 	return fs
 }
 
-// parseThrottleFlags extracts cgroup settings from the common --cpu / --io / --raw flags.
+// parseThrottleFlags extracts cgroup settings from the common --cpu / --memory / --io / --raw flags.
 // Returns the settings to apply and whether "show" or "clear" was requested.
 func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting, show, clear bool, err error) {
 	show, _ = strconv.ParseBool(fs.Lookup("show").Value.String())
 	clear, _ = strconv.ParseBool(fs.Lookup("clear").Value.String())
 
 	cpuStr := fs.Lookup("cpu").Value.String()
+	memoryStr := fs.Lookup("memory").Value.String()
 	ioStr := fs.Lookup("io").Value.String()
 	ioReadStr := fs.Lookup("io-read").Value.String()
 	ioWriteStr := fs.Lookup("io-write").Value.String()
 	rawStr := fs.Lookup("raw").Value.String()
 
-	hasValues := cpuStr != "" || ioStr != "" || ioReadStr != "" || ioWriteStr != "" || rawStr != ""
+	hasValues := cpuStr != "" || memoryStr != "" || ioStr != "" || ioReadStr != "" || ioWriteStr != "" || rawStr != ""
 
 	if show || clear {
 		if hasValues {
-			return nil, false, false, fmt.Errorf("--show and --clear cannot be combined with --cpu, --io, --io-read, --io-write, or --raw")
+			return nil, false, false, fmt.Errorf("--show and --clear cannot be combined with --cpu, --memory, --io, --io-read, --io-write, or --raw")
 		}
 		return nil, show, clear, nil
 	}
@@ -77,6 +80,22 @@ func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting
 					Value: desiredstate.CPUFractionToMax(fraction),
 				})
 			}
+		}
+	}
+
+	if memoryStr != "" {
+		if memoryStr == "clear" || memoryStr == "0" {
+			// --memory=clear or --memory=0 removes the memory.max override
+			settings = append(settings, desiredstate.CgroupSetting{Path: "memory.max", Value: ""})
+		} else {
+			memoryBytes, parseErr := parseSize(memoryStr)
+			if parseErr != nil {
+				return nil, false, false, fmt.Errorf("invalid --memory value %q: %v", memoryStr, parseErr)
+			}
+			settings = append(settings, desiredstate.CgroupSetting{
+				Path:  "memory.max",
+				Value: strconv.FormatUint(memoryBytes, 10),
+			})
 		}
 	}
 
@@ -107,7 +126,7 @@ func parseThrottleFlags(fs *flag.FlagSet) (settings []desiredstate.CgroupSetting
 	}
 
 	if len(settings) == 0 {
-		return nil, false, false, fmt.Errorf("at least one of --cpu, --io, --io-read, --io-write, --raw, --show, or --clear is required")
+		return nil, false, false, fmt.Errorf("at least one of --cpu, --memory, --io, --io-read, --io-write, --raw, --show, or --clear is required")
 	}
 
 	return settings, false, false, nil
@@ -202,7 +221,7 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: throttle-vm <vmname> [--cpu=<fraction>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
+		return cc.Errorf("usage: throttle-vm <vmname> [--cpu=<fraction>] [--memory=<size>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
 			"Manage cgroup overrides for a VM. These overrides are published via\n" +
 			"/exelet-desired and applied by the exelet's desired-state sync loop.\n\n" +
 			"--cpu sets cpu.max as a fraction of 1 CPU core:\n" +
@@ -211,6 +230,12 @@ func (ss *SSHServer) handleThrottleVMCommand(ctx context.Context, cc *exemenu.Co
 			"  --cpu=2.5    2.5 cores\n" +
 			"  --cpu=0      clear the cpu.max override\n" +
 			"  --cpu=clear  clear the cpu.max override\n\n" +
+			"--memory sets memory.max limit:\n" +
+			"  --memory=4G      4 GiB\n" +
+			"  --memory=128GB   128 GiB\n" +
+			"  --memory=4096M   4096 MiB\n" +
+			"  --memory=0       clear the memory.max override\n" +
+			"  --memory=clear   clear the memory.max override\n\n" +
 			"--io sets symmetric read+write IO bandwidth limit:\n" +
 			"  --io=10M     10 MB/s read and write\n" +
 			"  --io=1G      1 GB/s read and write\n" +
@@ -300,14 +325,21 @@ func (ss *SSHServer) handleThrottleUserCommand(ctx context.Context, cc *exemenu.
 	}
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: throttle-user <email-or-userid> [--cpu=<fraction>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
+		return cc.Errorf("usage: throttle-user <email-or-userid> [--cpu=<fraction>] [--memory=<size>] [--io=<bw>] [--io-read=<bw>] [--io-write=<bw>] [--raw=<path:value>] [--show] [--clear]\n\n" +
 			"Manage cgroup overrides for a user (applies to all their VMs at the group level).\n" +
 			"These overrides are published via /exelet-desired and applied by exelet.\n\n" +
 			"--cpu sets cpu.max as a fraction of 1 CPU core:\n" +
 			"  --cpu=0.1    10%% of 1 core (shared across all user's VMs)\n" +
 			"  --cpu=1.0    1 full core\n" +
+			"  --cpu=64     64 cores\n" +
 			"  --cpu=0      clear the cpu.max override\n" +
 			"  --cpu=clear  clear the cpu.max override\n\n" +
+			"--memory sets memory.max limit:\n" +
+			"  --memory=4G      4 GiB\n" +
+			"  --memory=128GB   128 GiB\n" +
+			"  --memory=4096M   4096 MiB\n" +
+			"  --memory=0       clear the memory.max override\n" +
+			"  --memory=clear   clear the memory.max override\n\n" +
 			"--io sets symmetric read+write IO bandwidth limit:\n" +
 			"  --io=10M     10 MB/s read and write\n" +
 			"  --io=1G      1 GB/s read and write\n" +

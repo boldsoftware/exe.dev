@@ -8,29 +8,37 @@ table.info th { width: 200px; }
 #boxesTable { width: 100%; }
 #boxesTable td, #boxesTable th { font-size: 13px; }
 .negative { color: red; }
+.section h2 { cursor: pointer; user-select: none; }
+.section h2::before { content: '▶ '; font-size: 12px; display: inline-block; transition: transform 0.2s; }
+.section.open h2::before { transform: rotate(90deg); }
+.section-content { display: none; }
+.section.open .section-content { display: block; }
 </style>
 </head><body>
 <h1>User: {{.Email}}</h1>
-<p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a> | <a href="#" id="expandAll">expand all</a></p>
 
 <div class="section">
-<h2>User Information</h2>
+<h2>Info ({{if .PlanName}}{{.PlanName}}{{else}}no plan{{end}}, {{.UserID}}, created {{.CreatedAtShort}})</h2>
+<div class="section-content">
 <table class="info">
 <tr><th>Email</th><td>{{.Email}}</td></tr>
 <tr><th>User ID</th><td>{{.UserID}}</td></tr>
 <tr><th>Created At</th><td>{{.CreatedAt}}</td></tr>
+{{if .TeamID}}<tr><th>Team</th><td><a href="/debug/teams/{{.TeamID}}">{{.TeamName}}</a> ({{.TeamRole}})</td></tr>{{end}}
 <tr><th>Login-only Account</th><td>{{if .CreatedForLoginWithExe}}Yes{{else}}No{{end}}</td></tr>
 <tr><th>Root Support</th><td>{{if .RootSupport}}Yes{{else}}No{{end}}</td></tr>
 <tr><th>VM Creation Disabled</th><td>{{if .VMCreationDisabled}}Yes{{else}}No{{end}}</td></tr>
 {{if .PlanName}}<tr><th>Plan</th><td>{{.PlanName}}</td></tr>{{end}}
 {{if .DiscordID}}<tr><th>Discord</th><td>{{.DiscordUsername}} ({{.DiscordID}})</td></tr>{{end}}
 {{if .SignedUpWithInviteID}}<tr><th>Signed Up With Invite</th><td>{{.SignedUpWithInviteID}}</td></tr>{{end}}
-<tr><th>Region</th><td>{{.Region}} ({{.RegionDisplay}})</td></tr>
 </table>
+</div>
 </div>
 
 <div class="section">
 <h2>Rename Email</h2>
+<div class="section-content">
 <p style="font-size:13px;color:#666;">Changes the user's email and canonical_email. Will fail if another user already has the target email.</p>
 <form method="post" action="/debug/users/rename-email" style="display: flex; gap: 8px; align-items: center;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
@@ -38,10 +46,13 @@ table.info th { width: 200px; }
 <button type="submit" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Rename</button>
 </form>
 </div>
+</div>
 
 <div class="section">
-<h2>Migrate to Region</h2>
-<p style="font-size:13px;color:#666;">Sets user region.</p>
+<h2>Region ({{.Region}})</h2>
+<div class="section-content">
+<h3>Set User Region</h3>
+<p style="font-size:13px;color:#666;">Sets user's default region for new VMs.</p>
 <form method="post" action="/debug/user/migrate-region" style="display: flex; gap: 8px; align-items: center;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <select name="region" style="padding: 8px; font-family: inherit;">
@@ -51,10 +62,8 @@ table.info th { width: 200px; }
 </select>
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Go</button>
 </form>
-</div>
 
-<div class="section">
-<h2>Migrate VMs to Region</h2>
+<h3 style="margin-top:20px;">Live-Migrate VMs to Region</h3>
 <p style="font-size:13px;color:#666;">Live-migrates all VMs not already in the user's region ({{.Region}}) to an exelet there.</p>
 {{if .BoxesOutsideRegion}}
 <p>{{len .BoxesOutsideRegion}} VM(s) outside <b>{{.Region}}</b>.</p>
@@ -65,7 +74,7 @@ table.info th { width: 200px; }
 <button id="migrateVMsBtn" type="submit" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Live Migrate All</button>
 </form>
 <pre id="migrateVMsProgress" style="margin-top:10px;padding:15px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:400px;overflow-y:auto;display:none;"></pre>
-<h3 style="margin-top:20px;">Cold Migrate Individual VMs</h3>
+<h4 style="margin-top:20px;">Cold Migrate Individual VMs</h4>
 <p style="font-size:13px;color:#666;">For VMs that failed live migration. Stops the VM, transfers disk, restarts on target.</p>
 <table class="info">
 <thead><tr><th>Box</th><th>Current Region</th><th style="width:auto;">Action</th></tr></thead>
@@ -86,50 +95,52 @@ table.info th { width: 200px; }
     var expected = '{{len .BoxesOutsideRegion}}';
     var confirmInput = document.getElementById('migrateVMsConfirm');
     var btn = document.getElementById('migrateVMsBtn');
-    confirmInput.addEventListener('input', function() {
-        btn.disabled = (this.value !== expected);
-    });
-
-    document.getElementById('migrateVMsForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        var progress = document.getElementById('migrateVMsProgress');
-        btn.disabled = true;
-        confirmInput.disabled = true;
-        btn.textContent = 'Migrating...';
-        progress.style.display = 'block';
-        progress.textContent = 'Starting...\n';
-
-        var hadError = false;
-        fetch('/debug/user/migrate-vms', {
-            method: 'POST',
-            body: new URLSearchParams({user_id: '{{.UserID}}', confirm: confirmInput.value})
-        }).then(function(response) {
-            if (!response.ok) {
-                progress.textContent += '\nHTTP error: ' + response.status;
-                btn.textContent = 'Failed';
-                return;
-            }
-            var reader = response.body.getReader();
-            var decoder = new TextDecoder();
-            function read() {
-                reader.read().then(function(result) {
-                    if (result.done) {
-                        btn.textContent = hadError ? 'Done (with errors)' : 'Done';
-                        return;
-                    }
-                    var text = decoder.decode(result.value, {stream: true});
-                    if (text.indexOf('ERROR:') !== -1) hadError = true;
-                    progress.textContent += text;
-                    progress.scrollTop = progress.scrollHeight;
-                    read();
-                });
-            }
-            read();
-        }).catch(function(err) {
-            progress.textContent += '\nError: ' + err;
-            btn.textContent = 'Failed';
+    if (confirmInput && btn) {
+        confirmInput.addEventListener('input', function() {
+            btn.disabled = (this.value !== expected);
         });
-    });
+
+        document.getElementById('migrateVMsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var progress = document.getElementById('migrateVMsProgress');
+            btn.disabled = true;
+            confirmInput.disabled = true;
+            btn.textContent = 'Migrating...';
+            progress.style.display = 'block';
+            progress.textContent = 'Starting...\n';
+
+            var hadError = false;
+            fetch('/debug/user/migrate-vms', {
+                method: 'POST',
+                body: new URLSearchParams({user_id: '{{.UserID}}', confirm: confirmInput.value})
+            }).then(function(response) {
+                if (!response.ok) {
+                    progress.textContent += '\nHTTP error: ' + response.status;
+                    btn.textContent = 'Failed';
+                    return;
+                }
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                function read() {
+                    reader.read().then(function(result) {
+                        if (result.done) {
+                            btn.textContent = hadError ? 'Done (with errors)' : 'Done';
+                            return;
+                        }
+                        var text = decoder.decode(result.value, {stream: true});
+                        if (text.indexOf('ERROR:') !== -1) hadError = true;
+                        progress.textContent += text;
+                        progress.scrollTop = progress.scrollHeight;
+                        read();
+                    });
+                }
+                read();
+            }).catch(function(err) {
+                progress.textContent += '\nError: ' + err;
+                btn.textContent = 'Failed';
+            });
+        });
+    }
 
     // Per-box cold migrate buttons.
     document.querySelectorAll('.coldMigrateBtn').forEach(function(btn) {
@@ -190,27 +201,29 @@ table.info th { width: 200px; }
 <p>All VMs are already in <b>{{.Region}}</b>.</p>
 {{end}}
 </div>
+</div>
 
 <div class="section">
-<h2>Invite stats</h2>
+<h2>Invites</h2>
+<div class="section-content">
+<h3>Stats</h3>
 <table class="info">
 <tr><th>Given</th><td>{{.InvitesTotalAllTimeGiven}}</td></tr>
 <tr><th>Allocated</th><td>{{.InvitesAllocatedCount}}</td></tr>
 <tr><th>Accepted</th><td>{{.InvitesAcceptedCount}}</td></tr>
 </table>
-</div>
-
-<div class="section">
-<h2>Give invites</h2>
+<h3 style="margin-top:15px;">Give Invites</h3>
 <form method="post" action="/debug/user/give-invites">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <label><input type="number" name="count" value="3" min="1" max="10" required style="width: 80px; padding: 8px;"></label>
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Send</button>
 </form>
 </div>
+</div>
 
 <div class="section">
-<h2>Billing Accounts</h2>
+<h2>Billing</h2>
+<div class="section-content">
 <p><a href="/debug/billing?userId={{.UserID}}">Full billing detail &rarr;</a></p>
 {{if .BillingAccounts}}
 <table class="info">
@@ -231,22 +244,18 @@ table.info th { width: 200px; }
 {{else}}
 <p>No billing accounts.</p>
 {{end}}
-</div>
 
 {{if .CanGrantTrial}}
-<div class="section">
-<h2>Grant Trial</h2>
+<h3 style="margin-top:15px;">Grant Trial</h3>
 <p style="font-size:13px;color:#666;">Grants a trial plan to this user. Also re-enables VM creation if it was disabled.</p>
 <form method="post" action="/debug/users/grant-trial" style="display: flex; gap: 8px; align-items: center;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <label style="font-size:13px;">Days: <input type="number" name="days" value="30" min="1" max="365" required style="width: 80px; padding: 8px;"></label>
 <button type="submit" style="padding: 8px 16px; background: #28a745; color: white; border: none; cursor: pointer;">Grant Trial</button>
 </form>
-</div>
 {{end}}
 
-<div class="section">
-<h3>Gift Credits</h3>
+<h3 style="margin-top:15px;">Gift Credits</h3>
 <form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
 <p><label>Amount (USD):<br><input type="number" name="amount" step="0.01" min="0.01" required placeholder="e.g. 10.00" style="width:100%;"></label></p>
@@ -254,10 +263,12 @@ table.info th { width: 200px; }
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Gift Credits</button>
 </form>
 </div>
+</div>
 
 {{if .HasCredit}}
 <div class="section">
 <h2>LLM Gateway Credit</h2>
+<div class="section-content">
 <table class="info">
 <tr><th>Plan</th><td>{{.PlanName}}</td></tr>
 <tr><th>Has Billing</th><td>{{if eq .CreditPlanName "has_billing"}}Yes{{else}}No{{end}}</td></tr>
@@ -280,10 +291,12 @@ table.info th { width: 200px; }
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
 </form>
 </div>
+</div>
 {{end}}
 
 <div class="section">
 <h2>VMs ({{len .Boxes}})</h2>
+<div class="section-content">
 {{if .Boxes}}
 <table id="boxesTable" class="display stripe hover">
 <thead>
@@ -313,10 +326,40 @@ table.info th { width: 200px; }
 <p>No VMs.</p>
 {{end}}
 </div>
+</div>
+
+<div class="section">
+<h2>Cgroup Overrides{{if not .CgroupOverrides}} (none){{end}}</h2>
+<div class="section-content">
+<p style="font-size:13px;color:#666;">Group-level cgroup limits applied to all VMs owned by this user.<br>
+Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...</code></p>
+{{if .CgroupOverrides}}
+<p><strong>Current overrides:</strong></p>
+<pre style="background:#f8f9fa;padding:10px;border:1px solid #dee2e6;border-radius:4px;">{{.CgroupOverrides}}</pre>
+{{end}}
+<form method="post" action="/debug/users/set-cgroup-overrides" style="margin-top:10px;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<table class="info" style="max-width:400px;">
+<tr>
+<th>CPU (cores)</th>
+<td><input type="number" name="cpu" id="cgroupCpu" step="1" min="0" placeholder="e.g. 64" style="width:120px;padding:6px;"></td>
+</tr>
+<tr>
+<th>Memory</th>
+<td><input type="text" name="memory" id="cgroupMemory" placeholder="e.g. 128G" style="width:120px;padding:6px;"></td>
+</tr>
+</table>
+<p style="font-size:12px;color:#666;margin-top:8px;">Leave blank to keep current value. Memory accepts: 4G, 128GB, 4096M, etc.</p>
+<button type="submit" style="margin-top:8px;padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
+<button type="button" onclick="if(confirm('Clear all cgroup overrides?')){document.getElementById('cgroupCpu').value='';document.getElementById('cgroupMemory').value='';var f=this.form;var h=document.createElement('input');h.type='hidden';h.name='clear';h.value='1';f.appendChild(h);f.submit();}" style="margin-top:8px;padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Clear All</button>
+</form>
+</div>
+</div>
 
 {{if .Boxes}}
 <div class="section">
 <h2>Usage Metrics (All VMs)</h2>
+<div class="section-content">
 <link rel="stylesheet" href="/static/usage-charts.css">
 <div id="usageCharts"></div>
 <script src="/static/usage-charts.js"></script>
@@ -332,11 +375,13 @@ if (vmNames.length > 0) {
 }
 </script>
 </div>
+</div>
 {{end}}
 
 {{if .AllowDeleteUser}}
 <div class="section">
 <h2 style="color:#dc3545;">Delete User</h2>
+<div class="section-content">
 {{if .DeleteBlockReasons}}
 <p style="font-size:13px;color:#666;">This user cannot be deleted yet:</p>
 <ul style="font-size:13px;color:#dc3545;">
@@ -374,6 +419,7 @@ if (vmNames.length > 0) {
 </script>
 {{end}}
 </div>
+</div>
 {{end}}
 
 <script>
@@ -385,6 +431,28 @@ $(document).ready(function() {
     $('#boxesTable').DataTable({
         pageLength: 25,
         order: [[4, 'desc']]
+    });
+
+    // Collapsible sections
+    document.querySelectorAll('.section h2').forEach(function(h2) {
+        h2.addEventListener('click', function() {
+            this.parentElement.classList.toggle('open');
+        });
+    });
+
+    // Expand all
+    document.getElementById('expandAll').addEventListener('click', function(e) {
+        e.preventDefault();
+        var sections = document.querySelectorAll('.section');
+        var allOpen = Array.from(sections).every(function(s) { return s.classList.contains('open'); });
+        sections.forEach(function(s) {
+            if (allOpen) {
+                s.classList.remove('open');
+            } else {
+                s.classList.add('open');
+            }
+        });
+        this.textContent = allOpen ? 'expand all' : 'collapse all';
     });
 });
 </script>
