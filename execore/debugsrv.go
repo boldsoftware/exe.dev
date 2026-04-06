@@ -3723,14 +3723,22 @@ func (s *Server) handleDebugBoxMigrateTier(w http.ResponseWriter, r *http.Reques
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	var consecutivePollErrors int
 	for range ticker.C {
 		statusCtx, cancel := context.WithTimeout(migCtx, 5*time.Second)
 		statusResp, err := ec.client.GetTierMigrationStatus(statusCtx, &computeapi.GetTierMigrationStatusRequest{})
 		cancel()
 		if err != nil {
-			writeProgress("Warning: failed to get status: %v", err)
+			consecutivePollErrors++
+			writeProgress("Warning: failed to get status: %v (consecutive: %d)", err, consecutivePollErrors)
+			if consecutivePollErrors >= 20 {
+				writeProgress("ERROR: lost connection to exelet after %d poll failures", consecutivePollErrors)
+				writeProgress("TIER_MIGRATION_ERROR:exelet connection lost")
+				return
+			}
 			continue
 		}
+		consecutivePollErrors = 0
 
 		var found bool
 		for _, op := range statusResp.Operations {

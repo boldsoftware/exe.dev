@@ -369,6 +369,12 @@ func (m *Migrator) pollMigration(ctx context.Context, t *exeletTarget, op *activ
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	// Track consecutive poll failures to detect exelet restarts.
+	// After a restart the operation is lost — poll errors will persist
+	// and we should not spin forever.
+	var consecutivePollErrors int
+	const maxConsecutivePollErrors = 10 // ~20 seconds of failures
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -391,14 +397,38 @@ func (m *Migrator) pollMigration(ctx context.Context, t *exeletTarget, op *activ
 		case <-ticker.C:
 			statusResp, err := t.client.GetTierMigrationStatus(ctx, &api.GetTierMigrationStatusRequest{})
 			if err != nil {
-				slog.WarnContext(ctx, "poll status failed", "op", op.OperationID, "error", err)
+				consecutivePollErrors++
+				slog.WarnContext(ctx, "poll status failed", "op", op.OperationID, "error", err,
+					"consecutive_errors", consecutivePollErrors)
+				if consecutivePollErrors >= maxConsecutivePollErrors {
+					slog.ErrorContext(ctx, "too many consecutive poll failures, exelet likely restarted",
+						"op", op.OperationID, "instance", op.InstanceID)
+					return MigrationResult{
+						OperationID: op.OperationID,
+						InstanceID:  op.InstanceID,
+						Exelet:      op.Exelet,
+						SourcePool:  op.SourcePool,
+						TargetPool:  op.TargetPool,
+						State:       "failed",
+						Error:       fmt.Sprintf("lost connection to exelet after %d poll failures: %v", consecutivePollErrors, err),
+						StartedAt:   op.StartedAt,
+						CompletedAt: time.Now(),
+						Duration:    time.Since(op.StartedAt),
+						DurationStr: time.Since(op.StartedAt).Truncate(time.Millisecond).String(),
+					}
+				}
 				continue
 			}
+			consecutivePollErrors = 0 // reset on success
 
+			// If the status call succeeded but our operation is missing,
+			// the exelet has restarted and lost track of it.
+			found := false
 			for _, migration := range statusResp.Operations {
 				if migration.OperationID != op.OperationID {
 					continue
 				}
+				found = true
 
 				m.mu.Lock()
 				if tracked, ok := m.activeOps[op.OperationID]; ok {
@@ -451,6 +481,24 @@ func (m *Migrator) pollMigration(ctx context.Context, t *exeletTarget, op *activ
 						Duration:    time.Since(op.StartedAt),
 						DurationStr: time.Since(op.StartedAt).Truncate(time.Millisecond).String(),
 					}
+				}
+			}
+
+			if !found {
+				slog.ErrorContext(ctx, "operation not found on exelet, likely restarted",
+					"op", op.OperationID, "instance", op.InstanceID)
+				return MigrationResult{
+					OperationID: op.OperationID,
+					InstanceID:  op.InstanceID,
+					Exelet:      op.Exelet,
+					SourcePool:  op.SourcePool,
+					TargetPool:  op.TargetPool,
+					State:       "failed",
+					Error:       "operation lost: exelet restarted during migration",
+					StartedAt:   op.StartedAt,
+					CompletedAt: time.Now(),
+					Duration:    time.Since(op.StartedAt),
+					DurationStr: time.Since(op.StartedAt).Truncate(time.Millisecond).String(),
 				}
 			}
 		}

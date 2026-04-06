@@ -34,11 +34,22 @@ func (s *Exelet) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	var ctxErr error
 	select {
 	case <-done:
-		return nil
 	case <-ctx.Done():
 		s.log.WarnContext(ctx, "shutdown context expired, some services may still be stopping")
-		return ctx.Err()
+		ctxErr = ctx.Err()
 	}
+
+	// Stop the gRPC server after services have drained so that clients
+	// can still poll migration status during the drain window. Once
+	// services are done, send GOAWAY so clients get a clean closure
+	// instead of a connection reset on process exit.
+	if s.grpcServer != nil {
+		s.log.DebugContext(ctx, "stopping gRPC server")
+		s.grpcServer.GracefulStop()
+	}
+
+	return ctxErr
 }
