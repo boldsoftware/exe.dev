@@ -44,10 +44,13 @@ type Service struct {
 	// Cancelled in Stop to unblock stuck IPAM writes during shutdown.
 	reconcileCtx          context.Context
 	reconcileCancel       context.CancelFunc
-	tierMigrationSem      chan struct{} // semaphore limiting concurrent tier migrations
-	tierMigrationFailures []time.Time   // timestamps of recent migration failures
-	tierMigrationDisabled bool          // true if circuit breaker tripped
-	tierMigrationMu       sync.Mutex    // protects tierMigrationFailures and tierMigrationDisabled
+	tierMigrationSem      chan struct{}   // semaphore limiting concurrent tier migrations
+	tierMigrationFailures []time.Time     // timestamps of recent migration failures
+	tierMigrationDisabled bool            // true if circuit breaker tripped
+	tierMigrationMu       sync.Mutex      // protects tierMigrationFailures and tierMigrationDisabled
+	tierMigrationWg       sync.WaitGroup  // tracks in-flight migration goroutines
+	tierMigrationCtx      context.Context // parent context for all migrations; cancelled on Stop
+	tierMigrationCancel   context.CancelFunc
 }
 
 // New returns a new service.
@@ -93,6 +96,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	s.vmm = v
 	api.RegisterComputeServiceServer(server, s)
 	s.context = ctx
+	s.tierMigrationCtx, s.tierMigrationCancel = context.WithCancel(context.Background())
 	return nil
 }
 
@@ -306,6 +310,13 @@ func (s *Service) Stop(ctx context.Context) error {
 	if s.reconcileCancel != nil {
 		s.reconcileCancel()
 	}
+
+	// Signal in-flight tier migrations to stop accepting new work, then
+	// wait for any that are past the point-of-no-return to finish.
+	if s.tierMigrationCancel != nil {
+		s.tierMigrationCancel()
+	}
+	s.tierMigrationWg.Wait()
 
 	if s.stopLogRotation != nil {
 		s.stopLogRotation()

@@ -34,13 +34,15 @@ type VolumeInfo struct {
 
 // WorkerPool manages concurrent replication workers
 type WorkerPool struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	target    Target
-	state     *State
-	metrics   *Metrics
-	log       *slog.Logger
-	retention int
+	ctx         context.Context
+	cancel      context.CancelFunc
+	drainCtx    context.Context // cancelled on Stop to signal workers to stop picking new jobs
+	drainCancel context.CancelFunc
+	target      Target
+	state       *State
+	metrics     *Metrics
+	log         *slog.Logger
+	retention   int
 
 	// isRestoring checks if a volume is currently being restored (skip replication)
 	isRestoring func(volumeID string) bool
@@ -95,9 +97,13 @@ func NewWorkerPool(target Target, state *State, metrics *Metrics, retention, wor
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	drainCtx, drainCancel := context.WithCancel(context.Background())
+
 	wp := &WorkerPool{
 		ctx:          ctx,
 		cancel:       cancel,
+		drainCtx:     drainCtx,
+		drainCancel:  drainCancel,
 		target:       target,
 		state:        state,
 		metrics:      metrics,
@@ -126,6 +132,8 @@ func (wp *WorkerPool) worker(id int) {
 	for {
 		select {
 		case <-wp.ctx.Done():
+			return
+		case <-wp.drainCtx.Done():
 			return
 		case volume, ok := <-wp.jobsCh:
 			if !ok {
@@ -550,8 +558,28 @@ func (wp *WorkerPool) WaitVolumeIdle(ctx context.Context, volumeID string) {
 
 // Stop stops the worker pool
 func (wp *WorkerPool) Stop() {
+	// Signal workers to stop picking up new jobs and close the channel
+	// so any worker blocked on receive wakes up.
+	wp.drainCancel()
+	close(wp.jobsCh)
+
+	// Wait for in-flight jobs to finish (up to 5 minutes).
+	done := make(chan struct{})
+	go func() {
+		wp.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Minute):
+		wp.log.Warn("timed out waiting for replication workers to drain, forcing stop")
+		wp.cancel()
+		wp.wg.Wait()
+	}
+
+	// Cancel the worker context for any stragglers.
 	wp.cancel()
-	wp.wg.Wait()
 }
 
 // createSnapshot creates a ZFS snapshot

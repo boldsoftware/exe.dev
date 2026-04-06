@@ -257,6 +257,11 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 
+	// Reject new migrations if the service is shutting down.
+	if s.tierMigrationCtx.Err() != nil {
+		return nil, status.Error(codes.Unavailable, "exelet is shutting down, not accepting new migrations")
+	}
+
 	if req.InstanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id is required")
 	}
@@ -319,12 +324,14 @@ func (s *Service) MigrateStorageTier(ctx context.Context, req *api.MigrateStorag
 	addTierMigrationOp(op)
 
 	// Run migration in background, gated by worker semaphore
-	migCtx, migCancel := context.WithCancel(context.Background())
+	migCtx, migCancel := context.WithCancel(s.tierMigrationCtx)
 	op.mu.Lock()
 	op.cancel = migCancel
 	op.mu.Unlock()
 
+	s.tierMigrationWg.Add(1)
 	go func() {
+		defer s.tierMigrationWg.Done()
 		defer migCancel()
 
 		// Acquire semaphore slot (blocks if all workers are busy).

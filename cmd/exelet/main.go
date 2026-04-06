@@ -675,11 +675,11 @@ func serveAction(clix *cli.Context) error {
 				}
 				log.InfoContext(ctx, "generated memory profile", "path", profilePath)
 			case syscall.SIGTERM, syscall.SIGINT:
-				log.InfoContext(ctx, "shutting down")
+				log.InfoContext(ctx, "shutting down, waiting for in-flight operations to complete")
 				if dsSync != nil {
 					dsSync.Stop()
 				}
-				stopCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+				stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				if err := srv.Stop(stopCtx); err != nil {
 					log.ErrorContext(ctx, err.Error())
 				}
