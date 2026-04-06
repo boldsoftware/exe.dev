@@ -358,6 +358,14 @@ echo "Cleaning up old swap entries from /etc/fstab..."
 sed -i '/none.*swap.*sw/d' /etc/fstab
 
 for part in "${SWAP_PARTITIONS[@]}"; do
+    # Skip if already active as swap
+    if swapon --show=NAME --noheadings | grep -q "^${part}$"; then
+        echo "$part already active as swap, skipping"
+        part_uuid=$(blkid -s UUID -o value "$part")
+        echo "UUID=$part_uuid none swap sw,pri=1 0 0" >> /etc/fstab
+        continue
+    fi
+
     echo "Formatting $part as swap..."
     mkswap -L "swap-$(basename "$part")" "$part"
 

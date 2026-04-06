@@ -67,18 +67,18 @@ install_packages() {
     echo "=== Installing required packages ==="
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        build-essential \
         curl \
-        docker.io \
         gdisk \
+        git \
+        libcap-ng-dev \
         libcap-ng0 \
+        libseccomp-dev \
         libseccomp2 \
         parted \
+        pkg-config \
         socat \
         zfsutils-linux
-
-    # Ensure docker is running
-    systemctl enable docker
-    systemctl start docker
 }
 
 configure_sysctl() {
@@ -152,100 +152,61 @@ build_cloud_hypervisor() {
     # Check if we already have cached artifacts
     if [ -f "$CACHE_DIR/$ARTIFACT_NAME" ]; then
         echo "Using cached Cloud Hypervisor build"
-    else
-        echo "Building from source via Docker (this may take 10-20 minutes)..."
+        return
+    fi
 
-        local BUILD_DIR
-        BUILD_DIR=$(mktemp -d)
-        trap "rm -rf $BUILD_DIR" EXIT
+    echo "Building from source via cargo (this may take 10-20 minutes)..."
 
-        # Create Dockerfile
-        cat >"$BUILD_DIR/Dockerfile" <<'DOCKERFILE'
-# Build Cloud Hypervisor and virtiofsd binaries.
-
-FROM rust:1.82-bullseye AS build
-
-ARG CLOUD_HYPERVISOR_VERSION=48.0
-ARG VIRTIOFSD_VERSION=1.13.2
-ARG TARGETARCH
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    libcap-ng-dev \
-    libseccomp-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN rustup toolchain install nightly --profile minimal && \
-    rustup component add rustfmt --toolchain nightly && \
+    # Install Rust nightly if not present
+    if ! command -v rustup &>/dev/null; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+        # shellcheck disable=SC1091
+        source "$HOME/.cargo/env"
+    fi
+    rustup toolchain install nightly --profile minimal
+    rustup component add rustfmt --toolchain nightly
     rustup default nightly
 
-WORKDIR /build
+    local BUILD_DIR
+    BUILD_DIR=$(mktemp -d)
+    trap "rm -rf $BUILD_DIR" EXIT
 
-# Build Cloud Hypervisor
-RUN curl -fsSL \
+    local OUT_DIR="$BUILD_DIR/out"
+    mkdir -p "$OUT_DIR/bin"
+
+    # Build Cloud Hypervisor
+    echo "Downloading cloud-hypervisor v${CLOUD_HYPERVISOR_VERSION}..."
+    curl -fsSL \
         "https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v${CLOUD_HYPERVISOR_VERSION}.tar.gz" \
-        -o cloud-hypervisor.tar.gz && \
-    tar xzf cloud-hypervisor.tar.gz
+        -o "$BUILD_DIR/cloud-hypervisor.tar.gz"
+    tar xzf "$BUILD_DIR/cloud-hypervisor.tar.gz" -C "$BUILD_DIR"
 
-WORKDIR /build/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}
+    echo "Building cloud-hypervisor..."
+    cargo +nightly build --release --manifest-path "$BUILD_DIR/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}/Cargo.toml"
+    install -m 0755 "$BUILD_DIR/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}/target/release/cloud-hypervisor" "$OUT_DIR/bin/cloud-hypervisor"
+    install -m 0755 "$BUILD_DIR/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}/target/release/ch-remote" "$OUT_DIR/bin/ch-remote"
 
-RUN cargo +nightly build --release
+    # Build virtiofsd
+    echo "Cloning virtiofsd v${VIRTIOFSD_VERSION}..."
+    git clone --depth=1 --branch "v${VIRTIOFSD_VERSION}" \
+        https://gitlab.com/virtio-fs/virtiofsd.git "$BUILD_DIR/virtiofsd"
 
-# Capture artifacts immediately to preserve permissions when reused from cache.
-RUN install -Dm755 target/release/cloud-hypervisor /out/bin/cloud-hypervisor && \
-    install -Dm755 target/release/ch-remote /out/bin/ch-remote
+    echo "Building virtiofsd..."
+    cargo +nightly build --release --manifest-path "$BUILD_DIR/virtiofsd/Cargo.toml"
+    install -m 0755 "$BUILD_DIR/virtiofsd/target/release/virtiofsd" "$OUT_DIR/bin/virtiofsd"
 
-# Build virtiofsd
-WORKDIR /build
-RUN git clone --depth=1 --branch "v${VIRTIOFSD_VERSION}" \
-        https://gitlab.com/virtio-fs/virtiofsd.git
-
-WORKDIR /build/virtiofsd
-RUN cargo +nightly build --release
-
-RUN install -Dm755 target/release/virtiofsd /out/bin/virtiofsd
-
-WORKDIR /out
-RUN printf 'cloud_hypervisor_version=%s\nvirtiofsd_version=%s\narch=%s\n' \
+    # Write metadata
+    printf 'cloud_hypervisor_version=%s\nvirtiofsd_version=%s\narch=%s\n' \
         "${CLOUD_HYPERVISOR_VERSION}" \
         "${VIRTIOFSD_VERSION}" \
-        "${TARGETARCH:-unknown}" > metadata
+        "${ARCH}" >"$OUT_DIR/metadata"
 
-FROM scratch AS artifacts
-COPY --from=build /out /out
-CMD ["/out/bin/cloud-hypervisor"]
-DOCKERFILE
+    tar czf "$CACHE_DIR/$ARTIFACT_NAME" -C "$OUT_DIR" .
 
-        local IMAGE_TAG="exe-cloud-hypervisor:${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
+    trap - EXIT
+    rm -rf "$BUILD_DIR"
 
-        docker build \
-            --tag "$IMAGE_TAG" \
-            --build-arg "CLOUD_HYPERVISOR_VERSION=${CLOUD_HYPERVISOR_VERSION}" \
-            --build-arg "VIRTIOFSD_VERSION=${VIRTIOFSD_VERSION}" \
-            --build-arg "TARGETARCH=${ARCH}" \
-            "$BUILD_DIR"
-
-        local CONTAINER_ID
-        CONTAINER_ID=$(docker create "$IMAGE_TAG" /bin/true)
-        local TMP_OUT
-        TMP_OUT=$(mktemp -d)
-
-        docker cp "$CONTAINER_ID:/out/." "$TMP_OUT"
-        docker rm "$CONTAINER_ID" >/dev/null 2>&1 || true
-
-        tar czf "$CACHE_DIR/$ARTIFACT_NAME" -C "$TMP_OUT" .
-        rm -rf "$TMP_OUT"
-
-        # Reset the trap since we're done with BUILD_DIR
-        trap - EXIT
-        rm -rf "$BUILD_DIR"
-
-        echo "Cached Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${ARCH})"
-    fi
+    echo "Cached Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${ARCH})"
 }
 
 install_cloud_hypervisor() {

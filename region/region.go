@@ -43,6 +43,7 @@ var allRegions = []Region{
 	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: true, Lat: 50.11, Lon: 8.68},
 	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: true, Lat: 35.68, Lon: 139.65},
 	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: true, Lat: -33.87, Lon: 151.21},
+	{Code: "sgp", Display: "Singapore", Active: true, RequiresUserMatch: true, Lat: 1.35, Lon: 103.82},
 	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: true, Lat: 51.51, Lon: -0.13},
 	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
 	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},

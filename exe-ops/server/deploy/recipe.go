@@ -117,6 +117,7 @@ var Recipes = map[string]Recipe{
 		},
 		ServiceFiles: map[string]string{
 			"staging": "ops/deploy/exelet-staging.service",
+			"prod":    "ops/deploy/exelet-prod.service",
 			"global":  "ops/deploy/exelet-prod.service",
 		},
 	},
@@ -143,6 +144,7 @@ var Recipes = map[string]Recipe{
 		HealthTLS:   true,
 		ServiceFiles: map[string]string{
 			"staging": "ops/deploy/exeprox-staging.service",
+			"prod":    "ops/deploy/exeprox-prod.service",
 			"global":  "ops/deploy/exeprox-prod.service",
 		},
 	},
@@ -165,6 +167,7 @@ var Recipes = map[string]Recipe{
 		},
 		ServiceFiles: map[string]string{
 			"staging": "ops/deploy/exed-staging.service",
+			"prod":    "ops/deploy/exed-prod.service",
 			"global":  "ops/deploy/exed-prod.service",
 		},
 	},
@@ -178,6 +181,7 @@ var Recipes = map[string]Recipe{
 		HealthPath:  "/debug/gitsha",
 		ServiceFiles: map[string]string{
 			"staging": "ops/deploy/metricsd-staging.service",
+			"prod":    "ops/deploy/metricsd-prod.service",
 			"global":  "ops/deploy/metricsd-prod.service",
 		},
 	},
