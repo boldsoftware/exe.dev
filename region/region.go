@@ -55,6 +55,22 @@ func All() []Region {
 	return slices.Clone(allRegions)
 }
 
+// AvailableFor returns the active regions a user may select given their current
+// assigned region code. A region is available if it is active and either open to
+// all users (!RequiresUserMatch) or the user is already assigned to it.
+func AvailableFor(currentRegionCode string) []Region {
+	var out []Region
+	for _, r := range allRegions {
+		if !r.Active {
+			continue
+		}
+		if !r.RequiresUserMatch || r.Code == currentRegionCode {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // ByCode looks up a region by its short code.
 // Returns an error if the code is not recognized.
 func ByCode(code string) (Region, error) {

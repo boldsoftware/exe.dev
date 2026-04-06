@@ -33,7 +33,7 @@
             <span class="info-label">Region</span>
             <span class="info-value">
               {{ data.user.region.toUpperCase() }}<template v-if="data.user.regionDisplay"> ({{ data.user.regionDisplay }})</template>
-              &ensp;<button class="btn btn-secondary" @click="showRegionModal = true">Change</button>
+              &ensp;<button class="btn btn-secondary" @click="openRegionModal">Change</button>
             </span>
           </div>
           <div class="info-row">
@@ -412,10 +412,23 @@
     <div v-if="showRegionModal" class="modal-overlay" @click.self="showRegionModal = false">
       <div class="modal-box">
         <div class="modal-title">Change Region</div>
-        <p class="modal-text">Email <a href="mailto:support@exe.dev">support@exe.dev</a> to change your region.</p>
-        <p class="modal-text"><a href="/docs/regions">View all regions</a></p>
+        <p v-if="data?.suggestedRegion && data.suggestedRegion !== data.user.region" class="modal-text">
+          Suggested based on your location:
+          <strong>{{ data.availableRegions.find(r => r.code === data!.suggestedRegion)?.display ?? data.suggestedRegion.toUpperCase() }}</strong>
+        </p>
+        <div class="form-group">
+          <select v-model="selectedRegion" class="form-input" :disabled="regionSaving">
+            <option v-for="r in data?.availableRegions ?? []" :key="r.code" :value="r.code">
+              {{ r.code.toUpperCase() }} — {{ r.display }}
+            </option>
+          </select>
+        </div>
+        <p v-if="regionError" class="error-text">{{ regionError }}</p>
         <div class="modal-actions">
-          <button class="btn btn-secondary" @click="showRegionModal = false">Close</button>
+          <button class="btn btn-primary" :disabled="regionSaving || selectedRegion === data?.user.region" @click="saveRegion">
+            {{ regionSaving ? 'Saving…' : 'Save' }}
+          </button>
+          <button class="btn btn-secondary" :disabled="regionSaving" @click="showRegionModal = false">Cancel</button>
         </div>
       </div>
     </div>
@@ -552,6 +565,9 @@ const passkeyError = ref('')
 const passkeySupported = ref(typeof window !== 'undefined' && window.PublicKeyCredential !== undefined)
 const newsletterStatus = ref('')
 const showRegionModal = ref(false)
+const regionSaving = ref(false)
+const regionError = ref('')
+const selectedRegion = ref('')
 
 // Team creation
 const teamName = ref('')
@@ -782,6 +798,36 @@ function formatExpiry(iso: string | undefined): string {
 
 
 // Escape key handler
+function openRegionModal() {
+  selectedRegion.value = data.value?.user.region ?? ''
+  regionError.value = ''
+  showRegionModal.value = true
+}
+
+async function saveRegion() {
+  if (!data.value || regionSaving.value) return
+  regionSaving.value = true
+  regionError.value = ''
+  try {
+    const resp = await fetch('/api/profile/region', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region: selectedRegion.value }),
+    })
+    if (!resp.ok) {
+      const msg = await resp.text()
+      regionError.value = msg || 'Failed to update region'
+      return
+    }
+    const result = await resp.json()
+    data.value.user.region = result.region
+    data.value.user.regionDisplay = result.regionDisplay
+    showRegionModal.value = false
+  } finally {
+    regionSaving.value = false
+  }
+}
+
 function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   if (apiKeyModal.visible) { closeApiKeyModal(); return }

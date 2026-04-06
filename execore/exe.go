@@ -178,8 +178,10 @@ func (v *EmailVerification) Close() {
 
 // ipqsIPResult holds the relevant fields from an IPQS IP lookup.
 type ipqsIPResult struct {
-	RecentAbuse bool   `json:"recent_abuse"`
-	CountryCode string `json:"country_code"`
+	RecentAbuse bool    `json:"recent_abuse"`
+	CountryCode string  `json:"country_code"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
 }
 
 // ipAbuseCacheEntry stores a cached IPQS IP lookup result.
@@ -3124,11 +3126,23 @@ func (s *Server) isBasicUser(ctx context.Context, user exedb.User, sshKeyCount i
 	return boxCount == 0
 }
 
+// regionForIP returns the best region for a client IP using IPQS geolocation.
+// Falls back to region.Default() on any error or missing key.
+func (s *Server) regionForIP(ctx context.Context, ip string) region.Region {
+	result, _, err := s.ipqsLookupIP(ctx, ip)
+	if err != nil {
+		return region.Default()
+	}
+	return region.ForUser(result.CountryCode, result.Latitude, result.Longitude)
+}
+
 // createUserRecord creates a user record, an account, and an initial account_plans row,
 // then returns the new user ID. All three inserts happen in the caller's transaction.
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
-func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool) (string, error) {
+// clientIP is used for GeoIP-based region assignment; pass "" to use the default region.
+// regionForIP uses the IPQS cache, so repeated calls for the same IP are cheap.
+func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool, clientIP string) (string, error) {
 	if !signupAllowlistPermits(s.env.SignupAllowlist, emailAddr) {
 		return "", fmt.Errorf("email not on signup allowlist: %s", emailAddr)
 	}
@@ -3142,12 +3156,17 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		return "", fmt.Errorf("failed to canonicalize email: %w", err)
 	}
 
+	userRegion := region.Default()
+	if clientIP != "" {
+		userRegion = s.regionForIP(ctx, clientIP)
+	}
+
 	if err := queries.InsertUser(ctx, exedb.InsertUserParams{
 		UserID:                 userID,
 		Email:                  emailAddr,
 		CanonicalEmail:         &canonicalEmail,
 		CreatedForLoginWithExe: createdForLoginWithExe,
-		Region:                 region.Default().Code,
+		Region:                 userRegion.Code,
 	}); err != nil {
 		return "", fmt.Errorf("failed to create user: %w", err)
 	}
@@ -3623,7 +3642,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 
 	// First create the user and allocation in the database
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		userID, err := s.createUserRecord(ctx, queries, email, false)
+		userID, err := s.createUserRecord(ctx, queries, email, false, "")
 		if err != nil {
 			return err
 		}

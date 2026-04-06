@@ -706,7 +706,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, pending.Email, false)
+		userID, err = s.createUserRecord(ctx, queries, pending.Email, false, "")
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -1650,7 +1650,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	if isNewUser {
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe)
+			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe, ip.String())
 			if err != nil {
 				return err
 			}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/oidcauth"
 )
 
@@ -230,7 +231,7 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 	var userID string
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe)
+		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
 		if err != nil {
 			return err
 		}

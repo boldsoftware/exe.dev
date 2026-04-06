@@ -1963,7 +1963,7 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	var userID string
 	err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = server.createUserRecord(ctx, queries, "account-plan-test@example.com", false)
+		userID, err = server.createUserRecord(ctx, queries, "account-plan-test@example.com", false, "")
 		if err != nil {
 			return err
 		}
@@ -2013,7 +2013,7 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 		var uid string
 		if err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			var err error
-			uid, err = server.createUserRecord(ctx, queries, email, false)
+			uid, err = server.createUserRecord(ctx, queries, email, false, "")
 			if err != nil {
 				return err
 			}
@@ -2057,7 +2057,7 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 	var userID, accountID string
 	err := server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = server.createUserRecord(ctx, queries, "idempotent-plan@example.com", false)
+		userID, err = server.createUserRecord(ctx, queries, "idempotent-plan@example.com", false, "")
 		if err != nil {
 			return err
 		}

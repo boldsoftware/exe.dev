@@ -777,7 +777,7 @@ func TestNewsletterSubscription(t *testing.T) {
 	var userID string
 	err := server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = server.createUserRecord(ctx, queries, "newsletter@example.com", false)
+		userID, err = server.createUserRecord(ctx, queries, "newsletter@example.com", false, "")
 		return err
 	})
 	if err != nil {

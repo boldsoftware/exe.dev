@@ -18,6 +18,7 @@ import (
 	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/region"
 	"exe.dev/stage"
@@ -234,6 +235,11 @@ type jsonInvoiceRow struct {
 	InvoicePDF       string `json:"invoicePDF"`
 }
 
+type jsonRegionOption struct {
+	Code    string `json:"code"`
+	Display string `json:"display"`
+}
+
 type jsonProfileData struct {
 	User               jsonUserInfo        `json:"user"`
 	SSHKeys            []jsonSSHKey        `json:"sshKeys"`
@@ -249,6 +255,8 @@ type jsonProfileData struct {
 	ShowIntegrations   bool                `json:"showIntegrations"`
 	InviteCount        int64               `json:"inviteCount"`
 	CanRequestInvites  bool                `json:"canRequestInvites"`
+	AvailableRegions   []jsonRegionOption  `json:"availableRegions"`
+	SuggestedRegion    string              `json:"suggestedRegion"`
 }
 
 type jsonIntegrationInfo struct {
@@ -866,7 +874,57 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		profile.Credits.Invoices = nonNil(jsonInvoices)
 	}
 
+	// Available regions and GeoIP suggestion.
+	available := region.AvailableFor(user.Region)
+	profile.AvailableRegions = make([]jsonRegionOption, len(available))
+	for i, r := range available {
+		profile.AvailableRegions[i] = jsonRegionOption{Code: r.Code, Display: r.Display}
+	}
+	suggested := s.regionForIP(r.Context(), exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
+	profile.SuggestedRegion = suggested.Code
+
 	writeJSONOK(w, profile)
+}
+
+// handleAPIProfileRegion handles POST /api/profile/region to update the user's preferred region.
+func (s *Server) handleAPIProfileRegion(w http.ResponseWriter, r *http.Request, userID string) {
+	var req struct {
+		Region string `json:"region"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	available := region.AvailableFor(user.Region)
+	var chosen *region.Region
+	for _, r := range available {
+		if r.Code == req.Region {
+			r := r
+			chosen = &r
+			break
+		}
+	}
+	if chosen == nil {
+		http.Error(w, "region not available", http.StatusBadRequest)
+		return
+	}
+
+	if err := withTx1(s, r.Context(), (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{
+		UserID: userID,
+		Region: chosen.Code,
+	}); err != nil {
+		http.Error(w, "failed to update region", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSONOK(w, map[string]string{"region": chosen.Code, "regionDisplay": chosen.Display})
 }
 
 // handleAPIIntegrations returns JSON data for the integrations page.

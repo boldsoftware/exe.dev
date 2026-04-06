@@ -10,6 +10,7 @@ import (
 
 	"exe.dev/email"
 	"exe.dev/exedb"
+	"exe.dev/exeweb"
 	"exe.dev/googleoauth"
 	"exe.dev/sshkey"
 )
@@ -247,7 +248,7 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 	var userID string
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe)
+		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
 		if err != nil {
 			return err
 		}

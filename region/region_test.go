@@ -194,3 +194,60 @@ func TestCountryMapKeysUppercase(t *testing.T) {
 		}
 	}
 }
+
+func TestAvailableFor(t *testing.T) {
+	tests := []struct {
+		name        string
+		currentCode string
+		wantCodes   []string // all must be present
+		wantAbsent  []string // none must be present
+	}{
+		{
+			// pdx is open to all (!RequiresUserMatch), so any user sees it.
+			// A user assigned to pdx also sees pdx itself.
+			name:        "pdx user sees open regions",
+			currentCode: "pdx",
+			wantCodes:   []string{"pdx", "lax"},
+			wantAbsent:  []string{"fra", "nyc", "tyo", "syd", "lon", "sgp"},
+		},
+		{
+			// A fra user sees open regions plus fra itself.
+			name:        "fra user sees fra and open regions",
+			currentCode: "fra",
+			wantCodes:   []string{"pdx", "lax", "fra"},
+			wantAbsent:  []string{"nyc", "tyo", "syd", "lon", "sgp"},
+		},
+		{
+			// Inactive regions (dev, ci) must never appear.
+			name:        "inactive regions excluded",
+			currentCode: "dev",
+			wantAbsent:  []string{"dev", "ci"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AvailableFor(tt.currentCode)
+			codes := make(map[string]bool, len(got))
+			for _, r := range got {
+				codes[r.Code] = true
+			}
+			for _, want := range tt.wantCodes {
+				if !codes[want] {
+					t.Errorf("AvailableFor(%q): expected %q to be present, got %v", tt.currentCode, want, got)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if codes[absent] {
+					t.Errorf("AvailableFor(%q): expected %q to be absent, got %v", tt.currentCode, absent, got)
+				}
+			}
+			// All returned regions must be active.
+			for _, r := range got {
+				if !r.Active {
+					t.Errorf("AvailableFor(%q): returned inactive region %q", tt.currentCode, r.Code)
+				}
+			}
+		})
+	}
+}

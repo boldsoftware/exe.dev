@@ -209,6 +209,11 @@ export interface DashboardData {
   showIntegrations: boolean
 }
 
+export interface RegionOption {
+  code: string
+  display: string
+}
+
 export interface ProfileData {
   user: UserInfo
   sshKeys: SSHKeyInfo[]
@@ -224,6 +229,8 @@ export interface ProfileData {
   inviteCount: number
   canRequestInvites: boolean
   boxes: { name: string; status: string }[]
+  availableRegions: RegionOption[]
+  suggestedRegion: string
 }
 
 export interface IntegrationsData {
