@@ -543,7 +543,7 @@ func (m *Manager) preRestart(ctx context.Context, d *deploy, recipe Recipe) erro
 	user := recipe.remoteUser()
 	for i, cmd := range recipe.PreRestartCmds {
 		d.setStepOutput(fmt.Sprintf("running command %d/%d", i+1, len(recipe.PreRestartCmds)))
-		if err := m.ssh(ctx, user, d.dnsName, "bash", "-c", cmd); err != nil {
+		if err := m.ssh(ctx, user, d.dnsName, cmd); err != nil {
 			return fmt.Errorf("pre-restart cmd %d: %w", i+1, err)
 		}
 	}
@@ -557,7 +557,7 @@ func (m *Manager) preflight(ctx context.Context, d *deploy, recipe Recipe, remot
 	for i, cmd := range recipe.PreflightCmds {
 		expanded := replacer.Replace(cmd)
 		d.setStepOutput(fmt.Sprintf("running check %d/%d", i+1, len(recipe.PreflightCmds)))
-		if err := m.ssh(ctx, user, d.dnsName, "bash", "-c", expanded); err != nil {
+		if err := m.ssh(ctx, user, d.dnsName, expanded); err != nil {
 			return fmt.Errorf("preflight cmd %d: %w", i+1, err)
 		}
 	}

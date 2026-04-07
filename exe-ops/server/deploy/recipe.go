@@ -84,7 +84,7 @@ func (r Recipe) remoteUser() string {
 // to prod-stage hosts. Processes not in this set require staging first.
 func prodDeployAllowed(process string) bool {
 	switch process {
-	case "metricsd", "cgtop", "exeletd":
+	case "metricsd", "cgtop", "exeletd", "exed":
 		return true
 	}
 	return false
