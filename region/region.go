@@ -37,15 +37,15 @@ type Region struct {
 }
 
 var allRegions = []Region{
-	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: false, Lat: 45.59, Lon: -122.60},
+	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: true, Lat: 45.59, Lon: -122.60},
 	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false, Lat: 33.94, Lon: -118.41},
-	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: true, Lat: 40.71, Lon: -74.01},
+	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: false, Lat: 40.71, Lon: -74.01},
 	{Code: "iad", Display: "Virginia, USA", Active: true, RequiresUserMatch: true, Lat: 38.95, Lon: -77.45},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: true, Lat: 50.11, Lon: 8.68},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: true, Lat: 35.68, Lon: 139.65},
-	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: true, Lat: -33.87, Lon: 151.21},
-	{Code: "sgp", Display: "Singapore", Active: true, RequiresUserMatch: true, Lat: 1.35, Lon: 103.82},
-	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: true, Lat: 51.51, Lon: -0.13},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: false, Lat: 50.11, Lon: 8.68},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: false, Lat: 35.68, Lon: 139.65},
+	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: false, Lat: -33.87, Lon: 151.21},
+	{Code: "sgp", Display: "Singapore", Active: true, RequiresUserMatch: false, Lat: 1.35, Lon: 103.82},
+	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: false, Lat: 51.51, Lon: -0.13},
 	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
 	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
 }
