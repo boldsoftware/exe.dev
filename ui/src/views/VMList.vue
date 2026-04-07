@@ -144,6 +144,7 @@
       :default-value="modal.defaultValue"
       :danger="modal.danger"
       :success-format="modal.successFormat"
+      :suggestions="modal.suggestions"
       @close="closeModal"
       @success="onModalSuccess"
     />
@@ -406,6 +407,17 @@ const modal = reactive({
   defaultValue: '',
   danger: false,
   successFormat: '',
+  suggestions: [] as string[],
+})
+
+// All unique tags across the user's own VMs, sorted — used for typeahead
+// suggestions when adding a tag to a VM.
+const allKnownTags = computed(() => {
+  const set = new Set<string>()
+  for (const b of boxes.value) {
+    for (const t of b.displayTags || []) set.add(t)
+  }
+  return [...set].sort((a, b) => a.localeCompare(b))
 })
 
 watch(searchQuery, (val) => syncFilterToURL(val))
@@ -695,14 +707,19 @@ function handleAction(action: ActionEvent) {
       })
       break
     }
-    case 'add-tag':
+    case 'add-tag': {
+      // Suggest existing tags that aren't already on this VM.
+      const existing = new Set(boxes.value.find(b => b.name === action.boxName)?.displayTags || [])
+      const suggestions = allKnownTags.value.filter(t => !existing.has(t))
       openModal({
         title: 'Add Tag',
         commandPrefix: `tag ${q}`,
         inputPlaceholder: 'tag name (e.g. prod)',
         description: 'Tags are usually used for attaching integrations and organization.',
+        suggestions,
       })
       break
+    }
     case 'remove-tag':
       openModal({
         title: 'Remove Tag',
@@ -726,6 +743,7 @@ function openModal(opts: Partial<typeof modal>) {
     defaultValue: '',
     danger: false,
     successFormat: '',
+    suggestions: [],
     ...opts,
   })
 }

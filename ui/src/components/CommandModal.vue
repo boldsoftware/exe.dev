@@ -11,15 +11,33 @@
         <div class="cmd-display">
           <code>{{ shownCommand }}</code>
         </div>
-        <input
-          v-if="needsInput"
-          ref="inputRef"
-          v-model="inputValue"
-          class="cmd-input"
-          :placeholder="inputPlaceholder"
-          autocomplete="off"
-          @keydown.enter="run"
-        />
+        <div v-if="needsInput" class="cmd-input-wrap">
+          <input
+            ref="inputRef"
+            v-model="inputValue"
+            class="cmd-input"
+            :placeholder="inputPlaceholder"
+            autocomplete="off"
+            @focus="suggestOpen = true"
+            @input="onSuggestInput"
+            @blur="delaySuggestClose"
+            @keydown.enter="onSuggestEnter"
+            @keydown.down.prevent="moveSuggest(1)"
+            @keydown.up.prevent="moveSuggest(-1)"
+            @keydown.escape.stop="onSuggestEscape"
+            @keydown.tab="onSuggestTab"
+          />
+          <div v-if="suggestOpen && filteredSuggestions.length > 0" class="suggest-dropdown">
+            <div
+              v-for="(s, i) in filteredSuggestions"
+              :key="s"
+              class="suggest-option"
+              :class="{ 'suggest-option-active': i === suggestIndex }"
+              @mousedown.prevent="selectSuggestion(s)"
+              @mouseenter="suggestIndex = i"
+            >#{{ s }}</div>
+          </div>
+        </div>
         <div v-if="(result.output || result.error) && !formattedResult" class="cmd-result" :class="{ success: result.success, error: !result.success }">
           {{ result.output || result.error }}
         </div>
@@ -65,6 +83,7 @@ const props = defineProps<{
   defaultValue?: string
   danger?: boolean
   successFormat?: string
+  suggestions?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -78,6 +97,69 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const descRef = ref<HTMLElement | null>(null)
 const result = ref({ output: '', error: '', success: false })
 const formattedResult = ref('')
+
+// Typeahead suggestions (e.g. existing tag names)
+const suggestOpen = ref(false)
+const suggestIndex = ref(-1)
+const filteredSuggestions = computed(() => {
+  const list = props.suggestions || []
+  const q = inputValue.value.trim().toLowerCase()
+  const matches = q ? list.filter(s => s.toLowerCase().includes(q)) : list.slice()
+  return matches.slice(0, 8)
+})
+function onSuggestInput() {
+  suggestOpen.value = true
+  suggestIndex.value = -1
+}
+function moveSuggest(delta: number) {
+  suggestOpen.value = true
+  const n = filteredSuggestions.value.length
+  if (n === 0) return
+  const next = suggestIndex.value + delta
+  if (next < 0) suggestIndex.value = n - 1
+  else if (next >= n) suggestIndex.value = 0
+  else suggestIndex.value = next
+}
+function selectSuggestion(s: string) {
+  inputValue.value = s
+  suggestOpen.value = false
+  suggestIndex.value = -1
+  inputRef.value?.focus()
+}
+function onSuggestEnter(e: KeyboardEvent) {
+  if (suggestOpen.value && suggestIndex.value >= 0 && filteredSuggestions.value[suggestIndex.value]) {
+    e.preventDefault()
+    selectSuggestion(filteredSuggestions.value[suggestIndex.value])
+    return
+  }
+  suggestOpen.value = false
+  run()
+}
+function onSuggestTab(e: KeyboardEvent) {
+  // Tab completes to the highlighted (or first) suggestion if any
+  if (!suggestOpen.value) return
+  const pick = suggestIndex.value >= 0
+    ? filteredSuggestions.value[suggestIndex.value]
+    : filteredSuggestions.value[0]
+  if (pick) {
+    e.preventDefault()
+    selectSuggestion(pick)
+  }
+}
+function onSuggestEscape(e: KeyboardEvent) {
+  // If the dropdown is open, first Escape just closes it; otherwise close the modal.
+  if (suggestOpen.value) {
+    e.preventDefault()
+    suggestOpen.value = false
+    suggestIndex.value = -1
+    return
+  }
+  close()
+}
+function delaySuggestClose() {
+  // Delay so click/mousedown on an option can register first.
+  setTimeout(() => { suggestOpen.value = false }, 150)
+}
 
 function injectPreCopyButtons() {
   if (!descRef.value) return
@@ -198,6 +280,8 @@ watch(() => props.visible, (v) => {
     cmd.reset()
     result.value = { output: '', error: '', success: false }
     formattedResult.value = ''
+    suggestOpen.value = false
+    suggestIndex.value = -1
     nextTick(() => {
       injectPreCopyButtons()
       inputRef.value?.focus()
@@ -365,9 +449,13 @@ function close() {
   word-break: break-all;
 }
 
+.cmd-input-wrap {
+  position: relative;
+  margin-top: 8px;
+}
+
 .cmd-input {
   width: 100%;
-  margin-top: 8px;
   padding: 8px 12px;
   border: 1px solid var(--input-border);
   border-radius: 4px;
@@ -380,6 +468,34 @@ function close() {
 
 .cmd-input:focus {
   border-color: var(--input-focus-border);
+}
+
+.suggest-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  margin-top: 2px;
+}
+
+.suggest-option {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--text-color);
+}
+
+.suggest-option-active,
+.suggest-option:hover {
+  background: var(--surface-hover);
 }
 
 .cmd-result {
