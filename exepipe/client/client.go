@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"syscall"
 
 	"exe.dev/exepipe/internal/cmds"
 )
@@ -136,7 +137,32 @@ func (c *Client) sendCmd(ctx context.Context, data, oob []byte) error {
 
 	n, oobn, err := c.uc.WriteMsgUnix(data, oob, nil)
 	if err != nil {
-		return fmt.Errorf("error sending to exepipe: %w", err)
+		switch {
+		case errors.Is(err, net.ErrClosed):
+		case errors.Is(err, syscall.EPIPE):
+		case errors.Is(err, syscall.ECONNRESET):
+		default:
+			return fmt.Errorf("error sending to exepipe: %w", err)
+		}
+
+		// This can happen during an exepipe transfer,
+		// when old clients are closed.
+		// Try dialing again.
+		var d net.Dialer
+		uc, err2 := d.DialUnix(ctx, "unixpacket", nil, c.addr)
+		if err2 != nil {
+			// Report the original error.
+			return fmt.Errorf("error sending to exepipe: %w", err)
+		}
+
+		n, oobn, err = uc.WriteMsgUnix(data, oob, nil)
+		if err != nil {
+			uc.Close()
+			return fmt.Errorf("error sending to exepipe: %w", err)
+		}
+
+		c.uc.Close()
+		c.uc = uc
 	}
 
 	if n != len(data) || oobn != len(oob) {

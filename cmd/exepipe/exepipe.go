@@ -22,7 +22,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		slog.Error("exepipe failed to start", "error", err)
 		os.Exit(1)
 	}
 }

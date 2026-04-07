@@ -106,8 +106,7 @@ func (p *piping) rmConnLocked(conn net.Conn) {
 	delete(p.conns, conn)
 }
 
-// connsCount returns the number of network connections being handled,
-// for testing purposes.
+// connsCount returns the number of network connections being handled.
 func (p *piping) connsCount() int {
 	p.connsMu.Lock()
 	defer p.connsMu.Unlock()
@@ -158,6 +157,21 @@ func (p *piping) copyConns(ctx context.Context, c1, c2 net.Conn, typ string) {
 
 		c1.Close()
 		c2.Close()
+
+		// If we are transferring to a new exepipe,
+		// and there are no connections left,
+		// we are done and can exit.
+		//
+		// This has a very unlikely race condition that
+		// we don't worry about: we could get a new copy command
+		// just as we are transferring to a new exepipe,
+		// and the count could drop to zero just before we
+		// increment for the new copy.
+		// The effect will be an unexpected broken connection.
+		if p.pipeInstance.transferredOld.Load() && p.connsCount() == 0 && !p.pipeInstance.stopped.Load() {
+			p.pipeInstance.lg.InfoContext(ctx, "exiting after transfer as all copy connections have closed")
+			p.pipeInstance.Stop()
+		}
 	}()
 
 	p.connsMu.Lock()
@@ -343,5 +357,90 @@ func (p *piping) allListeners() iter.Seq[cmds.Listener] {
 				return
 			}
 		}
+	}
+}
+
+// transferListeners is called by the old exepipe to transfer
+// all the listeners to the new exepipe.
+func (p *piping) transferListeners(ctx context.Context, lg *slog.Logger, uc *net.UnixConn) {
+	if !p.pipeInstance.transferringOld.Load() {
+		lg.ErrorContext(ctx, "exepipe internal error: transferring listeners when not in transferring mode")
+		return
+	}
+
+	// At this point we expect the listener to be closed,
+	// so it doesn't really matter how long we hold this lock.
+	p.listenersMu.Lock()
+	defer p.listenersMu.Unlock()
+
+	for _, ln := range p.listeners {
+		data, oob, err := cmds.ListenCmd(ln.info.Key, ln.ln, ln.info.Host, ln.info.Port, ln.info.Type)
+		if err != nil {
+			lg.ErrorContext(ctx, "ListenCmd failure while transferring", "key", ln.info.Key, "error", err)
+			continue
+		}
+
+		n, oobn, err := uc.WriteMsgUnix(data, oob, nil)
+		if err != nil {
+			lg.ErrorContext(ctx, "write failure while transferring", "key", ln.info.Key, "error", err)
+			continue
+		}
+		if n != len(data) || oobn != len(oob) {
+			lg.ErrorContext(ctx, "short write while transferring", "key", ln.info.Key, "error", err)
+			continue
+		}
+
+		var rdata, roob [512]byte
+		n, oobn, _, _, err = uc.ReadMsgUnix(rdata[:], roob[:])
+		if err != nil {
+			lg.ErrorContext(ctx, "error receiving response while transferring", "error", err)
+			continue
+		}
+
+		ack, err := cmds.UnmarshalResponse(ctx, lg, rdata[:n], roob[:oobn])
+		if err != nil {
+			lg.ErrorContext(ctx, "error unmarshaling response while transferring", "error", err)
+			continue
+		}
+		if ack != "" {
+			lg.ErrorContext(ctx, "error returned while transferring", "error", ack)
+			continue
+		}
+
+		ln.ln.Close()
+		delete(p.listeners, ln.info.Key)
+	}
+
+	data, err := cmds.TransferredCmd()
+	if err != nil {
+		lg.ErrorContext(ctx, "TransferredCmd failure", "error", err)
+		return
+	}
+
+	n, oobn, err := uc.WriteMsgUnix(data, nil, nil)
+	if err != nil {
+		lg.ErrorContext(ctx, "transferred command write failure", "error", err)
+		return
+	}
+	if n != len(data) || oobn != 0 {
+		lg.ErrorContext(ctx, "transferred command short write", "data", string(data), "n", n, "oobn", oobn, "error", err)
+		return
+	}
+
+	var rdata, roob [512]byte
+	n, oobn, _, _, err = uc.ReadMsgUnix(rdata[:], roob[:])
+	if err != nil {
+		lg.ErrorContext(ctx, "error reading transferred command response", "error", err)
+		return
+	}
+
+	ack, err := cmds.UnmarshalResponse(ctx, lg, rdata[:n], roob[:oobn])
+	if err != nil {
+		lg.ErrorContext(ctx, "error unmarshaling transferred response", "error", err)
+		return
+	}
+	if ack != "" {
+		lg.ErrorContext(ctx, "error returned by transferred command", "error", ack)
+		return
 	}
 }

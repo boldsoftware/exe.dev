@@ -164,13 +164,48 @@ func ListenersCmd() (data []byte, err error) {
 	return data, nil
 }
 
+// TransferCmd returns a marshalled command to request
+// transferring the exepipe command socket.
+//
+// This is called by a new exepipe to an old exepipe,
+// providing a clean update of a new binary.
+//
+// This command does not use oob data.
+func TransferCmd() (data []byte, err error) {
+	c := cmd{
+		Action: "transfer",
+	}
+	data, err = json.Marshal(c)
+	if err != nil {
+		return nil, fmt.Errorf("exepipe TransferCmd: JSON marshaling failed: %v", err)
+	}
+
+	return data, nil
+}
+
+// TransferredCmd returns a marshalled command to
+// inform the new exepipe that the transfer is complete.
+//
+// This is called by an old exepipe to a new exepipe.
+//
+// This command does not use oob data.
+func TransferredCmd() (data []byte, err error) {
+	c := cmd{
+		Action: "transferred",
+	}
+	data, err = json.Marshal(c)
+	if err != nil {
+		return nil, fmt.Errorf("exepipe TransferredCmd: JSON marshaling failed: %v", err)
+	}
+
+	return data, nil
+}
+
 // ErrDispatchFailed is returned by Dispatch if some error occurred.
 // The log will show the error.
 var ErrDispatchFailed = errors.New("exepipe command failure")
 
 // Action is a function to call for a particular command.
-// We don't bother returning errors from an action,
-// it should just log them.
 type Action func(ctx context.Context, key string, fds []int, host string, port int, typ string) error
 
 // Actions maps from a command to the action.
@@ -348,4 +383,61 @@ func UnmarshalListenersResponse(ctx context.Context, lg *slog.Logger, yield func
 	}
 
 	return more, yield
+}
+
+// MarshalTransferResponse returns the response to send to a transfer command.
+func MarshalTransferResponse(ctx context.Context, lg *slog.Logger, ack string, ln *net.UnixListener) (data, oob []byte, err error) {
+	data, err = MarshalResponse(ctx, lg, ack)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if ln == nil {
+		return data, nil, err
+	}
+
+	var fdListen int
+	rawConn, err := ln.SyscallConn()
+	if err != nil {
+		return nil, nil, fmt.Errorf("exepipe TransferResponse: SyscallConn failed: %w", err)
+	}
+	err = rawConn.Control(func(fd uintptr) {
+		fdListen = int(fd)
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("exepipeTransferResponse: listener.rawConn.Control failed: %w", err)
+	}
+
+	oob = syscall.UnixRights(fdListen)
+
+	return data, oob, nil
+}
+
+// UnmarshalTransferResponse parses the response sent by a transfer command.
+func UnmarshalTransferResponse(ctx context.Context, data, oob []byte) (ack string, fd int, err error) {
+	var r response
+	if err := json.Unmarshal(data, &r); err != nil {
+		return "", 0, fmt.Errorf("failed to unmarshal old exepipe transfer response %q: %v", data, err)
+	}
+
+	fd = -1
+	if len(oob) > 0 {
+		scms, err := syscall.ParseSocketControlMessage(oob)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to parse old exepipe transfer file descriptor from %q: %v", oob, err)
+		}
+		if len(scms) != 1 {
+			return "", 0, fmt.Errorf("wrong number of socket control messages in old exepipe transfer %q: %d", oob, len(scms))
+		}
+		fds, err := syscall.ParseUnixRights(&scms[0])
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to extract file descriptor from old exepipe transfer %q: %v", oob, err)
+		}
+		if len(fds) != 1 {
+			return "", 0, fmt.Errorf("wrong number of descriptors in old exepipe transfer %q: %d", oob, len(fds))
+		}
+		fd = fds[0]
+	}
+
+	return r.Ack, fd, nil
 }

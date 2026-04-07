@@ -7,13 +7,14 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"exe.dev/exepipe/internal/cmds"
 )
 
 // cmdLoop reads commands from a Unix socket.
 type cmdLoop struct {
-	listener     *net.UnixListener
+	listener     atomic.Pointer[net.UnixListener]
 	pipeInstance *PipeInstance
 
 	connsMu sync.Mutex
@@ -23,10 +24,10 @@ type cmdLoop struct {
 // setupCmdLoop prepares a cmdLoop.
 func setupCmdLoop(cfg *PipeConfig, pi *PipeInstance, ul *net.UnixListener) (*cmdLoop, error) {
 	cl := &cmdLoop{
-		listener:     ul,
 		pipeInstance: pi,
 		conns:        make(map[*net.UnixConn]bool),
 	}
+	cl.listener.Store(ul)
 	return cl, nil
 }
 
@@ -38,14 +39,27 @@ func (cl *cmdLoop) start(ctx context.Context) error {
 
 // stop stops the command loop.
 func (cl *cmdLoop) stop(ctx context.Context) {
-	cl.listener.Close()
+	if ln := cl.listener.Load(); ln != nil {
+		ln.Close()
+		cl.listener.Store(nil)
+	}
+	cl.stopConnsExcept(ctx, nil)
+}
 
+// stopConns stops all active client connections,
+// except for the keep if that is not nil.
+func (cl *cmdLoop) stopConnsExcept(ctx context.Context, keep *net.UnixConn) {
 	cl.connsMu.Lock()
 	defer cl.connsMu.Unlock()
 	for uc := range cl.conns {
-		uc.Close()
+		if uc != keep {
+			uc.Close()
+		}
 	}
 	clear(cl.conns)
+	if keep != nil {
+		cl.conns[keep] = true
+	}
 }
 
 // acceptLoop is an endless loop that waits for a connection,
@@ -53,7 +67,19 @@ func (cl *cmdLoop) stop(ctx context.Context) {
 // This runs in a separate goroutine.
 func (cl *cmdLoop) acceptLoop(ctx context.Context) {
 	for {
-		uc, err := cl.listener.AcceptUnix()
+		if cl.pipeInstance.transferringOld.Load() {
+			// We are transferring and should no
+			// longer accept new connections.
+			return
+		}
+
+		ln := cl.listener.Load()
+		if ln == nil {
+			// The listener is closed.
+			return
+		}
+
+		uc, err := ln.AcceptUnix()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
 				cl.pipeInstance.lg.ErrorContext(ctx, "exepipe unix listener closed", "error", err)
@@ -118,10 +144,12 @@ func (cl *cmdLoop) actions(uc *net.UnixConn) cmds.Actions {
 		uc:           uc,
 	}
 	return cmds.Actions{
-		"copy":      ca.copyAction,
-		"listen":    ca.listenAction,
-		"unlisten":  ca.unlistenAction,
-		"listeners": ca.listenersAction,
+		"copy":        ca.copyAction,
+		"listen":      ca.listenAction,
+		"unlisten":    ca.unlistenAction,
+		"listeners":   ca.listenersAction,
+		"transfer":    ca.transferAction,
+		"transferred": ca.transferredAction,
 	}
 }
 
@@ -199,4 +227,73 @@ func (ca *cmdActor) listenersAction(ctx context.Context, key string, fds []int, 
 	}
 
 	return err
+}
+
+// transferAction implements the transfer command.
+// This will be used by a new exepipe to tell an old exepipe
+// that the new one is taking over.
+// Clients will not send this command.
+//
+// The old exepipe (the process running this method) will send
+// over the command listener, and stop listening on it.
+// The old exepipe will also send over all existing listeners.
+// The old exepipe will continue processing copy connections
+// until they are done, at which point it will exit.
+//
+// In the normal case this method will send one response with the listener,
+// and then another response indicating command success.
+// This follows the pattern of other commands.
+func (ca *cmdActor) transferAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+		return errors.New("unexpected arguments to transfer command")
+	}
+
+	if ca.pipeInstance.transferringOld.Load() {
+		ca.pipeInstance.lg.ErrorContext(ctx, "exepipe transfer already in progress")
+		return errors.New("transfer already in progress")
+	}
+
+	ca.pipeInstance.transferringOld.Store(true)
+
+	// Stop active clients. They should reconnect to the new exepipe.
+	ca.pipeInstance.cmdLoop.stopConnsExcept(ctx, ca.uc)
+
+	// Transfer the command listener to the new exepipe.
+	ln := ca.pipeInstance.cmdLoop.listener.Load()
+	if ln == nil {
+		ca.pipeInstance.lg.ErrorContext(ctx, "exepipe transfer failed: listener closed")
+		return errors.New("listener closed")
+	}
+
+	data, oob, err := cmds.MarshalTransferResponse(ctx, ca.pipeInstance.lg, "", ln)
+	if err != nil {
+		return err
+	}
+
+	n, oobn, err := ca.uc.WriteMsgUnix(data, oob, nil)
+	if err != nil || n != len(data) || oobn != len(oob) {
+		ca.pipeInstance.lg.ErrorContext(ctx, "exepipe unix socket write failure", "data", len(data), "oob", len(oob), "wrote", n, "oobn", oobn, "error", err)
+		return errors.New("exepipe unix socket write failure")
+	}
+
+	// At this point we've written the listener to the socket,
+	// so we can close the listener.
+	ca.pipeInstance.cmdLoop.listener.Store(nil)
+	ln.Close()
+
+	// Transfer active listeners to the new exepipe.
+	go ca.pipeInstance.transferListeners(context.WithoutCancel(ctx))
+
+	return nil
+}
+
+// transferredAction handles the transferred command,
+// which just lets the new exepipe know that all listeners
+// have been sent over.
+func (ca *cmdActor) transferredAction(ctx context.Context, key string, fds []int, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+		return errors.New("unexpected arguments to transferred command")
+	}
+	ca.pipeInstance.transferringNew.Store(false)
+	return nil
 }
