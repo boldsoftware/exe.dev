@@ -33,6 +33,7 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ whoami
 Email Address: lonely@test-team-share.example
+Region: pdx (Oregon, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ exit

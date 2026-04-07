@@ -33,6 +33,7 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ whoami
 Email Address: TestRegistrationHappensOnce@example.com
+Region: pdx (Oregon, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ exit
@@ -49,6 +50,7 @@ Goodbye!
 
 PROMPT ▶ whoami
 Email Address: TestRegistrationHappensOnce@example.com
+Region: pdx (Oregon, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ exit
