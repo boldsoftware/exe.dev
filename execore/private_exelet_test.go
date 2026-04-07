@@ -11,10 +11,10 @@ import (
 
 func TestPrivateExelet(t *testing.T) {
 	t.Parallel()
-	pdxRegion, _ := region.ByCode("pdx")
+	laxRegion, _ := region.ByCode("lax")
 
 	makeExelet := func(addr string) *exeletClient {
-		ec := &exeletClient{addr: addr, region: pdxRegion}
+		ec := &exeletClient{addr: addr, region: laxRegion}
 		ec.up.Store(true)
 		return ec
 	}
@@ -66,8 +66,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
@@ -96,7 +96,7 @@ func TestPrivateExelet(t *testing.T) {
 		ctx := context.Background()
 
 		// Only one exelet and it's private. User should get an error.
-		privExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			privExelet.addr: privExelet,
 		}
@@ -116,7 +116,7 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		privExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			privExelet.addr: privExelet,
 		}
@@ -141,8 +141,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -177,8 +177,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -194,7 +194,7 @@ func TestPrivateExelet(t *testing.T) {
 				Status:          "running",
 				Image:           "test",
 				CreatedByUserID: userID,
-				Region:          "pdx",
+				Region:          "lax",
 			})
 			return err
 		})
@@ -219,8 +219,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -253,7 +253,7 @@ func TestPrivateExelet(t *testing.T) {
 		ctx := context.Background()
 
 		// A team_exelets mapping on a non-private exelet has no exclusion effect.
-		exelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		exelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			exelet.addr: exelet,
 		}
@@ -279,8 +279,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -301,7 +301,7 @@ func TestPrivateExelet(t *testing.T) {
 					Status:          "running",
 					Image:           "test",
 					CreatedByUserID: userID,
-					Region:          "pdx",
+					Region:          "lax",
 				})
 				return err
 			})
@@ -327,8 +327,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -358,8 +358,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		privExelet.up.Store(false) // team exelet is down
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
@@ -387,8 +387,8 @@ func TestPrivateExelet(t *testing.T) {
 		server := newTestServer(t)
 		ctx := context.Background()
 
-		pubExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
-		privExelet := makeExelet("tcp://exelet-pdx2-prod-01:9080")
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
 		server.exeletClients = map[string]*exeletClient{
 			pubExelet.addr:  pubExelet,
 			privExelet.addr: privExelet,
@@ -427,23 +427,23 @@ func TestPrivateExelet(t *testing.T) {
 
 		nycRegion, _ := region.ByCode("nyc")
 
-		pdxExelet := makeExelet("tcp://exelet-pdx1-prod-01:9080")
+		laxExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
 		nycExelet := &exeletClient{addr: "tcp://exelet-nyc1-prod-01:9080", region: nycRegion}
 		nycExelet.up.Store(true)
 
 		server.exeletClients = map[string]*exeletClient{
-			pdxExelet.addr: pdxExelet,
+			laxExelet.addr: laxExelet,
 			nycExelet.addr: nycExelet,
 		}
 
-		// User is in PDX, team exelet is in NYC.
+		// User is in lax, team exelet is in NYC.
 		userID := createTestUser(t, server, "cross-region@example.com")
 		createTeam(t, server, "team-xregion", "Team Cross-Region", userID)
 
 		markPrivate(t, server, nycExelet.addr)
 		assignTeamExelet(t, server, "team-xregion", nycExelet.addr)
 
-		// Should land on the NYC team exelet despite user being in PDX.
+		// Should land on the NYC team exelet despite user being in lax.
 		for range 20 {
 			ec, _, err := server.selectExeletClient(ctx, userID)
 			if err != nil {

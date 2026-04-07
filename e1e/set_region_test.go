@@ -44,9 +44,9 @@ func TestSetRegion(t *testing.T) {
 			Region        string `json:"region"`
 			RegionDisplay string `json:"region_display"`
 		}
-		out := runParseExeDevJSON[setRegionOutput](t, keyFile, "set-region", "--json", "pdx")
-		if out.Region != "pdx" {
-			t.Errorf("region = %q, want %q", out.Region, "pdx")
+		out := runParseExeDevJSON[setRegionOutput](t, keyFile, "set-region", "--json", "fra")
+		if out.Region != "fra" {
+			t.Errorf("region = %q, want %q", out.Region, "fra")
 		}
 		if out.RegionDisplay == "" {
 			t.Error("region_display should not be empty")
@@ -54,8 +54,8 @@ func TestSetRegion(t *testing.T) {
 	})
 
 	t.Run("RestrictedRegionBlocked", func(t *testing.T) {
-		// fra requires user match; a fresh user assigned to pdx/lax cannot pick it.
-		pty.SendLine("set-region fra")
+		// pdx requires user match; a fresh user assigned to lax cannot pick it.
+		pty.SendLine("set-region pdx")
 		pty.Want("not available")
 		pty.WantPrompt()
 	})

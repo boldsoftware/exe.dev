@@ -40,8 +40,8 @@ func TestByCode(t *testing.T) {
 
 func TestDefault(t *testing.T) {
 	def := Default()
-	if def.Code != "pdx" {
-		t.Errorf("Default().Code = %q, want %q", def.Code, "pdx")
+	if def.Code != "lax" {
+		t.Errorf("Default().Code = %q, want %q", def.Code, "lax")
 	}
 }
 
@@ -163,7 +163,7 @@ func TestForUser(t *testing.T) {
 		{"unmapped country near Reykjavík", "XX", 64.15, -21.94, "lon"},
 
 		// No country, no coords → default
-		{"empty everything", "", 0, 0, "pdx"},
+		{"empty everything", "", 0, 0, "lax"},
 
 		// No country, has coords → nearest
 		{"coords only mid-Atlantic", "", 0, -30, "nyc"},
@@ -188,20 +188,20 @@ func TestCountryMapOnlyActiveRegions(t *testing.T) {
 }
 
 func TestAvailableForUnlocked(t *testing.T) {
-	// A pdx user with fra unlocked (e.g. via team exelet) should see fra.
-	got := AvailableFor("pdx", "fra")
+	// A lax user with iad unlocked (e.g. via team exelet) should see iad.
+	got := AvailableFor("lax", "iad")
 	codes := make(map[string]bool, len(got))
 	for _, r := range got {
 		codes[r.Code] = true
 	}
-	if !codes["fra"] {
-		t.Error("fra should be available via unlockedCodes")
+	if !codes["iad"] {
+		t.Error("iad should be available via unlockedCodes")
 	}
-	if codes["tyo"] {
-		t.Error("tyo should remain locked")
+	if codes["pdx"] {
+		t.Error("pdx should remain locked for lax user without unlock")
 	}
 	// Inactive regions must never appear even if explicitly unlocked.
-	got2 := AvailableFor("pdx", "dev", "ci")
+	got2 := AvailableFor("lax", "dev", "ci")
 	for _, r := range got2 {
 		if r.Code == "dev" || r.Code == "ci" {
 			t.Errorf("inactive region %q must not appear even when unlocked", r.Code)
@@ -225,19 +225,18 @@ func TestAvailableFor(t *testing.T) {
 		wantAbsent  []string // none must be present
 	}{
 		{
-			// pdx is open to all (!RequiresUserMatch), so any user sees it.
-			// A user assigned to pdx also sees pdx itself.
-			name:        "pdx user sees open regions",
+			// pdx has RequiresUserMatch, so a pdx user sees pdx plus all open regions.
+			name:        "pdx user sees pdx and open regions",
 			currentCode: "pdx",
-			wantCodes:   []string{"pdx", "lax"},
-			wantAbsent:  []string{"fra", "nyc", "tyo", "syd", "lon", "sgp"},
+			wantCodes:   []string{"pdx", "lax", "nyc", "fra", "tyo", "syd", "sgp", "lon"},
+			wantAbsent:  []string{"iad"},
 		},
 		{
-			// A fra user sees open regions plus fra itself.
-			name:        "fra user sees fra and open regions",
+			// fra is open (!RequiresUserMatch). A fra user sees all open regions but not pdx/iad.
+			name:        "fra user sees open regions",
 			currentCode: "fra",
-			wantCodes:   []string{"pdx", "lax", "fra"},
-			wantAbsent:  []string{"nyc", "tyo", "syd", "lon", "sgp"},
+			wantCodes:   []string{"lax", "nyc", "fra", "tyo", "syd", "sgp", "lon"},
+			wantAbsent:  []string{"pdx", "iad"},
 		},
 		{
 			// Inactive regions (dev, ci) must never appear.

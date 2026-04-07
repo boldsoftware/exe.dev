@@ -90,7 +90,8 @@ func ByCode(code string) (Region, error) {
 
 // Default returns the default region for new users and VMs.
 func Default() Region {
-	return allRegions[0]
+	r, _ := ByCode("lax")
+	return r
 }
 
 // ParseExeletRegion determines the region from an exelet host name.

@@ -78,8 +78,8 @@ func TestAPIProfileRegionUpdate(t *testing.T) {
 	})
 
 	t.Run("unavailable region rejected", func(t *testing.T) {
-		// User is now on lax; tyo requires user match and they're not on tyo.
-		resp := doProfileRegionRequest(t, s, cookie, "tyo")
+		// User is now on lax; pdx requires user match and they're not on pdx.
+		resp := doProfileRegionRequest(t, s, cookie, "pdx")
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			body, _ := io.ReadAll(resp.Body)
