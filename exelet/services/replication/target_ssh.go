@@ -169,6 +169,10 @@ func (t *SSHTarget) Type() string {
 	return "ssh"
 }
 
+func (t *SSHTarget) Name() string {
+	return t.config.Host
+}
+
 // getClient returns an SSH client, reusing existing connection if available
 func (t *SSHTarget) getClient() (*ssh.Client, error) {
 	t.mu.Lock()

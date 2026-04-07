@@ -25,6 +25,9 @@ type Target interface {
 	// Type returns the target type ("ssh", "file", or "zpool")
 	Type() string
 
+	// Name returns a short identifier for the target (e.g., pool name, host, path)
+	Name() string
+
 	// ListSnapshots returns existing snapshots for a volume on the target
 	// For SSH: queries remote ZFS for snapshots
 	// For file: lists existing backup files

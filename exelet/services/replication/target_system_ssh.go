@@ -25,6 +25,10 @@ func (t *SystemSSHTarget) Type() string {
 	return "ssh"
 }
 
+func (t *SystemSSHTarget) Name() string {
+	return t.config.Host
+}
+
 // sshArgs returns the base ssh command arguments for connecting to the target.
 func (t *SystemSSHTarget) sshArgs() []string {
 	args := []string{

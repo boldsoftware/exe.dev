@@ -23,6 +23,10 @@ func (t *ZpoolTarget) Type() string {
 	return "zpool"
 }
 
+func (t *ZpoolTarget) Name() string {
+	return t.config.Pool
+}
+
 // runCommand executes a command locally and returns output.
 func (t *ZpoolTarget) runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)

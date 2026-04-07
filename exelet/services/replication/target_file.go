@@ -47,6 +47,10 @@ func (t *FileTarget) Type() string {
 	return "file"
 }
 
+func (t *FileTarget) Name() string {
+	return t.config.Path
+}
+
 // backupFilename generates the backup filename for a volume and timestamp
 func (t *FileTarget) backupFilename(volumeID string, timestamp time.Time) string {
 	return fmt.Sprintf("%s-%s.tar.gz", volumeID, timestamp.Format("20060102T150405Z"))

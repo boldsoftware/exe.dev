@@ -357,7 +357,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		Incremental:      incremental,
 	}
 	wp.state.AddHistory(historyEntry)
-	wp.metrics.RecordSuccess(volume.LocalID, wp.target.Type(), bytesTransferred, duration.Seconds())
+	wp.metrics.RecordSuccess(wp.target.Type(), wp.target.Name(), bytesTransferred, duration.Seconds())
 
 	wp.log.Info("replication complete", "volume_id", volume.LocalID, "duration", duration, "incremental", incremental)
 }
@@ -381,7 +381,7 @@ func (wp *WorkerPool) recordFailure(job *Job, volume VolumeInfo, startTime time.
 		ErrorMessage: err.Error(),
 	}
 	wp.state.AddHistory(historyEntry)
-	wp.metrics.RecordFailure(wp.target.Type())
+	wp.metrics.RecordFailure(wp.target.Type(), wp.target.Name())
 
 	wp.log.Error("replication failed", "volume_id", volume.LocalID, "error", err)
 }

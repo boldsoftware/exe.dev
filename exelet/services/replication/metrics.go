@@ -21,14 +21,14 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 				Name: "exelet_replication_bytes_total",
 				Help: "Total bytes transferred during replication",
 			},
-			[]string{"volume_id", "target_type"},
+			[]string{"target_type", "target"},
 		),
 		operationsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "exelet_replication_operations_total",
 				Help: "Total replication operations by status",
 			},
-			[]string{"status", "target_type"}, // status: success, failed
+			[]string{"status", "target_type", "target"}, // status: success, failed
 		),
 		durationSeconds: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -36,7 +36,7 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 				Help:    "Time taken per replication operation",
 				Buckets: prometheus.ExponentialBuckets(1, 2, 15), // 1s to ~9 hours
 			},
-			[]string{"volume_id", "target_type"},
+			[]string{"target_type", "target"},
 		),
 		queueSize: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -66,15 +66,15 @@ func NewMetrics(registry *prometheus.Registry) *Metrics {
 }
 
 // RecordSuccess records a successful replication operation
-func (m *Metrics) RecordSuccess(volumeID, targetType string, bytes int64, durationSeconds float64) {
-	m.bytesTotal.WithLabelValues(volumeID, targetType).Add(float64(bytes))
-	m.operationsTotal.WithLabelValues("success", targetType).Inc()
-	m.durationSeconds.WithLabelValues(volumeID, targetType).Observe(durationSeconds)
+func (m *Metrics) RecordSuccess(targetType, targetName string, bytes int64, durationSeconds float64) {
+	m.bytesTotal.WithLabelValues(targetType, targetName).Add(float64(bytes))
+	m.operationsTotal.WithLabelValues("success", targetType, targetName).Inc()
+	m.durationSeconds.WithLabelValues(targetType, targetName).Observe(durationSeconds)
 }
 
 // RecordFailure records a failed replication operation
-func (m *Metrics) RecordFailure(targetType string) {
-	m.operationsTotal.WithLabelValues("failed", targetType).Inc()
+func (m *Metrics) RecordFailure(targetType, targetName string) {
+	m.operationsTotal.WithLabelValues("failed", targetType, targetName).Inc()
 }
 
 // SetQueueSize sets the current queue size
