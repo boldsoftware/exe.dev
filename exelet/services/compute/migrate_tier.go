@@ -573,6 +573,13 @@ func (s *Service) migrateTierStopped(ctx context.Context, tiered *storage.Tiered
 	}
 	targetRecvd = false // Migration succeeded — keep the target dataset
 
+	// Clean up the @migration snapshot left on the target by zfs recv.
+	dstDSName := dstManager.GetDatasetName(instanceID)
+	if err := dstManager.DestroySnapshot(ctx, dstDSName+"@migration"); err != nil {
+		s.log.WarnContext(ctx, "tier migration: failed to destroy target @migration snapshot",
+			"instance", instanceID, "pool", targetPool, "error", err)
+	}
+
 	op.setProgress(1.0)
 	return nil
 }
@@ -840,6 +847,15 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	}
 	preSnapCleaned = true
 
+	// Clean up migration snapshots left on the target by zfs recv.
+	dstDSName := dstManager.GetDatasetName(instanceID)
+	for _, snap := range []string{"@migration-pre", "@migration"} {
+		if err := dstManager.DestroySnapshot(ctx, dstDSName+snap); err != nil {
+			s.log.WarnContext(ctx, "tier migration: failed to destroy target snapshot",
+				"snapshot", dstDSName+snap, "pool", targetPool, "error", err)
+		}
+	}
+
 	op.setProgress(1.0)
 	return nil
 }
@@ -1011,4 +1027,21 @@ func getZpoolCapacity(ctx context.Context, pool string) (size, used, avail uint6
 		return 0, 0, 0, fmt.Errorf("zpool get for %s returned no parseable values: %s", pool, strings.TrimSpace(string(output)))
 	}
 	return size, used, avail, nil
+}
+
+// cleanupMigrationSnapshots destroys any @migration-pre and @migration
+// snapshots left on a dataset by zfs recv. This is best-effort; failures
+// are logged but not returned.
+func (s *Service) cleanupMigrationSnapshots(ctx context.Context, instanceID string) {
+	dsName := s.context.StorageManager.GetDatasetName(instanceID)
+	for _, snap := range []string{"@migration-pre", "@migration"} {
+		fullSnap := dsName + snap
+		if !s.context.StorageManager.SnapshotExists(fullSnap) {
+			continue
+		}
+		if err := s.context.StorageManager.DestroySnapshot(ctx, fullSnap); err != nil {
+			s.log.WarnContext(ctx, "failed to destroy migration snapshot",
+				"snapshot", fullSnap, "error", err)
+		}
+	}
 }

@@ -578,6 +578,11 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			return receiveErr
 		}
 
+		// Clean up migration snapshots left on the target by zfs recv.
+		// Run async so it doesn't hold the migration lock (which blocks
+		// the caller's immediate StartInstance call).
+		go s.cleanupMigrationSnapshots(context.Background(), instanceID)
+
 		s.log.InfoContext(ctx, "ReceiveVM (live) completed",
 			"instance", instanceID,
 			"total_bytes", totalBytes,
@@ -615,6 +620,11 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		receiveErr = status.Errorf(codes.Internal, "failed to send result: %v", err)
 		return receiveErr
 	}
+
+	// Clean up migration snapshots left on the target by zfs recv.
+	// Run async so it doesn't hold the migration lock (which blocks
+	// the caller's immediate StartInstance call).
+	go s.cleanupMigrationSnapshots(context.Background(), instanceID)
 
 	s.log.InfoContext(ctx, "ReceiveVM completed",
 		"instance", instanceID,
