@@ -17,8 +17,9 @@ exec /usr/bin/prometheus-node-exporter \
     --collector.systemd \
     --collector.textfile \
     --collector.textfile.directory=/var/lib/prometheus/node-exporter \
-    "--collector.netdev.device-exclude=^ifb" \
+    "--collector.netdev.device-exclude=^(tap|ifb)" \
     "--collector.netclass.ignored-devices=^(tap|ifb)" \
+    "--collector.diskstats.device-exclude=^zd" \
     --no-collector.zfs \
     --no-collector.infiniband \
     --no-collector.schedstat

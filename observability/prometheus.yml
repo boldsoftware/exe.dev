@@ -6,6 +6,7 @@
 
 global:
   scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  scrape_timeout: 30s # Heavy nodes can stall on /proc/net/dev due to RTNL lock contention.
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
 
 scrape_configs:

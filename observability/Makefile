@@ -59,7 +59,7 @@ deploy-prometheus:
 # Deploy node-exporter to all hosts (or pass specific hosts via NODES=)
 # Configuration lives in deploy-node-exporter.py
 deploy-node-exporter:
-	python3 deploy-node-exporter.py $(NODES)
+	python3 deploy-node-exporter.py -j $(PARALLEL) $(NODES)
 
 # Exelet hosts (hosts with ZFS pools)
 EXELET_HOSTS := exe-ctr-03 exe-ctr-04 exe-ctr-05 exe-ctr-07 exe-ctr-08 exe-ctr-09 exe-ctr-10 exe-ctr-11 exe-ctr-12 exe-ctr-13 exe-ctr-14 exe-ctr-15 exe-ctr-16 exe-ctr-18 exe-ctr-19 exelet-iad-prod-01 exelet-lax2-prod-01 exelet-lax2-prod-02 exelet-lax2-prod-03 exelet-lax2-prod-04 exelet-lax-prod-03 exelet-lax-prod-04 exelet-lax-prod-05 exelet-nyc-prod-01 exelet-nyc-prod-02 exelet-nyc-prod-03 exelet-tyo4-prod-01 exelet-tyo4-prod-02 exelet-tyo4-prod-03 exelet-lon2-prod-01 exelet-fra2-prod-01 exelet-fra2-prod-02 exelet-fra2-prod-03 exelet-syd2-prod-01 exelet-sgp-prod-01 exelet-lax2-staging-01 exelet-nyc-staging-01 exelet-pdx-staging-01 exelet-pdx-staging-02
