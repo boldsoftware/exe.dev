@@ -46,30 +46,49 @@ CLOUD_HYPERVISOR_VERSION="48.0"
 VIRTIOFSD_VERSION="1.13.2"
 
 REGION="${REGION:-us-west-2}"
-AZ="${ZONE:-us-west-2b}"
+AZ="${ZONE:-${REGION}b}"
+# Default to public subnets; us-west-2 uses private
+if [ "$REGION" = "us-west-2" ]; then
+    SUBNET_TYPE="${SUBNET_TYPE:-private}"
+    SUBNET_NAME_PREFIX="exe-ctr-${SUBNET_TYPE}"
+else
+    SUBNET_TYPE="${SUBNET_TYPE:-public}"
+    SUBNET_NAME_PREFIX="exe"
+fi
 INSTANCE_TYPE="${INSTANCE_TYPE:-m5d.metal}"
 ROOT_VOLUME_SIZE="50"
 BACKUP_VOLUME_SIZE="500"
-SECURITY_GROUP_NAME="exe-ctr-sg"
-INSTANCE_ROLE_NAME="exe-ctr-instance-role"
-INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
+if [ "$REGION" = "us-west-2" ]; then
+    SECURITY_GROUP_NAME="exe-ctr-sg"
+else
+    SECURITY_GROUP_NAME="exe-sg"
+fi
+if [ "$REGION" = "us-west-2" ]; then
+    INSTANCE_ROLE_NAME="exe-ctr-instance-role"
+    INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
+    BACKUP_VOLUME_TYPE="exe-ctr-backup"
+else
+    INSTANCE_ROLE_NAME="exe-instance-role"
+    INSTANCE_PROFILE_NAME="exe-instance-profile"
+    BACKUP_VOLUME_TYPE="exe-backup"
+fi
 
-# Look up a private subnet in the requested AZ (or create one)
+# Look up a subnet in the requested AZ (or create one)
 if [ -n "${SUBNET_ID:-}" ]; then
     echo "Using provided SUBNET_ID: ${SUBNET_ID}"
 else
-    echo "Looking up private subnet in ${AZ}..."
+    echo "Looking up ${SUBNET_TYPE} subnet in ${AZ}..."
     SUBNET_ID=$(aws ec2 describe-subnets \
-        --filters "Name=availability-zone,Values=${AZ}" "Name=tag:Name,Values=*private*" \
+        --filters "Name=availability-zone,Values=${AZ}" "Name=tag:Name,Values=${SUBNET_NAME_PREFIX}*" \
         --query 'Subnets[0].SubnetId' \
         --output text \
         --region ${REGION})
     if [ -z "$SUBNET_ID" ] || [ "$SUBNET_ID" = "None" ]; then
-        echo "No private subnet found in ${AZ}, creating one..."
+        echo "No ${SUBNET_TYPE} subnet found in ${AZ}, creating one..."
 
-        # Find the VPC by looking at an existing exe-ctr subnet in another AZ
+        # Find the VPC by looking at an existing subnet in another AZ
         VPC_ID=$(aws ec2 describe-subnets \
-            --filters "Name=tag:Name,Values=*private*" \
+            --filters "Name=tag:Name,Values=${SUBNET_NAME_PREFIX}*" \
             --query 'Subnets[0].VpcId' \
             --output text \
             --region ${REGION})
@@ -117,11 +136,11 @@ else
             --region ${REGION})
 
         echo ""
-        echo "Will create a new private subnet:"
+        echo "Will create a new ${SUBNET_TYPE} subnet:"
         echo "  VPC:         ${VPC_ID}"
         echo "  AZ:          ${AZ}"
         echo "  CIDR:        ${NEW_CIDR}"
-        echo "  Name tag:    exe-ctr-private-${AZ}"
+        echo "  Name tag:    ${SUBNET_NAME_PREFIX}-${AZ}"
         if [ -n "$NAT_RT" ] && [ "$NAT_RT" != "None" ]; then
             echo "  Route table: ${NAT_RT} (NAT gateway)"
         else
@@ -145,7 +164,7 @@ else
 
         aws ec2 create-tags \
             --resources ${SUBNET_ID} \
-            --tags Key=Name,Value="exe-ctr-private-${AZ}" \
+            --tags Key=Name,Value="${SUBNET_NAME_PREFIX}-${AZ}" \
             --region ${REGION}
 
         # Associate with the NAT route table found earlier
@@ -174,7 +193,7 @@ EXISTING_INSTANCE=$(aws ec2 describe-instances \
 REPROVISION=false
 if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ]; then
     echo "Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
-    read -r -p "Re-provision existing instance? (skips Tailscale and disk setup) [y/N] " CONFIRM
+    read -r -p "Re-provision existing instance? (skips Tailscale setup) [y/N] " CONFIRM
     if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
         echo "Aborted."
         exit 1
@@ -453,7 +472,7 @@ EOF
         echo "Tagged root volume ${ROOT_VOLUME_ID} as ${MACHINE_NAME}-root (role=${ROLE}, stage=${STAGE})"
     fi
     if [ -n "$BACKUP_VOLUME_ID" ] && [ "$BACKUP_VOLUME_ID" != "None" ]; then
-        aws ec2 create-tags --resources ${BACKUP_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=exe-ctr-backup --region ${REGION}
+        aws ec2 create-tags --resources ${BACKUP_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=${BACKUP_VOLUME_TYPE} --region ${REGION}
         echo "Tagged backup volume ${BACKUP_VOLUME_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
     fi
 
@@ -498,14 +517,16 @@ EOF
         exit 1
     fi
 
-    # Setup volumes on metal instances
-    echo ""
-    echo "=========================================="
-    echo "Setting up volumes (swap, zpool)"
-    echo "=========================================="
+fi # end of new-instance provisioning (skipped during re-provision)
 
-    # Create a script to setup the volumes on the remote machine
-    cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
+# Setup volumes on metal instances
+echo ""
+echo "=========================================="
+echo "Setting up volumes (swap, zpool)"
+echo "=========================================="
+
+# Create a script to setup the volumes on the remote machine
+cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
 #!/bin/bash
 set -euo pipefail
 
@@ -538,6 +559,24 @@ resolve_by_id() {
   echo "WARNING: no /dev/disk/by-id link found for $dev, using raw path" >&2
   echo "$dev"
 }
+
+# Clean up any existing volume state from a previous run
+echo "=== Cleaning up previous volume state ==="
+# Disable all swap partitions on NVMe devices
+for swp in $(swapon --show=NAME --noheadings 2>/dev/null | grep '/dev/nvme'); do
+  echo "Disabling swap on $swp"
+  sudo swapoff "$swp" || true
+done
+# Remove NVMe swap entries from fstab
+sudo sed -i '\|^/dev/nvme.*swap|d' /etc/fstab
+
+# Destroy existing ZFS pools
+for pool in tank backup; do
+  if sudo zpool list "$pool" &>/dev/null; then
+    echo "Destroying ZFS pool $pool"
+    sudo zpool destroy -f "$pool"
+  fi
+done
 
 # Detect NVMe devices by model string
 echo "=== Detecting NVMe devices ==="
@@ -699,27 +738,25 @@ echo "=== Volume setup complete ==="
 swapon --show
 VOLUME_SETUP_SCRIPT
 
-    # Copy and execute the volume setup script
-    echo "Setting up volumes (swap, zpool) on ${MACHINE_NAME}..."
-    if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        /tmp/setup-volumes.sh \
-        "ubuntu@${MACHINE_NAME}:~/"; then
-        echo "ERROR: Failed to copy volume setup script"
-        rm -f /tmp/setup-volumes.sh
-        exit 1
-    fi
-
-    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "ubuntu@${MACHINE_NAME}" \
-        'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
-        echo "ERROR: Volume setup failed"
-        rm -f /tmp/setup-volumes.sh
-        exit 1
-    fi
-
+# Copy and execute the volume setup script
+echo "Setting up volumes (swap, zpool) on ${MACHINE_NAME}..."
+if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    /tmp/setup-volumes.sh \
+    "ubuntu@${MACHINE_NAME}:~/"; then
+    echo "ERROR: Failed to copy volume setup script"
     rm -f /tmp/setup-volumes.sh
+    exit 1
+fi
 
-fi # end of new-instance provisioning (skipped during re-provision)
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "ubuntu@${MACHINE_NAME}" \
+    'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
+    echo "ERROR: Volume setup failed"
+    rm -f /tmp/setup-volumes.sh
+    exit 1
+fi
+
+rm -f /tmp/setup-volumes.sh
 
 ###############################################
 # Build cloud-hypervisor artifacts on remote
