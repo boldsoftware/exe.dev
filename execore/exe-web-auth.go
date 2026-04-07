@@ -34,8 +34,8 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
-	"exe.dev/region"
 	"exe.dev/pow"
+	"exe.dev/region"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
 )

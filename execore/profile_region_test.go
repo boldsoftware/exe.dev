@@ -14,7 +14,6 @@ import (
 	"exe.dev/sqlite"
 )
 
-
 // doProfileRegionRequest makes a POST /api/profile/region request using a cookie.
 func doProfileRegionRequest(t *testing.T, s *Server, cookie, regionCode string) *http.Response {
 	t.Helper()
@@ -145,5 +144,4 @@ func TestAPIProfileIncludesRegionFields(t *testing.T) {
 			t.Errorf("availableRegions[%q].display is empty", r.Code)
 		}
 	}
-
 }
