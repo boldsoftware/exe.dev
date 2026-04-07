@@ -1,8 +1,8 @@
-// Phase 2: Separate staging into tag:staging.
+// Phase 3a: Add tag:prod and group:prod (additive).
 //
 // The *:* wildcard is still in place — no traffic is disrupted.
-// Adds tag:staging with an internal-zone grant and an SSH rule for devs.
-// The new rules are additive, preparing for the eventual *:* removal.
+// Adds tag:prod, group:prod, the prod-internal grant, and the prod SSH rule.
+// Retagging happens in Step 3b. The wildcard goes away in Step 3c.
 {
   "groups": {
     "group:dev": [
@@ -15,17 +15,29 @@
       "philip@bold.dev",
       "shaun@bold.dev",
     ],
+    "group:prod": [
+      "bryan-exe-prod@passkey",
+      "david-exe-prod@passkey",
+      "evan-exe-prod@passkey",
+      "ian-exe-prod@passkey",
+      "josh-prod@passkey",
+      "maisem-exe-prod@passkey",
+      "philip-exe-prod@passkey",
+      "shaunloo@passkey",
+    ],
   },
 
   "tagOwners": {
     "tag:server": ["autogroup:admin"],
     "tag:island": ["autogroup:admin"],
     "tag:staging": ["autogroup:admin"],
+    "tag:prod": ["autogroup:admin"],
   },
 
   "grants": [
     { "src": ["*"], "dst": ["*"], "ip": ["*"] },
     { "src": ["tag:staging"], "dst": ["tag:staging"], "ip": ["*"] },
+    { "src": ["tag:prod"], "dst": ["tag:prod"], "ip": ["*"] },
   ],
 
   "ssh": [
@@ -56,6 +68,14 @@
       "dst": ["tag:staging"],
       "users": ["autogroup:nonroot", "root"],
     },
+    // group:prod (and tag:prod itself) can SSH to prod.
+    // group:prod is the passkey-authenticated account; deliberate key flip required.
+    {
+      "action": "accept",
+      "src": ["group:prod", "tag:prod"],
+      "dst": ["tag:prod"],
+      "users": ["autogroup:nonroot", "root"],
+    },
   ],
 
   "nodeAttrs": [
@@ -79,6 +99,11 @@
     {
       "src": "tag:staging",
       "accept": ["tag:staging:9080"],
+    },
+    // Prod-internal traffic.
+    {
+      "src": "tag:prod",
+      "accept": ["tag:prod:9080", "tag:prod:2224"],
     },
     // josh's laptop can reach everything.
     {
