@@ -3,6 +3,7 @@ package exelet
 import (
 	"context"
 	"sync"
+	"time"
 
 	"exe.dev/exelet/services"
 )
@@ -46,9 +47,25 @@ func (s *Exelet) Stop(ctx context.Context) error {
 	// can still poll migration status during the drain window. Once
 	// services are done, send GOAWAY so clients get a clean closure
 	// instead of a connection reset on process exit.
+	//
+	// GracefulStop alone can hang indefinitely when a controller keeps
+	// sending RPCs on an existing HTTP/2 connection (GOAWAY only prevents
+	// *new* connections, not new streams on existing ones). Use a hard
+	// deadline and fall back to Stop() to guarantee we exit.
 	if s.grpcServer != nil {
 		s.log.DebugContext(ctx, "stopping gRPC server")
-		s.grpcServer.GracefulStop()
+		graceDone := make(chan struct{})
+		go func() {
+			s.grpcServer.GracefulStop()
+			close(graceDone)
+		}()
+		select {
+		case <-graceDone:
+			s.log.DebugContext(ctx, "gRPC server stopped gracefully")
+		case <-time.After(5 * time.Second):
+			s.log.WarnContext(ctx, "gRPC graceful stop timed out, forcing stop")
+			s.grpcServer.Stop()
+		}
 	}
 
 	return ctxErr
