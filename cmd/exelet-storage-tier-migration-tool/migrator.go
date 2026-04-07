@@ -268,6 +268,26 @@ func (m *Migrator) runMigration(ctx context.Context, t *exeletTarget, inst *inst
 		Live:       m.live,
 	})
 	if err != nil {
+		// If the exelet is shutting down (or otherwise unavailable),
+		// skip this attempt and let the next interval retry.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable {
+			slog.WarnContext(ctx, "exelet unavailable, skipping migration until next interval",
+				"instance", inst.id, "exelet", t.addr, "error", st.Message())
+			m.collector.Add(MigrationResult{
+				InstanceID:  inst.id,
+				Exelet:      t.addr,
+				SourcePool:  inst.currentPool,
+				TargetPool:  targetPool,
+				State:       "skipped",
+				Error:       st.Message(),
+				StartedAt:   startTime,
+				CompletedAt: time.Now(),
+				Duration:    time.Since(startTime),
+				DurationStr: time.Since(startTime).Truncate(time.Millisecond).String(),
+			})
+			return
+		}
+
 		// If the circuit breaker is tripped, report and let the caller
 		// handle cooldown — don't spam the exelet.
 		if st, ok := status.FromError(err); ok && st.Code() == codes.FailedPrecondition {

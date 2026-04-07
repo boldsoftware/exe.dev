@@ -89,7 +89,7 @@ func (d dashboardModel) View() string {
 	var b strings.Builder
 
 	elapsed := time.Since(d.startTime).Truncate(time.Second)
-	total, successes, failures := d.collector.Counts()
+	total, successes, failures, skipped := d.collector.Counts()
 	avgDur := d.collector.AvgDuration().Truncate(time.Millisecond)
 
 	// Title
@@ -104,6 +104,10 @@ func (d dashboardModel) View() string {
 	b.WriteString(successStyle.Render(fmt.Sprintf("OK: %d", successes)))
 	b.WriteString("  ")
 	b.WriteString(failureStyle.Render(fmt.Sprintf("Fail: %d", failures)))
+	if skipped > 0 {
+		b.WriteString("  ")
+		b.WriteString(dimStyle.Render(fmt.Sprintf("Skip: %d", skipped)))
+	}
 	if successes > 0 {
 		b.WriteString(fmt.Sprintf("  Avg: %s", avgDur))
 	}

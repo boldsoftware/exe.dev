@@ -31,6 +31,7 @@ type Report struct {
 	Total      int               `json:"total"`
 	Successes  int               `json:"successes"`
 	Failures   int               `json:"failures"`
+	Skipped    int               `json:"skipped"`
 	Stats      DurationStats     `json:"stats"`
 	PerPool    map[string]int    `json:"per_pool"`
 	PerExelet  map[string]int    `json:"per_exelet"`
@@ -71,18 +72,21 @@ func (r *ReportCollector) Results() []MigrationResult {
 	return out
 }
 
-func (r *ReportCollector) Counts() (total, successes, failures int) {
+func (r *ReportCollector) Counts() (total, successes, failures, skipped int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, res := range r.results {
 		total++
-		if res.State == "completed" {
+		switch res.State {
+		case "completed":
 			successes++
-		} else {
+		case "skipped":
+			skipped++
+		default:
 			failures++
 		}
 	}
-	return total, successes, failures
+	return total, successes, failures, skipped
 }
 
 func (r *ReportCollector) AvgDuration() time.Duration {
@@ -132,10 +136,13 @@ func (r *ReportCollector) Generate() Report {
 	var successDurations []time.Duration
 	for _, res := range r.results {
 		report.Total++
-		if res.State == "completed" {
+		switch res.State {
+		case "completed":
 			report.Successes++
 			successDurations = append(successDurations, res.Duration)
-		} else {
+		case "skipped":
+			report.Skipped++
+		default:
 			report.Failures++
 		}
 		report.PerPool[res.TargetPool]++
@@ -203,6 +210,7 @@ func (r *ReportCollector) PrintSummary() {
 	fmt.Printf("Total:      %d\n", report.Total)
 	fmt.Printf("Successes:  %d\n", report.Successes)
 	fmt.Printf("Failures:   %d\n", report.Failures)
+	fmt.Printf("Skipped:    %d\n", report.Skipped)
 	if report.Total > 0 {
 		fmt.Printf("Success %%:  %.1f%%\n", float64(report.Successes)/float64(report.Total)*100)
 	}
