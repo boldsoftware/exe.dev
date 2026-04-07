@@ -3,7 +3,7 @@
 title: "ssh"
 description: "SSH into a VM"
 subheading: "9. CLI Reference"
-suborder: 16
+suborder: 17
 published: true
 ---
 

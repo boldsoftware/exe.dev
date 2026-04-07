@@ -44,6 +44,7 @@ func (ss *SSHServer) handleSetRegionCommand(ctx context.Context, cc *exemenu.Com
 	}); err != nil {
 		return cc.Errorf("failed to update region: %v", err)
 	}
+	cc.User.Region = chosen.Code
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]string{"region": chosen.Code, "region_display": chosen.Display})
