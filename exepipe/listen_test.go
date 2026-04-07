@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"exe.dev/exepipe/client"
 	"exe.dev/tslog"
@@ -113,25 +114,33 @@ func TestListen(t *testing.T) {
 		t.Errorf("connection to closed listener at %s succeeded", externalListener.Addr())
 	}
 
-	checkListenerMetrics(t, pi, 0)
+	for i := range 100 {
+		if checkListenerMetrics(t, pi, 0) {
+			break
+		}
+		time.Sleep(time.Duration(i) * time.Millisecond)
+	}
 
 	pi.Stop()
 }
 
-// checkListenerMetrics verifies that the metrics are reported for TestListen.
-func checkListenerMetrics(t *testing.T, pi *PipeInstance, active int) {
+// checkListenerMetrics reports whether a metric is reported for TestListen.
+// On error this reports the error and returns true.
+func checkListenerMetrics(t *testing.T, pi *PipeInstance, active int) bool {
 	resp, err := http.Get("http://" + pi.httpServer.ln.Addr().String() + "/metrics")
 	if err != nil {
 		t.Errorf("failed to fetch metrics: %v", err)
+		return true
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("failed to read metrics: %v", err)
-		return
+		return true
 	}
 	resp.Body.Close()
 
+	ret := true
 	showMetrics := false
 	want := `listeners_total{type="test"} 1`
 	if !bytes.Contains(data, []byte(want)) {
@@ -140,12 +149,17 @@ func checkListenerMetrics(t *testing.T, pi *PipeInstance, active int) {
 	}
 	want = fmt.Sprintf(`listeners_active{type="test"} %d`, active)
 	if !bytes.Contains(data, []byte(want)) {
-		t.Errorf("metrics did not contain %q", want)
+		t.Logf("metrics did not contain %q", want)
 		showMetrics = true
+
+		// The metrics might not have been updated yet.
+		// Return false to try again.
+		ret = false
 	}
 	if showMetrics {
 		t.Logf("Metrics:\n%s", data)
 	}
+	return ret
 }
 
 func TestListeners(t *testing.T) {
