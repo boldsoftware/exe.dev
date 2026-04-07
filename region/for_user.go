@@ -144,18 +144,20 @@ var countryToRegion = map[string]Region{
 	"IR": mustByCode("fra"),
 	"PK": mustByCode("fra"), // routes via DXB anycast; DXB→FRA is much shorter than DXB→TYO
 
-	// South & Southeast Asia → Tokyo
-	"IN": mustByCode("tyo"),
-	"BD": mustByCode("tyo"),
-	"LK": mustByCode("tyo"),
-	"SG": mustByCode("tyo"),
-	"MY": mustByCode("tyo"),
-	"TH": mustByCode("tyo"),
-	"VN": mustByCode("tyo"),
-	"PH": mustByCode("tyo"),
-	"ID": mustByCode("tyo"),
-	"MM": mustByCode("tyo"),
-	"KH": mustByCode("tyo"),
+	// South Asia → Singapore
+	"IN": mustByCode("sgp"),
+	"BD": mustByCode("sgp"),
+	"LK": mustByCode("sgp"),
+
+	// Southeast Asia → Singapore
+	"SG": mustByCode("sgp"),
+	"MY": mustByCode("sgp"),
+	"TH": mustByCode("sgp"),
+	"VN": mustByCode("sgp"),
+	"PH": mustByCode("sgp"),
+	"ID": mustByCode("sgp"),
+	"MM": mustByCode("sgp"),
+	"KH": mustByCode("sgp"),
 
 	// East Asia → Tokyo
 	"JP": mustByCode("tyo"),

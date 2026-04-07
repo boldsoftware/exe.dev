@@ -132,8 +132,8 @@ func TestForUser(t *testing.T) {
 
 		// Country code mapping — Asia
 		{"Japan", "JP", 0, 0, "tyo"},
-		{"India", "IN", 0, 0, "tyo"},
-		{"Singapore", "SG", 0, 0, "tyo"},
+		{"India", "IN", 0, 0, "sgp"},
+		{"Singapore", "SG", 0, 0, "sgp"},
 		{"South Korea", "KR", 0, 0, "tyo"},
 
 		// Canada east/west split (same as US)
