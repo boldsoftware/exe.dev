@@ -33,7 +33,7 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
-Region: pdx (Oregon, USA)
+Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ exit
@@ -71,7 +71,7 @@ Your new ssh key has been added to your existing account.
 
 PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
-Region: pdx (Oregon, USA)
+Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-3) ← current
   Public Key: SSH_PUBKEY (key-1)
@@ -110,7 +110,7 @@ Your new ssh key has been added to your existing account.
 
 PROMPT ▶ whoami
 Email Address: TestRegisterMultipleKeys@example.com
-Region: pdx (Oregon, USA)
+Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-4) ← current
   Public Key: SSH_PUBKEY (key-1)

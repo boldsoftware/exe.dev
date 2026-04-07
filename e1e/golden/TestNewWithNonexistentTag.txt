@@ -33,7 +33,7 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ whoami
 Email Address: TestNewWithNonexistentTag@example.com
-Region: pdx (Oregon, USA)
+Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ new --name=BOX_NAME --image=alpine:nonexistent-tag-xyz123

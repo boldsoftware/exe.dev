@@ -33,7 +33,7 @@ Welcome to EXE.DEV!
 
 PROMPT ▶ whoami
 Email Address: TestIntegrationsBearerFlag@example.com
-Region: pdx (Oregon, USA)
+Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ integrations add http-proxy --name=bearerproxy --target=https://example.com --bearer=my-secret-token
