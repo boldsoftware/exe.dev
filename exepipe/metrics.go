@@ -10,6 +10,8 @@ type metrics struct {
 	sessionsTotal    *prometheus.CounterVec
 	sessionsInFlight *prometheus.GaugeVec
 	bytesTotal       *prometheus.CounterVec
+	listenersTotal   *prometheus.CounterVec
+	listenersActive  *prometheus.GaugeVec
 }
 
 // newMetrics creates and registers execopy metrics.
@@ -34,11 +36,25 @@ func newMetrics(registry *prometheus.Registry) *metrics {
 		bytesTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "copy_bytes_total",
-				Help: "total number of bytes copied.",
+				Help: "Total number of bytes copied.",
+			},
+			labels,
+		),
+		listenersTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "listeners_total",
+				Help: "Total number of listeners.",
+			},
+			labels,
+		),
+		listenersActive: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "listeners_active",
+				Help: "Current number of listeners.",
 			},
 			labels,
 		),
 	}
-	registry.MustRegister(m.sessionsTotal, m.sessionsInFlight, m.bytesTotal)
+	registry.MustRegister(m.sessionsTotal, m.sessionsInFlight, m.bytesTotal, m.listenersTotal, m.listenersActive)
 	return m
 }

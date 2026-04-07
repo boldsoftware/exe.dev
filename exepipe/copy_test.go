@@ -77,49 +77,15 @@ func TestCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer cli.Close()
 
 	if err := cli.Copy(t.Context(), externalServerConn, internalClient, "test"); err != nil {
 		t.Fatal(err)
 	}
 
-	// Send data both ways across the connections.
-
-	const count = 1024
-
-	fromBuf1 := make([]byte, count)
-	rand.Read(fromBuf1) // never fails
-
-	fromBuf2 := make([]byte, count)
-	rand.Read(fromBuf2)
-
-	n, err := externalClient.Write(fromBuf1)
-	if n != count || err != nil {
-		t.Fatalf("bad Write: count %d err %v", n, err)
-	}
-
-	n, err = internalServerConn.Write(fromBuf2)
-	if n != count || err != nil {
-		t.Fatalf("bad Write: count %d err %v", n, err)
-	}
-
-	toBuf1 := make([]byte, count)
-	n, err = io.ReadFull(externalClient, toBuf1)
-	if n != count || err != nil {
-		t.Fatalf("bad Read: count %d err %v", n, err)
-	}
-
-	toBuf2 := make([]byte, count)
-	n, err = io.ReadFull(internalServerConn, toBuf2)
-	if n != count || err != nil {
-		t.Fatalf("bad Read: count %d err %v", n, err)
-	}
-
-	if !bytes.Equal(fromBuf1, toBuf2) {
-		t.Fatalf("bad copy: got %q want %q", toBuf2, fromBuf1)
-	}
-	if !bytes.Equal(fromBuf2, toBuf1) {
-		t.Fatalf("bad copy: got %q want %q", toBuf1, fromBuf2)
-	}
+	// Test that data is copied between the external client
+	// and the internal server.
+	testCopy(t, externalClient, internalServerConn)
 
 	externalClient.Close()
 	internalServerConn.Close()
@@ -159,6 +125,47 @@ func testConn(t *testing.T, ln net.Listener) (clientConn, serverConn net.Conn) {
 	}
 
 	return clientConn, serverConn
+}
+
+// testCopy takes a pair of descriptors and tests that data is
+// copied between them.
+func testCopy(t *testing.T, c1, c2 net.Conn) {
+	const count = 1024
+
+	fromBuf1 := make([]byte, count)
+	rand.Read(fromBuf1) // never fails
+
+	fromBuf2 := make([]byte, count)
+	rand.Read(fromBuf2)
+
+	n, err := c1.Write(fromBuf1)
+	if n != count || err != nil {
+		t.Fatalf("bad Write: count %d err %v", n, err)
+	}
+
+	n, err = c2.Write(fromBuf2)
+	if n != count || err != nil {
+		t.Fatalf("bad Write: count %d err %v", n, err)
+	}
+
+	toBuf1 := make([]byte, count)
+	n, err = io.ReadFull(c1, toBuf1)
+	if n != count || err != nil {
+		t.Fatalf("bad Read: count %d err %v", n, err)
+	}
+
+	toBuf2 := make([]byte, count)
+	n, err = io.ReadFull(c2, toBuf2)
+	if n != count || err != nil {
+		t.Fatalf("bad Read: count %d err %v", n, err)
+	}
+
+	if !bytes.Equal(fromBuf1, toBuf2) {
+		t.Fatalf("bad copy: got %q want %q", toBuf2, fromBuf1)
+	}
+	if !bytes.Equal(fromBuf2, toBuf1) {
+		t.Fatalf("bad copy: got %q want %q", toBuf1, fromBuf2)
+	}
 }
 
 // checkMetrics verifies that the metrics are recorded for TestCopy.

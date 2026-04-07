@@ -2,10 +2,10 @@ package exepipe
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +66,7 @@ func TestListen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer cli.Close()
 
 	tcpAddr := vmListener.Addr().(*net.TCPAddr)
 	if err := cli.Listen(t.Context(), "key", externalListener, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
@@ -100,43 +101,9 @@ func TestListen(t *testing.T) {
 
 	// Now anything we write to externalClient should be sent to
 	// vmServer, and vice-versa.
+	testCopy(t, externalClient, vmServer)
 
-	const count = 1024
-
-	fromBuf1 := make([]byte, count)
-	rand.Read(fromBuf1) // never fails
-
-	fromBuf2 := make([]byte, count)
-	rand.Read(fromBuf2)
-
-	n, err := externalClient.Write(fromBuf1)
-	if n != count || err != nil {
-		t.Fatalf("bad Write: count %d err %v", n, err)
-	}
-
-	n, err = vmServer.Write(fromBuf2)
-	if n != count || err != nil {
-		t.Fatalf("bad Write: count %d err %v", n, err)
-	}
-
-	toBuf1 := make([]byte, count)
-	n, err = io.ReadFull(externalClient, toBuf1)
-	if n != count || err != nil {
-		t.Fatalf("bad Read: count %d err %v", n, err)
-	}
-
-	toBuf2 := make([]byte, count)
-	n, err = io.ReadFull(vmServer, toBuf2)
-	if n != count || err != nil {
-		t.Fatalf("bad Read: count %d err %v", n, err)
-	}
-
-	if !bytes.Equal(fromBuf1, toBuf2) {
-		t.Fatalf("bad copy: got %q want %q", toBuf2, fromBuf1)
-	}
-	if !bytes.Equal(fromBuf2, toBuf1) {
-		t.Fatalf("bad copy: got %q want %q", toBuf1, fromBuf2)
-	}
+	checkListenerMetrics(t, pi, 1)
 
 	// Shut down the listener.
 	if err := cli.Unlisten(t.Context(), "key"); err != nil {
@@ -146,7 +113,39 @@ func TestListen(t *testing.T) {
 		t.Errorf("connection to closed listener at %s succeeded", externalListener.Addr())
 	}
 
+	checkListenerMetrics(t, pi, 0)
+
 	pi.Stop()
+}
+
+// checkListenerMetrics verifies that the metrics are reported for TestListen.
+func checkListenerMetrics(t *testing.T, pi *PipeInstance, active int) {
+	resp, err := http.Get("http://" + pi.httpServer.ln.Addr().String() + "/metrics")
+	if err != nil {
+		t.Errorf("failed to fetch metrics: %v", err)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("failed to read metrics: %v", err)
+		return
+	}
+	resp.Body.Close()
+
+	showMetrics := false
+	want := `listeners_total{type="test"} 1`
+	if !bytes.Contains(data, []byte(want)) {
+		t.Errorf("metrics did not contain %q", want)
+		showMetrics = true
+	}
+	want = fmt.Sprintf(`listeners_active{type="test"} %d`, active)
+	if !bytes.Contains(data, []byte(want)) {
+		t.Errorf("metrics did not contain %q", want)
+		showMetrics = true
+	}
+	if showMetrics {
+		t.Logf("Metrics:\n%s", data)
+	}
 }
 
 func TestListeners(t *testing.T) {
@@ -165,6 +164,7 @@ func TestListeners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer cli.Close()
 
 	// Test fetching listeners around the packet limit.
 	sofar := 0
@@ -175,6 +175,7 @@ func TestListeners(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer listener.Close()
 
 			if err := cli.Listen(t.Context(), fmt.Sprintf("key%d", i), listener, fmt.Sprintf("host%d", i), i+1, "test"); err != nil {
 				t.Fatal(err)

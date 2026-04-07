@@ -51,6 +51,12 @@ func (p *piping) start(ctx context.Context) error {
 
 // stop stops piping.
 func (p *piping) stop(ctx context.Context) {
+	p.stopConns(ctx)
+	p.stopListeners(ctx)
+}
+
+// stopConns stops all copying connections.
+func (p *piping) stopConns(ctx context.Context) {
 	p.connsMu.Lock()
 	defer p.connsMu.Unlock()
 
@@ -58,6 +64,17 @@ func (p *piping) stop(ctx context.Context) {
 		conn.Close()
 	}
 	clear(p.conns)
+}
+
+// stopListeners stops all listening conections.
+func (p *piping) stopListeners(ctx context.Context) {
+	p.listenersMu.Lock()
+	defer p.listenersMu.Unlock()
+
+	for _, ln := range p.listeners {
+		ln.ln.Close()
+	}
+	clear(p.listeners)
 }
 
 // addConn adds a network connection to the piping map.
@@ -218,6 +235,10 @@ func (p *piping) Listen(ctx context.Context, key string, fd int, host string, po
 
 // doListen implements Listen, running in a separate goroutine.
 func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, host string, port int, typ string) {
+	p.pipeInstance.metrics.listenersTotal.WithLabelValues(typ).Inc()
+	p.pipeInstance.metrics.listenersActive.WithLabelValues(typ).Inc()
+	defer p.pipeInstance.metrics.listenersActive.WithLabelValues(typ).Dec()
+
 	defer p.rmListener(ctx, key)
 	defer ln.Close()
 
