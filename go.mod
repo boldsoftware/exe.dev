@@ -32,8 +32,8 @@ require (
 	github.com/charmbracelet/wish v1.4.7
 	github.com/charmbracelet/x/ansi v0.10.1
 	github.com/coder/websocket v1.8.12
-	github.com/containerd/containerd v1.7.23
-	github.com/containerd/containerd/v2 v2.1.4
+	github.com/containerd/containerd v1.7.29
+	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.1
 	github.com/creack/pty v1.1.24
