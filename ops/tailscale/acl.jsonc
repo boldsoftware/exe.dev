@@ -1,8 +1,7 @@
-// Phase 1: Tag standalone machines as islands (tag:island).
+// Phase 2: Separate staging into tag:staging.
 //
 // The *:* wildcard is still in place — no traffic is disrupted.
-// Island machines are self-contained and need no tailscale connectivity.
-// No network grants for tag:island — that's the point.
+// Adds tag:staging with an internal-zone grant and an SSH rule for devs.
 // The new rules are additive, preparing for the eventual *:* removal.
 {
   "groups": {
@@ -21,9 +20,13 @@
   "tagOwners": {
     "tag:server": ["autogroup:admin"],
     "tag:island": ["autogroup:admin"],
+    "tag:staging": ["autogroup:admin"],
   },
 
-  "grants": [{ "src": ["*"], "dst": ["*"], "ip": ["*"] }],
+  "grants": [
+    { "src": ["*"], "dst": ["*"], "ip": ["*"] },
+    { "src": ["tag:staging"], "dst": ["tag:staging"], "ip": ["*"] },
+  ],
 
   "ssh": [
     {
@@ -45,6 +48,14 @@
       "dst": ["tag:island"],
       "users": ["autogroup:nonroot", "root"],
     },
+    // group:dev (and tag:staging itself) can SSH to staging.
+    // No key flip needed for staging.
+    {
+      "action": "accept",
+      "src": ["group:dev", "tag:staging"],
+      "dst": ["tag:staging"],
+      "users": ["autogroup:nonroot", "root"],
+    },
   ],
 
   "nodeAttrs": [
@@ -63,6 +74,11 @@
     {
       "src": "tag:island",
       "accept": ["tag:island:22"],
+    },
+    // Staging-internal traffic.
+    {
+      "src": "tag:staging",
+      "accept": ["tag:staging:9080"],
     },
     // josh's laptop can reach everything.
     {
