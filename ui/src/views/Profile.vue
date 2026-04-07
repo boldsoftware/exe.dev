@@ -412,10 +412,6 @@
     <div v-if="showRegionModal" class="modal-overlay" @click.self="showRegionModal = false">
       <div class="modal-box">
         <div class="modal-title">Change Region</div>
-        <p v-if="data?.suggestedRegion && data.suggestedRegion !== data.user.region" class="modal-text">
-          Suggested based on your location:
-          <strong>{{ data.availableRegions.find(r => r.code === data!.suggestedRegion)?.display ?? data.suggestedRegion.toUpperCase() }}</strong>
-        </p>
         <div class="form-group">
           <select v-model="selectedRegion" class="form-input" :disabled="regionSaving">
             <option v-for="r in data?.availableRegions ?? []" :key="r.code" :value="r.code">

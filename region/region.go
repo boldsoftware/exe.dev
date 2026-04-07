@@ -57,14 +57,19 @@ func All() []Region {
 
 // AvailableFor returns the active regions a user may select given their current
 // assigned region code. A region is available if it is active and either open to
-// all users (!RequiresUserMatch) or the user is already assigned to it.
-func AvailableFor(currentRegionCode string) []Region {
+// all users (!RequiresUserMatch), the user is already assigned to it, or its code
+// appears in the optional unlockedCodes list (e.g. regions covered by team exelets).
+func AvailableFor(currentRegionCode string, unlockedCodes ...string) []Region {
+	unlocked := make(map[string]bool, len(unlockedCodes))
+	for _, c := range unlockedCodes {
+		unlocked[c] = true
+	}
 	var out []Region
 	for _, r := range allRegions {
 		if !r.Active {
 			continue
 		}
-		if !r.RequiresUserMatch || r.Code == currentRegionCode {
+		if !r.RequiresUserMatch || r.Code == currentRegionCode || unlocked[r.Code] {
 			out = append(out, r)
 		}
 	}

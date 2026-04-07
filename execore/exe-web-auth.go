@@ -34,6 +34,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
+	"exe.dev/region"
 	"exe.dev/pow"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
@@ -706,7 +707,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, pending.Email, false, "")
+		userID, err = s.createUserRecord(ctx, queries, pending.Email, false, region.Default().Code)
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -1649,8 +1650,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	if isNewUser {
+		userRegion := s.regionForIP(r.Context(), ip.String())
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe, ip.String())
+			userID, err = s.createUserRecord(ctx, queries, addr, isLoginWithExe, userRegion.Code)
 			if err != nil {
 				return err
 			}

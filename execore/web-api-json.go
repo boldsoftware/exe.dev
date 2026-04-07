@@ -18,7 +18,6 @@ import (
 	"exe.dev/billing/entitlement"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
-	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/region"
 	"exe.dev/stage"
@@ -256,7 +255,6 @@ type jsonProfileData struct {
 	InviteCount        int64               `json:"inviteCount"`
 	CanRequestInvites  bool                `json:"canRequestInvites"`
 	AvailableRegions   []jsonRegionOption  `json:"availableRegions"`
-	SuggestedRegion    string              `json:"suggestedRegion"`
 }
 
 type jsonIntegrationInfo struct {
@@ -874,16 +872,32 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		profile.Credits.Invoices = nonNil(jsonInvoices)
 	}
 
-	// Available regions and GeoIP suggestion.
-	available := region.AvailableFor(user.Region)
+	// Available regions.
+	available := s.availableRegionsForUser(r.Context(), userID, user.Region)
 	profile.AvailableRegions = make([]jsonRegionOption, len(available))
 	for i, r := range available {
 		profile.AvailableRegions[i] = jsonRegionOption{Code: r.Code, Display: r.Display}
 	}
-	suggested := s.regionForIP(r.Context(), exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
-	profile.SuggestedRegion = suggested.Code
 
 	writeJSONOK(w, profile)
+}
+
+// availableRegionsForUser returns the regions the user may select, including any
+// regions unlocked via their team's private exelet assignments.
+func (s *Server) availableRegionsForUser(ctx context.Context, userID, currentRegionCode string) []region.Region {
+	var unlockedCodes []string
+	if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID); err == nil {
+		if addrs, err := withRxRes1(s, ctx, (*exedb.Queries).ListTeamExeletsForTeam, team.TeamID); err == nil {
+			seen := make(map[string]bool)
+			for _, addr := range addrs {
+				if r, err := region.ParseExeletRegion(addr); err == nil && !seen[r.Code] {
+					seen[r.Code] = true
+					unlockedCodes = append(unlockedCodes, r.Code)
+				}
+			}
+		}
+	}
+	return region.AvailableFor(currentRegionCode, unlockedCodes...)
 }
 
 // handleAPIProfileRegion handles POST /api/profile/region to update the user's preferred region.
@@ -902,7 +916,7 @@ func (s *Server) handleAPIProfileRegion(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	available := region.AvailableFor(user.Region)
+	available := s.availableRegionsForUser(r.Context(), userID, user.Region)
 	var chosen *region.Region
 	for _, r := range available {
 		if r.Code == req.Region {

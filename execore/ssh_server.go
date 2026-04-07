@@ -718,8 +718,9 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 
 		cc := &exemenu.CommandContext{
 			User: &exemenu.UserInfo{
-				ID:    user.UserID,
-				Email: user.Email,
+				ID:     user.UserID,
+				Email:  user.Email,
+				Region: user.Region,
 			},
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
@@ -1688,8 +1689,9 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, prompt stri
 		// Create command context for completion
 		cc := &exemenu.CommandContext{
 			User: &exemenu.UserInfo{
-				ID:    user.UserID,
-				Email: user.Email,
+				ID:     user.UserID,
+				Email:  user.Email,
+				Region: user.Region,
 			},
 			PublicKey:  publicKey,
 			Output:     s,

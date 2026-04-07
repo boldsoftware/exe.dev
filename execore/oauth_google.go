@@ -245,10 +245,11 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 	}
 
 	// Web flow: create user
+	userRegion := s.regionForIP(ctx, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
 	var userID string
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
+		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe, userRegion.Code)
 		if err != nil {
 			return err
 		}

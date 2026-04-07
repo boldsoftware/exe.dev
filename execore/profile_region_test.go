@@ -146,8 +146,4 @@ func TestAPIProfileIncludesRegionFields(t *testing.T) {
 		}
 	}
 
-	// suggestedRegion must be a valid region code.
-	if _, err := region.ByCode(profile.SuggestedRegion); err != nil {
-		t.Errorf("suggestedRegion %q is not a valid region code", profile.SuggestedRegion)
-	}
 }

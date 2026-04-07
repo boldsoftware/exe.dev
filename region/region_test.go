@@ -187,6 +187,28 @@ func TestCountryMapOnlyActiveRegions(t *testing.T) {
 	}
 }
 
+func TestAvailableForUnlocked(t *testing.T) {
+	// A pdx user with fra unlocked (e.g. via team exelet) should see fra.
+	got := AvailableFor("pdx", "fra")
+	codes := make(map[string]bool, len(got))
+	for _, r := range got {
+		codes[r.Code] = true
+	}
+	if !codes["fra"] {
+		t.Error("fra should be available via unlockedCodes")
+	}
+	if codes["tyo"] {
+		t.Error("tyo should remain locked")
+	}
+	// Inactive regions must never appear even if explicitly unlocked.
+	got2 := AvailableFor("pdx", "dev", "ci")
+	for _, r := range got2 {
+		if r.Code == "dev" || r.Code == "ci" {
+			t.Errorf("inactive region %q must not appear even when unlocked", r.Code)
+		}
+	}
+}
+
 func TestCountryMapKeysUppercase(t *testing.T) {
 	for cc := range countryToRegion {
 		if cc != strings.ToUpper(cc) {

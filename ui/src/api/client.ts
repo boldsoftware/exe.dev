@@ -230,7 +230,6 @@ export interface ProfileData {
   canRequestInvites: boolean
   boxes: { name: string; status: string }[]
   availableRegions: RegionOption[]
-  suggestedRegion: string
 }
 
 export interface IntegrationsData {

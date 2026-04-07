@@ -3140,9 +3140,9 @@ func (s *Server) regionForIP(ctx context.Context, ip string) region.Region {
 // then returns the new user ID. All three inserts happen in the caller's transaction.
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
-// clientIP is used for GeoIP-based region assignment; pass "" to use the default region.
-// regionForIP uses the IPQS cache, so repeated calls for the same IP are cheap.
-func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool, clientIP string) (string, error) {
+// regionCode is the region to assign to the new user. Pass region.Default().Code if
+// unknown. Must be resolved by the caller before entering any transaction.
+func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, emailAddr string, createdForLoginWithExe bool, regionCode string) (string, error) {
 	if !signupAllowlistPermits(s.env.SignupAllowlist, emailAddr) {
 		return "", fmt.Errorf("email not on signup allowlist: %s", emailAddr)
 	}
@@ -3156,9 +3156,8 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		return "", fmt.Errorf("failed to canonicalize email: %w", err)
 	}
 
-	userRegion := region.Default()
-	if clientIP != "" {
-		userRegion = s.regionForIP(ctx, clientIP)
+	if regionCode == "" {
+		regionCode = region.Default().Code
 	}
 
 	if err := queries.InsertUser(ctx, exedb.InsertUserParams{
@@ -3166,7 +3165,7 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		Email:                  emailAddr,
 		CanonicalEmail:         &canonicalEmail,
 		CreatedForLoginWithExe: createdForLoginWithExe,
-		Region:                 userRegion.Code,
+		Region:                 regionCode,
 	}); err != nil {
 		return "", fmt.Errorf("failed to create user: %w", err)
 	}
@@ -3642,7 +3641,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 
 	// First create the user and allocation in the database
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		userID, err := s.createUserRecord(ctx, queries, email, false, "")
+		userID, err := s.createUserRecord(ctx, queries, email, false, region.Default().Code)
 		if err != nil {
 			return err
 		}

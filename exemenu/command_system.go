@@ -224,8 +224,9 @@ type ShellSession interface {
 
 // UserInfo provides the minimal user details required by menu commands.
 type UserInfo struct {
-	ID    string
-	Email string
+	ID     string
+	Email  string
+	Region string
 }
 
 // slog returns the logger for this context, defaulting to slog.Default() if not set.

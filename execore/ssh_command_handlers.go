@@ -1190,13 +1190,16 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 
 	if cc.WantJSON() {
 		userInfo := map[string]any{
-			"email":    cc.User.Email,
-			"ssh_keys": sshKeys,
+			"email":          cc.User.Email,
+			"region":         cc.User.Region,
+			"region_display": regionDisplay(cc.User.Region),
+			"ssh_keys":       sshKeys,
 		}
 		cc.WriteJSON(userInfo)
 		return nil
 	}
 	cc.Writeln("\033[1mEmail Address:\033[0m %s", cc.User.Email)
+	cc.Writeln("\033[1mRegion:\033[0m %s (%s)", cc.User.Region, regionDisplay(cc.User.Region))
 	cc.Writeln("\033[1mSSH Keys:\033[0m")
 	for _, key := range sshKeys {
 		cc.Write("  \033[1mPublic Key:\033[0m %s", key.PublicKey)
