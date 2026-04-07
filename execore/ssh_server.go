@@ -664,6 +664,15 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 	}()
 
+	// sessionUser is shared across all command invocations in this session so
+	// that commands like set-region can update fields (e.g. Region) and have
+	// subsequent commands within the same session see the updated values.
+	sessionUser := &exemenu.UserInfo{
+		ID:     user.UserID,
+		Email:  user.Email,
+		Region: user.Region,
+	}
+
 	ss.server.slog().InfoContext(ctx, "starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
@@ -717,11 +726,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 
 		cc := &exemenu.CommandContext{
-			User: &exemenu.UserInfo{
-				ID:     user.UserID,
-				Email:  user.Email,
-				Region: user.Region,
-			},
+			User:       sessionUser,
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
 			Output:     s,
