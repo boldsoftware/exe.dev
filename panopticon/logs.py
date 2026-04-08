@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["dspy>=2.6", "python-dotenv"]
 # ///
-"""Ad-hoc query agent with ClickHouse and local worktree sources.
+"""Ad-hoc query agent with ClickHouse, Discord, Missive, and local worktree sources.
 
 Connects data sources through the proxy/sandbox/RLM pipeline, then
 answers a specific question.
@@ -12,6 +12,7 @@ Usage:
     uv run python3 panopticon/logs.py "how many errors in the last hour?"
     uv run python3 panopticon/logs.py --sources worktree "what does the proxy system do?"
     uv run python3 panopticon/logs.py --sources clickhouse,worktree --verbose "correlate recent deploys with error spikes"
+    uv run python3 panopticon/logs.py --sources discord,missive "what are users saying this week?"
 
 Reads panopticon/.env automatically (python-dotenv).
 """
@@ -33,6 +34,8 @@ from panopticon.logs_prompts import (
     CLICKHOUSE_DESC,
     CODE_DESC,
     COMMITS_DESC,
+    DISCORD_DESC,
+    MISSIVE_DESC,
     QUERY_INSTRUCTION,
     SOURCE_DESCS,
 )
@@ -45,7 +48,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("logs")
 
-VALID_SOURCES = {"clickhouse", "worktree"}
+VALID_SOURCES = {"clickhouse", "discord", "missive", "worktree"}
+PROXY_SOURCES = {"clickhouse", "discord", "missive"}
 
 
 def _require_env(name: str) -> str:
@@ -67,16 +71,15 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
     sig_fields: dict = {}
     call_kwargs: dict = {}
     tools: list = []
-    needs_proxy = False
+    needs_proxy = bool(sources & PROXY_SOURCES)
+    registry = None
+    if needs_proxy:
+        from panopticon.proxy import ProxyRegistry
+        registry = ProxyRegistry()
 
     # --- ClickHouse (proxy-based) ---
     if "clickhouse" in sources:
-        from panopticon.mux import MuxServer
-        from panopticon.proxy import ProxyRegistry
         from panopticon.sources.clickhouse import ClickHouseClient, ClickHouseSource
-
-        needs_proxy = True
-        registry = ProxyRegistry()
 
         ch_url = _require_env("EXE_CLICKHOUSE_URL")
         ch_password = _require_env("EXE_CLICKHOUSE_PASSWORD")
@@ -88,6 +91,46 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
         registry.register(clickhouse)
         sig_fields["clickhouse"] = dspy.InputField(desc=CLICKHOUSE_DESC)
         call_kwargs["clickhouse"] = clickhouse
+
+    # --- Discord (proxy-based) ---
+    if "discord" in sources:
+        from panopticon.sources.discord import DiscordClient, DiscordSource
+
+        discord_token = _require_env("EXE_DISCORD_BOT_TOKEN")
+        discord_guild_id = os.environ.get("EXE_DISCORD_GUILD_ID", "").strip()
+        discord_client = DiscordClient(discord_token)
+        if discord_guild_id:
+            guild_name = discord_guild_id
+            try:
+                for g in discord_client.list_guilds():
+                    if g["id"] == discord_guild_id:
+                        guild_name = g["name"]
+                        break
+            except Exception as e:
+                log.warning("Could not fetch guild name: %s", e)
+            discord = DiscordSource(discord_client, discord_guild_id, guild_name)
+        else:
+            guilds = discord_client.list_guilds()
+            if not guilds:
+                print("Error: Discord bot is not in any guilds.", file=sys.stderr)
+                sys.exit(1)
+            g = guilds[0]
+            discord = DiscordSource(discord_client, g["id"], g.get("name", "Unknown"))
+            log.info("Auto-selected Discord guild: %s", g.get("name"))
+        registry.register(discord)
+        sig_fields["discord"] = dspy.InputField(desc=DISCORD_DESC)
+        call_kwargs["discord"] = discord
+
+    # --- Missive (proxy-based) ---
+    if "missive" in sources:
+        from panopticon.sources.missive import MissiveClient, MissiveSource
+
+        missive_token = _require_env("EXE_MISSIVE_API_KEY")
+        missive_client = MissiveClient(missive_token)
+        missive = MissiveSource(missive_client)
+        registry.register(missive)
+        sig_fields["missive"] = dspy.InputField(desc=MISSIVE_DESC)
+        call_kwargs["missive"] = missive
 
     # --- Worktree (direct loading, classic RLM) ---
     if "worktree" in sources:

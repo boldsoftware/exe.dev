@@ -7,6 +7,10 @@ Edit these strings to change agent behavior without touching pipeline code.
 
 CLICKHOUSE_DESC = "ClickHouse analytics database"
 
+DISCORD_DESC = "Discord server proxy object"
+
+MISSIVE_DESC = "Missive shared email/support queue proxy object (PRIVATE data source)"
+
 CODE_DESC = "All tracked files in the git repo as a {path: content} dict."
 
 COMMITS_DESC = (
@@ -19,6 +23,8 @@ COMMITS_DESC = (
 
 SOURCE_DESCS = {
     "clickhouse": "a ClickHouse analytics database",
+    "discord": "the Discord community server (public user chatter)",
+    "missive": "the Missive shared email/support queue (PRIVATE — no PII in output)",
     "worktree": "the local git worktree (source code and commit history)",
 }
 
