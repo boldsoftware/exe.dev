@@ -12,8 +12,6 @@ struct ConversationRefreshState: Sendable, Equatable {
 }
 
 nonisolated enum ConversationRefreshPolicy {
-    static let staleAfter: TimeInterval = 30
-    static let retryAfterFailure: TimeInterval = 3
     static let chatVisibilityThrottle: TimeInterval = 2
 
     static func shouldRefresh(
@@ -32,19 +30,12 @@ nonisolated enum ConversationRefreshPolicy {
             return now.timeIntervalSince(lastAttemptAt) >= chatVisibilityThrottle
 
         case .appBecameActive:
-            if hasRecentFailure(state: state) {
-                guard let lastFailureAt = state.lastFailureAt else { return false }
-                return now.timeIntervalSince(lastFailureAt) >= retryAfterFailure
-            }
-
-            guard let lastSuccessAt = state.lastSuccessAt else { return true }
-            return now.timeIntervalSince(lastSuccessAt) >= staleAfter
+            // Always refresh when the app comes to the foreground.
+            // The conversation list may have changed while backgrounded
+            // (e.g. new conversations created from the web UI) and the
+            // API call is cheap.
+            return true
         }
     }
 
-    private static func hasRecentFailure(state: ConversationRefreshState) -> Bool {
-        guard let lastFailureAt = state.lastFailureAt else { return false }
-        guard let lastSuccessAt = state.lastSuccessAt else { return true }
-        return lastFailureAt > lastSuccessAt
-    }
 }

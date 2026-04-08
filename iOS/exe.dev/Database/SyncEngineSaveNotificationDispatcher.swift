@@ -7,6 +7,7 @@ extension Notification.Name {
 nonisolated enum SyncEngineSaveNotificationKind: String, Sendable {
     case vms
     case conversation
+    case conversationListChanged
 }
 
 nonisolated enum SyncEngineSaveNotificationUserInfoKey {
@@ -14,6 +15,7 @@ nonisolated enum SyncEngineSaveNotificationUserInfoKey {
     static let conversationID = "conversationID"
     static let messageIDs = "messageIDs"
     static let working = "working"
+    static let newerConversationID = "newerConversationID"
 }
 
 nonisolated struct SyncEngineSaveNotificationPayload: Sendable, Equatable {
@@ -21,8 +23,9 @@ nonisolated struct SyncEngineSaveNotificationPayload: Sendable, Equatable {
     let conversationID: String?
     let messageIDs: [String]
     let working: Bool?
+    let newerConversationID: String?
 
-    static let vms = Self(kind: .vms, conversationID: nil, messageIDs: [], working: nil)
+    static let vms = Self(kind: .vms, conversationID: nil, messageIDs: [], working: nil, newerConversationID: nil)
 
     static func conversation(
         conversationID: String,
@@ -33,7 +36,18 @@ nonisolated struct SyncEngineSaveNotificationPayload: Sendable, Equatable {
             kind: .conversation,
             conversationID: conversationID,
             messageIDs: messageIDs,
-            working: working
+            working: working,
+            newerConversationID: nil
+        )
+    }
+
+    static func conversationListChanged(newerConversationID: String) -> Self {
+        Self(
+            kind: .conversationListChanged,
+            conversationID: nil,
+            messageIDs: [],
+            working: nil,
+            newerConversationID: newerConversationID
         )
     }
 
@@ -49,6 +63,10 @@ nonisolated struct SyncEngineSaveNotificationPayload: Sendable, Equatable {
 
         if let working {
             userInfo[SyncEngineSaveNotificationUserInfoKey.working] = working
+        }
+
+        if let newerConversationID {
+            userInfo[SyncEngineSaveNotificationUserInfoKey.newerConversationID] = newerConversationID
         }
 
         return userInfo

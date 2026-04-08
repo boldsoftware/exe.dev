@@ -28,7 +28,7 @@ import Testing
     )
 }
 
-@Test func foregroundSkipsRecentSuccessfulRefresh() {
+@Test func foregroundAlwaysRefreshesEvenWithRecentSuccess() {
     let now = Date(timeIntervalSince1970: 1_000)
     let state = ConversationRefreshState(
         lastAttemptAt: now.addingTimeInterval(-5),
@@ -36,13 +36,15 @@ import Testing
         lastFailureAt: nil
     )
 
+    // appBecameActive always refreshes — conversations may have changed
+    // while the app was backgrounded.
     #expect(
         ConversationRefreshPolicy.shouldRefresh(
             reason: .appBecameActive,
             hasCachedConversation: true,
             state: state,
             now: now
-        ) == false
+        )
     )
 }
 
@@ -64,7 +66,7 @@ import Testing
     )
 }
 
-@Test func foregroundBacksOffBrieflyAfterFailure() {
+@Test func foregroundRefreshesEvenAfterRecentFailure() {
     let now = Date(timeIntervalSince1970: 1_000)
     let state = ConversationRefreshState(
         lastAttemptAt: now.addingTimeInterval(-1),
@@ -72,13 +74,15 @@ import Testing
         lastFailureAt: now.addingTimeInterval(-1)
     )
 
+    // appBecameActive always refreshes — the retry logic in
+    // loadLatestConversation handles transient failures.
     #expect(
         ConversationRefreshPolicy.shouldRefresh(
             reason: .appBecameActive,
             hasCachedConversation: true,
             state: state,
             now: now
-        ) == false
+        )
     )
 }
 

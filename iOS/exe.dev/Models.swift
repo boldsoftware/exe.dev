@@ -293,11 +293,24 @@ nonisolated struct StreamResponse: Decodable {
     let conversation: Conversation?
     let conversationState: ConversationState?
     let heartbeat: Bool?
+    let conversationListUpdate: ConversationListUpdate?
 
     enum CodingKeys: String, CodingKey {
         case messages, conversation
         case conversationState = "conversation_state"
         case heartbeat
+        case conversationListUpdate = "conversation_list_update"
+    }
+}
+
+nonisolated struct ConversationListUpdate: Decodable, Sendable {
+    let type: String // "update", "delete"
+    let conversation: Conversation?
+    let conversationID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type, conversation
+        case conversationID = "conversation_id"
     }
 }
 

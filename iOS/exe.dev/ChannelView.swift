@@ -44,8 +44,15 @@ struct ChannelView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.conversationID != nil {
-                MessageListView(viewModel: viewModel)
-                    .environment(\.shelleyURL, viewModel.shelleyURL)
+                VStack(spacing: 0) {
+                    if let error = viewModel.error {
+                        ConnectionBanner(error: error) {
+                            Task { await viewModel.loadLatestConversation(forceRefresh: true) }
+                        }
+                    }
+                    MessageListView(viewModel: viewModel)
+                        .environment(\.shelleyURL, viewModel.shelleyURL)
+                }
             } else {
                 Spacer()
             }
@@ -54,6 +61,32 @@ struct ChannelView: View {
         }
         .task { await viewModel.loadLatestConversation() }
         .onDisappear { viewModel.onDisappear() }
+    }
+}
+
+// MARK: - Connection Banner
+
+private struct ConnectionBanner: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Text("Unable to reach Shelley")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Retry", action: onRetry)
+                .font(.caption)
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(.systemGray6))
     }
 }
 

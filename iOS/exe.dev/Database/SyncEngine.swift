@@ -11,6 +11,7 @@ actor SyncEngine {
             messageIDs: [String],
             working: Bool?
         )
+        case conversationListChanged(newerConversationID: String)
     }
 
     private struct ConversationUpsertResult {
@@ -114,6 +115,20 @@ actor SyncEngine {
 
                 for try await event in stream {
                     if Task.isCancelled { break }
+
+                    // When the server reports a different conversation was
+                    // created or updated, tell the UI so it can switch.
+                    if let listUpdate = event.conversationListUpdate,
+                       listUpdate.type == "update",
+                       let updated = listUpdate.conversation,
+                       !updated.archived,
+                       updated.parentConversationID == nil,
+                       updated.conversationID != conversationID,
+                       updated.updatedAt > (self.conversationUpdatedAt(for: conversationID) ?? .distantPast) {
+                        SyncEngineSaveNotificationDispatcher.dispatch(
+                            .conversationListChanged(newerConversationID: updated.conversationID)
+                        )
+                    }
 
                     if let state = event.conversationState {
                         pendingWorking = state.working
@@ -308,7 +323,15 @@ actor SyncEngine {
                 messageIDs: messageIDs,
                 working: working
             )
+        case .conversationListChanged(let newerConversationID):
+            return .conversationListChanged(newerConversationID: newerConversationID)
         }
+    }
+
+    private func conversationUpdatedAt(for conversationID: String) -> Date? {
+        let id = conversationID
+        let predicate = #Predicate<StoredConversation> { $0.conversationID == id }
+        return try? modelContext.fetch(FetchDescriptor(predicate: predicate)).first?.updatedAt
     }
 
     private func lastSequenceID(for conversationID: String) -> Int64? {

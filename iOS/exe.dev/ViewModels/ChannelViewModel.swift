@@ -33,6 +33,10 @@ final class ChannelViewModel {
     private var lastRefreshAttemptAt: Date?
     private var lastRefreshSuccessAt: Date?
     private var lastRefreshFailureAt: Date?
+    /// Incremented each time we start an SSE stream; onDisappear only stops the
+    /// stream if the generation hasn't advanced (prevents a late stop from
+    /// killing a freshly started stream after a quick navigate-away-and-back).
+    private var streamGeneration: UInt64 = 0
 
     init(vmName: String, shelleyURL: String?, api: APIClient, syncEngine: SyncEngine) {
         self.vmName = vmName
@@ -151,6 +155,7 @@ final class ChannelViewModel {
             }
             isLoading = false
             // fetchMessages() will be called by the save notification
+            streamGeneration &+= 1
             await syncEngine.startStream(
                 api: api, shelleyURL: shelleyURL,
                 conversationID: latest.conversationID, vmName: vmName
@@ -192,8 +197,11 @@ final class ChannelViewModel {
     }
 
     func onDisappear() {
-        if let conversationID {
-            Task { await syncEngine.stopStream(conversationID: conversationID) }
+        guard let conversationID else { return }
+        let gen = streamGeneration
+        Task { [weak self] in
+            guard let self, self.streamGeneration == gen else { return }
+            await syncEngine.stopStream(conversationID: conversationID)
         }
     }
 
@@ -236,6 +244,7 @@ final class ChannelViewModel {
                             api: api, shelleyURL: shelleyURL,
                             conversationID: newID, vmName: vmName
                         )
+                        streamGeneration &+= 1
                         await syncEngine.startStream(
                             api: api, shelleyURL: shelleyURL,
                             conversationID: newID, vmName: vmName
@@ -288,6 +297,7 @@ final class ChannelViewModel {
 
         isLoading = false
         fetchMessages()
+        streamGeneration &+= 1
         await syncEngine.startStream(
             api: api,
             shelleyURL: shelleyURL,
@@ -333,6 +343,13 @@ final class ChannelViewModel {
     }
 
     private func handleSaveNotification(_ save: SaveNotification) {
+        if case .newerConversationAvailable = save {
+            Task {
+                await loadLatestConversation(reason: .chatBecameVisible, forceRefresh: true)
+            }
+            return
+        }
+
         guard let conversationID else { return }
 
         switch save {
@@ -375,12 +392,16 @@ final class ChannelViewModel {
                 areInIncreasingOrder: Self.isMessageBefore(_:_:)
             )
             reconcilePendingMessages()
+
+        case .newerConversationAvailable:
+            break // Handled above, before the guard
         }
     }
 
     private enum SaveNotification: Sendable {
         case fullReload
         case delta(ConversationDelta)
+        case newerConversationAvailable
     }
 
     private struct ConversationDelta: Sendable {
@@ -416,6 +437,8 @@ final class ChannelViewModel {
                     working: userInfo[SyncEngineSaveNotificationUserInfoKey.working] as? Bool
                 )
             )
+        case .conversationListChanged:
+            return .newerConversationAvailable
         }
     }
 
