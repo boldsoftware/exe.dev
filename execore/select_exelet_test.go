@@ -338,6 +338,45 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 		}
 	})
 
+	t.Run("user prefers own region over least loaded foreign region", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		lonRegion, _ := region.ByCode("lon")
+		sgpRegion, _ := region.ByCode("sgp")
+
+		lonExelet := &exeletClient{addr: "tcp://exelet-lon2-prod-01:9080", region: lonRegion}
+		lonExelet.up.Store(true)
+		sgpExelet := &exeletClient{addr: "tcp://exelet-sgp-prod-01:9080", region: sgpRegion}
+		sgpExelet.up.Store(true)
+
+		server.exeletClients = map[string]*exeletClient{
+			lonExelet.addr: lonExelet,
+			sgpExelet.addr: sgpExelet,
+		}
+
+		// Create a lon user.
+		userID := createTestUser(t, server, "lon-user@example.com")
+		err := server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`UPDATE users SET region = ? WHERE user_id = ?`, "lon", userID)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("failed to update user region: %v", err)
+		}
+
+		// Both lon and sgp have RequiresUserMatch=false, so both are eligible.
+		// But the user's own region (lon) should be preferred.
+		ec, _, err := server.selectExeletClient(ctx, userID)
+		if err != nil {
+			t.Fatalf("selectExeletClient: %v", err)
+		}
+		if ec.region.Code != "lon" {
+			t.Errorf("expected lon (user's own region should be preferred), got %s", ec.region.Code)
+		}
+	})
+
 	t.Run("preferred exelet skipped when user RequiresUserMatch and preferred is different region", func(t *testing.T) {
 		t.Parallel()
 		server := newTestServer(t)

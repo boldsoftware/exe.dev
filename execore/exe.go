@@ -4197,6 +4197,19 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 		}
 	}
 
+	// Prefer exelets in the user's own region. Fall back to the full
+	// eligible set only when no exelets in the user's region are available.
+	var regionEcs []*exeletClient
+	for _, c := range ecs {
+		if c.region.Code == userRegion {
+			regionEcs = append(regionEcs, c)
+		}
+	}
+	if len(regionEcs) > 0 {
+		s.slog().DebugContext(ctx, "narrowing to user's region", "user", userID, "userRegion", userRegion, "regionExelets", len(regionEcs), "totalEligible", len(ecs))
+		ecs = regionEcs
+	}
+
 	slices.SortFunc(ecs, exeletUsageCmp)
 
 	// Find the set at the start that are considered equal.
