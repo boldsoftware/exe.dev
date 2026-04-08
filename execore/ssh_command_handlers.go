@@ -21,6 +21,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
@@ -316,6 +318,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleRestartCommand,
 			FlagSetFunc:       jsonOnlyFlags("restart"),
 			Usage:             "restart <vmname>",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
+		{
+			Name:              "vm-logs",
+			Hidden:            true,
+			Description:       "Show recent startup logs for a VM (useful when the VM failed to start)",
+			Usage:             "vm-logs <vmname>",
+			Handler:           ss.handleVMLogsCommand,
+			FlagSetFunc:       jsonOnlyFlags("vm-logs"),
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
@@ -1142,6 +1154,144 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 	}
 	cc.Writeln("\033[1;32mVM %q restarted successfully\033[0m", boxName)
 	return nil
+}
+
+// vmLogsMaxLines caps how many log lines vm-logs returns per invocation.
+// Enough to capture a typical startup failure without flooding the user's
+// terminal or JSON consumers.
+const vmLogsMaxLines = 200
+
+// vmLogsFetchTimeout bounds how long we wait on exelet for log bytes.
+// Containers that never EOF their log stream (normal for running images)
+// will hit this; we take whatever bytes we got by then.
+const vmLogsFetchTimeout = 5 * time.Second
+
+// handleVMLogsCommand streams recent startup logs for a VM. This is the
+// authenticated counterpart to the denial banner: when a user hits a
+// stopped VM, the piper banner points them here instead of dumping the
+// logs inline during a failed auth handshake. This handler enforces the
+// same ownership / team-access rules as every other per-VM command, so
+// the logs never leak to an unauthenticated caller.
+func (ss *SSHServer) handleVMLogsCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) != 1 {
+		return cc.Errorf("usage: vm-logs <vmname>")
+	}
+
+	boxName := ss.normalizeBoxName(cc.Args[0])
+
+	// FindAccessibleBox gates this on ownership or team-admin access.
+	// Also allow team-SSH-shared members: if they are allowed to SSH to
+	// the VM, they are allowed to read its startup logs. Return a generic
+	// "not found" in every other case so we don't disclose whether the
+	// VM exists at all.
+	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, boxName)
+	if err != nil {
+		if shared := ss.server.FindTeamSSHSharedBoxByName(ctx, cc.User.ID, boxName); shared != nil {
+			box = shared
+		} else {
+			return cc.Errorf("VM %q not found", boxName)
+		}
+	}
+
+	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
+	CommandLogAddAttr(ctx, slog.Int("vm_id", box.ID))
+	CommandLogAddAttr(ctx, slog.String("vm_owner_user_id", box.CreatedByUserID))
+
+	if box.ContainerID == nil {
+		return cc.Errorf("VM %q has no container", boxName)
+	}
+
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		return cc.Errorf("exelet host not available for VM %q", boxName)
+	}
+
+	logCtx, cancel := context.WithTimeout(ctx, vmLogsFetchTimeout)
+	defer cancel()
+
+	stream, err := exeletClient.client.GetInstanceLogs(logCtx, &api.GetInstanceLogsRequest{ID: *box.ContainerID})
+	if err != nil {
+		return cc.Errorf("failed to retrieve instance logs: %v", err)
+	}
+
+	// exelet streams raw log-file chunks, not one-message-per-line, so we
+	// accumulate bytes and split on '\n' at the end. Splitting per chunk
+	// would lose lines that straddle chunk boundaries.
+	var buf []byte
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Deadline-exceeded is expected for running containers that
+			// never close their log stream; treat it as a clean end-of-log
+			// as long as we got at least something.
+			if errors.Is(err, context.DeadlineExceeded) && len(buf) > 0 {
+				break
+			}
+			if len(buf) == 0 {
+				return cc.Errorf("error reading logs: %v", err)
+			}
+			cc.WriteError("log stream ended early: %v", err)
+			break
+		}
+		if resp.Log != nil {
+			buf = append(buf, resp.Log.Message...)
+		}
+	}
+
+	logs := tailVMLogLines(buf, vmLogsMaxLines)
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"vm_name": boxName,
+			"logs":    logs,
+		})
+		return nil
+	}
+
+	if len(logs) == 0 {
+		cc.Writeln("\033[1;33mNo logs available for VM %q\033[0m", boxName)
+		return nil
+	}
+
+	cc.Writeln("\033[1;36mLogs for VM %q:\033[0m", boxName)
+	cc.Writeln("────────────────────────────────────────")
+	for _, line := range logs {
+		cc.Writeln("%s", sanitizeVMLogLine(line))
+	}
+	cc.Writeln("────────────────────────────────────────")
+	return nil
+}
+
+// tailVMLogLines splits a raw log buffer on '\n' and returns the last n
+// lines. A trailing newline is dropped so we don't emit a phantom empty
+// line at the end.
+func tailVMLogLines(buf []byte, n int) []string {
+	trimmed := strings.TrimRight(string(buf), "\n")
+	if trimmed == "" {
+		return nil
+	}
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
+}
+
+// sanitizeVMLogLine strips control runes from a log line so a malicious
+// VM cannot inject terminal escape sequences (cursor moves, OSC clipboard
+// writes, etc.) into an interactive REPL. Tabs pass through; everything
+// else in the Unicode control category (and invalid UTF-8, via Go's
+// range-over-string semantics) becomes U+FFFD.
+func sanitizeVMLogLine(line string) string {
+	return strings.Map(func(r rune) rune {
+		if r != '\t' && unicode.IsControl(r) {
+			return utf8.RuneError
+		}
+		return r
+	}, line)
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
