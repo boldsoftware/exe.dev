@@ -15,7 +15,6 @@ import (
 	"unicode/utf8"
 
 	"exe.dev/billing/plan"
-	"exe.dev/boxname"
 	"exe.dev/ctrlc"
 	"exe.dev/domz"
 	emailpkg "exe.dev/email"
@@ -23,7 +22,6 @@ import (
 	"exe.dev/exemenu"
 	"exe.dev/exeweb"
 	"exe.dev/googleoauth"
-	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/sshkey"
 	"exe.dev/termfun"
 	"exe.dev/tracing"
@@ -487,28 +485,6 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 		duration := time.Since(sessionStart).Seconds()
 		ss.server.sshMetrics.sessionDuration.WithLabelValues("normal").Observe(duration)
 	}()
-
-	// Check for special container-logs username format
-	username := s.User()
-	if strings.HasPrefix(username, "container-logs:") {
-		// Parse format: "container-logs:<allocID>:<containerID>:<boxName>"
-		parts := strings.Split(username, ":")
-		if len(parts) == 4 {
-			allocID := parts[1]
-			containerID := parts[2]
-			boxName := parts[3]
-
-			// Show container logs
-			ss.handleContainerLogs(s, allocID, containerID, boxName)
-			return
-		}
-	}
-	if slices.Contains(boxname.JobsRelated, username) {
-		s.Write([]byte("Oh hai. Nice find. Come work with us: david+magicuser@bold.dev\n"))
-		s.Close()
-		s.Exit(0)
-		return
-	}
 
 	// Get authentication info from context
 	publicKey, _ := s.Context().Value("public_key").(string)
@@ -1312,80 +1288,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		s.Close()
 		s.Exit(rc)
 	}
-}
-
-// handleContainerLogs shows logs for a failed instance
-func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, boxName string) {
-	// Show error message about instance failure
-	fmt.Fprintf(s, "\033[1;31mInstance '%s' is not running\033[0m\r\n\r\n", boxName)
-
-	// Extract trace_id from SSH context and add to Go context for gRPC propagation
-	var baseCtx context.Context = s.Context()
-
-	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
-	defer cancel()
-
-	// Get the box to find which exelet it's on
-	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetBoxByNameAndAlloc, exedb.GetBoxByNameAndAllocParams{
-		Name:            boxName,
-		CreatedByUserID: allocID,
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;33mFailed to look up instance: %v\033[0m\r\n", err)
-		fmt.Fprintf(s, "To delete this instance, run:\r\n")
-		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
-		return
-	}
-
-	// Find the exelet client for this box
-	exeletClient := ss.server.getExeletClient(box.Ctrhost)
-	if exeletClient == nil {
-		fmt.Fprintf(s, "\033[1;33mExelet host not available\033[0m\r\n")
-		fmt.Fprintf(s, "To delete this instance, run:\r\n")
-		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
-		return
-	}
-
-	// Get instance logs from exelet
-	stream, err := exeletClient.client.GetInstanceLogs(ctx, &computeapi.GetInstanceLogsRequest{ID: containerID})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;33mFailed to retrieve instance logs: %v\033[0m\r\n", err)
-		fmt.Fprintf(s, "To delete this instance, run:\r\n")
-		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
-		return
-	}
-
-	// Collect logs from stream (limit to ~100 lines)
-	var logs []string
-	logCount := 0
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;33mError reading logs: %v\033[0m\r\n", err)
-			break
-		}
-		if resp.Log != nil && logCount < 100 {
-			logs = append(logs, resp.Log.Message)
-			logCount++
-		}
-	}
-
-	if len(logs) > 0 {
-		fmt.Fprintf(s, "\033[1;36mInstance logs:\033[0m\r\n")
-		fmt.Fprintf(s, "────────────────────────────────────────\r\n")
-		for _, line := range logs {
-			fmt.Fprintf(s, "%s\r\n", line)
-		}
-		fmt.Fprintf(s, "────────────────────────────────────────\r\n\r\n")
-	} else {
-		fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
-	}
-
-	fmt.Fprintf(s, "To delete this instance, run:\r\n")
-	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 
 func (ss *SSHServer) startEmailVerification(s *shellSession, publicKey, email string, inviteCode *exedb.InviteCode) (*EmailVerification, error) {

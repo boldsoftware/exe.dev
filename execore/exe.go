@@ -4102,22 +4102,6 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress, clientAddr string) (*ssh.Permissions, error) {
 	s.slog().InfoContext(ctx, "authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "clientAddr", clientAddr, "keyBytes", len(originalUserKeyBytes))
 
-	// Check for special container-logs username format and easter egg careers usernames
-	if strings.HasPrefix(username, "container-logs:") || slices.Contains(boxname.JobsRelated, username) {
-		s.slog().InfoContext(ctx, "Detected special container-logs username, bypassing normal auth", "username", username)
-		// This is a special request to show container logs
-		// We don't need to authenticate the user normally, just pass through
-		// The SSH server will handle this specially
-		return &ssh.Permissions{
-			Extensions: map[string]string{
-				"registered":  "true",
-				"proxy_user":  username,
-				"public_key":  "", // Empty key for special log display
-				"client_addr": clientAddr,
-			},
-		}, nil
-	}
-
 	perms, err := s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
 	if err != nil {
 		return nil, err

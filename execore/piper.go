@@ -88,11 +88,6 @@ type PiperPlugin struct {
 	proxyKeyMappings map[string]*ProxyKeyMapping
 	proxyKeyMutex    sync.Mutex
 
-	// keyboardInteractiveShown tracks which connections have already seen the keyboard interactive message
-	// This prevents showing the message multiple times when SSH clients retry authentication
-	keyboardInteractiveShown map[string]bool
-	keyboardInteractiveMutex sync.Mutex
-
 	// expectedHostKeys maps connection IDs to their expected host keys for validation
 	expectedHostKeys      map[string]*HostKeyMapping
 	expectedHostKeysMutex sync.Mutex
@@ -101,12 +96,11 @@ type PiperPlugin struct {
 // NewPiperPlugin creates a new piper plugin instance
 func NewPiperPlugin(server *Server, host string, port int) *PiperPlugin {
 	p := &PiperPlugin{
-		server:                   server,
-		exedSSHHost:              host,
-		exedSSHPort:              port,
-		proxyKeyMappings:         make(map[string]*ProxyKeyMapping),
-		keyboardInteractiveShown: make(map[string]bool),
-		expectedHostKeys:         make(map[string]*HostKeyMapping),
+		server:           server,
+		exedSSHHost:      host,
+		exedSSHPort:      port,
+		proxyKeyMappings: make(map[string]*ProxyKeyMapping),
+		expectedHostKeys: make(map[string]*HostKeyMapping),
 	}
 
 	// Start cleanup goroutine to remove expired proxy key mappings
@@ -275,55 +269,21 @@ func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
 	return ""
 }
 
-// handleKeyboardInteractive provides a user-friendly message when public key auth fails
+// handleKeyboardInteractive tells users with no SSH key how to create one.
 //
-// OMG, let me tell you about SSH. We want to require the user to come with a key.
-// If they come with a key, great, we'll register it, and so forth. If they don't,
-// we need to send them an error message. SSH doesn't have a way to send them an error
-// message that I could find.
-//
-// I tried using a Banner, but that shows up before auth, and it's noisy in the common
-// case of actually using the service.
-//
-// I tried using "none" auth. That seemed great: say that you like public-key first and then
-// none, and have a separate SSH server that just accepts none, sends a message, and closes.
-// But, of course, SSH clients always try none first, and if that works, you always get the
-// message.
-//
-// Anyway, that's why we're at keyboard interactive.
-func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
-	// Use connection's unique ID to track if we've already shown the message
-	connID := conn.UniqueID()
-
-	p.keyboardInteractiveMutex.Lock()
-	alreadyShown := p.keyboardInteractiveShown[connID]
-	if !alreadyShown {
-		p.keyboardInteractiveShown[connID] = true
-	}
-	p.keyboardInteractiveMutex.Unlock()
-
-	if !alreadyShown {
-		// First time - send helpful message about setting up SSH keys
-		message := "SSH keys are required to access exe.dev.\nPlease create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection."
-
-		// Special case: support access attempt failed
-		if supportBoxName, isSupport := strings.CutPrefix(conn.User(), supportAccessPrefix); isSupport {
-			message = fmt.Sprintf("Support access denied for VM %q.\n\nEither:\n- You don't have support privileges, or\n- The VM doesn't have support access enabled\n\nPress Enter to close this connection.", supportBoxName)
-		}
-
-		// Special case: vm+ access attempt failed
-		if vmBoxName, isVM := strings.CutPrefix(conn.User(), vmAccessPrefix); isVM {
-			message = fmt.Sprintf("Access denied for VM %q.\n\nPress Enter to close this connection.", vmBoxName)
-		}
-
-		_, err := client("", message, "", false)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Always return nil to deny access
-	return nil, fmt.Errorf("SSH public key authentication is required")
+// OpenSSH falls through to keyboard-interactive when publickey auth doesn't
+// succeed. A user who presented a key and got denied for a specific reason
+// (wrong VM, VM not running, support access denied) never reaches this
+// callback: handlePublicKeyAuth returns a Deny, which sshpiperd eager-sends
+// as a banner and then terminates the connection without offering any
+// further auth methods. So if we're here, the client never tried publickey
+// at all — it genuinely has no key, and we should surface the "please run
+// ssh-keygen" banner.
+func (p *PiperPlugin) handleKeyboardInteractive(_ libplugin.ConnMetadata, _ libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
+	return nil, libplugin.Deny(
+		"\nSSH keys are required to access exe.dev.\nPlease create a key with 'ssh-keygen -t ed25519' and try again.\n\n",
+		"no SSH public key provided",
+	)
 }
 
 // handlePublicKeyAuth handles public key authentication and routing decisions
@@ -393,7 +353,10 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		box := p.server.FindBoxForExeSudoer(ctx, userID, supportBoxName)
 		if box == nil {
 			slog.WarnContext(ctx, "support access denied", "component", "piper-plugin", "vm_name", supportBoxName, "user_id", userID)
-			return nil, fmt.Errorf("support access denied: either you don't have support privileges, or VM %q doesn't have support access enabled", supportBoxName)
+			return nil, libplugin.Deny(
+				fmt.Sprintf("Support access denied for VM %q.\n\nEither:\n- You don't have support privileges, or\n- The VM doesn't have support access enabled\n\n", supportBoxName),
+				fmt.Sprintf("support access denied for VM %q by user %s", supportBoxName, userID),
+			)
 		}
 		slog.InfoContext(ctx, "support access granted", "component", "piper-plugin", "vm_name", box.Name, "vm_id", box.ID, "support_user_id", userID)
 		cl.add(slog.Bool("support_access", true))
@@ -416,7 +379,10 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 			return p.handleBoxAccess(ctx, box, userID, connID)
 		}
 		slog.WarnContext(ctx, "vm+ access denied", "component", "piper-plugin", "vm_name", vmBoxName, "user_id", userID)
-		return nil, fmt.Errorf("access denied: VM %q not found", vmBoxName)
+		return nil, libplugin.Deny(
+			fmt.Sprintf("Access denied for VM %q.\n\n", vmBoxName),
+			fmt.Sprintf("vm+ access denied for VM %q by user %s", vmBoxName, userID),
+		)
 	}
 
 	// In test/local environments, it's useful to be able to access VMs by username,
@@ -526,7 +492,17 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	}
 
 	if box.ContainerID == nil {
-		return nil, fmt.Errorf("VM %s is not running", box.Name)
+		// The VM hasn't been provisioned yet (or its previous instance was
+		// reaped). Same user-facing situation as a stopped VM: the user owns
+		// it (handlePublicKeyAuth verified that before calling us) but there
+		// is nothing to route to. Surface a denial banner so they see _why_
+		// and how to investigate or delete it. Deny terminates the
+		// connection so we don't fall back to the "please ssh-keygen"
+		// keyboard-interactive banner.
+		return nil, libplugin.Deny(
+			p.stoppedVMBanner(box),
+			fmt.Sprintf("VM %q is not running", box.Name),
+		)
 	}
 	cl.add(slog.String("container_id", *box.ContainerID))
 
@@ -547,32 +523,23 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 				"conn_id", connID,
 				"error", err,
 			)
-			return nil, fmt.Errorf("internal error (trace: %s)", traceID)
+			return nil, internalErrorDenial(traceID, fmt.Sprintf("GetInstance: %v", err))
 		}
 		if instanceResp.Instance != nil {
 			cl.add(slog.String("instance_state", instanceResp.Instance.State.String()))
-			// If instance is not running, route to exed for error display
+			// If the instance is not running, there is no upstream to route to.
+			// Deny the auth attempt with a banner that tells the user how to
+			// fetch logs via the REPL. We deliberately don't fetch or embed
+			// logs here — see stoppedVMBanner for why.
 			if instanceResp.Instance.State != api.VMState_RUNNING && instanceResp.Instance.State != api.VMState_STARTING {
-				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(ctx, nil, "127.0.0.1", "127.0.0.1")
-				if err != nil {
-					return nil, fmt.Errorf("failed to generate proxy key: %v", err)
-				}
-
-				specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
-
-				// Emit canonical line even for non-running instance route
-				emitPiperConnLog(ctx, connID, "SSH Connection to VM",
-					slog.String("log_type", "vm-ssh-connection"),
+				emitPiperConnLog(ctx, connID, "SSH Connection to non-running VM",
+					slog.String("log_type", "vm-ssh-connection-not-running"),
 					slog.String("ctrhost", box.Ctrhost),
 				)
-
-				return &libplugin.Upstream{
-					Host:          p.exedSSHHost,
-					Port:          int32(p.exedSSHPort),
-					UserName:      specialUsername,
-					IgnoreHostKey: false,
-					Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
-				}, nil
+				return nil, libplugin.Deny(
+					p.stoppedVMBanner(box),
+					fmt.Sprintf("VM %q is not running", box.Name),
+				)
 			}
 		}
 	}
@@ -580,10 +547,25 @@ func (p *PiperPlugin) handleBoxAccess(ctx context.Context, box *exedb.Box, userI
 	// Get SSH connection details from the database
 	sshDetails, err := p.server.GetBoxSSHDetails(ctx, box.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SSH details for VM %s: %v", box.Name, err)
+		traceID := tracing.TraceIDFromContext(ctx)
+		slog.ErrorContext(ctx, "piper-plugin GetBoxSSHDetails failed",
+			"vm_name", box.Name,
+			"vm_id", box.ID,
+			"user_id", userID,
+			"conn_id", connID,
+			"error", err,
+		)
+		return nil, internalErrorDenial(traceID, fmt.Sprintf("GetBoxSSHDetails for VM %s: %v", box.Name, err))
 	}
 	if sshDetails.HostKey == "" {
-		return nil, fmt.Errorf("VM %s has no stored host key", box.Name)
+		traceID := tracing.TraceIDFromContext(ctx)
+		slog.ErrorContext(ctx, "piper-plugin VM has no stored host key",
+			"vm_name", box.Name,
+			"vm_id", box.ID,
+			"user_id", userID,
+			"conn_id", connID,
+		)
+		return nil, internalErrorDenial(traceID, fmt.Sprintf("VM %s has no stored host key", box.Name))
 	}
 	host := exeweb.BoxSSHHost(slog.Default(), box.Ctrhost)
 	port := sshDetails.Port
@@ -738,7 +720,10 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	slog.WarnContext(ctx, "Host key validation failed - no matching key found",
 		"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
 	return fmt.Errorf("host key validation failed for %s", hostname)
-} // cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking
+}
+
+// cleanupExpiredMappings runs periodically to remove expired proxy key
+// mappings and host key mappings.
 func (p *PiperPlugin) cleanupExpiredMappings() {
 	ticker := time.NewTicker(5 * time.Minute) // Run every 5 minutes
 	defer ticker.Stop()
@@ -758,13 +743,6 @@ func (p *PiperPlugin) cleanupExpiredMappings() {
 		}
 		p.proxyKeyMutex.Unlock()
 
-		// Clean up keyboard interactive tracking (clear entire map periodically)
-		// This is safe since it just tracks whether we've shown the message once per connection
-		p.keyboardInteractiveMutex.Lock()
-		keyboardCount := len(p.keyboardInteractiveShown)
-		p.keyboardInteractiveShown = make(map[string]bool) // Clear entire map
-		p.keyboardInteractiveMutex.Unlock()
-
 		// Clean up expired host keys (remove ones older than 5 minutes)
 		expiredHostKeys := make([]string, 0)
 		p.expectedHostKeysMutex.Lock()
@@ -779,8 +757,40 @@ func (p *PiperPlugin) cleanupExpiredMappings() {
 		hostKeyCount := len(expiredHostKeys)
 		p.expectedHostKeysMutex.Unlock()
 
-		if len(expiredKeys) > 0 || keyboardCount > 0 || hostKeyCount > 0 {
-			slog.Debug("Cleaned up expired mappings", "component", "piper-plugin", "proxy_keys", len(expiredKeys), "keyboard_connections", keyboardCount, "host_keys", hostKeyCount)
+		if len(expiredKeys) > 0 || hostKeyCount > 0 {
+			slog.Debug("Cleaned up expired mappings", "component", "piper-plugin", "proxy_keys", len(expiredKeys), "host_keys", hostKeyCount)
 		}
 	}
+}
+
+// stoppedVMBanner renders the denial banner shown to users who try to SSH
+// into a VM that isn't running. It deliberately does NOT include the VM's
+// logs: the banner is emitted by sshpiperd as an SSH_MSG_USERAUTH_BANNER
+// on a failed auth attempt, which is a delicate place to exfiltrate data
+// from (the structured auth state is still in flight, denial-carried
+// banners get routed through a different code path than authenticated
+// sessions, etc). Instead, we point the user at `vm-logs <name>`, a
+// first-class REPL command that runs inside a properly authenticated
+// session and enforces ownership / team access the same way every other
+// VM command does.
+func (p *PiperPlugin) stoppedVMBanner(box *exedb.Box) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\033[1;31mVM %q is not running.\033[0m\n\n", box.Name)
+	fmt.Fprintf(&b, "To see why it failed, run:\n\n    \033[1m%s vm-logs %s\033[0m\n\n", p.server.replSSHConnectionCommand(), box.Name)
+	fmt.Fprintf(&b, "To delete it, run:\n\n    \033[1m%s rm %s\033[0m\n\n", p.server.replSSHConnectionCommand(), box.Name)
+	return b.String()
+}
+
+// internalErrorDenial returns an AuthDenialError with a generic
+// "internal error" banner that includes the trace ID. We use this on every
+// unexpected failure path in handlePublicKeyAuth so users get something they
+// can paste into a bug report instead of a silent failure. Deny terminates
+// the connection: there is no productive retry, and we'd rather not fall
+// back to the keyboard-interactive "please ssh-keygen" banner after an
+// internal error.
+func internalErrorDenial(traceID, detail string) error {
+	return libplugin.Deny(
+		fmt.Sprintf("\n\033[1;31mInternal error.\033[0m\n\nPlease report this trace ID to support@exe.dev:\n\n    \033[1m%s\033[0m\n\n", traceID),
+		fmt.Sprintf("internal error (trace %s): %s", traceID, detail),
+	)
 }

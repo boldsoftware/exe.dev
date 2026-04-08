@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exemenu"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"github.com/tg123/sshpiper/libplugin"
 	"google.golang.org/grpc"
 )
 
@@ -173,6 +175,125 @@ func TestTailVMLogLines(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestStoppedVMBannerPointsAtVMLogs verifies that the banner shown when an
+// owner hits a stopped VM points them at the authenticated `vm-logs <name>`
+// REPL command, and does NOT attempt to embed raw container output. The
+// banner is emitted as an SSH_MSG_USERAUTH_BANNER on a failing auth attempt,
+// so we deliberately keep it free of VM-controlled content.
+func TestStoppedVMBannerPointsAtVMLogs(t *testing.T) {
+	t.Parallel()
+
+	// Include some would-be-hostile content to prove the banner doesn't
+	// reach for the container log stream at all.
+	logLines := []string{
+		"\x1b[2Jhijacked\x1b[H",
+		"ERROR: disk full: cannot write rootfs",
+	}
+	server, _, userID := setupStoppedBoxWithLogs(t, "broken-vm", logLines)
+	ctx := context.Background()
+
+	box, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, "broken-vm")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
+	t.Cleanup(piper.Stop)
+
+	piperCtx, _ := withPiperConnLog(ctx)
+	upstream, err := piper.handleBoxAccess(piperCtx, &box, userID, "test-conn-stopped")
+	if err == nil {
+		t.Fatal("expected handleBoxAccess to fail for stopped VM, got nil error")
+	}
+	if upstream != nil {
+		t.Errorf("expected nil upstream for stopped VM, got %+v", upstream)
+	}
+
+	var denial *libplugin.AuthDenialError
+	if !errors.As(err, &denial) {
+		t.Fatalf("expected *libplugin.AuthDenialError, got %T: %v", err, err)
+	}
+	if !strings.Contains(denial.Banner, `"broken-vm"`) {
+		t.Errorf("denial banner should mention VM name, got: %q", denial.Banner)
+	}
+	if !strings.Contains(denial.Banner, "vm-logs broken-vm") {
+		t.Errorf("denial banner should point at `vm-logs broken-vm`, got: %q", denial.Banner)
+	}
+	if !strings.Contains(denial.Banner, "rm broken-vm") {
+		t.Errorf("denial banner should point at `rm broken-vm` as the delete escape hatch, got: %q", denial.Banner)
+	}
+	// No log content should leak into the banner. "ERROR" and the escape
+	// sequence above both came from the container's (fake) log stream; if
+	// either appears, the banner reached into exelet when it should not have.
+	if strings.Contains(denial.Banner, "ERROR") {
+		t.Errorf("denial banner should not contain container log content, got:\n%s", denial.Banner)
+	}
+	if strings.Contains(denial.Banner, "hijacked") {
+		t.Errorf("denial banner should not contain container log content, got:\n%s", denial.Banner)
+	}
+}
+
+// TestStoppedVMBannerNoContainerID verifies that an owner who reaches a box
+// with no associated container (e.g. it was reaped, or was never created)
+// still gets a denial banner pointing at the recovery commands.
+func TestStoppedVMBannerNoContainerID(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	addr, client, _ := startFakeExeletWithLogs(t, nil)
+	server.exeletClients[addr] = &exeletClient{addr: addr, client: client}
+	server.exeletClients[addr].up.Store(true)
+
+	userID := createTestUser(t, server, "ghost-vm@example.com")
+	_, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       addr,
+		name:          "ghost-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately *don't* call UpdateBoxContainerAndStatus, so ContainerID
+	// stays nil — the situation handleBoxAccess's nil-container branch handles.
+
+	box, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, "ghost-vm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box.ContainerID != nil {
+		t.Fatalf("expected nil ContainerID, got %q", *box.ContainerID)
+	}
+
+	piper := NewPiperPlugin(server, "127.0.0.1", 0)
+	t.Cleanup(piper.Stop)
+
+	piperCtx, _ := withPiperConnLog(ctx)
+	_, err = piper.handleBoxAccess(piperCtx, &box, userID, "test-conn-no-container")
+	if err == nil {
+		t.Fatal("expected handleBoxAccess to fail for VM with no container")
+	}
+
+	var denial *libplugin.AuthDenialError
+	if !errors.As(err, &denial) {
+		t.Fatalf("expected *libplugin.AuthDenialError, got %T: %v", err, err)
+	}
+	if !strings.Contains(denial.Banner, `"ghost-vm"`) {
+		t.Errorf("denial banner should mention VM name, got: %q", denial.Banner)
+	}
+	if !strings.Contains(denial.Banner, "vm-logs ghost-vm") {
+		t.Errorf("denial banner should point at `vm-logs ghost-vm`, got: %q", denial.Banner)
+	}
+	if !strings.Contains(denial.Banner, "rm ghost-vm") {
+		t.Errorf("denial banner should point at `rm ghost-vm`, got: %q", denial.Banner)
 	}
 }
 

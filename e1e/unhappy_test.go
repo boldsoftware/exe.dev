@@ -12,14 +12,6 @@ import (
 func TestRequiresSSHKey(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
-	// CI intermittently is missing a newline in this test.
-	// Failures look like golden file diffs like:
-	//   -Press Enter to close this connection.
-	//   -USER@localhost: Permission denied (publickey,keyboard-interactive).
-	//   +Press Enter to close this connection.USER@localhost: Permission denied (publickey,keyboard-interactive).
-	// I don't know why this happens, and it's not great...but it's not worth fighting over now.
-	// Suppress golden output for this test.
-	noGolden(t)
 
 	pty := makePty(t, "ssh localhost [no keys]")
 
@@ -36,10 +28,9 @@ func TestRequiresSSHKey(t *testing.T) {
 	pty.AttachAndStart(sshCmd)
 
 	pty.Want("SSH keys are required to access exe.dev")
-	pty.Want("Press Enter to close this connection.")
-	pty.SendLine("")
-	// Confirm we have the correct auth methods advertised.
-	pty.Want("Permission denied (publickey,keyboard-interactive).")
+	// Server terminates the connection right after the banner, so OpenSSH
+	// prints "Connection closed by ..." rather than "Permission denied (...)".
+	pty.Want("Connection closed by")
 	pty.WantEOF()
 }
 

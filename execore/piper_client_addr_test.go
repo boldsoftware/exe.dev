@@ -138,44 +138,6 @@ func TestProxyKeyMappingExpirationWithClientAddr(t *testing.T) {
 	t.Log("Expired proxy key mappings are correctly rejected")
 }
 
-// TestProxyKeyMappingNilUserKey verifies that mappings with nil user keys
-// (used for internal routing like container-logs) still store client addresses.
-func TestProxyKeyMappingNilUserKey(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t)
-	piper := NewPiperPlugin(server, "127.0.0.1", 0)
-
-	ctx := context.Background()
-	localAddress := "127.0.0.1"
-	clientAddr := "127.0.0.1" // internal routing uses localhost
-
-	// Generate ephemeral proxy key with nil user key (internal routing)
-	_, proxyFingerprint, err := piper.generateEphemeralProxyKey(ctx, nil, localAddress, clientAddr)
-	if err != nil {
-		t.Fatalf("generateEphemeralProxyKey failed: %v", err)
-	}
-
-	// Look up the mapping
-	originalKey, returnedLocalAddr, returnedClientAddr, exists := piper.lookupOriginalUserKey(proxyFingerprint)
-	if !exists {
-		t.Fatal("lookupOriginalUserKey returned exists=false for valid key")
-	}
-
-	// Verify values
-	if originalKey != nil {
-		t.Errorf("Expected nil original key, got %d bytes", len(originalKey))
-	}
-	if returnedLocalAddr != localAddress {
-		t.Errorf("Local address mismatch: got %q, want %q", returnedLocalAddr, localAddress)
-	}
-	if returnedClientAddr != clientAddr {
-		t.Errorf("Client address mismatch: got %q, want %q", returnedClientAddr, clientAddr)
-	}
-
-	t.Log("Proxy key mapping with nil user key correctly stores client address")
-}
-
 // TestNewSSHShellStoresClientAddr verifies that NewSSHShell stores the client
 // address in the shellSession.
 func TestNewSSHShellStoresClientAddr(t *testing.T) {
