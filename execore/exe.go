@@ -4094,9 +4094,10 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
+		// Skip affinity if the exelet is not in the user's region.
 		// Team exelet assignments override region checks.
-		if client != nil && !teamExeletAddrs[maxHost] && !client.regionAllowsUser(userRegion, userRegionInfo) {
-			s.slog().DebugContext(ctx, "not selecting exelet because region requires match", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
+		if client != nil && !teamExeletAddrs[maxHost] && client.region.Code != userRegion {
+			s.slog().DebugContext(ctx, "not selecting affinity exelet outside user's region", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
 			client = nil
 		}
 
