@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -9,6 +10,19 @@ import (
 
 	"exe.dev/exe-ops/server/deploy"
 )
+
+// whoisTimeout bounds how long the handler will wait for a Tailscale whois
+// lookup. This is best-effort — if it fails, we just record an empty
+// InitiatedBy and proceed rather than hanging the request.
+const whoisTimeout = 3 * time.Second
+
+// tailscaleWhoIsBounded wraps TailscaleWhoIs with whoisTimeout so a stuck
+// tailscale daemon can't block a deploy/rollout request.
+func tailscaleWhoIsBounded(parent context.Context, remoteAddr string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, whoisTimeout)
+	defer cancel()
+	return TailscaleWhoIs(ctx, remoteAddr)
+}
 
 // HandleDeployInventory handles GET /api/v1/deploy/inventory.
 func (h *Handlers) HandleDeployInventory(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +105,7 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Identify who initiated the deploy via Tailscale peer identity.
-		if identity, err := TailscaleWhoIs(r.Context(), r.RemoteAddr); err != nil {
+		if identity, err := tailscaleWhoIsBounded(r.Context(), r.RemoteAddr); err != nil {
 			h.log.Warn("tailscale whois failed", "remote_addr", r.RemoteAddr, "error", err)
 		} else {
 			req.InitiatedBy = identity
@@ -107,6 +121,108 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleRollouts handles GET /api/v1/rollouts (list) and POST /api/v1/rollouts (start).
+func (h *Handlers) HandleRollouts(w http.ResponseWriter, r *http.Request) {
+	if h.deployer == nil {
+		http.Error(w, "deploy not configured", http.StatusNotFound)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		since := time.Now().Add(-30 * time.Minute)
+		if s := r.URL.Query().Get("since"); s != "" {
+			if d, err := time.ParseDuration(s); err == nil {
+				since = time.Now().Add(-d)
+			} else if t, err := time.Parse(time.RFC3339, s); err == nil {
+				since = t
+			}
+		} else if r.URL.Query().Get("all") != "" {
+			since = time.Time{}
+		}
+		writeJSON(w, h.deployer.ListRollouts(since))
+
+	case http.MethodPost:
+		var req deploy.RolloutRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if identity, err := tailscaleWhoIsBounded(r.Context(), r.RemoteAddr); err != nil {
+			h.log.Warn("tailscale whois failed", "remote_addr", r.RemoteAddr, "error", err)
+		} else {
+			req.InitiatedBy = identity
+		}
+		status, err := h.deployer.StartRollout(req)
+		if err != nil {
+			// "deployment in progress" → 409. Other validation errors → 400.
+			if strings.Contains(err.Error(), "deployment in progress") {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, status)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleRolloutByID handles GET /api/v1/rollouts/{id} and
+// POST /api/v1/rollouts/{id}/cancel.
+func (h *Handlers) HandleRolloutByID(w http.ResponseWriter, r *http.Request) {
+	if h.deployer == nil {
+		http.Error(w, "deploy not configured", http.StatusNotFound)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/rollouts/")
+	if path == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+
+	// Optional /cancel suffix.
+	id := path
+	cancel := false
+	if strings.HasSuffix(path, "/cancel") {
+		id = strings.TrimSuffix(path, "/cancel")
+		cancel = true
+	}
+
+	if cancel {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := h.deployer.CancelRollout(id); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		status, ok := h.deployer.GetRollout(id)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, status)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	status, ok := h.deployer.GetRollout(id)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, status)
 }
 
 // HandleDeployStatus handles GET /api/v1/deploys/{id}.

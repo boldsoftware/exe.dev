@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -16,6 +17,7 @@ type Status struct {
 	SHA     string `json:"sha"`
 
 	InitiatedBy string `json:"initiated_by,omitempty"` // Tailscale user login, if known
+	RolloutID   string `json:"rollout_id,omitempty"`   // set when deploy was started by a rollout
 
 	State     string    `json:"state"` // pending, running, done, failed
 	Steps     []Step    `json:"steps"`
@@ -45,12 +47,23 @@ type deploy struct {
 	dnsName     string
 	sha         string
 	initiatedBy string
+	rolloutID   string
 
 	state     string
 	steps     []Step
 	startedAt time.Time
 	doneAt    time.Time
 	err       string
+
+	// ctx is derived from the manager context and used by execute() for
+	// all I/O. cancel aborts in-flight work — the rollout orchestrator
+	// calls it when a cancel is requested during the active wave.
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// done is closed when the deploy reaches a terminal state. Allows
+	// the rollout orchestrator to await wave completion without polling.
+	done chan struct{}
 }
 
 // StepNames returns the deploy steps for a given process, accounting for
@@ -70,12 +83,13 @@ func StepNames(process string) []string {
 	return steps
 }
 
-func newDeploy(id, stage, role, process, host, dnsName, sha, initiatedBy string) *deploy {
+func newDeploy(parent context.Context, id, stage, role, process, host, dnsName, sha, initiatedBy, rolloutID string) *deploy {
 	names := StepNames(process)
 	steps := make([]Step, len(names))
 	for i, name := range names {
 		steps[i] = Step{Name: name, Status: "pending"}
 	}
+	ctx, cancel := context.WithCancel(parent)
 	return &deploy{
 		id:          id,
 		stage:       stage,
@@ -85,9 +99,13 @@ func newDeploy(id, stage, role, process, host, dnsName, sha, initiatedBy string)
 		dnsName:     dnsName,
 		sha:         sha,
 		initiatedBy: initiatedBy,
+		rolloutID:   rolloutID,
 		state:       "pending",
 		steps:       steps,
 		startedAt:   time.Now(),
+		ctx:         ctx,
+		cancel:      cancel,
+		done:        make(chan struct{}),
 	}
 }
 
@@ -104,6 +122,7 @@ func (d *deploy) snapshot() Status {
 		DNSName:     d.dnsName,
 		SHA:         d.sha,
 		InitiatedBy: d.initiatedBy,
+		RolloutID:   d.rolloutID,
 		State:       d.state,
 		Steps:       make([]Step, len(d.steps)),
 		StartedAt:   d.startedAt,

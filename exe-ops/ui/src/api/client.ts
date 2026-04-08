@@ -57,6 +57,7 @@ export interface DeployStatus {
   dns_name: string
   sha: string
   initiated_by?: string
+  rollout_id?: string
   state: string // pending, running, done, failed
   steps: DeployStep[]
   started_at: string
@@ -125,6 +126,93 @@ export async function startDeploy(req: DeployRequest): Promise<DeployStatus> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
+// Rollout types — phased multi-target deploy.
+
+export interface RolloutTarget {
+  stage: string
+  role: string
+  process: string
+  host: string
+  dns_name: string
+  sha: string
+  region: string
+}
+
+export interface RolloutRequest {
+  targets: RolloutTarget[]
+  batch_size?: number
+  cooldown_secs?: number
+  stop_on_failure: boolean
+}
+
+export interface WaveTarget {
+  process: string
+  host: string
+  region: string
+  stage: string
+  deploy_id?: string
+}
+
+export interface RolloutWave {
+  index: number
+  region: string
+  state: string // pending, running, done, failed, skipped
+  targets: WaveTarget[]
+  started_at?: string
+  done_at?: string
+}
+
+export interface RolloutStatus {
+  id: string
+  process: string
+  sha: string
+  state: string // pending, running, cooldown, done, failed, cancelled
+  batch_size: number
+  cooldown_secs: number
+  stop_on_failure: boolean
+  started_at: string
+  done_at?: string
+  cooldown_until?: string
+  waves: RolloutWave[]
+  current_wave: number
+  total: number
+  completed: number
+  failed: number
+  remaining: number
+  initiated_by?: string
+  error?: string
+}
+
+export async function startRollout(req: RolloutRequest): Promise<RolloutStatus> {
+  const resp = await fetch('/api/v1/rollouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function fetchRollout(id: string): Promise<RolloutStatus> {
+  const resp = await fetch(`/api/v1/rollouts/${encodeURIComponent(id)}`)
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export async function cancelRollout(id: string): Promise<RolloutStatus> {
+  const resp = await fetch(`/api/v1/rollouts/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
   })
   if (!resp.ok) {
     const text = await resp.text()

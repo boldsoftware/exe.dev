@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,10 +27,12 @@ const maxHistory = 100
 type Manager struct {
 	ctx context.Context // server lifetime
 
-	mu      sync.Mutex
-	deploys []*deploy              // all deploys, most recent first
-	active  map[string]*deploy     // key: activeKey()
-	builds  map[string]*sync.Mutex // key: process/sha
+	mu             sync.Mutex
+	deploys        []*deploy              // all deploys, most recent first
+	active         map[string]*deploy     // key: activeKey()
+	builds         map[string]*sync.Mutex // key: process/sha
+	rollouts       []*rollout             // all rollouts, most recent first
+	activeRollouts map[string]*rollout    // key: rolloutLockKey (process)
 
 	repoDir  string // bare git clone (shared with inventory)
 	cacheDir string // artifact cache root
@@ -40,6 +43,10 @@ type Manager struct {
 	// onDeploy is called after every deploy finishes (success or failure).
 	// Used to trigger an inventory refresh so the UI sees updated versions.
 	onDeploy func()
+
+	// runDeploy is the deploy execution function. Defaults to (*Manager).execute.
+	// Tests override it to avoid invoking ssh/scp/git.
+	runDeploy func(ctx context.Context, d *deploy)
 }
 
 // NewManager creates a deploy manager.
@@ -53,12 +60,13 @@ func NewManager(ctx context.Context, log *slog.Logger, repoDir, cacheDir string)
 		cacheDir = abs
 	}
 	return &Manager{
-		ctx:      ctx,
-		active:   make(map[string]*deploy),
-		builds:   make(map[string]*sync.Mutex),
-		repoDir:  repoDir,
-		cacheDir: cacheDir,
-		log:      log,
+		ctx:            ctx,
+		active:         make(map[string]*deploy),
+		builds:         make(map[string]*sync.Mutex),
+		activeRollouts: make(map[string]*rollout),
+		repoDir:        repoDir,
+		cacheDir:       cacheDir,
+		log:            log,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
@@ -93,21 +101,34 @@ type Request struct {
 // Start begins a new deploy. Returns an error if a deploy is already
 // active for the same target or the process type is unknown.
 func (m *Manager) Start(req Request) (Status, error) {
+	return m.start(req, "")
+}
+
+// validateRequest applies the same validation as Start without spawning anything.
+// Used by StartRollout to fail fast on a malformed batch.
+func (m *Manager) validateRequest(req Request) error {
 	if req.Stage != "staging" && req.Stage != "global" && req.Stage != "prod" {
-		return Status{}, fmt.Errorf("only staging, prod, and global deploys are currently allowed")
+		return fmt.Errorf("only staging, prod, and global deploys are currently allowed")
 	}
 	if req.Stage == "prod" && !prodDeployAllowed(req.Process) {
-		return Status{}, fmt.Errorf("prod deploys not allowed for %q", req.Process)
+		return fmt.Errorf("prod deploys not allowed for %q", req.Process)
 	}
 	if _, ok := Recipes[req.Process]; !ok {
-		return Status{}, fmt.Errorf("unknown process %q", req.Process)
+		return fmt.Errorf("unknown process %q", req.Process)
 	}
 	if len(req.SHA) != 40 {
-		return Status{}, fmt.Errorf("sha must be 40 hex characters")
+		return fmt.Errorf("sha must be 40 hex characters")
+	}
+	return nil
+}
+
+func (m *Manager) start(req Request, rolloutID string) (Status, error) {
+	if err := m.validateRequest(req); err != nil {
+		return Status{}, err
 	}
 
 	id := generateID()
-	d := newDeploy(id, req.Stage, req.Role, req.Process, req.Host, req.DNSName, req.SHA, req.InitiatedBy)
+	d := newDeploy(m.ctx, id, req.Stage, req.Role, req.Process, req.Host, req.DNSName, req.SHA, req.InitiatedBy, rolloutID)
 
 	m.mu.Lock()
 	key := d.activeKey()
@@ -124,14 +145,33 @@ func (m *Manager) Start(req Request) (Status, error) {
 
 	m.log.Info("deploy started",
 		"id", id, "process", req.Process,
-		"host", req.Host, "sha", req.SHA[:12])
+		"host", req.Host, "sha", req.SHA[:12], "rollout_id", rolloutID)
 
 	if m.notifier != nil {
 		go m.notifier.DeployStarted(d.snapshot())
 	}
 
-	go m.execute(m.ctx, d)
+	runner := m.runDeploy
+	if runner == nil {
+		runner = m.execute
+	}
+	go func() {
+		defer m.finish(d)
+		runner(d.ctx, d)
+	}()
 	return d.snapshot(), nil
+}
+
+// getDeployByID returns the internal *deploy with the given id, or nil.
+func (m *Manager) getDeployByID(id string) *deploy {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.deploys {
+		if d.id == id {
+			return d
+		}
+	}
+	return nil
 }
 
 // List returns snapshots of deploys started at or after since, most recent first.
@@ -166,9 +206,8 @@ func (m *Manager) Get(id string) (Status, bool) {
 }
 
 // execute runs the full deploy pipeline as a goroutine.
+// The caller is responsible for calling m.finish(d) afterwards.
 func (m *Manager) execute(ctx context.Context, d *deploy) {
-	defer m.finish(d)
-
 	recipe := Recipes[d.process]
 
 	// Build (checkout + compile, cached and deduplicated).
@@ -248,6 +287,17 @@ func (m *Manager) finish(d *deploy) {
 	m.mu.Lock()
 	delete(m.active, d.activeKey())
 	m.mu.Unlock()
+
+	// Release the deploy's context. Safe to call even if already cancelled
+	// by a rollout cancel; this just frees the context resources.
+	if d.cancel != nil {
+		d.cancel()
+	}
+
+	// Signal any waiters (e.g. rollout orchestrator) that this deploy
+	// has reached a terminal state. Close once: state is guarded by
+	// reaching finish, which only runs from execute()'s defer.
+	close(d.done)
 
 	if m.notifier != nil {
 		m.notifier.DeployFinished(d.snapshot())
@@ -451,19 +501,72 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 	tmpName := fmt.Sprintf("deploy-%s-%s", recipe.BinaryName, d.sha[:12])
 	tmpPath := "/tmp/" + tmpName
 
-	// SCP to /tmp first (avoids permission issues), then sudo mv into place.
 	user := recipe.remoteUser()
-	scpStart := time.Now()
-	scp := exec.CommandContext(ctx, "scp",
-		"-o", "StrictHostKeyChecking=no",
-		localPath, user+"@"+d.dnsName+":"+tmpPath)
-	if out, err := scp.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("scp: %w\n%s", err, out)
-	}
-	scpDur := time.Since(scpStart)
 
-	mbps := float64(size) / 1024 / 1024 / scpDur.Seconds()
-	d.setStepOutput(fmt.Sprintf("%s in %s (%.1f MB/s) → %s", formatBytes(size), scpDur.Round(time.Millisecond), mbps, remotePath))
+	// Stream the binary over ssh using `cat > tmpPath`. Piping through
+	// stdin lets us wrap the reader and track bytes sent, so we can
+	// publish live progress on the "upload" step — scp has no
+	// machine-readable progress output.
+	f, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("open local: %w", err)
+	}
+	defer f.Close()
+
+	pr := &progressReader{r: f}
+	pr.total.Store(size)
+
+	uploadStart := time.Now()
+	// Background ticker publishes live progress to the step output.
+	progressStop := make(chan struct{})
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-progressStop:
+				return
+			case <-ticker.C:
+				sent := pr.sent.Load()
+				elapsed := time.Since(uploadStart).Seconds()
+				var mbps float64
+				if elapsed > 0 {
+					mbps = float64(sent) / 1024 / 1024 / elapsed
+				}
+				var pct int
+				if size > 0 {
+					pct = int(sent * 100 / size)
+				}
+				d.setStepOutput(fmt.Sprintf("%s / %s (%d%%, %.1f MB/s)",
+					formatBytes(sent), formatBytes(size), pct, mbps))
+			}
+		}
+	}()
+
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		user+"@"+d.dnsName, "cat > "+tmpPath)
+	cmd.Stdin = pr
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
+	close(progressStop)
+	<-progressDone
+	if runErr != nil {
+		return "", fmt.Errorf("upload: %w\n%s", runErr, stderr.String())
+	}
+	// Safety check: ensure we actually sent the full file. A partial
+	// transfer with a clean exit on the remote side (unlikely but
+	// possible) would otherwise pass a truncated binary forward.
+	if got := pr.sent.Load(); got != size {
+		return "", fmt.Errorf("upload short: sent %d of %d bytes", got, size)
+	}
+
+	uploadDur := time.Since(uploadStart)
+	mbps := float64(size) / 1024 / 1024 / uploadDur.Seconds()
+	d.setStepOutput(fmt.Sprintf("%s in %s (%.1f MB/s) → %s", formatBytes(size), uploadDur.Round(time.Millisecond), mbps, remotePath))
 
 	if err := m.ssh(ctx, user, d.dnsName, "sudo", "mv", tmpPath, remotePath); err != nil {
 		return "", fmt.Errorf("mv: %w", err)
@@ -473,6 +576,22 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 	}
 
 	return remotePath, nil
+}
+
+// progressReader wraps an io.Reader and atomically tracks bytes read.
+// Used by upload() to publish live transfer progress.
+type progressReader struct {
+	r     io.Reader
+	sent  atomic.Int64
+	total atomic.Int64
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.sent.Add(int64(n))
+	}
+	return n, err
 }
 
 func (m *Manager) install(ctx context.Context, d *deploy, recipe Recipe, remotePath string) error {
@@ -627,6 +746,321 @@ func generateID() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// StartRollout begins a phased rollout. Returns 409-style "deployment in
+// progress" if another rollout is already active for the same process.
+func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
+	if err := m.rolloutValidate(req); err != nil {
+		return RolloutStatus{}, err
+	}
+
+	waves := planWaves(req.Targets, effectiveBatchSize(req))
+	r := newRollout(generateID(), req, waves)
+
+	lockKey := rolloutLockKey(req)
+
+	m.mu.Lock()
+	if existing, ok := m.activeRollouts[lockKey]; ok {
+		m.mu.Unlock()
+		return RolloutStatus{}, fmt.Errorf(
+			"deployment in progress for %s (rollout %s, started %s by %s)",
+			lockKey,
+			existing.id,
+			existing.startedAt.Format(time.RFC3339),
+			existing.initiatedBy,
+		)
+	}
+	m.activeRollouts[lockKey] = r
+	m.rollouts = append([]*rollout{r}, m.rollouts...)
+	if len(m.rollouts) > maxHistory {
+		m.rollouts = m.rollouts[:maxHistory]
+	}
+	m.mu.Unlock()
+
+	m.log.Info("rollout started",
+		"id", r.id, "process", r.process, "sha", r.sha[:12],
+		"targets", len(req.Targets), "waves", len(waves),
+		"batch_size", r.batchSize, "cooldown", r.cooldown,
+		"initiated_by", r.initiatedBy)
+
+	go m.runRollout(r)
+	return r.snapshot(), nil
+}
+
+// GetRollout returns a snapshot of a rollout by id.
+func (m *Manager) GetRollout(id string) (RolloutStatus, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.rollouts {
+		if r.id == id {
+			return r.snapshot(), true
+		}
+	}
+	return RolloutStatus{}, false
+}
+
+// ListRollouts returns snapshots of rollouts started at or after since,
+// most recent first. Active (non-terminal) rollouts are always included.
+func (m *Manager) ListRollouts(since time.Time) []RolloutStatus {
+	m.mu.Lock()
+	rs := make([]*rollout, len(m.rollouts))
+	copy(rs, m.rollouts)
+	m.mu.Unlock()
+
+	out := make([]RolloutStatus, 0, len(rs))
+	for _, r := range rs {
+		s := r.snapshot()
+		if s.StartedAt.Before(since) && terminalRollout(s.State) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// CancelRollout marks a rollout for cancellation. Subsequent waves are
+// skipped; in-flight deploys in the current wave run to completion.
+func (m *Manager) CancelRollout(id string) error {
+	m.mu.Lock()
+	var found *rollout
+	for _, r := range m.rollouts {
+		if r.id == id {
+			found = r
+			break
+		}
+	}
+	m.mu.Unlock()
+	if found == nil {
+		return fmt.Errorf("rollout %s not found", id)
+	}
+	found.requestCancel()
+	return nil
+}
+
+func terminalRollout(state string) bool {
+	return state == "done" || state == "failed" || state == "cancelled"
+}
+
+// runRollout is the rollout orchestrator goroutine. It executes waves
+// sequentially, waits between waves, and observes cancellation and
+// stop-on-failure semantics.
+func (m *Manager) runRollout(r *rollout) {
+	defer m.finishRollout(r)
+
+	r.mu.Lock()
+	r.state = "running"
+	r.mu.Unlock()
+
+	for waveIdx, w := range r.waves {
+		if r.cancelled() {
+			m.markRemainingSkipped(r, waveIdx)
+			r.mu.Lock()
+			r.state = "cancelled"
+			r.mu.Unlock()
+			return
+		}
+
+		r.mu.Lock()
+		r.currentWave = waveIdx
+		r.state = "running"
+		w.state = "running"
+		w.startedAt = time.Now()
+		r.mu.Unlock()
+
+		m.log.Info("rollout wave starting",
+			"id", r.id, "wave", waveIdx, "region", w.region,
+			"targets", len(w.requests))
+
+		// Spawn all deploys in this wave. m.start is non-blocking (it
+		// just validates, registers the deploy, and kicks off a goroutine)
+		// so we can collect IDs synchronously before waiting. Publishing
+		// the deploy ids to the wave immediately is what lets the UI
+		// show per-step progress while the wave is running.
+		waveFailed := false
+		deployIDs := make([]string, len(w.requests))
+		waveDeploys := make([]*deploy, len(w.requests))
+		for i, req := range w.requests {
+			st, err := m.start(req, r.id)
+			if err != nil {
+				m.log.Error("rollout deploy failed to start", "id", r.id, "wave", waveIdx, "err", err)
+				waveFailed = true
+				r.mu.Lock()
+				r.failed++
+				r.mu.Unlock()
+				continue
+			}
+			deployIDs[i] = st.ID
+			waveDeploys[i] = m.getDeployByID(st.ID)
+		}
+
+		// Publish deploy ids to the wave state so the UI can see which
+		// deploys are active and render per-step progress for them.
+		r.mu.Lock()
+		w.deployIDs = deployIDs
+		r.mu.Unlock()
+
+		// Watch for cancellation in parallel with waiting for deploys.
+		// When the user cancels, we cancel every deploy's context so any
+		// in-flight ssh/scp/http calls abort, and the wave can wind down
+		// without waiting for slow uploads or hung verifies to complete.
+		waveCancelStop := make(chan struct{})
+		go func() {
+			select {
+			case <-r.cancelCh:
+				for _, d := range waveDeploys {
+					if d != nil && d.cancel != nil {
+						d.cancel()
+					}
+				}
+			case <-waveCancelStop:
+			}
+		}()
+
+		// Wait for each spawned deploy to reach a terminal state and
+		// tally outcomes.
+		for _, d := range waveDeploys {
+			if d == nil {
+				continue
+			}
+			select {
+			case <-d.done:
+			case <-m.ctx.Done():
+				close(waveCancelStop)
+				r.mu.Lock()
+				r.state = "cancelled"
+				r.err = "server shutting down"
+				r.mu.Unlock()
+				m.markRemainingSkipped(r, waveIdx+1)
+				return
+			}
+			d.mu.Lock()
+			state := d.state
+			d.mu.Unlock()
+			if state == "failed" {
+				waveFailed = true
+				r.mu.Lock()
+				r.failed++
+				r.mu.Unlock()
+			} else {
+				r.mu.Lock()
+				r.completed++
+				r.mu.Unlock()
+			}
+		}
+		close(waveCancelStop)
+
+		// If the rollout was cancelled, the wave's deploys were aborted
+		// mid-flight. Record the wave as cancelled rather than failed and
+		// stop the rollout.
+		if r.cancelled() {
+			r.mu.Lock()
+			w.doneAt = time.Now()
+			w.state = "cancelled"
+			r.mu.Unlock()
+			m.markRemainingSkipped(r, waveIdx+1)
+			r.mu.Lock()
+			r.state = "cancelled"
+			r.mu.Unlock()
+			return
+		}
+
+		r.mu.Lock()
+		w.doneAt = time.Now()
+		if waveFailed {
+			w.state = "failed"
+		} else {
+			w.state = "done"
+		}
+		r.mu.Unlock()
+
+		if waveFailed && r.stopOnFailure {
+			m.log.Warn("rollout aborting after wave failure",
+				"id", r.id, "wave", waveIdx)
+			m.markRemainingSkipped(r, waveIdx+1)
+			r.mu.Lock()
+			r.state = "failed"
+			r.err = fmt.Sprintf("wave %d failed", waveIdx)
+			r.mu.Unlock()
+			return
+		}
+
+		// Cooldown before next wave (skip after the last wave).
+		if waveIdx < len(r.waves)-1 {
+			r.mu.Lock()
+			r.state = "cooldown"
+			r.cooldownUntil = time.Now().Add(r.cooldown)
+			r.mu.Unlock()
+
+			m.log.Info("rollout cooldown", "id", r.id, "duration", r.cooldown)
+			t := time.NewTimer(r.cooldown)
+			select {
+			case <-t.C:
+			case <-r.cancelCh:
+				if !t.Stop() {
+					<-t.C
+				}
+				m.markRemainingSkipped(r, waveIdx+1)
+				r.mu.Lock()
+				r.cooldownUntil = time.Time{}
+				r.state = "cancelled"
+				r.mu.Unlock()
+				return
+			case <-m.ctx.Done():
+				if !t.Stop() {
+					<-t.C
+				}
+				m.markRemainingSkipped(r, waveIdx+1)
+				r.mu.Lock()
+				r.cooldownUntil = time.Time{}
+				r.state = "cancelled"
+				r.err = "server shutting down"
+				r.mu.Unlock()
+				return
+			}
+			r.mu.Lock()
+			r.cooldownUntil = time.Time{}
+			r.mu.Unlock()
+		}
+	}
+
+	r.mu.Lock()
+	if r.state != "failed" && r.state != "cancelled" {
+		if r.failed > 0 {
+			r.state = "failed"
+		} else {
+			r.state = "done"
+		}
+	}
+	r.mu.Unlock()
+}
+
+// markRemainingSkipped flips state on every wave at index >= from to "skipped".
+func (m *Manager) markRemainingSkipped(r *rollout, from int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := from; i < len(r.waves); i++ {
+		if r.waves[i].state == "pending" {
+			r.waves[i].state = "skipped"
+		}
+	}
+}
+
+// finishRollout removes the rollout from the active map and stamps doneAt.
+func (m *Manager) finishRollout(r *rollout) {
+	r.mu.Lock()
+	r.doneAt = time.Now()
+	r.mu.Unlock()
+
+	m.mu.Lock()
+	if m.activeRollouts[r.process] == r {
+		delete(m.activeRollouts, r.process)
+	}
+	m.mu.Unlock()
+
+	m.log.Info("rollout finished",
+		"id", r.id, "state", r.state,
+		"completed", r.completed, "failed", r.failed)
 }
 
 func formatBytes(b int64) string {

@@ -433,12 +433,56 @@
             />
             <span v-if="bulkCustomSHA && !isValidSHA(bulkCustomSHA)" class="modal-custom-sha-error">must be 40 hex characters</span>
           </div>
+          <div v-if="bulkConfirmProcs.length > 1" class="rollout-controls">
+            <div class="rollout-controls-header">Phased rollout</div>
+            <div class="rollout-control-row">
+              <label for="rollout-batch-size">Batch size</label>
+              <input
+                id="rollout-batch-size"
+                v-model.number="rolloutBatchSize"
+                type="number"
+                min="1"
+                :max="bulkConfirmProcs.length"
+                class="rollout-control-input"
+              />
+              <span class="rollout-control-hint">targets per wave (within a region)</span>
+            </div>
+            <div class="rollout-control-row">
+              <label for="rollout-cooldown">Cooldown</label>
+              <input
+                id="rollout-cooldown"
+                v-model.number="rolloutCooldownSecs"
+                type="number"
+                min="0"
+                class="rollout-control-input"
+              />
+              <span class="rollout-control-hint">seconds between waves</span>
+            </div>
+            <div class="rollout-control-row">
+              <label for="rollout-stop-on-failure">Stop on failure</label>
+              <input
+                id="rollout-stop-on-failure"
+                v-model="rolloutStopOnFailure"
+                type="checkbox"
+              />
+              <span class="rollout-control-hint">abort remaining waves if any deploy fails</span>
+            </div>
+            <div class="rollout-wave-preview">
+              <div class="rollout-wave-preview-header">Plan: {{ rolloutWavePlan.length }} wave{{ rolloutWavePlan.length !== 1 ? 's' : '' }}</div>
+              <div v-for="(wave, i) in rolloutWavePlan" :key="i" class="rollout-wave-preview-row">
+                <span class="rollout-wave-num">Wave {{ i + 1 }}</span>
+                <span class="rollout-wave-region">{{ wave.region }}</span>
+                <span class="rollout-wave-hosts">{{ wave.hosts.join(', ') }}</span>
+              </div>
+            </div>
+          </div>
           <div class="bulk-target-list">
             <div class="bulk-target-header">Targets</div>
             <div v-for="p in bulkConfirmProcs" :key="procKey(p)" class="bulk-target-row">
               <span class="bulk-target-process">{{ p.process }}</span>
               <i class="pi pi-arrow-right bulk-target-arrow"></i>
               <span class="bulk-target-host">{{ p.hostname }}</span>
+              <span v-if="p.region" class="bulk-target-region">{{ p.region }}</span>
               <span v-if="p.version" class="bulk-target-version">{{ p.version.slice(0, 7) }}</span>
               <span v-if="p.commits_behind > 0" class="behind-badge">{{ p.commits_behind }}<i class="pi pi-arrow-down"></i></span>
             </div>
@@ -452,7 +496,7 @@
             @click="doBulkDeploy"
           >
             <i class="pi pi-upload"></i>
-            Deploy All ({{ bulkConfirmProcs.length }})
+            {{ bulkConfirmProcs.length > 1 ? `Roll Out (${bulkConfirmProcs.length})` : `Deploy (${bulkConfirmProcs.length})` }}
           </button>
         </div>
       </div>
@@ -463,14 +507,66 @@
       <div class="modal-dialog live-deploy-dialog">
         <div class="modal-header">
           <span class="modal-title">
-            <i v-if="liveDeployAllDone" class="pi" :class="liveDeployAnyFailed ? 'pi-times-circle' : 'pi-check-circle'" :style="{ color: liveDeployAnyFailed ? 'var(--red-400)' : 'var(--green-400)' }"></i>
+            <i v-if="rolloutTerminal" class="pi" :class="rolloutFailed ? 'pi-times-circle' : 'pi-check-circle'" :style="{ color: rolloutFailed ? 'var(--red-400)' : 'var(--green-400)' }"></i>
+            <i v-else-if="liveDeployAllDone && !activeRollout" class="pi" :class="liveDeployAnyFailed ? 'pi-times-circle' : 'pi-check-circle'" :style="{ color: liveDeployAnyFailed ? 'var(--red-400)' : 'var(--green-400)' }"></i>
             <i v-else class="pi pi-spin pi-spinner"></i>
-            Deploying {{ liveDeployIds.length }} target{{ liveDeployIds.length !== 1 ? 's' : '' }}
+            <template v-if="activeRollout">
+              Rollout {{ activeRollout.process }} ({{ activeRollout.total }} target{{ activeRollout.total !== 1 ? 's' : '' }})
+            </template>
+            <template v-else>
+              Deploying {{ liveDeployIds.length }} target{{ liveDeployIds.length !== 1 ? 's' : '' }}
+            </template>
           </span>
           <button class="modal-close" @click="liveDeployVisible = false" title="Close (deploys continue in background)">
             <i class="pi pi-times"></i>
           </button>
         </div>
+
+        <!-- Rollout progress header (only when this is a rollout) -->
+        <div v-if="activeRollout" class="rollout-progress" :class="'rollout-state-' + activeRollout.state">
+          <div class="rollout-progress-bar-wrap">
+            <div class="rollout-progress-bar">
+              <div class="rollout-progress-bar-fill" :style="{ width: rolloutProgressPct + '%' }"></div>
+            </div>
+            <div class="rollout-progress-counts">
+              <span class="rollout-progress-completed">{{ activeRollout.completed }}</span>
+              <span class="rollout-progress-sep">/</span>
+              <span class="rollout-progress-total">{{ activeRollout.total }}</span>
+              <span v-if="activeRollout.failed > 0" class="rollout-progress-failed">{{ activeRollout.failed }} failed</span>
+            </div>
+          </div>
+          <div class="rollout-status-line">
+            <span class="rollout-status-state">
+              {{ cancelRequested && !rolloutTerminal ? 'Cancelling — waiting for current wave to finish…' : rolloutStatusLabel }}
+            </span>
+            <span v-if="activeRollout.state === 'cooldown' && cooldownRemaining > 0 && !cancelRequested" class="rollout-cooldown-countdown">
+              next wave in {{ cooldownRemaining }}s
+            </span>
+            <button
+              v-if="!rolloutTerminal"
+              class="deploy-btn deploy-btn-cancel rollout-cancel-btn"
+              :disabled="cancelRequested"
+              @click="doCancelRollout"
+            >
+              {{ cancelRequested ? 'Cancelling…' : 'Cancel' }}
+            </button>
+          </div>
+          <div class="rollout-wave-strip">
+            <div
+              v-for="w in activeRollout.waves"
+              :key="w.index"
+              class="rollout-wave-chip"
+              :class="'wave-state-' + w.state"
+              :title="`Wave ${w.index + 1} (${w.region}): ${w.targets.map(t => t.host).join(', ')}`"
+            >
+              <span class="rollout-wave-chip-num">W{{ w.index + 1 }}</span>
+              <span class="rollout-wave-chip-region">{{ w.region }}</span>
+              <span class="rollout-wave-chip-count">{{ w.targets.length }}</span>
+            </div>
+          </div>
+          <div v-if="activeRollout.error" class="deploy-card-error">{{ activeRollout.error }}</div>
+        </div>
+
         <div class="live-deploy-content">
           <!-- Sidebar: node list -->
           <div v-if="liveDeployIds.length > 1" class="live-deploy-sidebar">
@@ -531,13 +627,14 @@
 
     <!-- Minimized live deploy indicator (when dialog closed but deploys running) -->
     <button
-      v-if="liveDeployIds.length > 0 && !liveDeployVisible && !liveDeployAllDone"
+      v-if="(liveDeployIds.length > 0 || (activeRollout && !rolloutTerminal)) && !liveDeployVisible && !liveDeployAllDone"
       class="live-deploy-fab"
       @click="liveDeployVisible = true"
-      :title="`${liveDeployIds.length} deploy(s) in progress — click to view`"
+      :title="activeRollout ? `Rollout: ${activeRollout.completed}/${activeRollout.total} — click to view` : `${liveDeployIds.length} deploy(s) in progress — click to view`"
     >
       <i class="pi pi-spin pi-spinner"></i>
-      <span>{{ liveDeployIds.length }}</span>
+      <span v-if="activeRollout">{{ activeRollout.completed }}/{{ activeRollout.total }}</span>
+      <span v-else>{{ liveDeployIds.length }}</span>
     </button>
   </div>
 </template>
@@ -550,9 +647,14 @@ import {
   fetchDeployCommits,
   fetchDeploys,
   startDeploy,
+  startRollout,
+  fetchRollout,
+  cancelRollout,
   type DeployProcess,
   type DeployStatus,
   type DeployCommit,
+  type RolloutStatus,
+  type RolloutTarget,
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops'])
@@ -560,6 +662,61 @@ const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'met
 // Multi-select state
 const selectedProcs = reactive(new Set<string>())
 const bulkConfirmProcs = ref<DeployProcess[] | null>(null)
+
+// Rollout controls (only used when bulkConfirmProcs.length > 1)
+const rolloutBatchSize = ref<number>(1)
+const rolloutCooldownSecs = ref<number>(30)
+const rolloutStopOnFailure = ref<boolean>(true)
+
+// Computed default batch size: max(1, ceil(N/3))
+function defaultBatchSize(n: number): number {
+  if (n <= 1) return 1
+  return Math.max(1, Math.ceil(n / 3))
+}
+
+interface WavePlanRow {
+  region: string
+  hosts: string[]
+}
+
+// Plan waves for the bulk dialog preview, mirroring the server-side
+// region-hard-boundary algorithm. Targets within a region are grouped
+// in selection order; regions are visited in first-seen order.
+const rolloutWavePlan = computed<WavePlanRow[]>(() => {
+  const procs = bulkConfirmProcs.value
+  if (!procs || procs.length <= 1) return []
+  const bs = Math.max(1, rolloutBatchSize.value || 1)
+  const groups: { region: string; items: DeployProcess[] }[] = []
+  const idx = new Map<string, number>()
+  for (const p of procs) {
+    const r = p.region || ''
+    let i = idx.get(r)
+    if (i === undefined) {
+      i = groups.length
+      idx.set(r, i)
+      groups.push({ region: r, items: [] })
+    }
+    groups[i].items.push(p)
+  }
+  const waves: WavePlanRow[] = []
+  for (const g of groups) {
+    for (let s = 0; s < g.items.length; s += bs) {
+      waves.push({
+        region: g.region || '—',
+        hosts: g.items.slice(s, s + bs).map(p => p.hostname),
+      })
+    }
+  }
+  return waves
+})
+
+// Whether the selection spans multiple processes (rollouts require one process).
+const bulkSpansMultipleProcesses = computed(() => {
+  const procs = bulkConfirmProcs.value
+  if (!procs || procs.length <= 1) return false
+  const first = procs[0].process
+  return procs.some(p => p.process !== first)
+})
 
 function procKey(p: DeployProcess): string {
   return p.hostname + ':' + p.process
@@ -601,6 +758,9 @@ function confirmBulkDeploy() {
   const targets = deployableSelected.value
   if (targets.length === 0) return
   bulkConfirmProcs.value = targets
+  rolloutBatchSize.value = defaultBatchSize(targets.length)
+  rolloutCooldownSecs.value = 30
+  rolloutStopOnFailure.value = true
 }
 
 function closeBulkConfirm() {
@@ -613,6 +773,63 @@ const liveDeployIds = ref<string[]>([])
 const liveDeployVisible = ref(false)
 const liveDeploySelected = ref('')
 let liveDeployPollTimer: ReturnType<typeof setInterval> | null = null
+
+// Active rollout tracking. Set when the user starts a phased rollout;
+// derives liveDeployIds from the rollout's wave deploy ids as they appear.
+const activeRolloutId = ref<string>('')
+const activeRollout = ref<RolloutStatus | null>(null)
+// Set when the user has clicked Cancel but the rollout hasn't reached a
+// terminal state yet. Lets us show a "Cancelling…" label while the current
+// wave's in-flight deploys finish up.
+const cancelRequested = ref<boolean>(false)
+let activeRolloutPollTimer: ReturnType<typeof setInterval> | null = null
+
+const rolloutTerminal = computed(() => {
+  const s = activeRollout.value?.state
+  return s === 'done' || s === 'failed' || s === 'cancelled'
+})
+
+const rolloutFailed = computed(() => {
+  const s = activeRollout.value?.state
+  return s === 'failed' || s === 'cancelled'
+})
+
+const rolloutProgressPct = computed(() => {
+  const r = activeRollout.value
+  if (!r || r.total === 0) return 0
+  return Math.round(((r.completed + r.failed) / r.total) * 100)
+})
+
+const rolloutStatusLabel = computed(() => {
+  const r = activeRollout.value
+  if (!r) return ''
+  switch (r.state) {
+    case 'pending': return 'Starting…'
+    case 'running': {
+      const w = r.current_wave
+      if (w >= 0 && w < r.waves.length) {
+        return `Wave ${w + 1} of ${r.waves.length} — ${r.waves[w].region}`
+      }
+      return 'Running'
+    }
+    case 'cooldown': return `Cooldown after wave ${r.current_wave + 1} of ${r.waves.length}`
+    case 'done': return 'Complete'
+    case 'failed': return 'Failed'
+    case 'cancelled': return 'Cancelled'
+    default: return r.state
+  }
+})
+
+// Tick once a second so cooldown countdown updates without re-fetching.
+const nowTick = ref(Date.now())
+let nowTickTimer: ReturnType<typeof setInterval> | null = null
+
+const cooldownRemaining = computed(() => {
+  const r = activeRollout.value
+  if (!r || !r.cooldown_until) return 0
+  const ms = new Date(r.cooldown_until).getTime() - nowTick.value
+  return ms > 0 ? Math.ceil(ms / 1000) : 0
+})
 
 const liveDeployStatuses = computed(() => {
   const map = new Map<string, DeployStatus>()
@@ -669,11 +886,16 @@ watch(liveDeployAnyFailed, (failed) => {
   }
 })
 
-// Clear live deploy tracking when all are done and dialog is closed
+// Clear live deploy tracking when all are done and dialog is closed.
+// For rollouts, only clear once the rollout itself is terminal so we don't
+// blow away state mid-cooldown (when all spawned deploys appear "done" but
+// the next wave hasn't started yet).
 watch([liveDeployAllDone, liveDeployVisible], ([done, visible]) => {
   if (done && !visible) {
+    if (activeRolloutId.value && !rolloutTerminal.value) return
     liveDeployIds.value = []
     liveDeploySelected.value = ''
+    activeRolloutId.value = ''
   }
 })
 
@@ -681,9 +903,39 @@ async function doBulkDeploy() {
   const targets = bulkConfirmProcs.value
   if (!targets || targets.length === 0) return
   const sha = bulkDeploySHA.value
+  const useRollout = targets.length > 1 && !bulkSpansMultipleProcesses.value
   closeBulkConfirm()
   selectedProcs.clear()
 
+  if (useRollout) {
+    // Single-process multi-target → server-side phased rollout.
+    const rolloutTargets: RolloutTarget[] = targets.map(p => ({
+      stage: p.stage,
+      role: p.role,
+      process: p.process,
+      host: p.hostname,
+      dns_name: p.dns_name,
+      sha,
+      region: p.region,
+    }))
+    try {
+      const r = await startRollout({
+        targets: rolloutTargets,
+        batch_size: rolloutBatchSize.value,
+        cooldown_secs: rolloutCooldownSecs.value,
+        stop_on_failure: rolloutStopOnFailure.value,
+      })
+      activeRolloutId.value = r.id
+      activeRollout.value = r
+      await loadDeploys()
+      openLiveDeployDialog([])
+    } catch (e: any) {
+      error.value = e?.message || 'rollout failed to start'
+    }
+    return
+  }
+
+  // Single-target or multi-process selection → fall back to parallel singles.
   const results = await Promise.allSettled(
     targets.map(p =>
       startDeploy({
@@ -1100,6 +1352,105 @@ async function loadDeploys() {
   }
 }
 
+async function loadActiveRollout() {
+  if (!activeRolloutId.value) return
+  try {
+    const r = await fetchRollout(activeRolloutId.value)
+    activeRollout.value = r
+    // Sync the live deploy id list from the rollout's wave deploy ids,
+    // appending newly-spawned ones as waves progress.
+    const ids: string[] = []
+    for (const w of r.waves) {
+      for (const t of w.targets) {
+        if (t.deploy_id) ids.push(t.deploy_id)
+      }
+    }
+    // Detect newly-visible deploy ids so we can refresh the deploy list
+    // immediately (the separate deploy poll runs at 2s and would otherwise
+    // leave the detail pane blank for the first second of each wave).
+    const prevIds = new Set(liveDeployIds.value)
+    const hasNewIds = ids.some(id => !prevIds.has(id))
+
+    if (ids.length > 0) {
+      liveDeployIds.value = ids
+    }
+
+    if (hasNewIds) {
+      // Force-refresh deploys so the detail pane has data for the new ids.
+      await loadDeploys()
+    }
+
+    // Auto-select: prefer a currently running deploy, else the first
+    // non-terminal one, else the first id. Only re-select if the current
+    // selection is invalid.
+    if (ids.length > 0) {
+      const currentValid = liveDeploySelected.value && ids.includes(liveDeploySelected.value)
+      const currentStatus = currentValid ? liveDeployStatuses.value.get(liveDeploySelected.value) : undefined
+      const currentIsActive = currentStatus && (currentStatus.state === 'running' || currentStatus.state === 'pending')
+      if (!currentValid || !currentIsActive) {
+        const running = ids.find(id => {
+          const s = liveDeployStatuses.value.get(id)
+          return s?.state === 'running'
+        })
+        const pending = ids.find(id => {
+          const s = liveDeployStatuses.value.get(id)
+          return s?.state === 'pending' || !s
+        })
+        liveDeploySelected.value = running || pending || ids[0]
+      }
+    }
+
+    if (r.state === 'done' || r.state === 'failed' || r.state === 'cancelled') {
+      stopActiveRolloutPolling()
+    }
+  } catch {
+    // ignore transient errors
+  }
+}
+
+function startActiveRolloutPolling() {
+  stopActiveRolloutPolling()
+  if (!activeRolloutId.value) return
+  activeRolloutPollTimer = setInterval(loadActiveRollout, 1000)
+  if (!nowTickTimer) nowTickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
+  // Fire one immediately so the dialog populates without delay.
+  loadActiveRollout()
+}
+
+function stopActiveRolloutPolling() {
+  if (activeRolloutPollTimer) {
+    clearInterval(activeRolloutPollTimer)
+    activeRolloutPollTimer = null
+  }
+  if (nowTickTimer) {
+    clearInterval(nowTickTimer)
+    nowTickTimer = null
+  }
+}
+
+async function doCancelRollout() {
+  if (!activeRolloutId.value || cancelRequested.value) return
+  cancelRequested.value = true
+  try {
+    const r = await cancelRollout(activeRolloutId.value)
+    activeRollout.value = r
+  } catch (e: any) {
+    cancelRequested.value = false
+    error.value = e?.message || 'cancel failed'
+  }
+}
+
+watch(activeRolloutId, (id) => {
+  if (id) {
+    cancelRequested.value = false
+    startActiveRolloutPolling()
+  } else {
+    stopActiveRolloutPolling()
+    activeRollout.value = null
+    cancelRequested.value = false
+  }
+})
+
 // Poll deploys faster when there are active ones
 function startDeployPolling() {
   stopDeployPolling()
@@ -1138,6 +1489,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   stopDeployPolling()
+  stopActiveRolloutPolling()
   document.removeEventListener('click', onClickOutside, true)
 })
 </script>
@@ -2735,5 +3087,238 @@ a.version-sha:hover {
 
 .live-deploy-fab .pi {
   font-size: 0.75rem;
+}
+
+/* -- Rollout controls (in bulk-confirm dialog) -- */
+.rollout-controls {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--surface-ground);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+}
+
+.rollout-controls-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color-muted);
+  margin-bottom: 0.5rem;
+}
+
+.rollout-control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.rollout-control-row label {
+  min-width: 7.5rem;
+  color: var(--text-color);
+}
+
+.rollout-control-input {
+  width: 4.5rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--text-color);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.rollout-control-hint {
+  color: var(--text-color-muted);
+  font-size: 0.72rem;
+}
+
+.rollout-wave-preview {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--surface-border);
+}
+
+.rollout-wave-preview-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-color-muted);
+  margin-bottom: 0.3rem;
+}
+
+.rollout-wave-preview-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.15rem 0;
+}
+
+.rollout-wave-num {
+  min-width: 3.5rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.rollout-wave-region {
+  min-width: 3rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-color-muted);
+}
+
+.rollout-wave-hosts {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-color);
+}
+
+.bulk-target-region {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-color-muted);
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+}
+
+/* -- Rollout progress (in live deploy dialog) -- */
+.rollout-progress {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-ground);
+}
+
+.rollout-progress-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.rollout-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rollout-progress-bar-fill {
+  height: 100%;
+  background: var(--primary-color);
+  transition: width 0.3s ease;
+}
+
+.rollout-state-failed .rollout-progress-bar-fill,
+.rollout-state-cancelled .rollout-progress-bar-fill {
+  background: var(--red-400);
+}
+
+.rollout-state-done .rollout-progress-bar-fill {
+  background: var(--green-400);
+}
+
+.rollout-progress-counts {
+  font-size: 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+.rollout-progress-completed {
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.rollout-progress-sep {
+  color: var(--text-color-muted);
+  margin: 0 0.15rem;
+}
+
+.rollout-progress-total {
+  color: var(--text-color);
+}
+
+.rollout-progress-failed {
+  margin-left: 0.5rem;
+  color: var(--red-400);
+  font-weight: 600;
+}
+
+.rollout-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  margin-bottom: 0.5rem;
+}
+
+.rollout-status-state {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.rollout-cooldown-countdown {
+  color: var(--text-color-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.rollout-cancel-btn {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+}
+
+.rollout-wave-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.rollout-wave-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  font-size: 0.7rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.rollout-wave-chip-num {
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.rollout-wave-chip-region {
+  color: var(--text-color);
+}
+
+.rollout-wave-chip-count {
+  color: var(--text-color-muted);
+}
+
+.rollout-wave-chip.wave-state-running {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.rollout-wave-chip.wave-state-done {
+  border-color: var(--green-400);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.rollout-wave-chip.wave-state-failed {
+  border-color: var(--red-400);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.rollout-wave-chip.wave-state-skipped {
+  opacity: 0.5;
+  border-style: dashed;
 }
 </style>
