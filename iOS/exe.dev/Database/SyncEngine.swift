@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import UIKit
 
 @ModelActor
 actor SyncEngine {
@@ -44,6 +45,7 @@ actor SyncEngine {
         }
 
         try saveAndNotify(kind: .vms)
+        updateAppBadge()
     }
 
     // MARK: - Conversation Load
@@ -294,6 +296,7 @@ actor SyncEngine {
             }
         }
         try? saveAndNotify(kind: .vms)
+        updateAppBadge()
     }
 
     func markVMAsRead(vmName: String) {
@@ -302,10 +305,22 @@ actor SyncEngine {
             vm.lastViewedAt = Date()
             vm.unreadCount = 0
             try? saveAndNotify(kind: .vms)
+            updateAppBadge()
         }
     }
 
     // MARK: - Private Helpers
+
+    private func updateAppBadge() {
+        let vms = (try? modelContext.fetch(FetchDescriptor<StoredVM>())) ?? []
+        let total = vms.reduce(0) { $0 + $1.unreadCount }
+        let badgeCount = total
+        // Use applicationIconBadgeNumber — it works without notification
+        // authorization, unlike UNUserNotificationCenter.setBadgeCount().
+        Task { @MainActor in
+            UIApplication.shared.applicationIconBadgeNumber = badgeCount
+        }
+    }
 
     private func saveAndNotify(kind: SaveNotificationKind) throws {
         try modelContext.save()

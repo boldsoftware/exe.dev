@@ -3,6 +3,7 @@ import SwiftData
 
 enum SendStatus: Equatable {
     case sending
+    case sent // API accepted; awaiting SSE confirmation
     case failed(String)
 }
 
@@ -206,7 +207,7 @@ final class ChannelViewModel {
     }
 
     var hasPendingSends: Bool {
-        pendingMessages.contains { $0.status == .sending }
+        pendingMessages.contains { $0.status == .sending || $0.status == .sent }
     }
 
     // MARK: - Private
@@ -251,8 +252,12 @@ final class ChannelViewModel {
                         )
                     }
                 }
-                // Don't remove yet — the SSE stream will deliver the real message,
-                // and reconcilePendingMessages() will remove this one.
+                // Mark sent so the loop doesn't re-send this message.
+                // The SSE stream will deliver the confirmed message and
+                // reconcilePendingMessages() will remove this entry.
+                if let idx = pendingMessages.firstIndex(where: { $0.id == msg.id }) {
+                    pendingMessages[idx].status = .sent
+                }
             } catch {
                 // Mark failed; stop draining so subsequent queued messages wait.
                 if let idx = pendingMessages.firstIndex(where: { $0.id == msg.id }) {
@@ -474,7 +479,7 @@ final class ChannelViewModel {
         var confirmedTexts = userMessages.map { $0.displayText }
 
         pendingMessages.removeAll { pending in
-            guard pending.status == .sending else { return false }
+            guard pending.status == .sending || pending.status == .sent else { return false }
             if let idx = confirmedTexts.firstIndex(of: pending.text) {
                 confirmedTexts.remove(at: idx)
                 return true

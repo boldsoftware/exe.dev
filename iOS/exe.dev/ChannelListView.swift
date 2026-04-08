@@ -285,10 +285,10 @@ struct ChannelListView: View {
     private func startPolling() {
         pollingTask?.cancel()
         pollingTask = Task.detached(priority: .utility) { [api, syncEngine] in
+            // Refresh immediately on first run, then every 30 seconds.
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                if Task.isCancelled { break }
                 await refreshUnreadCounts(api: api, syncEngine: syncEngine)
+                try? await Task.sleep(for: .seconds(30))
             }
         }
     }
@@ -377,9 +377,25 @@ private func unreadCount(api: APIClient, shelleyURL: String, lastViewed: Date?) 
         if latest.updatedAt <= cutoff { return 0 }
 
         let convData = try await api.getConversation(shelleyURL: shelleyURL, id: latest.conversationID)
-        return convData.messages?.filter { msg in
-            msg.type == "agent" && msg.createdAt > cutoff && !msg.displayText.isEmpty
-        }.count ?? 0
+        guard let messages = convData.messages else { return 0 }
+
+        // Count completed turns, not individual messages.
+        // A turn ends when an endOfTurn message appears after non-endOfTurn
+        // messages. Consecutive endOfTurn messages (e.g. max-tokens
+        // truncation producing two) count as a single turn.
+        var turnCount = 0
+        var prevWasEndOfTurn = false
+        for msg in messages where msg.createdAt > cutoff {
+            if msg.endOfTurn == true {
+                if !prevWasEndOfTurn {
+                    turnCount += 1
+                }
+                prevWasEndOfTurn = true
+            } else {
+                prevWasEndOfTurn = false
+            }
+        }
+        return turnCount
     } catch {
         return -1 // Signal: keep existing count
     }
