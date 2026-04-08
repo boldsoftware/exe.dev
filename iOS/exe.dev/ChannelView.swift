@@ -172,6 +172,7 @@ private struct MessageListView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
             }
+            .defaultScrollAnchor(.bottom)
             .onAppear {
                 guard !hasPerformedInitialScroll else { return }
                 scrollToBottom(proxy, animated: false)
@@ -393,7 +394,11 @@ private struct MessageContentView: View {
 
         let text = message.displayText
         if !text.isEmpty {
-            FormattedText(text: text)
+            if text.count > 8000 {
+                FormattedText(text: String(text.prefix(8000)) + "\n\n_(message truncated — \(text.count) characters total)_")
+            } else {
+                FormattedText(text: text)
+            }
         }
     }
 }
