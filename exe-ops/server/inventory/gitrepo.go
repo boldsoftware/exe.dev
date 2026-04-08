@@ -83,6 +83,11 @@ func (g *GitRepo) fetch(ctx context.Context) error {
 }
 
 func (g *GitRepo) fetchLocked(ctx context.Context) error {
+	// Bound git fetch so a slow/unresponsive remote can't hold the write
+	// lock indefinitely — all read methods (HeadSHA, ResolveCommit,
+	// CommitLog) take g.mu.RLock and would otherwise block behind it.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", g.dir, "fetch", "--quiet", "origin")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
