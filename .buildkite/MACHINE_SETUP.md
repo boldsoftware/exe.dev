@@ -67,8 +67,8 @@ curl -fsSL https://get.docker.com | sudo sh
 ## 3. Go 1.26
 
 ```bash
-curl -sLO https://go.dev/dl/go1.26.1.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.26.1.linux-amd64.tar.gz
+curl -sLO https://go.dev/dl/go1.26.2.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.26.2.linux-amd64.tar.gz
 ```
 
 Add to `/etc/profile.d/go.sh`:

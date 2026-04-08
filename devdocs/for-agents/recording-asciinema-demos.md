@@ -25,10 +25,10 @@ tmux new-session -d -s exed
 tmux send-keys -t exed 'ANTHROPIC_API_KEY=... /tmp/exed-local -stage=local -start-exelet -db /tmp/demo-exed.db' Enter
 ```
 
-Build and start sshpiperd (needs `GOTOOLCHAIN=go1.26.1` for `deps/sshpiper`):
+Build and start sshpiperd (needs `GOTOOLCHAIN=go1.26.2` for `deps/sshpiper`):
 
 ```bash
-GOTOOLCHAIN=go1.26.1 go build -o /tmp/sshpiperd ./deps/sshpiper/cmd/sshpiperd/
+GOTOOLCHAIN=go1.26.2 go build -o /tmp/sshpiperd ./deps/sshpiper/cmd/sshpiperd/
 tmux new-session -d -s piper
 tmux send-keys -t piper '/tmp/sshpiperd -p 2222 --server-key-generate-mode always --server-key /tmp/sshpiper-host-key --drop-hostkeys-message grpc --endpoint=localhost:2224 --insecure' Enter
 ```
@@ -174,4 +174,4 @@ Clean up state between takes (e.g., delete VMs from previous run), restart exed 
 - **"Please complete registration"** -- user not found. Check: (1) `public_key` has no comment and has trailing `\n`, (2) `canonical_email` is populated, (3) `fingerprint` is hex SHA256 not base64, (4) exed was restarted after DB edits.
 - **asciinema upload fails with "must include only string values"** -- fix the `env` field in the `.cast` header (see above).
 - **Blank/missing colors** -- set `TERM=xterm-256color` in both the asciinema `rec` invocation and the `-c` command.
-- **sshpiperd won't build** -- needs `GOTOOLCHAIN=go1.26.1` because `deps/sshpiper/go.mod` requires go 1.25+.
+- **sshpiperd won't build** -- needs `GOTOOLCHAIN=go1.26.2` because `deps/sshpiper/go.mod` requires go 1.25+.
