@@ -120,10 +120,28 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	return iface, nil
 }
 
-// ApplyConnectionLimit applies a connection limit rule for the given IP.
+// ApplyConnectionLimit applies a connection limit rule for the given instance.
 // This is used to apply limits to existing VMs at startup.
-func (n *NAT) ApplyConnectionLimit(ctx context.Context, ip string) error {
+// In NAT mode, the rule matches by IP in the shared namespace.
+func (n *NAT) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) error {
+	ip, err := instanceIP(inst)
+	if err != nil {
+		return err
+	}
 	return n.applyConnLimit(ctx, ip)
+}
+
+// instanceIP extracts the bare IP (without CIDR mask) from an instance's
+// network config. Returns an error if the instance has no IP or it's unparseable.
+func instanceIP(inst *api.Instance) (string, error) {
+	if inst.VMConfig == nil || inst.VMConfig.NetworkInterface == nil || inst.VMConfig.NetworkInterface.IP == nil {
+		return "", fmt.Errorf("instance %s has no IP address", inst.ID)
+	}
+	ip, _, err := net.ParseCIDR(inst.VMConfig.NetworkInterface.IP.IPV4)
+	if err != nil {
+		return "", fmt.Errorf("instance %s: parse IP %q: %w", inst.ID, inst.VMConfig.NetworkInterface.IP.IPV4, err)
+	}
+	return ip.String(), nil
 }
 
 // ApplyBandwidthLimit applies bandwidth limiting to an existing TAP device.

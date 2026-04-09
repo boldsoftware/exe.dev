@@ -332,8 +332,9 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		if err := stream.Send(&api.SendVMResponse{
 			Type: &api.SendVMResponse_TargetReady{
 				TargetReady: &api.SendVMTargetReady{
-					HasBaseImage:  ready.HasBaseImage,
-					TargetNetwork: ready.TargetNetwork,
+					HasBaseImage:   ready.HasBaseImage,
+					TargetNetwork:  ready.TargetNetwork,
+					SkipIpReconfig: ready.SkipIpReconfig,
 				},
 			},
 		}); err != nil {

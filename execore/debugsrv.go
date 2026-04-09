@@ -1099,12 +1099,14 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 
 	// In direct mode, targetNetwork comes from the TargetReady message.
 	var targetNetwork *computeapi.NetworkInterface
+	var skipIPReconfig bool
 	directConfirmed := earlyTargetReady != nil
 	if directConfirmed {
 		targetNetwork = earlyTargetReady.TargetNetwork
+		skipIPReconfig = earlyTargetReady.SkipIpReconfig
 		if targetNetwork != nil && targetNetwork.IP != nil {
 			log.InfoContext(ctx, "live migration: target ready", "target_ip", targetNetwork.IP.IPV4)
-			progress("Target ready (target_ip=%s)", targetNetwork.IP.IPV4)
+			progress("Target ready (target_ip=%s, skip_ip_reconfig=%v)", targetNetwork.IP.IPV4, skipIPReconfig)
 		} else {
 			progress("Target ready")
 		}
@@ -1133,8 +1135,9 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 		case *computeapi.SendVMResponse_TargetReady:
 			directConfirmed = true
 			targetNetwork = v.TargetReady.TargetNetwork
+			skipIPReconfig = v.TargetReady.SkipIpReconfig
 			if targetNetwork != nil && targetNetwork.IP != nil {
-				progress("Target ready (target_ip=%s)", targetNetwork.IP.IPV4)
+				progress("Target ready (target_ip=%s, skip_ip_reconfig=%v)", targetNetwork.IP.IPV4, skipIPReconfig)
 			} else {
 				progress("Target ready")
 			}
@@ -1153,22 +1156,27 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 			log.InfoContext(ctx, "live migration: source requesting IP reconfiguration")
 			s.liveMigrations.updateState(box.Name, liveMigrationReconfiguring)
 			progress("Source requesting IP reconfiguration...")
-			sourceNetwork := v.AwaitControl.SourceNetwork
-			if sourceNetwork == nil || sourceNetwork.IP == nil {
-				log.ErrorContext(ctx, "live migration: source did not provide network info in AwaitControl")
-				return 0, false, fmt.Errorf("source did not provide network info in AwaitControl")
-			}
-			if targetNetwork == nil || targetNetwork.IP == nil {
-				return 0, false, fmt.Errorf("target network not available for IP reconfiguration (no TargetReady received)")
-			}
 
-			// SSH into the running VM and change its IP to the target's IP
-			if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, progress); err != nil {
-				log.ErrorContext(ctx, "live migration: failed to reconfigure VM IP",
-					"source_ip", sourceNetwork.IP.IPV4,
-					"target_ip", targetNetwork.IP.IPV4,
-					"error", err)
-				return 0, false, fmt.Errorf("failed to reconfigure VM IP: %w", err)
+			if skipIPReconfig {
+				progress("Skipping IP reconfiguration (target uses IP isolation)")
+			} else {
+				sourceNetwork := v.AwaitControl.SourceNetwork
+				if sourceNetwork == nil || sourceNetwork.IP == nil {
+					log.ErrorContext(ctx, "live migration: source did not provide network info in AwaitControl")
+					return 0, false, fmt.Errorf("source did not provide network info in AwaitControl")
+				}
+				if targetNetwork == nil || targetNetwork.IP == nil {
+					return 0, false, fmt.Errorf("target network not available for IP reconfiguration (no TargetReady received)")
+				}
+
+				// SSH into the running VM and change its IP to the target's IP
+				if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, progress); err != nil {
+					log.ErrorContext(ctx, "live migration: failed to reconfigure VM IP",
+						"source_ip", sourceNetwork.IP.IPV4,
+						"target_ip", targetNetwork.IP.IPV4,
+						"error", err)
+					return 0, false, fmt.Errorf("failed to reconfigure VM IP: %w", err)
+				}
 			}
 
 			// Tell source to proceed with pause

@@ -13,12 +13,16 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
+// NetnsFunc returns the network namespace name for an instance.
+type NetnsFunc func(instanceID string) string
+
 // exepipeManager manages SSH proxies for instances,
 // using exepipe to handle the actual connections.
 type exepipeManager struct {
 	exepipeAddress string
 	bindIP         string
 	lg             *slog.Logger
+	netnsFunc      NetnsFunc
 
 	cliMu sync.Mutex
 	cli   *client.Client
@@ -28,12 +32,15 @@ type exepipeManager struct {
 }
 
 // NewExepipeManager creates a new SSH proxy manager using exepipe.
-func NewExepipeManager(ctx context.Context, exepipeAddress, bindIP string, lg *slog.Logger) Manager {
+func NewExepipeManager(ctx context.Context, exepipeAddress, bindIP string, lg *slog.Logger, netnsFunc ...NetnsFunc) Manager {
 	epm := &exepipeManager{
 		exepipeAddress: exepipeAddress,
 		bindIP:         bindIP,
 		lg:             lg,
 		ports:          make(map[string]int),
+	}
+	if len(netnsFunc) > 0 {
+		epm.netnsFunc = netnsFunc[0]
 	}
 	epm.getClient(ctx)
 	return epm
@@ -68,6 +75,16 @@ func (epm *exepipeManager) getClient(ctx context.Context) *client.Client {
 // CreateProxy starts a new SSH proxy for an instance.
 // The SSH proxy listens on the given port on epm.bindIP.
 // It opens connections to port 22 on targetIP.
+// resetClient closes the current exepipe client so getClient will reconnect.
+func (epm *exepipeManager) resetClient() {
+	epm.cliMu.Lock()
+	defer epm.cliMu.Unlock()
+	if epm.cli != nil {
+		epm.cli.Close()
+		epm.cli = nil
+	}
+}
+
 func (epm *exepipeManager) CreateProxy(ctx context.Context, instanceID, targetIP string, port int, instanceDir string) error {
 	cli := epm.getClient(ctx)
 	if cli == nil {
@@ -80,8 +97,18 @@ func (epm *exepipeManager) CreateProxy(ctx context.Context, instanceID, targetIP
 	delete(epm.ports, instanceID)
 	epm.portsMu.Unlock()
 
-	if err := epm.startProxy(ctx, cli, instanceID, targetIP, port); err != nil {
-		return err
+	err := epm.startProxy(ctx, cli, instanceID, targetIP, port)
+	if err != nil {
+		// Retry once with a fresh client (handles exepipe restart).
+		epm.resetClient()
+		cli = epm.getClient(ctx)
+		if cli == nil {
+			return fmt.Errorf("unable to reconnect to exepipe: %w", err)
+		}
+		err = epm.startProxy(ctx, cli, instanceID, targetIP, port)
+		if err != nil {
+			return err
+		}
 	}
 
 	epm.portsMu.Lock()
@@ -109,8 +136,13 @@ func (epm *exepipeManager) startProxy(ctx context.Context, cli *client.Client, i
 		return fmt.Errorf("failed to start ssh proxy listener: %v", err)
 	}
 
+	var nsName string
+	if epm.netnsFunc != nil {
+		nsName = epm.netnsFunc(instanceID)
+	}
+
 	// The target port is always port 22, for ssh.
-	if err := cli.Listen(ctx, instanceID, ln, targetIP, 22, "ssh"); err != nil {
+	if err := cli.Listen(ctx, instanceID, ln, targetIP, 22, "ssh", nsName); err != nil {
 		ln.Close()
 		return fmt.Errorf("failed to start ssh proxy: %v", err)
 	}
@@ -135,7 +167,12 @@ func (epm *exepipeManager) StopProxy(ctx context.Context, instanceID string) (in
 	}
 
 	if err := cli.Unlisten(ctx, instanceID); err != nil {
-		return 0, fmt.Errorf("failed to stop proxy: %v", err)
+		// Retry once with a fresh client.
+		epm.resetClient()
+		cli = epm.getClient(ctx)
+		if cli != nil {
+			_ = cli.Unlisten(ctx, instanceID)
+		}
 	}
 
 	return port, nil

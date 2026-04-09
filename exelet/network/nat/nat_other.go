@@ -46,7 +46,7 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	return errNotSupported
 }
 
-func (n *NAT) ApplyConnectionLimit(ctx context.Context, ip string) error {
+func (n *NAT) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) error {
 	return errNotSupported
 }
 
@@ -54,7 +54,7 @@ func (n *NAT) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	return errNotSupported
 }
 
-func (n *NAT) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
+func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
 	return nil, errNotSupported
 }
 

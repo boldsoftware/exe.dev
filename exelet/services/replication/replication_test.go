@@ -36,7 +36,7 @@ func (m *mockCompute) GetInstanceByID(_ context.Context, id string) (*computeapi
 	return nil, fmt.Errorf("%w: instance %s", computeapi.ErrNotFound, id)
 }
 
-func (m *mockCompute) GetInstanceByIP(context.Context, string) (string, string, error) {
+func (m *mockCompute) GetInstanceByIP(context.Context, string) (string, string, string, error) {
 	panic("not called")
 }
 

@@ -29,7 +29,7 @@ const (
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
-	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
+	GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error)
 	Instances(ctx context.Context) ([]*api.Instance, error)
 	// GetInstanceByID returns detailed information about a specific instance
 	GetInstanceByID(ctx context.Context, id string) (*api.Instance, error)

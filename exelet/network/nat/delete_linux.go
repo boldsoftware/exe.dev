@@ -4,6 +4,9 @@ package nat
 
 import (
 	"context"
+	"net"
+
+	api "exe.dev/pkg/api/exe/compute/v1"
 
 	"github.com/vishvananda/netlink"
 )
@@ -47,9 +50,26 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	return nil
 }
 
-// ReconcileLeases releases any IPAM leases whose IPs are not in validIPs.
-// This cleans up orphaned leases from failed migrations or incomplete deletions.
-func (n *NAT) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
+// ReconcileLeases releases any IPAM leases whose IPs are not associated with
+// the given instances. This cleans up orphaned leases from failed migrations
+// or incomplete deletions.
+func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
+	validIPs := make(map[string]struct{}, len(instances))
+	for _, inst := range instances {
+		if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
+			ip, _, err := net.ParseCIDR(inst.VMConfig.NetworkInterface.IP.IPV4)
+			if err != nil {
+				n.log.WarnContext(ctx, "instance has unparseable IP, its lease will be released",
+					"instance", inst.ID,
+					"ip", inst.VMConfig.NetworkInterface.IP.IPV4,
+					"error", err,
+				)
+				continue
+			}
+			validIPs[ip.String()] = struct{}{}
+		}
+	}
+
 	leases, err := n.ipam.ListLeases()
 	if err != nil {
 		return nil, err

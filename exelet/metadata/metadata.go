@@ -77,7 +77,7 @@ var CertRefreshInterval = 1 * time.Hour
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
-	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
+	GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error)
 }
 
 // Service provides a metadata HTTP service for VMs to query
@@ -529,8 +529,9 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 	// Look up instance information
 	// TODO(philip): Beware that GetInstanceByIP is linear in reading some JSON files!
 	if s.instanceLookup != nil {
-		if _, name, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP); err == nil {
+		if _, name, vmIP, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP); err == nil {
 			response.Name = name
+			response.SourceIP = vmIP
 			sloghttp.AddCustomAttributes(r, slog.String("vm_name", name))
 		} else {
 			s.log.DebugContext(r.Context(), "failed to lookup instance", "ip", sourceIP, "error", err)
@@ -550,7 +551,7 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	// Look up the box name for this connection
 	sourceIP := requestSourceIP(r)
-	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	_, boxName, _, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "failed to lookup box by IP", "ip", sourceIP, "error", err)
 		http.Error(w, "Failed to identify box", http.StatusInternalServerError)
@@ -615,7 +616,7 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 func (s *Service) handleEmailProxy(w http.ResponseWriter, r *http.Request) {
 	// Look up the box name for this connection
 	sourceIP := requestSourceIP(r)
-	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	_, boxName, _, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "failed to lookup box by IP", "ip", sourceIP, "error", err)
 		http.Error(w, "Failed to identify box", http.StatusInternalServerError)
@@ -753,7 +754,7 @@ func (s *Service) handleIntegrationProxy(w http.ResponseWriter, r *http.Request,
 	}
 
 	sourceIP := requestSourceIP(r)
-	_, vmName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	_, vmName, _, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "integration proxy: failed to lookup box by IP", "ip", sourceIP, "error", err)
 		integrationError(w, r, "Failed to identify box", http.StatusInternalServerError)
@@ -856,7 +857,7 @@ func (s *Service) handleTeamIntegrationProxy(w http.ResponseWriter, r *http.Requ
 	}
 
 	sourceIP := requestSourceIP(r)
-	_, vmName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	_, vmName, _, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "team integration proxy: failed to lookup box by IP", "ip", sourceIP, "error", err)
 		integrationError(w, r, "Failed to identify box", http.StatusInternalServerError)

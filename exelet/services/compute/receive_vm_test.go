@@ -2,10 +2,15 @@ package compute
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
 // busyDatasetStorage simulates a storage manager whose Delete blocks until
@@ -166,4 +171,167 @@ func TestRollbackClosesMultipleWriters(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Rollback hung: not all pipe writers were closed before Delete")
 	}
+}
+
+func TestSameVMIP(t *testing.T) {
+	mkInstance := func(ipv4 string) *api.Instance {
+		if ipv4 == "" {
+			return &api.Instance{VMConfig: &api.VMConfig{}}
+		}
+		return &api.Instance{
+			VMConfig: &api.VMConfig{
+				NetworkInterface: &api.NetworkInterface{
+					IP: &api.IPAddress{IPV4: ipv4},
+				},
+			},
+		}
+	}
+	mkNet := func(ipv4 string) *api.NetworkInterface {
+		return &api.NetworkInterface{IP: &api.IPAddress{IPV4: ipv4}}
+	}
+
+	tests := []struct {
+		name   string
+		source *api.Instance
+		target *api.NetworkInterface
+		want   bool
+	}{
+		{
+			name:   "same IP different CIDR",
+			source: mkInstance("10.42.0.42/24"),
+			target: mkNet("10.42.0.42/16"),
+			want:   true,
+		},
+		{
+			name:   "same IP same CIDR",
+			source: mkInstance("10.42.0.42/24"),
+			target: mkNet("10.42.0.42/24"),
+			want:   true,
+		},
+		{
+			name:   "different IP nat to netns",
+			source: mkInstance("10.42.0.5/16"),
+			target: mkNet("10.42.0.42/24"),
+			want:   false,
+		},
+		{
+			name:   "nil source",
+			source: nil,
+			target: mkNet("10.42.0.42/24"),
+			want:   false,
+		},
+		{
+			name:   "nil target",
+			source: mkInstance("10.42.0.42/24"),
+			target: nil,
+			want:   false,
+		},
+		{
+			name:   "source missing network interface",
+			source: mkInstance(""),
+			target: mkNet("10.42.0.42/24"),
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sameVMIP(tt.source, tt.target)
+			if got != tt.want {
+				t.Errorf("sameVMIP() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEditSnapshotConfigUpdatesTapName(t *testing.T) {
+	mkSnapshotConfig := func(t *testing.T, tapName, cmdline string) string {
+		t.Helper()
+		dir := t.TempDir()
+		chvConfig := map[string]any{
+			"disks": []any{
+				map[string]any{"path": "/old/disk"},
+			},
+			"payload": map[string]any{
+				"kernel":  "/old/kernel",
+				"cmdline": cmdline,
+			},
+			"net": []any{
+				map[string]any{
+					"tap": tapName,
+					"mac": "02:73:6d:63:28:e6",
+				},
+			},
+		}
+		data, err := json.Marshal(chvConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	readTap := func(t *testing.T, dir string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result map[string]any
+		if err := json.Unmarshal(data, &result); err != nil {
+			t.Fatal(err)
+		}
+		nets := result["net"].([]any)
+		netCfg := nets[0].(map[string]any)
+		return netCfg["tap"].(string)
+	}
+
+	cmdline := "console=hvc0 root=/dev/vda ip=10.42.0.5::10.42.0.1:255.255.0.0:island-queen:eth0:none:1.1.1.1:8.8.8.8:ntp.ubuntu.com"
+	srcVMConfig := &api.VMConfig{Name: "island-queen"}
+
+	t.Run("nat to netns", func(t *testing.T) {
+		dir := mkSnapshotConfig(t, "tap-5c4c99", cmdline)
+		target := &api.NetworkInterface{
+			Name:        "tap-vm000001",
+			DeviceName:  "eth0",
+			IP:          &api.IPAddress{IPV4: "10.42.0.42/24", GatewayV4: "10.42.0.1"},
+			Nameservers: []string{"1.1.1.1"},
+			NTPServer:   "ntp.ubuntu.com",
+		}
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, target); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTap(t, dir); got != "tap-vm000001" {
+			t.Errorf("tap = %q, want %q", got, "tap-vm000001")
+		}
+	})
+
+	t.Run("netns to nat", func(t *testing.T) {
+		dir := mkSnapshotConfig(t, "tap-vm000001", cmdline)
+		target := &api.NetworkInterface{
+			Name:        "tap-a1b2c3",
+			DeviceName:  "eth0",
+			IP:          &api.IPAddress{IPV4: "10.42.0.7/16", GatewayV4: "10.42.0.1"},
+			Nameservers: []string{"1.1.1.1"},
+			NTPServer:   "ntp.ubuntu.com",
+		}
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, target); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTap(t, dir); got != "tap-a1b2c3" {
+			t.Errorf("tap = %q, want %q", got, "tap-a1b2c3")
+		}
+	})
+
+	t.Run("nil target skips tap update", func(t *testing.T) {
+		dir := mkSnapshotConfig(t, "tap-orig", cmdline)
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, nil); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTap(t, dir); got != "tap-orig" {
+			t.Errorf("tap = %q, want %q (should be unchanged)", got, "tap-orig")
+		}
+	})
 }

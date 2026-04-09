@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"exe.dev/exelet/network/nat"
+	"exe.dev/exelet/network/netns"
 )
 
 // NewNetworkManager returns a new Network Manager
@@ -21,6 +22,8 @@ func NewNetworkManager(addr string, log *slog.Logger) (NetworkManager, error) {
 	switch strings.ToLower(u.Scheme) {
 	case "nat":
 		return nat.NewNATManager(addr, log)
+	case "netns":
+		return netns.NewManager(addr, log)
 	}
 
 	return nil, fmt.Errorf("unsupported network manager %q", u.Scheme)

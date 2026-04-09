@@ -52,7 +52,7 @@ func TestStartAdoptsExistingProcess(t *testing.T) {
 	}
 
 	// Now create SSHProxy and call Start() - it should adopt, not create duplicate
-	proxy := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
+	proxy := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", "", log)
 	if err := proxy.start(); err != nil {
 		t.Fatalf("Start() failed: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestStartNoDuplicateOnDoubleStart(t *testing.T) {
 	targetIP := "127.0.0.1"
 
 	// First start — should spawn socat.
-	proxy1 := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
+	proxy1 := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", "", log)
 	if err := proxy1.start(); err != nil {
 		t.Fatalf("first start() failed: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestStartNoDuplicateOnDoubleStart(t *testing.T) {
 	firstPID := proxy1.pid
 
 	// Second start — should adopt the existing process, not spawn a new one.
-	proxy2 := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", log)
+	proxy2 := newSocatSSHProxy("test-instance", port, targetIP, instanceDir, "", "", log)
 	if err := proxy2.start(); err != nil {
 		t.Fatalf("second start() failed: %v", err)
 	}

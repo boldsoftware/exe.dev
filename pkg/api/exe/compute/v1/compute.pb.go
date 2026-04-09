@@ -3076,11 +3076,12 @@ func (x *SendVMStatus) GetMessage() string {
 }
 
 type SendVMTargetReady struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HasBaseImage  bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"`
-	TargetNetwork *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	HasBaseImage   bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"`
+	TargetNetwork  *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"`
+	SkipIpReconfig bool                   `protobuf:"varint,3,opt,name=skip_ip_reconfig,json=skipIpReconfig,proto3" json:"skip_ip_reconfig,omitempty"` // Target handles IP isolation (e.g. netns); orchestrator should skip SSH IP reconfiguration
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SendVMTargetReady) Reset() {
@@ -3125,6 +3126,13 @@ func (x *SendVMTargetReady) GetTargetNetwork() *NetworkInterface {
 		return x.TargetNetwork
 	}
 	return nil
+}
+
+func (x *SendVMTargetReady) GetSkipIpReconfig() bool {
+	if x != nil {
+		return x.SkipIpReconfig
+	}
+	return false
 }
 
 type SendVMProgress struct {
@@ -4225,14 +4233,15 @@ func (*ReceiveVMResponse_PhaseReady) isReceiveVMResponse_Type() {}
 func (*ReceiveVMResponse_ResumeToken) isReceiveVMResponse_Type() {}
 
 type ReceiveVMReady struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HasBaseImage  bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"` // Target already has the base image
-	TargetNetwork *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"` // Allocated network for live migration
-	SidebandAddr  string                 `protobuf:"bytes,3,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"`    // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
-	Resumable     bool                   `protobuf:"varint,4,opt,name=resumable,proto3" json:"resumable,omitempty"`                             // Target supports resumable sideband receives
-	ResumeToken   string                 `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`       // ZFS resume token from a prior interrupted transfer; empty if fresh start
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	HasBaseImage   bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"`       // Target already has the base image
+	TargetNetwork  *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"`       // Allocated network for live migration
+	SidebandAddr   string                 `protobuf:"bytes,3,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"`          // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
+	Resumable      bool                   `protobuf:"varint,4,opt,name=resumable,proto3" json:"resumable,omitempty"`                                   // Target supports resumable sideband receives
+	ResumeToken    string                 `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`             // ZFS resume token from a prior interrupted transfer; empty if fresh start
+	SkipIpReconfig bool                   `protobuf:"varint,6,opt,name=skip_ip_reconfig,json=skipIpReconfig,proto3" json:"skip_ip_reconfig,omitempty"` // Target handles IP isolation (e.g. netns); orchestrator should skip SSH IP reconfiguration
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ReceiveVMReady) Reset() {
@@ -4298,6 +4307,13 @@ func (x *ReceiveVMReady) GetResumeToken() string {
 		return x.ResumeToken
 	}
 	return ""
+}
+
+func (x *ReceiveVMReady) GetSkipIpReconfig() bool {
+	if x != nil {
+		return x.SkipIpReconfig
+	}
+	return false
 }
 
 type ReceiveVMPhaseReady struct {
@@ -5768,10 +5784,11 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	" \x01(\v2\x1c.exe.compute.v1.SendVMResultH\x00R\x06resultB\x06\n" +
 	"\x04type\"(\n" +
 	"\fSendVMStatus\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\x82\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\xac\x01\n" +
 	"\x11SendVMTargetReady\x12$\n" +
 	"\x0ehas_base_image\x18\x01 \x01(\bR\fhasBaseImage\x12G\n" +
-	"\x0etarget_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rtargetNetwork\"/\n" +
+	"\x0etarget_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rtargetNetwork\x12(\n" +
+	"\x10skip_ip_reconfig\x18\x03 \x01(\bR\x0eskipIpReconfig\"/\n" +
 	"\x0eSendVMProgress\x12\x1d\n" +
 	"\n" +
 	"bytes_sent\x18\x01 \x01(\x03R\tbytesSent\"{\n" +
@@ -5849,13 +5866,14 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\vphase_ready\x18\x03 \x01(\v2#.exe.compute.v1.ReceiveVMPhaseReadyH\x00R\n" +
 	"phaseReady\x12Q\n" +
 	"\fresume_token\x18\x04 \x01(\v2,.exe.compute.v1.ReceiveVMResumeTokenResponseH\x00R\vresumeTokenB\x06\n" +
-	"\x04type\"\xe5\x01\n" +
+	"\x04type\"\x8f\x02\n" +
 	"\x0eReceiveVMReady\x12$\n" +
 	"\x0ehas_base_image\x18\x01 \x01(\bR\fhasBaseImage\x12G\n" +
 	"\x0etarget_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rtargetNetwork\x12#\n" +
 	"\rsideband_addr\x18\x03 \x01(\tR\fsidebandAddr\x12\x1c\n" +
 	"\tresumable\x18\x04 \x01(\bR\tresumable\x12!\n" +
-	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\":\n" +
+	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\x12(\n" +
+	"\x10skip_ip_reconfig\x18\x06 \x01(\bR\x0eskipIpReconfig\":\n" +
 	"\x13ReceiveVMPhaseReady\x12#\n" +
 	"\rsideband_addr\x18\x01 \x01(\tR\fsidebandAddr\"~\n" +
 	"\x0fReceiveVMResult\x124\n" +

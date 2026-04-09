@@ -16,7 +16,7 @@ import (
 // mockNetworkManager implements network.NetworkManager for testing reconciliation.
 type mockNetworkManager struct {
 	mu               sync.Mutex
-	reconcileCalls   []map[string]struct{}
+	reconcileCalls   [][]*api.Instance
 	reconcileRet     []string
 	reconcileErr     error
 	reconcileBlock   chan struct{} // if non-nil, ReconcileLeases blocks until closed
@@ -30,7 +30,7 @@ func (m *mockNetworkManager) CreateInterface(ctx context.Context, id string) (*a
 	return nil, nil
 }
 func (m *mockNetworkManager) DeleteInterface(ctx context.Context, id, ip string) error { return nil }
-func (m *mockNetworkManager) ApplyConnectionLimit(ctx context.Context, ip string) error {
+func (m *mockNetworkManager) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) error {
 	return nil
 }
 
@@ -38,7 +38,7 @@ func (m *mockNetworkManager) ApplyBandwidthLimit(ctx context.Context, id string)
 	return nil
 }
 
-func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, validIPs map[string]struct{}) ([]string, error) {
+func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
 	if m.reconcileEntered != nil {
 		select {
 		case m.reconcileEntered <- struct{}{}:
@@ -48,10 +48,8 @@ func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, validIPs map[s
 	if m.reconcileBlock != nil {
 		<-m.reconcileBlock
 	}
-	cp := make(map[string]struct{}, len(validIPs))
-	for k, v := range validIPs {
-		cp[k] = v
-	}
+	cp := make([]*api.Instance, len(instances))
+	copy(cp, instances)
 	m.mu.Lock()
 	m.reconcileCalls = append(m.reconcileCalls, cp)
 	m.mu.Unlock()
@@ -125,15 +123,19 @@ func TestReconcileIPLeasesReleasesOrphans(t *testing.T) {
 		t.Fatalf("expected 1 reconcile call, got %d", len(nm.reconcileCalls))
 	}
 
-	validIPs := nm.reconcileCalls[0]
-	if _, ok := validIPs["10.42.0.3"]; !ok {
-		t.Error("expected 10.42.0.3 in valid IPs")
+	passed := nm.reconcileCalls[0]
+	if len(passed) != 2 {
+		t.Fatalf("expected 2 instances passed to ReconcileLeases, got %d", len(passed))
 	}
-	if _, ok := validIPs["10.42.0.4"]; !ok {
-		t.Error("expected 10.42.0.4 in valid IPs")
+	ids := map[string]struct{}{}
+	for _, inst := range passed {
+		ids[inst.ID] = struct{}{}
 	}
-	if len(validIPs) != 2 {
-		t.Errorf("expected 2 valid IPs, got %d", len(validIPs))
+	if _, ok := ids["inst-1"]; !ok {
+		t.Error("expected inst-1 in passed instances")
+	}
+	if _, ok := ids["inst-2"]; !ok {
+		t.Error("expected inst-2 in passed instances")
 	}
 }
 
@@ -191,7 +193,7 @@ func TestReconcileIPLeasesAbortsOnStartingState(t *testing.T) {
 	}
 }
 
-func TestReconcileIPLeasesAbortsOnParseError(t *testing.T) {
+func TestReconcileIPLeasesPassesThroughBadIP(t *testing.T) {
 	t.Parallel()
 	svc, nm := newTestService(t)
 
@@ -209,8 +211,12 @@ func TestReconcileIPLeasesAbortsOnParseError(t *testing.T) {
 
 	svc.reconcileIPLeasesFromInstances(context.Background(), instances)
 
-	if len(nm.reconcileCalls) != 0 {
-		t.Fatalf("expected 0 reconcile calls on parse error, got %d", len(nm.reconcileCalls))
+	// Instance is still passed through; the network manager handles the bad IP.
+	if len(nm.reconcileCalls) != 1 {
+		t.Fatalf("expected 1 reconcile call, got %d", len(nm.reconcileCalls))
+	}
+	if len(nm.reconcileCalls[0]) != 1 {
+		t.Fatalf("expected 1 instance passed, got %d", len(nm.reconcileCalls[0]))
 	}
 }
 
@@ -241,12 +247,9 @@ func TestReconcileIPLeasesStoppedInstanceNoNetwork(t *testing.T) {
 		t.Fatalf("expected 1 reconcile call, got %d", len(nm.reconcileCalls))
 	}
 
-	validIPs := nm.reconcileCalls[0]
-	if len(validIPs) != 1 {
-		t.Errorf("expected 1 valid IP (stopped instance has no network), got %d", len(validIPs))
-	}
-	if _, ok := validIPs["10.42.0.3"]; !ok {
-		t.Error("expected 10.42.0.3 in valid IPs")
+	passed := nm.reconcileCalls[0]
+	if len(passed) != 2 {
+		t.Fatalf("expected 2 instances passed to ReconcileLeases, got %d", len(passed))
 	}
 }
 
@@ -272,12 +275,12 @@ func TestReconcileIPLeasesStoppedInstanceWithPersistedIP(t *testing.T) {
 		t.Fatalf("expected 1 reconcile call, got %d", len(nm.reconcileCalls))
 	}
 
-	validIPs := nm.reconcileCalls[0]
-	if _, ok := validIPs["10.42.0.9"]; !ok {
-		t.Error("stopped instance's persisted IP must be in validIPs to prevent release")
+	passed := nm.reconcileCalls[0]
+	if len(passed) != 1 {
+		t.Fatalf("expected 1 instance passed to ReconcileLeases, got %d", len(passed))
 	}
-	if len(validIPs) != 1 {
-		t.Errorf("expected 1 valid IP, got %d", len(validIPs))
+	if passed[0].ID != "inst-stopped-with-ip" {
+		t.Errorf("expected inst-stopped-with-ip, got %s", passed[0].ID)
 	}
 }
 
@@ -288,10 +291,10 @@ func TestReconcileIPLeasesEmptyInstances(t *testing.T) {
 	svc.reconcileIPLeasesFromInstances(context.Background(), nil)
 
 	if len(nm.reconcileCalls) != 1 {
-		t.Fatalf("expected 1 reconcile call with empty valid IPs, got %d", len(nm.reconcileCalls))
+		t.Fatalf("expected 1 reconcile call with empty instances, got %d", len(nm.reconcileCalls))
 	}
 	if len(nm.reconcileCalls[0]) != 0 {
-		t.Errorf("expected 0 valid IPs, got %d", len(nm.reconcileCalls[0]))
+		t.Errorf("expected 0 instances, got %d", len(nm.reconcileCalls[0]))
 	}
 }
 

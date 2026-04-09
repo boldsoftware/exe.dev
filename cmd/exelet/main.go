@@ -28,6 +28,7 @@ import (
 	"exe.dev/exelet/metadata"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/network/nat"
+	"exe.dev/exelet/network/netns"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
 	pktflowservice "exe.dev/exelet/services/pktflow"
@@ -438,6 +439,8 @@ func serveAction(clix *cli.Context) error {
 		ResourceManagerInterval:     resourceManagerInterval,
 		EnableHugepages:             enableHugepages,
 		ProxyBindIP:                 proxyBindIP,
+		ProxyBindDevFunc:            proxyBindDevFunc(networkManagerAddress),
+		ProxyNetnsFunc:              proxyNetnsFunc(networkManagerAddress),
 		BackupPoolFallback:          backupFallback,
 		ReplicationEnabled:          replicationEnabled,
 		ReplicationInterval:         replicationInterval,
@@ -594,15 +597,23 @@ func serveAction(clix *cli.Context) error {
 	// Start metadata service after services are registered
 	// Get the bridge IP to bind the metadata service to
 	// This allows multiple exelets to run in parallel without port conflicts
+	var metadataListenAddr string
 	networkConfig := nm.Config(ctx)
-	natConfig, ok := networkConfig.(*nat.Config)
-	if !ok || natConfig == nil || natConfig.Router == "" {
-		return fmt.Errorf("failed to get NAT configuration for metadata service")
+	switch cfg := networkConfig.(type) {
+	case *nat.Config:
+		if cfg == nil || cfg.Router == "" {
+			return fmt.Errorf("failed to get NAT configuration for metadata service")
+		}
+		metadataListenAddr = cfg.Router + ":80"
+	case *netns.Config:
+		if cfg == nil || cfg.Router == "" {
+			return fmt.Errorf("failed to get netns configuration for metadata service")
+		}
+		metadataListenAddr = cfg.Router + ":80"
+	default:
+		return fmt.Errorf("unsupported network config type for metadata service: %T", networkConfig)
 	}
-
-	// Bind to the bridge's router IP (usually .1 in the network)
-	metadataListenAddr := natConfig.Router + ":80"
-	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
+	log.InfoContext(ctx, "metadata service listen address", "addr", metadataListenAddr)
 
 	// Build the list of integration host suffixes. The primary suffix is derived
 	// from BoxHost (e.g., ".int.exe.xyz"). For backward compatibility, we also
@@ -702,4 +713,24 @@ func serveAction(clix *cli.Context) error {
 	<-doneCh
 
 	return nil
+}
+
+// proxyBindDevFunc returns a function that maps instance IDs to per-VM bridge names
+// for SO_BINDTODEVICE. Only used in netns mode.
+func proxyBindDevFunc(networkManagerAddress string) func(string) string {
+	u, err := url.Parse(networkManagerAddress)
+	if err != nil || !strings.EqualFold(u.Scheme, "netns") {
+		return nil
+	}
+	return netns.BridgeName
+}
+
+// proxyNetnsFunc returns a function that maps instance IDs to network namespace names.
+// Only used in netns mode.
+func proxyNetnsFunc(networkManagerAddress string) func(string) string {
+	u, err := url.Parse(networkManagerAddress)
+	if err != nil || !strings.EqualFold(u.Scheme, "netns") {
+		return nil
+	}
+	return netns.NsName
 }

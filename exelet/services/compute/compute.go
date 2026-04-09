@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"tailscale.com/util/singleflight"
 
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/sshproxy"
 	"exe.dev/exelet/vmm"
@@ -72,6 +72,17 @@ type Service struct {
 	receiveFaultCrashAfterData atomic.Bool
 }
 
+func newProxyManager(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) sshproxy.Manager {
+	var opts sshproxy.ProxyOpts
+	if cfg.ProxyBindDevFunc != nil {
+		opts.BindDev = sshproxy.BindDevFunc(cfg.ProxyBindDevFunc)
+	}
+	if cfg.ProxyNetnsFunc != nil {
+		opts.NetnsFunc = sshproxy.NetnsFunc(cfg.ProxyNetnsFunc)
+	}
+	return sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log, opts)
+}
+
 // New returns a new service.
 func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 	// Use configured port range, or defaults if not set
@@ -94,7 +105,7 @@ func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (servi
 		mu:               &sync.Mutex{},
 		log:              log,
 		portAllocator:    portAllocator,
-		proxyManager:     sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log),
+		proxyManager:     newProxyManager(ctx, cfg, log),
 		instanceOpLocks:  make(map[string]*instanceLock),
 		tierMigrationSem: make(chan struct{}, migrationWorkers),
 	}, nil
@@ -222,6 +233,20 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 		}
 	}
 
+	// Recover ext IP mappings (netns mode). Must happen before the metadata
+	// service starts handling requests so GetInstanceByExtIP can identify VMs.
+	if recoverer, ok := s.context.NetworkManager.(network.ExtIPRecoverer); ok {
+		var runningIDs []string
+		for _, i := range instances {
+			if i.State == api.VMState_RUNNING || i.State == api.VMState_STARTING {
+				runningIDs = append(runningIDs, i.ID)
+			}
+		}
+		if err := recoverer.RecoverExtIPs(ctx, runningIDs); err != nil {
+			s.log.WarnContext(ctx, "failed to recover ext IPs", "error", err)
+		}
+	}
+
 	// Apply connection limits, bandwidth limits, and recover proxies/processes
 	// in the background. These are all defensive measures — existing VMs and
 	// their proxies continue running across exelet restarts. Doing this in the
@@ -273,14 +298,8 @@ func (s *Service) applyStartupNetworkLimits(ctx context.Context, instances []*ap
 			continue
 		}
 
-		if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
-			ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
-			ip, _, err := net.ParseCIDR(ipStr)
-			if err != nil {
-				s.log.WarnContext(ctx, "failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
-			} else if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, ip.String()); err != nil {
-				s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "ip", ip.String(), "error", err)
-			}
+		if err := s.context.NetworkManager.ApplyConnectionLimit(ctx, inst); err != nil {
+			s.log.WarnContext(ctx, "failed to apply connection limit", "instance", inst.ID, "error", err)
 		}
 		if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
 			s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
@@ -306,45 +325,35 @@ func (s *Service) reconcileIPLeases() {
 	})
 }
 
-// reconcileIPLeasesFromInstances compares IPAM leases against the given instances
-// and releases any orphaned leases. Skips reconciliation if any instance is in a
-// transient state (CREATING/STARTING) to avoid racing with in-flight IP allocations.
+// reconcileIPLeasesFromInstances compares network resources against the given
+// instances and releases any orphans. For the NAT manager this means IPAM leases;
+// for the netns manager this means kernel namespaces, bridges, and veth pairs.
+// Skips reconciliation if any instance is in a transient state (CREATING/STARTING)
+// to avoid racing with in-flight allocations.
 func (s *Service) reconcileIPLeasesFromInstances(ctx context.Context, instances []*api.Instance) {
-	// Build set of IPs that belong to known instances.
 	// Skip reconciliation entirely if any instance is mid-creation/start,
-	// since its IP may be allocated in IPAM but not yet persisted to config.
-	validIPs := make(map[string]struct{})
+	// since its resources may be allocated but not yet persisted to config.
 	for _, inst := range instances {
 		switch inst.State {
 		case api.VMState_CREATING, api.VMState_STARTING:
-			s.log.DebugContext(ctx, "aborting IP reconciliation: instance in transient state", "instance", inst.ID, "state", inst.State)
+			s.log.DebugContext(ctx, "aborting network reconciliation: instance in transient state", "instance", inst.ID, "state", inst.State)
 			return
 		case api.VMState_RUNNING, api.VMState_PAUSED, api.VMState_STOPPING, api.VMState_STOPPED,
 			api.VMState_ERROR, api.VMState_CREATED, api.VMState_DELETED, api.VMState_UPDATING, api.VMState_UNKNOWN:
-			// IP (if any) is persisted to config; handled below.
-			// STOPPED instances may retain a persisted IP after a failed DeleteInterface.
+			// OK — resources are persisted to config.
 		default:
-			s.log.WarnContext(ctx, "aborting IP reconciliation: unknown instance state", "instance", inst.ID, "state", inst.State)
+			s.log.WarnContext(ctx, "aborting network reconciliation: unknown instance state", "instance", inst.ID, "state", inst.State)
 			return
-		}
-		if inst.VMConfig != nil && inst.VMConfig.NetworkInterface != nil && inst.VMConfig.NetworkInterface.IP != nil {
-			ipStr := inst.VMConfig.NetworkInterface.IP.IPV4
-			ip, _, err := net.ParseCIDR(ipStr)
-			if err != nil {
-				s.log.ErrorContext(ctx, "aborting IP reconciliation: failed to parse instance IP", "instance", inst.ID, "ip", ipStr, "error", err)
-				return
-			}
-			validIPs[ip.String()] = struct{}{}
 		}
 	}
 
-	released, err := s.context.NetworkManager.ReconcileLeases(ctx, validIPs)
+	released, err := s.context.NetworkManager.ReconcileLeases(ctx, instances)
 	if err != nil {
-		s.log.WarnContext(ctx, "IP lease reconciliation failed", "error", err)
+		s.log.WarnContext(ctx, "network reconciliation failed", "error", err)
 		return
 	}
 	if len(released) > 0 {
-		s.log.InfoContext(ctx, "released orphaned IP leases", "count", len(released), "ips", released)
+		s.log.InfoContext(ctx, "released orphaned network resources", "count", len(released), "released", released)
 	}
 }
 

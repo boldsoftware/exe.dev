@@ -92,12 +92,12 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 // This will return an error if there is some problem contacting exepipe.
 // Errors while listening or copying will be logged by exepipe
 // and will not be returned to the caller.
-func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, host string, port int, typ string) error {
+func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, host string, port int, typ string, netns ...string) error {
 	if c.uc == nil {
 		return os.ErrClosed
 	}
 
-	data, oob, err := cmds.ListenCmd(key, listener, host, port, typ)
+	data, oob, err := cmds.ListenCmd(key, listener, host, port, typ, netns...)
 	if err != nil {
 		return err
 	}
@@ -195,10 +195,11 @@ func (c *Client) readResponse(ctx context.Context) error {
 // Listener describes an exepipe listener.
 // These are taken from the values passed to [Client.Listen].
 type Listener struct {
-	Key  string // key
-	Host string // connection host
-	Port int    // connection port
-	Type string // type
+	Key   string // key
+	Host  string // connection host
+	Port  int    // connection port
+	Type  string // type
+	Netns string // network namespace (optional)
 }
 
 // Listeners asks exepipe for all current listeners.
@@ -211,10 +212,11 @@ func (c *Client) Listeners(ctx context.Context) iter.Seq2[Listener, error] {
 
 		for ln, err := range c.listeners(ctx) {
 			cln := Listener{
-				Key:  ln.Key,
-				Host: ln.Host,
-				Port: ln.Port,
-				Type: ln.Type,
+				Key:   ln.Key,
+				Host:  ln.Host,
+				Port:  ln.Port,
+				Type:  ln.Type,
+				Netns: ln.Netns,
 			}
 			if !yield(cln, err) {
 				break

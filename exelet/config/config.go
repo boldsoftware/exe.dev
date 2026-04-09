@@ -142,6 +142,13 @@ type ExeletConfig struct {
 	EnableHugepages bool
 	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)
 	ProxyBindIP string
+	// ProxyBindDevFunc optionally returns the device name for SO_BINDTODEVICE
+	// on the connect side of SSH proxies. Used in netns mode where each VM
+	// has its own per-VM bridge.
+	ProxyBindDevFunc func(instanceID string) string
+	// ProxyNetnsFunc optionally returns the network namespace name for an
+	// instance. Used by exepipe to dial from within the VM's netns.
+	ProxyNetnsFunc func(instanceID string) string
 	// BootLogRotationInterval controls how frequently boot logs are checked for rotation
 	BootLogRotationInterval time.Duration
 	// BootLogMaxBytes is the maximum size for boot logs before rotation is triggered

@@ -49,6 +49,9 @@ EXELET_SWAP_SIZE="${EXELET_SWAP_SIZE:-4G}"
 EXELET_RAMDISK_POOL_SIZE="${EXELET_RAMDISK_POOL_SIZE:-}"
 SSH_PUBKEY_DIR="${SSH_PUBKEY_DIR:-$HOME/.ssh}"
 CLUSTER_PREFIX="${CLUSTER_PREFIX:-exe-local}"
+# Network manager mode for exelets. Comma-separated list to cycle across exelets.
+# E.g. "nat" (all NAT), "netns" (all netns), "nat,netns" (alternating).
+EXELET_NETWORK_MANAGER="${EXELET_NETWORK_MANAGER:-nat}"
 
 WORKDIR="${WORKDIR:-/var/lib/exe-vms}"
 BASE_IMG="${BASE_IMG:-${WORKDIR}/ubuntu-24.04-base.raw}"
@@ -82,6 +85,15 @@ vm_name_exed() { echo "${CLUSTER_PREFIX}-exed"; }
 vm_name_exeprox() { printf 'exeprox-local-dev-%02d\n' "$1"; }
 vm_name_exelet() { printf 'exelet-local-dev-%02d\n' "$1"; }
 vm_name_mon() { echo "${CLUSTER_PREFIX}-mon"; }
+
+# network_mode_for_exelet returns the network manager mode for a given exelet index (1-based).
+network_mode_for_exelet() {
+    local idx="$1"
+    IFS=',' read -ra _modes <<<"${EXELET_NETWORK_MANAGER}"
+    local n=${#_modes[@]}
+    local i=$(((idx - 1) % n))
+    echo "${_modes[$i]}"
+}
 
 all_vm_names() {
     vm_name_exed
@@ -700,6 +712,7 @@ packages:
   - libisal2
   - curl
   - jq
+  - conntrack
   - prometheus-node-exporter
 runcmd:
   - systemctl enable --now qemu-guest-agent || true
@@ -795,10 +808,16 @@ build_binaries() {
     fi
 
     log "  Building exeletd..."
-    (cd "${REPO_ROOT}" && make exe-init exelet-kernel && GOOS=linux go build -o "${CACHE_DIR}/exeletd" ./cmd/exelet)
+    (cd "${REPO_ROOT}" && make exelet-fs exe-init exelet-kernel && GOOS=linux go build -o "${CACHE_DIR}/exeletd" ./cmd/exelet)
 
     log "  Building exelet-ctl..."
     (cd "${REPO_ROOT}" && GOOS=linux go build -o "${CACHE_DIR}/exelet-ctl" ./cmd/exelet-ctl)
+
+    log "  Building exepipe..."
+    (cd "${REPO_ROOT}" && GOOS=linux go build -o "${CACHE_DIR}/exepipe" ./cmd/exepipe)
+
+    log "  Building exelet-netns..."
+    (cd "${REPO_ROOT}" && GOOS=linux go build -o "${CACHE_DIR}/exelet-netns" ./cmd/exelet-netns)
 
     log "  Building sshpiperd..."
     (cd "${REPO_ROOT}/deps/sshpiper" && GOTOOLCHAIN=go1.26.2 GOOS=linux go build -o "${CACHE_DIR}/sshpiperd" ./cmd/sshpiperd)
@@ -962,8 +981,8 @@ destroy_apt_cache() {
 # ── Provisioning ─────────────────────────────────────────────────────────────
 
 provision_exelet() {
-    local ip="$1" name="$2" exelet_ip="$3"
-    log "Provisioning exelet VM ${name} (${ip})..."
+    local ip="$1" name="$2" exelet_ip="$3" net_mode="${4:-nat}"
+    log "Provisioning exelet VM ${name} (${ip}) [network=${net_mode}]..."
 
     # Copy Cloud Hypervisor artifacts
     local arch="amd64"
@@ -976,10 +995,12 @@ provision_exelet() {
     scp_to "$ip" "${SCRIPT_DIR}/deploy/setup-cloud-hypervisor.sh"
     ssh_run "$ip" 'sudo mv ~/setup-cloud-hypervisor.sh /root/ && sudo chmod +x /root/setup-cloud-hypervisor.sh && sudo /bin/bash /root/setup-cloud-hypervisor.sh'
 
-    # Copy exeletd and exelet-ctl
-    scp_to "$ip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl"
+    # Copy exeletd, exelet-ctl, exepipe, exelet-netns
+    scp_to "$ip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl" "${CACHE_DIR}/exepipe" "${CACHE_DIR}/exelet-netns"
     ssh_run "$ip" 'sudo mv ~/exeletd /usr/local/bin/exeletd.latest && sudo chmod +x /usr/local/bin/exeletd.latest'
     ssh_run "$ip" 'sudo mv ~/exelet-ctl /usr/local/bin/exelet-ctl && sudo chmod +x /usr/local/bin/exelet-ctl'
+    ssh_run "$ip" 'sudo mv ~/exepipe /usr/local/bin/exepipe && sudo chmod +x /usr/local/bin/exepipe'
+    ssh_run "$ip" 'sudo mv ~/exelet-netns /usr/local/bin/exelet-netns && sudo chmod +x /usr/local/bin/exelet-netns'
 
     # Copy setup-exelet.sh — run a modified version for the cluster
     scp_to "$ip" "${SCRIPT_DIR}/setup-exelet.sh"
@@ -997,12 +1018,46 @@ provision_exelet() {
         storage_tier_args+=" --storage-tier zfs:///data/exelet/storage?dataset=ramdisk"
     fi
 
-    # Install systemd unit
+    # Determine network manager address and exepipe flags based on mode
+    local nm_addr exepipe_flag exepipe_netns_flag
+    case "${net_mode}" in
+    netns)
+        nm_addr="netns:///"
+        exepipe_flag="--exepipe-address=@exepipe"
+        exepipe_netns_flag="--netns"
+        ;;
+    *)
+        nm_addr="nat:///data/exelet/network?network=10.42.0.0/16"
+        exepipe_flag=""
+        exepipe_netns_flag=""
+        ;;
+    esac
+
+    # Install exepipe systemd unit
+    ssh_run "$ip" "sudo tee /etc/systemd/system/exepipe.service >/dev/null" <<EOF
+[Unit]
+Description=exepipe (virt-cluster)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/exepipe --stage=local ${exepipe_netns_flag}
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    ssh_run "$ip" 'sudo systemctl daemon-reload && sudo systemctl enable --now exepipe'
+
+    # Install exelet systemd unit
     ssh_run "$ip" "sudo tee /etc/systemd/system/exelet.service >/dev/null" <<EOF
 [Unit]
 Description=exeletd (virt-cluster)
-After=network.target zfs.target
-Wants=network-online.target
+After=network.target zfs.target exepipe.service
+Wants=network-online.target exepipe.service
 
 [Service]
 Type=simple
@@ -1012,7 +1067,7 @@ KillMode=process
 LimitNOFILE=1048576
 WorkingDirectory=/data/exelet
 
-ExecStart=/usr/local/bin/exeletd.latest -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank${storage_tier_args} --network-manager-address=nat:///data/exelet/network?network=10.42.0.0/16 --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup
+ExecStart=/usr/local/bin/exeletd.latest -D --stage=local --name=${name} --listen-address=tcp://0.0.0.0:9080 --http-addr=0.0.0.0:9081 --data-dir=/data/exelet --storage-manager-address=zfs:///data/exelet/storage?dataset=tank${storage_tier_args} --network-manager-address=${nm_addr} --runtime-address=cloudhypervisor:///data/exelet/runtime --exed-url=http://EXED_IP_PLACEHOLDER:8080 --instance-domain=exe.cloud --reserved-cpus=0 --storage-replication-enabled --storage-replication-target=zpool:///backup ${exepipe_flag}
 
 Restart=always
 RestartSec=5
@@ -1612,7 +1667,9 @@ cmd_start() {
         for i in $(seq 1 "${NUM_EXELETS}"); do
             local ename
             ename="$(vm_name_exelet "$i")"
-            provision_exelet "${exelet_ips[$i]}" "$ename" "${exelet_ips[$i]}"
+            local net_mode
+            net_mode="$(network_mode_for_exelet "$i")"
+            provision_exelet "${exelet_ips[$i]}" "$ename" "${exelet_ips[$i]}" "$net_mode"
         done
 
         # ── Provision exed VM ────────────────────────────────────────────
@@ -1716,12 +1773,39 @@ cmd_deploy() {
             continue
         fi
         log "Deploying exeletd to ${ename} (${eip})..."
-        scp_to "$eip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl"
+        scp_to "$eip" "${CACHE_DIR}/exeletd" "${CACHE_DIR}/exelet-ctl" "${CACHE_DIR}/exepipe" "${CACHE_DIR}/exelet-netns"
         ssh_run "$eip" 'sudo systemctl stop exelet || true'
+        ssh_run "$eip" 'sudo systemctl stop exepipe || true'
         ssh_run "$eip" 'sudo mv ~/exeletd /usr/local/bin/exeletd.latest && sudo chmod +x /usr/local/bin/exeletd.latest'
         ssh_run "$eip" 'sudo mv ~/exelet-ctl /usr/local/bin/exelet-ctl && sudo chmod +x /usr/local/bin/exelet-ctl'
+        ssh_run "$eip" 'sudo mv ~/exepipe /usr/local/bin/exepipe && sudo chmod +x /usr/local/bin/exepipe'
+        ssh_run "$eip" 'sudo mv ~/exelet-netns /usr/local/bin/exelet-netns && sudo chmod +x /usr/local/bin/exelet-netns'
+        # Ensure exepipe service exists (may be a fresh deploy after mode change)
+        if ! ssh_run "$eip" 'test -f /etc/systemd/system/exepipe.service' 2>/dev/null; then
+            local net_mode
+            net_mode="$(network_mode_for_exelet "$i")"
+            local exepipe_netns_flag=""
+            [[ "$net_mode" == "netns" ]] && exepipe_netns_flag="--netns"
+            ssh_run "$eip" "sudo tee /etc/systemd/system/exepipe.service >/dev/null" <<EPEOF
+[Unit]
+Description=exepipe (virt-cluster)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/exepipe --stage=local ${exepipe_netns_flag}
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EPEOF
+        fi
+        ssh_run "$eip" 'sudo systemctl daemon-reload && sudo systemctl enable --now exepipe'
         ssh_run "$eip" 'sudo systemctl start exelet'
-        log "  ${ename}: exeletd restarted"
+        log "  ${ename}: exepipe + exeletd restarted"
     done
 
     # ── Deploy to exed VM ────────────────────────────────────────────────
@@ -1939,16 +2023,20 @@ cmd_status() {
                         service="exeprox (inactive)"
                     fi
                 elif [[ "$name" == exelet-* ]]; then
-                    service="exeletd"
-                    if ssh_run "$ip" 'systemctl is-active exelet' 2>/dev/null | grep -q "^active$"; then
-                        service="exeletd (active)"
-                    else
-                        service="exeletd (inactive)"
-                    fi
+                    local exelet_svc exepipe_svc nm_mode
+                    exelet_svc="$(ssh_run "$ip" 'systemctl is-active exelet' 2>/dev/null)" || true
+                    exelet_svc="${exelet_svc:-inactive}"
+                    exepipe_svc="$(ssh_run "$ip" 'systemctl is-active exepipe' 2>/dev/null)" || true
+                    exepipe_svc="${exepipe_svc:-inactive}"
+                    nm_mode="$(ssh_run "$ip" "grep -oP '(?<=--network-manager-address=)[^ ]+' /etc/systemd/system/exelet.service 2>/dev/null | head -1 | sed 's|:.*||'" 2>/dev/null)" || true
+                    nm_mode="${nm_mode:-?}"
+                    service="exeletd (${exelet_svc}), exepipe (${exepipe_svc}), net=${nm_mode}"
                 elif [[ "$name" == *-mon ]]; then
                     local prom_status graf_status
-                    prom_status="$(ssh_run "$ip" 'systemctl is-active prometheus' 2>/dev/null || echo "inactive")"
-                    graf_status="$(ssh_run "$ip" 'systemctl is-active grafana-server' 2>/dev/null || echo "inactive")"
+                    prom_status="$(ssh_run "$ip" 'systemctl is-active prometheus' 2>/dev/null)" || true
+                    prom_status="${prom_status:-inactive}"
+                    graf_status="$(ssh_run "$ip" 'systemctl is-active grafana-server' 2>/dev/null)" || true
+                    graf_status="${graf_status:-inactive}"
                     service="prometheus (${prom_status}), grafana (${graf_status})"
                 fi
             fi
@@ -2331,6 +2419,7 @@ install-vnc) cmd_install_vnc ;;
     echo "  EXELET_VCPUS=${EXELET_VCPUS}  EXELET_RAM=${EXELET_RAM}  MON_ENABLED=${MON_ENABLED}  MON_VCPUS=${MON_VCPUS}  MON_RAM=${MON_RAM}"
     echo "  DISK_SIZE=${DISK_SIZE}  EXELET_DATA_DISK_SIZE=${EXELET_DATA_DISK_SIZE}  EXELET_BACKUP_DISK_SIZE=${EXELET_BACKUP_DISK_SIZE}  EXELET_SWAP_SIZE=${EXELET_SWAP_SIZE}"
     echo "  EXELET_RAMDISK_POOL_SIZE=${EXELET_RAMDISK_POOL_SIZE}  (tmpfs-backed 'ramdisk' zpool, ephemeral)"
+    echo "  EXELET_NETWORK_MANAGER=${EXELET_NETWORK_MANAGER}  (comma-separated: nat,netns to cycle modes across exelets)"
     echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
     exit 1
     ;;

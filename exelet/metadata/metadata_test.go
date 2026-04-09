@@ -15,14 +15,15 @@ import (
 	"strings"
 	"testing"
 
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/tracing"
 )
 
 // mockInstanceLookup is a simple mock for testing
 type mockInstanceLookup struct{}
 
-func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
-	return "test-id", "test-box", nil
+func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error) {
+	return "test-id", "test-box", ip, nil
 }
 
 func TestMetadataService404(t *testing.T) {
@@ -115,6 +116,63 @@ func TestMetadataServiceRootResponse(t *testing.T) {
 
 	if meta.Name != "test-box" {
 		t.Errorf("got name %q, want %q", meta.Name, "test-box")
+	}
+}
+
+// netnsInstanceLookup simulates netns mode where the ext IP (10.99.x.x) differs
+// from the VM's internal IP (10.42.0.42).
+type netnsInstanceLookup struct{}
+
+func (m *netnsInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error) {
+	// Simulate ext IP lookup resolving to the VM's internal IP.
+	if ip == "10.99.0.2" {
+		return "test-id", "test-box", "10.42.0.42", nil
+	}
+	return "", "", "", fmt.Errorf("no instance found with IP %s", ip)
+}
+
+func (m *netnsInstanceLookup) Instances(ctx context.Context) ([]*computeapi.Instance, error) {
+	return nil, nil
+}
+
+func (m *netnsInstanceLookup) GetInstanceByID(ctx context.Context, id string) (*computeapi.Instance, error) {
+	return nil, nil
+}
+func (m *netnsInstanceLookup) StopInstanceByID(ctx context.Context, id string) error  { return nil }
+func (m *netnsInstanceLookup) StartInstanceByID(ctx context.Context, id string) error { return nil }
+
+func TestMetadataServiceRootResponseNetns(t *testing.T) {
+	log := slog.Default()
+
+	svc, err := NewService(log, &netnsInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", "", false, nil)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/{$}", svc.handleRoot)
+
+	// Simulate a request from the ext IP (10.99.0.2) — the metadata service
+	// should return the VM's internal IP (10.42.0.42), not the ext IP.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.99.0.2:12345"
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var meta MetadataResponse
+	if err := json.NewDecoder(w.Body).Decode(&meta); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if meta.Name != "test-box" {
+		t.Errorf("got name %q, want %q", meta.Name, "test-box")
+	}
+	if meta.SourceIP != "10.42.0.42" {
+		t.Errorf("got source_ip %q, want %q (VM internal IP, not ext IP)", meta.SourceIP, "10.42.0.42")
 	}
 }
 
@@ -264,8 +322,8 @@ func TestMetadataServiceEmailProxyNoBox(t *testing.T) {
 
 type emptyInstanceLookup struct{}
 
-func (m *emptyInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
-	return "", "", nil // No box found
+func (m *emptyInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error) {
+	return "", "", "", nil // No box found
 }
 
 func TestMetadataServiceTraceIDIsUnique(t *testing.T) {
@@ -792,8 +850,8 @@ func TestMetadataServiceIntegrationProxyNoBox(t *testing.T) {
 // failingInstanceLookup always returns an error.
 type failingInstanceLookup struct{}
 
-func (f *failingInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error) {
-	return "", "", context.DeadlineExceeded
+func (f *failingInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id, name, vmIP string, err error) {
+	return "", "", "", context.DeadlineExceeded
 }
 
 func TestPathMatchesPrefixes(t *testing.T) {

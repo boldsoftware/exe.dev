@@ -34,6 +34,17 @@ type Manager interface {
 	RecoverProxies(ctx context.Context, instances []*api.Instance) error
 }
 
+// BindDevFunc returns the device name for SO_BINDTODEVICE on the connect
+// side of the SSH proxy (e.g., the per-VM bridge name). Return empty
+// string for default routing.
+type BindDevFunc func(instanceID string) string
+
+// ProxyOpts holds optional configuration for an SSH proxy manager.
+type ProxyOpts struct {
+	BindDev   BindDevFunc // optional: SO_BINDTODEVICE for socat connect side
+	NetnsFunc NetnsFunc   // optional: netns name for exepipe dial
+}
+
 // socatManager manages SSH proxies for instances,
 // using socat for each proxy.
 type socatManager struct {
@@ -42,20 +53,30 @@ type socatManager struct {
 	ports   map[string]int            // instanceID -> port
 	dataDir string                    // Root directory for instance data
 	bindIP  string                    // IP address to bind proxies to (empty means all interfaces)
+	bindDev BindDevFunc               // optional: SO_BINDTODEVICE for connect side
 	log     *slog.Logger
 }
 
 // NewManager creates a new SSH proxy manager.
 // bindIP specifies the IP address to bind proxies to; empty string means all interfaces.
-func NewManager(ctx context.Context, dataDir, bindIP, exepipeAddress string, log *slog.Logger) Manager {
+func NewManager(ctx context.Context, dataDir, bindIP, exepipeAddress string, log *slog.Logger, opts ...ProxyOpts) Manager {
+	var o ProxyOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
 	if exepipeAddress != "" {
-		return NewExepipeManager(ctx, exepipeAddress, bindIP, log)
+		var nf []NetnsFunc
+		if o.NetnsFunc != nil {
+			nf = append(nf, o.NetnsFunc)
+		}
+		return NewExepipeManager(ctx, exepipeAddress, bindIP, log, nf...)
 	} else {
 		return &socatManager{
 			proxies: make(map[string]*socatSSHProxy),
 			ports:   make(map[string]int),
 			dataDir: dataDir,
 			bindIP:  bindIP,
+			bindDev: o.BindDev,
 			log:     log,
 		}
 	}
@@ -78,7 +99,11 @@ func (m *socatManager) CreateProxy(ctx context.Context, instanceID, targetIP str
 	}
 
 	// Create and start proxy
-	proxy := newSocatSSHProxy(instanceID, port, targetIP, instanceDir, m.bindIP, m.log)
+	var dev string
+	if m.bindDev != nil {
+		dev = m.bindDev(instanceID)
+	}
+	proxy := newSocatSSHProxy(instanceID, port, targetIP, instanceDir, m.bindIP, dev, m.log)
 	if err := proxy.start(); err != nil {
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
@@ -172,7 +197,11 @@ func (m *socatManager) RecoverProxies(ctx context.Context, instances []*api.Inst
 		}
 
 		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
-		proxy := newSocatSSHProxy(instance.ID, port, targetIP, instanceDir, m.bindIP, m.log)
+		var dev string
+		if m.bindDev != nil {
+			dev = m.bindDev(instance.ID)
+		}
+		proxy := newSocatSSHProxy(instance.ID, port, targetIP, instanceDir, m.bindIP, dev, m.log)
 
 		// Try to load existing metadata (may not exist for older instances)
 		if err := proxy.loadFromDisk(); err != nil {

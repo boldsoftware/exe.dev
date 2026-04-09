@@ -21,6 +21,7 @@ type socatSSHProxy struct {
 	pid         int
 	instanceDir string
 	bindIP      string // IP address to bind to (empty means all interfaces)
+	bindDev     string // optional: SO_BINDTODEVICE for connect-side (per-VM bridge name)
 	log         *slog.Logger
 }
 
@@ -34,7 +35,8 @@ type proxyMetadata struct {
 
 // newSocatSSHProxy creates a new SSH proxy instance.
 // bindIP specifies the IP address to bind to; empty string means all interfaces.
-func newSocatSSHProxy(instanceID string, port int, targetIP, instanceDir, bindIP string, log *slog.Logger) *socatSSHProxy {
+// bindDev specifies the device for SO_BINDTODEVICE on the connect side; empty for default routing.
+func newSocatSSHProxy(instanceID string, port int, targetIP, instanceDir, bindIP, bindDev string, log *slog.Logger) *socatSSHProxy {
 	return &socatSSHProxy{
 		instanceID:  instanceID,
 		port:        port,
@@ -42,6 +44,7 @@ func newSocatSSHProxy(instanceID string, port int, targetIP, instanceDir, bindIP
 		targetPort:  22, // Always SSH port
 		instanceDir: instanceDir,
 		bindIP:      bindIP,
+		bindDev:     bindDev,
 		log:         log,
 	}
 }
@@ -75,7 +78,13 @@ func (p *socatSSHProxy) start() error {
 	} else {
 		listenAddr = fmt.Sprintf("TCP-LISTEN:%d,fork", p.port)
 	}
-	targetAddr := fmt.Sprintf("TCP:%s:%d,connect-timeout=3", p.targetIP, p.targetPort)
+	var targetAddr string
+	if p.bindDev != "" {
+		targetAddr = fmt.Sprintf("TCP:%s:%d,connect-timeout=3,so-bindtodevice=%s",
+			p.targetIP, p.targetPort, p.bindDev)
+	} else {
+		targetAddr = fmt.Sprintf("TCP:%s:%d,connect-timeout=3", p.targetIP, p.targetPort)
+	}
 
 	cmd := exec.Command("socat", listenAddr, targetAddr)
 

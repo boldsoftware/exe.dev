@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"exe.dev/exelet/network"
+
 	"exe.dev/exelet/atomicfile"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -129,12 +131,15 @@ func (s *Service) StartInstanceByID(ctx context.Context, id string) error {
 }
 
 // GetInstanceByIP looks up an instance by its assigned IP address.
-func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, string, error) {
+// It returns the instance ID, name, and the VM's internal IP (which may
+// differ from the lookup IP in netns mode where the metadata service sees
+// the ext bridge IP but the VM itself uses a fixed internal IP).
+func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, string, string, error) {
 	// TODO(philip): This is linear in number of instances,
 	// and those are read from JSON files at the moment.
 	instances, err := s.listInstances(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	for _, instance := range instances {
@@ -152,13 +157,33 @@ func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, strin
 					instanceIP = instanceIP[:idx]
 				}
 				if instanceIP == ip {
-					return instance.ID, instance.Name, nil
+					return instance.ID, instance.Name, instanceIP, nil
 				}
 			}
 		}
 	}
 
-	return "", "", fmt.Errorf("no instance found with IP %s", ip)
+	// In netns mode, all VMs share the same internal IP (10.42.0.42).
+	// The metadata service sees the VM's unique ext IP (10.99.x.x) as
+	// the source. Fall back to the network manager's ext IP lookup.
+	if lookup, ok := s.context.NetworkManager.(network.ExtIPLookup); ok {
+		if instanceID, found := lookup.GetInstanceByExtIP(ip); found {
+			for _, instance := range instances {
+				if instance.ID == instanceID {
+					vmIP := ip
+					if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil && instance.VMConfig.NetworkInterface.IP != nil {
+						vmIP = instance.VMConfig.NetworkInterface.IP.IPV4
+						if idx := strings.Index(vmIP, "/"); idx > 0 {
+							vmIP = vmIP[:idx]
+						}
+					}
+					return instance.ID, instance.Name, vmIP, nil
+				}
+			}
+		}
+	}
+
+	return "", "", "", fmt.Errorf("no instance found with IP %s", ip)
 }
 
 // copyFileIfChanged copies src to dest (mode 0755) only if dest does not exist

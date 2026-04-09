@@ -24,6 +24,7 @@ import (
 
 	"exe.dev/exelet/atomicfile"
 	exeletfs "exe.dev/exelet/fs"
+	"exe.dev/exelet/network"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -215,15 +216,21 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		}
 	}
 
+	// Skip SSH IP reconfiguration only when the target uses IP isolation
+	// (e.g. netns) AND the source VM already has the same IP as the target.
+	_, hasIPIsolation := s.context.NetworkManager.(network.ExtIPLookup)
+	skipIPReconfig := hasIPIsolation && sameVMIP(startReq.SourceInstance, targetNetwork)
+
 	// Send ready response
 	if err := stream.Send(&api.ReceiveVMResponse{
 		Type: &api.ReceiveVMResponse_Ready{
 			Ready: &api.ReceiveVMReady{
-				HasBaseImage:  hasBaseImage,
-				TargetNetwork: targetNetwork,
-				SidebandAddr:  sidebandAddr,
-				Resumable:     sidebandAddr != "",
-				ResumeToken:   orphanResumeToken,
+				HasBaseImage:   hasBaseImage,
+				TargetNetwork:  targetNetwork,
+				SidebandAddr:   sidebandAddr,
+				Resumable:      sidebandAddr != "",
+				ResumeToken:    orphanResumeToken,
+				SkipIpReconfig: skipIPReconfig,
 			},
 		},
 	}); err != nil {
@@ -992,6 +999,18 @@ func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *a
 		}
 	}
 
+	// Update network tap name: the source exelet may use a different tap naming
+	// scheme (e.g. NAT uses random IDs like "tap-5c4c99", netns uses deterministic
+	// names like "tap-vm000001"). CHV restores will create a new tap with the old
+	// name if we don't patch it, leaving the VM disconnected from the target bridge.
+	if targetNetwork != nil && targetNetwork.Name != "" {
+		if nets, ok := config["net"].([]any); ok && len(nets) > 0 {
+			if netCfg, ok := nets[0].(map[string]any); ok {
+				netCfg["tap"] = targetNetwork.Name
+			}
+		}
+	}
+
 	updated, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal snapshot config: %w", err)
@@ -1242,4 +1261,20 @@ func checkAvailableMemory(requiredBytes uint64) error {
 			requiredBytes/(1024*1024), availableBytes/(1024*1024))
 	}
 	return nil
+}
+
+// sameVMIP reports whether the source instance and target network have the
+// same VM IP (ignoring the CIDR prefix length). When they match, no in-guest
+// IP reconfiguration is needed during live migration.
+func sameVMIP(source *api.Instance, target *api.NetworkInterface) bool {
+	if source == nil || source.VMConfig == nil || source.VMConfig.NetworkInterface == nil ||
+		source.VMConfig.NetworkInterface.IP == nil || target == nil || target.IP == nil {
+		return false
+	}
+	srcIP, _, err1 := net.ParseCIDR(source.VMConfig.NetworkInterface.IP.IPV4)
+	dstIP, _, err2 := net.ParseCIDR(target.IP.IPV4)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return srcIP.Equal(dstIP)
 }
