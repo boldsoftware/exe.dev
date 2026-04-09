@@ -161,6 +161,10 @@ func TestForUser(t *testing.T) {
 		// Unmapped country with coordinates → nearest
 		{"Fiji with coords", "FJ", -17.71, 177.97, "syd"},
 		{"unmapped country near Reykjavík", "XX", 64.15, -21.94, "lon"},
+		// Gated regions (RequiresUserMatch) must never be picked by nearest,
+		// even for users whose coordinates land right on top of them.
+		{"unmapped country near PDX", "XX", 45.59, -122.60, "lax"},
+		{"unmapped country near IAD", "XX", 38.95, -77.45, "nyc"},
 
 		// No country, no coords → default
 		{"empty everything", "", 0, 0, "lax"},

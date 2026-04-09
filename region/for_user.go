@@ -39,14 +39,15 @@ func ForUser(countryCode string, lat, lon float64) Region {
 	return Default()
 }
 
-// nearest returns the active region whose datacenter is closest to (lat, lon).
+// nearest returns the active, ungated region whose datacenter is closest to
+// (lat, lon). Regions with RequiresUserMatch are excluded because they are
+// explicitly gated against new-user routing.
 func nearest(lat, lon float64) Region {
-	def := Default()
-	best := def // always overwritten by the loop below; initialized to def as zero value
+	best := Default() // fallback if no candidates match (e.g. all gated)
 	bestDist := math.MaxFloat64
 	for _, r := range allRegions {
-		if !r.Active || r.Code == def.Code {
-			continue // Default region excluded from new-user routing; see ForUser
+		if !r.Active || r.RequiresUserMatch {
+			continue
 		}
 		d := haversine(lat, lon, r.Lat, r.Lon)
 		if d < bestDist {
