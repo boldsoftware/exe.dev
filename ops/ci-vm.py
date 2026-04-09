@@ -151,15 +151,92 @@ def tap_name_for(name: str) -> str:
 
 # ── TAP / bridge setup ─────────────────────────────────────────────────────────
 
-def _setup_tap(tap: str) -> None:
-    """Create TAP interface and attach it to BRIDGE."""
-    r = subprocess.run(["ip", "link", "show", BRIDGE], capture_output=True)
-    if r.returncode != 0:
+def _bridge_exists() -> bool:
+    return subprocess.run(["ip", "link", "show", BRIDGE],
+                          capture_output=True).returncode == 0
+
+
+def _ensure_bridge() -> None:
+    """Ensure BRIDGE exists and is up. Create it if missing.
+
+    Prefers libvirt's "default" network (full NAT / dnsmasq setup for
+    free); falls back to a plain Linux bridge with the gateway IP
+    assigned, which is enough for host<->VM traffic but not outbound
+    internet from the VM. Idempotent and safe to call on every VM start.
+
+    Serializes via a flock so parallel e1e test runs don't race each
+    other into conflicting `ip link add` calls.
+    """
+    if _bridge_exists():
+        sudo("ip", "link", "set", BRIDGE, "up", check=False)
+        return
+
+    lock_path = f"/tmp/ci-vm-bridge.lock-{os.getenv('USER','ci')}"
+    with open(lock_path, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+
+        # Re-check under lock: another process may have created it
+        # while we were waiting.
+        if _bridge_exists():
+            sudo("ip", "link", "set", BRIDGE, "up", check=False)
+            return
+
+        # Try libvirt's default network first.
         subprocess.run(["sudo", "virsh", "net-start", "default"],
                        check=False, capture_output=True)
-    subprocess.run(["sudo", "ip", "link", "set", BRIDGE, "up"],
-                   check=False, capture_output=True)
+        if _bridge_exists():
+            sudo("ip", "link", "set", BRIDGE, "up", check=False)
+            return
 
+        # Fallback: create a plain bridge with the expected gateway IP
+        # and set up NAT ourselves so VMs can reach the internet.
+        print(f"{BRIDGE} missing and libvirt unavailable; "
+              f"creating plain bridge with NAT", flush=True)
+        sudo("ip", "link", "add", "name", BRIDGE, "type", "bridge")
+        sudo("ip", "addr", "add", f"{BRIDGE_PFX}.1/24", "dev", BRIDGE)
+        sudo("ip", "link", "set", BRIDGE, "up")
+        _ensure_nat()
+
+
+def _ensure_nat() -> None:
+    """Enable IPv4 forwarding and install iptables NAT rules so traffic
+    from the VM subnet is masqueraded out the host's default interface.
+
+    This replicates what libvirt's default network does. Called only on
+    the fallback path of _ensure_bridge(); when libvirt's default network
+    is up, libvirt manages NAT itself and we don't touch iptables.
+
+    Rules are idempotent (checked with -C before -A).
+    """
+    sudo("sysctl", "-w", "net.ipv4.ip_forward=1")
+
+    subnet = f"{BRIDGE_PFX}.0/24"
+    rules = [
+        # Masquerade outbound traffic leaving the VM subnet.
+        ["-t", "nat", "POSTROUTING", "-s", subnet, "!", "-d", subnet,
+         "-j", "MASQUERADE"],
+        # Allow forwarding of new connections originating from the bridge.
+        ["FORWARD", "-s", subnet, "-j", "ACCEPT"],
+        # Allow return traffic for established connections.
+        ["FORWARD", "-d", subnet, "-m", "conntrack",
+         "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"],
+    ]
+    for rule in rules:
+        # Split table selector (if present) from the chain+match args
+        # so we can build "-C" (check) and "-A" (append) forms.
+        if rule[0] == "-t":
+            table_args, chain_args = rule[:2], rule[2:]
+        else:
+            table_args, chain_args = [], rule
+        check = ["sudo", "iptables"] + table_args + ["-C"] + chain_args
+        if subprocess.run(check, capture_output=True).returncode == 0:
+            continue
+        sudo("iptables", *table_args, "-A", *chain_args)
+
+
+def _setup_tap(tap: str) -> None:
+    """Create TAP interface and attach it to BRIDGE."""
+    _ensure_bridge()
     sudo("ip", "tuntap", "add", "mode", "tap", tap)
     sudo("ip", "link", "set", tap, "master", BRIDGE)
     sudo("ip", "link", "set", tap, "up")
