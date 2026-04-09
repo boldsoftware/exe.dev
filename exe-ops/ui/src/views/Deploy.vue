@@ -1260,7 +1260,7 @@ function isDeploying(p: DeployProcess): boolean {
 }
 
 const deployableStages = new Set(['staging', 'prod', 'global'])
-const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed'])
+const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed', 'exeprox'])
 
 function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false

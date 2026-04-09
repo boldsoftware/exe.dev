@@ -84,7 +84,7 @@ func (r Recipe) remoteUser() string {
 // to prod-stage hosts. Processes not in this set require staging first.
 func prodDeployAllowed(process string) bool {
 	switch process {
-	case "metricsd", "cgtop", "exeletd", "exed":
+	case "metricsd", "cgtop", "exeletd", "exed", "exeprox":
 		return true
 	}
 	return false
@@ -136,7 +136,11 @@ var Recipes = map[string]Recipe{
 	"exeprox": {
 		BuildTarget: "./cmd/exeprox",
 		BinaryName:  "exeprox",
-		SymlinkName: "-", // service uses ls -t to find newest binary
+		// The service picks the newest binary via "ls -t exeprox.* | head -n1".
+		// We still create exeprox.latest as a symlink so that rollback works
+		// by simply `ln -sf` to an older binary — that bumps the symlink's
+		// mtime, which makes it the newest entry and routes exec through it.
+		SymlinkName: "exeprox.latest",
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "exeprox.service",
 		HealthPort:  443,
