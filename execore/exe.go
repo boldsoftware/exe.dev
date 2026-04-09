@@ -4094,11 +4094,23 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 			client = nil
 		}
 
-		// Skip affinity if the exelet is not in the user's region.
 		// Team exelet assignments override region checks.
-		if client != nil && !teamExeletAddrs[maxHost] && client.region.Code != userRegion {
-			s.slog().DebugContext(ctx, "not selecting affinity exelet outside user's region", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
+		if client != nil && !teamExeletAddrs[maxHost] && !client.regionAllowsUser(userRegion, userRegionInfo) {
+			s.slog().DebugContext(ctx, "not selecting exelet because region requires match", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
 			client = nil
+		}
+
+		// Skip cross-region affinity when the user's chosen region has
+		// available exelets. If their region has no capacity, keep affinity
+		// so they stay colocated rather than landing on a random host.
+		if client != nil && !teamExeletAddrs[maxHost] && client.region.Code != userRegion {
+			for _, c := range s.exeletClients {
+				if c.region.Code == userRegion && c.up.Load() {
+					s.slog().DebugContext(ctx, "skipping cross-region affinity, user's region has capacity", "user", userID, "exelet", maxHost, "userRegion", userRegion, "exeletRegion", client.region.Code)
+					client = nil
+					break
+				}
+			}
 		}
 
 		if client != nil && !exeletAllowsUser(maxHost, privateExelets, teamExeletAddrs) {

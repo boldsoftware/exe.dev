@@ -338,7 +338,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 		}
 	})
 
-	t.Run("affinity skips exelet outside user region even when open", func(t *testing.T) {
+	t.Run("affinity skips cross-region when user's region has capacity", func(t *testing.T) {
 		t.Parallel()
 		server := newTestServer(t)
 		ctx := context.Background()
@@ -354,7 +354,7 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 			fraExelet.addr: fraExelet,
 		}
 
-		// Create a user who changed their region to fra, but has existing VMs on lax.
+		// User switched to fra but has an existing VM on lax.
 		userID := createTestUser(t, server, "fra-switched@example.com")
 		err := server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`UPDATE users SET region = ? WHERE user_id = ?`, "fra", userID)
@@ -378,14 +378,13 @@ func TestSelectExeletRequiresUserMatch(t *testing.T) {
 			t.Fatalf("failed to insert box: %v", err)
 		}
 
-		// Affinity would pick lax (has 1 VM), but user's region is fra.
-		// Must skip lax and land on fra.
+		// fra has capacity, so affinity to lax should be skipped.
 		ec, _, err := server.selectExeletClient(ctx, userID)
 		if err != nil {
 			t.Fatalf("selectExeletClient: %v", err)
 		}
 		if ec.region.Code != "fra" {
-			t.Errorf("expected fra (affinity to lax should be skipped for fra user), got %s", ec.region.Code)
+			t.Errorf("expected fra (user's region has capacity), got %s", ec.region.Code)
 		}
 	})
 
