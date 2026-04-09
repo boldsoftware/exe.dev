@@ -88,6 +88,18 @@ func TestTransfer(t *testing.T) {
 	}
 	defer vmServer1.Close()
 
+	// Wait for the exepipe copy process to be up and running.
+	if n, err := externalClient1.Write(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	} else if n != 1 {
+		t.Fatal("failed to write expected byte")
+	}
+	if n, err := vmServer1.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	} else if n != 1 {
+		t.Fatal("failed to read expected byte")
+	}
+
 	// Now we have an existing exepipe with a listener and an
 	// ongoing copy. Start a new exepipe on the same address,
 	// which should take over from the existing one.
@@ -161,6 +173,18 @@ func TestTransfer(t *testing.T) {
 		return // goroutine reported error
 	}
 	defer vmServer2.Close()
+
+	// Wait for the exepipe copy process to be up and running.
+	if n, err := externalClient2.Write(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	} else if n != 1 {
+		t.Fatal("failed to write expected byte")
+	}
+	if n, err := vmServer2.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	} else if n != 1 {
+		t.Fatal("failed to read expected byte")
+	}
 
 	// The new connection should be on the new exepipe.
 	waitForMetrics(t, pi1, `copy_sessions_in_flight{type="test"} 1`)
