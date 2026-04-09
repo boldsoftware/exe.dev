@@ -104,6 +104,11 @@ func (a *Archiver) RunOnce(ctx context.Context, cutoff time.Time) error {
 		}
 	}
 
+	_, err = a.db.ExecContext(ctx, "CHECKPOINT")
+	if err != nil {
+		slog.ErrorContext(ctx, "checkpoint failed", "error", err)
+	}
+
 	// Rebuild the view.
 	return a.RebuildView(ctx)
 }
