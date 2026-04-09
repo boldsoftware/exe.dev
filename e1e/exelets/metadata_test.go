@@ -20,6 +20,7 @@ func TestMetadata(t *testing.T) {
 	defer deleteBox(t, boxName, keyFile)
 
 	t.Run("shelley_install", func(t *testing.T) {
+		t.Skip("skipping: shelley install hits GitHub API rate limit in CI (come back 2026-04-16)")
 		pty, _ := testinfra.MakeTestPTY(t, "", "ssh localhost", true)
 		cmd, err := serverEnv.SSHToExeDev(t.Context(), pty.PTY(), keyFile)
 		if err != nil {
