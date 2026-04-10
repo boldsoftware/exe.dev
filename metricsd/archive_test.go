@@ -23,7 +23,8 @@ func TestArchiver_BasicFlow(t *testing.T) {
 	defer srv.Close()
 
 	// Insert data spanning 5 days: 3 days ago, 4 days ago, 5 days ago, plus today and yesterday.
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	// Start at noon UTC to be independent of when the test runs.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	metrics := []Metric{
 		{Timestamp: now.Add(-5 * 24 * time.Hour), Host: "h1", VMName: "vm-old-5", DiskSizeBytes: 100, ResourceGroup: "grp"},
 		{Timestamp: now.Add(-4 * 24 * time.Hour), Host: "h1", VMName: "vm-old-4", DiskSizeBytes: 200, ResourceGroup: "grp"},
@@ -116,7 +117,7 @@ func TestArchiver_Idempotent(t *testing.T) {
 	srv := NewServer(connector, db, false)
 	defer srv.Close()
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	metrics := []Metric{
 		{Timestamp: now.Add(-5 * 24 * time.Hour), Host: "h1", VMName: "vm-a", DiskSizeBytes: 100, ResourceGroup: "grp"},
 		{Timestamp: now, Host: "h1", VMName: "vm-b", DiskSizeBytes: 200, ResourceGroup: "grp"},
@@ -194,7 +195,7 @@ func TestArchiver_MissingParquetFile(t *testing.T) {
 	srv := NewServer(connector, db, false)
 	defer srv.Close()
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	metrics := []Metric{
 		{Timestamp: now.Add(-5 * 24 * time.Hour), Host: "h1", VMName: "vm-a", DiskSizeBytes: 100, ResourceGroup: "grp"},
 	}
@@ -343,7 +344,7 @@ func TestArchiver_ReopenDB(t *testing.T) {
 
 	srv := NewServer(connector, db, false)
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	metrics := []Metric{
 		{Timestamp: now.Add(-5 * 24 * time.Hour), Host: "h1", VMName: "vm-old", DiskSizeBytes: 100, ResourceGroup: "grp"},
 		{Timestamp: now, Host: "h1", VMName: "vm-new", DiskSizeBytes: 200, ResourceGroup: "grp"},
