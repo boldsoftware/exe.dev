@@ -178,6 +178,7 @@ var Recipes = map[string]Recipe{
 	"metricsd": {
 		BuildTarget: "./cmd/metricsd",
 		BinaryName:  "metricsd",
+		SymlinkName: "metricsd.latest",
 		CGO:         true,
 		RemoteDir:   "/home/ubuntu",
 		ServiceUnit: "metricsd.service",
