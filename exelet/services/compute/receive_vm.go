@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -237,6 +238,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			errCh <- err
 			pr.Close()
 		}()
+		rb.trackRecvWriter(pw)
 		return &zfsReceiver{id: id, pw: pw, errCh: errCh}
 	}
 
@@ -974,6 +976,30 @@ type receiveVMRollback struct {
 	zfsDatasetCreated    bool
 	instanceDirCreated   bool
 	snapshotDirCreated   bool
+
+	// activeRecvWriters tracks pipe writers feeding in-flight zfs recv processes.
+	// Rollback closes them to unblock zfs recv before attempting zfs destroy,
+	// preventing a hang when the dataset is busy.
+	mu                sync.Mutex
+	activeRecvWriters []*io.PipeWriter
+}
+
+// trackRecvWriter registers a pipe writer so Rollback can close it.
+func (r *receiveVMRollback) trackRecvWriter(pw *io.PipeWriter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.activeRecvWriters = append(r.activeRecvWriters, pw)
+}
+
+// closeRecvWriters closes all tracked pipe writers, terminating any in-flight
+// zfs recv processes so that zfs destroy doesn't block on a busy dataset.
+func (r *receiveVMRollback) closeRecvWriters() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, pw := range r.activeRecvWriters {
+		pw.CloseWithError(errors.New("rollback: closing in-flight zfs recv"))
+	}
+	r.activeRecvWriters = nil
 }
 
 func (r *receiveVMRollback) Rollback() {
@@ -986,6 +1012,11 @@ func (r *receiveVMRollback) Rollback() {
 	if r.stopVM != nil {
 		r.stopVM()
 	}
+
+	// Close any in-flight zfs recv pipe writers BEFORE attempting zfs destroy.
+	// Without this, zfs destroy blocks indefinitely on a busy dataset held
+	// open by a still-running zfs recv process.
+	r.closeRecvWriters()
 
 	// Delete any partially created ZFS dataset for the instance
 	if r.zfsDatasetCreated {
