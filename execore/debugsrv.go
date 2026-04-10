@@ -855,22 +855,30 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 }
 
 func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.Client, instanceID string) error {
-	var lastErr error
-	for attempt := range 20 {
+	// The source exelet sends the migration Result before its defer stack
+	// finishes (ZFS snapshot cleanup, migration-lock release). Give it a
+	// generous window — large snapshots can take tens of seconds to destroy.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	backoff := 100 * time.Millisecond
+	const maxBackoff = 2 * time.Second
+
+	for {
 		_, err := source.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: instanceID})
 		if err == nil {
 			return nil
 		}
-		lastErr = err
 		if status.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "instance is being migrated") {
 			return err
 		}
-		if attempt == 19 {
-			break
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for migration lock release: %w", err)
+		case <-time.After(backoff):
 		}
-		time.Sleep(50 * time.Millisecond)
+		backoff = min(backoff*2, maxBackoff)
 	}
-	return lastErr
 }
 
 // migrateVM performs a direct exelet-to-exelet migration for cold and two-phase modes.
@@ -1642,7 +1650,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 
 		// Clean up source instance
 		writeProgress("Deleting source instance on %s...", box.Ctrhost)
-		if _, err := sourceClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: containerID}); err != nil {
+		if err := retrySourceDeleteAfterMigration(ctx, sourceClient.client, containerID); err != nil {
 			writeProgress("WARNING: failed to delete source instance: %v", err)
 			writeProgress("Manual cleanup: ./exelet-ctl -a %s compute instances rm %s", box.Ctrhost, containerID)
 			s.slog().WarnContext(ctx, "failed to delete source instance after migration",
@@ -6452,7 +6460,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		}
 
 		writeProgress("Deleting source instance on %s...", box.Ctrhost)
-		if _, err := sourceClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: containerID}); err != nil {
+		if err := retrySourceDeleteAfterMigration(ctx, sourceClient.client, containerID); err != nil {
 			writeProgress("WARNING: failed to delete source instance: %v", err)
 			s.slog().WarnContext(ctx, "failed to delete source instance after migration",
 				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
@@ -6675,7 +6683,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 
 	// Clean up source.
 	writeProgress("Deleting source instance on %s...", box.Ctrhost)
-	if _, err := sourceClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: containerID}); err != nil {
+	if err := retrySourceDeleteAfterMigration(ctx, sourceClient.client, containerID); err != nil {
 		writeProgress("WARNING: failed to delete source instance: %v", err)
 		s.slog().WarnContext(ctx, "failed to delete source instance after cold migration",
 			"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
