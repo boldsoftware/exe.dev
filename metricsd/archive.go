@@ -16,11 +16,16 @@ import (
 type Archiver struct {
 	db         *sql.DB
 	archiveDir string
+	stopped    chan bool // closed when stopped
 }
 
 // NewArchiver creates an archiver that stores parquet files in archiveDir.
 func NewArchiver(db *sql.DB, archiveDir string) *Archiver {
-	return &Archiver{db: db, archiveDir: archiveDir}
+	return &Archiver{
+		db:         db,
+		archiveDir: archiveDir,
+		stopped:    make(chan bool),
+	}
 }
 
 // archiveEntry represents a single archived day.
@@ -236,6 +241,8 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 // RunPeriodic starts a goroutine that runs archival every interval.
 func (a *Archiver) RunPeriodic(ctx context.Context, interval time.Duration) {
 	go func() {
+		defer close(a.stopped)
+
 		// Run once at startup.
 		cutoff := time.Now().UTC().Add(-48 * time.Hour)
 		if err := a.RunOnce(ctx, cutoff); err != nil {
@@ -256,4 +263,9 @@ func (a *Archiver) RunPeriodic(ctx context.Context, interval time.Duration) {
 			}
 		}
 	}()
+}
+
+// WaitUntilStopped waits until the Archiver is stopped.
+func (a *Archiver) WaitUntilStopped() {
+	<-a.stopped
 }

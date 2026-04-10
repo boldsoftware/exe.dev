@@ -9,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"exe.dev/logging"
@@ -38,7 +40,8 @@ func run() error {
 
 	logging.SetupLogger(env, nil, nil)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	addr, err := env.TailscaleListenAddr(*port)
 	if err != nil {
@@ -60,13 +63,23 @@ func run() error {
 
 	// Start periodic archival (every hour).
 	if archiver != nil {
-		archiveCtx, archiveCancel := context.WithCancel(ctx)
-		defer archiveCancel()
-		archiver.RunPeriodic(archiveCtx, 1*time.Hour)
+		archiver.RunPeriodic(ctx, 1*time.Hour)
 	}
 
 	srv := metricsd.NewServer(connector, db, env.ListenOnTailscaleOnly)
 	defer srv.Close()
+
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+		for sig := range ch {
+			slog.InfoContext(ctx, "received signal, shutting down", "signal", sig)
+			cancel()
+			archiver.WaitUntilStopped()
+			srv.Close()
+			os.Exit(0)
+		}
+	}()
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

@@ -172,6 +172,13 @@ func (s *Server) Close() error {
 		}
 		s.conn = nil
 	}
+
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			slog.Error("error closing duckdb", "error", err)
+		}
+	}
+
 	return nil
 }
 
