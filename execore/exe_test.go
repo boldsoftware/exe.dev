@@ -262,7 +262,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "ssh") || !strings.Contains(bodyStr, "disk persists") {
+	if !strings.Contains(bodyStr, "ssh") || !strings.Contains(bodyStr, "term-player") {
 		t.Fatalf("GET / without cookies should show landing page, got:\n%s", bodyStr)
 	}
 

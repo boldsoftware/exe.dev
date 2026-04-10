@@ -108,7 +108,7 @@ nav {
 }
 
 .hero-title {
-  font-size: clamp(3rem, 8vw, 7rem);
+  font-size: clamp(2.7rem, 7.2vw, 6.3rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0;

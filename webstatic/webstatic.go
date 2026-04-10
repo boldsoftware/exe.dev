@@ -7,8 +7,11 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +38,17 @@ func Serve(w http.ResponseWriter, r *http.Request, lg *slog.Logger, filename str
 	defer f.Close()
 
 	w.Header().Set("Cache-Control", "no-cache")
+
+	// Ensure text-based files are served with charset=utf-8 so browsers
+	// (notably Safari) don't fall back to Latin-1 and mangle emoji/unicode.
+	ct := mime.TypeByExtension(filepath.Ext(filename))
+	if ct != "" && strings.HasPrefix(ct, "text/") || ct == "application/javascript" || ct == "application/json" {
+		if !strings.Contains(ct, "charset") {
+			ct += "; charset=utf-8"
+		}
+		w.Header().Set("Content-Type", ct)
+	}
+
 	http.ServeContent(w, r, filename, buildTime(), f.(io.ReadSeeker))
 }
 

@@ -192,37 +192,19 @@ func TestPromptPersistence_Playwright(t *testing.T) {
 	}
 	defer page.Close()
 
-	// Step 1: Navigate to the landing page.
-	_, err = page.Goto(base + "/")
+	// Step 1: Navigate directly to /auth with a prompt param.
+	// (The landing page no longer has a prompt textarea; prompts are
+	// entered on the dashboard's /new page after login.)
+	testPrompt := "Build me a real-time chat app with WebSockets"
+	_, err = page.Goto(base + "/auth?prompt=" + url.QueryEscape(testPrompt))
 	if err != nil {
-		t.Fatalf("failed to navigate to landing page: %v", err)
+		t.Fatalf("failed to navigate to auth page: %v", err)
 	}
 	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 		State: playwright.LoadStateDomcontentloaded,
 	})
 	if err != nil {
 		t.Fatalf("failed to wait for load: %v", err)
-	}
-
-	// Step 2: Type a prompt into the textarea.
-	testPrompt := "Build me a real-time chat app with WebSockets"
-	promptInput := page.Locator("#prompt-input")
-	if err := promptInput.Fill(testPrompt); err != nil {
-		t.Fatalf("failed to fill prompt: %v", err)
-	}
-
-	// Step 3: Click "Start building".
-	submitBtn := page.Locator(".prompt-submit")
-	if err := submitBtn.Click(); err != nil {
-		t.Fatalf("failed to click submit: %v", err)
-	}
-
-	// Should navigate to /auth with prompt param, then show auth form.
-	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateDomcontentloaded,
-	})
-	if err != nil {
-		t.Fatalf("failed to wait for auth page load: %v", err)
 	}
 
 	// Step 4: Fill in email and submit auth form.
@@ -287,15 +269,5 @@ func TestPromptPersistence_Playwright(t *testing.T) {
 	gotPrompt := parsedURL.Query().Get("prompt")
 	if gotPrompt != testPrompt {
 		t.Fatalf("prompt not preserved in URL: got %q, want %q", gotPrompt, testPrompt)
-	}
-
-	// Also verify the prompt text is visible in the textarea.
-	promptTextarea := page.Locator(".prompt-input")
-	val, err := promptTextarea.InputValue()
-	if err != nil {
-		t.Fatalf("failed to get prompt textarea value: %v", err)
-	}
-	if val != testPrompt {
-		t.Fatalf("prompt textarea value: got %q, want %q", val, testPrompt)
 	}
 }

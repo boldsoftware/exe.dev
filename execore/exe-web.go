@@ -391,7 +391,7 @@ func (s *Server) setupProxyServers() {
 
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) error {
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, templateName, data); err != nil {
 		s.slog().ErrorContext(ctx, "Failed to execute template", "error", err, "template", templateName)
@@ -427,7 +427,7 @@ func (s *Server) renderPage(ctx context.Context, w http.ResponseWriter, pagePath
 		scriptTag := fmt.Sprintf(`<script>window.__PAGE__=%s</script>`, jsonBytes)
 		html = strings.Replace(html, "</head>", scriptTag+"</head>", 1)
 	}
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, writeErr := io.WriteString(w, html)
 	return writeErr

@@ -21,29 +21,17 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="alternate" type="application/atom+xml" title="exe.dev blog" href="https://blog.exe.dev/atom.xml">
     <link rel="stylesheet" href="/static/index.css">
+    <link rel="stylesheet" href="/static/term-player.css">
   </head>
   <body>
-    <!-- Ideas Drawer -->
-    <div id="ideas-drawer" class="ideas-drawer">
-      <div class="ideas-backdrop"></div>
-      <div class="ideas-panel">
-        <div class="ideas-header">
-          <h2>Ideas</h2>
-          <button type="button" class="ideas-close" aria-label="Close">&times;</button>
-        </div>
-        <div id="ideas-sections"></div>
-      </div>
-    </div>
     {{if ne .WebHost "exe.dev"}}<div class="dev-banner"><span>D</span><span>E</span><span>V</span></div>{{end}}
     <div class="above-fold">
     <nav>
-      <a href="/" class="nav-logo">
-        <img src="/static/exy.png" alt="exe.dev logo" />
-        <span>{{.WebHost}}</span>
-      </a>
+      <div class="nav-logo"></div>
       <div class="nav-right">
-        <a href="/docs">Docs</a>
-        <a href="/auth" class="nav-login">Login</a>
+        <a href="/docs">docs</a>
+        <a href="/pricing">pricing</a>
+        <a href="/auth" class="nav-login">Login / Register</a>
       </div>
     </nav>
 
@@ -51,26 +39,7 @@
       <div class="hero-spacer"></div>
       <h1 class="hero-title">ssh exe.dev</h1>
       <div class="hero-spacer"></div>
-      <div class="hero-columns">
-        <div class="hero-left">
-          <h2>Write software</h2>
-          <p class="hero-sub">Private, persistent, share with a link</p>
-          <form class="prompt-box" action="/auth" method="get">
-            <textarea id="prompt-input" name="prompt" class="prompt-input" placeholder=""></textarea>
-            <div class="prompt-actions">
-              <button type="submit" class="prompt-submit">Start building &rarr;</button>
-              <button type="button" class="ideas-btn" id="ideas-btn">Ideas</button>
-            </div>
-          </form>
-        </div>
-        <div class="hero-divider"></div>
-        <div class="hero-right">
-          <h2>On real infra</h2>
-          <p class="ssh-sub">Linux. Sudo. The disk persists.</p>
-          <p class="ssh-sub">Start a new sandbox, systemd and all, in a second.</p>
-          <p class="ssh-sub">An API designed for humans and agents.</p>
-        </div>
-      </div>
+      <div id="term-player"></div>
       <div class="hero-spacer"></div>
     </section>
     </div>
@@ -139,6 +108,7 @@
       <span>&bull;</span>
       <a href="/security">Security</a>
     </footer>
+    <script src="/static/term-player.js?v=1"></script>
     <script src="/static/index.js?v=1"></script>
   </body>
 </html>
