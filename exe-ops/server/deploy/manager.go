@@ -751,6 +751,11 @@ func generateID() string {
 // StartRollout begins a phased rollout. Returns 409-style "deployment in
 // progress" if another rollout is already active for the same process.
 func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
+	for i := range req.Targets {
+		if req.Targets[i].Region == "" {
+			req.Targets[i].Region = "default"
+		}
+	}
 	if err := m.rolloutValidate(req); err != nil {
 		return RolloutStatus{}, err
 	}

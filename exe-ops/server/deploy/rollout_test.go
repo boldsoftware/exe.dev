@@ -559,7 +559,7 @@ func TestRollout_ValidationRejectsMixedProcess(t *testing.T) {
 	}
 }
 
-func TestRollout_ValidationRequiresRegion(t *testing.T) {
+func TestRollout_DefaultRegion(t *testing.T) {
 	m := newTestManager(t)
 	req := RolloutRequest{
 		Targets: []RolloutTarget{
@@ -568,12 +568,19 @@ func TestRollout_ValidationRequiresRegion(t *testing.T) {
 					Stage: "staging", Role: "exelet", Process: "exeletd",
 					Host: "a", DNSName: "a.test", SHA: validSHA,
 				},
-				// missing Region
+				// missing Region — should default to "default"
 			},
 		},
 	}
-	if _, err := m.StartRollout(req); err == nil {
-		t.Fatal("expected validation error for missing region")
+	status, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("unexpected error for missing region: %v", err)
+	}
+	if req.Targets[0].Region != "default" {
+		t.Fatalf("expected region %q, got %q", "default", req.Targets[0].Region)
+	}
+	if status.ID == "" {
+		t.Fatal("expected rollout to start")
 	}
 }
 
