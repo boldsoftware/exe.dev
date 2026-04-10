@@ -864,6 +864,12 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 	backoff := 100 * time.Millisecond
 	const maxBackoff = 2 * time.Second
 
+	timer := time.NewTimer(0)
+	if !timer.Stop() {
+		<-timer.C
+	}
+	defer timer.Stop()
+
 	for {
 		_, err := source.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{ID: instanceID})
 		if err == nil {
@@ -872,10 +878,11 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 		if status.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "instance is being migrated") {
 			return err
 		}
+		timer.Reset(backoff)
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for migration lock release: %w", err)
-		case <-time.After(backoff):
+		case <-timer.C:
 		}
 		backoff = min(backoff*2, maxBackoff)
 	}
