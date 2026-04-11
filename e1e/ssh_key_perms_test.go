@@ -507,4 +507,7 @@ func TestSSHKeyPermissions(t *testing.T) {
 			t.Errorf("non-sudoer plain add should succeed: %v\n%s", err, out)
 		}
 	})
+
+	cleanupBox(t, keyFile, box1)
+	cleanupBox(t, keyFile, box2)
 }

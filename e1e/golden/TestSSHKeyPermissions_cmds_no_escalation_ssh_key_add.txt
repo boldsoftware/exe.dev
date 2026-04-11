@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+ssh-key add --cmds='ssh-key add,whoami' 'SSH_PUBKEY'
+
+- help to see a list of commands
+
+PROMPT ▶ ssh-key add --cmds='ssh-key add,whoami' 'SSH_PUBKEY'
+Added SSH key.
+PROMPT ▶ exit
+Goodbye!

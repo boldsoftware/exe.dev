@@ -611,4 +611,10 @@ func TestSSHKeyTagScope(t *testing.T) {
 		// Clean up: remove deploy tag.
 		_, _ = Env.servers.RunExeDevSSHCommand(Env.context(t), rootKey, "tag", "-d", preUntagged, "deploy")
 	})
+
+	cleanupBox(t, rootKey, preTagged)
+	cleanupBox(t, rootKey, preUntagged)
+	if rootOnlyVM != "" {
+		cleanupBox(t, rootKey, rootOnlyVM)
+	}
 }
