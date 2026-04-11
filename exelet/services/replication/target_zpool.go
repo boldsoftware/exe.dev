@@ -103,12 +103,12 @@ func (t *ZpoolTarget) ListSnapshotsWithMetadata(ctx context.Context, volumeID st
 func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
 	estimatedSize := estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
 
-	// Build local zfs send command
+	// Build local zfs send command (-c sends compressed blocks as-is)
 	var sendArgs []string
 	if opts.BaseSnapshot != "" {
-		sendArgs = []string{"send", "-i", fmt.Sprintf("%s@%s", opts.Dataset, opts.BaseSnapshot), fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
+		sendArgs = []string{"send", "-c", "-i", fmt.Sprintf("%s@%s", opts.Dataset, opts.BaseSnapshot), fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
 	} else {
-		sendArgs = []string{"send", fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
+		sendArgs = []string{"send", "-c", fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
 	}
 	sendCmd := exec.CommandContext(ctx, "zfs", sendArgs...)
 

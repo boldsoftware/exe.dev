@@ -67,10 +67,11 @@ func (s *ZFS) SendSnapshot(ctx context.Context, snapName string, incremental boo
 
 	if incremental && baseSnap != "" {
 		// Incremental send from baseSnap to snapName
-		args = []string{"send", "-i", baseSnap, snapName}
+		// -c sends compressed blocks as-is, avoiding decompress-on-send / recompress-on-recv
+		args = []string{"send", "-c", "-i", baseSnap, snapName}
 	} else {
 		// Full send of snapshot
-		args = []string{"send", snapName}
+		args = []string{"send", "-c", snapName}
 	}
 
 	s.log.DebugContext(ctx, "starting zfs send", "args", args)

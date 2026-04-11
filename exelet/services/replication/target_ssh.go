@@ -437,11 +437,11 @@ func (t *SSHTarget) Send(ctx context.Context, opts SendOptions) error {
 	// Build local zfs send command
 	var sendArgs []string
 	if opts.BaseSnapshot != "" {
-		// Incremental send
-		sendArgs = []string{"send", "-i", fmt.Sprintf("%s@%s", opts.Dataset, opts.BaseSnapshot), fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
+		// Incremental send (-c sends compressed blocks as-is)
+		sendArgs = []string{"send", "-c", "-i", fmt.Sprintf("%s@%s", opts.Dataset, opts.BaseSnapshot), fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
 	} else {
-		// Full send
-		sendArgs = []string{"send", fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
+		// Full send (-c sends compressed blocks as-is)
+		sendArgs = []string{"send", "-c", fmt.Sprintf("%s@%s", opts.Dataset, opts.SnapshotName)}
 	}
 
 	sendCmd := exec.CommandContext(ctx, "zfs", sendArgs...)
