@@ -37,7 +37,7 @@ type Command struct {
 	Hidden       bool // if true, command is hidden from help and completions
 	RequiresSudo bool // if true, command requires exe sudo privileges; must also be Hidden
 
-// RequiresPTY means the command only makes sense when the client has
+	// RequiresPTY means the command only makes sense when the client has
 	// allocated a PTY (e.g. `ssh -t` or an interactive shell). Commands that
 	// drive full-screen Bubble Tea UIs or stream terminal animations should
 	// set this so they fail fast when invoked from scripted/HTTP contexts.
