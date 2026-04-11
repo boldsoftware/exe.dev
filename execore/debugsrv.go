@@ -2862,26 +2862,28 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type exeletInfo struct {
-		Address        string `json:"address"`
-		Hostname       string `json:"hostname"`
-		Version        string `json:"version"`
-		Available      bool   `json:"available"`
-		Status         string `json:"status"`
-		IsPreferred    bool   `json:"is_preferred"`
-		IsPrivate      bool   `json:"is_private"`
-		InstanceCount  int    `json:"instance_count"`
-		InstanceLimit  int    `json:"instance_limit"`
-		LoadAverage    string `json:"load_average"`
-		MemFree        string `json:"mem_free"`
-		SwapFree       string `json:"swap_free"`
-		DiskFree       string `json:"disk_free"`
-		RxRate         string `json:"rx_rate"`
-		TxRate         string `json:"tx_rate"`
-		Error          string `json:"error,omitempty"`
-		DebugURL       string `json:"debug_url"`
-		CgtopURL       string `json:"cgtop_url"`
-		TierCount      int    `json:"tier_count"`
-		LiveMigrations int    `json:"live_migrations"`
+		Address          string `json:"address"`
+		Hostname         string `json:"hostname"`
+		Version          string `json:"version"`
+		Available        bool   `json:"available"`
+		Status           string `json:"status"`
+		IsPreferred      bool   `json:"is_preferred"`
+		IsPrivate        bool   `json:"is_private"`
+		InstanceCount    int    `json:"instance_count"`
+		InstanceLimit    int    `json:"instance_limit"`
+		LoadAverage      string `json:"load_average"`
+		MemFree          string `json:"mem_free"`
+		SwapFree         string `json:"swap_free"`
+		DiskFree         string `json:"disk_free"`
+		RxRate           string `json:"rx_rate"`
+		TxRate           string `json:"tx_rate"`
+		Error            string `json:"error,omitempty"`
+		DebugURL         string `json:"debug_url"`
+		CgtopURL         string `json:"cgtop_url"`
+		TierCount        int    `json:"tier_count"`
+		LiveMigrations   int    `json:"live_migrations"`
+		CgroupUnitsUsed  int    `json:"cgroup_units_used"`
+		CgroupUnitsTotal int    `json:"cgroup_units_total"`
 	}
 
 	// Get the preferred exelet setting
@@ -2962,6 +2964,18 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 
 			// Count in-flight VM migrations
 			info.LiveMigrations = len(s.liveMigrations.snapshotForExelet(addr))
+
+			// Compute cgroup-unit usage.
+			info.CgroupUnitsTotal = int(ec.CgroupUnitCapacity())
+			if rows, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserLimitsByHost, addr); err == nil {
+				for _, row := range rows {
+					var ul *UserLimits
+					if row.Limits != nil {
+						ul = ParseUserLimitsFromJSON(*row.Limits)
+					}
+					info.CgroupUnitsUsed += userCgroupUnits(ul)
+				}
+			}
 
 			mu.Lock()
 			exelets = append(exelets, info)

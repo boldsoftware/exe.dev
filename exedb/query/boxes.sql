@@ -148,3 +148,9 @@ UPDATE boxes SET lock_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 -- name: GetRunningBoxesForUser :many
 -- Returns all running boxes owned by a user.
 SELECT * FROM boxes WHERE created_by_user_id = ? AND status = 'running';
+
+-- name: GetUserLimitsByHost :many
+SELECT DISTINCT u.user_id, u.limits
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.ctrhost = ? AND b.status != 'failed' AND b.container_id IS NOT NULL;

@@ -428,8 +428,9 @@ type exeletClient struct {
 	usage atomic.Pointer[resourceapi.MachineUsage]
 	count atomic.Int32 // instance count
 
-	vmHardLimit atomic.Int32
-	vmSoftLimit atomic.Int32
+	vmHardLimit   atomic.Int32
+	vmSoftLimit   atomic.Int32
+	cgroupUnitCap atomic.Int32 // cgroup-unit capacity for this host
 }
 
 // regionAllowsUser reports whether the exelet may host a VM for a user
@@ -456,6 +457,12 @@ func (ec *exeletClient) VMHardLimit() int32 {
 // Returns 0 if usage has not been reported yet.
 func (ec *exeletClient) VMSoftLimit() int32 {
 	return ec.vmSoftLimit.Load()
+}
+
+// CgroupUnitCapacity returns the cgroup-unit capacity for this host.
+// Returns 0 if usage has not been reported yet.
+func (ec *exeletClient) CgroupUnitCapacity() int32 {
+	return ec.cgroupUnitCap.Load()
 }
 
 // vmLimitTiers maps nominal memory tiers (GiB) to hard VM limits.
@@ -487,6 +494,7 @@ func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
 	soft := hard * 7 / 8
 	ec.vmHardLimit.Store(hard)
 	ec.vmSoftLimit.Store(soft)
+	ec.cgroupUnitCap.Store(cgroupUnitCapacityFromMem(memTotalKiB))
 }
 
 // countInstances returns the number of instances on this exelet.

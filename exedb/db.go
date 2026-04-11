@@ -705,6 +705,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserLLMCreditStmt, err = db.PrepareContext(ctx, getUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserLLMCredit: %w", err)
 	}
+	if q.getUserLimitsByHostStmt, err = db.PrepareContext(ctx, getUserLimitsByHost); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserLimitsByHost: %w", err)
+	}
 	if q.getUserNewVMCreationDisabledStmt, err = db.PrepareContext(ctx, getUserNewVMCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserNewVMCreationDisabled: %w", err)
 	}
@@ -2421,6 +2424,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserLLMCreditStmt: %w", cerr)
 		}
 	}
+	if q.getUserLimitsByHostStmt != nil {
+		if cerr := q.getUserLimitsByHostStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserLimitsByHostStmt: %w", cerr)
+		}
+	}
 	if q.getUserNewVMCreationDisabledStmt != nil {
 		if cerr := q.getUserNewVMCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserNewVMCreationDisabledStmt: %w", cerr)
@@ -3647,6 +3655,7 @@ type Queries struct {
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserIsLockedOutStmt                     *sql.Stmt
 	getUserLLMCreditStmt                       *sql.Stmt
+	getUserLimitsByHostStmt                    *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
 	getUserPlanDataStmt                        *sql.Stmt
@@ -4072,6 +4081,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserIsLockedOutStmt:                     q.getUserIsLockedOutStmt,
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
+		getUserLimitsByHostStmt:                    q.getUserLimitsByHostStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
 		getUserPlanDataStmt:                        q.getUserPlanDataStmt,

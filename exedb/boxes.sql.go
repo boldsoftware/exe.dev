@@ -661,6 +661,41 @@ func (q *Queries) GetRunningBoxesForUser(ctx context.Context, createdByUserID st
 	return items, nil
 }
 
+const getUserLimitsByHost = `-- name: GetUserLimitsByHost :many
+SELECT DISTINCT u.user_id, u.limits
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.ctrhost = ? AND b.status != 'failed' AND b.container_id IS NOT NULL
+`
+
+type GetUserLimitsByHostRow struct {
+	UserID string  `db:"user_id" json:"user_id"`
+	Limits *string `db:"limits" json:"limits"`
+}
+
+func (q *Queries) GetUserLimitsByHost(ctx context.Context, ctrhost string) ([]GetUserLimitsByHostRow, error) {
+	rows, err := q.query(ctx, q.getUserLimitsByHostStmt, getUserLimitsByHost, ctrhost)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserLimitsByHostRow{}
+	for rows.Next() {
+		var i GetUserLimitsByHostRow
+		if err := rows.Scan(&i.UserID, &i.Limits); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUsersWithOutOfRegionBoxes = `-- name: GetUsersWithOutOfRegionBoxes :many
 SELECT u.user_id, u.email, u.region AS user_region, COUNT(*) AS box_count
 FROM users u
