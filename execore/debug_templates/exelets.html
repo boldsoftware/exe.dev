@@ -24,7 +24,7 @@
 <p>No exelets configured.</p>
 {{else}}
 <table>
-<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GiB)</th><th>SwapFree (GiB)</th><th>DiskFree (GiB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Links</th><th>Private</th><th>Actions</th></tr>
+<tr><th>Address</th><th>Status</th><th>Available</th><th>Version</th><th>Instances</th><th>Load</th><th>MemFree (GiB)</th><th>SwapFree (GiB)</th><th>DiskFree (GiB)</th><th>Rx (Mbit/s)</th><th>Tx (Mbit/s)</th><th>Tiers</th><th>Migrations</th><th>Links</th><th>Private</th><th>Actions</th></tr>
 {{range .Exelets}}
 <tr{{if .IsPreferred}} class="preferred{{if .IsPrivate}} private{{end}}"{{else if .IsPrivate}} class="private"{{end}}>
 <td><code><a href="/debug/exelets/{{.Hostname}}">{{.Address}}</a></code></td>
@@ -39,6 +39,7 @@
 <td>{{.RxRate}}</td>
 <td>{{.TxRate}}</td>
 <td><a href="/debug/exelets/{{.Hostname}}">{{.TierCount}}</a></td>
+<td>{{if .LiveMigrations}}<strong>{{.LiveMigrations}}</strong>{{else}}0{{end}}</td>
 <td>{{if .DebugURL}}<a href="{{.DebugURL}}" target="_blank">debug</a> | <a href="{{.CgtopURL}}" target="_blank">cgtop</a>{{end}}</td>
 <td>
 {{if .IsPrivate}}

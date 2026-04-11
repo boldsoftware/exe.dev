@@ -525,7 +525,7 @@ func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
 		messages = append(messages, fmt.Sprintf(format, args...))
 	}
 
-	err := server.migrateVM(ctx, sourceClient, "test-instance", targetAddr, false, false, progress)
+	err := server.migrateVM(ctx, sourceClient, "test-instance", "tcp://source:9080", targetAddr, "test-box", false, false, progress)
 	if err != nil {
 		t.Fatalf("migrateVM failed: %v", err)
 	}

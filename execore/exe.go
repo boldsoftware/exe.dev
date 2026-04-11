@@ -396,6 +396,9 @@ type Server struct {
 
 	// metricsdURL is the URL of the metricsd server for VM usage data.
 	metricsdURL string
+
+	// liveMigrations tracks in-flight VM-to-VM migrations for observability.
+	liveMigrations *liveMigrationTracker
 }
 
 // newSignupPOW creates a proof-of-work challenger with a random secret.
@@ -1123,11 +1126,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,
 		},
-		githubApp:    ghApp,
-		githubSetups: make(map[string]*GitHubSetup),
-		ghTokenCache: make(map[ghTokenCacheKey]*ghTokenCacheEntry),
-		PublicIPs:    map[netip.Addr]publicips.PublicIP{},
-		metricsdURL:  cfg.MetricsdURL,
+		githubApp:      ghApp,
+		githubSetups:   make(map[string]*GitHubSetup),
+		ghTokenCache:   make(map[ghTokenCacheKey]*ghTokenCacheEntry),
+		PublicIPs:      map[netip.Addr]publicips.PublicIP{},
+		metricsdURL:    cfg.MetricsdURL,
+		liveMigrations: newLiveMigrationTracker(),
 
 		metricsRegistry:       cfg.MetricsRegistry,
 		sshMetrics:            sshMetrics,

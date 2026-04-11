@@ -740,7 +740,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
-		if err := s.migrateVM(ctx, sourceClient.client, containerID, targetAddr, twoPhase, directOnly, writeProgress); err != nil {
+		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, directOnly, writeProgress); err != nil {
 			s.slog().ErrorContext(ctx, "cold migration failed",
 				"box", boxName, "container_id", containerID,
 				"source", box.Ctrhost, "target", targetAddr,
@@ -891,7 +891,12 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 // migrateVM performs a direct exelet-to-exelet migration for cold and two-phase modes.
 // The source exelet connects directly to the target for data transfer; execore handles
 // only control messages, metadata observation, and progress reporting.
-func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, targetAddr string, twoPhase, directOnly bool, progress func(string, ...any)) error {
+func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, progress func(string, ...any)) error {
+	if boxName != "" {
+		s.liveMigrations.start(boxName, sourceAddr, targetAddr, false)
+		defer s.liveMigrations.finish(boxName)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -978,6 +983,9 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 
 		case *computeapi.SendVMResponse_Progress:
 			progress("Transferred %d MB...", v.Progress.BytesSent/(1024*1024))
+			if boxName != "" {
+				s.liveMigrations.updateBytes(boxName, v.Progress.BytesSent)
+			}
 
 		case *computeapi.SendVMResponse_Result:
 			if v.Result.Error != "" {
@@ -1018,6 +1026,10 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 	box := p.box
 	progress := p.progress
 	log := s.slog().With("instance", instanceID, "box", box.Name)
+
+	s.liveMigrations.start(box.Name, box.Ctrhost, p.targetAddr, true)
+	defer s.liveMigrations.finish(box.Name)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -1122,10 +1134,12 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 
 		case *computeapi.SendVMResponse_Progress:
 			progress("Transferred %d MB...", v.Progress.BytesSent/(1024*1024))
+			s.liveMigrations.updateBytes(box.Name, v.Progress.BytesSent)
 
 		case *computeapi.SendVMResponse_AwaitControl:
 			// Source is asking us to reconfigure the VM's IP via SSH
 			log.InfoContext(ctx, "live migration: source requesting IP reconfiguration")
+			s.liveMigrations.updateState(box.Name, liveMigrationReconfiguring)
 			progress("Source requesting IP reconfiguration...")
 			sourceNetwork := v.AwaitControl.SourceNetwork
 			if sourceNetwork == nil || sourceNetwork.IP == nil {
@@ -1148,6 +1162,7 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 			// Tell source to proceed with pause
 			log.InfoContext(ctx, "live migration: IP reconfigured, sending proceed signal")
 			progress("IP reconfigured, sending proceed signal...")
+			s.liveMigrations.updateState(box.Name, liveMigrationFinalizing)
 			if err := sendStream.Send(&computeapi.SendVMRequest{
 				Type: &computeapi.SendVMRequest_Control{
 					Control: &computeapi.SendVMControl{
@@ -1574,7 +1589,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, targetAddr, true, false, writeProgress); err != nil {
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, writeProgress); err != nil {
 				s.slog().ErrorContext(ctx, "cold migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -2812,25 +2827,26 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type exeletInfo struct {
-		Address       string `json:"address"`
-		Hostname      string `json:"hostname"`
-		Version       string `json:"version"`
-		Available     bool   `json:"available"`
-		Status        string `json:"status"`
-		IsPreferred   bool   `json:"is_preferred"`
-		IsPrivate     bool   `json:"is_private"`
-		InstanceCount int    `json:"instance_count"`
-		InstanceLimit int    `json:"instance_limit"`
-		LoadAverage   string `json:"load_average"`
-		MemFree       string `json:"mem_free"`
-		SwapFree      string `json:"swap_free"`
-		DiskFree      string `json:"disk_free"`
-		RxRate        string `json:"rx_rate"`
-		TxRate        string `json:"tx_rate"`
-		Error         string `json:"error,omitempty"`
-		DebugURL      string `json:"debug_url"`
-		CgtopURL      string `json:"cgtop_url"`
-		TierCount     int    `json:"tier_count"`
+		Address        string `json:"address"`
+		Hostname       string `json:"hostname"`
+		Version        string `json:"version"`
+		Available      bool   `json:"available"`
+		Status         string `json:"status"`
+		IsPreferred    bool   `json:"is_preferred"`
+		IsPrivate      bool   `json:"is_private"`
+		InstanceCount  int    `json:"instance_count"`
+		InstanceLimit  int    `json:"instance_limit"`
+		LoadAverage    string `json:"load_average"`
+		MemFree        string `json:"mem_free"`
+		SwapFree       string `json:"swap_free"`
+		DiskFree       string `json:"disk_free"`
+		RxRate         string `json:"rx_rate"`
+		TxRate         string `json:"tx_rate"`
+		Error          string `json:"error,omitempty"`
+		DebugURL       string `json:"debug_url"`
+		CgtopURL       string `json:"cgtop_url"`
+		TierCount      int    `json:"tier_count"`
+		LiveMigrations int    `json:"live_migrations"`
 	}
 
 	// Get the preferred exelet setting
@@ -2908,6 +2924,9 @@ func (s *Server) handleDebugExelets(w http.ResponseWriter, r *http.Request) {
 				info.TierCount = len(tierResp.Tiers)
 			}
 			cancel()
+
+			// Count in-flight VM migrations
+			info.LiveMigrations = len(s.liveMigrations.snapshotForExelet(addr))
 
 			mu.Lock()
 			exelets = append(exelets, info)
@@ -3416,55 +3435,60 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(map[string]any{
-			"address":    address,
-			"version":    version,
-			"arch":       arch,
-			"available":  available,
-			"tiers":      tiers,
-			"instances":  instances,
-			"migrations": migrations,
+			"address":         address,
+			"version":         version,
+			"arch":            arch,
+			"available":       available,
+			"tiers":           tiers,
+			"instances":       instances,
+			"migrations":      migrations,
+			"live_migrations": s.liveMigrationInfoForExelet(address),
 		})
 		return
 	}
 
+	liveMigs := s.liveMigrationInfoForExelet(address)
+
 	data := struct {
-		Address    string
-		Hostname   string
-		Version    string
-		Arch       string
-		Available  bool
-		LoadAvg    string
-		MemTotal   string
-		MemFree    string
-		SwapTotal  string
-		SwapFree   string
-		DiskTotal  string
-		DiskFree   string
-		RxRate     string
-		TxRate     string
-		Tiers      []tierInfo
-		Instances  []instanceInfo
-		Migrations []migrationInfo
-		Result     string
+		Address        string
+		Hostname       string
+		Version        string
+		Arch           string
+		Available      bool
+		LoadAvg        string
+		MemTotal       string
+		MemFree        string
+		SwapTotal      string
+		SwapFree       string
+		DiskTotal      string
+		DiskFree       string
+		RxRate         string
+		TxRate         string
+		Tiers          []tierInfo
+		Instances      []instanceInfo
+		Migrations     []migrationInfo
+		LiveMigrations []liveMigrationInfo
+		Result         string
 	}{
-		Address:    address,
-		Hostname:   hostname,
-		Version:    version,
-		Arch:       arch,
-		Available:  available,
-		LoadAvg:    loadAvg,
-		MemTotal:   memTotal,
-		MemFree:    memFree,
-		SwapTotal:  swapTotal,
-		SwapFree:   swapFree,
-		DiskTotal:  diskTotal,
-		DiskFree:   diskFree,
-		RxRate:     rxRate,
-		TxRate:     txRate,
-		Tiers:      tiers,
-		Instances:  instances,
-		Migrations: migrations,
-		Result:     r.URL.Query().Get("result"),
+		Address:        address,
+		Hostname:       hostname,
+		Version:        version,
+		Arch:           arch,
+		Available:      available,
+		LoadAvg:        loadAvg,
+		MemTotal:       memTotal,
+		MemFree:        memFree,
+		SwapTotal:      swapTotal,
+		SwapFree:       swapFree,
+		DiskTotal:      diskTotal,
+		DiskFree:       diskFree,
+		RxRate:         rxRate,
+		TxRate:         txRate,
+		Tiers:          tiers,
+		Instances:      instances,
+		Migrations:     migrations,
+		LiveMigrations: liveMigs,
+		Result:         r.URL.Query().Get("result"),
 	}
 
 	s.renderDebugTemplate(ctx, w, "exelet-detail.html", data)
@@ -6414,7 +6438,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 			// VM was already stopped (live == wasRunning, so !live implies !wasRunning); leave stopped on target.
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, targetAddr, true, false, writeProgress); err != nil {
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, writeProgress); err != nil {
 				s.slog().ErrorContext(ctx, "cold migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -6615,7 +6639,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 
 	// Transfer disk (two-phase=false since VM is stopped).
 	writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
-	if err := s.migrateVM(ctx, sourceClient.client, containerID, targetAddr, false, false, writeProgress); err != nil {
+	if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, false, false, writeProgress); err != nil {
 		s.slog().ErrorContext(ctx, "cold migration failed",
 			"box", boxName, "container_id", containerID,
 			"source", box.Ctrhost, "target", targetAddr,
