@@ -333,3 +333,113 @@ textarea:focus {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+/* ================================================================
+   Top bar (shared via topbar.js)
+   Matches the home page nav exactly.
+   ================================================================ */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.topbar-right a {
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.topbar-right a:hover {
+  color: #111;
+  text-decoration: none;
+}
+
+.topbar-login {
+  padding: 0.4rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  transition: all 0.15s;
+}
+
+.topbar-login:hover {
+  border-color: #111;
+  color: #111;
+}
+
+@media (prefers-color-scheme: dark) {
+  .topbar-right,
+  .topbar-right a {
+    color: #9ca3af;
+  }
+  .topbar-right a:hover {
+    color: #f3f4f6;
+  }
+  .topbar-login {
+    border-color: #4b5563;
+  }
+  .topbar-login:hover {
+    border-color: #f3f4f6;
+    color: #f3f4f6;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar {
+    padding: 0.75rem 1rem;
+  }
+
+  .topbar-right {
+    gap: 1rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* ================================================================
+   Footer (shared via footer.js)
+   ================================================================ */
+footer {
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 40px;
+}
+
+footer a {
+  color: var(--color-text-muted);
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  footer {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+}

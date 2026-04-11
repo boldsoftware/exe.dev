@@ -443,45 +443,44 @@ func TestRobotsTxtEndpoint(t *testing.T) {
 	}
 }
 
-func TestPricingRedirect(t *testing.T) {
+func TestPricingPage(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
-	// Create client that doesn't follow redirects
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	// Request /pricing
-	resp, err := client.Get(baseURL + "/pricing")
+	// /pricing serves the page directly
+	resp, err := http.Get(baseURL + "/pricing")
 	if err != nil {
 		t.Fatalf("Failed to fetch /pricing: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Check we get a 307 redirect
-	if resp.StatusCode != http.StatusTemporaryRedirect {
-		t.Errorf("Expected status %d, got %d", http.StatusTemporaryRedirect, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Check the Location header
-	location := resp.Header.Get("Location")
-	if location != "/docs/pricing" {
-		t.Errorf("Expected Location /docs/pricing, got %s", location)
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "pricing") {
+		t.Errorf("Expected pricing page content")
 	}
 
-	// Verify /docs/pricing returns 200
-	resp2, err := http.Get(baseURL + location)
+	// /docs/pricing redirects to /pricing
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp2, err := client.Get(baseURL + "/docs/pricing")
 	if err != nil {
 		t.Fatalf("Failed to fetch /docs/pricing: %v", err)
 	}
 	defer resp2.Body.Close()
 
-	if resp2.StatusCode != http.StatusOK {
-		t.Errorf("Expected /docs/pricing status 200, got %d", resp2.StatusCode)
+	if resp2.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("Expected /docs/pricing status 307, got %d", resp2.StatusCode)
+	}
+	if loc := resp2.Header.Get("Location"); loc != "/pricing" {
+		t.Errorf("Expected /docs/pricing to redirect to /pricing, got %s", loc)
 	}
 }
 

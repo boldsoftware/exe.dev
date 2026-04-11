@@ -574,6 +574,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/debug") {
 		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleDebug)).ServeHTTP(w, r)
 		return
+	} else if path == "/docs/pricing" {
+		http.Redirect(w, r, "/pricing", http.StatusTemporaryRedirect)
+		return
 	} else if strings.HasPrefix(path, "/docs") || path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" {
 		// Serve Vue SPA for docs page routes (HTML views, not raw content, assets, or section pages)
 		isRawContent := path == "/llms.txt" || path == "/llms-full.txt" || path == "/docs.md" ||
@@ -775,7 +778,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLLMGatewayModels(w, r)
 		return
 	case "/pricing":
-		http.Redirect(w, r, "/docs/pricing", http.StatusTemporaryRedirect)
+		s.serveStaticFile(w, r, "pricing.html")
 	case "/usage-pricing":
 		s.serveStaticFile(w, r, "usage-pricing.html")
 		return

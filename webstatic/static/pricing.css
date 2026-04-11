@@ -1,0 +1,196 @@
+body {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 0 0 40px;
+}
+
+h1 {
+    font-size: clamp(40px, 8vw, 80px);
+    line-height: 0.95;
+    margin-bottom: 40px;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    text-align: center;
+}
+
+main {
+    max-width: 900px;
+    width: 100%;
+    padding: 0 20px;
+}
+
+/* Size selector */
+.size-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.size-selector label {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.size-selector select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding: 10px 36px 10px 14px;
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    background: var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M1.4 0L6 4.6 10.6 0 12 1.4l-6 6-6-6z'/%3E%3C/svg%3E") no-repeat right 12px center;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.size-selector select:focus {
+    outline: none;
+    border-color: var(--color-text-muted);
+}
+
+/* Pricing grid */
+.pricing-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.plan-card {
+    padding: 24px;
+    border-right: 1px solid var(--color-border);
+}
+
+.plan-card:last-child {
+    border-right: none;
+}
+
+.plan-card h2 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+}
+
+.plan-card .price {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--color-text);
+}
+
+.plan-card .price a {
+    color: var(--color-link);
+    text-decoration: none;
+}
+
+.plan-card .price a:hover {
+    text-decoration: underline;
+}
+
+.price-period {
+    font-size: var(--text-sm);
+    font-weight: 400;
+    color: var(--color-text-secondary);
+}
+
+.plan-card ul {
+    list-style: none;
+    padding: 0;
+}
+
+.plan-card ul li {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    padding: 4px 0;
+    line-height: 1.5;
+}
+
+.plan-card ul li::before {
+    content: '\2022';
+    margin-right: 8px;
+    color: var(--color-text-muted);
+}
+
+.plan-card ul li strong {
+    color: var(--color-text);
+}
+
+/* Footnote */
+.footnote {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-bottom: 32px;
+}
+
+/* Details section */
+.details {
+    margin-bottom: 32px;
+    line-height: 1.7;
+}
+
+.details p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+}
+
+.details a {
+    color: var(--color-link);
+}
+
+/* Shelley section */
+.shelley-section {
+    margin-bottom: 32px;
+}
+
+.shelley-section h2 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+}
+
+.shelley-section p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+    margin-bottom: 8px;
+}
+
+
+/* Responsive */
+@media (prefers-color-scheme: dark) {
+    .size-selector select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239ca3af' d='M1.4 0L6 4.6 10.6 0 12 1.4l-6 6-6-6z'/%3E%3C/svg%3E");
+    }
+}
+
+@media (max-width: 700px) {
+    .pricing-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .plan-card {
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .plan-card:last-child {
+        border-bottom: none;
+    }
+}
