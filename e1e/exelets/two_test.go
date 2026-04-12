@@ -1,10 +1,8 @@
 package exelets
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -370,133 +368,60 @@ func TestResumableSidebandMigration(t *testing.T) {
 	}
 
 	// Figure out source and target exelets.
-	var sourceExelet, targetExelet *testinfra.ExeletInstance
+	var sourceExelet *testinfra.ExeletInstance
 	var targetAddr string
 	switch sourceBox.Host {
 	case exeletAddrs[0]:
 		sourceExelet = exelets[0]
-		targetExelet = exelets[1]
 		targetAddr = exeletAddrs[1]
 	case exeletAddrs[1]:
 		sourceExelet = exelets[1]
-		targetExelet = exelets[0]
 		targetAddr = exeletAddrs[0]
 	default:
 		t.Fatalf("box %q on unexpected host %q", boxName, sourceBox.Host)
 	}
-	_ = sourceExelet // used only for clarity
 
-	// Extract the gRPC port from the target address ("tcp://host:port").
-	targetURL, err := url.Parse(targetAddr)
+	// Arm fault injection on the source exelet: close the sideband TCP
+	// connection after 1 MiB. The transfer will fail, get a resume token
+	// from the target, and resume from where it left off.
+	faultURL := sourceExelet.HTTPAddress + "/debug/fault/sideband-disconnect"
+	resp, err := http.PostForm(faultURL, url.Values{"after_bytes": {"1048576"}})
 	if err != nil {
-		t.Fatalf("parse target addr %q: %v", targetAddr, err)
+		t.Fatalf("failed to arm sideband fault: %v", err)
 	}
-	_, grpcPort, err := net.SplitHostPort(targetURL.Host)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fault injection returned status %d", resp.StatusCode)
+	}
+
+	// Run the migration. The fault fires during transfer, causing a resume.
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+		"live":         {"true"},
+	}
+	migURL := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
+	resp, err = http.Post(migURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 	if err != nil {
-		t.Fatalf("split host port %q: %v", targetURL.Host, err)
+		t.Fatalf("failed to POST migrate: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("migrate returned status %d:\n%s", resp.StatusCode, body)
 	}
 
-	// Install iptables rule on the target VM that blocks all incoming TCP
-	// from the source EXCEPT the gRPC port. This breaks the sideband TCP
-	// while keeping the gRPC control channel alive for resume.
-	sourceHost := sourceExelet.RemoteHost
-	blockRule := fmt.Sprintf(
-		"iptables -I INPUT -p tcp -s %s ! --dport %s -j REJECT --reject-with tcp-reset",
-		sourceHost, grpcPort,
-	)
-	unblockRule := fmt.Sprintf(
-		"iptables -D INPUT -p tcp -s %s ! --dport %s -j REJECT --reject-with tcp-reset",
-		sourceHost, grpcPort,
-	)
-
-	// Make sure we clean up the iptables rule no matter what.
-	t.Cleanup(func() {
-		targetExelet.Exec(context.Background(), unblockRule)
-	})
-
-	// Start the migration in a goroutine.
-	type migrateResult struct {
-		body string
-		err  error
+	text := string(body)
+	if !strings.Contains(text, "MIGRATION_SUCCESS:"+boxName) {
+		t.Fatalf("migration response missing success marker:\n%s", text)
 	}
-	resultCh := make(chan migrateResult, 1)
-	go func() {
-		form := url.Values{
-			"box_name":     {boxName},
-			"target":       {targetAddr},
-			"confirm_name": {boxName},
-			"live":         {"true"},
-		}
-		reqURL := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
-		resp, err := http.Post(reqURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
-		if err != nil {
-			resultCh <- migrateResult{err: err}
-			return
-		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK {
-			resultCh <- migrateResult{err: fmt.Errorf("status %d: %s", resp.StatusCode, body)}
-			return
-		}
-		resultCh <- migrateResult{body: string(body)}
-	}()
-
-	// Wait for the transfer to start, then block the sideband.
-	// Poll the exelet debug page until we see bytes flowing.
-	deadline := time.Now().Add(120 * time.Second)
-	for time.Now().Before(deadline) {
-		time.Sleep(500 * time.Millisecond)
-
-		// Check the exelet debug page for an active migration with bytes transferred.
-		infoURL := fmt.Sprintf("http://localhost:%d/debug/exelets/%s",
-			serverEnv.Exed.HTTPPort, url.PathEscape(sourceBox.Host))
-		infoResp, err := http.Get(infoURL)
-		if err != nil {
-			continue
-		}
-		infoBody, _ := io.ReadAll(infoResp.Body)
-		infoResp.Body.Close()
-
-		// "MiB" or "GiB" in the page means bytes are flowing.
-		if strings.Contains(string(infoBody), "MiB") || strings.Contains(string(infoBody), "GiB") {
-			break
-		}
+	if !strings.Contains(text, "MIGRATION_DIRECT_CONFIRMED:") {
+		t.Fatalf("migration did not use direct path:\n%s", text)
 	}
-
-	t.Log("migration in progress, blocking sideband...")
-	out, err := targetExelet.Exec(t.Context(), blockRule)
-	if err != nil {
-		t.Fatalf("failed to install iptables rule: %v\n%s", err, out)
-	}
-
-	// Keep the block for a few seconds so the TCP connection dies
-	// and the keepalive detects it, then unblock for the resume.
-	time.Sleep(5 * time.Second)
-	t.Log("unblocking sideband...")
-	out, err = targetExelet.Exec(t.Context(), unblockRule)
-	if err != nil {
-		t.Logf("warning: failed to remove iptables rule: %v\n%s", err, out)
-	}
-
-	// Wait for the migration to complete (with a generous timeout for resume).
-	select {
-	case res := <-resultCh:
-		if res.err != nil {
-			t.Fatalf("migration failed: %v", res.err)
-		}
-		if !strings.Contains(res.body, "MIGRATION_SUCCESS:"+boxName) {
-			t.Fatalf("migration response missing success marker:\n%s", res.body)
-		}
-		if !strings.Contains(res.body, "MIGRATION_DIRECT_CONFIRMED:") {
-			t.Fatalf("migration did not use direct path:\n%s", res.body)
-		}
-		// Verify the resume actually happened.
-		if !strings.Contains(res.body, "transfer interrupted") {
-			t.Fatalf("migration succeeded but no resume occurred (expected 'transfer interrupted' in output):\n%s", res.body)
-		}
-	case <-time.After(5 * time.Minute):
-		t.Fatalf("timed out waiting for migration to complete after resume")
+	// Verify the resume actually happened.
+	if !strings.Contains(text, "transfer interrupted") {
+		t.Fatalf("migration succeeded but no resume occurred (expected 'transfer interrupted' in output):\n%s", text)
 	}
 
 	assertBoxEventuallyOnHost(t, boxName, targetAddr)

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -34,6 +35,10 @@ type directMigrationTarget struct {
 	cancelFunc   context.CancelFunc
 	sidebandAddr string // host:port of target's raw TCP listener; empty = use gRPC chunks
 	resumable    bool   // target supports resumable sideband receives
+
+	// sidebandFaultAfterBytes, when > 0, closes the TCP conn after that many bytes.
+	// Used by e1e tests to exercise resumable sideband transfers.
+	sidebandFaultAfterBytes *atomic.Int64
 }
 
 func newDirectMigrationTarget(ctx context.Context, targetAddress string) (*directMigrationTarget, error) {
@@ -218,6 +223,7 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		if err != nil {
 			return status.Errorf(codes.Internal, "direct migration: %v", err)
 		}
+		target.sidebandFaultAfterBytes = &s.sidebandFaultAfterBytes
 		defer target.Close()
 
 		// Gather metadata for ReceiveVMStartRequest.
@@ -679,6 +685,14 @@ func (t *directMigrationTarget) pipeToSideband(ctx context.Context, reader io.Re
 	if progress != nil {
 		dst = &progressWriter{w: conn, progress: progress}
 	}
+
+	// Fault injection: close the connection after N bytes to test resume.
+	if t.sidebandFaultAfterBytes != nil {
+		if limit := t.sidebandFaultAfterBytes.Swap(0); limit > 0 {
+			dst = &faultWriter{w: dst, conn: conn, remaining: limit}
+		}
+	}
+
 	n, copyErr := io.Copy(dst, reader)
 	*totalBytes += uint64(n)
 	closeErr := reader.Close()
@@ -699,6 +713,33 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 	if n > 0 {
 		_ = pw.progress.add(uint64(n)) // non-fatal: best-effort progress reporting
 	}
+	return n, err
+}
+
+// faultWriter wraps an io.Writer and closes the underlying connection after a
+// configured number of bytes. Used for test fault injection.
+type faultWriter struct {
+	w         io.Writer
+	conn      net.Conn
+	remaining int64
+}
+
+func (fw *faultWriter) Write(p []byte) (int, error) {
+	if fw.remaining <= 0 {
+		return 0, net.ErrClosed
+	}
+	if int64(len(p)) > fw.remaining {
+		// Write partial, then close.
+		n, err := fw.w.Write(p[:fw.remaining])
+		fw.remaining -= int64(n)
+		fw.conn.Close()
+		if err != nil {
+			return n, err
+		}
+		return n, net.ErrClosed
+	}
+	n, err := fw.w.Write(p)
+	fw.remaining -= int64(n)
 	return n, err
 }
 

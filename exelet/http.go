@@ -19,7 +19,14 @@ import (
 // It is a package-level function so it can be called before the Exelet is fully
 // initialized, ensuring metrics are available as early as possible during startup.
 // It returns the actual address the server is listening on (useful when addr uses port 0).
-func StartHTTPServer(addr string, registry *prometheus.Registry, log *slog.Logger) (string, error) {
+// HTTPServer holds the HTTP server state so callers can register
+// additional handlers after startup.
+type HTTPServer struct {
+	Addr string // actual bound address
+	Mux  *http.ServeMux
+}
+
+func StartHTTPServer(addr string, registry *prometheus.Registry, log *slog.Logger) (*HTTPServer, error) {
 	log.Info("starting HTTP server", "addr", addr)
 
 	mux := http.NewServeMux()
@@ -54,7 +61,7 @@ func StartHTTPServer(addr string, registry *prometheus.Registry, log *slog.Logge
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	actualAddr := ln.Addr().String()
@@ -70,7 +77,7 @@ func StartHTTPServer(addr string, registry *prometheus.Registry, log *slog.Logge
 		}
 	}()
 
-	return actualAddr, nil
+	return &HTTPServer{Addr: actualAddr, Mux: mux}, nil
 }
 
 func handleDebugIndex(w http.ResponseWriter, r *http.Request) {

@@ -197,7 +197,7 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
             lines.append(f'    - "coverage-e1e-{shard_num}.txt"')
         lines.append('')
 
-    # Exelets step (all tests except direct migration)
+    # Exelets step (all tests except migration tests)
     lines.append('- label: ":electric_plug: e1e exelets"')
     lines.append('  key: test-exelets')
     lines.append('  depends_on:')
@@ -208,7 +208,7 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
     lines.append('  env:')
     lines.append('    VM_DRIVER: cloudhypervisor')
     lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
-    lines.append('    E1E_EXELETS_SKIP_FILTER: "TestDirectMigration"')
+    lines.append('    E1E_EXELETS_SKIP_FILTER: "Migration"')
     if coverage:
         lines.append(f'    E1E_COVERAGE: "true"')
     lines.append('  artifact_paths:')
@@ -221,18 +221,18 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
 
     lines.append('')
 
-    # Exelets migration step (direct migration tests, parallel with above)
+    # Exelets migration step (migration tests, parallel with above)
     lines.append('- label: ":arrow_right_hook: e1e migration"')
     lines.append('  key: test-exelets-migration')
     lines.append('  depends_on:')
     lines.append('    - build-e1e')
     lines.append('    - ensure-snapshot')
     lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
-    lines.append('  timeout_in_minutes: 10')
+    lines.append('  timeout_in_minutes: 15')
     lines.append('  env:')
     lines.append('    VM_DRIVER: cloudhypervisor')
     lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
-    lines.append('    E1E_EXELETS_RUN_FILTER: "TestDirectMigration"')
+    lines.append('    E1E_EXELETS_RUN_FILTER: "Migration"')
     if coverage:
         lines.append(f'    E1E_COVERAGE: "true"')
     lines.append('  artifact_paths:')

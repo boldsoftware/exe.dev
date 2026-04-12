@@ -358,7 +358,8 @@ func serveAction(clix *cli.Context) error {
 	// that the /metrics endpoint is scrapeable while the rest of the exelet
 	// is still initialising (network, storage, compute services, etc.).
 	httpAddr := clix.String("http-addr")
-	if _, err := exelet.StartHTTPServer(httpAddr, metricsRegistry, log); err != nil {
+	httpSrv, err := exelet.StartHTTPServer(httpAddr, metricsRegistry, log)
+	if err != nil {
 		return err
 	}
 
@@ -582,6 +583,9 @@ func serveAction(clix *cli.Context) error {
 	if err := srv.Register(serviceContext, svcs); err != nil {
 		return err
 	}
+
+	// Register test fault-injection handlers on the HTTP server.
+	computeSvc.(*computeservice.Service).RegisterTestHandlers(httpSrv.Mux)
 
 	// Start metadata service after services are registered
 	// Get the bridge IP to bind the metadata service to
