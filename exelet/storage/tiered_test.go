@@ -84,19 +84,6 @@ func (m *mockStorageManager) CreateSnapshot(_ context.Context, _ string) error {
 func (m *mockStorageManager) DestroySnapshot(_ context.Context, _ string) error {
 	return nil
 }
-
-func (m *mockStorageManager) ReceiveSnapshotResumable(_ context.Context, _ string, _ io.Reader) error {
-	return nil
-}
-
-func (m *mockStorageManager) GetResumeToken(_ context.Context, _ string) (string, error) {
-	return "", nil
-}
-
-func (m *mockStorageManager) SendSnapshotResume(_ context.Context, _ string) (io.ReadCloser, error) {
-	return nil, nil
-}
-func (m *mockStorageManager) AbortResumableRecv(_ context.Context, _ string) error   { return nil }
 func (m *mockStorageManager) PruneOrphanedBaseImages(_ context.Context) (int, error) { return 0, nil }
 func (m *mockStorageManager) ListDatasets(_ context.Context) ([]string, error) {
 	ids := make([]string, 0, len(m.datasets))

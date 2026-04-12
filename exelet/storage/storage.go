@@ -58,14 +58,6 @@ type StorageManager interface {
 	CreateSnapshot(ctx context.Context, snapName string) error
 	// DestroySnapshot destroys a ZFS snapshot
 	DestroySnapshot(ctx context.Context, snapName string) error
-	// ReceiveSnapshotResumable receives a ZFS stream with -s flag so partial receives can be resumed.
-	ReceiveSnapshotResumable(ctx context.Context, id string, reader io.Reader) error
-	// GetResumeToken returns the ZFS receive_resume_token for a partially-received dataset, or empty if none.
-	GetResumeToken(ctx context.Context, id string) (string, error)
-	// SendSnapshotResume streams ZFS data from a resume token (returned by GetResumeToken).
-	SendSnapshotResume(ctx context.Context, token string) (io.ReadCloser, error)
-	// AbortResumableRecv cleans up a partial resumable receive on the given dataset.
-	AbortResumableRecv(ctx context.Context, id string) error
 	// PruneOrphanedBaseImages removes base image datasets (sha256:xxx) that have no dependent clones.
 	// Returns the number of datasets pruned.
 	PruneOrphanedBaseImages(ctx context.Context) (int, error)

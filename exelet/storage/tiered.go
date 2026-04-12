@@ -264,22 +264,6 @@ func (t *TieredStorageManager) DestroySnapshot(ctx context.Context, snapName str
 	return t.primary.DestroySnapshot(ctx, snapName)
 }
 
-func (t *TieredStorageManager) ReceiveSnapshotResumable(ctx context.Context, id string, reader io.Reader) error {
-	return t.primary.ReceiveSnapshotResumable(ctx, id, reader)
-}
-
-func (t *TieredStorageManager) GetResumeToken(ctx context.Context, id string) (string, error) {
-	return t.primary.GetResumeToken(ctx, id)
-}
-
-func (t *TieredStorageManager) SendSnapshotResume(ctx context.Context, token string) (io.ReadCloser, error) {
-	return t.primary.SendSnapshotResume(ctx, token)
-}
-
-func (t *TieredStorageManager) AbortResumableRecv(ctx context.Context, id string) error {
-	return t.primary.AbortResumableRecv(ctx, id)
-}
-
 func (t *TieredStorageManager) PruneOrphanedBaseImages(ctx context.Context) (int, error) {
 	return t.primary.PruneOrphanedBaseImages(ctx)
 }
