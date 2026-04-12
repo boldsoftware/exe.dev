@@ -532,8 +532,9 @@ type proxyExpectation struct {
 	httpPort         int
 	cookies          []*http.Cookie
 	httpCode         int
-	redirectLocation string // Expected Location header for redirects (optional)
-	host             string // Custom host header (default: "<box>.exe.cloud:<port>")
+	redirectLocation string   // Expected Location header for redirects (optional)
+	host             string   // Custom host header (default: "<box>.exe.cloud:<port>")
+	bodyContains     []string // Strings expected in body
 }
 
 // profileHasSiteSession checks if the /api/profile response includes a site session for the given domain.
@@ -1155,14 +1156,13 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 		}
 	}
 
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("error reading HTTP body: %v", err)
+	}
+	body := string(b)
+
 	if resp.StatusCode != exp.httpCode {
-		body := ""
-		if resp.Body != nil {
-			b, err := io.ReadAll(resp.Body)
-			if err == nil {
-				body = string(b)
-			}
-		}
 		t.Errorf("expected status %d, got %d, body: %s", exp.httpCode, resp.StatusCode, body)
 		return
 	}
@@ -1179,6 +1179,12 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 			return
 		}
 		t.Logf("Redirect location matches expected: %s", location)
+	}
+
+	for _, s := range exp.bodyContains {
+		if !strings.Contains(body, s) {
+			t.Errorf("%q not found in body %q", s, body)
+		}
 	}
 }
 

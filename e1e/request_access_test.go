@@ -43,6 +43,11 @@ func TestRequestAccess(t *testing.T) {
 			httpPort: httpPort,
 			cookies:  guestCookies,
 			httpCode: http.StatusUnauthorized,
+			bodyContains: []string{
+				"You need access",
+				guestEmail,
+				"Request access",
+			},
 		})
 	})
 
@@ -117,6 +122,19 @@ func TestRequestAccess(t *testing.T) {
 		if emailMsg.ReplyTo != guestEmail {
 			t.Errorf("expected reply-to %q, got %q", guestEmail, emailMsg.ReplyTo)
 		}
+	})
+
+	// An unauthenticated user sees a 401 login page,
+	// not a request-access page.
+	t.Run("unauthenticated_user_sees_login", func(t *testing.T) {
+		noGolden(t)
+		proxyAssert(t, box, proxyExpectation{
+			name:             "guest sees request access page",
+			httpPort:         httpPort,
+			cookies:          nil,
+			httpCode:         http.StatusTemporaryRedirect,
+			redirectLocation: fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, httpPort),
+		})
 	})
 
 	cleanupBox(t, ownerKeyFile, box)
