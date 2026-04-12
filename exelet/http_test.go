@@ -24,12 +24,12 @@ func TestHTTPServer(t *testing.T) {
 	}
 
 	registry2 := prometheus.NewRegistry()
-	actualAddr, err := StartHTTPServer("127.0.0.1:0", registry2, log)
+	httpSrv, err := StartHTTPServer("127.0.0.1:0", registry2, log)
 	if err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
 	}
 
-	baseURL := "http://" + actualAddr
+	baseURL := "http://" + httpSrv.Addr
 
 	// Test version endpoint
 	t.Run("version", func(t *testing.T) {

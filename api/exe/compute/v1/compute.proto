@@ -399,7 +399,15 @@ message ReceiveVMRequest {
     ReceiveVMComplete complete = 3;
     ReceiveVMPhaseComplete phase_complete = 4;
     ReceiveVMSnapshotChunk snapshot_data = 5;
+    ReceiveVMResumeTokenRequest resume_token_request = 6;  // Ask target for ZFS resume token after broken sideband connection
   }
+}
+
+message ReceiveVMResumeTokenRequest {}
+
+message ReceiveVMResumeTokenResponse {
+  string token = 1;           // ZFS receive_resume_token; empty if no resumable state exists
+  string sideband_addr = 2;   // New sideband TCP listener address for resumed transfer
 }
 
 message ReceiveVMPhaseComplete {
@@ -437,6 +445,7 @@ message ReceiveVMResponse {
     ReceiveVMReady ready = 1;
     ReceiveVMResult result = 2;
     ReceiveVMPhaseReady phase_ready = 3;  // Sent after PhaseComplete in sideband mode with next TCP addr
+    ReceiveVMResumeTokenResponse resume_token = 4;  // Response to resume_token_request
   }
 }
 
@@ -444,6 +453,7 @@ message ReceiveVMReady {
   bool has_base_image = 1;              // Target already has the base image
   NetworkInterface target_network = 2;  // Allocated network for live migration
   string sideband_addr = 3;            // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
+  bool resumable = 4;                   // Target supports resumable sideband receives
 }
 
 message ReceiveVMPhaseReady {

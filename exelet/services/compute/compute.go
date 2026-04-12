@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -51,6 +54,11 @@ type Service struct {
 	tierMigrationWg       sync.WaitGroup  // tracks in-flight migration goroutines
 	tierMigrationCtx      context.Context // parent context for all migrations; cancelled on Stop
 	tierMigrationCancel   context.CancelFunc
+
+	// sidebandFaultAfterBytes, when > 0, causes sideband TCP connections to
+	// be closed after this many bytes are copied. Used by e1e tests to
+	// exercise resumable transfer without iptables. Resets to 0 after firing.
+	sidebandFaultAfterBytes atomic.Int64
 }
 
 // New returns a new service.
@@ -98,6 +106,22 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	s.context = ctx
 	s.tierMigrationCtx, s.tierMigrationCancel = context.WithCancel(context.Background())
 	return nil
+}
+
+// RegisterTestHandlers registers HTTP handlers for test fault injection.
+// These are only used by e1e tests to simulate network failures.
+func (s *Service) RegisterTestHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("POST /debug/fault/sideband-disconnect", func(w http.ResponseWriter, r *http.Request) {
+		afterBytes, err := strconv.ParseInt(r.FormValue("after_bytes"), 10, 64)
+		if err != nil || afterBytes <= 0 {
+			http.Error(w, "after_bytes must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		s.sidebandFaultAfterBytes.Store(afterBytes)
+		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "armed: disconnect after %d bytes\n", afterBytes)
+	})
 }
 
 // Type is the type of service.
