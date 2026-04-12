@@ -4230,6 +4230,7 @@ type ReceiveVMReady struct {
 	TargetNetwork *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"` // Allocated network for live migration
 	SidebandAddr  string                 `protobuf:"bytes,3,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"`    // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
 	Resumable     bool                   `protobuf:"varint,4,opt,name=resumable,proto3" json:"resumable,omitempty"`                             // Target supports resumable sideband receives
+	ResumeToken   string                 `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`       // ZFS resume token from a prior interrupted transfer; empty if fresh start
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4290,6 +4291,13 @@ func (x *ReceiveVMReady) GetResumable() bool {
 		return x.Resumable
 	}
 	return false
+}
+
+func (x *ReceiveVMReady) GetResumeToken() string {
+	if x != nil {
+		return x.ResumeToken
+	}
+	return ""
 }
 
 type ReceiveVMPhaseReady struct {
@@ -5841,12 +5849,13 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\vphase_ready\x18\x03 \x01(\v2#.exe.compute.v1.ReceiveVMPhaseReadyH\x00R\n" +
 	"phaseReady\x12Q\n" +
 	"\fresume_token\x18\x04 \x01(\v2,.exe.compute.v1.ReceiveVMResumeTokenResponseH\x00R\vresumeTokenB\x06\n" +
-	"\x04type\"\xc2\x01\n" +
+	"\x04type\"\xe5\x01\n" +
 	"\x0eReceiveVMReady\x12$\n" +
 	"\x0ehas_base_image\x18\x01 \x01(\bR\fhasBaseImage\x12G\n" +
 	"\x0etarget_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rtargetNetwork\x12#\n" +
 	"\rsideband_addr\x18\x03 \x01(\tR\fsidebandAddr\x12\x1c\n" +
-	"\tresumable\x18\x04 \x01(\bR\tresumable\":\n" +
+	"\tresumable\x18\x04 \x01(\bR\tresumable\x12!\n" +
+	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\":\n" +
 	"\x13ReceiveVMPhaseReady\x12#\n" +
 	"\rsideband_addr\x18\x01 \x01(\tR\fsidebandAddr\"~\n" +
 	"\x0fReceiveVMResult\x124\n" +

@@ -454,6 +454,7 @@ message ReceiveVMReady {
   NetworkInterface target_network = 2;  // Allocated network for live migration
   string sideband_addr = 3;            // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
   bool resumable = 4;                   // Target supports resumable sideband receives
+  string resume_token = 5;             // ZFS resume token from a prior interrupted transfer; empty if fresh start
 }
 
 message ReceiveVMPhaseReady {

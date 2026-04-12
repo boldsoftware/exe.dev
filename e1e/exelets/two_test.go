@@ -644,3 +644,93 @@ func TestDirectMigrationOrphanedDataset(t *testing.T) {
 	assertBoxEventuallyOnHost(t, boxName, targetAddr)
 	assertBoxSSHWorks(t, boxName, keyFile)
 }
+
+// TestDirectMigrationReconnect verifies that when both the sideband TCP
+// and the gRPC control channel die simultaneously (simulating a full
+// network outage), the sender reconnects to the target with a fresh
+// ReceiveVM stream and resumes the transfer using ZFS resume tokens.
+func TestDirectMigrationReconnect(t *testing.T) {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	exeletAddrs := []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+		t.Fatal(err)
+	}
+
+	pty, _, keyFile, email := register(t)
+	boxName := makeBox(t, pty, keyFile, email)
+	pty.Disconnect()
+	defer deleteBox(t, boxName, keyFile)
+
+	sourceBox, ok := findBox(t, boxName)
+	if !ok {
+		t.Fatalf("box %q not found before migration", boxName)
+	}
+
+	var sourceExelet *testinfra.ExeletInstance
+	var targetAddr string
+	switch sourceBox.Host {
+	case exeletAddrs[0]:
+		sourceExelet = exelets[0]
+		targetAddr = exeletAddrs[1]
+	case exeletAddrs[1]:
+		sourceExelet = exelets[1]
+		targetAddr = exeletAddrs[0]
+	default:
+		t.Fatalf("box %q on unexpected host %q", boxName, sourceBox.Host)
+	}
+
+	// Arm fault injection on the source exelet: close the sideband TCP
+	// AND kill the gRPC stream after 1 MiB. This simulates a full network
+	// outage where both connections die. The sender must reconnect to the
+	// target with a fresh ReceiveVM stream and resume from the ZFS token.
+	faultURL := sourceExelet.HTTPAddress + "/debug/fault/sideband-disconnect"
+	resp, err := http.PostForm(faultURL, url.Values{
+		"after_bytes": {"1048576"},
+		"kill_grpc":   {"true"},
+	})
+	if err != nil {
+		t.Fatalf("failed to arm sideband fault: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fault injection returned status %d", resp.StatusCode)
+	}
+
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+		"live":         {"true"},
+	}
+	migURL := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
+	resp, err = http.Post(migURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("failed to POST migrate: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("migrate returned status %d:\n%s", resp.StatusCode, body)
+	}
+
+	text := string(body)
+	if !strings.Contains(text, "MIGRATION_SUCCESS:"+boxName) {
+		t.Fatalf("migration response missing success marker:\n%s", text)
+	}
+	if !strings.Contains(text, "MIGRATION_DIRECT_CONFIRMED:") {
+		t.Fatalf("migration did not use direct path:\n%s", text)
+	}
+	// Verify the resume actually happened (reconnect path).
+	if !strings.Contains(text, "transfer interrupted") {
+		t.Fatalf("migration succeeded but no resume occurred (expected 'transfer interrupted' in output):\n%s", text)
+	}
+
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+}

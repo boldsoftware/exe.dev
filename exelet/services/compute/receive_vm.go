@@ -131,17 +131,25 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		return status.Errorf(codes.Internal, "failed to check instance existence: %v", err)
 	}
 
-	// Clean up orphaned ZFS dataset from a prior crashed migration.
-	// An orphan is a dataset with no config file — the crash happened
-	// after zfs recv completed but before the config was written.
-	// We do this here (once) rather than inside ReceiveSnapshot/
-	// ReceiveSnapshotResumable because two-phase migration calls recv
-	// twice for the same ID (phase 1 full, phase 2 incremental) and
-	// destroying between phases would lose the phase-1 data.
+	// Handle orphaned ZFS dataset from a prior crashed/interrupted migration.
+	// An orphan is a dataset with no config file — the prior migration was
+	// interrupted after zfs recv started but before the config was written.
+	// If it has a resume token, the sender can resume the transfer instead
+	// of starting over. Otherwise, delete the orphan.
+	var orphanResumeToken string
 	if _, err := s.context.StorageManager.Get(ctx, instanceID); err == nil {
-		s.log.WarnContext(ctx, "destroying orphaned dataset from prior crashed migration", "instance", instanceID)
-		if err := s.context.StorageManager.Delete(ctx, instanceID); err != nil {
-			s.log.WarnContext(ctx, "failed to delete orphaned dataset, proceeding anyway", "instance", instanceID, "error", err)
+		token, tokenErr := s.context.StorageManager.GetResumeToken(ctx, instanceID)
+		if tokenErr != nil {
+			s.log.WarnContext(ctx, "failed to get resume token from orphaned dataset", "instance", instanceID, "error", tokenErr)
+		}
+		if token != "" {
+			s.log.InfoContext(ctx, "found resumable orphaned dataset from prior migration", "instance", instanceID, "token_len", len(token))
+			orphanResumeToken = token
+		} else {
+			s.log.WarnContext(ctx, "destroying orphaned dataset from prior crashed migration", "instance", instanceID)
+			if err := s.context.StorageManager.Delete(ctx, instanceID); err != nil {
+				s.log.WarnContext(ctx, "failed to delete orphaned dataset, proceeding anyway", "instance", instanceID, "error", err)
+			}
 		}
 	}
 
@@ -215,6 +223,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 				TargetNetwork: targetNetwork,
 				SidebandAddr:  sidebandAddr,
 				Resumable:     sidebandAddr != "",
+				ResumeToken:   orphanResumeToken,
 			},
 		},
 	}); err != nil {
@@ -428,6 +437,15 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		if err != nil {
 			if currentRecv != nil {
 				currentRecv.pw.CloseWithError(err)
+			}
+			// If a resumable sideband transfer is in progress, preserve the
+			// ZFS dataset so the sender can reconnect with a fresh gRPC
+			// stream and resume using the ZFS receive token.
+			if sbCh != nil {
+				s.log.WarnContext(ctx, "gRPC stream died during sideband transfer, preserving dataset for resume",
+					"instance", instanceID, "error", err)
+				rb.zfsDatasetCreated = true
+				rb.preserveForResume = true
 			}
 			receiveErr = status.Errorf(codes.Internal, "failed to receive: %v", err)
 			return receiveErr
@@ -1116,6 +1134,7 @@ type receiveVMRollback struct {
 	zfsDatasetCreated    bool
 	instanceDirCreated   bool
 	snapshotDirCreated   bool
+	preserveForResume    bool // when true, skip ZFS dataset deletion so resume token survives
 
 	// activeRecvWriters tracks pipe writers feeding in-flight zfs recv processes.
 	// Rollback closes them to unblock zfs recv before attempting zfs destroy,
@@ -1158,11 +1177,15 @@ func (r *receiveVMRollback) Rollback() {
 	// open by a still-running zfs recv process.
 	r.closeRecvWriters()
 
-	// Delete any partially created ZFS dataset for the instance
-	if r.zfsDatasetCreated {
+	// Delete any partially created ZFS dataset for the instance.
+	// When preserveForResume is set, skip deletion so the ZFS resume token
+	// survives — the sender can reconnect and continue the transfer.
+	if r.zfsDatasetCreated && !r.preserveForResume {
 		if err := r.storageManager.Delete(ctx, r.instanceID); err != nil {
 			r.log.WarnContext(ctx, "failed to delete ZFS dataset during rollback", "instance", r.instanceID, "error", err)
 		}
+	} else if r.preserveForResume {
+		r.log.WarnContext(ctx, "preserving ZFS dataset for sender reconnect", "instance", r.instanceID)
 	}
 
 	// Note: We intentionally do NOT delete the base image during rollback.

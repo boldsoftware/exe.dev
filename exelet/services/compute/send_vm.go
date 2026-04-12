@@ -36,11 +36,22 @@ type directMigrationTarget struct {
 	sidebandAddr string // host:port of target's raw TCP listener; empty = use gRPC chunks
 	resumable    bool   // target supports resumable sideband receives
 
+	// targetAddr and startReq are stored for reconnection.
+	// When the gRPC stream dies during a sideband transfer, the sender
+	// opens a fresh ReceiveVM stream and re-sends Start. The target
+	// detects the orphaned dataset, returns a resume token in Ready,
+	// and the sender continues the transfer.
+	targetAddr  string
+	startReq    *api.ReceiveVMStartRequest
+	reconnReady *api.ReceiveVMReady // set after a successful reconnect; nil if no reconnect happened
+
 	// sidebandFaultAfterBytes, when > 0, closes the TCP conn after that many bytes.
 	// sidebandFaultSkipCount, when > 0, skips that many sideband connections before faulting.
+	// sidebandFaultKillGRPC, when true, also cancels the gRPC stream on fault.
 	// Used by e1e tests to exercise resumable sideband transfers.
 	sidebandFaultAfterBytes *atomic.Int64
 	sidebandFaultSkipCount  *atomic.Int64
+	sidebandFaultKillGRPC   *atomic.Bool
 }
 
 func newDirectMigrationTarget(ctx context.Context, targetAddress string) (*directMigrationTarget, error) {
@@ -56,7 +67,52 @@ func newDirectMigrationTarget(ctx context.Context, targetAddress string) (*direc
 		client.Close()
 		return nil, fmt.Errorf("open ReceiveVM stream to %s: %w", targetAddress, err)
 	}
-	return &directMigrationTarget{client: client, stream: stream, cancelFunc: cancel}, nil
+	return &directMigrationTarget{client: client, stream: stream, cancelFunc: cancel, targetAddr: targetAddress}, nil
+}
+
+// reconnect closes the current stream, opens a fresh ReceiveVM stream to
+// the same target, and re-sends the ReceiveVMStartRequest. The target will
+// detect the orphaned dataset from the prior interrupted transfer and return
+// a resume token in its Ready response.
+func (t *directMigrationTarget) reconnect(ctx context.Context) (*api.ReceiveVMReady, error) {
+	// Cancel the old stream's context to trigger receiver-side cleanup,
+	// then wait briefly for the old receiver's zfs recv -s to exit and
+	// save its partial state before we open a new stream.
+	t.cancelFunc()
+	select {
+	case <-time.After(3 * time.Second):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream, err := t.client.ReceiveVM(streamCtx)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("open ReceiveVM stream to %s: %w", t.targetAddr, err)
+	}
+	t.stream = stream
+	t.cancelFunc = cancel
+
+	if err := t.stream.Send(&api.ReceiveVMRequest{
+		Type: &api.ReceiveVMRequest_Start{
+			Start: t.startReq,
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("send start to %s: %w", t.targetAddr, err)
+	}
+
+	recvResp, err := t.stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("receive ready from %s: %w", t.targetAddr, err)
+	}
+	ready := recvResp.GetReady()
+	if ready == nil {
+		return nil, fmt.Errorf("expected ready from target, got %T", recvResp.Type)
+	}
+	t.sidebandAddr = ready.SidebandAddr
+	t.resumable = ready.Resumable
+	t.reconnReady = ready
+	return ready, nil
 }
 
 func (t *directMigrationTarget) Close() {
@@ -227,6 +283,7 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 		}
 		target.sidebandFaultAfterBytes = &s.sidebandFaultAfterBytes
 		target.sidebandFaultSkipCount = &s.sidebandFaultSkipCount
+		target.sidebandFaultKillGRPC = &s.sidebandFaultKillGRPC
 		defer target.Close()
 
 		// Gather metadata for ReceiveVMStartRequest.
@@ -243,17 +300,19 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 			groupID = instance.GroupID
 		}
 
+		target.startReq = &api.ReceiveVMStartRequest{
+			InstanceID:     instanceID,
+			SourceInstance: instance,
+			BaseImageID:    baseImageID,
+			Encrypted:      encrypted,
+			EncryptionKey:  encryptionKey,
+			GroupID:        groupID,
+			Live:           startReq.Live,
+		}
+
 		if err := target.stream.Send(&api.ReceiveVMRequest{
 			Type: &api.ReceiveVMRequest_Start{
-				Start: &api.ReceiveVMStartRequest{
-					InstanceID:     instanceID,
-					SourceInstance: instance,
-					BaseImageID:    baseImageID,
-					Encrypted:      encrypted,
-					EncryptionKey:  encryptionKey,
-					GroupID:        groupID,
-					Live:           startReq.Live,
-				},
+				Start: target.startReq,
 			},
 		}); err != nil {
 			return status.Errorf(codes.Internal, "direct migration: failed to send start to target: %v", err)
@@ -629,7 +688,18 @@ func (t *directMigrationTarget) streamViaSideband(ctx context.Context, log *slog
 
 		token, newAddr, reqErr := t.requestResumeToken()
 		if reqErr != nil {
-			return fmt.Errorf("sideband retry %d: failed to get resume token: %w (original error: %v)", attempt, reqErr, err)
+			// gRPC control channel is dead. Reconnect to the target with a
+			// fresh ReceiveVM stream. The target will detect the orphaned
+			// dataset and return a resume token in Ready.
+			log.WarnContext(ctx, "sideband: gRPC stream dead, reconnecting to target",
+				"attempt", attempt, "error", reqErr)
+
+			ready, reconnErr := t.reconnect(ctx)
+			if reconnErr != nil {
+				return fmt.Errorf("sideband retry %d: reconnect failed: %w (original error: %v)", attempt, reconnErr, err)
+			}
+			token = ready.ResumeToken
+			newAddr = ready.SidebandAddr
 		}
 		if token == "" {
 			return fmt.Errorf("sideband retry %d: no resume token available (original error: %v)", attempt, err)
@@ -696,7 +766,12 @@ func (t *directMigrationTarget) pipeToSideband(ctx context.Context, reader io.Re
 				t.sidebandFaultSkipCount.Add(-1)
 			} else {
 				t.sidebandFaultAfterBytes.Store(0)
-				dst = &faultWriter{w: dst, conn: conn, remaining: limit}
+				fw := &faultWriter{w: dst, conn: conn, remaining: limit}
+				if t.sidebandFaultKillGRPC != nil && t.sidebandFaultKillGRPC.Load() {
+					t.sidebandFaultKillGRPC.Store(false)
+					fw.cancelExtra = t.cancelFunc // also kill gRPC stream
+				}
+				dst = fw
 			}
 		}
 	}
@@ -727,9 +802,10 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 // faultWriter wraps an io.Writer and closes the underlying connection after a
 // configured number of bytes. Used for test fault injection.
 type faultWriter struct {
-	w         io.Writer
-	conn      net.Conn
-	remaining int64
+	w           io.Writer
+	conn        net.Conn
+	remaining   int64
+	cancelExtra func() // optional: also cancel the gRPC stream (simulates full network outage)
 }
 
 func (fw *faultWriter) Write(p []byte) (int, error) {
@@ -741,6 +817,9 @@ func (fw *faultWriter) Write(p []byte) (int, error) {
 		n, err := fw.w.Write(p[:fw.remaining])
 		fw.remaining -= int64(n)
 		fw.conn.Close()
+		if fw.cancelExtra != nil {
+			fw.cancelExtra()
+		}
 		if err != nil {
 			return n, err
 		}
@@ -929,6 +1008,25 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	s.log.InfoContext(ctx, "live: streaming phase 1 (full pre-copy)")
 	if err := streamSnapshot(preSnapName, false, "", false); err != nil {
 		return status.Errorf(codes.Internal, "failed to send phase 1 data: %v", err)
+	}
+
+	// If a reconnect happened during phase 1, the target allocated a new
+	// network interface. Forward the updated TargetReady to execore so IP
+	// reconfiguration uses the correct target IP.
+	if target != nil && target.reconnReady != nil {
+		s.log.InfoContext(ctx, "live: forwarding updated target network after reconnect",
+			"target_ip", target.reconnReady.TargetNetwork.GetIP().GetIPV4())
+		if err := stream.Send(&api.SendVMResponse{
+			Type: &api.SendVMResponse_TargetReady{
+				TargetReady: &api.SendVMTargetReady{
+					HasBaseImage:  target.reconnReady.HasBaseImage,
+					TargetNetwork: target.reconnReady.TargetNetwork,
+				},
+			},
+		}); err != nil {
+			s.log.WarnContext(ctx, "live: failed to forward updated target network (continuing)", "error", err)
+		}
+		target.reconnReady = nil
 	}
 
 	phase1Bytes := totalBytes

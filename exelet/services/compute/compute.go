@@ -60,8 +60,11 @@ type Service struct {
 	// exercise resumable transfer without iptables. Resets to 0 after firing.
 	// sidebandFaultSkipCount, when > 0, causes that many sideband connections
 	// to pass through unfaulted before the fault fires.
+	// sidebandFaultKillGRPC, when true, also kills the gRPC stream to the
+	// target when the sideband fault fires, simulating a full network outage.
 	sidebandFaultAfterBytes atomic.Int64
 	sidebandFaultSkipCount  atomic.Int64
+	sidebandFaultKillGRPC   atomic.Bool
 
 	// receiveFaultCrashAfterData, when true, causes ReceiveVM to return an
 	// error after ZFS data is received but before config is saved, WITHOUT
@@ -129,11 +132,13 @@ func (s *Service) RegisterTestHandlers(mux *http.ServeMux) {
 		if v := r.FormValue("skip_count"); v != "" {
 			skipCount, _ = strconv.ParseInt(v, 10, 64)
 		}
+		killGRPC := r.FormValue("kill_grpc") == "true"
 		s.sidebandFaultSkipCount.Store(skipCount)
 		s.sidebandFaultAfterBytes.Store(afterBytes)
-		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes, "skip_count", skipCount)
+		s.sidebandFaultKillGRPC.Store(killGRPC)
+		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes, "skip_count", skipCount, "kill_grpc", killGRPC)
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "armed: disconnect after %d bytes (skip %d connections)\n", afterBytes, skipCount)
+		fmt.Fprintf(w, "armed: disconnect after %d bytes (skip %d connections, kill_grpc=%v)\n", afterBytes, skipCount, killGRPC)
 	})
 	mux.HandleFunc("POST /debug/fault/receive-crash-after-data", func(w http.ResponseWriter, r *http.Request) {
 		s.receiveFaultCrashAfterData.Store(true)
