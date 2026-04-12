@@ -428,6 +428,97 @@ func TestDirectMigrationResumable(t *testing.T) {
 	assertBoxSSHWorks(t, boxName, keyFile)
 }
 
+// TestDirectMigrationResumablePhase2 verifies that a sideband TCP break
+// during phase 2 of a live migration (the small incremental diff sent
+// after the VM is stopped) is recovered via ZFS resume tokens. This is
+// the scariest production scenario: the VM is already stopped on the
+// source, so a failed phase 2 leaves the VM down on both sides until
+// the resume completes.
+func TestDirectMigrationResumablePhase2(t *testing.T) {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	exeletAddrs := []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+		t.Fatal(err)
+	}
+
+	pty, _, keyFile, email := register(t)
+	boxName := makeBox(t, pty, keyFile, email)
+	pty.Disconnect()
+	defer deleteBox(t, boxName, keyFile)
+
+	sourceBox, ok := findBox(t, boxName)
+	if !ok {
+		t.Fatalf("box %q not found before migration", boxName)
+	}
+
+	var sourceExelet *testinfra.ExeletInstance
+	var targetAddr string
+	switch sourceBox.Host {
+	case exeletAddrs[0]:
+		sourceExelet = exelets[0]
+		targetAddr = exeletAddrs[1]
+	case exeletAddrs[1]:
+		sourceExelet = exelets[1]
+		targetAddr = exeletAddrs[0]
+	default:
+		t.Fatalf("box %q on unexpected host %q", boxName, sourceBox.Host)
+	}
+
+	// Arm fault injection on the source exelet: skip the first sideband
+	// connection (phase 1 full pre-copy) and close the second connection
+	// (phase 2 incremental diff) after 1 KiB.
+	faultURL := sourceExelet.HTTPAddress + "/debug/fault/sideband-disconnect"
+	resp, err := http.PostForm(faultURL, url.Values{
+		"after_bytes": {"1024"},
+		"skip_count":  {"1"},
+	})
+	if err != nil {
+		t.Fatalf("failed to arm sideband fault: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fault injection returned status %d", resp.StatusCode)
+	}
+
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+		"live":         {"true"},
+	}
+	migURL := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
+	resp, err = http.Post(migURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("failed to POST migrate: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("migrate returned status %d:\n%s", resp.StatusCode, body)
+	}
+
+	text := string(body)
+	if !strings.Contains(text, "MIGRATION_SUCCESS:"+boxName) {
+		t.Fatalf("migration response missing success marker:\n%s", text)
+	}
+	if !strings.Contains(text, "MIGRATION_DIRECT_CONFIRMED:") {
+		t.Fatalf("migration did not use direct path:\n%s", text)
+	}
+	// Verify the resume actually happened during phase 2.
+	if !strings.Contains(text, "transfer interrupted") {
+		t.Fatalf("migration succeeded but no resume occurred (expected 'transfer interrupted' in output):\n%s", text)
+	}
+
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+}
+
 func TestDirectMigrationOrphanedDataset(t *testing.T) {
 	if err := ensureExeletCount(t.Context(), 2); err != nil {
 		t.Fatal(err)

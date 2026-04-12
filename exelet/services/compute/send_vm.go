@@ -37,8 +37,10 @@ type directMigrationTarget struct {
 	resumable    bool   // target supports resumable sideband receives
 
 	// sidebandFaultAfterBytes, when > 0, closes the TCP conn after that many bytes.
+	// sidebandFaultSkipCount, when > 0, skips that many sideband connections before faulting.
 	// Used by e1e tests to exercise resumable sideband transfers.
 	sidebandFaultAfterBytes *atomic.Int64
+	sidebandFaultSkipCount  *atomic.Int64
 }
 
 func newDirectMigrationTarget(ctx context.Context, targetAddress string) (*directMigrationTarget, error) {
@@ -224,6 +226,7 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 			return status.Errorf(codes.Internal, "direct migration: %v", err)
 		}
 		target.sidebandFaultAfterBytes = &s.sidebandFaultAfterBytes
+		target.sidebandFaultSkipCount = &s.sidebandFaultSkipCount
 		defer target.Close()
 
 		// Gather metadata for ReceiveVMStartRequest.
@@ -688,8 +691,13 @@ func (t *directMigrationTarget) pipeToSideband(ctx context.Context, reader io.Re
 
 	// Fault injection: close the connection after N bytes to test resume.
 	if t.sidebandFaultAfterBytes != nil {
-		if limit := t.sidebandFaultAfterBytes.Swap(0); limit > 0 {
-			dst = &faultWriter{w: dst, conn: conn, remaining: limit}
+		if limit := t.sidebandFaultAfterBytes.Load(); limit > 0 {
+			if t.sidebandFaultSkipCount != nil && t.sidebandFaultSkipCount.Load() > 0 {
+				t.sidebandFaultSkipCount.Add(-1)
+			} else {
+				t.sidebandFaultAfterBytes.Store(0)
+				dst = &faultWriter{w: dst, conn: conn, remaining: limit}
+			}
 		}
 	}
 

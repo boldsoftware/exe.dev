@@ -58,7 +58,10 @@ type Service struct {
 	// sidebandFaultAfterBytes, when > 0, causes sideband TCP connections to
 	// be closed after this many bytes are copied. Used by e1e tests to
 	// exercise resumable transfer without iptables. Resets to 0 after firing.
+	// sidebandFaultSkipCount, when > 0, causes that many sideband connections
+	// to pass through unfaulted before the fault fires.
 	sidebandFaultAfterBytes atomic.Int64
+	sidebandFaultSkipCount  atomic.Int64
 
 	// receiveFaultCrashAfterData, when true, causes ReceiveVM to return an
 	// error after ZFS data is received but before config is saved, WITHOUT
@@ -122,10 +125,15 @@ func (s *Service) RegisterTestHandlers(mux *http.ServeMux) {
 			http.Error(w, "after_bytes must be a positive integer", http.StatusBadRequest)
 			return
 		}
+		var skipCount int64
+		if v := r.FormValue("skip_count"); v != "" {
+			skipCount, _ = strconv.ParseInt(v, 10, 64)
+		}
+		s.sidebandFaultSkipCount.Store(skipCount)
 		s.sidebandFaultAfterBytes.Store(afterBytes)
-		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes)
+		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes, "skip_count", skipCount)
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "armed: disconnect after %d bytes\n", afterBytes)
+		fmt.Fprintf(w, "armed: disconnect after %d bytes (skip %d connections)\n", afterBytes, skipCount)
 	})
 	mux.HandleFunc("POST /debug/fault/receive-crash-after-data", func(w http.ResponseWriter, r *http.Request) {
 		s.receiveFaultCrashAfterData.Store(true)
