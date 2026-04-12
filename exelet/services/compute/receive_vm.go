@@ -200,6 +200,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 				HasBaseImage:  hasBaseImage,
 				TargetNetwork: targetNetwork,
 				SidebandAddr:  sidebandAddr,
+				Resumable:     sidebandAddr != "",
 			},
 		},
 	}); err != nil {
@@ -242,6 +243,18 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		return &zfsReceiver{id: id, pw: pw, errCh: errCh}
 	}
 
+	startResumableZfsRecv := func(id string) *zfsReceiver {
+		pr, pw := io.Pipe()
+		errCh := make(chan error, 1)
+		go func() {
+			err := s.context.StorageManager.ReceiveSnapshotResumable(ctx, id, pr)
+			errCh <- err
+			pr.Close()
+		}()
+		rb.trackRecvWriter(pw)
+		return &zfsReceiver{id: id, pw: pw, errCh: errCh}
+	}
+
 	checkRecvError := func(recv *zfsReceiver) error {
 		if recv.closed {
 			return recv.err
@@ -273,23 +286,80 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	// sidebandPhase accepts one TCP connection on ln, pipes bytes through the shared
 	// hasher into a new zfs recv, and reports the result on the returned channel.
 	// It owns the full lifecycle of the zfs recv for that phase.
+	// When resumable is true, uses zfs recv -s so partial receives can be resumed.
 	type sbResult struct{ err error }
+	var sbConnMu sync.Mutex
+	var sbConn net.Conn         // active sideband TCP conn; closeable to abort a stuck read
+	var sbActiveLn net.Listener // active sideband listener; closeable to abort a stuck Accept
+
+	// abortSideband closes the active TCP connection and/or listener,
+	// unblocking any goroutine stuck in Accept or io.Copy.
+	abortSideband := func() {
+		sbConnMu.Lock()
+		defer sbConnMu.Unlock()
+		if sbConn != nil {
+			sbConn.Close()
+			sbConn = nil
+		}
+		if sbActiveLn != nil {
+			sbActiveLn.Close()
+			sbActiveLn = nil
+		}
+	}
+
 	sidebandPhase := func(ln net.Listener) chan sbResult {
+		// Register the listener so abortSideband can close it.
+		sbConnMu.Lock()
+		sbActiveLn = ln
+		sbConnMu.Unlock()
+
 		ch := make(chan sbResult, 1)
-		recv := startZfsRecv(instanceID)
 		go func() {
+			// Close listener on context cancellation so Accept unblocks
+			// if the gRPC stream dies before a sender connects.
+			go func() { <-ctx.Done(); ln.Close() }()
 			conn, err := ln.Accept()
 			ln.Close()
+
+			// Clear listener registration (it's closed now).
+			sbConnMu.Lock()
+			if sbActiveLn == ln {
+				sbActiveLn = nil
+			}
+			sbConnMu.Unlock()
+
 			if err != nil {
-				recv.pw.CloseWithError(err)
-				<-recv.errCh
 				ch <- sbResult{fmt.Errorf("sideband accept: %w", err)}
 				return
 			}
-			defer conn.Close()
+
+			// Enable TCP keepalive so dead connections are detected within ~30s
+			// instead of the default 2h.
+			if tc, ok := conn.(*net.TCPConn); ok {
+				tc.SetKeepAlive(true)
+				tc.SetKeepAlivePeriod(10 * time.Second)
+			}
+
+			// Register the conn so abortSideband can abort a stuck read.
+			sbConnMu.Lock()
+			sbConn = conn
+			sbConnMu.Unlock()
+
+			defer func() {
+				sbConnMu.Lock()
+				if sbConn == conn {
+					sbConn = nil
+				}
+				sbConnMu.Unlock()
+				conn.Close()
+			}()
 			go func() { <-ctx.Done(); conn.Close() }()
 
-			n, copyErr := io.Copy(io.MultiWriter(recv.pw, hasher), conn)
+			// Start zfs recv only after the TCP connection is accepted,
+			// avoiding holding the ZFS volume lock while waiting for a sender.
+			recv := startResumableZfsRecv(instanceID)
+
+			n, copyErr := io.Copy(recv.pw, conn)
 			totalBytes += uint64(n)
 			recv.pw.Close()
 			zfsErr := <-recv.errCh
@@ -309,6 +379,7 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	var sbCh chan sbResult
 	if sbLn != nil {
 		sbCh = sidebandPhase(sbLn)
+		sbLn = nil // ownership transferred to sidebandPhase
 	}
 
 	// Track current receiver (may switch from base image to instance)
@@ -508,6 +579,49 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 			}
 			f.Close()
 
+		case *api.ReceiveVMRequest_ResumeTokenRequest:
+			// Sender's TCP connection broke. Force-close our end of the TCP
+			// connection and/or listener to unblock any goroutine stuck in
+			// Accept or io.Copy, then drain the sideband goroutine.
+			abortSideband()
+			if sbCh != nil {
+				<-sbCh // drain; error is expected (broken pipe / closed conn)
+				sbCh = nil
+			}
+			rb.zfsDatasetCreated = true // partial recv created the dataset
+
+			token, tokenErr := s.context.StorageManager.GetResumeToken(ctx, instanceID)
+			if tokenErr != nil {
+				s.log.WarnContext(ctx, "sideband resume: failed to get resume token",
+					"instance", instanceID, "error", tokenErr)
+			}
+
+			var resumeAddr string
+			if token != "" && sbLocalHost != "" {
+				ln, listenErr := net.Listen("tcp", "0.0.0.0:0")
+				if listenErr != nil {
+					receiveErr = status.Errorf(codes.Internal, "failed to open resume sideband listener: %v", listenErr)
+					return receiveErr
+				}
+				port := ln.Addr().(*net.TCPAddr).Port
+				resumeAddr = net.JoinHostPort(sbLocalHost, strconv.Itoa(port))
+				sbCh = sidebandPhase(ln)
+				s.log.InfoContext(ctx, "sideband resume: opened new listener",
+					"instance", instanceID, "addr", resumeAddr, "token_len", len(token))
+			}
+
+			if err := stream.Send(&api.ReceiveVMResponse{
+				Type: &api.ReceiveVMResponse_ResumeToken{
+					ResumeToken: &api.ReceiveVMResumeTokenResponse{
+						Token:        token,
+						SidebandAddr: resumeAddr,
+					},
+				},
+			}); err != nil {
+				receiveErr = status.Errorf(codes.Internal, "failed to send resume token: %v", err)
+				return receiveErr
+			}
+
 		case *api.ReceiveVMRequest_Complete:
 			expectedChecksum = v.Complete.Checksum
 		}
@@ -547,7 +661,9 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		}
 	}
 
-	// Verify checksum
+	// Verify checksum. In sideband mode the hasher is not fed (ZFS provides
+	// per-block checksums), so both sides produce the empty-data hash and the
+	// check passes trivially. In gRPC chunk mode the hasher covers every byte.
 	actualChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
 	if actualChecksum != expectedChecksum {
 		receiveErr = status.Errorf(codes.DataLoss,

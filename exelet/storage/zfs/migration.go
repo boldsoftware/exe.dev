@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"exe.dev/exelet/atomicfile"
 )
@@ -248,6 +249,121 @@ func (s *ZFS) DestroySnapshot(ctx context.Context, snapName string) error {
 	cmd := exec.CommandContext(ctx, "zfs", "destroy", snapName)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to destroy snapshot %s: %w (%s)", snapName, err, string(out))
+	}
+
+	return nil
+}
+
+// ReceiveSnapshotResumable receives a ZFS stream with the -s flag, which saves
+// partial receive state on interruption. The partial state can be queried with
+// GetResumeToken and continued with SendSnapshotResume.
+func (s *ZFS) ReceiveSnapshotResumable(ctx context.Context, id string, reader io.Reader) error {
+	unlock := s.lockVolume(id)
+	defer unlock()
+
+	dsName := s.getDSName(id)
+
+	s.log.DebugContext(ctx, "starting resumable zfs receive", "dataset", dsName)
+
+	// -s: save partial state on interruption
+	// -F: force rollback if needed (for incremental receives)
+	cmd := exec.CommandContext(ctx, "zfs", "recv", "-s", "-F", dsName)
+	cmd.Stdin = reader
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start zfs recv -s: %w", err)
+	}
+
+	stderrCh := make(chan []byte, 1)
+	go func() {
+		limited := io.LimitReader(stderr, 4096)
+		data, _ := io.ReadAll(limited)
+		stderrCh <- data
+		io.Copy(io.Discard, stderr)
+	}()
+
+	waitErr := cmd.Wait()
+	stderrBytes := <-stderrCh
+
+	if waitErr != nil {
+		return fmt.Errorf("zfs recv -s failed for %s: %w (%s)", dsName, waitErr, string(stderrBytes))
+	}
+
+	if err := s.waitForZvol(id); err != nil {
+		return fmt.Errorf("timeout waiting for zvol after resumable receive: %w", err)
+	}
+
+	s.log.DebugContext(ctx, "resumable zfs receive complete", "dataset", dsName)
+	return nil
+}
+
+// GetResumeToken returns the ZFS receive_resume_token for a partially-received
+// dataset. Returns empty string if no resumable state exists.
+func (s *ZFS) GetResumeToken(ctx context.Context, id string) (string, error) {
+	dsName := s.getDSName(id)
+
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "receive_resume_token", dsName)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Dataset may not exist yet (no partial receive started)
+		return "", nil
+	}
+
+	token := strings.TrimSpace(string(out))
+	if token == "-" || token == "" {
+		return "", nil
+	}
+
+	s.log.DebugContext(ctx, "found resume token", "dataset", dsName, "token_len", len(token))
+	return token, nil
+}
+
+// SendSnapshotResume streams ZFS data from a resume token.
+// The token is obtained from GetResumeToken on the receiving side.
+func (s *ZFS) SendSnapshotResume(ctx context.Context, token string) (io.ReadCloser, error) {
+	args := []string{"send", "-t", token}
+
+	s.log.DebugContext(ctx, "starting zfs send resume", "token_len", len(token))
+
+	cmd := exec.CommandContext(ctx, "zfs", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe for zfs send -t: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stderr pipe for zfs send -t: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start zfs send -t: %w", err)
+	}
+
+	return &zfsSendReader{
+		ReadCloser: stdout,
+		stderr:     stderr,
+		cmd:        cmd,
+		log:        s.log,
+	}, nil
+}
+
+// AbortResumableRecv cleans up a partial resumable receive on the given dataset.
+// This destroys any partially-received state.
+func (s *ZFS) AbortResumableRecv(ctx context.Context, id string) error {
+	dsName := s.getDSName(id)
+
+	s.log.DebugContext(ctx, "aborting resumable receive", "dataset", dsName)
+
+	// zfs recv -A aborts a resumable receive
+	cmd := exec.CommandContext(ctx, "zfs", "recv", "-A", dsName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to abort resumable recv for %s: %w (%s)", dsName, err, string(out))
 	}
 
 	return nil

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -31,6 +33,7 @@ type directMigrationTarget struct {
 	stream       api.ComputeService_ReceiveVMClient
 	cancelFunc   context.CancelFunc
 	sidebandAddr string // host:port of target's raw TCP listener; empty = use gRPC chunks
+	resumable    bool   // target supports resumable sideband receives
 }
 
 func newDirectMigrationTarget(ctx context.Context, targetAddress string) (*directMigrationTarget, error) {
@@ -96,6 +99,27 @@ func (t *directMigrationTarget) sendComplete(checksum string) error {
 	})
 }
 
+// requestResumeToken asks the target for a ZFS resume token and a new sideband address.
+func (t *directMigrationTarget) requestResumeToken() (token, sidebandAddr string, err error) {
+	if err := t.stream.Send(&api.ReceiveVMRequest{
+		Type: &api.ReceiveVMRequest_ResumeTokenRequest{
+			ResumeTokenRequest: &api.ReceiveVMResumeTokenRequest{},
+		},
+	}); err != nil {
+		return "", "", fmt.Errorf("send resume token request: %w", err)
+	}
+
+	resp, err := t.stream.Recv()
+	if err != nil {
+		return "", "", fmt.Errorf("recv resume token response: %w", err)
+	}
+	rt := resp.GetResumeToken()
+	if rt == nil {
+		return "", "", fmt.Errorf("expected resume token response, got %T", resp.Type)
+	}
+	return rt.Token, rt.SidebandAddr, nil
+}
+
 // dataChunkSender sends a ZFS data chunk to the destination (either execore relay or direct target).
 type dataChunkSender func(chunk []byte, isBaseImage bool) error
 
@@ -116,6 +140,14 @@ func (r *progressReporter) add(n uint64) error {
 	return r.stream.Send(&api.SendVMResponse{
 		Type: &api.SendVMResponse_Progress{
 			Progress: &api.SendVMProgress{BytesSent: int64(r.totalBytes)},
+		},
+	})
+}
+
+func (r *progressReporter) addStatus(msg string) error {
+	return r.stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_Status{
+			Status: &api.SendVMStatus{Message: msg},
 		},
 	})
 }
@@ -242,9 +274,11 @@ func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
 
 		startReq.TargetHasBaseImage = ready.HasBaseImage
 		target.sidebandAddr = ready.SidebandAddr
+		target.resumable = ready.Resumable
 		s.log.InfoContext(ctx, "direct migration: target ready",
 			"has_base_image", ready.HasBaseImage,
-			"sideband", target.sidebandAddr != "")
+			"sideband", target.sidebandAddr != "",
+			"resumable", target.resumable)
 	}
 
 	// In direct mode, report periodic progress to execore.
@@ -552,29 +586,102 @@ func (s *Service) makeDataChunkSender(stream api.ComputeService_SendVMServer, ta
 	}
 }
 
-// streamViaSideband dials the target's raw TCP listener and streams a ZFS snapshot directly
-// over TCP, bypassing gRPC framing. The kernel pipelines reads from zfs-send and writes to TCP
-// concurrently, giving true I/O overlap. Bytes are tee'd through hasher for checksum continuity.
-func (t *directMigrationTarget) streamViaSideband(ctx context.Context, sm storage.StorageManager, snapshot string, incremental bool, baseSnap string, hasher hash.Hash, totalBytes *uint64, progress *progressReporter) error {
-	conn, err := net.Dial("tcp", t.sidebandAddr)
-	if err != nil {
-		return fmt.Errorf("dial sideband %s: %w", t.sidebandAddr, err)
-	}
-	defer conn.Close()
-	go func() { <-ctx.Done(); conn.Close() }()
+const maxSidebandRetries = 20
 
+// streamViaSideband dials the target's raw TCP listener and streams a ZFS snapshot directly
+// over TCP, bypassing gRPC framing. If the target supports resumable receives, broken TCP
+// connections are retried using ZFS resume tokens — the transfer picks up from where it left off.
+func (t *directMigrationTarget) streamViaSideband(ctx context.Context, log *slog.Logger, sm storage.StorageManager, snapshot string, incremental bool, baseSnap string, totalBytes *uint64, progress *progressReporter) error {
+	err := t.streamViaSidebandOnce(ctx, sm, snapshot, incremental, baseSnap, totalBytes, progress)
+	if err == nil {
+		return nil
+	}
+
+	if !t.resumable {
+		return err
+	}
+
+	// Retry loop using ZFS resume tokens.
+	for attempt := 1; attempt <= maxSidebandRetries; attempt++ {
+		log.WarnContext(ctx, "sideband transfer failed, requesting resume token",
+			"attempt", attempt, "error", err, "bytes_so_far", *totalBytes)
+
+		if progress != nil {
+			_ = progress.addStatus(fmt.Sprintf("transfer interrupted (%v), resuming (attempt %d/%d)...", err, attempt, maxSidebandRetries))
+		}
+
+		// Brief pause so the target's zfs recv -s has time to exit and flush
+		// its partial state to disk.
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		token, newAddr, reqErr := t.requestResumeToken()
+		if reqErr != nil {
+			return fmt.Errorf("sideband retry %d: failed to get resume token: %w (original error: %v)", attempt, reqErr, err)
+		}
+		if token == "" {
+			return fmt.Errorf("sideband retry %d: no resume token available (original error: %v)", attempt, err)
+		}
+		if newAddr == "" {
+			return fmt.Errorf("sideband retry %d: no sideband address for resume (original error: %v)", attempt, err)
+		}
+
+		log.InfoContext(ctx, "sideband: resuming transfer",
+			"attempt", attempt, "new_addr", newAddr, "token_len", len(token))
+
+		t.sidebandAddr = newAddr
+		err = t.streamViaSidebandResume(ctx, sm, token, totalBytes, progress)
+		if err == nil {
+			log.InfoContext(ctx, "sideband: resumed transfer completed successfully", "attempt", attempt)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("sideband transfer failed after %d retries: %w", maxSidebandRetries, err)
+}
+
+// streamViaSidebandOnce performs a single sideband transfer attempt.
+func (t *directMigrationTarget) streamViaSidebandOnce(ctx context.Context, sm storage.StorageManager, snapshot string, incremental bool, baseSnap string, totalBytes *uint64, progress *progressReporter) error {
 	reader, err := sm.SendSnapshot(ctx, snapshot, incremental, baseSnap)
 	if err != nil {
 		return fmt.Errorf("zfs send: %w", err)
 	}
+	return t.pipeToSideband(ctx, reader, totalBytes, progress)
+}
+
+// streamViaSidebandResume performs a resumed sideband transfer using a ZFS resume token.
+func (t *directMigrationTarget) streamViaSidebandResume(ctx context.Context, sm storage.StorageManager, token string, totalBytes *uint64, progress *progressReporter) error {
+	reader, err := sm.SendSnapshotResume(ctx, token)
+	if err != nil {
+		return fmt.Errorf("zfs send -t: %w", err)
+	}
+	return t.pipeToSideband(ctx, reader, totalBytes, progress)
+}
+
+// pipeToSideband dials the target's TCP listener and copies reader into it.
+func (t *directMigrationTarget) pipeToSideband(ctx context.Context, reader io.ReadCloser, totalBytes *uint64, progress *progressReporter) error {
+	conn, err := net.Dial("tcp", t.sidebandAddr)
+	if err != nil {
+		reader.Close()
+		return fmt.Errorf("dial sideband %s: %w", t.sidebandAddr, err)
+	}
+	defer conn.Close()
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.SetKeepAlive(true)
+		tc.SetKeepAlivePeriod(10 * time.Second)
+	}
+	go func() { <-ctx.Done(); conn.Close() }()
 
 	dst := io.Writer(conn)
 	if progress != nil {
 		dst = &progressWriter{w: conn, progress: progress}
 	}
-	n, copyErr := io.Copy(dst, io.TeeReader(reader, hasher))
+	n, copyErr := io.Copy(dst, reader)
 	*totalBytes += uint64(n)
-	closeErr := reader.Close() // waits for zfs send to exit
+	closeErr := reader.Close()
 	if copyErr != nil && !errors.Is(copyErr, net.ErrClosed) {
 		return fmt.Errorf("copy to sideband: %w", copyErr)
 	}
@@ -607,7 +714,7 @@ func (s *Service) makeSnapshotStreamer(ctx context.Context, stream api.ComputeSe
 				// Disable sideband for this migration and fall through to gRPC chunks below.
 				target.sidebandAddr = ""
 			} else {
-				return target.streamViaSideband(ctx, sm, snapshot, incremental, baseSnap, hasher, totalBytes, progress)
+				return target.streamViaSideband(ctx, s.log, sm, snapshot, incremental, baseSnap, totalBytes, progress)
 			}
 			// sideband was just disabled — fall through to gRPC chunk path
 			buf := make([]byte, sendVMChunkSize)
