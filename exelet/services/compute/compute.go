@@ -59,6 +59,11 @@ type Service struct {
 	// be closed after this many bytes are copied. Used by e1e tests to
 	// exercise resumable transfer without iptables. Resets to 0 after firing.
 	sidebandFaultAfterBytes atomic.Int64
+
+	// receiveFaultCrashAfterData, when true, causes ReceiveVM to return an
+	// error after ZFS data is received but before config is saved, WITHOUT
+	// triggering rollback — simulating an exelet crash. Fires once.
+	receiveFaultCrashAfterData atomic.Bool
 }
 
 // New returns a new service.
@@ -109,7 +114,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 }
 
 // RegisterTestHandlers registers HTTP handlers for test fault injection.
-// These are only used by e1e tests to simulate network failures.
+// These are only used by e1e tests to simulate failures.
 func (s *Service) RegisterTestHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /debug/fault/sideband-disconnect", func(w http.ResponseWriter, r *http.Request) {
 		afterBytes, err := strconv.ParseInt(r.FormValue("after_bytes"), 10, 64)
@@ -121,6 +126,12 @@ func (s *Service) RegisterTestHandlers(mux *http.ServeMux) {
 		s.log.Warn("fault injection: sideband disconnect armed", "after_bytes", afterBytes)
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "armed: disconnect after %d bytes\n", afterBytes)
+	})
+	mux.HandleFunc("POST /debug/fault/receive-crash-after-data", func(w http.ResponseWriter, r *http.Request) {
+		s.receiveFaultCrashAfterData.Store(true)
+		s.log.Warn("fault injection: receive crash-after-data armed")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "armed: will crash after ZFS data received")
 	})
 }
 

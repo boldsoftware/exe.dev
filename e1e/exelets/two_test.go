@@ -427,3 +427,129 @@ func TestDirectMigrationResumable(t *testing.T) {
 	assertBoxEventuallyOnHost(t, boxName, targetAddr)
 	assertBoxSSHWorks(t, boxName, keyFile)
 }
+
+func TestDirectMigrationOrphanedDataset(t *testing.T) {
+	if err := ensureExeletCount(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	exeletAddrs := []string{
+		exelets[0].Address,
+		exelets[1].Address,
+	}
+	if err := serverEnv.Exed.Restart(t.Context(), exeletAddrs, exeletTestRunIDs[0], false); err != nil {
+		t.Fatal(err)
+	}
+
+	pty, _, keyFile, email := register(t)
+	boxName := makeBox(t, pty, keyFile, email)
+	pty.Disconnect()
+	defer deleteBox(t, boxName, keyFile)
+
+	sourceBox, ok := findBox(t, boxName)
+	if !ok {
+		t.Fatalf("box %q not found before migration", boxName)
+	}
+
+	// Figure out source and target exelets.
+	var targetExelet *testinfra.ExeletInstance
+	var targetAddr string
+	switch sourceBox.Host {
+	case exeletAddrs[0]:
+		targetExelet = exelets[1]
+		targetAddr = exeletAddrs[1]
+	case exeletAddrs[1]:
+		targetExelet = exelets[0]
+		targetAddr = exeletAddrs[0]
+	default:
+		t.Fatalf("box %q on unexpected host %q", boxName, sourceBox.Host)
+	}
+
+	// Arm fault on the TARGET exelet: after ZFS data is fully received,
+	// simulate a crash (return error without rollback), leaving an
+	// orphaned ZFS dataset with no config file.
+	faultURL := targetExelet.HTTPAddress + "/debug/fault/receive-crash-after-data"
+	resp, err := http.Post(faultURL, "", nil)
+	if err != nil {
+		t.Fatalf("failed to arm receive-crash fault: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fault injection returned status %d", resp.StatusCode)
+	}
+
+	// Migration 1: should fail because the target "crashes" after receiving
+	// the ZFS data. This leaves an orphaned dataset on the target.
+	// Uses cold (non-live) migration to avoid IP reconfig complexity —
+	// a live migration that crashes after data transfer leaves the VM with
+	// the target's IP, making the second migration's SSH reconfig fail.
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+		"live":         {"false"},
+	}
+	migURL := fmt.Sprintf("http://localhost:%d/debug/vms/migrate", serverEnv.Exed.HTTPPort)
+	resp, err = http.Post(migURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("migration 1: failed to POST migrate: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	text := string(body)
+
+	if !strings.Contains(text, "MIGRATION_ERROR") {
+		t.Fatalf("migration 1: expected failure, got:\n%s", text)
+	}
+	t.Logf("migration 1 failed as expected: fault injected crash")
+
+	// After a failed cold migration the VM is stopped on the source
+	// (restartSource sees STOPPED and skips restart to avoid split-brain).
+	// Migration 2 will also be cold since the VM is stopped.
+
+	// Migration 2: the orphaned dataset should be cleaned up automatically.
+	// No fault armed this time — should succeed.
+	resp, err = http.Post(migURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("migration 2: failed to POST migrate: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	text = string(body)
+
+	if !strings.Contains(text, "MIGRATION_SUCCESS:"+boxName) {
+		t.Fatalf("migration 2: expected success, got:\n%s", text)
+	}
+	if !strings.Contains(text, "MIGRATION_DIRECT_CONFIRMED:") {
+		t.Fatalf("migration 2: did not use direct path:\n%s", text)
+	}
+
+	// Cold migration leaves the VM stopped. Verify it landed on the target,
+	// start it, and confirm SSH works.
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		box, ok := findBox(t, boxName)
+		if ok && box.Host == targetAddr {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	box2, ok := findBox(t, boxName)
+	if !ok || box2.Host != targetAddr {
+		t.Fatalf("box %q not on target %q after migration 2", boxName, targetAddr)
+	}
+
+	// Start the VM so we can verify SSH.
+	startURL := fmt.Sprintf("http://localhost:%d/debug/vms/start", serverEnv.Exed.HTTPPort)
+	resp, err = http.PostForm(startURL, url.Values{"box_name": {boxName}})
+	if err != nil {
+		t.Fatalf("failed to start VM: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start VM returned status %d", resp.StatusCode)
+	}
+
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+}

@@ -144,3 +144,24 @@ func TestSendVMStatusSentWithAcceptStatus(t *testing.T) {
 		t.Errorf("unexpected status message: %q", st.Message)
 	}
 }
+
+func TestExtractBaseImageID(t *testing.T) {
+	tests := []struct {
+		origin string
+		want   string
+	}{
+		{"", ""},
+		{"tank/sha256:abc123@snap", "sha256:abc123"},
+		{"tank/e1e-XXXX/sha256:abc123@snap", "sha256:abc123"},
+		{"tank/a/b/sha256:abc123@snap", "sha256:abc123"},
+		{"sha256:abc123@snap", "sha256:abc123"},
+		{"tank/sha256:abc123", "sha256:abc123"},
+		{"tank/instance-id@migration", "instance-id"},
+	}
+	for _, tt := range tests {
+		got := extractBaseImageID(tt.origin)
+		if got != tt.want {
+			t.Errorf("extractBaseImageID(%q) = %q, want %q", tt.origin, got, tt.want)
+		}
+	}
+}

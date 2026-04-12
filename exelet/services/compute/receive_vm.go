@@ -132,16 +132,16 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	}
 
 	// Clean up orphaned ZFS dataset from a prior crashed migration.
-	// A migration that dies mid-transfer (e.g. target exelet restart)
-	// leaves a ZFS dataset with no config file. Without cleanup, the
-	// next migration attempt fails because zfs recv hits an existing
-	// dataset with incompatible state.
+	// An orphan is a dataset with no config file — the crash happened
+	// after zfs recv completed but before the config was written.
+	// We do this here (once) rather than inside ReceiveSnapshot/
+	// ReceiveSnapshotResumable because two-phase migration calls recv
+	// twice for the same ID (phase 1 full, phase 2 incremental) and
+	// destroying between phases would lose the phase-1 data.
 	if _, err := s.context.StorageManager.Get(ctx, instanceID); err == nil {
-		s.log.WarnContext(ctx, "cleaning up orphaned ZFS dataset from prior migration",
-			"instance", instanceID)
+		s.log.WarnContext(ctx, "destroying orphaned dataset from prior crashed migration", "instance", instanceID)
 		if err := s.context.StorageManager.Delete(ctx, instanceID); err != nil {
-			s.log.WarnContext(ctx, "failed to delete orphaned dataset (continuing)",
-				"instance", instanceID, "error", err)
+			s.log.WarnContext(ctx, "failed to delete orphaned dataset, proceeding anyway", "instance", instanceID, "error", err)
 		}
 	}
 
@@ -683,6 +683,16 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 		receiveErr = status.Errorf(codes.DataLoss,
 			"checksum mismatch: expected %s, got %s", expectedChecksum, actualChecksum)
 		return receiveErr
+	}
+
+	// Test fault injection: simulate an exelet crash after ZFS data is
+	// received but before the config is written. The dataset is left
+	// orphaned (no rollback) so the next migration must clean it up.
+	if s.receiveFaultCrashAfterData.CompareAndSwap(true, false) {
+		s.log.WarnContext(ctx, "fault injection: simulating crash after data receive", "instance", instanceID)
+		// Return error WITHOUT setting receiveErr — rollback does not fire,
+		// leaving the ZFS dataset behind just like a real process crash.
+		return status.Errorf(codes.Internal, "fault injection: simulated crash after data receive")
 	}
 
 	// Copy kernel to new instance dir

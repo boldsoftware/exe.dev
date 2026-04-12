@@ -1111,19 +1111,21 @@ func (s *Service) streamSnapshotFile(stream api.ComputeService_SendVMServer, dir
 
 // extractBaseImageID extracts the base image ID from a ZFS origin name.
 // Origin format: "tank/sha256:abc123@instance-id" -> "sha256:abc123"
+// Also handles nested datasets: "tank/e1e-XXXX/sha256:abc123@snap" -> "sha256:abc123"
 func extractBaseImageID(origin string) string {
 	if origin == "" {
 		return ""
 	}
 
-	// Remove pool prefix (e.g., "tank/sha256:abc123@snap" -> "sha256:abc123@snap")
-	if idx := strings.Index(origin, "/"); idx >= 0 {
-		origin = origin[idx+1:]
-	}
-
-	// Remove snapshot suffix (e.g., "sha256:abc123@snap" -> "sha256:abc123")
+	// Remove snapshot suffix first (e.g., "tank/sha256:abc123@snap" -> "tank/sha256:abc123")
 	if idx := strings.Index(origin, "@"); idx >= 0 {
 		origin = origin[:idx]
+	}
+
+	// Remove pool/dataset prefix — use LastIndex to handle nested datasets
+	// (e.g., "tank/e1e-XXXX/sha256:abc123" -> "sha256:abc123")
+	if idx := strings.LastIndex(origin, "/"); idx >= 0 {
+		origin = origin[idx+1:]
 	}
 
 	return origin
