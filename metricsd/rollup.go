@@ -80,7 +80,7 @@ SELECT
     date_trunc('hour', timestamp)::TIMESTAMPTZ          AS hour_start,
     CAST(date_trunc('hour', timestamp) AS DATE)         AS day_start,
     LAST(host ORDER BY timestamp)                       AS host,
-    LAST(vm_id ORDER BY timestamp)                      AS vm_id,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '')         AS vm_id,
     LAST(vm_name ORDER BY timestamp)                    AS vm_name,
     LAST(resource_group ORDER BY timestamp)             AS resource_group,
     MAX(disk_logical_used_bytes)                        AS disk_logical_max_bytes,
@@ -115,7 +115,7 @@ CREATE OR REPLACE TABLE vm_metrics_daily AS
 SELECT
     day_start,
     LAST(host ORDER BY hour_start)                      AS host,
-    LAST(vm_id ORDER BY hour_start)                     AS vm_id,
+    COALESCE(LAST(vm_id ORDER BY hour_start), '')        AS vm_id,
     LAST(vm_name ORDER BY hour_start)                   AS vm_name,
     LAST(resource_group ORDER BY hour_start)            AS resource_group,
     AVG(disk_logical_max_bytes)::BIGINT                 AS disk_logical_avg_bytes,
@@ -151,7 +151,7 @@ CREATE OR REPLACE TABLE vm_metrics_monthly AS
 SELECT
     date_trunc('month', day_start)::DATE                AS month_start,
     LAST(host ORDER BY day_start)                       AS host,
-    LAST(vm_id ORDER BY day_start)                      AS vm_id,
+    COALESCE(LAST(vm_id ORDER BY day_start), '')         AS vm_id,
     LAST(vm_name ORDER BY day_start)                    AS vm_name,
     LAST(resource_group ORDER BY day_start)             AS resource_group,
     AVG(disk_logical_avg_bytes)::BIGINT                 AS disk_logical_avg_bytes,

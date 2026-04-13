@@ -578,7 +578,7 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 			cpu_used_cumulative_seconds, cpu_nominal,
 			network_tx_bytes, network_rx_bytes, resource_group,
-			vm_id
+			COALESCE(vm_id, '') AS vm_id
 		FROM (
 			SELECT *,
 				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
@@ -667,7 +667,7 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 	querySQL := fmt.Sprintf(`
 		SELECT
 			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
-			LAST(vm_id ORDER BY day_start)      AS vm_id,
+			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
 			LAST(vm_name ORDER BY day_start)    AS vm_name,
 			resource_group,
 			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
@@ -1067,7 +1067,7 @@ func (s *Server) handleQueryVMsOverLimit(w http.ResponseWriter, r *http.Request)
 	querySQL := fmt.Sprintf(`
 		SELECT
 			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
-			LAST(vm_id ORDER BY day_start)      AS vm_id,
+			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
 			LAST(vm_name ORDER BY day_start)    AS vm_name,
 			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
 			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes
