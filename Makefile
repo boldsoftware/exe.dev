@@ -119,11 +119,11 @@ run-dev: ui ## Run exed locally for development
 
 run-devlet: ui ## Run exed locally for development along with exelet on lima-exe-ctr
 	@echo "Starting dev server with exelet on lima-exe-ctr"
-	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet
+	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -start-metricsd
 
 run-devlets: ui ## Run exed locally with exelets on both lima-exe-ctr and lima-exe-ctr-tests
 	@echo "Starting dev server with exelets on lima-exe-ctr and lima-exe-ctr-tests"
-	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet
+	@LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -multi-exelet -start-metricsd
 
 run-sshpiper: ## Run sshpiper proxy server
 	@echo "Starting sshpiper proxy..."

@@ -73,6 +73,9 @@ func Parse(env stage.Env) (*template.Template, error) {
 				}
 				return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 			},
+			"divf64": func(a int64, b float64) float64 {
+				return float64(a) / b
+			},
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})

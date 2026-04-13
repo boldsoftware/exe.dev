@@ -22,7 +22,7 @@ On an exe.dev VM, everything is pre-installed. Build exelet first to avoid OOM f
 ```
 make exelet
 go build -o /tmp/exed-local ./cmd/exed/
-/tmp/exed-local -stage=local -start-exelet -db tmp
+/tmp/exed-local -stage=local -start-exelet -start-metricsd -db tmp
 ```
 
 The rest of this doc covers the macOS (Lima) workflow. On Linux, `make run-devlet` starts exelet locally instead of on a Lima VM — everything else is the same.
@@ -53,7 +53,7 @@ Run exed and exelet together:
 make run-devlet
 ```
 
-This does `LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet`. On macOS, exed builds the exelet binary (`make exelet`, which includes kernel/rovol image download), copies it to `lima-exe-ctr`, and starts it over SSH. The first build is slow — kernel images are cached after that.
+This does `LOG_LEVEL=debug go run ./cmd/exed -stage=local -http=:8080 -ssh=:2223 -start-exelet -start-metricsd`. On macOS, exed builds the exelet binary (`make exelet`, which includes kernel/rovol image download), copies it to `lima-exe-ctr`, and starts it over SSH. The first build is slow — kernel images are cached after that.
 
 Once running:
 - `ssh -p 2222 localhost` or `ssh -p 2222 <machine>@localhost`

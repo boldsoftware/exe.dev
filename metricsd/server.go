@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"exe.dev/logging"
+	"exe.dev/metricsd/types"
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -216,6 +217,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /query/sparkline", s.handleSparklineData)
 	mux.HandleFunc("GET /sparklines", s.handleSparklines)
 	mux.HandleFunc("POST /query/vms", s.handleQueryVMs)
+	mux.HandleFunc("POST /query/usage", s.handleQueryUsage)
+	mux.HandleFunc("POST /query/hourly", s.handleQueryHourly)
+	mux.HandleFunc("POST /query/daily", s.handleQueryDaily)
+	mux.HandleFunc("POST /query/vms-over-limit", s.handleQueryVMsOverLimit)
+	mux.HandleFunc("POST /query/monthly", s.handleQueryMonthly)
 	staticFS, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -385,7 +391,8 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 		// Store as UTC
 		ts = ts.UTC()
 		// Column order must match the physical table layout.
-		// resource_group is added by migration 002 and appears last.
+		// resource_group is added by migration 002, io_read/write_bytes by migration 003,
+		// and vm_id by migration 006 (ALTER TABLE) — it appears last physically.
 		err := appender.AppendRow(
 			ts, m.Host, m.VMName,
 			m.DiskSizeBytes, m.DiskUsedBytes, m.DiskLogicalUsedBytes,
@@ -394,6 +401,7 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 			m.NetworkTXBytes, m.NetworkRXBytes,
 			m.ResourceGroup,
 			m.IOReadBytes, m.IOWriteBytes,
+			m.VMID,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -448,6 +456,7 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 		&m.NetworkTXBytes, &m.NetworkRXBytes,
 		&m.ResourceGroup,
 		&m.IOReadBytes, &m.IOWriteBytes,
+		&m.VMID,
 	); err != nil {
 		return fmt.Errorf("scan row: %w", err)
 	}
@@ -568,7 +577,8 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			disk_size_bytes, disk_used_bytes, disk_logical_used_bytes,
 			memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 			cpu_used_cumulative_seconds, cpu_nominal,
-			network_tx_bytes, network_rx_bytes, resource_group
+			network_tx_bytes, network_rx_bytes, resource_group,
+			vm_id
 		FROM (
 			SELECT *,
 				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
@@ -606,6 +616,7 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			&m.NetworkTXBytes,
 			&m.NetworkRXBytes,
 			&m.ResourceGroup,
+			&m.VMID,
 		); err != nil {
 			slog.ErrorContext(ctx, "failed to scan row", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -621,4 +632,494 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(QueryVMsResponse{VMs: vmMetrics})
+}
+
+func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req types.QueryUsageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) == 0 {
+		http.Error(w, "resource_groups cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) > 500 {
+		http.Error(w, "resource_groups cannot contain more than 500 entries", http.StatusBadRequest)
+		return
+	}
+	if req.Start.IsZero() || req.End.IsZero() || !req.Start.Before(req.End) {
+		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
+		return
+	}
+	if req.End.Sub(req.Start) > 366*24*time.Hour {
+		http.Error(w, "period cannot exceed 366 days", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.ResourceGroups))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	phStr := strings.Join(placeholders, ", ")
+
+	querySQL := fmt.Sprintf(`
+		SELECT
+			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+			LAST(vm_id ORDER BY day_start)      AS vm_id,
+			LAST(vm_name ORDER BY day_start)    AS vm_name,
+			resource_group,
+			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
+			MAX(disk_logical_max_bytes)          AS disk_max_bytes,
+			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes,
+			SUM(cpu_seconds)                    AS cpu_seconds,
+			SUM(io_read_bytes)                  AS io_read_bytes,
+			SUM(io_write_bytes)                 AS io_write_bytes,
+			COUNT(*)                            AS days_with_data
+		FROM vm_metrics_daily
+		WHERE resource_group IN (%s)
+		  AND day_start >= ?
+		  AND day_start < ?
+		GROUP BY COALESCE(NULLIF(vm_id,''), vm_name), resource_group
+		ORDER BY resource_group, vm_name
+	`, phStr)
+
+	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	for _, rg := range req.ResourceGroups {
+		args = append(args, rg)
+	}
+	args = append(args, req.Start, req.End)
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "query usage failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type rgData struct {
+		vms []types.VMUsageSummary
+	}
+	rgMap := make(map[string]*rgData)
+	for _, rg := range req.ResourceGroups {
+		rgMap[rg] = &rgData{vms: make([]types.VMUsageSummary, 0)}
+	}
+
+	for rows.Next() {
+		var vmKey, vmID, vmName, rg string
+		var diskAvg, diskMax, bandwidth, ioRead, ioWrite int64
+		var cpuSecs float64
+		var daysWithData int
+		if err := rows.Scan(&vmKey, &vmID, &vmName, &rg, &diskAvg, &diskMax, &bandwidth, &cpuSecs, &ioRead, &ioWrite, &daysWithData); err != nil {
+			slog.ErrorContext(ctx, "scan usage row failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if d, ok := rgMap[rg]; ok {
+			d.vms = append(d.vms, types.VMUsageSummary{
+				VMID:           vmID,
+				VMName:         vmName,
+				ResourceGroup:  rg,
+				DiskAvgBytes:   diskAvg,
+				DiskMaxBytes:   diskMax,
+				BandwidthBytes: bandwidth,
+				CPUSeconds:     cpuSecs,
+				IOReadBytes:    ioRead,
+				IOWriteBytes:   ioWrite,
+				DaysWithData:   daysWithData,
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	summaries := make([]types.UsageSummary, 0, len(req.ResourceGroups))
+	for _, rg := range req.ResourceGroups {
+		d := rgMap[rg]
+		vms := make([]types.VMUsageSummary, 0)
+		if d != nil {
+			vms = d.vms
+		}
+		var totalDiskAvg, totalDiskPeak, totalBandwidth, totalIORead, totalIOWrite int64
+		var totalCPU float64
+		for _, vm := range vms {
+			totalDiskAvg += vm.DiskAvgBytes
+			if vm.DiskMaxBytes > totalDiskPeak {
+				totalDiskPeak = vm.DiskMaxBytes
+			}
+			totalBandwidth += vm.BandwidthBytes
+			totalCPU += vm.CPUSeconds
+			totalIORead += vm.IOReadBytes
+			totalIOWrite += vm.IOWriteBytes
+		}
+		summaries = append(summaries, types.UsageSummary{
+			ResourceGroup:  rg,
+			PeriodStart:    req.Start,
+			PeriodEnd:      req.End,
+			DiskAvgBytes:   totalDiskAvg,
+			DiskPeakBytes:  totalDiskPeak,
+			BandwidthBytes: totalBandwidth,
+			CPUSeconds:     totalCPU,
+			VMs:            vms,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryUsageResponse{Metrics: summaries})
+}
+
+func (s *Server) handleQueryHourly(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req types.QueryHourlyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) == 0 {
+		http.Error(w, "resource_groups cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) > 500 {
+		http.Error(w, "resource_groups cannot contain more than 500 entries", http.StatusBadRequest)
+		return
+	}
+	if req.Start.IsZero() || req.End.IsZero() || !req.Start.Before(req.End) {
+		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
+		return
+	}
+	if req.End.Sub(req.Start) > 30*24*time.Hour {
+		http.Error(w, "period cannot exceed 30 days", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.ResourceGroups))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	phStr := strings.Join(placeholders, ", ")
+
+	querySQL := fmt.Sprintf(`
+		SELECT
+			hour_start, day_start, host, vm_id, vm_name, resource_group,
+			disk_logical_max_bytes, disk_compressed_max_bytes, disk_provisioned_bytes,
+			network_tx_delta_bytes, network_rx_delta_bytes,
+			cpu_delta_seconds,
+			io_read_delta_bytes, io_write_delta_bytes,
+			memory_rss_max_bytes, memory_swap_max_bytes,
+			sample_count
+		FROM vm_metrics_hourly
+		WHERE resource_group IN (%s)
+		  AND hour_start >= ?
+		  AND hour_start < ?
+		ORDER BY vm_name, hour_start
+	`, phStr)
+
+	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	for _, rg := range req.ResourceGroups {
+		args = append(args, rg)
+	}
+	args = append(args, req.Start, req.End)
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "query hourly failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	hours := make([]types.HourlyMetric, 0)
+	for rows.Next() {
+		var h types.HourlyMetric
+		if err := rows.Scan(
+			&h.HourStart, &h.DayStart, &h.Host, &h.VMID, &h.VMName, &h.ResourceGroup,
+			&h.DiskLogicalMaxBytes, &h.DiskCompressedMaxBytes, &h.DiskProvisionedBytes,
+			&h.NetworkTXDeltaBytes, &h.NetworkRXDeltaBytes,
+			&h.CPUDeltaSeconds,
+			&h.IOReadDeltaBytes, &h.IOWriteDeltaBytes,
+			&h.MemoryRSSMaxBytes, &h.MemorySwapMaxBytes,
+			&h.SampleCount,
+		); err != nil {
+			slog.ErrorContext(ctx, "scan hourly row failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		hours = append(hours, h)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryHourlyResponse{Metrics: hours})
+}
+
+func (s *Server) handleQueryDaily(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req types.QueryDailyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) == 0 {
+		http.Error(w, "resource_groups cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) > 500 {
+		http.Error(w, "resource_groups cannot contain more than 500 entries", http.StatusBadRequest)
+		return
+	}
+	if req.Start.IsZero() || req.End.IsZero() || !req.Start.Before(req.End) {
+		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
+		return
+	}
+	if req.End.Sub(req.Start) > 366*24*time.Hour {
+		http.Error(w, "period cannot exceed 366 days", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.ResourceGroups))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	phStr := strings.Join(placeholders, ", ")
+
+	querySQL := fmt.Sprintf(`
+		SELECT
+			day_start, host, vm_id, vm_name, resource_group,
+			disk_logical_avg_bytes, disk_logical_max_bytes,
+			disk_compressed_avg_bytes, disk_provisioned_max_bytes,
+			network_tx_bytes, network_rx_bytes,
+			cpu_seconds,
+			io_read_bytes, io_write_bytes,
+			memory_rss_max_bytes, memory_swap_max_bytes,
+			hours_with_data
+		FROM vm_metrics_daily
+		WHERE resource_group IN (%s)
+		  AND day_start >= ?
+		  AND day_start < ?
+		ORDER BY vm_name, day_start
+	`, phStr)
+
+	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	for _, rg := range req.ResourceGroups {
+		args = append(args, rg)
+	}
+	args = append(args, req.Start, req.End)
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "query daily failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	days := make([]types.DailyMetric, 0)
+	for rows.Next() {
+		var d types.DailyMetric
+		if err := rows.Scan(
+			&d.DayStart, &d.Host, &d.VMID, &d.VMName, &d.ResourceGroup,
+			&d.DiskLogicalAvgBytes, &d.DiskLogicalMaxBytes,
+			&d.DiskCompressedAvgBytes, &d.DiskProvisionedMaxBytes,
+			&d.NetworkTXBytes, &d.NetworkRXBytes,
+			&d.CPUSeconds,
+			&d.IOReadBytes, &d.IOWriteBytes,
+			&d.MemoryRSSMaxBytes, &d.MemorySwapMaxBytes,
+			&d.HoursWithData,
+		); err != nil {
+			slog.ErrorContext(ctx, "scan daily row failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		days = append(days, d)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryDailyResponse{Metrics: days})
+}
+
+func (s *Server) handleQueryMonthly(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req types.QueryMonthlyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) == 0 {
+		http.Error(w, "resource_groups cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.ResourceGroups) > 500 {
+		http.Error(w, "resource_groups cannot contain more than 500 entries", http.StatusBadRequest)
+		return
+	}
+	if req.Start.IsZero() || req.End.IsZero() || !req.Start.Before(req.End) {
+		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.ResourceGroups))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	phStr := strings.Join(placeholders, ", ")
+
+	querySQL := fmt.Sprintf(`
+		SELECT
+			month_start, host, vm_id, vm_name, resource_group,
+			disk_logical_avg_bytes, disk_logical_max_bytes,
+			disk_compressed_avg_bytes, disk_provisioned_max_bytes,
+			network_tx_bytes, network_rx_bytes,
+			cpu_seconds,
+			io_read_bytes, io_write_bytes,
+			memory_rss_max_bytes, memory_swap_max_bytes,
+			days_with_data
+		FROM vm_metrics_monthly
+		WHERE resource_group IN (%s)
+		  AND month_start >= ?
+		  AND month_start < ?
+		ORDER BY vm_name, month_start
+	`, phStr)
+
+	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	for _, rg := range req.ResourceGroups {
+		args = append(args, rg)
+	}
+	args = append(args, req.Start, req.End)
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "query monthly failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	months := make([]types.MonthlyMetric, 0)
+	for rows.Next() {
+		var m types.MonthlyMetric
+		if err := rows.Scan(
+			&m.MonthStart, &m.Host, &m.VMID, &m.VMName, &m.ResourceGroup,
+			&m.DiskLogicalAvgBytes, &m.DiskLogicalMaxBytes,
+			&m.DiskCompressedAvgBytes, &m.DiskProvisionedMaxBytes,
+			&m.NetworkTXBytes, &m.NetworkRXBytes,
+			&m.CPUSeconds,
+			&m.IOReadBytes, &m.IOWriteBytes,
+			&m.MemoryRSSMaxBytes, &m.MemorySwapMaxBytes,
+			&m.DaysWithData,
+		); err != nil {
+			slog.ErrorContext(ctx, "scan monthly row failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		months = append(months, m)
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryMonthlyResponse{Metrics: months})
+}
+
+func (s *Server) handleQueryVMsOverLimit(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req types.QueryVMsOverLimitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.VMIDs) == 0 {
+		http.Error(w, "vm_ids cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.VMIDs) > 500 {
+		http.Error(w, "vm_ids cannot contain more than 500 entries", http.StatusBadRequest)
+		return
+	}
+
+	// Current calendar month boundaries.
+	now := time.Now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := now
+
+	placeholders := make([]string, len(req.VMIDs))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	phStr := strings.Join(placeholders, ", ")
+
+	querySQL := fmt.Sprintf(`
+		SELECT
+			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+			LAST(vm_id ORDER BY day_start)      AS vm_id,
+			LAST(vm_name ORDER BY day_start)    AS vm_name,
+			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
+			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes
+		FROM vm_metrics_daily
+		WHERE vm_id IN (%s)
+		  AND day_start >= ?
+		  AND day_start < ?
+		GROUP BY COALESCE(NULLIF(vm_id,''), vm_name)
+	`, phStr)
+
+	args := make([]interface{}, 0, len(req.VMIDs)+2)
+	for _, id := range req.VMIDs {
+		args = append(args, id)
+	}
+	args = append(args, monthStart, monthEnd)
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "query vms-over-limit failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	vms := make([]types.VMOverLimit, 0)
+	for rows.Next() {
+		var vmKey, vmID, vmName string
+		var diskAvg, bandwidth int64
+		if err := rows.Scan(&vmKey, &vmID, &vmName, &diskAvg, &bandwidth); err != nil {
+			slog.ErrorContext(ctx, "scan vms-over-limit row failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		diskOver := diskAvg > req.DiskIncludedBytes
+		bandwidthOver := bandwidth > req.BandwidthIncludedBytes
+		if diskOver || bandwidthOver {
+			vms = append(vms, types.VMOverLimit{
+				VMID:           vmID,
+				VMName:         vmName,
+				DiskAvgBytes:   diskAvg,
+				BandwidthBytes: bandwidth,
+				DiskOver:       diskOver,
+				BandwidthOver:  bandwidthOver,
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryVMsOverLimitResponse{VMs: vms})
 }

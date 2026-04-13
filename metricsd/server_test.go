@@ -363,7 +363,7 @@ func TestSparklines(t *testing.T) {
 			"timestamp", "host", "vm_name", "disk_size_bytes", "disk_used_bytes",
 			"disk_logical_used_bytes", "memory_nominal_bytes", "memory_rss_bytes", "memory_swap_bytes",
 			"cpu_used_cumulative_seconds", "cpu_nominal", "network_tx_bytes", "network_rx_bytes", "resource_group",
-			"io_read_bytes", "io_write_bytes",
+			"io_read_bytes", "io_write_bytes", "vm_id",
 		}
 		if len(cols) != len(wantCols) {
 			t.Errorf("got %d columns, want %d", len(cols), len(wantCols))

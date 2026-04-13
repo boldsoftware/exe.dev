@@ -888,7 +888,7 @@ func startMetricsdLocal(exeDBPath string) (url string, cleanup func(), retErr er
 	slog.Info("starting metricsd", "binary", binPath, "db", dbPath)
 
 	ctx := context.Background()
-	metricsdCmd := exec.CommandContext(ctx, binPath, "-addr", "0.0.0.0:0", "-db", dbPath, "-stage", "local")
+	metricsdCmd := exec.CommandContext(ctx, binPath, "-db", dbPath, "-stage", "local")
 	metricsdCmd.Env = os.Environ() // inherit env including LOG_FORMAT
 
 	// Capture stdout/stderr to find the listen address

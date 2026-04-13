@@ -41,6 +41,7 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/logging"
+	metricstypes "exe.dev/metricsd/types"
 	"exe.dev/oidcauth"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
@@ -2098,7 +2099,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			acctID := accountByUser[u.UserID]
 			var billingURL string
 			if acctID != "" {
-				billingURL = billing.MakeCustomerDashboardURL(acctID)
+				billingURL = "/debug/billing?userId=" + url.QueryEscape(u.UserID)
 			}
 			ui := userInfo{
 				UserID:                 u.UserID,
@@ -5152,7 +5153,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			AccountID:    a.ID,
 			PlanID:       planID,
 			LatestStatus: status,
-			BillingURL:   billing.MakeCustomerDashboardURL(a.ID),
+			BillingURL:   "/debug/billing?userId=" + url.QueryEscape(userID),
 		})
 	}
 
@@ -5410,18 +5411,19 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		ChangedBy string
 	}
 	type accountInfo struct {
-		AccountID       string
-		AccountStatus   string
-		LatestStatus    string
-		BillingURL      string
-		CreditBalance   string
-		CurrentPlanID   string
-		CurrentPlanAt   string
-		TrialExpiresAt  string
-		PlanChangedBy   string
-		ParentID        string
-		ParentCreatedBy string
-		ChildAccounts   []struct {
+		AccountID          string
+		AccountStatus      string
+		LatestStatus       string
+		BillingURL         string
+		StripeDashboardURL string
+		CreditBalance      string
+		CurrentPlanID      string
+		CurrentPlanAt      string
+		TrialExpiresAt     string
+		PlanChangedBy      string
+		ParentID           string
+		ParentCreatedBy    string
+		ChildAccounts      []struct {
 			AccountID string
 			UserID    string
 			Email     string
@@ -5438,9 +5440,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	cutoff := time.Now().AddDate(0, 0, -30)
 	for _, a := range userAccounts {
 		info := accountInfo{
-			AccountID:     a.ID,
-			AccountStatus: a.Status,
-			BillingURL:    billing.MakeCustomerDashboardURL(a.ID),
+			AccountID:          a.ID,
+			AccountStatus:      a.Status,
+			BillingURL:         "/debug/billing?userId=" + url.QueryEscape(userID),
+			StripeDashboardURL: billing.MakeCustomerDashboardURL(a.ID),
 		}
 		if a.ParentID != nil {
 			info.ParentID = *a.ParentID
@@ -5763,7 +5766,19 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			ID      string
 			Granted bool
 		}
-		CreditLedger []creditRow
+		CreditLedger             []creditRow
+		HasMetricsd              bool
+		UsageDiskAvgBytes        int64
+		UsageDiskPeakBytes       int64
+		UsageBandwidthBytes      int64
+		UsageDiskAvgGB           float64
+		UsageDiskPeakGB          float64
+		UsageBandwidthGB         float64
+		UsageDiskOverageGB       float64
+		UsageBandwidthOverageGB  float64
+		UsageDiskOverageUSD      float64
+		UsageBandwidthOverageUSD float64
+		UsageVMs                 []metricstypes.VMUsageSummary
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -5828,6 +5843,39 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				ID:      ent.ID,
 				Granted: entitlement.PlanGrants(version, ent),
 			})
+		}
+	}
+
+	// Fetch usage estimates for current calendar month from metricsd.
+	if s.metricsdURL != "" {
+		data.HasMetricsd = true
+		const diskIncludedGB = 25.0
+		const bandwidthIncludedGB = 100.0
+		const diskPricePerGB = 0.08
+		const bandwidthPricePerGB = 0.07
+		nowUTC := time.Now().UTC()
+		monthStart := time.Date(nowUTC.Year(), nowUTC.Month(), 1, 0, 0, 0, 0, time.UTC)
+		usageClient := newMetricsClient(s.metricsdURL)
+		usageCtx, usageCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer usageCancel()
+		if metrics, err := usageClient.queryUsage(usageCtx, []string{userID}, monthStart, nowUTC); err == nil && len(metrics) > 0 {
+			sum := metrics[0]
+			diskAvgGB := float64(sum.DiskAvgBytes) / 1e9
+			diskPeakGB := float64(sum.DiskPeakBytes) / 1e9
+			bandwidthGB := float64(sum.BandwidthBytes) / 1e9
+			diskOverage := max(diskAvgGB-diskIncludedGB, 0)
+			bandwidthOverage := max(bandwidthGB-bandwidthIncludedGB, 0)
+			data.UsageDiskAvgBytes = sum.DiskAvgBytes
+			data.UsageDiskPeakBytes = sum.DiskPeakBytes
+			data.UsageBandwidthBytes = sum.BandwidthBytes
+			data.UsageDiskAvgGB = diskAvgGB
+			data.UsageDiskPeakGB = diskPeakGB
+			data.UsageBandwidthGB = bandwidthGB
+			data.UsageDiskOverageGB = diskOverage
+			data.UsageBandwidthOverageGB = bandwidthOverage
+			data.UsageDiskOverageUSD = diskOverage * diskPricePerGB
+			data.UsageBandwidthOverageUSD = bandwidthOverage * bandwidthPricePerGB
+			data.UsageVMs = sum.VMs
 		}
 	}
 

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"exe.dev/billing/entitlement"
 	"exe.dev/exedb"
 )
@@ -36,9 +35,9 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 	body := debugUserPageBody(t, s, userID)
 
 	requireAccountRow(t, body, account.ID, "active")
-	dashboardURL := billing.MakeCustomerDashboardURL(account.ID)
-	if !strings.Contains(body, dashboardURL) {
-		t.Fatalf("expected dashboard URL for %q", account.ID)
+	billingPageURL := "/debug/billing?userId=" + userID
+	if !strings.Contains(body, billingPageURL) {
+		t.Fatalf("expected billing page URL for user %q", userID)
 	}
 }
 

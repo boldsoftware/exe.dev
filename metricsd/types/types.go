@@ -22,6 +22,7 @@ type Metric struct {
 	NetworkRXBytes        int64     `json:"network_rx_bytes"`
 	IOReadBytes           int64     `json:"io_read_bytes"`
 	IOWriteBytes          int64     `json:"io_write_bytes"`
+	VMID                  string    `json:"vm_id,omitempty"`
 }
 
 // MetricsBatch allows submitting multiple metrics at once.

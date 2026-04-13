@@ -222,14 +222,16 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 	var viewSQL strings.Builder
 	viewSQL.WriteString("CREATE VIEW vm_metrics_all AS\nSELECT * FROM vm_metrics\n")
 	if len(validPaths) > 0 {
-		viewSQL.WriteString("UNION ALL\nSELECT * FROM read_parquet([")
+		// union_by_name=true fills columns missing from older parquet files with NULL.
+		// COALESCE vm_id to '' so downstream code never sees NULL.
+		viewSQL.WriteString("UNION ALL\nSELECT * REPLACE (COALESCE(vm_id, '') AS vm_id) FROM read_parquet([")
 		for i, p := range validPaths {
 			if i > 0 {
 				viewSQL.WriteString(", ")
 			}
 			viewSQL.WriteString(fmt.Sprintf("'%s'", p))
 		}
-		viewSQL.WriteString("])")
+		viewSQL.WriteString("], union_by_name=true)")
 	}
 
 	if _, err := a.db.ExecContext(ctx, viewSQL.String()); err != nil {

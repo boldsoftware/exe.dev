@@ -114,7 +114,7 @@ $(document).ready(function() {
             { data: 'created_at', defaultContent: '-' },
             { data: 'created_for_login_with_exe', render: function(d) { return d ? '✓' : ''; } },
             { data: null, render: function(d) {
-                if (d.billing_url) return '<a href="' + d.billing_url + '" target="_blank">' + d.account_id + '</a>';
+                if (d.billing_url) return '<a href="' + d.billing_url + '">' + d.account_id + '</a>';
                 return '-';
             }},
             { data: null, className: 'credit-cell', render: function(d) {

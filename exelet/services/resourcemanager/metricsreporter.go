@@ -211,6 +211,7 @@ func (m *ResourceManager) collectMetricsFromRM(host string) []types.Metric {
 			Host:                  host,
 			VMName:                state.name,
 			ResourceGroup:         state.groupID,
+			VMID:                  id,
 			DiskSizeBytes:         int64(state.diskVolsizeBytes),
 			DiskUsedBytes:         int64(state.diskBytes),
 			DiskLogicalUsedBytes:  int64(state.diskLogicalBytes),
