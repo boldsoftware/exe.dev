@@ -876,7 +876,7 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 }
 
 func initVMSem() {
-	n := int64(3)
+	n := int64(8)
 	if s := os.Getenv("E1_VM_CONCURRENCY"); s != "" {
 		parsed, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || parsed <= 0 {
