@@ -245,8 +245,6 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 	return nil
 }
 
-
-
 // RunPeriodic starts a goroutine that runs archival every interval.
 func (a *Archiver) RunPeriodic(ctx context.Context, interval time.Duration) {
 	go func() {
