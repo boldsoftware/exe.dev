@@ -206,6 +206,15 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 		return nil
 	}
 
+	// Get the column names from vm_metrics so we only select matching columns
+	// from parquet files. Archived parquet files may have extra columns from
+	// old schemas; selecting only the current columns avoids UNION ALL errors.
+	cols, err := tableColumns(ctx, a.db, "vm_metrics")
+	if err != nil {
+		return fmt.Errorf("get table columns: %w", err)
+	}
+	colList := strings.Join(cols, ", ")
+
 	// Validate that all parquet files exist. If one is missing, skip it
 	// (it might have been manually removed).
 	var validPaths []string
@@ -220,11 +229,12 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 	sort.Strings(validPaths)
 
 	var viewSQL strings.Builder
-	viewSQL.WriteString("CREATE VIEW vm_metrics_all AS\nSELECT * FROM vm_metrics\n")
+	fmt.Fprintf(&viewSQL, "CREATE VIEW vm_metrics_all AS\nSELECT %s FROM vm_metrics\n", colList)
 	if len(validPaths) > 0 {
 		// union_by_name=true fills columns missing from older parquet files with NULL.
-		// COALESCE vm_id to '' so downstream code never sees NULL.
-		viewSQL.WriteString("UNION ALL\nSELECT * REPLACE (COALESCE(vm_id, '') AS vm_id) FROM read_parquet([")
+		// Selecting explicit columns ensures old parquet files with extra columns
+		// don't break the UNION ALL.
+		fmt.Fprintf(&viewSQL, "UNION ALL\nSELECT %s FROM read_parquet([", colList)
 		for i, p := range validPaths {
 			if i > 0 {
 				viewSQL.WriteString(", ")
@@ -240,6 +250,25 @@ func (a *Archiver) RebuildView(ctx context.Context) error {
 
 	slog.InfoContext(ctx, "rebuilt vm_metrics_all view", "parquet_files", len(validPaths))
 	return nil
+}
+
+// tableColumns returns the column names of a DuckDB table in ordinal order.
+func tableColumns(ctx context.Context, db *sql.DB, table string) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		"SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position", table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return nil, err
+		}
+		cols = append(cols, col)
+	}
+	return cols, rows.Err()
 }
 
 // RunPeriodic starts a goroutine that runs archival every interval.
