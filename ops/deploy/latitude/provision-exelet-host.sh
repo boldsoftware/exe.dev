@@ -461,9 +461,9 @@ provision_server() {
     copy_to_remote "$STANDALONE_DIR/exelet-iptables.service" "/tmp/exelet-iptables.service" "ubuntu@$host"
     ssh $SSH_OPTS "ubuntu@$host" "sudo install -m 0755 /tmp/setup-iptables-exelet.sh /usr/local/bin/setup-iptables-exelet.sh && sudo install -m 0644 /tmp/exelet-iptables.service /etc/systemd/system/exelet-iptables.service && sudo systemctl daemon-reload && sudo systemctl enable --now exelet-iptables.service && rm -f /tmp/setup-iptables-exelet.sh /tmp/exelet-iptables.service"
 
-    # Disable IPv6
+    # Disable IPv6 and tune TCP buffers
     echo ""
-    echo "=== Disabling IPv6 ==="
+    echo "=== Disabling IPv6 and tuning TCP buffers ==="
     ssh $SSH_OPTS "ubuntu@$host" 'bash -s' <<'DISABLE_IPV6'
 set -euo pipefail
 
@@ -473,6 +473,15 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
+
+# TCP buffer tuning
+cat <<EOF | sudo tee /etc/sysctl.d/99-tcp-buffers.conf > /dev/null
+net.core.rmem_max = 33554432
+net.core.wmem_max = 33554432
+net.ipv4.tcp_rmem = 4096 131072 33554432
+net.ipv4.tcp_wmem = 4096 131072 33554432
+EOF
+
 sudo sysctl --system > /dev/null
 
 # Persist via GRUB kernel command line so IPv6 is disabled early at boot

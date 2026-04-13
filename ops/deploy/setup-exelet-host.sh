@@ -871,6 +871,12 @@ net.ipv4.neigh.default.gc_thresh2=8192
 net.ipv4.neigh.default.gc_thresh3=16384
 vm.max_map_count=1048576
 EOF
+cat <<EOF >/etc/sysctl.d/99-tcp-buffers.conf
+net.core.rmem_max = 33554432
+net.core.wmem_max = 33554432
+net.ipv4.tcp_rmem = 4096 131072 33554432
+net.ipv4.tcp_wmem = 4096 131072 33554432
+EOF
 sysctl --system >/dev/null
 EXELET_SYSCTL
 
