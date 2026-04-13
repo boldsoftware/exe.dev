@@ -782,7 +782,21 @@ func (t *directMigrationTarget) pipeToSideband(ctx context.Context, reader io.Re
 	if copyErr != nil && !errors.Is(copyErr, net.ErrClosed) {
 		return fmt.Errorf("copy to sideband: %w", copyErr)
 	}
-	return closeErr
+	if closeErr != nil {
+		return closeErr
+	}
+
+	// Graceful TCP shutdown: signal EOF to the receiver by closing the write
+	// half, then read until the receiver closes its end. This ensures all
+	// data has been delivered and ACK'd before we return — preventing a burst
+	// of queued data in the kernel from congesting the WireGuard tunnel and
+	// starving subsequent SSH connections (e.g., IP reconfiguration).
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.CloseWrite()
+		tc.SetReadDeadline(time.Now().Add(30 * time.Second))
+		io.Copy(io.Discard, tc) //nolint:errcheck
+	}
+	return nil
 }
 
 // progressWriter wraps an io.Writer and reports bytes written to a progressReporter.
