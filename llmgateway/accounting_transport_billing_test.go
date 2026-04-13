@@ -243,9 +243,7 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD-20); err != nil {
-		t.Fatalf("failed to prepare concurrent overage balance: %v", err)
-	}
+	// User starts with $20. No pre-debit needed (initialFreeCredit - 20 = 0).
 
 	const (
 		requests = 10
@@ -261,19 +259,20 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 	}
 	wg.Wait()
 
+	// With the floor fix, the DB never goes negative — it's always
+	// floored to 0 after each debit. CheckAndRefreshCredit reads 0.
 	info, err := creditMgr.CheckAndRefreshCredit(ctx, userID)
 	if err != ErrInsufficientCredit {
 		t.Fatalf("CheckAndRefreshCredit error = %v, want %v", err, ErrInsufficientCredit)
 	}
-	if !floatClose(info.Available, -10, 0.000001) {
-		t.Fatalf("final available = %f, want -10", info.Available)
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("final available = %f, want 0 (floored)", info.Available)
 	}
 
+	// Total cost = 10 * $3 = $30. Free credit = $20. Overage = $10.
+	// Exact number of UseCredits calls depends on serialization order,
+	// but total billed must equal the $10 overage.
 	calls := data.useCreditsCalls()
-	if len(calls) != 4 {
-		t.Fatalf("UseCredits calls = %d, want 4", len(calls))
-	}
-
 	var billedMicrocents int64
 	for _, call := range calls {
 		if call.accountID != "acct_123" {

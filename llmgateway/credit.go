@@ -425,8 +425,13 @@ func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD fl
 		)
 		newAvailable -= costUSD
 
+		// Floor the stored credit at zero. The actual (possibly negative)
+		// value is still returned to the caller so billableOverageFromDebit
+		// can compute the correct overage amount for billing_credits.
+		storedAvailable := max(newAvailable, 0)
+
 		if err := q.DebitUserLLMCredit(ctx, exedb.DebitUserLLMCreditParams{
-			AvailableCredit: newAvailable,
+			AvailableCredit: storedAvailable,
 			TotalUsed:       costUSD,
 			LastRefreshAt:   newLastRefresh,
 			UserID:          userID,

@@ -187,8 +187,8 @@ func TestCreditManager_NoIntraMonthRefill(t *testing.T) {
 	if err != ErrInsufficientCredit {
 		t.Fatalf("expected ErrInsufficientCredit, got %v", err)
 	}
-	if !floatClose(info.Available, -1, 0.000001) {
-		t.Fatalf("available after same-month check = %f, want -1", info.Available)
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("available after same-month check = %f, want 0 (floored)", info.Available)
 	}
 }
 
@@ -221,8 +221,8 @@ func TestCreditManager_NoNextMonthRefillForNoSubscription(t *testing.T) {
 	if err != ErrInsufficientCredit {
 		t.Fatalf("month rollover check error = %v, want %v", err, ErrInsufficientCredit)
 	}
-	if !floatClose(info.Available, -3, 0.000001) {
-		t.Fatalf("available after month rollover = %f, want -3", info.Available)
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("available after month rollover = %f, want 0 (floored)", info.Available)
 	}
 	if !floatClose(info.Max, initialFreeCreditNoSubscriptionUSD, 0.000001) {
 		t.Fatalf("max after month rollover = %f, want %f", info.Max, initialFreeCreditNoSubscriptionUSD)
@@ -519,8 +519,8 @@ func TestCreditManager_MonthRolloverResetsOverrideBucket(t *testing.T) {
 	if err != ErrInsufficientCredit {
 		t.Fatalf("expected ErrInsufficientCredit after overage, got %v", err)
 	}
-	if !floatClose(info.Available, -10, 0.000001) {
-		t.Fatalf("same-month post-overage available = %f, want -10", info.Available)
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("same-month post-overage available = %f, want 0 (floored)", info.Available)
 	}
 
 	now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
@@ -837,5 +837,130 @@ func TestCreditManager_TopUpOnBillingUpgrade_ConcurrentIdempotent(t *testing.T) 
 	}
 	if credit.BillingUpgradeBonusGranted != 1 {
 		t.Fatalf("billing_upgrade_bonus_granted = %d, want 1", credit.BillingUpgradeBonusGranted)
+	}
+}
+
+func TestCreditManager_DebitCredit_FloorsAtZeroInDB(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	ctx := context.Background()
+	userID := "test-user-floor-zero"
+	createTestUser(t, db, userID, "floor-zero@example.com")
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+
+	// Debit more than available: $20 + $5 overage
+	info, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+5)
+	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Returned value is unfloored so overage math works.
+	if !floatClose(info.Available, -5, 0.000001) {
+		t.Fatalf("returned available = %f, want -5", info.Available)
+	}
+
+	// But the DB value is floored to 0.
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("expected ErrInsufficientCredit, got %v", err)
+	}
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("DB available = %f, want 0 (floored)", info.Available)
+	}
+}
+
+func TestCreditManager_DebitCredit_RepeatedOverageStaysAtZero(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	ctx := context.Background()
+	userID := "test-user-repeated-overage"
+	createTestUser(t, db, userID, "repeated-overage@example.com")
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+
+	// Exhaust all free credit.
+	if _, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
+		t.Fatalf("exhaust debit failed: %v", err)
+	}
+
+	// Now debit repeatedly when already at 0. DB should stay at 0,
+	// never accumulating negative balance.
+	for i := range 5 {
+		info, err := mgr.DebitCredit(ctx, userID, 10)
+		if err != nil {
+			t.Fatalf("debit %d failed: %v", i, err)
+		}
+		// Returned value is -10 each time (unfloored, for overage billing).
+		if !floatClose(info.Available, -10, 0.000001) {
+			t.Fatalf("debit %d: returned available = %f, want -10", i, info.Available)
+		}
+
+		// DB always reads 0.
+		dbInfo, err := mgr.CheckAndRefreshCredit(ctx, userID)
+		if err != ErrInsufficientCredit {
+			t.Fatalf("debit %d: expected ErrInsufficientCredit, got %v", i, err)
+		}
+		if !floatClose(dbInfo.Available, 0, 0.000001) {
+			t.Fatalf("debit %d: DB available = %f, want 0 (floored)", i, dbInfo.Available)
+		}
+	}
+}
+
+func TestCreditManager_DebitCredit_TotalUsedStillAccurate(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	ctx := context.Background()
+	userID := "test-user-total-used-accurate"
+	createTestUser(t, db, userID, "total-used@example.com")
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+
+	// Debit $25 (exceeds $20 free credit by $5).
+	if _, err := mgr.DebitCredit(ctx, userID, 25); err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+	// Debit another $10 while at 0.
+	if _, err := mgr.DebitCredit(ctx, userID, 10); err != nil {
+		t.Fatalf("second debit failed: %v", err)
+	}
+
+	// total_used should reflect both debits accurately.
+	var totalUsed float64
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		credit, err := q.GetUserLLMCredit(ctx, userID)
+		if err != nil {
+			return err
+		}
+		totalUsed = credit.TotalUsed
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to load user credit: %v", err)
+	}
+	if !floatClose(totalUsed, 35, 0.000001) {
+		t.Fatalf("total_used = %f, want 35", totalUsed)
 	}
 }
