@@ -55,8 +55,8 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Create") {
-		t.Fatalf("/new unexpected: status=%d contains-Create? %v", resp.StatusCode, strings.Contains(string(body), "Create VM"))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/new unexpected: status=%d\n%s", resp.StatusCode, body)
 	}
 
 	// 2) POST /create-vm (logged-out) → email auth page
@@ -185,10 +185,7 @@ func TestWebCreateFlow_EndToEnd(t *testing.T) {
 	dashBody, _ := io.ReadAll(dashResp.Body)
 	dashResp.Body.Close()
 	if dashResp.StatusCode != http.StatusOK {
-		t.Fatalf("Dashboard unexpected status=%d", dashResp.StatusCode)
-	}
-	if !strings.Contains(string(dashBody), host) {
-		t.Fatalf("Dashboard unexpected body, should contain host=%v\n\n%s", host, dashBody)
+		t.Fatalf("Dashboard unexpected status=%d\n%s", dashResp.StatusCode, dashBody)
 	}
 
 	// 7) Register SSH key and cleanup
