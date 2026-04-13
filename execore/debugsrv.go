@@ -710,6 +710,17 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	var coldBooted bool
 	dbStatus := "running"
 
+	// Live migration requires SSH access to the VM for IP reconfiguration.
+	// Verify SSH works before starting the transfer — a broken SSH server
+	// or stale connection would otherwise waste the entire phase 1 transfer.
+	if live && box.SSHPort != nil {
+		writeProgress("Verifying SSH access to VM...")
+		if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
+			writeError("VM SSH pre-check failed (required for live migration IP reconfiguration): %v", err)
+			return
+		}
+	}
+
 	if live {
 		writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
@@ -1559,6 +1570,15 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		dbStatus := "running"
 
 		if live {
+			// Verify SSH works before starting the transfer.
+			if box.SSHPort != nil {
+				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
+					writeError("VM %q SSH pre-check failed: %v", boxName, err)
+					failed++
+					writeProgress("")
+					continue
+				}
+			}
 			writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
@@ -6407,6 +6427,15 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		dbStatus := "running"
 
 		if live {
+			// Verify SSH works before starting the transfer.
+			if box.SSHPort != nil {
+				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
+					writeError("VM %q SSH pre-check failed: %v", boxName, err)
+					failed++
+					writeProgress("")
+					continue
+				}
+			}
 			writeProgress("Live migrating from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
