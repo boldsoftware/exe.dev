@@ -12,12 +12,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"exe.dev/email"
 	"exe.dev/stage"
+	"exe.dev/tslog"
 
 	"github.com/prometheus/client_golang/prometheus"
 	prometheusclient "github.com/prometheus/client_model/go"
@@ -708,9 +710,13 @@ func TestClearExeDevHeaders(t *testing.T) {
 type mockProxyData struct {
 	appTokens map[string]string // token -> userID
 	cookies   map[string]CookieData
+	boxes     map[string]BoxData
 }
 
 func (m *mockProxyData) BoxInfo(ctx context.Context, boxName string) (BoxData, bool, error) {
+	if box, ok := m.boxes[boxName]; ok {
+		return box, true, nil
+	}
 	return BoxData{}, false, nil
 }
 
@@ -1030,4 +1036,89 @@ func TestStripSetCookieDomain(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCustomDomainAuthFlow tests the auth flow
+// for a box accessed via a custom domain.
+func TestCustomDomainAuthFlow(t *testing.T) {
+	t.Parallel()
+	testEnv := stage.Test()
+
+	const boxName = "mybox"
+
+	// Set up CNAME resolution for custom domain
+	const customDomain = "example.com"
+	lookupCNAMEFunc := func(ctx context.Context, host string) (string, error) {
+		if host == customDomain {
+			// Simulate CNAME pointing to mybox.exe.dev
+			// (or mybox.exe.cloud in dev).
+			return testEnv.BoxSub(boxName), nil
+		}
+		return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+
+	mock := mockProxyData{
+		boxes: map[string]BoxData{
+			boxName: {
+				ID:     1,
+				Name:   boxName,
+				Status: "running",
+				BoxRoute: BoxRoute{
+					Port:  80,
+					Share: "private",
+				},
+			},
+		},
+	}
+
+	ps := &ProxyServer{
+		Data:            &mock,
+		Lg:              tslog.Slogger(t),
+		Env:             new(testEnv),
+		ProxyHTTPSPort:  443,
+		LookupCNAMEFunc: lookupCNAMEFunc,
+	}
+
+	// Create a mock net.Addr that represents the local address
+	mockAddr := &net.TCPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: 443,
+	}
+
+	ctx := context.WithValue(t.Context(), http.LocalAddrContextKey, mockAddr)
+
+	// Create initial request to custom domain.
+	initialURL := "https://" + customDomain + "/"
+	req := httptest.NewRequestWithContext(ctx, "GET", initialURL, nil)
+
+	recorder := httptest.NewRecorder()
+	ps.HandleProxyRequest(recorder, req)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("Expected redirect (307), got %d. Body: %s", recorder.Code, recorder.Body.String())
+	}
+
+	location := recorder.Header().Get("Location")
+
+	t.Logf("redirect location: %s", location)
+
+	if !strings.Contains(location, "/__exe.dev/login") {
+		t.Fatalf("Got %s, Expected redirect to /__exe.dev/login", location)
+	}
+
+	// Extract the path and query from the escaped URL
+	// The location will be something like: https://example.com%3A51108/__exe.dev/login?redirect=...
+	// We need to unescape it and parse it
+	unescaped, err := url.QueryUnescape(location)
+	if err != nil {
+		t.Fatalf("Failed to unescape location: %v", err)
+	}
+
+	want := "https://example.com/__exe.dev/login?redirect=/"
+	if unescaped != want {
+		t.Errorf("got redirect to %s, want %s", unescaped, want)
+	}
+
+	// After this we are following the usual auth flow,
+	// which is well tested in the e1e tests.
 }
