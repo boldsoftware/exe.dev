@@ -66,7 +66,7 @@ func TestRunMigrations_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query migrations: %v", err)
 	}
-	if count != 7 {
-		t.Errorf("expected exactly 7 migrations after idempotent run, got %d", count)
+	if count != 8 {
+		t.Errorf("expected exactly 8 migrations after idempotent run, got %d", count)
 	}
 }

@@ -8,10 +8,8 @@ import (
 	"time"
 )
 
-// Rollup rebuilds hourly, daily, and monthly aggregation tables from raw
-// vm_metrics using CREATE OR REPLACE TABLE ... AS SELECT. Each run is a full
-// rebuild so the tables are always consistent with the raw data; no
-// incremental state or idempotency log is required.
+// Rollup incrementally maintains daily and monthly aggregation tables from raw
+// vm_metrics. The daily rollup processes data one day at a time to bound memory.
 type Rollup struct {
 	db      *sql.DB
 	stopped chan bool
@@ -25,32 +23,27 @@ func NewRollup(db *sql.DB) *Rollup {
 	}
 }
 
-// RunOnce rebuilds vm_metrics_hourly, vm_metrics_daily, and vm_metrics_monthly
-// from all raw data in vm_metrics_all up to cutoff.
-// cutoff is typically now() truncated to the current hour.
+// RunOnce runs an incremental rollup cycle.
+// cutoff is the upper bound (exclusive) — typically now() truncated to the hour.
 func (r *Rollup) RunOnce(ctx context.Context, cutoff time.Time) error {
 	cutoff = cutoff.UTC().Truncate(time.Hour)
 
-	if err := r.rebuildHourly(ctx, cutoff); err != nil {
-		return fmt.Errorf("rebuild hourly: %w", err)
+	if err := r.rollupDaily(ctx, cutoff); err != nil {
+		return fmt.Errorf("rollup daily: %w", err)
 	}
-	if err := r.rebuildDaily(ctx); err != nil {
-		return fmt.Errorf("rebuild daily: %w", err)
-	}
-	if err := r.rebuildMonthly(ctx); err != nil {
-		return fmt.Errorf("rebuild monthly: %w", err)
+	if err := r.rollupMonthly(ctx); err != nil {
+		return fmt.Errorf("rollup monthly: %w", err)
 	}
 	return nil
 }
 
-// rebuildHourly replaces vm_metrics_hourly with a full recomputation from
-// vm_metrics_all. Uses a CTE+LAG pattern to compute per-sample deltas for
-// cumulative counters (CPU, network, IO). GREATEST(0, delta) handles counter
-// resets (e.g. VM restarts). The partition key is COALESCE(NULLIF(vm_id,”),
-// vm_name) for stability across renames.
-func (r *Rollup) rebuildHourly(ctx context.Context, cutoff time.Time) error {
-	const rebuildSQL = `
-CREATE OR REPLACE TABLE vm_metrics_hourly AS
+// dayInsertSQL is the per-day rollup query. It takes 4 params:
+//   ?1 = lookback start (day - 15min, for LAG seeding)
+//   ?2 = day end
+//   ?3 = day start (for filtering lookback rows out of INSERT)
+//   ?4 = day end   (same as ?2, for the WHERE filter)
+const dayInsertSQL = `
+INSERT INTO vm_metrics_daily
 WITH windowed AS (
     SELECT
         vm_key,
@@ -64,94 +57,117 @@ WITH windowed AS (
         disk_size_bytes,
         memory_rss_bytes,
         memory_swap_bytes,
-        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes))                           AS tx_delta,
-        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes))                           AS rx_delta,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes))                                  AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes))                                  AS rx_delta,
         GREATEST(0, cpu_used_cumulative_seconds - COALESCE(LAG(cpu_used_cumulative_seconds) OVER w, cpu_used_cumulative_seconds)) AS cpu_delta,
-        GREATEST(0, io_read_bytes  - COALESCE(LAG(io_read_bytes)  OVER w, io_read_bytes))                                  AS io_read_delta,
-        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes))                                 AS io_write_delta
+        GREATEST(0, io_read_bytes  - COALESCE(LAG(io_read_bytes)  OVER w, io_read_bytes))                                        AS io_read_delta,
+        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes))                                       AS io_write_delta
     FROM (
         SELECT *, COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key
-        FROM vm_metrics_all
-        WHERE timestamp < ?
+        FROM vm_metrics
+        WHERE timestamp >= ? AND timestamp < ?
     ) raw
     WINDOW w AS (PARTITION BY vm_key ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
 )
 SELECT
-    date_trunc('hour', timestamp)::TIMESTAMPTZ          AS hour_start,
-    CAST(date_trunc('hour', timestamp) AS DATE)         AS day_start,
-    LAST(host ORDER BY timestamp)                       AS host,
+    CAST(date_trunc('day', timestamp) AS DATE)           AS day_start,
+    LAST(host ORDER BY timestamp)                        AS host,
     COALESCE(LAST(vm_id ORDER BY timestamp), '')         AS vm_id,
-    LAST(vm_name ORDER BY timestamp)                    AS vm_name,
-    LAST(resource_group ORDER BY timestamp)             AS resource_group,
-    MAX(disk_logical_used_bytes)                        AS disk_logical_max_bytes,
-    MAX(disk_used_bytes)                                AS disk_compressed_max_bytes,
-    MAX(disk_size_bytes)                                AS disk_provisioned_bytes,
-    SUM(tx_delta)                                       AS network_tx_delta_bytes,
-    SUM(rx_delta)                                       AS network_rx_delta_bytes,
-    SUM(cpu_delta)                                      AS cpu_delta_seconds,
-    SUM(io_read_delta)                                  AS io_read_delta_bytes,
-    SUM(io_write_delta)                                 AS io_write_delta_bytes,
-    MAX(memory_rss_bytes)                               AS memory_rss_max_bytes,
-    MAX(memory_swap_bytes)                              AS memory_swap_max_bytes,
-    COUNT(*)                                            AS sample_count
+    LAST(vm_name ORDER BY timestamp)                     AS vm_name,
+    LAST(resource_group ORDER BY timestamp)              AS resource_group,
+    AVG(disk_logical_used_bytes)::BIGINT                 AS disk_logical_avg_bytes,
+    MAX(disk_logical_used_bytes)                          AS disk_logical_max_bytes,
+    AVG(disk_used_bytes)::BIGINT                         AS disk_compressed_avg_bytes,
+    MAX(disk_size_bytes)                                  AS disk_provisioned_max_bytes,
+    SUM(tx_delta)                                         AS network_tx_bytes,
+    SUM(rx_delta)                                         AS network_rx_bytes,
+    SUM(cpu_delta)                                        AS cpu_seconds,
+    SUM(io_read_delta)                                    AS io_read_bytes,
+    SUM(io_write_delta)                                   AS io_write_bytes,
+    MAX(memory_rss_bytes)                                 AS memory_rss_max_bytes,
+    MAX(memory_swap_bytes)                                AS memory_swap_max_bytes,
+    COUNT(*)                                              AS hours_with_data
 FROM windowed
-GROUP BY date_trunc('hour', timestamp), vm_key
+WHERE timestamp >= ? AND timestamp < ?
+GROUP BY date_trunc('day', timestamp), vm_key
 `
-	start := time.Now()
-	_, err := r.db.ExecContext(ctx, rebuildSQL, cutoff)
-	if err != nil {
-		return fmt.Errorf("create or replace hourly: %w", err)
-	}
-	var count int
-	_ = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_hourly`).Scan(&count)
-	slog.InfoContext(ctx, "hourly rollup rebuilt", "rows", count, "elapsed", time.Since(start).Round(time.Millisecond))
-	return nil
-}
 
-// rebuildDaily replaces vm_metrics_daily by aggregating vm_metrics_hourly.
-func (r *Rollup) rebuildDaily(ctx context.Context) error {
-	const rebuildSQL = `
-CREATE OR REPLACE TABLE vm_metrics_daily AS
-SELECT
-    day_start,
-    LAST(host ORDER BY hour_start)                      AS host,
-    COALESCE(LAST(vm_id ORDER BY hour_start), '')        AS vm_id,
-    LAST(vm_name ORDER BY hour_start)                   AS vm_name,
-    LAST(resource_group ORDER BY hour_start)            AS resource_group,
-    AVG(disk_logical_max_bytes)::BIGINT                 AS disk_logical_avg_bytes,
-    MAX(disk_logical_max_bytes)                         AS disk_logical_max_bytes,
-    AVG(disk_compressed_max_bytes)::BIGINT              AS disk_compressed_avg_bytes,
-    MAX(disk_provisioned_bytes)                         AS disk_provisioned_max_bytes,
-    SUM(network_tx_delta_bytes)                         AS network_tx_bytes,
-    SUM(network_rx_delta_bytes)                         AS network_rx_bytes,
-    SUM(cpu_delta_seconds)                              AS cpu_seconds,
-    SUM(io_read_delta_bytes)                            AS io_read_bytes,
-    SUM(io_write_delta_bytes)                           AS io_write_bytes,
-    MAX(memory_rss_max_bytes)                           AS memory_rss_max_bytes,
-    MAX(memory_swap_max_bytes)                          AS memory_swap_max_bytes,
-    COUNT(*)                                            AS hours_with_data
-FROM vm_metrics_hourly
-GROUP BY day_start, COALESCE(NULLIF(vm_id,''), vm_name)
-`
-	start := time.Now()
-	_, err := r.db.ExecContext(ctx, rebuildSQL)
+// rollupDaily computes daily aggregates from raw vm_metrics, one day at a time.
+// Uses a high-water mark from vm_metrics_daily; re-processes the last day
+// (may have been partial). Each day includes a 15-minute lookback to seed LAG().
+func (r *Rollup) rollupDaily(ctx context.Context, cutoff time.Time) error {
+	// Find watermark: start of the last daily row (re-process it, may be partial).
+	// If no daily rows exist, find the earliest raw data.
+	var watermark time.Time
+	var maxDay sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT MAX(day_start) FROM vm_metrics_daily`).Scan(&maxDay)
 	if err != nil {
-		return fmt.Errorf("create or replace daily: %w", err)
+		return fmt.Errorf("query max day: %w", err)
 	}
+	if maxDay.Valid {
+		// Re-process from the last day (it may have been partial).
+		watermark = maxDay.Time.UTC().Truncate(24 * time.Hour)
+	} else {
+		var minTS sql.NullTime
+		err := r.db.QueryRowContext(ctx, `SELECT MIN(timestamp) FROM vm_metrics`).Scan(&minTS)
+		if err != nil {
+			return fmt.Errorf("query min timestamp: %w", err)
+		}
+		if !minTS.Valid {
+			slog.InfoContext(ctx, "no raw data to roll up")
+			return nil
+		}
+		watermark = minTS.Time.UTC().Truncate(24 * time.Hour)
+	}
+
+	// Truncate cutoff to day boundary.
+	cutoffDay := cutoff.UTC().Truncate(24 * time.Hour)
+	if !watermark.Before(cutoffDay) {
+		return nil
+	}
+
+	start := time.Now()
+	daysProcessed := 0
+
+	for day := watermark; day.Before(cutoffDay); day = day.Add(24 * time.Hour) {
+		dayEnd := day.Add(24 * time.Hour)
+		lookback := day.Add(-15 * time.Minute)
+
+		// Delete this day (idempotent re-process).
+		_, err := r.db.ExecContext(ctx, `DELETE FROM vm_metrics_daily WHERE day_start = ?`, day)
+		if err != nil {
+			return fmt.Errorf("delete day %s: %w", day.Format("2006-01-02"), err)
+		}
+
+		// Insert with lookback for LAG seeding.
+		_, err = r.db.ExecContext(ctx, dayInsertSQL, lookback, dayEnd, day, dayEnd)
+		if err != nil {
+			return fmt.Errorf("insert day %s: %w", day.Format("2006-01-02"), err)
+		}
+
+		daysProcessed++
+	}
+
 	var count int
 	_ = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_daily`).Scan(&count)
-	slog.InfoContext(ctx, "daily rollup rebuilt", "rows", count, "elapsed", time.Since(start).Round(time.Millisecond))
+	slog.InfoContext(ctx, "daily rollup complete",
+		"from", watermark.Format("2006-01-02"),
+		"to", cutoffDay.Format("2006-01-02"),
+		"days_processed", daysProcessed,
+		"total_rows", count,
+		"elapsed", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
-// rebuildMonthly replaces vm_metrics_monthly by aggregating vm_metrics_daily.
-func (r *Rollup) rebuildMonthly(ctx context.Context) error {
+// rollupMonthly rebuilds vm_metrics_monthly from vm_metrics_daily.
+// Uses CTAS since monthly is small and fast to rebuild.
+func (r *Rollup) rollupMonthly(ctx context.Context) error {
 	const rebuildSQL = `
 CREATE OR REPLACE TABLE vm_metrics_monthly AS
 SELECT
     date_trunc('month', day_start)::DATE                AS month_start,
     LAST(host ORDER BY day_start)                       AS host,
-    COALESCE(LAST(vm_id ORDER BY day_start), '')         AS vm_id,
+    COALESCE(LAST(vm_id ORDER BY day_start), '')        AS vm_id,
     LAST(vm_name ORDER BY day_start)                    AS vm_name,
     LAST(resource_group ORDER BY day_start)             AS resource_group,
     AVG(disk_logical_avg_bytes)::BIGINT                 AS disk_logical_avg_bytes,
@@ -172,7 +188,7 @@ GROUP BY date_trunc('month', day_start), COALESCE(NULLIF(vm_id,''), vm_name)
 	start := time.Now()
 	_, err := r.db.ExecContext(ctx, rebuildSQL)
 	if err != nil {
-		return fmt.Errorf("create or replace monthly: %w", err)
+		return fmt.Errorf("rebuild monthly: %w", err)
 	}
 	var count int
 	_ = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_monthly`).Scan(&count)
@@ -181,7 +197,6 @@ GROUP BY date_trunc('month', day_start), COALESCE(NULLIF(vm_id,''), vm_name)
 }
 
 // RunPeriodic starts a goroutine that runs rollups every interval.
-// Follows the archiver pattern.
 func (r *Rollup) RunPeriodic(ctx context.Context, interval time.Duration) {
 	go func() {
 		defer close(r.stopped)

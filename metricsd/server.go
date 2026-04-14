@@ -792,8 +792,8 @@ func (s *Server) handleQueryHourly(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
 		return
 	}
-	if req.End.Sub(req.Start) > 30*24*time.Hour {
-		http.Error(w, "period cannot exceed 30 days", http.StatusBadRequest)
+	if req.End.Sub(req.Start) > 24*time.Hour {
+		http.Error(w, "period cannot exceed 24 hours", http.StatusBadRequest)
 		return
 	}
 
@@ -804,19 +804,47 @@ func (s *Server) handleQueryHourly(w http.ResponseWriter, r *http.Request) {
 	phStr := strings.Join(placeholders, ", ")
 
 	querySQL := fmt.Sprintf(`
-		SELECT
-			hour_start, day_start, host, vm_id, vm_name, resource_group,
-			disk_logical_max_bytes, disk_compressed_max_bytes, disk_provisioned_bytes,
-			network_tx_delta_bytes, network_rx_delta_bytes,
-			cpu_delta_seconds,
-			io_read_delta_bytes, io_write_delta_bytes,
-			memory_rss_max_bytes, memory_swap_max_bytes,
-			sample_count
-		FROM vm_metrics_hourly
-		WHERE resource_group IN (%s)
-		  AND hour_start >= ?
-		  AND hour_start < ?
-		ORDER BY vm_name, hour_start
+WITH windowed AS (
+    SELECT
+        COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+        timestamp,
+        host, vm_id, vm_name, resource_group,
+        disk_logical_used_bytes, disk_used_bytes, disk_size_bytes,
+        memory_rss_bytes, memory_swap_bytes,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes)) AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes)) AS rx_delta,
+        GREATEST(0, cpu_used_cumulative_seconds - COALESCE(LAG(cpu_used_cumulative_seconds) OVER w, cpu_used_cumulative_seconds)) AS cpu_delta,
+        GREATEST(0, io_read_bytes - COALESCE(LAG(io_read_bytes) OVER w, io_read_bytes)) AS io_read_delta,
+        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes)) AS io_write_delta
+    FROM (
+        SELECT *, COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key_inner
+        FROM vm_metrics
+        WHERE resource_group IN (%s)
+          AND timestamp >= ? AND timestamp < ?
+    ) raw
+    WINDOW w AS (PARTITION BY COALESCE(NULLIF(vm_id,''), vm_name) ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+)
+SELECT
+    date_trunc('hour', timestamp)::TIMESTAMPTZ AS hour_start,
+    CAST(date_trunc('hour', timestamp) AS DATE) AS day_start,
+    LAST(host ORDER BY timestamp) AS host,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '') AS vm_id,
+    LAST(vm_name ORDER BY timestamp) AS vm_name,
+    LAST(resource_group ORDER BY timestamp) AS resource_group,
+    MAX(disk_logical_used_bytes) AS disk_logical_max_bytes,
+    MAX(disk_used_bytes) AS disk_compressed_max_bytes,
+    MAX(disk_size_bytes) AS disk_provisioned_bytes,
+    SUM(tx_delta) AS network_tx_delta_bytes,
+    SUM(rx_delta) AS network_rx_delta_bytes,
+    SUM(cpu_delta) AS cpu_delta_seconds,
+    SUM(io_read_delta) AS io_read_delta_bytes,
+    SUM(io_write_delta) AS io_write_delta_bytes,
+    MAX(memory_rss_bytes) AS memory_rss_max_bytes,
+    MAX(memory_swap_bytes) AS memory_swap_max_bytes,
+    COUNT(*) AS sample_count
+FROM windowed
+GROUP BY date_trunc('hour', timestamp), vm_key
+ORDER BY vm_name, hour_start
 	`, phStr)
 
 	args := make([]interface{}, 0, len(req.ResourceGroups)+2)

@@ -98,13 +98,13 @@ func TestRollup_CounterReset(t *testing.T) {
 	insertRawMetrics(t, srv, metrics)
 
 	rollup := NewRollup(db)
-	cutoff := hour.Add(time.Hour) // roll up exactly this one hour
+	cutoff := hour.Add(24 * time.Hour) // roll up this day
 	if err := rollup.RunOnce(ctx, cutoff); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
 
-	// Query hourly table
-	rows, err := db.QueryContext(ctx, `SELECT cpu_delta_seconds, network_tx_delta_bytes, network_rx_delta_bytes FROM vm_metrics_hourly WHERE vm_name = 'vm-a'`)
+	// Query daily table
+	rows, err := db.QueryContext(ctx, `SELECT cpu_seconds, network_tx_bytes, network_rx_bytes FROM vm_metrics_daily WHERE vm_name = 'vm-a'`)
 	if err != nil {
 		t.Fatalf("query hourly: %v", err)
 	}
@@ -120,21 +120,21 @@ func TestRollup_CounterReset(t *testing.T) {
 		}
 		// cpu: (200-100) + 50 = 150 (counter reset treated as current value)
 		if cpuDelta < 0 {
-			t.Errorf("cpu_delta_seconds = %v, want >= 0 (no negative deltas on counter reset)", cpuDelta)
+			t.Errorf("cpu_seconds = %v, want >= 0 (no negative deltas on counter reset)", cpuDelta)
 		}
 		// network tx: (2000-1000) + 300 = 1300
 		if netTX < 0 {
-			t.Errorf("network_tx_delta_bytes = %v, want >= 0 (no negative deltas on counter reset)", netTX)
+			t.Errorf("network_tx_bytes = %v, want >= 0 (no negative deltas on counter reset)", netTX)
 		}
 		if netRX < 0 {
-			t.Errorf("network_rx_delta_bytes = %v, want >= 0 (no negative deltas on counter reset)", netRX)
+			t.Errorf("network_rx_bytes = %v, want >= 0 (no negative deltas on counter reset)", netRX)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("rows err: %v", err)
 	}
 	if !found {
-		t.Fatal("no hourly row found for vm-a")
+		t.Fatal("no daily row found for vm-a")
 	}
 }
 
@@ -175,35 +175,35 @@ func TestRollup_FirstSampleReturnsZero(t *testing.T) {
 	insertRawMetrics(t, srv, metrics)
 
 	rollup := NewRollup(db)
-	if err := rollup.RunOnce(ctx, hour.Add(time.Hour)); err != nil {
+	if err := rollup.RunOnce(ctx, hour.Add(24*time.Hour)); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
 
 	var cpuDelta float64
 	var netTX, netRX, ioRead, ioWrite int64
 	err = db.QueryRowContext(ctx,
-		`SELECT cpu_delta_seconds, network_tx_delta_bytes, network_rx_delta_bytes, io_read_delta_bytes, io_write_delta_bytes
-		 FROM vm_metrics_hourly WHERE vm_name = 'new-vm'`,
+		`SELECT cpu_seconds, network_tx_bytes, network_rx_bytes, io_read_bytes, io_write_bytes
+		 FROM vm_metrics_daily WHERE vm_name = 'new-vm'`,
 	).Scan(&cpuDelta, &netTX, &netRX, &ioRead, &ioWrite)
 	if err != nil {
-		t.Fatalf("query hourly row: %v", err)
+		t.Fatalf("query daily row: %v", err)
 	}
 
 	// All deltas must be 0 for a single sample.
 	if cpuDelta != 0 {
-		t.Errorf("cpu_delta_seconds = %v, want 0 for first sample", cpuDelta)
+		t.Errorf("cpu_seconds = %v, want 0 for first sample", cpuDelta)
 	}
 	if netTX != 0 {
-		t.Errorf("network_tx_delta_bytes = %v, want 0 for first sample", netTX)
+		t.Errorf("network_tx_bytes = %v, want 0 for first sample", netTX)
 	}
 	if netRX != 0 {
-		t.Errorf("network_rx_delta_bytes = %v, want 0 for first sample", netRX)
+		t.Errorf("network_rx_bytes = %v, want 0 for first sample", netRX)
 	}
 	if ioRead != 0 {
-		t.Errorf("io_read_delta_bytes = %v, want 0 for first sample", ioRead)
+		t.Errorf("io_read_bytes = %v, want 0 for first sample", ioRead)
 	}
 	if ioWrite != 0 {
-		t.Errorf("io_write_delta_bytes = %v, want 0 for first sample", ioWrite)
+		t.Errorf("io_write_bytes = %v, want 0 for first sample", ioWrite)
 	}
 }
 
@@ -264,34 +264,34 @@ func TestRollup_VMIDRenameContinuity(t *testing.T) {
 	insertRawMetrics(t, srv, metrics)
 
 	rollup := NewRollup(db)
-	if err := rollup.RunOnce(ctx, hour.Add(time.Hour)); err != nil {
+	if err := rollup.RunOnce(ctx, hour.Add(24*time.Hour)); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
 
-	// Expect exactly one hourly row (partitioned by vm_id, not vm_name).
+	// Expect exactly one daily row (partitioned by vm_id, not vm_name).
 	var rowCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_hourly WHERE vm_id = 'stable-id-xyz'`).Scan(&rowCount); err != nil {
-		t.Fatalf("count hourly rows: %v", err)
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_daily WHERE vm_id = 'stable-id-xyz'`).Scan(&rowCount); err != nil {
+		t.Fatalf("count daily rows: %v", err)
 	}
 	if rowCount != 1 {
-		t.Errorf("hourly row count for stable-id-xyz = %d, want 1 (rename should not split partitions)", rowCount)
+		t.Errorf("daily row count for stable-id-xyz = %d, want 1 (rename should not split partitions)", rowCount)
 	}
 
 	// Delta should reflect the actual change between the two samples.
 	var cpuDelta float64
 	var netTX int64
 	if err := db.QueryRowContext(ctx,
-		`SELECT cpu_delta_seconds, network_tx_delta_bytes FROM vm_metrics_hourly WHERE vm_id = 'stable-id-xyz'`,
+		`SELECT cpu_seconds, network_tx_bytes FROM vm_metrics_daily WHERE vm_id = 'stable-id-xyz'`,
 	).Scan(&cpuDelta, &netTX); err != nil {
-		t.Fatalf("scan hourly row: %v", err)
+		t.Fatalf("scan daily row: %v", err)
 	}
 	// First sample delta = 0, second sample delta = 1500 - 1000 = 500.
 	// Total = 500s CPU, 5000 bytes TX.
 	if cpuDelta != 500 {
-		t.Errorf("cpu_delta_seconds = %v, want 500", cpuDelta)
+		t.Errorf("cpu_seconds = %v, want 500", cpuDelta)
 	}
 	if netTX != 5000 {
-		t.Errorf("network_tx_delta_bytes = %v, want 5000", netTX)
+		t.Errorf("network_tx_bytes = %v, want 5000", netTX)
 	}
 }
 
@@ -348,7 +348,7 @@ func TestRollup_Idempotent(t *testing.T) {
 	insertRawMetrics(t, srv, metrics)
 
 	rollup := NewRollup(db)
-	cutoff := hour.Add(time.Hour)
+	cutoff := hour.Add(24 * time.Hour)
 
 	// Run twice.
 	if err := rollup.RunOnce(ctx, cutoff); err != nil {
@@ -359,11 +359,11 @@ func TestRollup_Idempotent(t *testing.T) {
 	}
 
 	var count int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_hourly WHERE vm_name = 'idem-vm'`).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vm_metrics_daily WHERE vm_name = 'idem-vm'`).Scan(&count); err != nil {
 		t.Fatalf("count: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("hourly row count = %d, want 1 (idempotent - no duplicate rows on re-run)", count)
+		t.Errorf("daily row count = %d, want 1 (idempotent - no duplicate rows on re-run)", count)
 	}
 }
 
