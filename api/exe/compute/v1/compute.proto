@@ -423,6 +423,7 @@ message ReceiveVMStartRequest {
   bytes encryption_key = 5;         // Encryption key (if encrypted). In direct mode, carries the actual key from source to target.
   string group_id = 6;              // Target group ID
   bool live = 7;                    // Live migration: restore from CH snapshot
+  bool discard_orphan = 8;          // When true, delete any orphaned dataset from a prior migration instead of attempting to resume
 }
 
 message ReceiveVMSnapshotChunk {

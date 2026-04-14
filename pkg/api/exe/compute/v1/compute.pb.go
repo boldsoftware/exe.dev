@@ -3871,6 +3871,7 @@ type ReceiveVMStartRequest struct {
 	EncryptionKey  []byte                 `protobuf:"bytes,5,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`    // Encryption key (if encrypted). In direct mode, carries the actual key from source to target.
 	GroupID        string                 `protobuf:"bytes,6,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`                      // Target group ID
 	Live           bool                   `protobuf:"varint,7,opt,name=live,proto3" json:"live,omitempty"`                                          // Live migration: restore from CH snapshot
+	DiscardOrphan  bool                   `protobuf:"varint,8,opt,name=discard_orphan,json=discardOrphan,proto3" json:"discard_orphan,omitempty"`   // When true, delete any orphaned dataset from a prior migration instead of attempting to resume
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -3950,6 +3951,13 @@ func (x *ReceiveVMStartRequest) GetGroupID() string {
 func (x *ReceiveVMStartRequest) GetLive() bool {
 	if x != nil {
 		return x.Live
+	}
+	return false
+}
+
+func (x *ReceiveVMStartRequest) GetDiscardOrphan() bool {
+	if x != nil {
+		return x.DiscardOrphan
 	}
 	return false
 }
@@ -5838,7 +5846,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12#\n" +
 	"\rsideband_addr\x18\x02 \x01(\tR\fsidebandAddr\",\n" +
 	"\x16ReceiveVMPhaseComplete\x12\x12\n" +
-	"\x04last\x18\x01 \x01(\bR\x04last\"\x93\x02\n" +
+	"\x04last\x18\x01 \x01(\bR\x04last\"\xba\x02\n" +
 	"\x15ReceiveVMStartRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12A\n" +
@@ -5847,7 +5855,8 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\tencrypted\x18\x04 \x01(\bR\tencrypted\x12%\n" +
 	"\x0eencryption_key\x18\x05 \x01(\fR\rencryptionKey\x12\x19\n" +
 	"\bgroup_id\x18\x06 \x01(\tR\agroupId\x12\x12\n" +
-	"\x04live\x18\a \x01(\bR\x04live\"\x8c\x01\n" +
+	"\x04live\x18\a \x01(\bR\x04live\x12%\n" +
+	"\x0ediscard_orphan\x18\b \x01(\bR\rdiscardOrphan\"\x8c\x01\n" +
 	"\x16ReceiveVMSnapshotChunk\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\"\n" +

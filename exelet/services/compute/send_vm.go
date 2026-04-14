@@ -18,6 +18,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -96,6 +97,52 @@ func (t *directMigrationTarget) reconnect(ctx context.Context) (*api.ReceiveVMRe
 	if err := t.stream.Send(&api.ReceiveVMRequest{
 		Type: &api.ReceiveVMRequest_Start{
 			Start: t.startReq,
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("send start to %s: %w", t.targetAddr, err)
+	}
+
+	recvResp, err := t.stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("receive ready from %s: %w", t.targetAddr, err)
+	}
+	ready := recvResp.GetReady()
+	if ready == nil {
+		return nil, fmt.Errorf("expected ready from target, got %T", recvResp.Type)
+	}
+	t.sidebandAddr = ready.SidebandAddr
+	t.resumable = ready.Resumable
+	t.reconnReady = ready
+	return ready, nil
+}
+
+// reconnectFresh opens a fresh ReceiveVM stream to the target with
+// DiscardOrphan set, forcing the target to delete any orphaned dataset
+// from a prior interrupted migration. This is used when a resume token
+// turns out to be stale (the source snapshot was recreated).
+func (t *directMigrationTarget) reconnectFresh(ctx context.Context) (*api.ReceiveVMReady, error) {
+	t.cancelFunc()
+	select {
+	case <-time.After(3 * time.Second):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream, err := t.client.ReceiveVM(streamCtx)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("open ReceiveVM stream to %s: %w", t.targetAddr, err)
+	}
+	t.stream = stream
+	t.cancelFunc = cancel
+
+	// Clone the start request with DiscardOrphan set.
+	freshReq := proto.Clone(t.startReq).(*api.ReceiveVMStartRequest)
+	freshReq.DiscardOrphan = true
+
+	if err := t.stream.Send(&api.ReceiveVMRequest{
+		Type: &api.ReceiveVMRequest_Start{
+			Start: freshReq,
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("send start to %s: %w", t.targetAddr, err)
@@ -657,6 +704,19 @@ func (s *Service) makeDataChunkSender(stream api.ComputeService_SendVMServer, ta
 
 const maxSidebandRetries = 20
 
+// isStaleResumeTokenErr reports whether the error from zfs send -t indicates
+// that the resume token references a snapshot that no longer matches the source.
+// This happens when the source exelet was restarted between migration attempts:
+// the @migration-pre snapshot was destroyed and recreated with a new GUID, but
+// the target still holds partial receive state from the old snapshot.
+func isStaleResumeTokenErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "cannot resume send") || strings.Contains(s, "is no longer the same snapshot")
+}
+
 // streamViaSideband dials the target's raw TCP listener and streams a ZFS snapshot directly
 // over TCP, bypassing gRPC framing. If the target supports resumable receives, broken TCP
 // connections are retried using ZFS resume tokens — the transfer picks up from where it left off.
@@ -717,6 +777,23 @@ func (t *directMigrationTarget) streamViaSideband(ctx context.Context, log *slog
 		if err == nil {
 			log.InfoContext(ctx, "sideband: resumed transfer completed successfully", "attempt", attempt)
 			return nil
+		}
+
+		// If the resume token is stale (source snapshot was recreated since
+		// the target's partial receive started), the target's partial state
+		// is useless. Reconnect to force the target to delete the orphaned
+		// dataset, then restart the full transfer from scratch.
+		if isStaleResumeTokenErr(err) {
+			log.WarnContext(ctx, "sideband: resume token is stale, restarting transfer from scratch",
+				"attempt", attempt, "error", err)
+			if progress != nil {
+				_ = progress.addStatus("resume token stale (source snapshot changed), restarting full transfer...")
+			}
+			_, reconnErr := t.reconnectFresh(ctx)
+			if reconnErr != nil {
+				return fmt.Errorf("sideband: reconnect for fresh transfer failed: %w (stale token error: %v)", reconnErr, err)
+			}
+			return t.streamViaSidebandOnce(ctx, sm, snapshot, incremental, baseSnap, totalBytes, progress)
 		}
 	}
 

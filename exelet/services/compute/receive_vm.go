@@ -137,19 +137,28 @@ func (s *Service) receiveVM(stream api.ComputeService_ReceiveVMServer) error {
 	// interrupted after zfs recv started but before the config was written.
 	// If it has a resume token, the sender can resume the transfer instead
 	// of starting over. Otherwise, delete the orphan.
+	// When DiscardOrphan is set, always delete the orphan — the sender knows
+	// the resume token is stale (e.g., source snapshot was recreated).
 	var orphanResumeToken string
 	if _, err := s.context.StorageManager.Get(ctx, instanceID); err == nil {
-		token, tokenErr := s.context.StorageManager.GetResumeToken(ctx, instanceID)
-		if tokenErr != nil {
-			s.log.WarnContext(ctx, "failed to get resume token from orphaned dataset", "instance", instanceID, "error", tokenErr)
-		}
-		if token != "" {
-			s.log.InfoContext(ctx, "found resumable orphaned dataset from prior migration", "instance", instanceID, "token_len", len(token))
-			orphanResumeToken = token
-		} else {
-			s.log.WarnContext(ctx, "destroying orphaned dataset from prior crashed migration", "instance", instanceID)
+		if startReq.DiscardOrphan {
+			s.log.InfoContext(ctx, "discarding orphaned dataset (sender requested fresh start)", "instance", instanceID)
 			if err := s.context.StorageManager.Delete(ctx, instanceID); err != nil {
 				s.log.WarnContext(ctx, "failed to delete orphaned dataset, proceeding anyway", "instance", instanceID, "error", err)
+			}
+		} else {
+			token, tokenErr := s.context.StorageManager.GetResumeToken(ctx, instanceID)
+			if tokenErr != nil {
+				s.log.WarnContext(ctx, "failed to get resume token from orphaned dataset", "instance", instanceID, "error", tokenErr)
+			}
+			if token != "" {
+				s.log.InfoContext(ctx, "found resumable orphaned dataset from prior migration", "instance", instanceID, "token_len", len(token))
+				orphanResumeToken = token
+			} else {
+				s.log.WarnContext(ctx, "destroying orphaned dataset from prior crashed migration", "instance", instanceID)
+				if err := s.context.StorageManager.Delete(ctx, instanceID); err != nil {
+					s.log.WarnContext(ctx, "failed to delete orphaned dataset, proceeding anyway", "instance", instanceID, "error", err)
+				}
 			}
 		}
 	}
