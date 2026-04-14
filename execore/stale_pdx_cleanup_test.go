@@ -168,3 +168,33 @@ func TestHandleDebugStalePDXCleanupRun(t *testing.T) {
 		t.Fatalf("unexpected body:\n%s", body)
 	}
 }
+
+func TestBuildStalePDXDecisionsUsesRawEmailWhenCanonicalDiffers(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := context.Background()
+
+	email := "john.smith+demo@gmail.com"
+	userID := createTestUser(t, s, email)
+	if err := withTx1(s, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{UserID: userID, Region: "pdx"}); err != nil {
+		t.Fatalf("set pdx region: %v", err)
+	}
+	insertSignupIPCheckForTest(t, s, email, `{"country_code":"GB","latitude":51.5,"longitude":-0.12}`)
+
+	decisions, err := s.buildStalePDXDecisions(ctx)
+	if err != nil {
+		t.Fatalf("build decisions: %v", err)
+	}
+	for _, d := range decisions {
+		if d.User.UserID == userID {
+			if d.TargetRegion != "lon" {
+				t.Fatalf("target region = %q, want lon", d.TargetRegion)
+			}
+			if d.DecisionSource != "signup_ip_check" {
+				t.Fatalf("decision source = %q, want signup_ip_check", d.DecisionSource)
+			}
+			return
+		}
+	}
+	t.Fatalf("decision for user %s not found", userID)
+}

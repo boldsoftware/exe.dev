@@ -8309,14 +8309,9 @@ func (s *Server) buildStalePDXDecisions(ctx context.Context) ([]stalePDXDecision
 	}
 	decisions := make([]stalePDXDecision, 0, len(users))
 	for _, user := range users {
-		var ipCheck *exedb.SignupIPCheck
-		if user.CanonicalEmail != nil && *user.CanonicalEmail != "" {
-			check, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestSignupIPCheckByEmail, *user.CanonicalEmail)
-			if err == nil {
-				ipCheck = &check
-			} else if !errors.Is(err, sql.ErrNoRows) {
-				return nil, fmt.Errorf("lookup signup_ip_check for %s: %w", user.UserID, err)
-			}
+		ipCheck, err := s.lookupSignupIPCheckForUser(ctx, user)
+		if err != nil {
+			return nil, err
 		}
 		target, source, reason := deriveStalePDXTarget(ipCheck)
 		decision := stalePDXDecision{
@@ -8332,6 +8327,23 @@ func (s *Server) buildStalePDXDecisions(ctx context.Context) ([]stalePDXDecision
 		decisions = append(decisions, decision)
 	}
 	return decisions, nil
+}
+
+func (s *Server) lookupSignupIPCheckForUser(ctx context.Context, user exedb.User) (*exedb.SignupIPCheck, error) {
+	candidates := []string{user.Email}
+	if user.CanonicalEmail != nil && *user.CanonicalEmail != "" && *user.CanonicalEmail != user.Email {
+		candidates = append(candidates, *user.CanonicalEmail)
+	}
+	for _, email := range candidates {
+		check, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestSignupIPCheckByEmail, email)
+		if err == nil {
+			return &check, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("lookup signup_ip_check for %s via %q: %w", user.UserID, email, err)
+		}
+	}
+	return nil, nil
 }
 
 func (s *Server) runStalePDXBatch(ctx context.Context, mode string) (*stalePDXBatchResult, error) {
@@ -8371,23 +8383,18 @@ func (s *Server) runStalePDXBatch(ctx context.Context, mode string) (*stalePDXBa
 			msg := err.Error()
 			applyErr = &msg
 			result.Failed++
+			s.slog().WarnContext(ctx, "stale-pdx apply failed", "batch_id", batchID, "user_id", decision.User.UserID, "email", decision.User.Email, "old_region", decision.User.Region, "target_region", decision.TargetRegion, "decision_source", decision.DecisionSource, "error", err)
 		} else {
 			result.Applied++
+			s.slog().InfoContext(ctx, "stale-pdx applied", "batch_id", batchID, "user_id", decision.User.UserID, "email", decision.User.Email, "old_region", decision.User.Region, "target_region", decision.TargetRegion, "decision_source", decision.DecisionSource)
 		}
 		if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserRegionMigrationResult, exedb.UpdateUserRegionMigrationResultParams{Status: applyStatus, Error: applyErr, ID: row.ID}); err != nil {
 			return nil, err
 		}
-		updatedRows, err := withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
-		if err != nil {
-			return nil, err
-		}
-		result.Rows = updatedRows
 	}
-	if mode == "dry_run" {
-		result.Rows, err = withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
-		if err != nil {
-			return nil, err
-		}
+	result.Rows, err = withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -8460,8 +8467,10 @@ func (s *Server) rollbackStalePDXBatch(ctx context.Context, batchID string) (*st
 			msg := err.Error()
 			rollbackErr = &msg
 			result.Failed++
+			s.slog().WarnContext(ctx, "stale-pdx rollback failed", "source_batch_id", batchID, "rollback_batch_id", rollbackBatchID, "user_id", row.UserID, "email", row.Email, "from_region", row.TargetRegion, "to_region", row.OldRegion, "error", err)
 		} else {
 			result.Applied++
+			s.slog().InfoContext(ctx, "stale-pdx rolled back", "source_batch_id", batchID, "rollback_batch_id", rollbackBatchID, "user_id", row.UserID, "email", row.Email, "from_region", row.TargetRegion, "to_region", row.OldRegion)
 		}
 		if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserRegionMigrationResult, exedb.UpdateUserRegionMigrationResultParams{Status: status, Error: rollbackErr, ID: auditRow.ID}); err != nil {
 			return nil, err

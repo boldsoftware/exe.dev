@@ -1067,7 +1067,7 @@ func TestStripelessTrialAppliesToSharedSignupAccountCreation(t *testing.T) {
 		t.Fatalf("SetStripelessTrialEnabled: %v", err)
 	}
 
-	user, err := server.createUser(t.Context(), testSSHPubKey, "stripeless-ssh@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "stripeless-ssh@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
