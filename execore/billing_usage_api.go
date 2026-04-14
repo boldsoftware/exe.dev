@@ -124,21 +124,15 @@ func (s *Server) handleAPIBillingUsage(w http.ResponseWriter, r *http.Request, u
 			return
 		}
 
-		// Aggregate daily metrics by date across all VMs.
-		dayAgg := make(map[string]*billingUsageDailyMetric)
-		var dayOrder []string
+		// metricsd already aggregates across VMs per day (GROUP BY day_start)
+		// when GroupByVM is false, so just map the rows directly.
+		metrics := make([]billingUsageDailyMetric, 0, len(daily))
 		for _, m := range daily {
-			date := m.DayStart.UTC().Format("2006-01-02")
-			if _, ok := dayAgg[date]; !ok {
-				dayAgg[date] = &billingUsageDailyMetric{Date: date}
-				dayOrder = append(dayOrder, date)
-			}
-			dayAgg[date].DiskAvgBytes += m.DiskLogicalAvgBytes
-			dayAgg[date].BandwidthBytes += m.NetworkTXBytes + m.NetworkRXBytes
-		}
-		metrics := make([]billingUsageDailyMetric, 0, len(dayOrder))
-		for _, date := range dayOrder {
-			metrics = append(metrics, *dayAgg[date])
+			metrics = append(metrics, billingUsageDailyMetric{
+				Date:           m.DayStart.UTC().Format("2006-01-02"),
+				DiskAvgBytes:   m.DiskLogicalAvgBytes,
+				BandwidthBytes: m.NetworkTXBytes + m.NetworkRXBytes,
+			})
 		}
 
 		json.NewEncoder(w).Encode(billingUsageResponse{
