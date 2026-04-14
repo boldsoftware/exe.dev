@@ -38,10 +38,11 @@ func (r *Rollup) RunOnce(ctx context.Context, cutoff time.Time) error {
 }
 
 // dayInsertSQL is the per-day rollup query. It takes 4 params:
-//   ?1 = lookback start (day - 15min, for LAG seeding)
-//   ?2 = day end
-//   ?3 = day start (for filtering lookback rows out of INSERT)
-//   ?4 = day end   (same as ?2, for the WHERE filter)
+//
+//	?1 = lookback start (day - 15min, for LAG seeding)
+//	?2 = day end
+//	?3 = day start (for filtering lookback rows out of INSERT)
+//	?4 = day end   (same as ?2, for the WHERE filter)
 const dayInsertSQL = `
 INSERT INTO vm_metrics_daily
 WITH windowed AS (
