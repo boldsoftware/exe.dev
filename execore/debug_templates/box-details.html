@@ -231,6 +231,11 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
         progress.style.background = '#f8f9fa';
         progress.style.borderColor = '#dee2e6';
         progress.textContent = (live ? 'Starting live migration...\n' : 'Starting cold migration...\n');
+        var userScrolledUp = false;
+        progress.addEventListener('scroll', function() {
+            var atBottom = progress.scrollHeight - progress.scrollTop - progress.clientHeight < 20;
+            userScrolledUp = !atBottom;
+        });
 
         fetch(form.action, {
             method: 'POST',
@@ -243,14 +248,16 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
                     if (result.done) return;
                     var text = decoder.decode(result.value, {stream: true});
                     progress.textContent += text;
-                    progress.scrollTop = progress.scrollHeight;
+                    if (!userScrolledUp) {
+                        progress.scrollTop = progress.scrollHeight;
+                    }
                     if (text.includes('MIGRATION_SUCCESS:')) {
                         progress.style.background = '#d4edda';
                         progress.style.borderColor = '#c3e6cb';
                         liveBtn.textContent = 'Live Migrate';
                         coldBtn.textContent = 'Cold Migrate';
-                        // Reload page after brief delay so it picks up new host
-                        setTimeout(function() { location.reload(); }, 2000);
+                        liveBtn.disabled = false;
+                        coldBtn.disabled = false;
                     } else if (text.includes('MIGRATION_ERROR:')) {
                         progress.style.background = '#f8d7da';
                         progress.style.borderColor = '#f5c6cb';
@@ -300,6 +307,11 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
         progress.style.display = 'block';
         progress.className = '';
         progress.textContent = 'Starting tier migration...\n';
+        var userScrolledUp = false;
+        progress.addEventListener('scroll', function() {
+            var atBottom = progress.scrollHeight - progress.scrollTop - progress.clientHeight < 20;
+            userScrolledUp = !atBottom;
+        });
 
         fetch(form.action, {
             method: 'POST',
@@ -313,7 +325,9 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
                     if (result.done) return;
                     var text = decoder.decode(result.value, {stream: true});
                     progress.textContent += text;
-                    progress.scrollTop = progress.scrollHeight;
+                    if (!userScrolledUp) {
+                        progress.scrollTop = progress.scrollHeight;
+                    }
 
                     if (text.includes('TIER_MIGRATION_SUCCESS:')) {
                         progress.style.background = '#d4edda';
