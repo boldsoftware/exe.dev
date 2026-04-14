@@ -109,10 +109,10 @@ func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
 	body := debugBillingPageBody(t, s, userID)
 
 	requireEntitlementRow(t, body, "Use LLM Gateway", true)
-	requireEntitlementRow(t, body, "Connect to VMs", true)
 	requireEntitlementRow(t, body, "Create VMs", false)
 	requireEntitlementRow(t, body, "Purchase Credits", false)
 	requireEntitlementRow(t, body, "Run VMs", false)
+	requireEntitlementRow(t, body, "Resize VM Disks", false)
 }
 
 // TestDebugBillingEntitlementTableFriendUser verifies a Friend plan user
@@ -148,9 +148,9 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 
 	requireEntitlementRow(t, body, "Use LLM Gateway", true)
 	requireEntitlementRow(t, body, "Create VMs", true)
-	requireEntitlementRow(t, body, "Connect to VMs", true)
 	requireEntitlementRow(t, body, "Run VMs", true)
 	requireEntitlementRow(t, body, "Purchase Credits", false)
+	requireEntitlementRow(t, body, "Resize VM Disks", false)
 }
 
 // TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user
@@ -192,7 +192,8 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	body := debugBillingPageBody(t, s, userID)
 
 	for _, ent := range entitlement.AllEntitlements() {
-		requireEntitlementRow(t, body, ent.DisplayName, true)
+		want := entitlement.PlanGrants(entitlement.CategoryIndividual, ent)
+		requireEntitlementRow(t, body, ent.DisplayName, want)
 	}
 }
 
