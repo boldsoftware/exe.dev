@@ -1108,7 +1108,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 			qc = SkipQualityChecks
 		}
 		inviterEmail := ss.server.getInviteGiverEmail(ctx, inviteCode)
-		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey, qc, inviterEmail)
+		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey, ipStr, qc, inviterEmail)
 		if err != nil {
 			ss.server.slog().ErrorContext(ctx, "failed to create user with SSH key during github auto-verification", "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")

@@ -266,7 +266,7 @@ func TestCheckNewThrottleStripe(t *testing.T) {
 	// An email from a disposable name that we normally reject.
 	email := "user@mailinator.com"
 	publicKey := testSSHPubKey
-	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := s.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 
 	email := "user@mailinator.com" // disposable — normally throttled
 	publicKey := testSSHPubKey
-	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := s.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestCheckNewThrottleFreeExemption(t *testing.T) {
 
 	email := "user@guerrillamail.com" // disposable — normally throttled
 	publicKey := testSSHPubKey
-	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := s.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestCheckNewThrottleBasicUser(t *testing.T) {
 
 	email := "user@yopmail.com" // disposable
 	publicKey := testSSHPubKey
-	user, err := s.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := s.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -218,7 +218,7 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 
 	// SSH flow
 	if oauthState.SshVerificationToken != nil {
-		if err := s.completeSSHOIDCAuth(ctx, *oauthState.SshVerificationToken, oauthState, provider, claims); err != nil {
+		if err := s.completeSSHOIDCAuth(ctx, *oauthState.SshVerificationToken, oauthState, provider, claims, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to complete SSH OIDC auth", "error", err)
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
@@ -312,7 +312,7 @@ func (s *Server) handleOIDCExistingUser(w http.ResponseWriter, r *http.Request, 
 
 	// SSH flow
 	if oauthState.SshVerificationToken != nil {
-		if err := s.completeSSHOIDCAuth(ctx, *oauthState.SshVerificationToken, oauthState, provider, claims); err != nil {
+		if err := s.completeSSHOIDCAuth(ctx, *oauthState.SshVerificationToken, oauthState, provider, claims, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to complete SSH OIDC auth", "error", err)
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
@@ -344,7 +344,7 @@ func (s *Server) handleOIDCExistingUser(w http.ResponseWriter, r *http.Request, 
 }
 
 // completeSSHOIDCAuth handles the SSH session side of OIDC authentication.
-func (s *Server) completeSSHOIDCAuth(ctx context.Context, token string, oauthState exedb.OauthState, provider *exedb.TeamSsoProvider, claims *oidcauth.IDTokenClaims) error {
+func (s *Server) completeSSHOIDCAuth(ctx context.Context, token string, oauthState exedb.OauthState, provider *exedb.TeamSsoProvider, claims *oidcauth.IDTokenClaims, clientIP string) error {
 	verification := s.lookUpEmailVerification(token)
 	if verification == nil {
 		return fmt.Errorf("ssh verification session not found")
@@ -356,7 +356,7 @@ func (s *Server) completeSSHOIDCAuth(ctx context.Context, token string, oauthSta
 			qc = SkipQualityChecks
 		}
 		inviterEmail := s.getInviteGiverEmail(ctx, verification.InviteCode)
-		user, err := s.createUserWithSSHKey(ctx, oauthState.Email, verification.PublicKey, qc, inviterEmail)
+		user, err := s.createUserWithSSHKey(ctx, oauthState.Email, verification.PublicKey, clientIP, qc, inviterEmail)
 		if err != nil {
 			verification.Err = fmt.Errorf("failed to create account")
 			verification.Close()

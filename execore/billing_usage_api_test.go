@@ -79,7 +79,7 @@ func TestAPIBillingUsage_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-method@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-method@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestAPIBillingUsage_MissingParams(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-missing@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-missing@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestAPIBillingUsageVMs_MissingParams(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-missing@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-missing@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestAPIBillingUsage_NoMetricsd(t *testing.T) {
 	s := newTestServer(t)
 	// metricsdURL is empty by default in test server
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-nometrics@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-nometrics@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestAPIBillingUsage_Monthly(t *testing.T) {
 	metricsSrv := newFakeMetricsdServer(t, nil, monthlyMetrics, nil)
 	s := newTestServerWithMetricsd(t, metricsSrv.URL)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-monthly@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-monthly@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestAPIBillingUsage_Daily(t *testing.T) {
 	metricsSrv := newFakeMetricsdServer(t, dailyMetrics, nil, nil)
 	s := newTestServerWithMetricsd(t, metricsSrv.URL)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-daily@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usage-daily@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestAPIBillingUsageVMs(t *testing.T) {
 	metricsSrv := newFakeMetricsdServer(t, nil, nil, usageSummaries)
 	s := newTestServerWithMetricsd(t, metricsSrv.URL)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestAPIBillingUsageVMs_EmptyMetrics(t *testing.T) {
 	metricsSrv := newFakeMetricsdServer(t, nil, nil, nil)
 	s := newTestServerWithMetricsd(t, metricsSrv.URL)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-empty@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-empty@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}

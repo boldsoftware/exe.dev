@@ -16,6 +16,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/exedebug"
+	"exe.dev/region"
 	"exe.dev/sqlite"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -128,7 +129,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	email := "test@example.com"
 	// Create user with generated user_id
 	publicKey := testSSHPubKey
-	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	_, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user : %v", err)
 	}
@@ -213,7 +214,7 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	// Create a test user
 	email := "test-home@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -918,5 +919,46 @@ func TestIsExeletNotFoundError(t *testing.T) {
 				t.Errorf("isExeletNotFoundError(%v) = %v, want %v", tt.err, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestCreateUserUsesClientIPForRegion(t *testing.T) {
+	t.Parallel()
+
+	s := newTestServer(t)
+	s.ipqsAPIKey = "test"
+	s.cacheIPLookup("203.0.113.7", ipqsIPResult{CountryCode: "JP", Latitude: 35.68, Longitude: 139.65}, `{"success":true}`, nil)
+	want := region.ForUser("JP", 35.68, 139.65).Code
+
+	user, err := s.createUser(t.Context(), testSSHPubKey, "ip-region@example.com", "203.0.113.7", SkipQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	if user.Region != want {
+		t.Fatalf("user.Region = %q, want %q", user.Region, want)
+	}
+
+	var got string
+	if err := s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT region FROM users WHERE user_id = ?`, user.UserID).Scan(&got)
+	}); err != nil {
+		t.Fatalf("query user region: %v", err)
+	}
+	if got != want {
+		t.Fatalf("db region = %q, want %q", got, want)
+	}
+}
+
+func TestCreateUserFallsBackToDefaultRegionWithoutClientIP(t *testing.T) {
+	t.Parallel()
+
+	s := newTestServer(t)
+
+	user, err := s.createUser(t.Context(), testSSHPubKey, "default-region@example.com", "", SkipQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	if user.Region != region.Default().Code {
+		t.Fatalf("user.Region = %q, want %q", user.Region, region.Default().Code)
 	}
 }

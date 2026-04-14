@@ -236,7 +236,7 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 
 	// SSH flow: delegate entirely to completeSSHGoogleAuth which creates user + adds SSH key
 	if oauthState.SshVerificationToken != nil {
-		if err := s.completeSSHGoogleAuth(ctx, *oauthState.SshVerificationToken, oauthState, claims); err != nil {
+		if err := s.completeSSHGoogleAuth(ctx, *oauthState.SshVerificationToken, oauthState, claims, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to complete SSH google auth", "error", err)
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
@@ -374,7 +374,7 @@ func (s *Server) handleGoogleOAuthExistingUser(w http.ResponseWriter, r *http.Re
 
 	// SSH flow: delegate to completeSSHGoogleAuth which adds the SSH key
 	if oauthState.SshVerificationToken != nil {
-		if err := s.completeSSHGoogleAuth(ctx, *oauthState.SshVerificationToken, oauthState, claims); err != nil {
+		if err := s.completeSSHGoogleAuth(ctx, *oauthState.SshVerificationToken, oauthState, claims, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)); err != nil {
 			s.slog().ErrorContext(ctx, "failed to complete SSH google auth", "error", err)
 			s.showAuthError(w, r, "Failed to complete SSH authentication.", "")
 			return
@@ -466,7 +466,7 @@ func (s *Server) finishOAuthWebLogin(w http.ResponseWriter, r *http.Request, use
 // For new users: creates user + adds SSH key.
 // For existing users: adds the SSH key.
 // Then signals the waiting SSH session.
-func (s *Server) completeSSHGoogleAuth(ctx context.Context, token string, oauthState exedb.OauthState, claims *googleoauth.IDTokenClaims) error {
+func (s *Server) completeSSHGoogleAuth(ctx context.Context, token string, oauthState exedb.OauthState, claims *googleoauth.IDTokenClaims, clientIP string) error {
 	verification := s.lookUpEmailVerification(token)
 	if verification == nil {
 		return fmt.Errorf("ssh verification session not found")
@@ -478,7 +478,7 @@ func (s *Server) completeSSHGoogleAuth(ctx context.Context, token string, oauthS
 			qc = SkipQualityChecks
 		}
 		inviterEmail := s.getInviteGiverEmail(ctx, verification.InviteCode)
-		user, err := s.createUserWithSSHKey(ctx, oauthState.Email, verification.PublicKey, qc, inviterEmail)
+		user, err := s.createUserWithSSHKey(ctx, oauthState.Email, verification.PublicKey, clientIP, qc, inviterEmail)
 		if err != nil {
 			verification.Err = fmt.Errorf("failed to create account")
 			verification.Close()

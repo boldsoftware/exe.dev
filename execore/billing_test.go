@@ -13,6 +13,7 @@ import (
 	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
+	"exe.dev/region"
 	"exe.dev/sqlite"
 )
 
@@ -109,7 +110,7 @@ func TestBillingRequiredForCreateVM_WebUI(t *testing.T) {
 	// Create a user without billing info
 	email := "no-billing-create@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	// Create a user — createUser calls createUserRecord which inserts account + basic plan.
 	email := "ispaying-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -262,7 +263,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	// Create a user — gets basic plan at signup.
 	email := "needsbilling-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -314,7 +315,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 	// Create a user
 	email := "legacy-user@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -366,7 +367,7 @@ func TestBillingBypassBug(t *testing.T) {
 	// Create a new user
 	email := "billing-bypass@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -449,7 +450,7 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	// Create a new user
 	email := "bypass-fake-session@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -507,7 +508,7 @@ func TestBillingActivateThenCancelThenReactivate(t *testing.T) {
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
-	user, err := server.createUser(t.Context(), testSSHPubKey, "plan-transitions@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "plan-transitions@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -545,7 +546,7 @@ func TestCreateVMRedirectsToBillingWithParams(t *testing.T) {
 	// Create a user without billing info
 	email := "create-vm-params@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -601,7 +602,7 @@ func TestBillingSubscribePreservesVMParams(t *testing.T) {
 	// Create a user without billing info
 	email := "billing-params@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -649,7 +650,7 @@ func TestBillingSubscribeReusesExistingPendingAccount(t *testing.T) {
 	// Create a user without billing
 	email := "duplicate-account-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -777,7 +778,7 @@ func TestBillingCancelCreatesNoVMState(t *testing.T) {
 	// Create a user without billing
 	email := "cancel-no-vm@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1141,7 +1142,7 @@ func TestExistingUserAuthUnchanged(t *testing.T) {
 	// Create an existing user first
 	email := "existing-user@example.com"
 	publicKey := testSSHPubKey
-	_, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	_, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1310,7 +1311,7 @@ func TestBillingPortal_NoBillingAccount_Returns404(t *testing.T) {
 	// Create a user without any billing account
 	email := "no-billing-account@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1345,7 +1346,7 @@ func TestBillingPortal_PendingAccount_RedirectsToSubscribe(t *testing.T) {
 	// Create a user with a pending billing account
 	email := "pending-account@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1386,7 +1387,7 @@ func TestBillingPortal_ActiveAccount_RedirectsToStripe(t *testing.T) {
 	// Create a user with an active billing account
 	email := "active-account@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1431,7 +1432,7 @@ func TestBillingCheckoutReusesExistingAccount(t *testing.T) {
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
 
-	user, err := server.createUser(t.Context(), testSSHPubKey, "single-account@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "single-account@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1483,7 +1484,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// User activates billing then cancels — should drop back to basic (no VMCreate).
 		user, err := server.createUser(t.Context(),
 			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ1 test-canceled-after",
-			"canceled-after@example.com", AllQualityChecks)
+			"canceled-after@example.com", "", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -1528,7 +1529,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// Users with 'friend' plan (not canceled) should have VMCreate.
 		user, err := server.createUser(t.Context(),
 			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ2 test-friend",
-			"friend-plan@example.com", AllQualityChecks)
+			"friend-plan@example.com", "", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -1567,7 +1568,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		// User who canceled and resubscribed should have VMCreate again.
 		user, err := server.createUser(t.Context(),
 			"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZh3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ3qZ4 test-reactivated",
-			"reactivated@example.com", AllQualityChecks)
+			"reactivated@example.com", "", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -1619,7 +1620,7 @@ func TestBillingUpdateLongPromptSucceeds(t *testing.T) {
 
 	email := "long-prompt@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1665,7 +1666,7 @@ func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
 
 	email := "long-prompt-e2e@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1744,7 +1745,7 @@ func TestBillingSuccessWithLongPromptCreatesVM(t *testing.T) {
 // Use activateUserBilling for the account_plans upgrade.
 func createUserWithAccount(t *testing.T, server *Server, email, _ string) (*exedb.User, string) {
 	t.Helper()
-	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1832,7 +1833,7 @@ func TestCreditPurchase_BuyNoAccount(t *testing.T) {
 	// the billing update page instead of proceeding to credit checkout.
 	server := newBillingTestServer(t)
 	server.env.SkipBilling = false
-	user, err := server.createUser(t.Context(), testSSHPubKey, "credits-noaccount@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "credits-noaccount@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -1971,7 +1972,7 @@ func TestCreditPurchase_BuyEntitlementDeniedForNonPayingUser(t *testing.T) {
 	server.env.SkipBilling = false
 
 	// Create a user without any billing account -- they will lack CreditPurchase entitlement
-	user, err := server.createUser(t.Context(), testSSHPubKey, "no-billing-entitlement@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "no-billing-entitlement@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -2006,7 +2007,7 @@ func TestInviteRequest_EntitlementDeniedRedirects(t *testing.T) {
 	server.env.SkipBilling = false
 
 	// User without billing should be redirected
-	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-nobilling@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-nobilling@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -2046,7 +2047,7 @@ func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
 	server.env.SkipBilling = false
 
 	// Create user with active billing (manual setup to avoid Stripe calls)
-	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-billing@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "invite-billing@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -2378,5 +2379,53 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	wantPlanID := plan.ID(plan.CategoryIndividual)
 	if ap.PlanID != wantPlanID {
 		t.Errorf("plan_id=%q, want %q", ap.PlanID, wantPlanID)
+	}
+}
+
+func TestNewUserBillingSuccessUsesClientIPForRegion(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	ctx := t.Context()
+
+	server.ipqsAPIKey = "test"
+	server.cacheIPLookup("198.51.100.42", ipqsIPResult{CountryCode: "GB", Latitude: 51.51, Longitude: -0.13}, `{"success":true}`, nil)
+	want := region.ForUser("GB", 51.51, -0.13).Code
+
+	billingID := "cus_test_region_phase0"
+	token := "test-token-region-phase0"
+	accountID := billingID
+	err := withTx1(server, ctx, (*exedb.Queries).InsertPendingRegistration, exedb.InsertPendingRegistrationParams{
+		Token:     token,
+		Email:     "billing-region@example.com",
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+		AccountID: &accountID,
+	})
+	if err != nil {
+		t.Fatalf("InsertPendingRegistration: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/billing/success?session_id=cs_test_session&token="+token, nil)
+	req.RemoteAddr = "198.51.100.42:12345"
+	req.Host = server.env.WebHost
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code == http.StatusInternalServerError {
+		t.Fatalf("handleNewUserBillingSuccess returned 500: %s", w.Body.String())
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var got string
+	err = server.db.Rx(ctx, func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT region FROM users WHERE email = ?`, "billing-region@example.com").Scan(&got)
+	})
+	if err != nil {
+		t.Fatalf("query billing user region: %v", err)
+	}
+	if got != want {
+		t.Fatalf("billing-created user region = %q, want %q", got, want)
 	}
 }

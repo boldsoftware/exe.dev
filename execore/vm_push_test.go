@@ -41,7 +41,7 @@ func (f *fakePushSender) Send(ctx context.Context, environment, deviceToken, tit
 
 func createPushTestBox(t *testing.T, s *Server) (userID, boxName string) {
 	t.Helper()
-	user, err := s.createUser(t.Context(), testSSHPubKey, "pushowner@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "pushowner@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestVMPushSend_NoTokens(t *testing.T) {
 	s := newTestServer(t)
 
 	// Create user + box but no push tokens.
-	user, err := s.createUser(t.Context(), testSSHPubKey, "nopush@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "nopush@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestVMPushSend_SandboxToken(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "sbxpush@example.com", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "sbxpush@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatal(err)
 	}

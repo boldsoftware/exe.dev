@@ -164,7 +164,7 @@ func TestIdeaAPIIncludesDeployCount(t *testing.T) {
 
 func ideaTestUserCookie(t *testing.T, server *Server) (string, *http.Cookie) {
 	t.Helper()
-	user, err := server.createUser(t.Context(), testSSHPubKey, "test-idea@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "test-idea@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestIdeaRateAllowedForBasicUserWithLLMUseEntitlement(t *testing.T) {
 	}
 
 	// Create a user without billing — they'll be on the Basic plan which grants LLMUse
-	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-basic@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-basic@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestIdeaRateAllowedWithLLMUseEntitlement(t *testing.T) {
 		t.Fatalf("seedDefaultTemplates failed: %v", err)
 	}
 
-	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-allowed@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "rate-allowed@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestIdeaPageCanRateRequiresLLMUseEntitlement(t *testing.T) {
 	}
 
 	// Create a user without billing
-	user, err := server.createUser(t.Context(), testSSHPubKey, "canrate-test@example.com", AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, "canrate-test@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}

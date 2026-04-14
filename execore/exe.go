@@ -3680,12 +3680,16 @@ const (
 
 // createUser creates a new user with their resource allocation.
 // This is used for SSH registration flow, not login-with-exe.
-func (s *Server) createUser(ctx context.Context, publicKey, email string, qc QualityCheck) (*exedb.User, error) {
+// clientIP is used for geo-aware region assignment; pass "" to fall back to the default region.
+func (s *Server) createUser(ctx context.Context, publicKey, email, clientIP string, qc QualityCheck) (*exedb.User, error) {
 	var user exedb.User
+
+	// Resolve region before entering the transaction (regionForIP may do network I/O).
+	userRegion := s.regionForIP(ctx, clientIP)
 
 	// First create the user and allocation in the database
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		userID, err := s.createUserRecord(ctx, queries, email, false, region.Default().Code)
+		userID, err := s.createUserRecord(ctx, queries, email, false, userRegion.Code)
 		if err != nil {
 			return err
 		}

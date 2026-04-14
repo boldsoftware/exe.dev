@@ -21,7 +21,7 @@ func TestVMEmailSend_Success(t *testing.T) {
 	// Create user and box
 	email := "owner@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestVMEmailSend_NonOwnerRecipient(t *testing.T) {
 	// Create user and box
 	email := "owner@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestVMEmailSend_SubjectAtLimit(t *testing.T) {
 	// Create user and box
 	email := "owner-atlimit@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestVMEmailSend_BodyAtLimit(t *testing.T) {
 	// Create user and box
 	email := "owner-bodyatlimit@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -537,7 +537,7 @@ func TestVMEmailSend_RateLimiting(t *testing.T) {
 	// Create user and box
 	email := "ratelimit@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestVMEmailSend_CaseInsensitiveEmailMatch(t *testing.T) {
 	// Create user with lowercase email
 	email := "owner@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}

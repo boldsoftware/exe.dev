@@ -35,7 +35,6 @@ import (
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
 	"exe.dev/pow"
-	"exe.dev/region"
 	"exe.dev/tracing"
 	_ "modernc.org/sqlite"
 )
@@ -94,7 +93,8 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			qc = SkipQualityChecks
 		}
 		inviterEmail := s.getInviteGiverEmail(r.Context(), verification.InviteCode)
-		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey, qc, inviterEmail)
+		clientIP := exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)
+		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey, clientIP, qc, inviterEmail)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to create user with SSH key during email verification", "error", err, "token", token)
 			http.Error(w, "failed to create user account", http.StatusInternalServerError)
@@ -700,6 +700,9 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Resolve region from client IP before entering the transaction (may do network I/O).
+	billingRegion := s.regionForIP(ctx, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
+
 	// Create user + account in transaction.
 	// The account ID comes from the Stripe checkout session (billingID) — it was
 	// generated when the checkout session was created and is already the Stripe customer ID.
@@ -707,7 +710,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 	var userID string
 	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
-		userID, err = s.createUserRecord(ctx, queries, pending.Email, false, region.Default().Code)
+		userID, err = s.createUserRecord(ctx, queries, pending.Email, false, billingRegion.Code)
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}

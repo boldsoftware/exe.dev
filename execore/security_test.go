@@ -105,7 +105,7 @@ func TestOpenRedirectAfterAuth(t *testing.T) {
 	// Create a user and get them authenticated
 	email := "redirect-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestMagicAuthOpenRedirect(t *testing.T) {
 	ctx := t.Context()
 
 	// Create a user
-	user, err := server.createUser(ctx, testSSHPubKey, "magic-redirect@example.com", AllQualityChecks)
+	user, err := server.createUser(ctx, testSSHPubKey, "magic-redirect@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestRenderAccessRequiredRedirect(t *testing.T) {
 	})
 
 	t.Run("authenticated user without access sees 401", func(t *testing.T) {
-		user, err := server.createUser(t.Context(), testSSHPubKey, "denied@example.com", AllQualityChecks)
+		user, err := server.createUser(t.Context(), testSSHPubKey, "denied@example.com", "", AllQualityChecks)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}

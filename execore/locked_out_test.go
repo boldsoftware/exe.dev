@@ -21,7 +21,7 @@ func TestIsUserLockedOut(t *testing.T) {
 	// Create a user
 	email := "lockout-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestLockedOutUserCannotAddNewSSHKey(t *testing.T) {
 	// Create a user with an existing SSH key
 	email := "lockedout-newkey@example.com"
 	existingPublicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), existingPublicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), existingPublicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestLockoutStopsUserBoxes(t *testing.T) {
 	ctx := t.Context()
 
 	// Create a user
-	user, err := server.createUser(ctx, testSSHPubKey, "lockout-boxes@example.com", AllQualityChecks)
+	user, err := server.createUser(ctx, testSSHPubKey, "lockout-boxes@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -247,11 +247,11 @@ func TestDebugVMList(t *testing.T) {
 	server := newTestServer(t)
 	ctx := t.Context()
 
-	normalUser, err := server.createUser(ctx, testSSHPubKey, "normal-user@example.com", AllQualityChecks)
+	normalUser, err := server.createUser(ctx, testSSHPubKey, "normal-user@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create normal user: %v", err)
 	}
-	lockedUser, err := server.createUser(ctx, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb locked@example.com", "locked-user@example.com", AllQualityChecks)
+	lockedUser, err := server.createUser(ctx, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb locked@example.com", "locked-user@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create locked user: %v", err)
 	}

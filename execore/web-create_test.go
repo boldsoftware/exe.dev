@@ -128,7 +128,7 @@ func TestRunCommandNotAllowed(t *testing.T) {
 	// Create a user and get auth cookie
 	email := "cmd-test@example.com"
 	publicKey := testSSHPubKey
-	user, err := server.createUser(t.Context(), publicKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), publicKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestStartBoxCreationReusesDeletedName(t *testing.T) {
 	server := newTestServer(t)
 
 	email := "reuse-name-test@example.com"
-	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestAPICheckoutParams(t *testing.T) {
 
 	// Create a user and get auth cookie
 	email := "cp-api-test@example.com"
-	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestShareAddLinkJSONViaWeb(t *testing.T) {
 
 	// Create a user and get auth cookie.
 	email := "share-link-json@example.com"
-	user, err := server.createUser(t.Context(), testSSHPubKey, email, AllQualityChecks)
+	user, err := server.createUser(t.Context(), testSSHPubKey, email, "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
