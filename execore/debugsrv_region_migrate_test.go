@@ -313,7 +313,7 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", false, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", false, false, 0, progress)
 
 		joined := strings.Join(messages, "\n")
 		if !strings.Contains(joined, "already stopped") {
@@ -332,7 +332,7 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", true, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "test", true, false, 0, progress)
 
 		joined := strings.Join(messages, "\n")
 		if !strings.Contains(joined, "still running") {
@@ -352,7 +352,7 @@ func TestRestartSourceVM(t *testing.T) {
 			messages = append(messages, fmt.Sprintf(format, args...))
 		}
 
-		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "migration failed", true, false, progress)
+		server.restartSourceVM(ctx, ec, "ctr-1", "box1", "source1", "", "migration failed", true, false, 0, progress)
 
 		joined := strings.Join(messages, "\n")
 		if !strings.Contains(joined, "skipping restart") {

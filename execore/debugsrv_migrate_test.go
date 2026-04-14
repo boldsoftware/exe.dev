@@ -870,3 +870,279 @@ func TestHandleDebugBoxMigrateSSHFailureFallsBackToCold(t *testing.T) {
 		t.Fatal("timed out waiting for maintenance email")
 	}
 }
+
+// fakeStoppedSourceServer simulates a source exelet where the VM transitions
+// from RUNNING to a failed state during migration. GetInstance returns RUNNING
+// on the first call (pre-migration check), then the configured postMigrationState
+// on subsequent calls (simulating the VM crashing during migration).
+type fakeStoppedSourceServer struct {
+	computeapi.UnimplementedComputeServiceServer
+	postMigrationState computeapi.VMState
+	getInstanceCalls   int
+}
+
+func (f *fakeStoppedSourceServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
+	f.getInstanceCalls++
+	state := computeapi.VMState_RUNNING
+	if f.getInstanceCalls > 1 {
+		state = f.postMigrationState
+	}
+	return &computeapi.GetInstanceResponse{
+		Instance: &computeapi.Instance{
+			State:   state,
+			SSHPort: 22222,
+		},
+	}, nil
+}
+
+func (f *fakeStoppedSourceServer) StopInstance(_ context.Context, _ *computeapi.StopInstanceRequest) (*computeapi.StopInstanceResponse, error) {
+	return &computeapi.StopInstanceResponse{}, nil
+}
+
+func (f *fakeStoppedSourceServer) StartInstance(_ context.Context, _ *computeapi.StartInstanceRequest) (*computeapi.StartInstanceResponse, error) {
+	return &computeapi.StartInstanceResponse{}, nil
+}
+
+func (f *fakeStoppedSourceServer) DeleteInstance(_ context.Context, _ *computeapi.DeleteInstanceRequest) (*computeapi.DeleteInstanceResponse, error) {
+	return &computeapi.DeleteInstanceResponse{}, nil
+}
+
+// SendVM simulates a live migration that connects to the target, gets a TargetReady,
+// sends metadata, then fails with an error (simulating a target-side failure).
+func (f *fakeStoppedSourceServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	startReq := req.GetStart()
+	if startReq == nil {
+		return fmt.Errorf("expected start request")
+	}
+
+	// Send TargetReady to confirm direct mode.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_TargetReady{
+			TargetReady: &computeapi.SendVMTargetReady{
+				TargetNetwork: &computeapi.NetworkInterface{
+					IP: &computeapi.IPAddress{
+						IPV4:      "10.0.0.2/24",
+						GatewayV4: "10.0.0.1",
+					},
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Send metadata.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_Metadata{
+			Metadata: &computeapi.SendVMMetadata{
+				Instance: &computeapi.Instance{
+					ID:    "test-instance",
+					Image: "ubuntu:latest",
+					VMConfig: &computeapi.VMConfig{
+						NetworkInterface: &computeapi.NetworkInterface{
+							IP: &computeapi.IPAddress{IPV4: "10.0.0.99/24"},
+						},
+					},
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Return error to simulate migration failure (e.g., target restore failed).
+	return fmt.Errorf("target restore failed: simulated error")
+}
+
+func TestRestartSourceVMUpdatesDBStatusWhenVMStopped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		boxName string
+		vmState computeapi.VMState
+	}{
+		{"vm_stopped", "restart-vmstopped", computeapi.VMState_STOPPED},
+		{"vm_paused", "restart-vmpaused", computeapi.VMState_PAUSED},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			server := newTestServer(t)
+			ctx := context.Background()
+
+			// Set up source exelet that reports VM as stopped/paused.
+			// First GetInstance call returns RUNNING (pre-check), subsequent calls
+			// return the configured postMigrationState.
+			sourceSrv := &fakeStoppedSourceServer{postMigrationState: tt.vmState}
+			lis, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("failed to listen: %v", err)
+			}
+			gs := grpc.NewServer()
+			computeapi.RegisterComputeServiceServer(gs, sourceSrv)
+			go gs.Serve(lis)
+			t.Cleanup(gs.Stop)
+			t.Cleanup(func() { _ = lis.Close() })
+
+			sourceAddr := fmt.Sprintf("tcp://%s", lis.Addr().String())
+			sourceClient, err := exeletclient.NewClient(sourceAddr, exeletclient.WithInsecure())
+			if err != nil {
+				t.Fatalf("failed to create exelet client: %v", err)
+			}
+			t.Cleanup(func() { sourceClient.Close() })
+
+			server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+			server.exeletClients[sourceAddr].up.Store(true)
+
+			// Create a box in "running" state.
+			userID := createTestUser(t, server, tt.name+"@example.com")
+			boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+				userID:        userID,
+				ctrhost:       sourceAddr,
+				name:          tt.boxName,
+				image:         "ubuntu:latest",
+				noShard:       true,
+				region:        "pdx",
+				allocatedCPUs: 2,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			containerID := "container-" + tt.name
+			err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+				return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+					ID:          boxID,
+					ContainerID: &containerID,
+					Status:      "running",
+					SSHPort:     nil,
+				})
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Verify it starts as "running".
+			box, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, tt.boxName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if box.Status != "running" {
+				t.Fatalf("box status = %q, want running", box.Status)
+			}
+
+			// Simulate that GetInstance was already called once (pre-migration check)
+			// so subsequent calls return the post-migration state.
+			sourceSrv.getInstanceCalls = 1
+
+			var messages []string
+			progress := func(format string, args ...any) {
+				messages = append(messages, fmt.Sprintf(format, args...))
+			}
+
+			// Call restartSourceVM simulating a failed live migration.
+			server.restartSourceVM(ctx, server.exeletClients[sourceAddr], containerID,
+				tt.boxName, sourceAddr, "", "migration failed",
+				true, true, box.ID, progress)
+
+			// Verify DB status was updated to "stopped".
+			box, err = withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, tt.boxName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if box.Status != "stopped" {
+				joined := strings.Join(messages, "\n")
+				t.Fatalf("box status = %q, want stopped\nprogress:\n%s", box.Status, joined)
+			}
+
+			// Verify progress messages mention the DB update.
+			joined := strings.Join(messages, "\n")
+			if !strings.Contains(joined, "Updated DB status to stopped") {
+				t.Errorf("expected DB update message in progress, got:\n%s", joined)
+			}
+		})
+	}
+}
+
+// TestHandleDebugBoxMigrateFailedLiveUpdatesDB verifies that when a live
+// migration fails and the source VM is stopped, handleDebugBoxMigrate
+// updates the DB status to "stopped" instead of leaving it as "running".
+func TestHandleDebugBoxMigrateFailedLiveUpdatesDB(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Source exelet: GetInstance returns RUNNING first (pre-migration check),
+	// then STOPPED after migration fails. SendVM returns an error.
+	sourceSrv := &fakeStoppedSourceServer{postMigrationState: computeapi.VMState_STOPPED}
+	sourceAddr, sourceClient := startFakeComputeServer(t, sourceSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+
+	// Target exelet (the migration won't reach it, but handler looks it up).
+	targetSrv := &fakeLiveMigrationServer{sshPort: 22222, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	// Create a box.
+	const boxName = "failed-live-db"
+	userID := createTestUser(t, server, boxName+"@example.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          boxName,
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containerID := "container-" + boxName
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+			SSHPort:     nil,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// POST to the debug migrate handler.
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+	}
+	req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	server.handleDebugBoxMigrate(w, req)
+	body := w.Body.String()
+
+	// Migration should have failed.
+	if !strings.Contains(body, "MIGRATION_ERROR") {
+		t.Fatalf("expected MIGRATION_ERROR in response, got:\n%s", body)
+	}
+
+	// Verify DB status was updated to "stopped".
+	box, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box.Status != "stopped" {
+		t.Fatalf("box status = %q, want \"stopped\" (DB was not updated after failed migration)\nresponse:\n%s", box.Status, body)
+	}
+}

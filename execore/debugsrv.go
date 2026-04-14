@@ -703,7 +703,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	restartSource := func(reason string) {
-		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, writeProgress)
+		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
 	}
 
 	// Step 2: Perform migration
@@ -1575,7 +1575,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		live := wasRunning // Use live migration for running VMs
 
 		restartSource := func(reason string) {
-			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, writeProgress)
+			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
 		}
 
 		var sshPort *int64
@@ -6237,10 +6237,26 @@ func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Reque
 // restartSourceVM restarts a VM on its source exelet after a failed migration.
 // It uses exponential backoff retry in case the exelet is temporarily unavailable.
 // If live is true, it first stops the (paused) VM before restarting.
-func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, containerID, boxName, sourceAddr, targetAddr, reason string, wasRunning, live bool, writeProgress func(string, ...any)) {
+func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, containerID, boxName, sourceAddr, targetAddr, reason string, wasRunning, live bool, boxID int, writeProgress func(string, ...any)) {
 	if !wasRunning {
 		writeProgress("Source VM was already stopped, nothing to restart.")
 		return
+	}
+
+	// markStopped updates the exed DB status to "stopped" so that it
+	// reflects reality when we cannot restart the VM. Without this,
+	// the DB would still say "running" even though the VM is down.
+	markStopped := func(reason string) {
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxStatus, exedb.UpdateBoxStatusParams{
+			Status: "stopped",
+			ID:     boxID,
+		}); err != nil {
+			writeProgress("WARNING: failed to update DB status to stopped: %v", err)
+			s.slog().ErrorContext(ctx, "failed to update box status to stopped after failed migration",
+				"box", boxName, "box_id", boxID, "error", err, "reason", reason)
+		} else {
+			writeProgress("Updated DB status to stopped.")
+		}
 	}
 
 	// Check if VM is still running (failed before pause/stop)
@@ -6253,12 +6269,14 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 		writeProgress("VM is paused on source — possible successful migration, skipping restart for operator reconciliation.")
 		s.slog().WarnContext(ctx, "migration outcome ambiguous, VM paused on source, skipping restart to avoid split-brain",
 			"box", boxName, "container_id", containerID, "source", sourceAddr, "reason", reason)
+		markStopped("VM paused on source after failed migration")
 		return
 	}
 	if err == nil && inst.Instance.State == computeapi.VMState_STOPPED {
 		writeProgress("VM is stopped on source after migration — possible successful migration, skipping restart for operator reconciliation.")
 		s.slog().WarnContext(ctx, "migration outcome ambiguous, VM stopped on source, skipping restart to avoid split-brain",
 			"box", boxName, "container_id", containerID, "source", sourceAddr, "reason", reason)
+		markStopped("VM stopped on source after failed migration")
 		return
 	}
 
@@ -6274,6 +6292,7 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 				s.slog().WarnContext(ctx, "migration outcome ambiguous, VM exists on target, skipping source restart",
 					"box", boxName, "container_id", containerID, "source", sourceAddr, "target", targetAddr,
 					"target_state", targetInst.Instance.State, "reason", reason)
+				markStopped("VM exists on target after failed migration")
 				return
 			}
 		}
@@ -6291,6 +6310,7 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 				break
 			} else if time.Now().After(deadline) {
 				writeProgress("ERROR: failed to stop paused VM on source after %d attempts: %v", attempt, err)
+				markStopped("failed to stop paused VM on source")
 				return
 			} else {
 				writeProgress("Stop attempt %d failed (%v), retrying...", attempt, err)
@@ -6313,6 +6333,7 @@ func (s *Server) restartSourceVM(ctx context.Context, source *exeletClient, cont
 			writeProgress("ERROR: failed to restart VM on source after %d attempts: %v", attempt, err)
 			s.slog().ErrorContext(ctx, "failed to restart VM on source after migration failure",
 				"box", boxName, "container_id", containerID, "source", sourceAddr, "attempts", attempt, "error", err)
+			markStopped("failed to restart VM on source after migration failure")
 			return
 		} else {
 			writeProgress("Restart attempt %d failed (%v), retrying...", attempt, err)
@@ -6497,7 +6518,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		live := wasRunning
 
 		restartSource := func(reason string) {
-			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, writeProgress)
+			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
 		}
 
 		var sshPort *int64
@@ -6767,7 +6788,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 	}
 
 	restartSource := func(reason string) {
-		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, false, writeProgress)
+		s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, false, box.ID, writeProgress)
 	}
 
 	// Transfer disk (two-phase=false since VM is stopped).
