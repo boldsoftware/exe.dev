@@ -378,6 +378,7 @@ func Staging() Env {
 				"david.crawshaw@gmail.com",
 				"david@zentus.com",
 				"josharian@gmail.com",
+				"maisem@gmail.com",
 				"nchazlett@gmail.com",
 				"philip.zeyliger@gmail.com",
 			},
