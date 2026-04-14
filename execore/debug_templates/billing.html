@@ -118,7 +118,7 @@ table.info th { width: 200px; }
 {{if $.MonthlyMetrics}}
 <h4>Monthly Usage</h4>
 <table>
-<thead><tr><th>Month</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Days</th><th>Disk Overage (GB)</th><th>BW Overage (GB)</th><th>Est. Cost</th></tr></thead>
+<thead><tr><th>Month</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Days</th><th>Disk Overage (GB)</th><th>Disk Cost</th><th>BW Overage (GB)</th><th>BW Cost</th></tr></thead>
 <tbody>
 {{range $.MonthlyMetrics}}
 <tr>
@@ -132,8 +132,9 @@ table.info th { width: 200px; }
   <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
   <td>{{.DaysWithData}}</td>
   <td>{{overage .DiskLogicalAvgBytes 25}}</td>
+  <td>{{diskCost .DiskLogicalAvgBytes}}</td>
   <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
-  <td>{{estCost .DiskLogicalAvgBytes (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
+  <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
 </tr>
 {{end}}
 </tbody>
@@ -143,7 +144,7 @@ table.info th { width: 200px; }
 {{if $.DailyMetrics}}
 <h4>Daily Usage (Current Billing Period)</h4>
 <table>
-<thead><tr><th>Date</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Hours</th><th>Disk Overage (GB)</th><th>BW Overage (GB)</th><th>Est. Cost</th></tr></thead>
+<thead><tr><th>Date</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Hours</th><th>Disk Overage (GB)</th><th>Disk Cost</th><th>BW Overage (GB)</th><th>BW Cost</th></tr></thead>
 <tbody>
 {{range $.DailyMetrics}}
 <tr>
@@ -157,8 +158,9 @@ table.info th { width: 200px; }
   <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
   <td>{{.HoursWithData}}</td>
   <td>{{overage .DiskLogicalAvgBytes 25}}</td>
+  <td>{{diskCost .DiskLogicalAvgBytes}}</td>
   <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
-  <td>{{estCost .DiskLogicalAvgBytes (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
+  <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
 </tr>
 {{end}}
 </tbody>
