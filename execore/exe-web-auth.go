@@ -1535,12 +1535,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// When creating a VM (hostname present), billing is checked post-verification instead.
 	// Google OAuth users skip billing at signup — Google login is sufficient anti-abuse friction.
 	// They hit billing when they try to create a VM.
-	// iOS app users skip billing at signup — they get a 7-day trial automatically.
+	// iOS app users skip billing at signup — they get a trial automatically.
 	willUseGoogleOAuth := s.shouldUseGoogleOAuth(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
 	oidcProvider := s.shouldUseTeamOIDC(r.Context(), addr, userID, isNewUser, r.FormValue("team_invite"))
 	willUseOIDC := oidcProvider != nil
 	isIOS := isIOSAppRequest(r)
-	if isNewUser && !s.env.SkipBilling && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC && !isIOS {
+	stripelessTrialEnabled := s.IsStripelessTrialEnabled(r.Context())
+	if isNewUser && !s.env.SkipBilling && !stripelessTrialEnabled && invite == nil && !hasValidTeamInvite && !isLoginWithExe && hostname == "" && !willUseGoogleOAuth && !willUseOIDC && !isIOS {
 		// Create pending registration to track email through Stripe.
 		// Generate the account ID now so it can be used as the Stripe customer ID
 		// and later as the canonical account ID when the user is created.
@@ -1649,6 +1650,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	var signupPlan entitlement.PlanCategory
 	if isNewUser {
 		userRegion := s.regionForIP(r.Context(), ip.String())
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
@@ -1656,7 +1658,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			if err != nil {
 				return err
 			}
-			_, err = createAccountWithBasicPlan(ctx, queries, userID)
+			_, signupPlan, err = createAccountWithInitialPlan(ctx, queries, userID)
 			return err
 		})
 		if err != nil {
@@ -1683,8 +1685,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.slog().WarnContext(r.Context(), "email quality check failed", "error", err, "email", addr)
 		}
 
-		// iOS app signups get an automatic 7-day trial (no credit card required).
-		if isIOS {
+		// Stripeless trial mode already creates new accounts with a trial plan.
+		// iOS signups only need a separate trial grant when signup policy left
+		// the account on a non-trial plan.
+		if isIOS && signupPlan != entitlement.CategoryTrial {
 			if err := s.grantIOSTrial(r.Context(), userID); err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to grant iOS trial", "error", err, "user_id", userID)
 			} else {

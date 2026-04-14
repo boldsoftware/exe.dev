@@ -615,6 +615,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSiteCookiesForUserStmt, err = db.PrepareContext(ctx, getSiteCookiesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSiteCookiesForUser: %w", err)
 	}
+	if q.getStripelessTrialEnabledStmt, err = db.PrepareContext(ctx, getStripelessTrialEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetStripelessTrialEnabled: %w", err)
+	}
 	if q.getTagResolutionStmt, err = db.PrepareContext(ctx, getTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagResolution: %w", err)
 	}
@@ -1070,6 +1073,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setSignupPOWEnabledStmt, err = db.PrepareContext(ctx, setSignupPOWEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSignupPOWEnabled: %w", err)
+	}
+	if q.setStripelessTrialEnabledStmt, err = db.PrepareContext(ctx, setStripelessTrialEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetStripelessTrialEnabled: %w", err)
 	}
 	if q.setTeamAuthProviderStmt, err = db.PrepareContext(ctx, setTeamAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetTeamAuthProvider: %w", err)
@@ -2247,6 +2253,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSiteCookiesForUserStmt: %w", cerr)
 		}
 	}
+	if q.getStripelessTrialEnabledStmt != nil {
+		if cerr := q.getStripelessTrialEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getStripelessTrialEnabledStmt: %w", cerr)
+		}
+	}
 	if q.getTagResolutionStmt != nil {
 		if cerr := q.getTagResolutionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTagResolutionStmt: %w", cerr)
@@ -3007,6 +3018,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setSignupPOWEnabledStmt: %w", cerr)
 		}
 	}
+	if q.setStripelessTrialEnabledStmt != nil {
+		if cerr := q.setStripelessTrialEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setStripelessTrialEnabledStmt: %w", cerr)
+		}
+	}
 	if q.setTeamAuthProviderStmt != nil {
 		if cerr := q.setTeamAuthProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setTeamAuthProviderStmt: %w", cerr)
@@ -3553,6 +3569,7 @@ type Queries struct {
 	getShellHistoryStmt                        *sql.Stmt
 	getSignupPOWEnabledStmt                    *sql.Stmt
 	getSiteCookiesForUserStmt                  *sql.Stmt
+	getStripelessTrialEnabledStmt              *sql.Stmt
 	getTagResolutionStmt                       *sql.Stmt
 	getTagsNeedingRefreshStmt                  *sql.Stmt
 	getTeamStmt                                *sql.Stmt
@@ -3705,6 +3722,7 @@ type Queries struct {
 	setNewThrottleMessageStmt                  *sql.Stmt
 	setPreferredExeletStmt                     *sql.Stmt
 	setSignupPOWEnabledStmt                    *sql.Stmt
+	setStripelessTrialEnabledStmt              *sql.Stmt
 	setTeamAuthProviderStmt                    *sql.Stmt
 	setTrialExpiresAtStmt                      *sql.Stmt
 	setUserAuthProviderStmt                    *sql.Stmt
@@ -3970,6 +3988,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getShellHistoryStmt:                        q.getShellHistoryStmt,
 		getSignupPOWEnabledStmt:                    q.getSignupPOWEnabledStmt,
 		getSiteCookiesForUserStmt:                  q.getSiteCookiesForUserStmt,
+		getStripelessTrialEnabledStmt:              q.getStripelessTrialEnabledStmt,
 		getTagResolutionStmt:                       q.getTagResolutionStmt,
 		getTagsNeedingRefreshStmt:                  q.getTagsNeedingRefreshStmt,
 		getTeamStmt:                                q.getTeamStmt,
@@ -4122,6 +4141,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setNewThrottleMessageStmt:                  q.setNewThrottleMessageStmt,
 		setPreferredExeletStmt:                     q.setPreferredExeletStmt,
 		setSignupPOWEnabledStmt:                    q.setSignupPOWEnabledStmt,
+		setStripelessTrialEnabledStmt:              q.setStripelessTrialEnabledStmt,
 		setTeamAuthProviderStmt:                    q.setTeamAuthProviderStmt,
 		setTrialExpiresAtStmt:                      q.setTrialExpiresAtStmt,
 		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,

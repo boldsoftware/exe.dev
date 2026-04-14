@@ -293,15 +293,14 @@ func isIOSAppRequest(r *http.Request) bool {
 	return strings.Contains(ua, "iPhone") || strings.Contains(ua, "iPad") || strings.Contains(ua, "iPod")
 }
 
-// grantIOSTrial upgrades a user's account from the basic plan to a 7-day trial plan.
+// grantIOSTrial upgrades a user's account to the configured trial plan.
 // This is called when a new user signs up through the iOS app.
 func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
-	plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
-	trialDays := plan.TrialDays
-	if trialDays == 0 {
-		trialDays = 7
+	now := time.Now()
+	trialExpiresAt, err := signupTrialExpiresAt(now, entitlement.CategoryTrial)
+	if err != nil {
+		return err
 	}
-	trialEnd := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 
 	return s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		acct, err := q.GetAccountByUserID(ctx, userID)
@@ -312,8 +311,8 @@ func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
 		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID:      acct.ID,
 			PlanID:         entitlement.PlanID(entitlement.CategoryTrial),
-			At:             time.Now(),
-			TrialExpiresAt: &trialEnd,
+			At:             now,
+			TrialExpiresAt: trialExpiresAt,
 			ChangedBy:      changedBy,
 		})
 	})

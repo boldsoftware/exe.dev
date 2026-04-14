@@ -236,7 +236,7 @@ func (s *Server) handleOIDCNewUser(w http.ResponseWriter, r *http.Request, oauth
 		if err != nil {
 			return err
 		}
-		_, err = createAccountWithBasicPlan(ctx, queries, userID)
+		_, _, err = createAccountWithInitialPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {

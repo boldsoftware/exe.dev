@@ -3178,34 +3178,67 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 	}
 
 	// Account creation is handled by the caller, not here.
-	// Non-billing callers (SSH, OAuth, invite) call createAccountWithBasicPlan after this.
+	// Non-billing callers (SSH, OAuth, invite) call createAccountWithInitialPlan after this.
 	// The billing flow (handleNewUserBillingSuccess) creates the account with the Stripe customer ID.
 
 	return userID, nil
 }
 
-// createAccountWithBasicPlan creates an account and a 'basic' plan for a user.
-// Used by non-billing signup paths (SSH, OAuth, invite code).
-// The billing path uses the Stripe customer ID as the account ID instead.
-func createAccountWithBasicPlan(ctx context.Context, queries *exedb.Queries, userID string) (string, error) {
+// createAccountWithInitialPlan creates a new signup account with the active
+// initial plan selected by signup policy.
+func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, userID string) (string, entitlement.PlanCategory, error) {
+	// When stripeless trial mode is disabled, non-billing signup paths create
+	// a basic account. The Stripe signup path creates the account separately
+	// with the Stripe customer ID as the account ID.
+	planCategory := entitlement.CategoryBasic
+	changedBy := "system:signup"
+	stripelessTrialEnabled, err := queries.GetStripelessTrialEnabled(ctx)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", "", fmt.Errorf("check stripeless trial setting: %w", err)
+	}
+	if stripelessTrialEnabled == "true" {
+		planCategory = entitlement.CategoryTrial
+		changedBy = "system:stripeless_trial"
+	}
+
 	accountID := "exe_" + crand.Text()[:16]
 	if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
 		ID:        accountID,
 		CreatedBy: userID,
 	}); err != nil {
-		return "", fmt.Errorf("create account: %w", err)
+		return "", "", fmt.Errorf("create account: %w", err)
 	}
+
 	now := time.Now()
-	changedBy := "system:signup"
-	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
-		AccountID: accountID,
-		PlanID:    entitlement.PlanID(entitlement.CategoryBasic),
-		StartedAt: now,
-		ChangedBy: &changedBy,
-	}); err != nil {
-		return "", fmt.Errorf("create basic plan: %w", err)
+	trialExpiresAt, err := signupTrialExpiresAt(now, planCategory)
+	if err != nil {
+		return "", "", err
 	}
-	return accountID, nil
+	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
+		AccountID:      accountID,
+		PlanID:         entitlement.PlanID(planCategory),
+		StartedAt:      now,
+		TrialExpiresAt: trialExpiresAt,
+		ChangedBy:      &changedBy,
+	}); err != nil {
+		return "", "", fmt.Errorf("create %s plan: %w", planCategory, err)
+	}
+	return accountID, planCategory, nil
+}
+
+func signupTrialExpiresAt(now time.Time, planCategory entitlement.PlanCategory) (*time.Time, error) {
+	if planCategory != entitlement.CategoryTrial {
+		return nil, nil
+	}
+	plan, ok := entitlement.GetPlan(entitlement.CategoryTrial)
+	if !ok {
+		return nil, fmt.Errorf("trial plan is not available")
+	}
+	if plan.TrialDays <= 0 {
+		return nil, fmt.Errorf("trial plan has invalid trial days: %d", plan.TrialDays)
+	}
+	trialExpiresAt := now.Add(time.Duration(plan.TrialDays) * 24 * time.Hour)
+	return &trialExpiresAt, nil
 }
 
 // checkEmailQuality checks the email quality via IPQS and updates the user if disposable.
@@ -3652,7 +3685,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string, qc Qua
 		if err != nil {
 			return err
 		}
-		if _, err := createAccountWithBasicPlan(ctx, queries, userID); err != nil {
+		if _, _, err := createAccountWithInitialPlan(ctx, queries, userID); err != nil {
 			return err
 		}
 

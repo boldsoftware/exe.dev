@@ -976,6 +976,111 @@ func TestNewUserBillingFirstFlow(t *testing.T) {
 	}
 }
 
+func TestStripelessTrialNewUserSkipsBillingAndGetsTrial(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+	if err := withTx1(server, t.Context(), (*exedb.Queries).SetStripelessTrialEnabled, "true"); err != nil {
+		t.Fatalf("SetStripelessTrialEnabled: %v", err)
+	}
+
+	email := "stripeless-trial@example.com"
+
+	form := url.Values{}
+	form.Add("email", email)
+	req := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	req.Host = server.env.WebHost
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code == http.StatusSeeOther {
+		t.Fatalf("stripeless trial should not redirect to billing, got redirect to %q", w.Header().Get("Location"))
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected check-email page status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var pendingCount int
+	if err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM pending_registrations WHERE email = ?`, email).Scan(&pendingCount)
+	}); err != nil {
+		t.Fatalf("count pending registrations: %v", err)
+	}
+	if pendingCount != 0 {
+		t.Fatalf("stripeless trial signup created %d pending Stripe registrations", pendingCount)
+	}
+
+	userID, err := server.GetUserIDByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatalf("GetUserIDByEmail: %v", err)
+	}
+	hasCookie, err := server.userHasActiveAuthCookie(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("userHasActiveAuthCookie: %v", err)
+	}
+	if hasCookie {
+		t.Fatal("new stripeless trial user should not be signed in before email verification")
+	}
+	var verificationCount int
+	if err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM email_verifications WHERE email = ?`, email).Scan(&verificationCount)
+	}); err != nil {
+		t.Fatalf("count email verifications: %v", err)
+	}
+	if verificationCount != 1 {
+		t.Fatalf("expected one email verification to be created, got %d", verificationCount)
+	}
+
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	activePlan, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetActiveAccountPlan, acct.ID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan: %v", err)
+	}
+	if got := entitlement.BasePlan(activePlan.PlanID); got != entitlement.CategoryTrial {
+		t.Fatalf("expected active trial plan, got %q", activePlan.PlanID)
+	}
+	if activePlan.TrialExpiresAt == nil {
+		t.Fatal("expected trial_expires_at to be set")
+	}
+	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, userID) {
+		t.Fatal("stripeless trial user should have VMCreate entitlement after account creation")
+	}
+}
+
+func TestStripelessTrialAppliesToSharedSignupAccountCreation(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t)
+	server.env.SkipBilling = false
+	if err := withTx1(server, t.Context(), (*exedb.Queries).SetStripelessTrialEnabled, "true"); err != nil {
+		t.Fatalf("SetStripelessTrialEnabled: %v", err)
+	}
+
+	user, err := server.createUser(t.Context(), testSSHPubKey, "stripeless-ssh@example.com", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	acct, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetAccountByUserID, user.UserID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	activePlan, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetActiveAccountPlan, acct.ID)
+	if err != nil {
+		t.Fatalf("GetActiveAccountPlan: %v", err)
+	}
+	if got := entitlement.BasePlan(activePlan.PlanID); got != entitlement.CategoryTrial {
+		t.Fatalf("expected active trial plan, got %q", activePlan.PlanID)
+	}
+	if activePlan.TrialExpiresAt == nil {
+		t.Fatal("expected trial_expires_at to be set")
+	}
+}
+
 func TestNewUserBillingCancelReturnsToAuth(t *testing.T) {
 	t.Parallel()
 	// Test that canceling Stripe checkout redirects back to /auth with email preserved
@@ -1952,7 +2057,7 @@ func TestInviteRequest_EntitlementGrantedShowsConfirmation(t *testing.T) {
 	}
 }
 
-// TestCreateUserRecordCreatesAccountAndPlan verifies that createUserRecord + createAccountWithBasicPlan
+// TestCreateUserRecordCreatesAccountAndPlan verifies that createUserRecord + createAccountWithInitialPlan
 // inserts exactly one account row and one account_plans row with a versioned basic plan_id and ended_at IS NULL.
 func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	t.Parallel()
@@ -1967,7 +2072,7 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = createAccountWithBasicPlan(ctx, queries, userID)
+		_, _, err = createAccountWithInitialPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {
@@ -2017,7 +2122,7 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			_, err = createAccountWithBasicPlan(ctx, queries, uid)
+			_, _, err = createAccountWithInitialPlan(ctx, queries, uid)
 			return err
 		}); err != nil {
 			t.Fatalf("createUserRecord(%s): %v", email, err)
@@ -2043,11 +2148,11 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 	}
 }
 
-// TestCreateAccountWithBasicPlanIdempotent verifies that createAccountWithBasicPlan
+// TestCreateAccountWithInitialPlanIdempotent verifies that createAccountWithInitialPlan
 // succeeds even when the account already has an active basic plan (e.g. from a
 // prior partial signup attempt). The account_plans table must contain exactly one
 // active row afterward.
-func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
+func TestCreateAccountWithInitialPlanIdempotent(t *testing.T) {
 	t.Parallel()
 
 	server := newTestServer(t)
@@ -2061,11 +2166,11 @@ func TestCreateAccountWithBasicPlanIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		accountID, err = createAccountWithBasicPlan(ctx, queries, userID)
+		accountID, _, err = createAccountWithInitialPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {
-		t.Fatalf("first createAccountWithBasicPlan: %v", err)
+		t.Fatalf("first createAccountWithInitialPlan: %v", err)
 	}
 
 	// Verify the plan exists.

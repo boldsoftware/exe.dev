@@ -398,7 +398,7 @@ func createTestUser(t *testing.T, s *Server, email string) string {
 		if err != nil {
 			return err
 		}
-		_, err = createAccountWithBasicPlan(ctx, queries, userID)
+		_, _, err = createAccountWithInitialPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {

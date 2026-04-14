@@ -106,6 +106,17 @@ func (q *Queries) GetSignupPOWEnabled(ctx context.Context) (string, error) {
 	return value, err
 }
 
+const getStripelessTrialEnabled = `-- name: GetStripelessTrialEnabled :one
+SELECT value FROM server_meta WHERE key = 'stripeless_trial_enabled'
+`
+
+func (q *Queries) GetStripelessTrialEnabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getStripelessTrialEnabledStmt, getStripelessTrialEnabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const setIPAbuseFilterDisabled = `-- name: SetIPAbuseFilterDisabled :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('ip_abuse_filter_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
@@ -183,5 +194,15 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIME
 
 func (q *Queries) SetSignupPOWEnabled(ctx context.Context, value string) error {
 	_, err := q.exec(ctx, q.setSignupPOWEnabledStmt, setSignupPOWEnabled, value)
+	return err
+}
+
+const setStripelessTrialEnabled = `-- name: SetStripelessTrialEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('stripeless_trial_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetStripelessTrialEnabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setStripelessTrialEnabledStmt, setStripelessTrialEnabled, value)
 	return err
 }

@@ -119,6 +119,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/signup-limiter", s.handleDebugSignupLimiterPost)
 	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
 	mux.HandleFunc("POST /debug/ip-abuse-filter", s.handleDebugIPAbuseFilterPost)
+	mux.HandleFunc("POST /debug/stripeless-trial", s.handleDebugStripelessTrialPost)
 	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
 	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
@@ -3997,6 +3998,7 @@ func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Reques
 
 	loginDisabled := s.IsLoginCreationDisabled(ctx)
 	ipAbuseDisabled := s.IsIPAbuseFilterDisabled(ctx)
+	stripelessTrialEnabled := s.IsStripelessTrialEnabled(ctx)
 	powEnabled := s.IsSignupPOWEnabled(ctx)
 	powDifficulty := s.signupPOW.GetDifficulty()
 
@@ -4014,6 +4016,7 @@ func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Reques
 	data := struct {
 		LoginDisabled   bool
 		IPAbuseDisabled bool
+		StripelessTrial bool
 		POWEnabled      bool
 		POWDifficulty   int
 		POWAvgHashes    int
@@ -4022,6 +4025,7 @@ func (s *Server) handleDebugSignupControls(w http.ResponseWriter, r *http.Reques
 	}{
 		LoginDisabled:   loginDisabled,
 		IPAbuseDisabled: ipAbuseDisabled,
+		StripelessTrial: stripelessTrialEnabled,
 		POWEnabled:      powEnabled,
 		POWDifficulty:   powDifficulty,
 		POWAvgHashes:    1 << powDifficulty,
@@ -4313,6 +4317,15 @@ func (s *Server) IsLoginCreationDisabled(ctx context.Context) bool {
 	return val == "true"
 }
 
+// IsStripelessTrialEnabled reports whether new accounts skip Stripe and receive an internal trial.
+func (s *Server) IsStripelessTrialEnabled(ctx context.Context) bool {
+	val, err := withRxRes0(s, ctx, (*exedb.Queries).GetStripelessTrialEnabled)
+	if err != nil {
+		return false
+	}
+	return val == "true"
+}
+
 // handleDebugEmailForm renders a form to send test emails.
 func (s *Server) handleDebugEmailForm(w http.ResponseWriter, r *http.Request) {
 	postmarkAvailable := s.emailSenders.Postmark != nil
@@ -4417,6 +4430,26 @@ func (s *Server) handleDebugSignupPOWPost(w http.ResponseWriter, r *http.Request
 	}
 
 	s.slog().InfoContext(ctx, "signup POW setting updated via debug page", "enabled", enabled)
+
+	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
+}
+
+// handleDebugStripelessTrialPost handles saving the stripeless trial setting.
+func (s *Server) handleDebugStripelessTrialPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	enabled := r.FormValue("enabled") == "true"
+
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetStripelessTrialEnabled, enabledStr); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save setting: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "stripeless trial setting updated via debug page", "enabled", enabled)
 
 	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }

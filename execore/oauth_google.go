@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/entitlement"
 	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
@@ -247,13 +248,14 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 	// Web flow: create user
 	userRegion := s.regionForIP(ctx, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr))
 	var userID string
+	var signupPlan entitlement.PlanCategory
 	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
 		userID, err = s.createUserRecord(ctx, queries, oauthState.Email, oauthState.LoginWithExe, userRegion.Code)
 		if err != nil {
 			return err
 		}
-		_, err = createAccountWithBasicPlan(ctx, queries, userID)
+		_, signupPlan, err = createAccountWithInitialPlan(ctx, queries, userID)
 		return err
 	})
 	if err != nil {
@@ -305,8 +307,10 @@ func (s *Server) handleGoogleOAuthNewUser(w http.ResponseWriter, r *http.Request
 
 	// Check for app token flow (iOS/native app authentication).
 	appFlow := appTokenFlowFromOAuthState(oauthState)
-	if appFlow.isAppTokenFlow() {
-		// iOS app signups get an automatic 7-day trial (no credit card required).
+	if appFlow.isAppTokenFlow() && signupPlan != entitlement.CategoryTrial {
+		// Stripeless trial mode already creates new accounts with a trial plan.
+		// iOS signups only need a separate trial grant when signup policy left
+		// the account on a non-trial plan.
 		if err := s.grantIOSTrial(ctx, userID); err != nil {
 			s.slog().ErrorContext(ctx, "failed to grant iOS trial", "error", err, "user_id", userID)
 		} else {

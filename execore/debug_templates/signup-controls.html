@@ -45,6 +45,24 @@ When enabled, users signing up from flagged IPs will be blocked.
 </div>
 
 <div class="section">
+<h2>Stripeless Trial Mode</h2>
+<div class="info">
+<strong>Info:</strong> When enabled, new accounts skip Stripe checkout and receive a trial plan immediately.
+Existing accounts are not changed, and users still need to verify email or complete OAuth before signing in.
+</div>
+<form method="post" action="/debug/stripeless-trial">
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true"{{if .StripelessTrial}} checked{{end}}>
+<span class="toggle-slider green"></span>
+<span class="toggle-label">Give new accounts a stripeless trial</span>
+</label>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save</button>
+</p>
+</form>
+</div>
+
+<div class="section">
 <h2>Proof-of-Work Challenge</h2>
 <div class="info">
 <strong>Info:</strong> When enabled, new users must complete a proof-of-work challenge before creating an account.
