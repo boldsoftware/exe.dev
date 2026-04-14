@@ -84,7 +84,7 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 
 	body := debugBillingPageBody(t, s, userID)
 
-	if !strings.Contains(body, "<h2>Entitlements</h2>") {
+	if !strings.Contains(body, "<h4>Entitlements</h4>") {
 		t.Fatal("expected Entitlements section header")
 	}
 

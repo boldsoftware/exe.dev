@@ -21,7 +21,9 @@ table.info th { width: 200px; }
 <tr><th>Stripe Dashboard</th><td><a href="{{.StripeDashboardURL}}" target="_blank">{{.StripeDashboardURL}}</a></td></tr>
 </table>
 
-<h3>Plan Details</h3>
+<h2>Plan</h2>
+
+<h4>Details</h4>
 <table class="info">
 <tr><th>Plan ID</th><td><code>{{if .CurrentPlanID}}{{.CurrentPlanID}}{{else}}(none){{end}}</code></td></tr>
 <tr><th>Started At</th><td>{{if .CurrentPlanAt}}{{.CurrentPlanAt}}{{else}}—{{end}}</td></tr>
@@ -30,6 +32,87 @@ table.info th { width: 200px; }
 <tr><th>Changed By</th><td>{{if .PlanChangedBy}}{{.PlanChangedBy}}{{else}}—{{end}}</td></tr>
 </table>
 
+{{if .PaymentMethod}}
+<h4>Payment Method</h4>
+<table class="info">
+<tr><th>Type</th><td>{{.PaymentMethod.Type}}</td></tr>
+<tr><th>Display</th><td>{{.PaymentMethod.DisplayLabel}}</td></tr>
+{{if .PaymentMethod.Brand}}<tr><th>Brand</th><td>{{.PaymentMethod.Brand}}</td></tr>{{end}}
+{{if .PaymentMethod.Last4}}<tr><th>Last 4</th><td>{{.PaymentMethod.Last4}}</td></tr>{{end}}
+{{if .PaymentMethod.ExpMonth}}<tr><th>Expires</th><td>{{.PaymentMethod.ExpMonth}}/{{.PaymentMethod.ExpYear}}</td></tr>{{end}}
+{{if .PaymentMethod.Email}}<tr><th>Email</th><td>{{.PaymentMethod.Email}}</td></tr>{{end}}
+</table>
+{{end}}
+
+{{if $.Entitlements}}
+<h4>Entitlements{{if $.IsOnTeam}} <span class="muted">(inherited from team billing owner)</span>{{end}}</h4>
+<table class="info">
+<thead>
+<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
+</thead>
+<tbody>
+{{range $.Entitlements}}
+<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{if .PlanHistory}}
+<h4>Plan Changes</h4>
+<table>
+<thead><tr><th>Plan ID</th><th>Started At</th><th>Ended At</th><th>Changed By</th></tr></thead>
+<tbody>
+{{range .PlanHistory}}
+<tr>
+<td><code>{{.PlanID}}</code></td>
+<td>{{.StartedAt}}</td>
+<td>{{if .EndedAt}}{{.EndedAt}}{{else}}<em>(active)</em>{{end}}</td>
+<td class="muted">{{.ChangedBy}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{if .Events}}
+<h4>Billing Events ({{len .Events}})</h4>
+<table>
+<thead><tr><th>ID</th><th>Event Type</th><th>Event At</th><th>Created At</th></tr></thead>
+<tbody>
+{{range .Events}}
+<tr>
+<td>{{.ID}}</td>
+<td>{{.EventType}}</td>
+<td>{{.EventAt}}</td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No billing events.</p>
+{{end}}
+
+{{if .ChildAccounts}}
+<h4>Team Members</h4>
+<table class="info">
+<thead>
+<tr><th>Email</th><th>Account</th><th>Own Plan</th></tr>
+</thead>
+<tbody>
+{{range .ChildAccounts}}
+<tr>
+<td>{{.Email}}</td>
+<td><a href="/debug/billing?userId={{.UserID}}"><code>{{.AccountID}}</code></a></td>
+<td><code>{{if .PlanID}}{{.PlanID}}{{else}}—{{end}}</code></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+<h2>Usage</h2>
 
 {{if $.HasMetricsd}}
 {{if $.MonthlyMetrics}}
@@ -103,95 +186,15 @@ table.info th { width: 200px; }
 </table>
 {{end}}
 <p class="muted">Disk billed on avg daily usage. Overage: disk $0.08/GB, bandwidth $0.07/GB.</p>
-{{end}}
-
-
-{{if .PaymentMethod}}
-<h3>Payment Method</h3>
-<table class="info">
-<tr><th>Type</th><td>{{.PaymentMethod.Type}}</td></tr>
-<tr><th>Display</th><td>{{.PaymentMethod.DisplayLabel}}</td></tr>
-{{if .PaymentMethod.Brand}}<tr><th>Brand</th><td>{{.PaymentMethod.Brand}}</td></tr>{{end}}
-{{if .PaymentMethod.Last4}}<tr><th>Last 4</th><td>{{.PaymentMethod.Last4}}</td></tr>{{end}}
-{{if .PaymentMethod.ExpMonth}}<tr><th>Expires</th><td>{{.PaymentMethod.ExpMonth}}/{{.PaymentMethod.ExpYear}}</td></tr>{{end}}
-{{if .PaymentMethod.Email}}<tr><th>Email</th><td>{{.PaymentMethod.Email}}</td></tr>{{end}}
-</table>
-{{end}}
-
-{{if .ChildAccounts}}
-<h3>Team Members</h3>
-<table class="info">
-<thead>
-<tr><th>Email</th><th>Account</th><th>Own Plan</th></tr>
-</thead>
-<tbody>
-{{range .ChildAccounts}}
-<tr>
-<td>{{.Email}}</td>
-<td><a href="/debug/billing?userId={{.UserID}}"><code>{{.AccountID}}</code></a></td>
-<td><code>{{if .PlanID}}{{.PlanID}}{{else}}—{{end}}</code></td>
-</tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-
-{{if .PlanHistory}}
-<h4>Plan Changes</h4>
-<table>
-<thead><tr><th>Plan ID</th><th>Started At</th><th>Ended At</th><th>Changed By</th></tr></thead>
-<tbody>
-{{range .PlanHistory}}
-<tr>
-<td><code>{{.PlanID}}</code></td>
-<td>{{.StartedAt}}</td>
-<td>{{if .EndedAt}}{{.EndedAt}}{{else}}<em>(active)</em>{{end}}</td>
-<td class="muted">{{.ChangedBy}}</td>
-</tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-
-{{if .Events}}
-<h4>Billing Events ({{len .Events}})</h4>
-<table>
-<thead><tr><th>ID</th><th>Event Type</th><th>Event At</th><th>Created At</th></tr></thead>
-<tbody>
-{{range .Events}}
-<tr>
-<td>{{.ID}}</td>
-<td>{{.EventType}}</td>
-<td>{{.EventAt}}</td>
-<td>{{.CreatedAt}}</td>
-</tr>
-{{end}}
-</tbody>
-</table>
 {{else}}
-<p>No billing events.</p>
+<p>No usage data available.</p>
 {{end}}
+
 </div>
 {{end}}
 
 {{if not .Accounts}}
 <p>No billing accounts.</p>
-{{end}}
-
-{{if .Entitlements}}
-<div class="section">
-<h2>Entitlements{{if .IsOnTeam}} <span class="muted">(inherited from team billing owner)</span>{{end}}</h2>
-<table class="info">
-<thead>
-<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
-</thead>
-<tbody>
-{{range .Entitlements}}
-<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
-{{end}}
-</tbody>
-</table>
-</div>
 {{end}}
 
 <div class="section">
