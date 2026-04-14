@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,6 +113,11 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 		}
 		status, err := h.deployer.Start(req)
 		if err != nil {
+			var plErr *deploy.ProdLockError
+			if errors.As(err, &plErr) {
+				http.Error(w, err.Error(), http.StatusLocked)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -157,12 +163,15 @@ func (h *Handlers) HandleRollouts(w http.ResponseWriter, r *http.Request) {
 		}
 		status, err := h.deployer.StartRollout(req)
 		if err != nil {
-			// "deployment in progress" → 409. Other validation errors → 400.
-			if strings.Contains(err.Error(), "deployment in progress") {
+			var plErr *deploy.ProdLockError
+			switch {
+			case errors.As(err, &plErr):
+				http.Error(w, err.Error(), http.StatusLocked)
+			case strings.Contains(err.Error(), "deployment in progress"):
 				http.Error(w, err.Error(), http.StatusConflict)
-				return
+			default:
+				http.Error(w, err.Error(), http.StatusBadRequest)
 			}
-			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusCreated)

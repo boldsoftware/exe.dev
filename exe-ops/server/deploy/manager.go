@@ -47,6 +47,13 @@ type Manager struct {
 	// runDeploy is the deploy execution function. Defaults to (*Manager).execute.
 	// Tests override it to avoid invoking ssh/scp/git.
 	runDeploy func(ctx context.Context, d *deploy)
+
+	// prodLockAcquire takes the prod-lock for the given deploy stage with a
+	// human-readable reason. It returns a release function (may be nil when
+	// no lock was needed) and an error — a *ProdLockError if the env is
+	// already locked or the check could not be completed. Defaults to the
+	// real HTTP acquirer; tests override it to avoid contacting the server.
+	prodLockAcquire func(ctx context.Context, stage, reason string) (release func(), err error)
 }
 
 // NewManager creates a deploy manager.
@@ -59,7 +66,7 @@ func NewManager(ctx context.Context, log *slog.Logger, repoDir, cacheDir string)
 	if abs, err := filepath.Abs(cacheDir); err == nil {
 		cacheDir = abs
 	}
-	return &Manager{
+	m := &Manager{
 		ctx:            ctx,
 		active:         make(map[string]*deploy),
 		builds:         make(map[string]*sync.Mutex),
@@ -74,6 +81,8 @@ func NewManager(ctx context.Context, log *slog.Logger, repoDir, cacheDir string)
 			},
 		},
 	}
+	m.prodLockAcquire = m.defaultProdLockAcquire
+	return m
 }
 
 // SetNotifier configures an optional deploy lifecycle notifier (e.g. Slack).
@@ -101,7 +110,22 @@ type Request struct {
 // Start begins a new deploy. Returns an error if a deploy is already
 // active for the same target or the process type is unknown.
 func (m *Manager) Start(req Request) (Status, error) {
-	return m.start(req, "")
+	if err := m.validateRequest(req); err != nil {
+		return Status{}, err
+	}
+	var release func()
+	if prodLockStage(req.Stage) != "" {
+		r, err := m.prodLockAcquire(m.ctx, req.Stage, prodLockReasonDeploy(req))
+		if err != nil {
+			return Status{}, err
+		}
+		release = r
+	}
+	status, err := m.start(req, "", release)
+	if err != nil && release != nil {
+		release()
+	}
+	return status, err
 }
 
 // validateRequest applies the same validation as Start without spawning anything.
@@ -122,13 +146,14 @@ func (m *Manager) validateRequest(req Request) error {
 	return nil
 }
 
-func (m *Manager) start(req Request, rolloutID string) (Status, error) {
+func (m *Manager) start(req Request, rolloutID string, prodLockRelease func()) (Status, error) {
 	if err := m.validateRequest(req); err != nil {
 		return Status{}, err
 	}
 
 	id := generateID()
 	d := newDeploy(m.ctx, id, req.Stage, req.Role, req.Process, req.Host, req.DNSName, req.SHA, req.InitiatedBy, rolloutID)
+	d.releaseProdLock = prodLockRelease
 
 	m.mu.Lock()
 	key := d.activeKey()
@@ -292,6 +317,13 @@ func (m *Manager) finish(d *deploy) {
 	// by a rollout cancel; this just frees the context resources.
 	if d.cancel != nil {
 		d.cancel()
+	}
+
+	// Release the prod-lock for single-host deploys. Rollout-driven deploys
+	// leave this nil because the rollout holds (and releases) the lock at
+	// its own lifetime boundary.
+	if d.releaseProdLock != nil {
+		d.releaseProdLock()
 	}
 
 	// Signal any waiters (e.g. rollout orchestrator) that this deploy
@@ -760,14 +792,46 @@ func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
 		return RolloutStatus{}, err
 	}
 
+	// Acquire the prod-lock once per distinct lock-gated stage in the
+	// rollout. Rollouts normally share a single stage but the request
+	// schema does not enforce this, so we lock each stage we see. On any
+	// failure, release the locks we already took.
+	var releases []func()
+	releaseAll := func() {
+		for _, rel := range releases {
+			if rel != nil {
+				rel()
+			}
+		}
+	}
+	lockedStage := map[string]int{}
+	for _, t := range req.Targets {
+		if prodLockStage(t.Stage) == "" {
+			continue
+		}
+		lockedStage[t.Stage]++
+	}
+	for stage, count := range lockedStage {
+		release, err := m.prodLockAcquire(m.ctx, stage, prodLockReasonRollout(req, stage, count))
+		if err != nil {
+			releaseAll()
+			return RolloutStatus{}, err
+		}
+		if release != nil {
+			releases = append(releases, release)
+		}
+	}
+
 	waves := planWaves(req.Targets, effectiveBatchSize(req))
 	r := newRollout(generateID(), req, waves)
+	r.releaseProdLocks = releases
 
 	lockKey := rolloutLockKey(req)
 
 	m.mu.Lock()
 	if existing, ok := m.activeRollouts[lockKey]; ok {
 		m.mu.Unlock()
+		releaseAll()
 		return RolloutStatus{}, fmt.Errorf(
 			"deployment in progress for %s (rollout %s, started %s by %s)",
 			lockKey,
@@ -886,7 +950,7 @@ func (m *Manager) runRollout(r *rollout) {
 		deployIDs := make([]string, len(w.requests))
 		waveDeploys := make([]*deploy, len(w.requests))
 		for i, req := range w.requests {
-			st, err := m.start(req, r.id)
+			st, err := m.start(req, r.id, nil)
 			if err != nil {
 				m.log.Error("rollout deploy failed to start", "id", r.id, "wave", waveIdx, "err", err)
 				waveFailed = true
@@ -1055,6 +1119,8 @@ func (m *Manager) markRemainingSkipped(r *rollout, from int) {
 func (m *Manager) finishRollout(r *rollout) {
 	r.mu.Lock()
 	r.doneAt = time.Now()
+	releases := r.releaseProdLocks
+	r.releaseProdLocks = nil
 	r.mu.Unlock()
 
 	m.mu.Lock()
@@ -1062,6 +1128,12 @@ func (m *Manager) finishRollout(r *rollout) {
 		delete(m.activeRollouts, r.process)
 	}
 	m.mu.Unlock()
+
+	for _, rel := range releases {
+		if rel != nil {
+			rel()
+		}
+	}
 
 	m.log.Info("rollout finished",
 		"id", r.id, "state", r.state,

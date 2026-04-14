@@ -64,6 +64,12 @@ type deploy struct {
 	// done is closed when the deploy reaches a terminal state. Allows
 	// the rollout orchestrator to await wave completion without polling.
 	done chan struct{}
+
+	// releaseProdLock releases the prod-lock taken on behalf of this deploy.
+	// Set only for single-host deploys started via Manager.Start; nil for
+	// rollout-driven deploys (the rollout owns that lock). Called from
+	// Manager.finish.
+	releaseProdLock func()
 }
 
 // StepNames returns the deploy steps for a given process, accounting for

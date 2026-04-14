@@ -102,6 +102,11 @@ type rollout struct {
 
 	cancelOnce sync.Once
 	cancelCh   chan struct{}
+
+	// releaseProdLocks are the prod-lock release functions taken when the
+	// rollout was started, one per distinct stage. Called (and cleared)
+	// by Manager.finishRollout.
+	releaseProdLocks []func()
 }
 
 // waveState is the internal mutable form of a Wave.

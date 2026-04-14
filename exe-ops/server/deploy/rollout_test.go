@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -15,6 +16,10 @@ func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := NewManager(context.Background(), log, t.TempDir(), t.TempDir())
+	// Tests must not reach out to prodlock.exe.xyz.
+	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+		return nil, nil
+	}
 	return m
 }
 
@@ -581,6 +586,170 @@ func TestRollout_DefaultRegion(t *testing.T) {
 	}
 	if status.ID == "" {
 		t.Fatal("expected rollout to start")
+	}
+}
+
+func TestStart_BlockedByProdLock(t *testing.T) {
+	m := newTestManager(t)
+	locked := &ProdLockError{Stage: "prod", Env: "prod", Locked: true, LockedBy: "alice", Reason: "release freeze"}
+	var calls int
+	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+		calls++
+		if stage != "prod" {
+			t.Errorf("prodLockAcquire got stage %q, want prod", stage)
+		}
+		if !strings.Contains(reason, "exeletd") {
+			t.Errorf("reason = %q, want to contain process name", reason)
+		}
+		return nil, locked
+	}
+
+	_, err := m.Start(Request{
+		Stage: "prod", Role: "exelet", Process: "exeletd",
+		Host: "h1", DNSName: "h1.test", SHA: validSHA,
+	})
+	if err == nil {
+		t.Fatal("Start should have been blocked by prod-lock")
+	}
+	var plErr *ProdLockError
+	if !errors.As(err, &plErr) {
+		t.Fatalf("error %v is not a *ProdLockError", err)
+	}
+	if !plErr.Locked || plErr.LockedBy != "alice" {
+		t.Errorf("unexpected ProdLockError: %+v", plErr)
+	}
+	if calls != 1 {
+		t.Errorf("prodLockAcquire calls = %d, want 1", calls)
+	}
+}
+
+func TestStartRollout_BlockedByProdLock(t *testing.T) {
+	m := newTestManager(t)
+	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+		return nil, &ProdLockError{Stage: stage, Env: "prod", Err: context.DeadlineExceeded}
+	}
+
+	_, err := m.StartRollout(RolloutRequest{
+		Targets: []RolloutTarget{mkTarget("a", "fra2", "prod")},
+	})
+	if err == nil {
+		t.Fatal("StartRollout should have been blocked by prod-lock")
+	}
+	var plErr *ProdLockError
+	if !errors.As(err, &plErr) {
+		t.Fatalf("error %v is not a *ProdLockError", err)
+	}
+	// Fail-closed case: Locked is false but the error is still returned.
+	if plErr.Locked {
+		t.Errorf("expected fail-closed error, got locked=true")
+	}
+}
+
+func TestStartRollout_ProdLockAcquireReleaseLifecycle(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	m.runDeploy = fakeRunner(nil, &order, &ran, &mu)
+
+	var acquireMu sync.Mutex
+	acquireStages := map[string]int{}
+	var released atomic.Int32
+	var acquiredReasons []string
+	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+		acquireMu.Lock()
+		acquireStages[stage]++
+		acquiredReasons = append(acquiredReasons, reason)
+		acquireMu.Unlock()
+		return func() { released.Add(1) }, nil
+	}
+
+	req := RolloutRequest{
+		Targets: []RolloutTarget{
+			mkTarget("a", "fra2", "staging"),
+			mkTarget("b", "fra2", "staging"),
+			mkTarget("c", "lax", "staging"),
+		},
+		CooldownSecs:  1,
+		StopOnFailure: true,
+	}
+	st, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("StartRollout: %v", err)
+	}
+	waitTerminalRollout(t, m, st.ID, 10*time.Second)
+
+	acquireMu.Lock()
+	defer acquireMu.Unlock()
+	if got, want := acquireStages["staging"], 1; got != want {
+		t.Errorf("prodLockAcquire for staging called %d times, want %d", got, want)
+	}
+	if len(acquireStages) != 1 {
+		t.Errorf("unexpected extra stages acquired: %+v", acquireStages)
+	}
+	if released.Load() != 1 {
+		t.Errorf("release called %d times, want 1", released.Load())
+	}
+	if len(acquiredReasons) != 1 || !strings.Contains(acquiredReasons[0], "exeletd") {
+		t.Errorf("reason = %v, want to contain process name", acquiredReasons)
+	}
+	if !strings.Contains(acquiredReasons[0], "3 hosts") {
+		t.Errorf("reason = %q, want to contain host count", acquiredReasons[0])
+	}
+}
+
+func TestStart_ProdLockReleasedOnConflict(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	// Slow runner so the first deploy is still active when the second starts.
+	m.runDeploy = func(ctx context.Context, d *deploy) {
+		mu.Lock()
+		ran = append(ran, d.host)
+		mu.Unlock()
+		order.Add(1)
+		time.Sleep(200 * time.Millisecond)
+		d.beginStep("build")
+		d.stepDone(nil)
+		for {
+			d.mu.Lock()
+			var next string
+			for _, s := range d.steps {
+				if s.Status == "pending" {
+					next = s.Name
+					break
+				}
+			}
+			d.mu.Unlock()
+			if next == "" {
+				break
+			}
+			d.beginStep(next)
+			d.stepDone(nil)
+		}
+		d.complete()
+	}
+
+	var released atomic.Int32
+	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+		return func() { released.Add(1) }, nil
+	}
+
+	req := Request{
+		Stage: "prod", Role: "exelet", Process: "exeletd",
+		Host: "h1", DNSName: "h1.test", SHA: validSHA,
+	}
+	if _, err := m.Start(req); err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	// Second Start for the same target must conflict on the in-memory
+	// activeKey check, and must release the prod-lock it just took.
+	if _, err := m.Start(req); err == nil {
+		t.Fatal("second Start should have failed with active-key conflict")
+	}
+	if got := released.Load(); got != 1 {
+		t.Errorf("release after conflict called %d times, want 1", got)
 	}
 }
 
