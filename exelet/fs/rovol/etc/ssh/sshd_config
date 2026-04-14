@@ -44,3 +44,4 @@ LogLevel INFO
 
 # Env
 SetEnv PATH=/bin:/usr/bin:/sbin:/usr/sbin:/exe.dev/bin:/usr/local/bin
+AcceptEnv LANG LC_*
