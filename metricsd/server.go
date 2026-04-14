@@ -919,22 +919,48 @@ func (s *Server) handleQueryDaily(w http.ResponseWriter, r *http.Request) {
 	}
 	phStr := strings.Join(placeholders, ", ")
 
-	querySQL := fmt.Sprintf(`
-		SELECT
-			day_start, host, vm_id, vm_name, resource_group,
-			disk_logical_avg_bytes, disk_logical_max_bytes,
-			disk_compressed_avg_bytes, disk_provisioned_max_bytes,
-			network_tx_bytes, network_rx_bytes,
-			cpu_seconds,
-			io_read_bytes, io_write_bytes,
-			memory_rss_max_bytes, memory_swap_max_bytes,
-			hours_with_data
-		FROM vm_metrics_daily
-		WHERE resource_group IN (%s)
-		  AND day_start >= ?
-		  AND day_start < ?
-		ORDER BY vm_name, day_start
-	`, phStr)
+	var querySQL string
+	if req.GroupByVM {
+		querySQL = fmt.Sprintf(`
+			SELECT
+				day_start, host, vm_id, vm_name, resource_group,
+				disk_logical_avg_bytes, disk_logical_max_bytes,
+				disk_compressed_avg_bytes, disk_provisioned_max_bytes,
+				network_tx_bytes, network_rx_bytes,
+				cpu_seconds,
+				io_read_bytes, io_write_bytes,
+				memory_rss_max_bytes, memory_swap_max_bytes,
+				hours_with_data
+			FROM vm_metrics_daily
+			WHERE resource_group IN (%s)
+			  AND day_start >= ?
+			  AND day_start < ?
+			ORDER BY vm_name, day_start
+		`, phStr)
+	} else {
+		querySQL = fmt.Sprintf(`
+			SELECT
+				day_start, '' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,
+				SUM(disk_logical_avg_bytes)::BIGINT,
+				SUM(disk_logical_max_bytes)::BIGINT,
+				SUM(disk_compressed_avg_bytes)::BIGINT,
+				SUM(disk_provisioned_max_bytes)::BIGINT,
+				SUM(network_tx_bytes)::BIGINT,
+				SUM(network_rx_bytes)::BIGINT,
+				SUM(cpu_seconds),
+				SUM(io_read_bytes)::BIGINT,
+				SUM(io_write_bytes)::BIGINT,
+				MAX(memory_rss_max_bytes),
+				MAX(memory_swap_max_bytes),
+				SUM(hours_with_data)
+			FROM vm_metrics_daily
+			WHERE resource_group IN (%s)
+			  AND day_start >= ?
+			  AND day_start < ?
+			GROUP BY day_start
+			ORDER BY day_start
+		`, phStr)
+	}
 
 	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
 	for _, rg := range req.ResourceGroups {
@@ -1005,22 +1031,48 @@ func (s *Server) handleQueryMonthly(w http.ResponseWriter, r *http.Request) {
 	}
 	phStr := strings.Join(placeholders, ", ")
 
-	querySQL := fmt.Sprintf(`
-		SELECT
-			month_start, host, vm_id, vm_name, resource_group,
-			disk_logical_avg_bytes, disk_logical_max_bytes,
-			disk_compressed_avg_bytes, disk_provisioned_max_bytes,
-			network_tx_bytes, network_rx_bytes,
-			cpu_seconds,
-			io_read_bytes, io_write_bytes,
-			memory_rss_max_bytes, memory_swap_max_bytes,
-			days_with_data
-		FROM vm_metrics_monthly
-		WHERE resource_group IN (%s)
-		  AND month_start >= ?
-		  AND month_start < ?
-		ORDER BY vm_name, month_start
-	`, phStr)
+	var querySQL string
+	if req.GroupByVM {
+		querySQL = fmt.Sprintf(`
+			SELECT
+				month_start, host, vm_id, vm_name, resource_group,
+				disk_logical_avg_bytes, disk_logical_max_bytes,
+				disk_compressed_avg_bytes, disk_provisioned_max_bytes,
+				network_tx_bytes, network_rx_bytes,
+				cpu_seconds,
+				io_read_bytes, io_write_bytes,
+				memory_rss_max_bytes, memory_swap_max_bytes,
+				days_with_data
+			FROM vm_metrics_monthly
+			WHERE resource_group IN (%s)
+			  AND month_start >= ?
+			  AND month_start < ?
+			ORDER BY vm_name, month_start
+		`, phStr)
+	} else {
+		querySQL = fmt.Sprintf(`
+			SELECT
+				month_start, '' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,
+				SUM(disk_logical_avg_bytes)::BIGINT,
+				SUM(disk_logical_max_bytes)::BIGINT,
+				SUM(disk_compressed_avg_bytes)::BIGINT,
+				SUM(disk_provisioned_max_bytes)::BIGINT,
+				SUM(network_tx_bytes)::BIGINT,
+				SUM(network_rx_bytes)::BIGINT,
+				SUM(cpu_seconds),
+				SUM(io_read_bytes)::BIGINT,
+				SUM(io_write_bytes)::BIGINT,
+				MAX(memory_rss_max_bytes),
+				MAX(memory_swap_max_bytes),
+				MAX(days_with_data)
+			FROM vm_metrics_monthly
+			WHERE resource_group IN (%s)
+			  AND month_start >= ?
+			  AND month_start < ?
+			GROUP BY month_start
+			ORDER BY month_start
+		`, phStr)
+	}
 
 	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
 	for _, rg := range req.ResourceGroups {

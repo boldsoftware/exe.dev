@@ -120,6 +120,7 @@ type QueryDailyRequest struct {
 	ResourceGroups []string  `json:"resource_groups"`
 	Start          time.Time `json:"start"`
 	End            time.Time `json:"end"`
+	GroupByVM      bool      `json:"group_by_vm,omitempty"`
 }
 
 // QueryDailyResponse is the response for POST /query/daily.
@@ -154,6 +155,7 @@ type QueryMonthlyRequest struct {
 	ResourceGroups []string  `json:"resource_groups"`
 	Start          time.Time `json:"start"`
 	End            time.Time `json:"end"`
+	GroupByVM      bool      `json:"group_by_vm,omitempty"`
 }
 
 // QueryMonthlyResponse is the response for POST /query/monthly.
