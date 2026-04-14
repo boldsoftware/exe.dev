@@ -966,6 +966,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ideas/submit":
 		s.handleTemplateSubmitAPI(w, r)
 		return
+	case "/api/billing/usage/vms":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPIBillingUsageVMs(w, r, userID)
+		return
+	case "/api/billing/usage":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPIBillingUsage(w, r, userID)
+		return
 	case "/api/dns-check":
 		s.handleDNSCheck(w, r)
 		return
