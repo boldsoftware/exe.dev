@@ -100,7 +100,7 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 }
 
 // TestDebugBillingEntitlementTableBasicUser verifies a Basic plan user has most
-// entitlements denied. Basic grants only llm:use and vm:connect.
+// entitlements denied. Basic grants only llm:use.
 func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)

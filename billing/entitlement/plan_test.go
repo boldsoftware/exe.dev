@@ -18,13 +18,12 @@ func TestPlanGrants(t *testing.T) {
 		{CategoryIndividual, CreditPurchase, true},
 		{CategoryIndividual, VMRun, true},
 		{CategoryIndividual, VMCreate, true},
-		{CategoryIndividual, VMConnect, true},
 		{CategoryIndividual, LLMUse, true},
+		{CategoryIndividual, DiskResize, false},
 
 		// Friend
 		{CategoryFriend, VMRun, true},
 		{CategoryFriend, VMCreate, true},
-		{CategoryFriend, VMConnect, true},
 		{CategoryFriend, LLMUse, true},
 		{CategoryFriend, CreditPurchase, false},
 
@@ -46,7 +45,6 @@ func TestPlanGrants(t *testing.T) {
 
 		// Team
 		{CategoryTeam, VMCreate, true},
-		{CategoryTeam, VMConnect, true},
 		{CategoryTeam, VMRun, true},
 		{CategoryTeam, LLMUse, true},
 		{CategoryTeam, CreditPurchase, true},
@@ -60,7 +58,7 @@ func TestPlanGrants(t *testing.T) {
 		{CategoryRestricted, LLMUse, false},
 		{CategoryRestricted, VMCreate, false},
 		{CategoryRestricted, VMRun, false},
-		{CategoryRestricted, VMConnect, false},
+		{CategoryRestricted, DiskResize, false},
 		{CategoryRestricted, CreditPurchase, false},
 	}
 	for _, tt := range tests {
@@ -73,7 +71,7 @@ func TestPlanGrants(t *testing.T) {
 
 func TestPlanGrantsWildcard(t *testing.T) {
 	for _, ent := range []Entitlement{
-		LLMUse, CreditPurchase, VMCreate, VMRun, VMConnect,
+		LLMUse, CreditPurchase, VMCreate, VMRun, DiskResize,
 		{"anything:else", "Made Up"},
 	} {
 		if !PlanGrants(CategoryVIP, ent) {
@@ -303,8 +301,8 @@ func TestAllEntitlements(t *testing.T) {
 		"invite:request":  true,
 		"team:create":     true,
 		"vm:create":       true,
-		"vm:connect":      true,
 		"vm:run":          true,
+		"disk:resize":     true,
 	}
 	got := make(map[string]bool)
 	for _, e := range all {
@@ -504,7 +502,7 @@ func TestEnterprisePlanExists(t *testing.T) {
 }
 
 func TestEnterprisePlanGrants(t *testing.T) {
-	shouldGrant := []Entitlement{LLMUse, CreditPurchase, InviteRequest, VMCreate, VMConnect, VMRun}
+	shouldGrant := []Entitlement{LLMUse, CreditPurchase, InviteRequest, VMCreate, VMRun}
 	for _, ent := range shouldGrant {
 		if !PlanGrants(CategoryEnterprise, ent) {
 			t.Errorf("PlanGrants(CategoryEnterprise, %q) = false, want true", ent.ID)

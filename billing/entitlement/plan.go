@@ -107,7 +107,6 @@ var plans = map[PlanCategory]Plan{
 			CreditPurchase: true,
 			InviteRequest:  true,
 			VMCreate:       true,
-			VMConnect:      true,
 			VMRun:          true,
 		},
 	},
@@ -124,7 +123,6 @@ var plans = map[PlanCategory]Plan{
 			CreditPurchase: true,
 			InviteRequest:  true,
 			VMCreate:       true,
-			VMConnect:      true,
 			VMRun:          true,
 		},
 	},
@@ -146,7 +144,6 @@ var plans = map[PlanCategory]Plan{
 			InviteRequest:  true,
 			TeamCreate:     true,
 			VMCreate:       true,
-			VMConnect:      true,
 			VMRun:          true,
 		},
 	},
@@ -158,10 +155,9 @@ var plans = map[PlanCategory]Plan{
 		MonthlyLLMCreditUSD: 500,
 		DefaultTier:         "friend:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:    true,
-			VMCreate:  true,
-			VMConnect: true,
-			VMRun:     true,
+			LLMUse:   true,
+			VMCreate: true,
+			VMRun:    true,
 		},
 	},
 	CategoryGrandfathered: {
@@ -171,10 +167,9 @@ var plans = map[PlanCategory]Plan{
 		Name:        "Grandfathered",
 		DefaultTier: "grandfathered:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:    true,
-			VMCreate:  true,
-			VMConnect: true,
-			VMRun:     true,
+			LLMUse:   true,
+			VMCreate: true,
+			VMRun:    true,
 		},
 	},
 	CategoryTrial: {
@@ -185,10 +180,9 @@ var plans = map[PlanCategory]Plan{
 		TrialDays:   30,
 		DefaultTier: "trial:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:    true,
-			VMCreate:  true,
-			VMConnect: true,
-			VMRun:     true,
+			LLMUse:   true,
+			VMCreate: true,
+			VMRun:    true,
 		},
 	},
 	CategoryBasic: {
@@ -198,8 +192,7 @@ var plans = map[PlanCategory]Plan{
 		Name:        "Basic",
 		DefaultTier: "basic:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:    true,
-			VMConnect: true,
+			LLMUse: true,
 		},
 	},
 	CategoryRestricted: {

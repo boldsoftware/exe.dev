@@ -26,9 +26,11 @@ var (
 	TeamCreate = Entitlement{"team:create", "Create Teams"}
 
 	// VM operations.
-	VMCreate  = Entitlement{"vm:create", "Create VMs"}
-	VMConnect = Entitlement{"vm:connect", "Connect to VMs"}
-	VMRun     = Entitlement{"vm:run", "Run VMs"}
+	VMCreate = Entitlement{"vm:create", "Create VMs"}
+	VMRun    = Entitlement{"vm:run", "Run VMs"}
+
+	// Disk operations.
+	DiskResize = Entitlement{"disk:resize", "Resize VM Disks"}
 
 	// All is a wildcard that grants every entitlement.
 	All = Entitlement{"*", "All Entitlements"}
@@ -43,8 +45,8 @@ func AllEntitlements() []Entitlement {
 		InviteRequest,
 		TeamCreate,
 		VMCreate,
-		VMConnect,
 		VMRun,
+		DiskResize,
 	}
 }
 
