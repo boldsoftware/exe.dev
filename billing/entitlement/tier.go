@@ -29,10 +29,11 @@ var (
 //
 //exe:completeinit
 type TierQuotas struct {
-	PoolSize   PoolSize
-	MaxUserVMs int
-	MaxTeamVMs int
-	MaxDisk    uint64 // bytes
+	PoolSize    PoolSize
+	MaxUserVMs  int
+	MaxTeamVMs  int
+	DefaultDisk uint64 // bytes — disk size for new VMs
+	MaxDisk     uint64 // bytes — per-VM ceiling for disk resize; contact support above this (0 = no resize allowed)
 }
 
 // Tier represents a specific billing tier within a plan category.
@@ -66,10 +67,11 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSmall,
-			MaxUserVMs: 50,
-			MaxTeamVMs: 0,
-			MaxDisk:    25 * GB,
+			PoolSize:    PoolSmall,
+			MaxUserVMs:  50,
+			MaxTeamVMs:  0,
+			DefaultDisk: 25 * GB,
+			MaxDisk:     75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -83,10 +85,11 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:   PoolMedium,
-			MaxUserVMs: 50,
-			MaxTeamVMs: 0,
-			MaxDisk:    25 * GB,
+			PoolSize:    PoolMedium,
+			MaxUserVMs:  50,
+			MaxTeamVMs:  0,
+			DefaultDisk: 25 * GB,
+			MaxDisk:     75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -100,10 +103,11 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:   PoolLarge,
-			MaxUserVMs: 50,
-			MaxTeamVMs: 0,
-			MaxDisk:    25 * GB,
+			PoolSize:    PoolLarge,
+			MaxUserVMs:  50,
+			MaxTeamVMs:  0,
+			DefaultDisk: 25 * GB,
+			MaxDisk:     75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -117,10 +121,11 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:   PoolXLarge,
-			MaxUserVMs: 50,
-			MaxTeamVMs: 0,
-			MaxDisk:    25 * GB,
+			PoolSize:    PoolXLarge,
+			MaxUserVMs:  50,
+			MaxTeamVMs:  0,
+			DefaultDisk: 25 * GB,
+			MaxDisk:     75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -133,10 +138,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -146,10 +152,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -159,10 +166,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -172,10 +180,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -185,10 +194,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -198,10 +208,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -211,10 +222,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -224,10 +236,11 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:   PoolSize{},
-			MaxUserVMs: 0,
-			MaxTeamVMs: 0,
-			MaxDisk:    0,
+			PoolSize:    PoolSize{},
+			MaxUserVMs:  0,
+			MaxTeamVMs:  0,
+			DefaultDisk: 0,
+			MaxDisk:     0,
 		},
 		Entitlements: nil,
 	},
@@ -312,6 +325,30 @@ func tierGrants(tier Tier, ent Entitlement) bool {
 		return true
 	}
 	return ents[ent]
+}
+
+// DiskResizeAllowance returns how many more bytes a VM's disk can grow
+// given the current disk size and the user's plan. Returns 0 if the plan
+// does not allow resize (MaxDisk == 0) or the disk is already at/above the ceiling.
+func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
+	tier, err := GetTierByID(planID)
+	if err != nil || tier.Quotas.MaxDisk == 0 {
+		return 0
+	}
+	if currentDiskSize >= tier.Quotas.MaxDisk {
+		return 0
+	}
+	return tier.Quotas.MaxDisk - currentDiskSize
+}
+
+// MaxDiskForPlan returns the absolute disk ceiling for a plan.
+// Returns 0 if the plan is unknown or has no disk resize quota.
+func MaxDiskForPlan(planID string) uint64 {
+	tier, err := GetTierByID(planID)
+	if err != nil {
+		return 0
+	}
+	return tier.Quotas.MaxDisk
 }
 
 // tierIDFromStripePriceKey returns the tier ID for a given Stripe price lookup key.

@@ -1874,11 +1874,6 @@ const (
 )
 
 func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	// Only support users can use this command
-	if !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
-		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
-	}
-
 	if len(cc.Args) != 1 {
 		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GiB (e.g., '8' for 8 GiB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
 	}
@@ -1893,7 +1888,15 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
 	}
 
-	// Look up the box by name (support users can look up any box)
+	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
+
+	// Memory and CPU resize are support-only. Non-sudo users can only resize disk.
+	if (memoryStr != "" || cpuVal > 0) && !isSudo {
+		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	}
+
+	// Look up the box by name.
+	// Support users can look up any box; regular users can only resize their own.
 	box, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxNamed, boxName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return cc.Errorf("VM %q not found", boxName)
@@ -1903,6 +1906,11 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 	if err := enforceTagScope(ctx, &box); err != nil {
 		return cc.Errorf("%v", err)
+	}
+
+	// Non-sudo users can only resize their own VMs.
+	if !isSudo && box.CreatedByUserID != cc.User.ID {
+		return cc.Errorf("VM %q not found", boxName)
 	}
 
 	CommandLogAddAttr(ctx, slog.String("vm_name", boxName))
@@ -1922,13 +1930,29 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Handle disk resize if specified
 	var diskGrowResult *api.GrowDiskResponse
 	if diskStr != "" {
-		if !ss.server.UserHasExeSudo(ctx, cc.User.ID) && !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.DiskResize, cc.User.ID) {
+		if !isSudo && !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.DiskResize, cc.User.ID) {
 			return cc.Errorf("disk resize is not available on your current plan")
 		}
 
 		newDiskSize, err := parseSize(diskStr)
 		if err != nil {
 			return cc.Errorf("invalid --disk value: %s", err)
+		}
+
+		// Enforce plan quota for non-sudo users.
+		if !isSudo {
+			ownerID := box.CreatedByUserID
+			planRow, planErr := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, ownerID)
+			if planErr != nil {
+				return cc.Errorf("failed to look up plan for VM owner: %v", planErr)
+			}
+			maxDisk := entitlement.MaxDiskForPlan(planRow.PlanID)
+			if maxDisk == 0 {
+				return cc.Errorf("disk resize is not available on your current plan")
+			}
+			if newDiskSize > maxDisk {
+				return cc.Errorf("requested size %s exceeds the %s limit — please contact support for larger sizes", humanize.IBytes(newDiskSize), humanize.IBytes(maxDisk))
+			}
 		}
 
 		// Get current instance to check current disk size

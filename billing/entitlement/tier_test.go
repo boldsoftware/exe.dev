@@ -288,15 +288,16 @@ func TestGrantsEntitlement(t *testing.T) {
 
 func TestIndividualTierQuotas(t *testing.T) {
 	expected := []struct {
-		id     string
-		pool   PoolSize
-		disk   uint64
-		maxVMs int
+		id          string
+		pool        PoolSize
+		defaultDisk uint64
+		maxDisk     uint64
+		maxVMs      int
 	}{
-		{"individual:small:monthly:20260601", PoolSmall, 25 * GB, 50},
-		{"individual:medium:monthly:20260601", PoolMedium, 25 * GB, 50},
-		{"individual:large:monthly:20260601", PoolLarge, 25 * GB, 50},
-		{"individual:xlarge:monthly:20260601", PoolXLarge, 25 * GB, 50},
+		{"individual:small:monthly:20260601", PoolSmall, 25 * GB, 75 * GB, 50},
+		{"individual:medium:monthly:20260601", PoolMedium, 25 * GB, 75 * GB, 50},
+		{"individual:large:monthly:20260601", PoolLarge, 25 * GB, 75 * GB, 50},
+		{"individual:xlarge:monthly:20260601", PoolXLarge, 25 * GB, 75 * GB, 50},
 	}
 	for _, e := range expected {
 		t.Run(e.id, func(t *testing.T) {
@@ -304,8 +305,11 @@ func TestIndividualTierQuotas(t *testing.T) {
 			if tier.Quotas.PoolSize != e.pool {
 				t.Errorf("PoolSize = %+v, want %+v", tier.Quotas.PoolSize, e.pool)
 			}
-			if tier.Quotas.MaxDisk != e.disk {
-				t.Errorf("MaxDisk = %d, want %d", tier.Quotas.MaxDisk, e.disk)
+			if tier.Quotas.DefaultDisk != e.defaultDisk {
+				t.Errorf("DefaultDisk = %d, want %d", tier.Quotas.DefaultDisk, e.defaultDisk)
+			}
+			if tier.Quotas.MaxDisk != e.maxDisk {
+				t.Errorf("MaxDisk = %d, want %d", tier.Quotas.MaxDisk, e.maxDisk)
 			}
 			if tier.Quotas.MaxUserVMs != e.maxVMs {
 				t.Errorf("MaxUserVMs = %d, want %d", tier.Quotas.MaxUserVMs, e.maxVMs)
@@ -400,5 +404,83 @@ func TestBasePlanHandles4PartTierID(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("BasePlan(%q) = %q, want %q", tt.id, got, tt.want)
 		}
+	}
+}
+
+func TestDiskResizeAllowance(t *testing.T) {
+	tests := []struct {
+		name        string
+		planID      string
+		currentDisk uint64
+		want        uint64
+	}{
+		{
+			name:        "individual small at default",
+			planID:      "individual:small:monthly:20260601",
+			currentDisk: 25 * GB,
+			want:        50 * GB, // 75 - 25 = 50 GB headroom
+		},
+		{
+			name:        "individual small at max",
+			planID:      "individual:small:monthly:20260601",
+			currentDisk: 75 * GB,
+			want:        0,
+		},
+		{
+			name:        "individual small over max",
+			planID:      "individual:small:monthly:20260601",
+			currentDisk: 80 * GB,
+			want:        0,
+		},
+		{
+			name:        "individual small at 10GB",
+			planID:      "individual:small:monthly:20260601",
+			currentDisk: 10 * GB,
+			want:        65 * GB,
+		},
+		{
+			name:        "basic plan no resize",
+			planID:      "basic",
+			currentDisk: 10 * GB,
+			want:        0,
+		},
+		{
+			name:        "vip plan no resize quota",
+			planID:      "vip",
+			currentDisk: 10 * GB,
+			want:        0,
+		},
+		{
+			name:        "unknown plan",
+			planID:      "totally:bogus",
+			currentDisk: 10 * GB,
+			want:        0,
+		},
+		{
+			name:        "legacy individual ID",
+			planID:      "individual:monthly:20260106",
+			currentDisk: 25 * GB,
+			want:        50 * GB, // falls back to small tier, 75 - 25 = 50
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DiskResizeAllowance(tt.planID, tt.currentDisk)
+			if got != tt.want {
+				t.Errorf("DiskResizeAllowance(%q, %d) = %d, want %d", tt.planID, tt.currentDisk, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMaxDiskForPlan(t *testing.T) {
+	if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*GB {
+		t.Errorf("MaxDiskForPlan(individual:small) = %d, want %d", got, 75*GB)
+	}
+	if got := MaxDiskForPlan("basic"); got != 0 {
+		t.Errorf("MaxDiskForPlan(basic) = %d, want 0", got)
+	}
+	if got := MaxDiskForPlan("totally:bogus"); got != 0 {
+		t.Errorf("MaxDiskForPlan(totally:bogus) = %d, want 0", got)
 	}
 }
