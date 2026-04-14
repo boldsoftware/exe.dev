@@ -42,6 +42,14 @@ func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.G
 	}, nil
 }
 
+func (f *fakeLiveMigrationServer) StartInstance(_ context.Context, _ *computeapi.StartInstanceRequest) (*computeapi.StartInstanceResponse, error) {
+	return &computeapi.StartInstanceResponse{}, nil
+}
+
+func (f *fakeLiveMigrationServer) StopInstance(_ context.Context, _ *computeapi.StopInstanceRequest) (*computeapi.StopInstanceResponse, error) {
+	return &computeapi.StopInstanceResponse{}, nil
+}
+
 func (f *fakeLiveMigrationServer) DeleteInstance(_ context.Context, _ *computeapi.DeleteInstanceRequest) (*computeapi.DeleteInstanceResponse, error) {
 	f.deleteCalls++
 	if len(f.deleteErrs) > 0 {
@@ -733,5 +741,132 @@ func TestHandleDebugBoxMigrateRetriesSourceDeleteWhileMigrationUnlocks(t *testin
 	}
 	if !strings.Contains(body, "MIGRATION_SUCCESS:") {
 		t.Fatalf("expected migration success, got:\n%s", body)
+	}
+}
+
+func TestHandleDebugBoxMigrateSSHFailureFallsBackToCold(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 33333
+
+	// Source and target exelets.
+	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source"}
+	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	// Set up a fake email server to verify the maintenance email is sent.
+	type capturedEmail struct {
+		To      string `json:"to"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+	emailCh := make(chan capturedEmail, 1)
+	fakeEmailSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var e capturedEmail
+		if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		emailCh <- e
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(fakeEmailSrv.Close)
+	server.fakeHTTPEmail = fakeEmailSrv.URL
+
+	const boxName = "ssh-fallback-vm"
+	userID := createTestUser(t, server, boxName+"@boldvm.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          boxName,
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set container ID and SSH fields so the SSH pre-check is attempted.
+	// The SSH connection will fail because no real SSH server is listening.
+	containerID := "container-" + boxName
+	sshPortVal := int64(sshPort)
+	sshUser := "user"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:                   boxID,
+			ContainerID:          &containerID,
+			Status:               "running",
+			SSHPort:              &sshPortVal,
+			SSHUser:              &sshUser,
+			SSHClientPrivateKey:  []byte("not-a-real-key"),
+			SSHServerIdentityKey: []byte("not-a-real-key"),
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// POST to the debug migrate handler. Don't set live=false — let it
+	// default to live (because VM is running), then fall back.
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+	}
+	req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	server.handleDebugBoxMigrate(w, req)
+	body := w.Body.String()
+
+	// Should NOT have a MIGRATION_ERROR.
+	if strings.Contains(body, "MIGRATION_ERROR") {
+		t.Fatalf("expected migration to succeed with cold fallback, got error:\n%s", body)
+	}
+
+	// Should have MIGRATION_SUCCESS.
+	if !strings.Contains(body, "MIGRATION_SUCCESS") {
+		t.Fatalf("expected MIGRATION_SUCCESS in response body, got:\n%s", body)
+	}
+
+	// Should mention SSH pre-check failure and cold fallback.
+	if !strings.Contains(body, "SSH pre-check failed") {
+		t.Errorf("expected SSH pre-check failure message, got:\n%s", body)
+	}
+	if !strings.Contains(body, "falling back to cold migration") {
+		t.Errorf("expected cold migration fallback message, got:\n%s", body)
+	}
+
+	// Should NOT mention live migration (it should have used cold path).
+	if strings.Contains(body, "Starting live migration") {
+		t.Errorf("expected cold migration, but saw live migration message:\n%s", body)
+	}
+
+	// Maintenance email should be sent (VM was rebooted via cold migration).
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case got := <-emailCh:
+		if got.To != boxName+"@boldvm.com" {
+			t.Errorf("email to = %q, want %q", got.To, boxName+"@boldvm.com")
+		}
+		wantSubject := "exe.dev: system maintenance on " + boxName
+		if got.Subject != wantSubject {
+			t.Errorf("email subject = %q, want %q", got.Subject, wantSubject)
+		}
+	case <-timer.C:
+		t.Fatal("timed out waiting for maintenance email")
 	}
 }

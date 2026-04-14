@@ -714,11 +714,15 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	// Live migration requires SSH access to the VM for IP reconfiguration.
 	// Verify SSH works before starting the transfer — a broken SSH server
 	// or stale connection would otherwise waste the entire phase 1 transfer.
+	// If SSH is dead, fall back to cold migration automatically: the VM is
+	// already in a bad state, so a restart on the target is the right move.
 	if live && box.SSHPort != nil {
 		writeProgress("Verifying SSH access to VM...")
 		if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
-			writeError("VM SSH pre-check failed (required for live migration IP reconfiguration): %v", err)
-			return
+			s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
+				"box", boxName, "error", err)
+			writeProgress("WARNING: SSH pre-check failed (%v) — falling back to cold migration.", err)
+			live = false
 		}
 	}
 
@@ -1580,14 +1584,19 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 
 		if live {
 			// Verify SSH works before starting the transfer.
+			// If SSH is dead, fall back to two-phase (cold) migration: the VM
+			// is already in a bad state, so a restart on the target is fine.
 			if box.SSHPort != nil {
 				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
-					writeError("VM %q SSH pre-check failed: %v", boxName, err)
-					failed++
-					writeProgress("")
-					continue
+					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
+						"box", boxName, "error", err)
+					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
+					live = false
 				}
 			}
+		}
+
+		if live {
 			writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
@@ -6494,14 +6503,19 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 
 		if live {
 			// Verify SSH works before starting the transfer.
+			// If SSH is dead, fall back to two-phase (cold) migration: the VM
+			// is already in a bad state, so a restart on the target is fine.
 			if box.SSHPort != nil {
 				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
-					writeError("VM %q SSH pre-check failed: %v", boxName, err)
-					failed++
-					writeProgress("")
-					continue
+					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
+						"box", boxName, "error", err)
+					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
+					live = false
 				}
 			}
+		}
+
+		if live {
 			writeProgress("Live migrating from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
@@ -6530,7 +6544,6 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 				writeProgress("WARNING: fell back to cold boot.")
 			}
 		} else {
-			// VM was already stopped (live == wasRunning, so !live implies !wasRunning); leave stopped on target.
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, writeProgress); err != nil {
@@ -6544,7 +6557,29 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 				writeProgress("")
 				continue
 			}
-			dbStatus = "stopped"
+			if wasRunning {
+				writeProgress("Starting VM on target...")
+				if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+					writeError("failed to start VM on target: %v", err)
+					restartSource(err.Error())
+					failed++
+					writeProgress("")
+					continue
+				}
+				writeProgress("VM started on target.")
+				newInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+				if err != nil {
+					writeError("failed to get instance info from target: %v", err)
+					restartSource(err.Error())
+					failed++
+					writeProgress("")
+					continue
+				}
+				newSSHPort := int64(newInstance.Instance.SSHPort)
+				sshPort = &newSSHPort
+			} else {
+				dbStatus = "stopped"
+			}
 		}
 
 		writeProgress("Updating database...")
