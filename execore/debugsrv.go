@@ -88,6 +88,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
 	mux.HandleFunc("POST /debug/user/cold-migrate-vm", s.handleDebugUserColdMigrateVM)
+	mux.HandleFunc("GET /debug/stale-pdx-cleanup", s.handleDebugStalePDXCleanup)
+	mux.HandleFunc("POST /debug/stale-pdx-cleanup/run", s.handleDebugStalePDXCleanupRun)
+	mux.HandleFunc("POST /debug/stale-pdx-cleanup/rollback", s.handleDebugStalePDXCleanupRollback)
 	mux.HandleFunc("POST /debug/users/toggle-root-support", s.handleDebugToggleRootSupport)
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
@@ -8256,5 +8259,282 @@ func (s *Server) renderDebugTemplate(ctx context.Context, w http.ResponseWriter,
 		default:
 			s.slog().ErrorContext(ctx, "failed to execute debug template", "templateName", templateName, "error", err)
 		}
+	}
+}
+
+type stalePDXDecision struct {
+	User              exedb.User
+	TargetRegion      string
+	DecisionSource    string
+	DecisionReason    string
+	SignupIPCheckID   *int64
+	SignupIPCheckJSON *string
+}
+
+type stalePDXBatchResult struct {
+	BatchID      string
+	Mode         string
+	Rows         []exedb.UserRegionMigration
+	Applied      int
+	Failed       int
+	AlreadyMoved int
+}
+
+func deriveStalePDXTarget(ipCheck *exedb.SignupIPCheck) (target, source, reason string) {
+	if ipCheck == nil || ipCheck.IpqsResponseJson == nil || strings.TrimSpace(*ipCheck.IpqsResponseJson) == "" {
+		return "lax", "fallback_lax", "no signup_ip_check location data"
+	}
+	var payload struct {
+		CountryCode string  `json:"country_code"`
+		Latitude    float64 `json:"latitude"`
+		Longitude   float64 `json:"longitude"`
+	}
+	if err := json.Unmarshal([]byte(*ipCheck.IpqsResponseJson), &payload); err != nil {
+		return "lax", "fallback_lax", "invalid signup_ip_check JSON"
+	}
+	if payload.CountryCode == "" && payload.Latitude == 0 && payload.Longitude == 0 {
+		return "lax", "fallback_lax", "signup_ip_check missing usable location"
+	}
+	reg := region.ForUser(payload.CountryCode, payload.Latitude, payload.Longitude)
+	if reg.Code == "pdx" {
+		return "lax", "signup_ip_check", "derived pdx forced to lax"
+	}
+	return reg.Code, "signup_ip_check", fmt.Sprintf("derived from signup_ip_check (%s)", reg.Code)
+}
+
+func (s *Server) buildStalePDXDecisions(ctx context.Context) ([]stalePDXDecision, error) {
+	users, err := withRxRes0(s, ctx, (*exedb.Queries).ListPDXUsers)
+	if err != nil {
+		return nil, err
+	}
+	decisions := make([]stalePDXDecision, 0, len(users))
+	for _, user := range users {
+		var ipCheck *exedb.SignupIPCheck
+		if user.CanonicalEmail != nil && *user.CanonicalEmail != "" {
+			check, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestSignupIPCheckByEmail, *user.CanonicalEmail)
+			if err == nil {
+				ipCheck = &check
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("lookup signup_ip_check for %s: %w", user.UserID, err)
+			}
+		}
+		target, source, reason := deriveStalePDXTarget(ipCheck)
+		decision := stalePDXDecision{
+			User:           user,
+			TargetRegion:   target,
+			DecisionSource: source,
+			DecisionReason: reason,
+		}
+		if ipCheck != nil {
+			decision.SignupIPCheckID = &ipCheck.ID
+			decision.SignupIPCheckJSON = ipCheck.IpqsResponseJson
+		}
+		decisions = append(decisions, decision)
+	}
+	return decisions, nil
+}
+
+func (s *Server) runStalePDXBatch(ctx context.Context, mode string) (*stalePDXBatchResult, error) {
+	decisions, err := s.buildStalePDXDecisions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	batchID := fmt.Sprintf("stale-pdx-%d", time.Now().UnixNano())
+	result := &stalePDXBatchResult{BatchID: batchID, Mode: mode}
+	for _, decision := range decisions {
+		row, err := s.insertStalePDXAuditRow(ctx, batchID, nil, decision, mode)
+		if err != nil {
+			return nil, err
+		}
+		if mode == "dry_run" {
+			result.Rows = append(result.Rows, row)
+			continue
+		}
+		applyStatus := "apply_succeeded"
+		var applyErr *string
+		err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+			execRes, err := q.SetUserRegionCAS(ctx, exedb.SetUserRegionCASParams{Region: decision.TargetRegion, UserID: decision.User.UserID, Region_2: decision.User.Region})
+			if err != nil {
+				return err
+			}
+			rowsAffected, err := execRes.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rowsAffected != 1 {
+				return fmt.Errorf("CAS failed: expected region %q", decision.User.Region)
+			}
+			return nil
+		})
+		if err != nil {
+			applyStatus = "apply_failed"
+			msg := err.Error()
+			applyErr = &msg
+			result.Failed++
+		} else {
+			result.Applied++
+		}
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserRegionMigrationResult, exedb.UpdateUserRegionMigrationResultParams{Status: applyStatus, Error: applyErr, ID: row.ID}); err != nil {
+			return nil, err
+		}
+		updatedRows, err := withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
+		if err != nil {
+			return nil, err
+		}
+		result.Rows = updatedRows
+	}
+	if mode == "dry_run" {
+		result.Rows, err = withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Server) insertStalePDXAuditRow(ctx context.Context, batchID string, rollbackOf *int64, decision stalePDXDecision, mode string) (exedb.UserRegionMigration, error) {
+	status := "dry_run_planned"
+	if mode == "apply" {
+		status = "apply_pending"
+	} else if mode == "rollback" {
+		status = "rollback_pending"
+	}
+	return exedb.WithTxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (exedb.UserRegionMigration, error) {
+		return q.InsertUserRegionMigration(ctx, exedb.InsertUserRegionMigrationParams{
+			BatchID:               batchID,
+			RollbackOfMigrationID: rollbackOf,
+			UserID:                decision.User.UserID,
+			Email:                 decision.User.Email,
+			Mode:                  mode,
+			Status:                status,
+			OldRegion:             decision.User.Region,
+			TargetRegion:          decision.TargetRegion,
+			DecisionSource:        decision.DecisionSource,
+			DecisionReason:        decision.DecisionReason,
+			SignupIpCheckID:       decision.SignupIPCheckID,
+			Error:                 nil,
+		})
+	})
+}
+
+func (s *Server) rollbackStalePDXBatch(ctx context.Context, batchID string) (*stalePDXBatchResult, error) {
+	rows, err := withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
+	if err != nil {
+		return nil, err
+	}
+	rollbackBatchID := fmt.Sprintf("stale-pdx-rollback-%d", time.Now().UnixNano())
+	result := &stalePDXBatchResult{BatchID: rollbackBatchID, Mode: "rollback"}
+	for _, row := range rows {
+		if row.Mode != "apply" || row.Status != "apply_succeeded" {
+			continue
+		}
+		decision := stalePDXDecision{
+			User:           exedb.User{UserID: row.UserID, Email: row.Email, Region: row.TargetRegion},
+			TargetRegion:   row.OldRegion,
+			DecisionSource: "rollback",
+			DecisionReason: fmt.Sprintf("rollback of migration %d", row.ID),
+		}
+		rollbackOf := row.ID
+		auditRow, err := s.insertStalePDXAuditRow(ctx, rollbackBatchID, &rollbackOf, decision, "rollback")
+		if err != nil {
+			return nil, err
+		}
+		status := "rollback_succeeded"
+		var rollbackErr *string
+		err = s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+			execRes, err := q.SetUserRegionCAS(ctx, exedb.SetUserRegionCASParams{Region: row.OldRegion, UserID: row.UserID, Region_2: row.TargetRegion})
+			if err != nil {
+				return err
+			}
+			rowsAffected, err := execRes.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rowsAffected != 1 {
+				return fmt.Errorf("CAS failed: expected region %q", row.TargetRegion)
+			}
+			return nil
+		})
+		if err != nil {
+			status = "rollback_failed"
+			msg := err.Error()
+			rollbackErr = &msg
+			result.Failed++
+		} else {
+			result.Applied++
+		}
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserRegionMigrationResult, exedb.UpdateUserRegionMigrationResultParams{Status: status, Error: rollbackErr, ID: auditRow.ID}); err != nil {
+			return nil, err
+		}
+	}
+	result.Rows, err = withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, rollbackBatchID)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *Server) handleDebugStalePDXCleanup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	decisions, err := s.buildStalePDXDecisions(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to build stale-pdx preview: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, "<!doctype html><html><head><title>stale-pdx-cleanup</title><style>body{font-family:sans-serif;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;text-align:left}code{white-space:pre-wrap}</style></head><body>")
+	fmt.Fprint(w, `<p><a href="/debug">/debug</a> &gt; stale-pdx-cleanup</p>`)
+	fmt.Fprintf(w, "<h1>stale-pdx-cleanup</h1><p>PDX users eligible for region cleanup: %d</p>", len(decisions))
+	fmt.Fprint(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:inline-block;margin-right:12px"><input type="hidden" name="mode" value="dry_run"><button type="submit">Dry Run</button></form>`)
+	fmt.Fprint(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:inline-block"><input type="hidden" name="mode" value="apply"><button type="submit" onclick="return confirm('Apply stale PDX cleanup?')">Apply</button></form>`)
+	fmt.Fprint(w, "<table><thead><tr><th>user_id</th><th>email</th><th>current</th><th>target</th><th>source</th><th>reason</th></tr></thead><tbody>")
+	for _, d := range decisions {
+		fmt.Fprintf(w, "<tr><td><a href=\"/debug/user?userId=%s\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>", html.EscapeString(url.QueryEscape(d.User.UserID)), html.EscapeString(d.User.UserID), html.EscapeString(d.User.Email), html.EscapeString(d.User.Region), html.EscapeString(d.TargetRegion), html.EscapeString(d.DecisionSource), html.EscapeString(d.DecisionReason))
+	}
+	fmt.Fprint(w, "</tbody></table>")
+	fmt.Fprint(w, `<h2 style="margin-top:24px">Rollback</h2><form method="post" action="/debug/stale-pdx-cleanup/rollback"><input type="text" name="batch_id" placeholder="apply batch id" required><button type="submit">Rollback batch</button></form>`)
+	fmt.Fprint(w, "</body></html>")
+}
+
+func (s *Server) handleDebugStalePDXCleanupRun(w http.ResponseWriter, r *http.Request) {
+	mode := r.FormValue("mode")
+	if mode == "" {
+		mode = "dry_run"
+	}
+	if mode != "dry_run" && mode != "apply" {
+		http.Error(w, "mode must be dry_run or apply", http.StatusBadRequest)
+		return
+	}
+	result, err := s.runStalePDXBatch(r.Context(), mode)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("stale-pdx cleanup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.writeStalePDXBatchText(w, result)
+}
+
+func (s *Server) handleDebugStalePDXCleanupRollback(w http.ResponseWriter, r *http.Request) {
+	batchID := strings.TrimSpace(r.FormValue("batch_id"))
+	if batchID == "" {
+		http.Error(w, "batch_id is required", http.StatusBadRequest)
+		return
+	}
+	result, err := s.rollbackStalePDXBatch(r.Context(), batchID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("rollback failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.writeStalePDXBatchText(w, result)
+}
+
+func (s *Server) writeStalePDXBatchText(w http.ResponseWriter, result *stalePDXBatchResult) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "batch_id=%s\nmode=%s\napplied=%d\nfailed=%d\n\n", result.BatchID, result.Mode, result.Applied, result.Failed)
+	for _, row := range result.Rows {
+		errText := ""
+		if row.Error != nil {
+			errText = *row.Error
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row.ID, row.UserID, row.Email, row.Status, row.OldRegion, row.TargetRegion, errText)
 	}
 }

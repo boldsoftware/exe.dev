@@ -65,6 +65,7 @@ table.info th { width: 200px; }
 
 <h3 style="margin-top:20px;">Live-Migrate VMs to Region</h3>
 <p style="font-size:13px;color:#666;">Live-migrates all VMs not already in the user's region ({{.Region}}) to an exelet there.</p>
+<p style="font-size:13px;color:#666;">For stale PDX region cleanup without VM migration, use <a href="/debug/stale-pdx-cleanup">/debug/stale-pdx-cleanup</a>.</p>
 {{if .BoxesOutsideRegion}}
 <p>{{len .BoxesOutsideRegion}} VM(s) outside <b>{{.Region}}</b>.</p>
 <form id="migrateVMsForm">

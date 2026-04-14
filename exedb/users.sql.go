@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countUsersByRegion = `-- name: CountUsersByRegion :many
@@ -362,6 +363,52 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const listPDXUsers = `-- name: ListPDXUsers :many
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE region = 'pdx' ORDER BY created_at ASC, user_id ASC
+`
+
+func (q *Queries) ListPDXUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.query(ctx, q.listPDXUsersStmt, listPDXUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.RootSupport,
+			&i.CreatedForLoginWithExe,
+			&i.NewVmCreationDisabled,
+			&i.DiscordID,
+			&i.DiscordUsername,
+			&i.SignedUpWithInviteID,
+			&i.NextSSHKeyNumber,
+			&i.Region,
+			&i.CanonicalEmail,
+			&i.IsLockedOut,
+			&i.Limits,
+			&i.CgroupOverrides,
+			&i.NewsletterSubscribed,
+			&i.AuthProvider,
+			&i.AuthProviderID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserAuthProvider = `-- name: SetUserAuthProvider :exec
 UPDATE users SET auth_provider = ?, auth_provider_id = ? WHERE user_id = ?
 `
@@ -474,6 +521,20 @@ type SetUserRegionParams struct {
 func (q *Queries) SetUserRegion(ctx context.Context, arg SetUserRegionParams) error {
 	_, err := q.exec(ctx, q.setUserRegionStmt, setUserRegion, arg.Region, arg.UserID)
 	return err
+}
+
+const setUserRegionCAS = `-- name: SetUserRegionCAS :execresult
+UPDATE users SET region = ? WHERE user_id = ? AND region = ?
+`
+
+type SetUserRegionCASParams struct {
+	Region   string `db:"region" json:"region"`
+	UserID   string `db:"user_id" json:"user_id"`
+	Region_2 string `db:"region_2" json:"region_2"`
+}
+
+func (q *Queries) SetUserRegionCAS(ctx context.Context, arg SetUserRegionCASParams) (sql.Result, error) {
+	return q.exec(ctx, q.setUserRegionCASStmt, setUserRegionCAS, arg.Region, arg.UserID, arg.Region_2)
 }
 
 const setUserRootSupport = `-- name: SetUserRootSupport :exec

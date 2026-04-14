@@ -513,6 +513,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLatestBillingStatusStmt, err = db.PrepareContext(ctx, getLatestBillingStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLatestBillingStatus: %w", err)
 	}
+	if q.getLatestSignupIPCheckByEmailStmt, err = db.PrepareContext(ctx, getLatestSignupIPCheckByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLatestSignupIPCheckByEmail: %w", err)
+	}
 	if q.getLoginCreationDisabledStmt, err = db.PrepareContext(ctx, getLoginCreationDisabled); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLoginCreationDisabled: %w", err)
 	}
@@ -882,6 +885,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
 	}
+	if q.insertUserRegionMigrationStmt, err = db.PrepareContext(ctx, insertUserRegionMigration); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertUserRegionMigration: %w", err)
+	}
 	if q.isBoxSharedWithUserTeamStmt, err = db.PrepareContext(ctx, isBoxSharedWithUserTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query IsBoxSharedWithUserTeam: %w", err)
 	}
@@ -993,6 +999,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listNetActuateIPShardsStmt, err = db.PrepareContext(ctx, listNetActuateIPShards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListNetActuateIPShards: %w", err)
 	}
+	if q.listPDXUsersStmt, err = db.PrepareContext(ctx, listPDXUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPDXUsers: %w", err)
+	}
 	if q.listPlanVersionCountsStmt, err = db.PrepareContext(ctx, listPlanVersionCounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPlanVersionCounts: %w", err)
 	}
@@ -1022,6 +1031,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listUnusedSystemInviteCodesStmt, err = db.PrepareContext(ctx, listUnusedSystemInviteCodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedSystemInviteCodes: %w", err)
+	}
+	if q.listUserRegionMigrationsByBatchStmt, err = db.PrepareContext(ctx, listUserRegionMigrationsByBatch); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUserRegionMigrationsByBatch: %w", err)
 	}
 	if q.listUserTemplateRatingsStmt, err = db.PrepareContext(ctx, listUserTemplateRatings); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUserTemplateRatings: %w", err)
@@ -1106,6 +1118,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setUserRegionStmt, err = db.PrepareContext(ctx, setUserRegion); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRegion: %w", err)
+	}
+	if q.setUserRegionCASStmt, err = db.PrepareContext(ctx, setUserRegionCAS); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserRegionCAS: %w", err)
 	}
 	if q.setUserRootSupportStmt, err = db.PrepareContext(ctx, setUserRootSupport); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserRootSupport: %w", err)
@@ -1211,6 +1226,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateUserLLMAvailableCreditStmt, err = db.PrepareContext(ctx, updateUserLLMAvailableCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserLLMAvailableCredit: %w", err)
+	}
+	if q.updateUserRegionMigrationResultStmt, err = db.PrepareContext(ctx, updateUserRegionMigrationResult); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateUserRegionMigrationResult: %w", err)
 	}
 	if q.upsertAccountPlanStmt, err = db.PrepareContext(ctx, upsertAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertAccountPlan: %w", err)
@@ -2083,6 +2101,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLatestBillingStatusStmt: %w", cerr)
 		}
 	}
+	if q.getLatestSignupIPCheckByEmailStmt != nil {
+		if cerr := q.getLatestSignupIPCheckByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLatestSignupIPCheckByEmailStmt: %w", cerr)
+		}
+	}
 	if q.getLoginCreationDisabledStmt != nil {
 		if cerr := q.getLoginCreationDisabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLoginCreationDisabledStmt: %w", cerr)
@@ -2698,6 +2721,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
 		}
 	}
+	if q.insertUserRegionMigrationStmt != nil {
+		if cerr := q.insertUserRegionMigrationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertUserRegionMigrationStmt: %w", cerr)
+		}
+	}
 	if q.isBoxSharedWithUserTeamStmt != nil {
 		if cerr := q.isBoxSharedWithUserTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing isBoxSharedWithUserTeamStmt: %w", cerr)
@@ -2883,6 +2911,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listNetActuateIPShardsStmt: %w", cerr)
 		}
 	}
+	if q.listPDXUsersStmt != nil {
+		if cerr := q.listPDXUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPDXUsersStmt: %w", cerr)
+		}
+	}
 	if q.listPlanVersionCountsStmt != nil {
 		if cerr := q.listPlanVersionCountsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listPlanVersionCountsStmt: %w", cerr)
@@ -2931,6 +2964,11 @@ func (q *Queries) Close() error {
 	if q.listUnusedSystemInviteCodesStmt != nil {
 		if cerr := q.listUnusedSystemInviteCodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listUnusedSystemInviteCodesStmt: %w", cerr)
+		}
+	}
+	if q.listUserRegionMigrationsByBatchStmt != nil {
+		if cerr := q.listUserRegionMigrationsByBatchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUserRegionMigrationsByBatchStmt: %w", cerr)
 		}
 	}
 	if q.listUserTemplateRatingsStmt != nil {
@@ -3071,6 +3109,11 @@ func (q *Queries) Close() error {
 	if q.setUserRegionStmt != nil {
 		if cerr := q.setUserRegionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setUserRegionStmt: %w", cerr)
+		}
+	}
+	if q.setUserRegionCASStmt != nil {
+		if cerr := q.setUserRegionCASStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserRegionCASStmt: %w", cerr)
 		}
 	}
 	if q.setUserRootSupportStmt != nil {
@@ -3246,6 +3289,11 @@ func (q *Queries) Close() error {
 	if q.updateUserLLMAvailableCreditStmt != nil {
 		if cerr := q.updateUserLLMAvailableCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateUserLLMAvailableCreditStmt: %w", cerr)
+		}
+	}
+	if q.updateUserRegionMigrationResultStmt != nil {
+		if cerr := q.updateUserRegionMigrationResultStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateUserRegionMigrationResultStmt: %w", cerr)
 		}
 	}
 	if q.upsertAccountPlanStmt != nil {
@@ -3535,6 +3583,7 @@ type Queries struct {
 	getInviteCodeStatsForUserStmt              *sql.Stmt
 	getLastBouncesPollStmt                     *sql.Stmt
 	getLatestBillingStatusStmt                 *sql.Stmt
+	getLatestSignupIPCheckByEmailStmt          *sql.Stmt
 	getLoginCreationDisabledStmt               *sql.Stmt
 	getMobilePendingVMByTokenStmt              *sql.Stmt
 	getNewThrottleEmailPatternsStmt            *sql.Stmt
@@ -3658,6 +3707,7 @@ type Queries struct {
 	insertTeamSSOProviderStmt                  *sql.Stmt
 	insertTemplateStmt                         *sql.Stmt
 	insertUserStmt                             *sql.Stmt
+	insertUserRegionMigrationStmt              *sql.Stmt
 	isBoxSharedWithUserTeamStmt                *sql.Stmt
 	isBoxShelleySharedWithTeamMemberStmt       *sql.Stmt
 	isEmailBouncedStmt                         *sql.Stmt
@@ -3695,6 +3745,7 @@ type Queries struct {
 	listIntegrationsByTeamStmt                 *sql.Stmt
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
+	listPDXUsersStmt                           *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
 	listPrivateExeletsStmt                     *sql.Stmt
 	listStripeWebhookEventsByTypeStmt          *sql.Stmt
@@ -3705,6 +3756,7 @@ type Queries struct {
 	listTeamSharedBoxIDsForUserStmt            *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
+	listUserRegionMigrationsByBatchStmt        *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
@@ -3733,6 +3785,7 @@ type Queries struct {
 	setUserNewVMCreationDisabledStmt           *sql.Stmt
 	setUserNewsletterSubscribedStmt            *sql.Stmt
 	setUserRegionStmt                          *sql.Stmt
+	setUserRegionCASStmt                       *sql.Stmt
 	setUserRootSupportStmt                     *sql.Stmt
 	updateAppTokenLastUsedStmt                 *sql.Stmt
 	updateAuthCookieLastUsedStmt               *sql.Stmt
@@ -3768,6 +3821,7 @@ type Queries struct {
 	updateTemplateStatusStmt                   *sql.Stmt
 	updateUserEmailStmt                        *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
+	updateUserRegionMigrationResultStmt        *sql.Stmt
 	upsertAccountPlanStmt                      *sql.Stmt
 	upsertGitHubInstallationStmt               *sql.Stmt
 	upsertGitHubUserTokenStmt                  *sql.Stmt
@@ -3954,6 +4008,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getInviteCodeStatsForUserStmt:              q.getInviteCodeStatsForUserStmt,
 		getLastBouncesPollStmt:                     q.getLastBouncesPollStmt,
 		getLatestBillingStatusStmt:                 q.getLatestBillingStatusStmt,
+		getLatestSignupIPCheckByEmailStmt:          q.getLatestSignupIPCheckByEmailStmt,
 		getLoginCreationDisabledStmt:               q.getLoginCreationDisabledStmt,
 		getMobilePendingVMByTokenStmt:              q.getMobilePendingVMByTokenStmt,
 		getNewThrottleEmailPatternsStmt:            q.getNewThrottleEmailPatternsStmt,
@@ -4077,6 +4132,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTeamSSOProviderStmt:                  q.insertTeamSSOProviderStmt,
 		insertTemplateStmt:                         q.insertTemplateStmt,
 		insertUserStmt:                             q.insertUserStmt,
+		insertUserRegionMigrationStmt:              q.insertUserRegionMigrationStmt,
 		isBoxSharedWithUserTeamStmt:                q.isBoxSharedWithUserTeamStmt,
 		isBoxShelleySharedWithTeamMemberStmt:       q.isBoxShelleySharedWithTeamMemberStmt,
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
@@ -4114,6 +4170,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByTeamStmt:                 q.listIntegrationsByTeamStmt,
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
+		listPDXUsersStmt:                           q.listPDXUsersStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
 		listPrivateExeletsStmt:                     q.listPrivateExeletsStmt,
 		listStripeWebhookEventsByTypeStmt:          q.listStripeWebhookEventsByTypeStmt,
@@ -4124,6 +4181,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTeamSharedBoxIDsForUserStmt:            q.listTeamSharedBoxIDsForUserStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
+		listUserRegionMigrationsByBatchStmt:        q.listUserRegionMigrationsByBatchStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
@@ -4152,6 +4210,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setUserNewVMCreationDisabledStmt:           q.setUserNewVMCreationDisabledStmt,
 		setUserNewsletterSubscribedStmt:            q.setUserNewsletterSubscribedStmt,
 		setUserRegionStmt:                          q.setUserRegionStmt,
+		setUserRegionCASStmt:                       q.setUserRegionCASStmt,
 		setUserRootSupportStmt:                     q.setUserRootSupportStmt,
 		updateAppTokenLastUsedStmt:                 q.updateAppTokenLastUsedStmt,
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
@@ -4187,6 +4246,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTemplateStatusStmt:                   q.updateTemplateStatusStmt,
 		updateUserEmailStmt:                        q.updateUserEmailStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
+		updateUserRegionMigrationResultStmt:        q.updateUserRegionMigrationResultStmt,
 		upsertAccountPlanStmt:                      q.upsertAccountPlanStmt,
 		upsertGitHubInstallationStmt:               q.upsertGitHubInstallationStmt,
 		upsertGitHubUserTokenStmt:                  q.upsertGitHubUserTokenStmt,

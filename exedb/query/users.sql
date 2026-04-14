@@ -33,6 +33,9 @@ SELECT created_for_login_with_exe, COUNT(*) AS count FROM users GROUP BY created
 -- name: CountUsersByRegion :many
 SELECT region, COUNT(*) AS count FROM users GROUP BY region;
 
+-- name: ListPDXUsers :many
+SELECT * FROM users WHERE region = 'pdx' ORDER BY created_at ASC, user_id ASC;
+
 -- name: GetUserNewVMCreationDisabled :one
 SELECT new_vm_creation_disabled FROM users WHERE user_id = ?;
 
@@ -73,6 +76,9 @@ SELECT auth_provider, auth_provider_id FROM users WHERE user_id = ?;
 
 -- name: SetUserRegion :exec
 UPDATE users SET region = ? WHERE user_id = ?;
+
+-- name: SetUserRegionCAS :execresult
+UPDATE users SET region = ? WHERE user_id = ? AND region = ?;
 
 -- name: GetUserByDiscordUsername :one
 SELECT * FROM users WHERE discord_username = ?;

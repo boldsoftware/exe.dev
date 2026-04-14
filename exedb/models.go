@@ -585,6 +585,24 @@ type UserLlmCredit struct {
 	BillingUpgradeBonusGranted int64      `db:"billing_upgrade_bonus_granted" json:"billing_upgrade_bonus_granted"`
 }
 
+type UserRegionMigration struct {
+	ID                    int64      `db:"id" json:"id"`
+	BatchID               string     `db:"batch_id" json:"batch_id"`
+	RollbackOfMigrationID *int64     `db:"rollback_of_migration_id" json:"rollback_of_migration_id"`
+	UserID                string     `db:"user_id" json:"user_id"`
+	Email                 string     `db:"email" json:"email"`
+	Mode                  string     `db:"mode" json:"mode"`
+	Status                string     `db:"status" json:"status"`
+	OldRegion             string     `db:"old_region" json:"old_region"`
+	TargetRegion          string     `db:"target_region" json:"target_region"`
+	DecisionSource        string     `db:"decision_source" json:"decision_source"`
+	DecisionReason        string     `db:"decision_reason" json:"decision_reason"`
+	SignupIpCheckID       *int64     `db:"signup_ip_check_id" json:"signup_ip_check_id"`
+	Error                 *string    `db:"error" json:"error"`
+	CreatedAt             time.Time  `db:"created_at" json:"created_at"`
+	CompletedAt           *time.Time `db:"completed_at" json:"completed_at"`
+}
+
 type VmTemplate struct {
 	ID               int64      `db:"id" json:"id"`
 	Slug             string     `db:"slug" json:"slug"`

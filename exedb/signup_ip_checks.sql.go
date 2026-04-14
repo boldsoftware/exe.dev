@@ -9,6 +9,30 @@ import (
 	"context"
 )
 
+const getLatestSignupIPCheckByEmail = `-- name: GetLatestSignupIPCheckByEmail :one
+SELECT id, email, ip, source, ipqs_response_json, flagged, checked_at, error
+FROM signup_ip_checks
+WHERE lower(email) = lower(?)
+ORDER BY checked_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestSignupIPCheckByEmail(ctx context.Context, lower string) (SignupIPCheck, error) {
+	row := q.queryRow(ctx, q.getLatestSignupIPCheckByEmailStmt, getLatestSignupIPCheckByEmail, lower)
+	var i SignupIPCheck
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Ip,
+		&i.Source,
+		&i.IpqsResponseJson,
+		&i.Flagged,
+		&i.CheckedAt,
+		&i.Error,
+	)
+	return i, err
+}
+
 const insertSignupIPCheck = `-- name: InsertSignupIPCheck :exec
 INSERT INTO signup_ip_checks (email, ip, source, ipqs_response_json, error, flagged) VALUES (?, ?, ?, ?, ?, ?)
 `
