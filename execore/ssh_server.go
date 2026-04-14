@@ -1618,7 +1618,7 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			basePlan = entitlement.CategoryTrial
 			// Get trial days from Trial plan quotas
 			plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
-			trialDays := plan.Quotas.TrialDays
+			trialDays := plan.TrialDays
 			t := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 			trialEndsAt = &t
 		}

@@ -229,8 +229,8 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 		if !ok {
 			t.Fatalf("plan %q not found", tt.version)
 		}
-		if p.Quotas.SignupBonusCreditUSD != tt.want {
-			t.Errorf("plan %q SignupBonusCreditUSD = %v, want %v", tt.version, p.Quotas.SignupBonusCreditUSD, tt.want)
+		if p.SignupBonusCreditUSD != tt.want {
+			t.Errorf("plan %q SignupBonusCreditUSD = %v, want %v", tt.version, p.SignupBonusCreditUSD, tt.want)
 		}
 	}
 }
@@ -446,9 +446,6 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 	if p.Category != CategoryIndividual {
 		t.Errorf("GetPlanByID versioned got category %q, want %q", p.Category, CategoryIndividual)
 	}
-	if p.Quotas.MonthlyLLMCreditUSD != 100.0 {
-		t.Errorf("GetPlanByID versioned got monthly credit %f, want 100.0", p.Quotas.MonthlyLLMCreditUSD)
-	}
 
 	// Bare ID should still work.
 	p2, ok2 := GetPlanByID("individual")
@@ -501,8 +498,8 @@ func TestEnterprisePlanExists(t *testing.T) {
 	if !p.Paid {
 		t.Error("Enterprise plan should be Paid=true")
 	}
-	if p.Quotas.MonthlyLLMCreditUSD != 500.0 {
-		t.Errorf("Enterprise monthly credit = %f, want 500.0", p.Quotas.MonthlyLLMCreditUSD)
+	if p.MonthlyLLMCreditUSD != 500.0 {
+		t.Errorf("Enterprise plan MonthlyLLMCreditUSD = %f, want 500.0", p.MonthlyLLMCreditUSD)
 	}
 }
 
@@ -518,29 +515,30 @@ func TestEnterprisePlanGrants(t *testing.T) {
 	}
 }
 
-func TestAllPlansIncludesEnterprise(t *testing.T) {
+func TestAllPlansComplete(t *testing.T) {
 	all := AllPlans()
-	found := false
-	vipIdx, entIdx, teamIdx := -1, -1, -1
-	for i, p := range all {
-		switch p.Category {
-		case CategoryVIP:
-			vipIdx = i
-		case CategoryEnterprise:
-			entIdx = i
-			found = true
-		case CategoryTeam:
-			teamIdx = i
+	want := []PlanCategory{
+		CategoryBasic, CategoryEnterprise, CategoryFriend, CategoryGrandfathered,
+		CategoryIndividual, CategoryRestricted, CategoryTeam, CategoryTrial, CategoryVIP,
+	}
+	if len(all) != len(want) {
+		t.Fatalf("AllPlans() returned %d plans, want %d", len(all), len(want))
+	}
+	// Verify sorted alphabetically by name.
+	for i := 1; i < len(all); i++ {
+		if all[i].Name < all[i-1].Name {
+			t.Errorf("AllPlans() not sorted: %q before %q", all[i-1].Name, all[i].Name)
 		}
 	}
-	if !found {
-		t.Fatal("CategoryEnterprise not found in AllPlans()")
+	// Verify all expected categories are present.
+	seen := make(map[PlanCategory]bool)
+	for _, p := range all {
+		seen[p.Category] = true
 	}
-	if vipIdx >= entIdx {
-		t.Errorf("VIP (idx=%d) should come before Enterprise (idx=%d)", vipIdx, entIdx)
-	}
-	if entIdx >= teamIdx {
-		t.Errorf("Enterprise (idx=%d) should come before Team (idx=%d)", entIdx, teamIdx)
+	for _, cat := range want {
+		if !seen[cat] {
+			t.Errorf("AllPlans() missing category %q", cat)
+		}
 	}
 }
 
@@ -665,159 +663,69 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func TestPlanStripePriceInfo(t *testing.T) {
+func TestTierStripePriceInfo(t *testing.T) {
 	tests := []struct {
 		name          string
-		plan          PlanCategory
+		tierID        string
 		billingOption string
 		want          StripePriceInfo
 	}{
-		// Individual plan tests
+		// Individual Small tier
 		{
-			name:          "individual monthly",
-			plan:          CategoryIndividual,
+			name:          "individual small monthly",
+			tierID:        "individual:small:monthly:20260601",
 			billingOption: "monthly",
 			want: StripePriceInfo{
-				LookupKey: "individual",
+				LookupKey: "individual_small_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},
 		},
 		{
-			name:          "individual annual",
-			plan:          CategoryIndividual,
-			billingOption: "annual",
-			want: StripePriceInfo{
-				LookupKey: "individual:annual:20260106",
-				Model:     "subscription",
-				Interval:  "annual",
-			},
-		},
-		{
-			name:          "individual usage-disk",
-			plan:          CategoryIndividual,
-			billingOption: "usage-disk",
-			want: StripePriceInfo{
-				LookupKey: "individual:usage-disk:20260106",
-				Model:     "metered",
-				Interval:  "",
-			},
-		},
-		{
-			name:          "individual usage-bandwidth",
-			plan:          CategoryIndividual,
-			billingOption: "usage-bandwidth",
-			want: StripePriceInfo{
-				LookupKey: "individual:usage-bandwidth:20260106",
-				Model:     "metered",
-				Interval:  "",
-			},
-		},
-		// Team plan tests
-		{
-			name:          "team monthly",
-			plan:          CategoryTeam,
+			name:          "individual medium monthly",
+			tierID:        "individual:medium:monthly:20260601",
 			billingOption: "monthly",
 			want: StripePriceInfo{
-				LookupKey: "team:monthly:20260106",
+				LookupKey: "individual_medium_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},
 		},
 		{
-			name:          "team annual",
-			plan:          CategoryTeam,
-			billingOption: "annual",
-			want: StripePriceInfo{
-				LookupKey: "team:annual:20260106",
-				Model:     "subscription",
-				Interval:  "annual",
-			},
-		},
-		{
-			name:          "team usage-disk",
-			plan:          CategoryTeam,
-			billingOption: "usage-disk",
-			want: StripePriceInfo{
-				LookupKey: "team:usage-disk:20260106",
-				Model:     "metered",
-				Interval:  "",
-			},
-		},
-		{
-			name:          "team usage-bandwidth",
-			plan:          CategoryTeam,
-			billingOption: "usage-bandwidth",
-			want: StripePriceInfo{
-				LookupKey: "team:usage-bandwidth:20260106",
-				Model:     "metered",
-				Interval:  "",
-			},
-		},
-		// Unknown plan category
-		{
-			name:          "unknown plan category",
-			plan:          PlanCategory("nonexistent"),
+			name:          "individual large monthly",
+			tierID:        "individual:large:monthly:20260601",
 			billingOption: "monthly",
-			want:          StripePriceInfo{},
+			want: StripePriceInfo{
+				LookupKey: "individual_large_monthly",
+				Model:     "subscription",
+				Interval:  "monthly",
+			},
+		},
+		{
+			name:          "individual xlarge monthly",
+			tierID:        "individual:xlarge:monthly:20260601",
+			billingOption: "monthly",
+			want: StripePriceInfo{
+				LookupKey: "individual_xlarge_monthly",
+				Model:     "subscription",
+				Interval:  "monthly",
+			},
 		},
 		// Unknown billing option
 		{
-			name:          "individual unknown billing option",
-			plan:          CategoryIndividual,
+			name:          "unknown billing option",
+			tierID:        "individual:small:monthly:20260601",
 			billingOption: "nonexistent",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "team unknown billing option",
-			plan:          CategoryTeam,
-			billingOption: "quarterly",
-			want:          StripePriceInfo{},
-		},
-		// Plans without StripePrices
-		{
-			name:          "VIP plan has no stripe prices",
-			plan:          CategoryVIP,
-			billingOption: "monthly",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "Friend plan has no stripe prices",
-			plan:          CategoryFriend,
-			billingOption: "monthly",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "Grandfathered plan has no stripe prices",
-			plan:          CategoryGrandfathered,
-			billingOption: "monthly",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "Trial plan has no stripe prices",
-			plan:          CategoryTrial,
-			billingOption: "monthly",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "Basic plan has no stripe prices",
-			plan:          CategoryBasic,
-			billingOption: "monthly",
-			want:          StripePriceInfo{},
-		},
-		{
-			name:          "Restricted plan has no stripe prices",
-			plan:          CategoryRestricted,
-			billingOption: "monthly",
 			want:          StripePriceInfo{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := PlanStripePriceInfo(tt.plan, tt.billingOption)
+			tier := mustGetTierByID(t, tt.tierID)
+			got := tier.StripePrices[tt.billingOption]
 			if got != tt.want {
-				t.Errorf("PlanStripePriceInfo(%q, %q) = %+v, want %+v", tt.plan, tt.billingOption, got, tt.want)
+				t.Errorf("tier %q StripePrices[%q] = %+v, want %+v", tt.tierID, tt.billingOption, got, tt.want)
 			}
 		})
 	}

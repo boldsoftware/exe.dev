@@ -95,7 +95,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		if !ok {
 			return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
 		}
-		monthlyCredit = p.Quotas.MonthlyLLMCreditUSD
+		monthlyCredit = p.MonthlyLLMCreditUSD
 		planCategory = p.Category
 	}
 

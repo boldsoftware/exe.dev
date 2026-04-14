@@ -383,7 +383,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
 		// Get trial days from Individual plan quotas
 		plan, _ := entitlement.GetPlan(entitlement.CategoryIndividual)
-		trialDays := plan.Quotas.TrialDays
+		trialDays := plan.TrialDays
 		subParams.TrialEnd = time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 		s.slog().InfoContext(r.Context(), "trial granted at checkout",
 			"user_id", userID,
@@ -2114,12 +2114,12 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 // instead of being called inline from the checkout callback.
 func giftSignupBonus(ctx context.Context, mgr *billing.Manager, billingID string, logger *slog.Logger) {
 	plan, ok := entitlement.GetPlan(entitlement.CategoryIndividual)
-	if !ok || plan.Quotas.SignupBonusCreditUSD == 0 {
+	if !ok || plan.SignupBonusCreditUSD == 0 {
 		return
 	}
 
 	if err := mgr.GiftCredits(ctx, billingID, &billing.GiftCreditsParams{
-		AmountUSD:  plan.Quotas.SignupBonusCreditUSD,
+		AmountUSD:  plan.SignupBonusCreditUSD,
 		GiftPrefix: billing.GiftPrefixSignup,
 		Note:       "Welcome bonus for upgrading to a paid plan",
 	}); err != nil {

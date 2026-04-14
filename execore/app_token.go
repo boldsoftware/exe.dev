@@ -297,7 +297,7 @@ func isIOSAppRequest(r *http.Request) bool {
 // This is called when a new user signs up through the iOS app.
 func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
 	plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
-	trialDays := plan.Quotas.TrialDays
+	trialDays := plan.TrialDays
 	if trialDays == 0 {
 		trialDays = 7
 	}

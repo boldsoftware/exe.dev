@@ -5847,11 +5847,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve entitlements from account_plans (walks parent_id for team members).
-	var version entitlement.PlanCategory
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		version = entitlement.BasePlan(planRow.PlanID)
-	}
-	if version != "" {
 		for _, ent := range entitlement.AllEntitlements() {
 			data.Entitlements = append(data.Entitlements, struct {
 				Name    string
@@ -5860,7 +5856,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			}{
 				Name:    ent.DisplayName,
 				ID:      ent.ID,
-				Granted: entitlement.PlanGrants(version, ent),
+				Granted: entitlement.GrantsEntitlement(planRow.PlanID, ent),
 			})
 		}
 	}
@@ -5971,14 +5967,21 @@ func (s *Server) handleDebugPlanCategoryMigrate(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleDebugPlans(w http.ResponseWriter, r *http.Request) {
+	plans := entitlement.AllPlans()
+	tiersByCategory := make(map[entitlement.PlanCategory][]entitlement.Tier, len(plans))
+	for _, p := range plans {
+		tiersByCategory[p.Category] = entitlement.TiersByCategory(p.Category)
+	}
 	data := struct {
-		Plans        []entitlement.Plan
-		Entitlements []entitlement.Entitlement
-		WildcardEnt  entitlement.Entitlement
+		Plans           []entitlement.Plan
+		Entitlements    []entitlement.Entitlement
+		WildcardEnt     entitlement.Entitlement
+		TiersByCategory map[entitlement.PlanCategory][]entitlement.Tier
 	}{
-		Plans:        entitlement.AllPlans(),
-		Entitlements: entitlement.AllEntitlements(),
-		WildcardEnt:  entitlement.All,
+		Plans:           plans,
+		Entitlements:    entitlement.AllEntitlements(),
+		WildcardEnt:     entitlement.All,
+		TiersByCategory: tiersByCategory,
 	}
 	s.renderDebugTemplate(r.Context(), w, "plans.html", data)
 }
