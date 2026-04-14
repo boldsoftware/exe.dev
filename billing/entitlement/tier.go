@@ -30,10 +30,10 @@ var (
 //exe:completeinit
 type TierQuotas struct {
 	ComputeClass ComputeClass
-	MaxUserVMs  int
-	MaxTeamVMs  int
-	DefaultDisk uint64 // bytes — disk size for new VMs
-	MaxDisk     uint64 // bytes — per-VM ceiling for disk resize; contact support above this (0 = no resize allowed)
+	MaxUserVMs   int
+	MaxTeamVMs   int
+	DefaultDisk  uint64 // bytes — disk size for new VMs
+	MaxDisk      uint64 // bytes — per-VM ceiling for disk resize; contact support above this (0 = no resize allowed)
 }
 
 // Tier represents a specific billing tier within a plan category.
@@ -68,10 +68,10 @@ var tiers = map[string]Tier{
 		},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeSmall,
-			MaxUserVMs:  50,
-			MaxTeamVMs:  0,
-			DefaultDisk: 25 * GB,
-			MaxDisk:     75 * GB,
+			MaxUserVMs:   50,
+			MaxTeamVMs:   0,
+			DefaultDisk:  25 * GB,
+			MaxDisk:      75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -86,10 +86,10 @@ var tiers = map[string]Tier{
 		},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeMedium,
-			MaxUserVMs:  50,
-			MaxTeamVMs:  0,
-			DefaultDisk: 25 * GB,
-			MaxDisk:     75 * GB,
+			MaxUserVMs:   50,
+			MaxTeamVMs:   0,
+			DefaultDisk:  25 * GB,
+			MaxDisk:      75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -104,10 +104,10 @@ var tiers = map[string]Tier{
 		},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeLarge,
-			MaxUserVMs:  50,
-			MaxTeamVMs:  0,
-			DefaultDisk: 25 * GB,
-			MaxDisk:     75 * GB,
+			MaxUserVMs:   50,
+			MaxTeamVMs:   0,
+			DefaultDisk:  25 * GB,
+			MaxDisk:      75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -122,10 +122,10 @@ var tiers = map[string]Tier{
 		},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeXLarge,
-			MaxUserVMs:  50,
-			MaxTeamVMs:  0,
-			DefaultDisk: 25 * GB,
-			MaxDisk:     75 * GB,
+			MaxUserVMs:   50,
+			MaxTeamVMs:   0,
+			DefaultDisk:  25 * GB,
+			MaxDisk:      75 * GB,
 		},
 		Entitlements: nil,
 	},
@@ -139,10 +139,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -153,10 +153,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -167,10 +167,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -181,10 +181,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -195,10 +195,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -209,10 +209,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -223,10 +223,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
@@ -237,10 +237,10 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
 			ComputeClass: ComputeClass{},
-			MaxUserVMs:  0,
-			MaxTeamVMs:  0,
-			DefaultDisk: 0,
-			MaxDisk:     0,
+			MaxUserVMs:   0,
+			MaxTeamVMs:   0,
+			DefaultDisk:  0,
+			MaxDisk:      0,
 		},
 		Entitlements: nil,
 	},
