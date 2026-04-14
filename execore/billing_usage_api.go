@@ -211,5 +211,3 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 		Metrics:     vms,
 	})
 }
-
-
