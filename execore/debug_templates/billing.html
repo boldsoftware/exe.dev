@@ -32,15 +32,56 @@ table.info th { width: 200px; }
 
 
 {{if $.HasMetricsd}}
-<h3>Billing Usage (Current Month, estimate)</h3>
+{{if $.MonthlyMetrics}}
+<h4>Monthly Usage</h4>
 <table>
-<thead><tr><th>Metric</th><th>Raw</th><th>Usage (GB)</th><th>Included</th><th>Overage</th><th>Est. Cost</th></tr></thead>
+<thead><tr><th>Month</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Days</th><th>Disk Overage (GB)</th><th>BW Overage (GB)</th><th>Est. Cost</th></tr></thead>
 <tbody>
-<tr><td>Disk avg (logical)</td><td class="muted">{{$.UsageDiskAvgBytes}} B</td><td>{{printf "%.3f" $.UsageDiskAvgGB}} GB</td><td>25 GB</td><td>{{printf "%.3f" $.UsageDiskOverageGB}} GB</td><td>{{if gt $.UsageDiskOverageUSD 0.0}}<strong>${{printf "%.2f" $.UsageDiskOverageUSD}}</strong>{{else}}$0.00{{end}}</td></tr>
-<tr><td>Disk peak (logical)</td><td class="muted">{{$.UsageDiskPeakBytes}} B</td><td>{{printf "%.3f" $.UsageDiskPeakGB}} GB</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Bandwidth (tx+rx)</td><td class="muted">{{$.UsageBandwidthBytes}} B</td><td>{{printf "%.3f" $.UsageBandwidthGB}} GB</td><td>100 GB</td><td>{{printf "%.3f" $.UsageBandwidthOverageGB}} GB</td><td>{{if gt $.UsageBandwidthOverageUSD 0.0}}<strong>${{printf "%.2f" $.UsageBandwidthOverageUSD}}</strong>{{else}}$0.00{{end}}</td></tr>
+{{range $.MonthlyMetrics}}
+<tr>
+  <td>{{.MonthStart.Format "2006-01"}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskLogicalMaxBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
+  <td>{{printf "%.1f" .CPUSeconds}}</td>
+  <td>{{printf "%.3f" (divf64 .IOReadBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .IOWriteBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
+  <td>{{.DaysWithData}}</td>
+  <td>{{overage .DiskLogicalAvgBytes 25}}</td>
+  <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
+  <td>{{estCost .DiskLogicalAvgBytes (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
+</tr>
+{{end}}
 </tbody>
 </table>
+{{end}}
+
+{{if $.DailyMetrics}}
+<h4>Daily Usage (Current Billing Period)</h4>
+<table>
+<thead><tr><th>Date</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Hours</th><th>Disk Overage (GB)</th><th>BW Overage (GB)</th><th>Est. Cost</th></tr></thead>
+<tbody>
+{{range $.DailyMetrics}}
+<tr>
+  <td>{{.DayStart.Format "2006-01-02"}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskLogicalMaxBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
+  <td>{{printf "%.1f" .CPUSeconds}}</td>
+  <td>{{printf "%.3f" (divf64 .IOReadBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .IOWriteBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
+  <td>{{.HoursWithData}}</td>
+  <td>{{overage .DiskLogicalAvgBytes 25}}</td>
+  <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
+  <td>{{estCost .DiskLogicalAvgBytes (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
 {{if $.UsageVMs}}
 <h4>Per-VM Breakdown</h4>
 <table>

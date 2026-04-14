@@ -5787,6 +5787,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		UsageDiskOverageUSD      float64
 		UsageBandwidthOverageUSD float64
 		UsageVMs                 []metricstypes.VMUsageSummary
+		DailyMetrics             []metricstypes.DailyMetric
+		MonthlyMetrics           []metricstypes.MonthlyMetric
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -5884,6 +5886,14 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			data.UsageDiskOverageUSD = diskOverage * diskPricePerGB
 			data.UsageBandwidthOverageUSD = bandwidthOverage * bandwidthPricePerGB
 			data.UsageVMs = sum.VMs
+		}
+		// Fetch daily rollup data for current month.
+		if daily, err := usageClient.queryDaily(usageCtx, []string{userID}, monthStart, nowUTC); err == nil {
+			data.DailyMetrics = daily
+		}
+		// Fetch monthly rollup data for current month.
+		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthStart, nowUTC); err == nil {
+			data.MonthlyMetrics = monthly
 		}
 	}
 

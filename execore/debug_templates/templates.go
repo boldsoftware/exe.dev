@@ -76,6 +76,24 @@ func Parse(env stage.Env) (*template.Template, error) {
 			"divf64": func(a int64, b float64) float64 {
 				return float64(a) / b
 			},
+			"add64": func(a, b int64) int64 {
+				return a + b
+			},
+			"overage": func(bytes int64, includedGB float64) string {
+				gb := float64(bytes) / 1e9
+				o := max(gb-includedGB, 0)
+				return fmt.Sprintf("%.3f", o)
+			},
+			"estCost": func(diskAvgBytes int64, bwBytes int64) string {
+				const diskIncludedGB = 25.0
+				const bwIncludedGB = 100.0
+				const diskPrice = 0.08
+				const bwPrice = 0.07
+				diskGB := float64(diskAvgBytes) / 1e9
+				bwGB := float64(bwBytes) / 1e9
+				cost := max(diskGB-diskIncludedGB, 0)*diskPrice + max(bwGB-bwIncludedGB, 0)*bwPrice
+				return fmt.Sprintf("$%.2f", cost)
+			},
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})
