@@ -10,18 +10,18 @@ const (
 	GB = 1024 * 1024 * 1024
 )
 
-// PoolSize represents the vCPU + memory bundle that defines a tier's
+// ComputeClass represents the vCPU + memory bundle that defines a tier's
 // compute capacity. Matches the "Pool size" dropdown on the pricing page.
-type PoolSize struct {
+type ComputeClass struct {
 	MaxMemory uint64 // bytes
 	MaxCPUs   uint64
 }
 
 var (
-	PoolSmall  = PoolSize{MaxMemory: 8 * GB, MaxCPUs: 2}
-	PoolMedium = PoolSize{MaxMemory: 16 * GB, MaxCPUs: 4}
-	PoolLarge  = PoolSize{MaxMemory: 32 * GB, MaxCPUs: 8}
-	PoolXLarge = PoolSize{MaxMemory: 64 * GB, MaxCPUs: 16}
+	ComputeSmall  = ComputeClass{MaxMemory: 8 * GB, MaxCPUs: 2}
+	ComputeMedium = ComputeClass{MaxMemory: 16 * GB, MaxCPUs: 4}
+	ComputeLarge  = ComputeClass{MaxMemory: 32 * GB, MaxCPUs: 8}
+	ComputeXLarge = ComputeClass{MaxMemory: 64 * GB, MaxCPUs: 16}
 )
 
 // TierQuotas holds the compute limits for a plan tier.
@@ -29,7 +29,7 @@ var (
 //
 //exe:completeinit
 type TierQuotas struct {
-	PoolSize    PoolSize
+	ComputeClass ComputeClass
 	MaxUserVMs  int
 	MaxTeamVMs  int
 	DefaultDisk uint64 // bytes — disk size for new VMs
@@ -67,7 +67,7 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSmall,
+			ComputeClass: ComputeSmall,
 			MaxUserVMs:  50,
 			MaxTeamVMs:  0,
 			DefaultDisk: 25 * GB,
@@ -85,7 +85,7 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:    PoolMedium,
+			ComputeClass: ComputeMedium,
 			MaxUserVMs:  50,
 			MaxTeamVMs:  0,
 			DefaultDisk: 25 * GB,
@@ -103,7 +103,7 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:    PoolLarge,
+			ComputeClass: ComputeLarge,
 			MaxUserVMs:  50,
 			MaxTeamVMs:  0,
 			DefaultDisk: 25 * GB,
@@ -121,7 +121,7 @@ var tiers = map[string]Tier{
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
 		Quotas: TierQuotas{
-			PoolSize:    PoolXLarge,
+			ComputeClass: ComputeXLarge,
 			MaxUserVMs:  50,
 			MaxTeamVMs:  0,
 			DefaultDisk: 25 * GB,
@@ -138,7 +138,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -152,7 +152,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -166,7 +166,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -180,7 +180,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -194,7 +194,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -208,7 +208,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -222,7 +222,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -236,7 +236,7 @@ var tiers = map[string]Tier{
 		Name:         "Default",
 		StripePrices: map[string]StripePriceInfo{},
 		Quotas: TierQuotas{
-			PoolSize:    PoolSize{},
+			ComputeClass: ComputeClass{},
 			MaxUserVMs:  0,
 			MaxTeamVMs:  0,
 			DefaultDisk: 0,
@@ -296,7 +296,7 @@ func TiersByCategory(cat PlanCategory) []Tier {
 		}
 	}
 	for i := 1; i < len(result); i++ {
-		for j := i; j > 0 && result[j].Quotas.PoolSize.MaxCPUs < result[j-1].Quotas.PoolSize.MaxCPUs; j-- {
+		for j := i; j > 0 && result[j].Quotas.ComputeClass.MaxCPUs < result[j-1].Quotas.ComputeClass.MaxCPUs; j-- {
 			result[j], result[j-1] = result[j-1], result[j]
 		}
 	}

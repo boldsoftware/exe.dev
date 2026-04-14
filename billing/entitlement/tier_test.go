@@ -289,21 +289,21 @@ func TestGrantsEntitlement(t *testing.T) {
 func TestIndividualTierQuotas(t *testing.T) {
 	expected := []struct {
 		id          string
-		pool        PoolSize
+		compute     ComputeClass
 		defaultDisk uint64
 		maxDisk     uint64
 		maxVMs      int
 	}{
-		{"individual:small:monthly:20260601", PoolSmall, 25 * GB, 75 * GB, 50},
-		{"individual:medium:monthly:20260601", PoolMedium, 25 * GB, 75 * GB, 50},
-		{"individual:large:monthly:20260601", PoolLarge, 25 * GB, 75 * GB, 50},
-		{"individual:xlarge:monthly:20260601", PoolXLarge, 25 * GB, 75 * GB, 50},
+		{"individual:small:monthly:20260601", ComputeSmall, 25 * GB, 75 * GB, 50},
+		{"individual:medium:monthly:20260601", ComputeMedium, 25 * GB, 75 * GB, 50},
+		{"individual:large:monthly:20260601", ComputeLarge, 25 * GB, 75 * GB, 50},
+		{"individual:xlarge:monthly:20260601", ComputeXLarge, 25 * GB, 75 * GB, 50},
 	}
 	for _, e := range expected {
 		t.Run(e.id, func(t *testing.T) {
 			tier := mustGetTierByID(t, e.id)
-			if tier.Quotas.PoolSize != e.pool {
-				t.Errorf("PoolSize = %+v, want %+v", tier.Quotas.PoolSize, e.pool)
+			if tier.Quotas.ComputeClass != e.compute {
+				t.Errorf("ComputeClass = %+v, want %+v", tier.Quotas.ComputeClass, e.compute)
 			}
 			if tier.Quotas.DefaultDisk != e.defaultDisk {
 				t.Errorf("DefaultDisk = %d, want %d", tier.Quotas.DefaultDisk, e.defaultDisk)
@@ -318,30 +318,30 @@ func TestIndividualTierQuotas(t *testing.T) {
 	}
 }
 
-func TestPoolSizes(t *testing.T) {
-	if PoolSmall.MaxMemory != 8*GB {
-		t.Errorf("PoolSmall.MaxMemory = %d, want %d", PoolSmall.MaxMemory, 8*GB)
+func TestComputeClasses(t *testing.T) {
+	if ComputeSmall.MaxMemory != 8*GB {
+		t.Errorf("ComputeSmall.MaxMemory = %d, want %d", ComputeSmall.MaxMemory, 8*GB)
 	}
-	if PoolSmall.MaxCPUs != 2 {
-		t.Errorf("PoolSmall.MaxCPUs = %d, want 2", PoolSmall.MaxCPUs)
+	if ComputeSmall.MaxCPUs != 2 {
+		t.Errorf("ComputeSmall.MaxCPUs = %d, want 2", ComputeSmall.MaxCPUs)
 	}
-	if PoolMedium.MaxMemory != 16*GB {
-		t.Errorf("PoolMedium.MaxMemory = %d, want %d", PoolMedium.MaxMemory, 16*GB)
+	if ComputeMedium.MaxMemory != 16*GB {
+		t.Errorf("ComputeMedium.MaxMemory = %d, want %d", ComputeMedium.MaxMemory, 16*GB)
 	}
-	if PoolMedium.MaxCPUs != 4 {
-		t.Errorf("PoolMedium.MaxCPUs = %d, want 4", PoolMedium.MaxCPUs)
+	if ComputeMedium.MaxCPUs != 4 {
+		t.Errorf("ComputeMedium.MaxCPUs = %d, want 4", ComputeMedium.MaxCPUs)
 	}
-	if PoolLarge.MaxMemory != 32*GB {
-		t.Errorf("PoolLarge.MaxMemory = %d, want %d", PoolLarge.MaxMemory, 32*GB)
+	if ComputeLarge.MaxMemory != 32*GB {
+		t.Errorf("ComputeLarge.MaxMemory = %d, want %d", ComputeLarge.MaxMemory, 32*GB)
 	}
-	if PoolLarge.MaxCPUs != 8 {
-		t.Errorf("PoolLarge.MaxCPUs = %d, want 8", PoolLarge.MaxCPUs)
+	if ComputeLarge.MaxCPUs != 8 {
+		t.Errorf("ComputeLarge.MaxCPUs = %d, want 8", ComputeLarge.MaxCPUs)
 	}
-	if PoolXLarge.MaxMemory != 64*GB {
-		t.Errorf("PoolXLarge.MaxMemory = %d, want %d", PoolXLarge.MaxMemory, 64*GB)
+	if ComputeXLarge.MaxMemory != 64*GB {
+		t.Errorf("ComputeXLarge.MaxMemory = %d, want %d", ComputeXLarge.MaxMemory, 64*GB)
 	}
-	if PoolXLarge.MaxCPUs != 16 {
-		t.Errorf("PoolXLarge.MaxCPUs = %d, want 16", PoolXLarge.MaxCPUs)
+	if ComputeXLarge.MaxCPUs != 16 {
+		t.Errorf("ComputeXLarge.MaxCPUs = %d, want 16", ComputeXLarge.MaxCPUs)
 	}
 }
 
