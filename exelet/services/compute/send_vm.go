@@ -1234,6 +1234,10 @@ func (s *Service) sendVMLive(ctx context.Context, stream api.ComputeService_Send
 	}
 	preSnapCleaned = true
 
+	if progress != nil {
+		_ = progress.addStatus("Waiting for target to restore VM...")
+	}
+
 	if err := s.finishSendVM(stream, instanceID, hasher, totalBytes, target); err != nil {
 		return err
 	}
