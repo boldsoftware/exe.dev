@@ -34,12 +34,17 @@ func TestBillingUsageAPI(t *testing.T) {
 		t.Fatalf("waiting for metrics: %v", err)
 	}
 
+	// Use a 30-day window around "now" — metricsd caps daily/monthly at 366 days.
+	now := time.Now().UTC()
+	windowStart := now.AddDate(0, 0, -30).Format(time.RFC3339)
+	windowEnd := now.AddDate(0, 0, 1).Format(time.RFC3339)
+
 	client := newClientWithCookies(t, cookies)
 
 	t.Run("unauthenticated_usage_401", func(t *testing.T) {
 		noGolden(t)
 
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=2024-01-01T00:00:00Z&end=2025-12-01T00:00:00Z", Env.HTTPPort()))
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd))
 		if err != nil {
 			t.Fatalf("GET /api/billing/usage failed: %v", err)
 		}
@@ -53,7 +58,7 @@ func TestBillingUsageAPI(t *testing.T) {
 	t.Run("unauthenticated_vms_401", func(t *testing.T) {
 		noGolden(t)
 
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2025-12-01T00:00:00Z", Env.HTTPPort()))
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd))
 		if err != nil {
 			t.Fatalf("GET /api/billing/usage/vms failed: %v", err)
 		}
@@ -96,8 +101,7 @@ func TestBillingUsageAPI(t *testing.T) {
 	t.Run("monthly_returns_json", func(t *testing.T) {
 		noGolden(t)
 
-		// Use a wide window to catch any metrics.
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=2020-01-01T00:00:00Z&end=2030-01-01T00:00:00Z", Env.HTTPPort())
+		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
 		resp, err := client.Get(url)
 		if err != nil {
 			t.Fatalf("GET failed: %v", err)
@@ -134,7 +138,7 @@ func TestBillingUsageAPI(t *testing.T) {
 	t.Run("daily_returns_json", func(t *testing.T) {
 		noGolden(t)
 
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=daily&start=2020-01-01T00:00:00Z&end=2030-01-01T00:00:00Z", Env.HTTPPort())
+		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=daily&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
 		resp, err := client.Get(url)
 		if err != nil {
 			t.Fatalf("GET failed: %v", err)
@@ -166,7 +170,7 @@ func TestBillingUsageAPI(t *testing.T) {
 	t.Run("vms_returns_json", func(t *testing.T) {
 		noGolden(t)
 
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=2020-01-01T00:00:00Z&end=2030-01-01T00:00:00Z", Env.HTTPPort())
+		url := fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
 		resp, err := client.Get(url)
 		if err != nil {
 			t.Fatalf("GET failed: %v", err)
@@ -225,7 +229,7 @@ func TestBillingUsageAPI(t *testing.T) {
 		clientB := newClientWithCookies(t, cookiesB)
 
 		// User B queries /api/billing/usage/vms for the same period.
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=2020-01-01T00:00:00Z&end=2030-01-01T00:00:00Z", Env.HTTPPort())
+		url := fmt.Sprintf("http://localhost:%d/api/billing/usage/vms?start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
 		resp, err := clientB.Get(url)
 		if err != nil {
 			t.Fatalf("GET as user B failed: %v", err)
