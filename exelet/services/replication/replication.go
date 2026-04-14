@@ -121,7 +121,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	s.target = target
 
 	// Initialize pruner
-	s.pruner = NewPruner(target, s.config.ReplicationPrune, s.config.Name, s.log)
+	s.pruner = NewPruner(target, s.config.ReplicationPrune, s.config.Name, s.config.ReplicationPruneRetention, s.log)
 
 	// Initialize worker pool
 	s.workerPool = NewWorkerPool(
@@ -143,6 +143,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 		"target", s.config.ReplicationTarget,
 		"interval", s.config.ReplicationInterval,
 		"retention", s.config.ReplicationRetention,
+		"prune_retention", s.config.ReplicationPruneRetention,
 	)
 
 	return nil

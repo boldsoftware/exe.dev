@@ -258,6 +258,12 @@ func main() {
 			Value:   config.DefaultReplicationPrune,
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_PRUNE"},
 		},
+		&cli.DurationFlag{
+			Name:    "storage-replication-prune-retention",
+			Usage:   "minimum age of most recent snapshot before an orphaned volume is pruned (e.g. 168h for 7 days)",
+			Value:   config.DefaultReplicationPruneRetention,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_PRUNE_RETENTION"},
+		},
 		&cli.IntFlag{
 			Name:    "storage-replication-workers",
 			Usage:   "number of concurrent replication workers (0 = auto: NumCPU/4, min 1)",
@@ -387,6 +393,7 @@ func serveAction(clix *cli.Context) error {
 	replicationRetention := clix.Int("storage-replication-retention")
 	replicationBandwidthLimit := clix.String("storage-replication-bandwidth-limit")
 	replicationPrune := clix.Bool("storage-replication-prune")
+	replicationPruneRetention := clix.Duration("storage-replication-prune-retention")
 	replicationWorkers := clix.Int("storage-replication-workers")
 	metricsDaemonURL := clix.String("metrics-daemon-url")
 	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
@@ -451,6 +458,7 @@ func serveAction(clix *cli.Context) error {
 		ReplicationRetention:        replicationRetention,
 		ReplicationBandwidthLimit:   replicationBandwidthLimit,
 		ReplicationPrune:            replicationPrune,
+		ReplicationPruneRetention:   replicationPruneRetention,
 		ReplicationWorkers:          replicationWorkers,
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,

@@ -24,6 +24,9 @@ const (
 	DefaultReplicationRetention = 24
 	// DefaultReplicationPrune enables pruning orphaned backups by default
 	DefaultReplicationPrune = true
+	// DefaultReplicationPruneRetention is the minimum age of the most recent snapshot
+	// before an orphaned volume is eligible for pruning.
+	DefaultReplicationPruneRetention = 7 * 24 * time.Hour
 
 	// DefaultMetricsDaemonInterval is the default interval for sending metrics to the daemon
 	DefaultMetricsDaemonInterval = 10 * time.Minute
@@ -181,6 +184,10 @@ type ExeletConfig struct {
 	ReplicationBandwidthLimit string
 	// ReplicationPrune enables pruning orphaned backups from the target
 	ReplicationPrune bool
+	// ReplicationPruneRetention is the minimum age of the most recent snapshot
+	// before an orphaned volume is eligible for pruning. Protects against
+	// accidental data loss by keeping backups around for recovery.
+	ReplicationPruneRetention time.Duration
 	// ReplicationWorkers is the number of concurrent replication workers (0 = auto: NumCPU/4, min 1)
 	ReplicationWorkers int
 

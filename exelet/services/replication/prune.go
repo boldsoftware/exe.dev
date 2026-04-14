@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 )
 
 // VolumeDeleter is an interface for targets that support deleting entire volumes
@@ -13,19 +14,23 @@ type VolumeDeleter interface {
 
 // Pruner handles removal of orphaned backups from the target
 type Pruner struct {
-	target   Target
-	log      *slog.Logger
-	enabled  bool
-	nodeName string
+	target    Target
+	log       *slog.Logger
+	enabled   bool
+	nodeName  string
+	retention time.Duration
+	now       func() time.Time // for testing
 }
 
 // NewPruner creates a new pruner
-func NewPruner(target Target, enabled bool, nodeName string, log *slog.Logger) *Pruner {
+func NewPruner(target Target, enabled bool, nodeName string, retention time.Duration, log *slog.Logger) *Pruner {
 	return &Pruner{
-		target:   target,
-		log:      log,
-		enabled:  enabled,
-		nodeName: nodeName,
+		target:    target,
+		log:       log,
+		enabled:   enabled,
+		nodeName:  nodeName,
+		retention: retention,
+		now:       time.Now,
 	}
 }
 
@@ -66,14 +71,41 @@ func (p *Pruner) Prune(ctx context.Context, localVolumeIDs map[string]struct{}) 
 		return nil
 	}
 
-	p.log.InfoContext(ctx, "pruning orphaned volumes", "count", len(orphaned))
+	p.log.InfoContext(ctx, "found orphaned volumes", "count", len(orphaned), "retention", p.retention)
 
-	// Delete orphaned volumes
+	now := p.now()
+
+	// Delete orphaned volumes whose most recent snapshot is older than the retention period
 	for _, volumeID := range orphaned {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Check retention: skip if the most recent snapshot is newer than the cutoff
+		if p.retention > 0 {
+			snapshots, err := p.target.ListSnapshotsWithMetadata(ctx, volumeID)
+			if err != nil {
+				p.log.ErrorContext(ctx, "failed to list snapshots for retention check", "volume_id", volumeID, "error", err)
+				continue
+			}
+
+			var newest int64
+			for _, snap := range snapshots {
+				if snap.CreatedAt > newest {
+					newest = snap.CreatedAt
+				}
+			}
+
+			if newest > 0 && now.Sub(time.Unix(newest, 0)) < p.retention {
+				p.log.InfoContext(ctx, "retaining orphaned volume, most recent snapshot within retention period",
+					"volume_id", volumeID,
+					"newest_snapshot", time.Unix(newest, 0).UTC().Format(time.RFC3339),
+					"retention", p.retention,
+				)
+				continue
+			}
 		}
 
 		// Check if target supports volume deletion
