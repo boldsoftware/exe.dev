@@ -72,6 +72,7 @@ table.info th { width: 200px; }
 <p id="migrateVMsConfirmPrompt">Type "{{len .BoxesOutsideRegion}}" to confirm <b>live-migrating</b> {{len .BoxesOutsideRegion}} VM(s):</p>
 <input type="text" id="migrateVMsConfirm" name="confirm" autocomplete="off" placeholder="{{len .BoxesOutsideRegion}}" style="padding: 8px; font-family: inherit; margin-right: 8px;">
 <button id="migrateVMsBtn" type="submit" disabled style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Live Migrate All</button>
+<button id="migrateVMsCancelBtn" type="button" style="padding: 8px 16px; background: #6c757d; color: white; border: none; cursor: pointer; display: none;">Cancel</button>
 </form>
 <pre id="migrateVMsProgress" style="margin-top:10px;padding:15px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:400px;overflow-y:auto;display:none;"></pre>
 <h4 style="margin-top:20px;">Cold Migrate Individual VMs</h4>
@@ -95,9 +96,29 @@ table.info th { width: 200px; }
     var expected = '{{len .BoxesOutsideRegion}}';
     var confirmInput = document.getElementById('migrateVMsConfirm');
     var btn = document.getElementById('migrateVMsBtn');
+    var cancelBtn = document.getElementById('migrateVMsCancelBtn');
     if (confirmInput && btn) {
         confirmInput.addEventListener('input', function() {
             btn.disabled = (this.value !== expected);
+        });
+
+        cancelBtn.addEventListener('click', function() {
+            cancelBtn.disabled = true;
+            cancelBtn.textContent = 'Cancelling...';
+            fetch('/debug/vms/cancel-migration', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'user_id={{.UserID}}'
+            }).then(function(resp) {
+                if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+                var progress = document.getElementById('migrateVMsProgress');
+                progress.textContent += '\nCancel requested...\n';
+            }).catch(function(err) {
+                var progress = document.getElementById('migrateVMsProgress');
+                progress.textContent += '\nCancel failed: ' + err + '\n';
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Cancel';
+            });
         });
 
         document.getElementById('migrateVMsForm').addEventListener('submit', function(e) {
@@ -106,6 +127,9 @@ table.info th { width: 200px; }
             btn.disabled = true;
             confirmInput.disabled = true;
             btn.textContent = 'Migrating...';
+            cancelBtn.style.display = '';
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = 'Cancel';
             progress.style.display = 'block';
             progress.textContent = 'Starting...\n';
 
@@ -123,6 +147,7 @@ table.info th { width: 200px; }
                 if (!response.ok) {
                     progress.textContent += '\nHTTP error: ' + response.status;
                     btn.textContent = 'Failed';
+                    cancelBtn.style.display = 'none';
                     return;
                 }
                 var reader = response.body.getReader();
@@ -131,6 +156,7 @@ table.info th { width: 200px; }
                     reader.read().then(function(result) {
                         if (result.done) {
                             btn.textContent = hadError ? 'Done (with errors)' : 'Done';
+                            cancelBtn.style.display = 'none';
                             return;
                         }
                         var text = decoder.decode(result.value, {stream: true});
@@ -142,9 +168,11 @@ table.info th { width: 200px; }
                         if (text.indexOf('MIGRATION_SUCCESS') !== -1) {
                             progress.style.background = '#d4edda';
                             progress.style.borderColor = '#c3e6cb';
+                            cancelBtn.style.display = 'none';
                         } else if (text.indexOf('MIGRATION_ERROR') !== -1) {
                             progress.style.background = '#f8d7da';
                             progress.style.borderColor = '#f5c6cb';
+                            cancelBtn.style.display = 'none';
                         }
                         read();
                     });
@@ -153,6 +181,7 @@ table.info th { width: 200px; }
             }).catch(function(err) {
                 progress.textContent += '\nError: ' + err;
                 btn.textContent = 'Failed';
+                cancelBtn.style.display = 'none';
                 progress.style.background = '#f8d7da';
                 progress.style.borderColor = '#f5c6cb';
             });

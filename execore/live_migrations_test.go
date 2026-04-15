@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -14,7 +15,7 @@ func TestLiveMigrationTracker(t *testing.T) {
 	}
 
 	// Start a migration
-	tracker.start("box-a", "tcp://src:9080", "tcp://dst:9080", true)
+	tracker.start(context.Background(), "box-a", "tcp://src:9080", "tcp://dst:9080", true)
 
 	snap := tracker.snapshot()
 	if len(snap) != 1 {
@@ -45,7 +46,7 @@ func TestLiveMigrationTracker(t *testing.T) {
 	}
 
 	// Start a second migration
-	tracker.start("box-b", "tcp://src:9080", "tcp://other:9080", false)
+	tracker.start(context.Background(), "box-b", "tcp://src:9080", "tcp://other:9080", false)
 	if got := tracker.snapshot(); len(got) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(got))
 	}
@@ -121,4 +122,85 @@ func TestFormatDuration(t *testing.T) {
 			t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
 		}
 	}
+}
+
+func TestLiveMigrationTrackerCancel(t *testing.T) {
+	tracker := newLiveMigrationTracker()
+
+	// Cancel on nonexistent box returns false.
+	if tracker.cancel("nonexistent") {
+		t.Error("cancel on nonexistent should return false")
+	}
+	if tracker.cancelled("nonexistent") {
+		t.Error("cancelled on nonexistent should return false")
+	}
+
+	// Start a migration and verify the returned context is not cancelled.
+	ctx := tracker.start(context.Background(), "box-cancel", "tcp://src:9080", "tcp://dst:9080", true)
+	if ctx.Err() != nil {
+		t.Fatal("expected context to be active")
+	}
+	if tracker.cancelled("box-cancel") {
+		t.Error("expected not cancelled initially")
+	}
+
+	// Cancel the migration.
+	if !tracker.cancel("box-cancel") {
+		t.Error("cancel should return true for active migration")
+	}
+	if ctx.Err() == nil {
+		t.Error("expected context to be cancelled after cancel()")
+	}
+	if !tracker.cancelled("box-cancel") {
+		t.Error("expected cancelled to be true after cancel()")
+	}
+
+	// The entry is still in the tracker (until finish is called).
+	snap := tracker.snapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(snap))
+	}
+
+	// Finish removes it.
+	tracker.finish("box-cancel")
+	if len(tracker.snapshot()) != 0 {
+		t.Fatal("expected 0 entries after finish")
+	}
+}
+
+func TestLiveMigrationTrackerBatchCancel(t *testing.T) {
+	tracker := newLiveMigrationTracker()
+
+	// Start a batch.
+	ctx := tracker.startBatch(context.Background(), "user-123")
+	if ctx.Err() != nil {
+		t.Fatal("expected batch context to be active")
+	}
+
+	// Start a migration under this batch context.
+	migCtx := tracker.start(ctx, "batch-box", "tcp://src:9080", "tcp://dst:9080", true)
+	if migCtx.Err() != nil {
+		t.Fatal("expected migration context to be active")
+	}
+
+	// Cancel the batch.
+	if !tracker.cancelBatch("user-123") {
+		t.Error("cancelBatch should return true")
+	}
+	if ctx.Err() == nil {
+		t.Error("expected batch context to be cancelled")
+	}
+	// The child migration context should also be cancelled (parent cancelled).
+	if migCtx.Err() == nil {
+		t.Error("expected migration context to be cancelled when batch is cancelled")
+	}
+
+	// Cancel on nonexistent batch returns false.
+	if tracker.cancelBatch("nonexistent") {
+		t.Error("cancelBatch on nonexistent should return false")
+	}
+
+	// Cleanup.
+	tracker.finish("batch-box")
+	tracker.finishBatch("user-123")
 }

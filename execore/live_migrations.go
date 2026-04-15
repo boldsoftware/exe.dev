@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -25,21 +26,32 @@ type liveMigrationEntry struct {
 	State     liveMigrationState
 	BytesSent int64
 	StartedAt time.Time
+
+	// internal fields — not included in snapshots
+	cancel    context.CancelFunc
+	cancelled bool
 }
 
 // liveMigrationTracker tracks in-flight VM-to-VM migrations.
 type liveMigrationTracker struct {
 	mu         sync.Mutex
 	migrations map[string]*liveMigrationEntry // keyed by box name
+
+	// batchCancels tracks cancel funcs for user-level batch migrations,
+	// keyed by user ID. Cancelling a batch stops the current migration
+	// and prevents further VMs from being processed.
+	batchCancels map[string]context.CancelFunc
 }
 
 func newLiveMigrationTracker() *liveMigrationTracker {
 	return &liveMigrationTracker{
-		migrations: make(map[string]*liveMigrationEntry),
+		migrations:   make(map[string]*liveMigrationEntry),
+		batchCancels: make(map[string]context.CancelFunc),
 	}
 }
 
-func (t *liveMigrationTracker) start(boxName, source, target string, live bool) {
+func (t *liveMigrationTracker) start(ctx context.Context, boxName, source, target string, live bool) context.Context {
+	ctx, cancelFunc := context.WithCancel(ctx)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.migrations[boxName] = &liveMigrationEntry{
@@ -49,6 +61,67 @@ func (t *liveMigrationTracker) start(boxName, source, target string, live bool) 
 		Live:      live,
 		State:     liveMigrationTransferring,
 		StartedAt: time.Now(),
+		cancel:    cancelFunc,
+	}
+	return ctx
+}
+
+// cancel cancels the in-flight migration for the given box, if any.
+// It returns true if a migration was found and cancelled.
+func (t *liveMigrationTracker) cancel(boxName string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	m, ok := t.migrations[boxName]
+	if !ok {
+		return false
+	}
+	m.cancel()
+	m.cancelled = true
+	return true
+}
+
+// cancelled reports whether the migration for the given box was cancelled.
+func (t *liveMigrationTracker) cancelled(boxName string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	m, ok := t.migrations[boxName]
+	if !ok {
+		return false
+	}
+	return m.cancelled
+}
+
+// startBatch registers a cancel func for a user-level batch migration.
+// The returned context is derived from the parent and will be cancelled
+// when cancelBatch is called. The caller must call finishBatch when done.
+func (t *liveMigrationTracker) startBatch(ctx context.Context, userID string) context.Context {
+	ctx, cancel := context.WithCancel(ctx)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.batchCancels[userID] = cancel
+	return ctx
+}
+
+// cancelBatch cancels the in-flight batch migration for the given user.
+// Returns true if a batch was found and cancelled.
+func (t *liveMigrationTracker) cancelBatch(userID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	cancel, ok := t.batchCancels[userID]
+	if !ok {
+		return false
+	}
+	cancel()
+	return true
+}
+
+// finishBatch removes the batch cancel entry for the given user.
+func (t *liveMigrationTracker) finishBatch(userID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if cancel, ok := t.batchCancels[userID]; ok {
+		cancel()
+		delete(t.batchCancels, userID)
 	}
 }
 
@@ -71,7 +144,12 @@ func (t *liveMigrationTracker) updateState(boxName string, state liveMigrationSt
 func (t *liveMigrationTracker) finish(boxName string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	delete(t.migrations, boxName)
+	if m, ok := t.migrations[boxName]; ok {
+		if m.cancel != nil {
+			m.cancel()
+		}
+		delete(t.migrations, boxName)
+	}
 }
 
 // snapshot returns a copy of all in-flight migrations.
@@ -80,7 +158,15 @@ func (t *liveMigrationTracker) snapshot() []liveMigrationEntry {
 	defer t.mu.Unlock()
 	entries := make([]liveMigrationEntry, 0, len(t.migrations))
 	for _, m := range t.migrations {
-		entries = append(entries, *m)
+		entries = append(entries, liveMigrationEntry{
+			BoxName:   m.BoxName,
+			Source:    m.Source,
+			Target:    m.Target,
+			Live:      m.Live,
+			State:     m.State,
+			BytesSent: m.BytesSent,
+			StartedAt: m.StartedAt,
+		})
 	}
 	return entries
 }
@@ -93,7 +179,15 @@ func (t *liveMigrationTracker) snapshotForExelet(addr string) []liveMigrationEnt
 	var entries []liveMigrationEntry
 	for _, m := range t.migrations {
 		if m.Source == addr || m.Target == addr {
-			entries = append(entries, *m)
+			entries = append(entries, liveMigrationEntry{
+				BoxName:   m.BoxName,
+				Source:    m.Source,
+				Target:    m.Target,
+				Live:      m.Live,
+				State:     m.State,
+				BytesSent: m.BytesSent,
+				StartedAt: m.StartedAt,
+			})
 		}
 	}
 	return entries

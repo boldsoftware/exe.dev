@@ -1150,3 +1150,242 @@ func TestHandleDebugBoxMigrateFailedLiveUpdatesDB(t *testing.T) {
 		t.Fatalf("box status = %q, want \"stopped\" (DB was not updated after failed migration)\nresponse:\n%s", box.Status, body)
 	}
 }
+
+func TestHandleDebugCancelMigration(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// No active migration — should 404.
+	form := url.Values{"box_name": {"nonexistent-vm"}}
+	req := httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+
+	// Missing params — should 400.
+	req = httptest.NewRequest("POST", "/debug/vms/cancel-migration", nil)
+	w = httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+
+	// Start a tracked migration and cancel it.
+	ctx := server.liveMigrations.start(context.Background(), "cancel-test-box", "tcp://src:9080", "tcp://dst:9080", true)
+	if ctx.Err() != nil {
+		t.Fatal("expected context to be active")
+	}
+
+	form = url.Values{"box_name": {"cancel-test-box"}}
+	req = httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if ctx.Err() == nil {
+		t.Error("expected migration context to be cancelled")
+	}
+	if !server.liveMigrations.cancelled("cancel-test-box") {
+		t.Error("expected migration to be marked cancelled")
+	}
+
+	// Cleanup.
+	server.liveMigrations.finish("cancel-test-box")
+}
+
+func TestHandleDebugCancelBatchMigration(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// No active batch — should 404.
+	form := url.Values{"user_id": {"no-such-user"}}
+	req := httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+
+	// Start a batch and cancel it.
+	ctx := server.liveMigrations.startBatch(context.Background(), "user-456")
+	if ctx.Err() != nil {
+		t.Fatal("expected batch context to be active")
+	}
+
+	form = url.Values{"user_id": {"user-456"}}
+	req = httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if ctx.Err() == nil {
+		t.Error("expected batch context to be cancelled")
+	}
+
+	// Cleanup.
+	server.liveMigrations.finishBatch("user-456")
+}
+
+// slowMigrationServer blocks during SendVM until the context is cancelled,
+// allowing tests to exercise the cancel path.
+type slowMigrationServer struct {
+	computeapi.UnimplementedComputeServiceServer
+	sshPort int32
+}
+
+func (f *slowMigrationServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
+	return &computeapi.GetInstanceResponse{
+		Instance: &computeapi.Instance{
+			State:   computeapi.VMState_RUNNING,
+			SSHPort: f.sshPort,
+		},
+	}, nil
+}
+
+func (f *slowMigrationServer) StopInstance(_ context.Context, _ *computeapi.StopInstanceRequest) (*computeapi.StopInstanceResponse, error) {
+	return &computeapi.StopInstanceResponse{}, nil
+}
+
+func (f *slowMigrationServer) StartInstance(_ context.Context, _ *computeapi.StartInstanceRequest) (*computeapi.StartInstanceResponse, error) {
+	return &computeapi.StartInstanceResponse{}, nil
+}
+
+func (f *slowMigrationServer) DeleteInstance(_ context.Context, _ *computeapi.DeleteInstanceRequest) (*computeapi.DeleteInstanceResponse, error) {
+	return &computeapi.DeleteInstanceResponse{}, nil
+}
+
+func (f *slowMigrationServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
+	// Receive start request.
+	_, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+
+	// Send TargetReady to confirm direct mode.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_TargetReady{
+			TargetReady: &computeapi.SendVMTargetReady{},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Send metadata.
+	if err := stream.Send(&computeapi.SendVMResponse{
+		Type: &computeapi.SendVMResponse_Metadata{
+			Metadata: &computeapi.SendVMMetadata{
+				Instance: &computeapi.Instance{
+					ID:    "test-instance",
+					Image: "ubuntu:latest",
+				},
+				BaseImageID: "sha256:fake",
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Block until context is done (simulating a long transfer).
+	<-stream.Context().Done()
+	return stream.Context().Err()
+}
+
+func TestCancelMigrationMidFlight(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 22222
+
+	// Source that blocks during transfer.
+	sourceSrv := &slowMigrationServer{sshPort: sshPort}
+	sourceAddr, sourceClient := startFakeComputeServer(t, sourceSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+
+	// We don't need a real target for this test since the source blocks before
+	// contacting the target. Register a fake target address.
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	// Create a box.
+	const boxName = "cancel-midflight"
+	userID := createTestUser(t, server, boxName+"@example.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          boxName,
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containerID := "container-" + boxName
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+			SSHPort:     nil,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start migration in a goroutine.
+	done := make(chan string, 1)
+	go func() {
+		form := url.Values{
+			"box_name":     {boxName},
+			"target":       {targetAddr},
+			"confirm_name": {boxName},
+			"live":         {"false"},
+		}
+		req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		server.handleDebugBoxMigrate(w, req)
+		done <- w.Body.String()
+	}()
+
+	// Wait for the migration to appear in the tracker.
+	for i := 0; i < 100; i++ {
+		if snap := server.liveMigrations.snapshot(); len(snap) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if snap := server.liveMigrations.snapshot(); len(snap) == 0 {
+		t.Fatal("migration did not appear in tracker")
+	}
+
+	// Cancel it.
+	if !server.liveMigrations.cancel(boxName) {
+		t.Fatal("cancel returned false")
+	}
+
+	// Wait for the migration to complete.
+	select {
+	case body := <-done:
+		if !strings.Contains(body, "MIGRATION_ERROR") {
+			t.Errorf("expected MIGRATION_ERROR after cancel, got:\n%s", body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for migration to finish after cancel")
+	}
+}

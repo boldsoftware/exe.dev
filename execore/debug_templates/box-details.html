@@ -44,6 +44,7 @@
 </select>
 <button type="submit" id="liveMigrateBtn" class="logs-btn" disabled style="background:#007bff;">Live Migrate</button>
 <button type="button" id="coldMigrateBtn" class="logs-btn" disabled style="background:#6c757d;">Cold Migrate</button>
+<button type="button" id="cancelMigrateBtn" class="logs-btn" style="background:#dc3545;display:none;">Cancel</button>
 </form>
 <div id="vmMigProgress" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto;"></div>
 </div>
@@ -212,8 +213,10 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
     var target = document.getElementById('vmMigrateTarget');
     var liveBtn = document.getElementById('liveMigrateBtn');
     var coldBtn = document.getElementById('coldMigrateBtn');
+    var cancelBtn = document.getElementById('cancelMigrateBtn');
     var liveInput = document.getElementById('vmMigrateLive');
     var progress = document.getElementById('vmMigProgress');
+    var migrating = false;
 
     target.addEventListener('change', function() {
         var enabled = !!this.value;
@@ -221,10 +224,31 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
         coldBtn.disabled = !enabled;
     });
 
+    cancelBtn.addEventListener('click', function() {
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Cancelling...';
+        fetch('/debug/vms/cancel-migration', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'box_name={{.Name}}'
+        }).then(function(resp) {
+            if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
+            progress.textContent += '\nCancel requested...\n';
+        }).catch(function(err) {
+            progress.textContent += '\nCancel failed: ' + err + '\n';
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = 'Cancel';
+        });
+    });
+
     function doMigrate(live) {
         liveInput.value = live ? 'true' : 'false';
         liveBtn.disabled = true;
         coldBtn.disabled = true;
+        migrating = true;
+        cancelBtn.style.display = '';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel';
         var label = live ? 'Live migrating...' : 'Cold migrating...';
         (live ? liveBtn : coldBtn).textContent = label;
         progress.style.display = 'block';
@@ -258,6 +282,8 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
                         coldBtn.textContent = 'Cold Migrate';
                         liveBtn.disabled = false;
                         coldBtn.disabled = false;
+                        cancelBtn.style.display = 'none';
+                        migrating = false;
                     } else if (text.includes('MIGRATION_ERROR:')) {
                         progress.style.background = '#f8d7da';
                         progress.style.borderColor = '#f5c6cb';
@@ -265,6 +291,8 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
                         coldBtn.textContent = 'Cold Migrate';
                         liveBtn.disabled = false;
                         coldBtn.disabled = false;
+                        cancelBtn.style.display = 'none';
+                        migrating = false;
                     }
                     read();
                 });
@@ -277,6 +305,8 @@ document.getElementById('fetchLogsBtn').addEventListener('click', function() {
             coldBtn.textContent = 'Cold Migrate';
             liveBtn.disabled = false;
             coldBtn.disabled = false;
+            cancelBtn.style.display = 'none';
+            migrating = false;
         });
     }
 

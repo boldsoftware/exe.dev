@@ -73,6 +73,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/vms/start", s.handleDebugBoxStart)
 	mux.HandleFunc("GET /debug/vms/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/vms/migrate", s.handleDebugBoxMigrate)
+	mux.HandleFunc("POST /debug/vms/cancel-migration", s.handleDebugCancelMigration)
 	mux.HandleFunc("POST /debug/vms/{name}/migrate-tier", s.handleDebugBoxMigrateTier)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
@@ -880,6 +881,34 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	writeProgress("MIGRATION_SUCCESS:%s", boxName)
 }
 
+// handleDebugCancelMigration cancels an in-flight VM migration.
+// Accepts box_name (single VM) or user_id (batch migration).
+func (s *Server) handleDebugCancelMigration(w http.ResponseWriter, r *http.Request) {
+	boxName := r.FormValue("box_name")
+	userID := r.FormValue("user_id")
+	if boxName == "" && userID == "" {
+		http.Error(w, "box_name or user_id is required", http.StatusBadRequest)
+		return
+	}
+	if userID != "" {
+		if !s.liveMigrations.cancelBatch(userID) {
+			http.Error(w, fmt.Sprintf("no in-flight batch migration for user %q", userID), http.StatusNotFound)
+			return
+		}
+		s.slog().InfoContext(r.Context(), "batch migration cancelled via debug UI", "user_id", userID)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "batch migration for user %s cancelled", userID)
+		return
+	}
+	if !s.liveMigrations.cancel(boxName) {
+		http.Error(w, fmt.Sprintf("no in-flight migration for %q", boxName), http.StatusNotFound)
+		return
+	}
+	s.slog().InfoContext(r.Context(), "migration cancelled via debug UI", "box", boxName)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "migration for %s cancelled", boxName)
+}
+
 func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.Client, instanceID string) error {
 	// The source exelet sends the migration Result before its defer stack
 	// finishes (ZFS snapshot cleanup, migration-lock release). Give it a
@@ -919,12 +948,13 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 // only control messages, metadata observation, and progress reporting.
 func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, box *exedb.Box, progress func(string, ...any)) error {
 	if boxName != "" {
-		s.liveMigrations.start(boxName, sourceAddr, targetAddr, false)
+		ctx = s.liveMigrations.start(ctx, boxName, sourceAddr, targetAddr, false)
 		defer s.liveMigrations.finish(boxName)
+	} else {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	sendStream, err := source.SendVM(ctx)
 	if err != nil {
@@ -1083,11 +1113,8 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 	progress := p.progress
 	log := s.slog().With("instance", instanceID, "box", box.Name)
 
-	s.liveMigrations.start(box.Name, box.Ctrhost, p.targetAddr, true)
+	ctx = s.liveMigrations.start(ctx, box.Name, box.Ctrhost, p.targetAddr, true)
 	defer s.liveMigrations.finish(box.Name)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	// Start SendVM on source with live=true
 	sendStream, err := source.SendVM(ctx)
@@ -6353,6 +6380,10 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	// Use a background context so migrations complete even if the browser disconnects.
 	ctx = context.WithoutCancel(ctx)
 
+	// Wrap in a batch-cancellable context so the debug UI can cancel the entire batch.
+	ctx = s.liveMigrations.startBatch(ctx, userID)
+	defer s.liveMigrations.finishBatch(userID)
+
 	// Lock deployments during migration (best-effort).
 	prodLocked, err := prodlockSet(ctx, s.env, "lock", fmt.Sprintf("region migration: %d VMs for %s to %s", len(toMigrate), user.Email, targetAddr))
 	if err != nil {
@@ -6364,7 +6395,13 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 	}
 
 	var succeeded, failed int
+	var batchCancelled bool
 	for i, box := range toMigrate {
+		if ctx.Err() != nil {
+			batchCancelled = true
+			writeProgress("Batch migration cancelled. Skipping remaining %d VM(s).", len(toMigrate)-i)
+			break
+		}
 		boxName := box.Name
 		writeProgress("=== [%d/%d] %s ===", i+1, len(toMigrate), boxName)
 
@@ -6394,8 +6431,10 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
 		live := wasRunning
 
+		// Use a context that survives cancellation for recovery operations.
+		recoverCtx := context.WithoutCancel(ctx)
 		restartSource := func(reason string) {
-			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
+			s.restartSourceVM(recoverCtx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
 		}
 
 		var sshPort *int64
@@ -6547,23 +6586,29 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		writeProgress("")
 	}
 
-	// Unlock if we locked it.
+	// Use a fresh context for unlock since the batch context may have been cancelled.
+	unlockCtx := context.Background()
 	if prodLocked {
 		writeProgress("Unlocking deployments...")
-		if _, err := prodlockSet(ctx, s.env, "unlock", "region migration complete"); err != nil {
+		if _, err := prodlockSet(unlockCtx, s.env, "unlock", "region migration complete"); err != nil {
 			writeProgress("WARNING: failed to unlock deployments: %v — manual unlock required", err)
 		} else {
 			writeProgress("Deployments unlocked.")
 		}
 	}
 
-	writeProgress("=== Migration complete ===")
-	writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(toMigrate))
-
-	if failed == 0 {
-		writeProgress("MIGRATION_SUCCESS")
-	} else {
+	if batchCancelled {
+		writeProgress("=== Migration cancelled ===")
+		writeProgress("Succeeded: %d, Failed: %d, Cancelled: %d, Total: %d", succeeded, failed, len(toMigrate)-succeeded-failed, len(toMigrate))
 		writeProgress("MIGRATION_ERROR")
+	} else {
+		writeProgress("=== Migration complete ===")
+		writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(toMigrate))
+		if failed == 0 {
+			writeProgress("MIGRATION_SUCCESS")
+		} else {
+			writeProgress("MIGRATION_ERROR")
+		}
 	}
 }
 
