@@ -16,6 +16,7 @@ import (
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/region"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1388,4 +1389,300 @@ func TestCancelMigrationMidFlight(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for migration to finish after cancel")
 	}
+}
+
+func TestHandleDebugBatchMigrate(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 44444
+
+	// Set up source exelet in pdx.
+	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source"}
+	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+	sourceEC := &exeletClient{addr: sourceAddr, client: sourceClient}
+	sourceEC.region, _ = region.ByCode("pdx")
+	sourceEC.up.Store(true)
+	server.exeletClients[sourceAddr] = sourceEC
+
+	// Set up target exelet in lon.
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+	targetEC := &exeletClient{addr: targetAddr, client: targetClient}
+	targetEC.region, _ = region.ByCode("lon")
+	targetEC.up.Store(true)
+	server.exeletClients[targetAddr] = targetEC
+
+	// Create two users, both with region lon, each with a box on pdx.
+	user1ID := createTestUser(t, server, "batch-user1@example.com")
+	err := withTx1(server, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{
+		Region: "lon",
+		UserID: user1ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user2ID := createTestUser(t, server, "batch-user2@example.com")
+	err = withTx1(server, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{
+		Region: "lon",
+		UserID: user2ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create boxes for user1.
+	box1ID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        user1ID,
+		ctrhost:       sourceAddr,
+		name:          "batch-vm1",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cid1 := "container-batch-vm1"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID: box1ID, ContainerID: &cid1, Status: "running",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create boxes for user2.
+	box2ID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        user2ID,
+		ctrhost:       sourceAddr,
+		name:          "batch-vm2",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cid2 := "container-batch-vm2"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID: box2ID, ContainerID: &cid2, Status: "running",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// POST to the batch migrate endpoint.
+	form := url.Values{
+		"user_ids[]":  {user1ID, user2ID},
+		"concurrency": {"2"},
+	}
+	req := httptest.NewRequest("POST", "/debug/migrations/batch", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.handleDebugBatchMigrate(w, req)
+
+	body := w.Body.String()
+
+	if !strings.Contains(body, "BATCH_SUCCESS") {
+		t.Errorf("expected BATCH_SUCCESS in response, got:\n%s", body)
+	}
+	if strings.Contains(body, "BATCH_ERROR") {
+		t.Errorf("unexpected BATCH_ERROR in response:\n%s", body)
+	}
+	if !strings.Contains(body, "BATCH_ID:") {
+		t.Errorf("expected BATCH_ID in response, got:\n%s", body)
+	}
+	if !strings.Contains(body, "VMs succeeded: 2") {
+		t.Errorf("expected 2 VMs succeeded, got:\n%s", body)
+	}
+
+	// Verify both boxes were moved to the target.
+	box1, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, "batch-vm1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box1.Ctrhost != targetAddr {
+		t.Errorf("box1 ctrhost = %q, want %q", box1.Ctrhost, targetAddr)
+	}
+	if box1.Region != "lon" {
+		t.Errorf("box1 region = %q, want %q", box1.Region, "lon")
+	}
+
+	box2, err := withRxRes1(server, ctx, (*exedb.Queries).BoxNamed, "batch-vm2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box2.Ctrhost != targetAddr {
+		t.Errorf("box2 ctrhost = %q, want %q", box2.Ctrhost, targetAddr)
+	}
+	if box2.Region != "lon" {
+		t.Errorf("box2 region = %q, want %q", box2.Region, "lon")
+	}
+}
+
+func TestHandleDebugBatchMigrateCancel(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 44445
+
+	// Source that blocks during transfer.
+	sourceSrv := &slowMigrationServer{sshPort: sshPort}
+	sourceAddr, sourceClient := startFakeComputeServer(t, sourceSrv)
+	sourceEC := &exeletClient{addr: sourceAddr, client: sourceClient}
+	sourceEC.region, _ = region.ByCode("pdx")
+	sourceEC.up.Store(true)
+	server.exeletClients[sourceAddr] = sourceEC
+
+	// Target exelet.
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+	targetEC := &exeletClient{addr: targetAddr, client: targetClient}
+	targetEC.region, _ = region.ByCode("lon")
+	targetEC.up.Store(true)
+	server.exeletClients[targetAddr] = targetEC
+
+	// Create a user with a box on pdx, region lon.
+	userID := createTestUser(t, server, "batch-cancel@example.com")
+	err := withTx1(server, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{
+		Region: "lon",
+		UserID: userID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          "batch-cancel-vm",
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cid := "container-batch-cancel"
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID: boxID, ContainerID: &cid, Status: "running",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start migration in a goroutine.
+	done := make(chan string, 1)
+	go func() {
+		form := url.Values{
+			"user_ids[]":  {userID},
+			"concurrency": {"1"},
+		}
+		req := httptest.NewRequest("POST", "/debug/migrations/batch", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		server.handleDebugBatchMigrate(w, req)
+		done <- w.Body.String()
+	}()
+
+	// Wait for the individual VM migration to appear in the tracker.
+	// This ensures the gRPC stream is active before we cancel.
+	for i := 0; i < 200; i++ {
+		if snap := server.liveMigrations.snapshot(); len(snap) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if snap := server.liveMigrations.snapshot(); len(snap) == 0 {
+		t.Fatal("migration did not appear in tracker")
+	}
+
+	// Find the batch ID and cancel it.
+	var foundBatchID string
+	server.liveMigrations.mu.Lock()
+	for key := range server.liveMigrations.batchCancels {
+		if strings.HasPrefix(key, "batch-") {
+			foundBatchID = key
+		}
+	}
+	server.liveMigrations.mu.Unlock()
+	if foundBatchID == "" {
+		t.Fatal("batch ID not found in tracker")
+	}
+
+	// Cancel the batch.
+	if !server.liveMigrations.cancelBatch(foundBatchID) {
+		t.Fatal("cancelBatch returned false")
+	}
+
+	// Wait for completion.
+	select {
+	case body := <-done:
+		if !strings.Contains(body, "BATCH_CANCELLED") && !strings.Contains(body, "BATCH_ERROR") {
+			t.Errorf("expected BATCH_CANCELLED or BATCH_ERROR after cancel, got:\n%s", body)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for batch to finish after cancel")
+	}
+}
+
+func TestHandleDebugBatchMigrateNoUsers(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// POST with no user_ids should 400.
+	req := httptest.NewRequest("POST", "/debug/migrations/batch", nil)
+	w := httptest.NewRecorder()
+	server.handleDebugBatchMigrate(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+}
+
+func TestHandleDebugCancelBatchByBatchID(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// No active batch — should 404.
+	form := url.Values{"batch_id": {"batch-nonexistent"}}
+	req := httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+
+	// Start a batch and cancel it.
+	batchCtx := server.liveMigrations.startBatch(context.Background(), "batch-test123")
+	if batchCtx.Err() != nil {
+		t.Fatal("expected batch context to be active")
+	}
+
+	form = url.Values{"batch_id": {"batch-test123"}}
+	req = httptest.NewRequest("POST", "/debug/vms/cancel-migration", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	server.handleDebugCancelMigration(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if batchCtx.Err() == nil {
+		t.Error("expected batch context to be cancelled")
+	}
+
+	// Cleanup.
+	server.liveMigrations.finishBatch("batch-test123")
 }
