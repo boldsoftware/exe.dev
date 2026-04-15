@@ -312,9 +312,9 @@ func (sf *SlackFeed) StripelessTrialToggled(ctx context.Context, enabled bool) {
 	emoji := "no_entry_sign"
 	if enabled {
 		status = "enabled"
-		emoji = "free"
+		emoji = "white_check_mark"
 	}
-	message := fmt.Sprintf("stripeless trial mode %s", status)
+	message := fmt.Sprintf("🧪 Experiment changed: stripeless trial mode %s", status)
 	if sf.client == nil {
 		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
 		return
