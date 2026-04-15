@@ -318,6 +318,13 @@ func streamViaSideband(ctx context.Context, target receiveVMTarget, log *slog.Lo
 			return fmt.Errorf("sideband retry %d: missing resume token/address (original error: %v)", attempt, err)
 		}
 		target.SetSidebandAddr(newAddr)
+		// Reset the hasher before resume. On a broken sideband the send and
+		// receive sides will have hashed different amounts of the partial
+		// transfer (bytes in flight at break time), so the accumulated hashes
+		// can never match. Resetting ensures both sides only hash the bytes
+		// of the last successful transfer attempt. ZFS per-block checksums
+		// still protect all previously received data.
+		hasher.Reset()
 		err = streamViaSidebandResume(ctx, target, sm, token, hasher, totalBytes, progress)
 		if err == nil {
 			return nil

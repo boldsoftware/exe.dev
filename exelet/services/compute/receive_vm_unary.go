@@ -201,6 +201,12 @@ func (s *Service) GetReceiveVMResumeToken(ctx context.Context, req *api.GetRecei
 	sess.zfsDatasetCreated = true
 	sess.rollback.zfsDatasetCreated = true
 
+	// Reset the hasher. On a broken sideband the send and receive sides
+	// will have hashed different byte counts (bytes in flight at break
+	// time), so accumulated hashes can never match. The send side resets
+	// its hasher symmetrically before calling streamViaSidebandResume.
+	sess.hasher.Reset()
+
 	token, err := s.context.StorageManager.GetResumeToken(ctx, sess.instanceID)
 	if err != nil {
 		s.log.WarnContext(ctx, "failed to get resume token", "instance", sess.instanceID, "error", err)
