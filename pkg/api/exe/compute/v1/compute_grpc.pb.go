@@ -19,27 +19,37 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ComputeService_CreateInstance_FullMethodName         = "/exe.compute.v1.ComputeService/CreateInstance"
-	ComputeService_ListInstances_FullMethodName          = "/exe.compute.v1.ComputeService/ListInstances"
-	ComputeService_GetInstance_FullMethodName            = "/exe.compute.v1.ComputeService/GetInstance"
-	ComputeService_GetInstanceLogs_FullMethodName        = "/exe.compute.v1.ComputeService/GetInstanceLogs"
-	ComputeService_StartInstance_FullMethodName          = "/exe.compute.v1.ComputeService/StartInstance"
-	ComputeService_StopInstance_FullMethodName           = "/exe.compute.v1.ComputeService/StopInstance"
-	ComputeService_UpdateInstance_FullMethodName         = "/exe.compute.v1.ComputeService/UpdateInstance"
-	ComputeService_DeleteInstance_FullMethodName         = "/exe.compute.v1.ComputeService/DeleteInstance"
-	ComputeService_SetInstanceGroup_FullMethodName       = "/exe.compute.v1.ComputeService/SetInstanceGroup"
-	ComputeService_RenameInstance_FullMethodName         = "/exe.compute.v1.ComputeService/RenameInstance"
-	ComputeService_GetSystemInfo_FullMethodName          = "/exe.compute.v1.ComputeService/GetSystemInfo"
-	ComputeService_SendVM_FullMethodName                 = "/exe.compute.v1.ComputeService/SendVM"
-	ComputeService_ReceiveVM_FullMethodName              = "/exe.compute.v1.ComputeService/ReceiveVM"
-	ComputeService_GrowDisk_FullMethodName               = "/exe.compute.v1.ComputeService/GrowDisk"
-	ComputeService_ResizeVM_FullMethodName               = "/exe.compute.v1.ComputeService/ResizeVM"
-	ComputeService_CloneInstance_FullMethodName          = "/exe.compute.v1.ComputeService/CloneInstance"
-	ComputeService_MigrateStorageTier_FullMethodName     = "/exe.compute.v1.ComputeService/MigrateStorageTier"
-	ComputeService_GetTierMigrationStatus_FullMethodName = "/exe.compute.v1.ComputeService/GetTierMigrationStatus"
-	ComputeService_ListStorageTiers_FullMethodName       = "/exe.compute.v1.ComputeService/ListStorageTiers"
-	ComputeService_ClearTierMigrations_FullMethodName    = "/exe.compute.v1.ComputeService/ClearTierMigrations"
-	ComputeService_CancelTierMigration_FullMethodName    = "/exe.compute.v1.ComputeService/CancelTierMigration"
+	ComputeService_CreateInstance_FullMethodName          = "/exe.compute.v1.ComputeService/CreateInstance"
+	ComputeService_ListInstances_FullMethodName           = "/exe.compute.v1.ComputeService/ListInstances"
+	ComputeService_GetInstance_FullMethodName             = "/exe.compute.v1.ComputeService/GetInstance"
+	ComputeService_GetInstanceLogs_FullMethodName         = "/exe.compute.v1.ComputeService/GetInstanceLogs"
+	ComputeService_StartInstance_FullMethodName           = "/exe.compute.v1.ComputeService/StartInstance"
+	ComputeService_StopInstance_FullMethodName            = "/exe.compute.v1.ComputeService/StopInstance"
+	ComputeService_UpdateInstance_FullMethodName          = "/exe.compute.v1.ComputeService/UpdateInstance"
+	ComputeService_DeleteInstance_FullMethodName          = "/exe.compute.v1.ComputeService/DeleteInstance"
+	ComputeService_SetInstanceGroup_FullMethodName        = "/exe.compute.v1.ComputeService/SetInstanceGroup"
+	ComputeService_RenameInstance_FullMethodName          = "/exe.compute.v1.ComputeService/RenameInstance"
+	ComputeService_GetSystemInfo_FullMethodName           = "/exe.compute.v1.ComputeService/GetSystemInfo"
+	ComputeService_SendVM_FullMethodName                  = "/exe.compute.v1.ComputeService/SendVM"
+	ComputeService_ReceiveVM_FullMethodName               = "/exe.compute.v1.ComputeService/ReceiveVM"
+	ComputeService_InitSendVM_FullMethodName              = "/exe.compute.v1.ComputeService/InitSendVM"
+	ComputeService_PollSendVM_FullMethodName              = "/exe.compute.v1.ComputeService/PollSendVM"
+	ComputeService_SubmitSendVMControl_FullMethodName     = "/exe.compute.v1.ComputeService/SubmitSendVMControl"
+	ComputeService_AbortSendVM_FullMethodName             = "/exe.compute.v1.ComputeService/AbortSendVM"
+	ComputeService_InitReceiveVM_FullMethodName           = "/exe.compute.v1.ComputeService/InitReceiveVM"
+	ComputeService_GetReceiveVMResumeToken_FullMethodName = "/exe.compute.v1.ComputeService/GetReceiveVMResumeToken"
+	ComputeService_AdvanceReceiveVMPhase_FullMethodName   = "/exe.compute.v1.ComputeService/AdvanceReceiveVMPhase"
+	ComputeService_UploadReceiveVMSnapshot_FullMethodName = "/exe.compute.v1.ComputeService/UploadReceiveVMSnapshot"
+	ComputeService_CompleteReceiveVM_FullMethodName       = "/exe.compute.v1.ComputeService/CompleteReceiveVM"
+	ComputeService_AbortReceiveVM_FullMethodName          = "/exe.compute.v1.ComputeService/AbortReceiveVM"
+	ComputeService_GrowDisk_FullMethodName                = "/exe.compute.v1.ComputeService/GrowDisk"
+	ComputeService_ResizeVM_FullMethodName                = "/exe.compute.v1.ComputeService/ResizeVM"
+	ComputeService_CloneInstance_FullMethodName           = "/exe.compute.v1.ComputeService/CloneInstance"
+	ComputeService_MigrateStorageTier_FullMethodName      = "/exe.compute.v1.ComputeService/MigrateStorageTier"
+	ComputeService_GetTierMigrationStatus_FullMethodName  = "/exe.compute.v1.ComputeService/GetTierMigrationStatus"
+	ComputeService_ListStorageTiers_FullMethodName        = "/exe.compute.v1.ComputeService/ListStorageTiers"
+	ComputeService_ClearTierMigrations_FullMethodName     = "/exe.compute.v1.ComputeService/ClearTierMigrations"
+	ComputeService_CancelTierMigration_FullMethodName     = "/exe.compute.v1.ComputeService/CancelTierMigration"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -61,6 +71,26 @@ type ComputeServiceClient interface {
 	SendVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendVMRequest, SendVMResponse], error)
 	// ReceiveVM receives a VM from another exelet
 	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ReceiveVMRequest, ReceiveVMResponse], error)
+	// InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
+	InitSendVM(ctx context.Context, in *InitSendVMRequest, opts ...grpc.CallOption) (*InitSendVMResponse, error)
+	// PollSendVM long-polls for migration events.
+	PollSendVM(ctx context.Context, in *PollSendVMRequest, opts ...grpc.CallOption) (*PollSendVMResponse, error)
+	// SubmitSendVMControl sends a control signal to the migration goroutine.
+	SubmitSendVMControl(ctx context.Context, in *SubmitSendVMControlRequest, opts ...grpc.CallOption) (*SubmitSendVMControlResponse, error)
+	// AbortSendVM cancels a migration session and releases resources.
+	AbortSendVM(ctx context.Context, in *AbortSendVMRequest, opts ...grpc.CallOption) (*AbortSendVMResponse, error)
+	// InitReceiveVM creates a migration session on the target exelet.
+	InitReceiveVM(ctx context.Context, in *InitReceiveVMRequest, opts ...grpc.CallOption) (*InitReceiveVMResponse, error)
+	// GetReceiveVMResumeToken returns the ZFS resume token for a broken sideband.
+	GetReceiveVMResumeToken(ctx context.Context, in *GetReceiveVMResumeTokenRequest, opts ...grpc.CallOption) (*GetReceiveVMResumeTokenResponse, error)
+	// AdvanceReceiveVMPhase signals that a sideband phase completed.
+	AdvanceReceiveVMPhase(ctx context.Context, in *AdvanceReceiveVMPhaseRequest, opts ...grpc.CallOption) (*AdvanceReceiveVMPhaseResponse, error)
+	// UploadReceiveVMSnapshot sends CH snapshot file chunks.
+	UploadReceiveVMSnapshot(ctx context.Context, in *UploadReceiveVMSnapshotRequest, opts ...grpc.CallOption) (*UploadReceiveVMSnapshotResponse, error)
+	// CompleteReceiveVM sends the checksum and triggers instance finalization.
+	CompleteReceiveVM(ctx context.Context, in *CompleteReceiveVMRequest, opts ...grpc.CallOption) (*CompleteReceiveVMResponse, error)
+	// AbortReceiveVM cancels a receive session and triggers rollback.
+	AbortReceiveVM(ctx context.Context, in *AbortReceiveVMRequest, opts ...grpc.CallOption) (*AbortReceiveVMResponse, error)
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error)
 	// ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
@@ -250,6 +280,106 @@ func (c *computeServiceClient) ReceiveVM(ctx context.Context, opts ...grpc.CallO
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_ReceiveVMClient = grpc.BidiStreamingClient[ReceiveVMRequest, ReceiveVMResponse]
 
+func (c *computeServiceClient) InitSendVM(ctx context.Context, in *InitSendVMRequest, opts ...grpc.CallOption) (*InitSendVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitSendVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_InitSendVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) PollSendVM(ctx context.Context, in *PollSendVMRequest, opts ...grpc.CallOption) (*PollSendVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PollSendVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_PollSendVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) SubmitSendVMControl(ctx context.Context, in *SubmitSendVMControlRequest, opts ...grpc.CallOption) (*SubmitSendVMControlResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitSendVMControlResponse)
+	err := c.cc.Invoke(ctx, ComputeService_SubmitSendVMControl_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) AbortSendVM(ctx context.Context, in *AbortSendVMRequest, opts ...grpc.CallOption) (*AbortSendVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortSendVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_AbortSendVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) InitReceiveVM(ctx context.Context, in *InitReceiveVMRequest, opts ...grpc.CallOption) (*InitReceiveVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitReceiveVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_InitReceiveVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) GetReceiveVMResumeToken(ctx context.Context, in *GetReceiveVMResumeTokenRequest, opts ...grpc.CallOption) (*GetReceiveVMResumeTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReceiveVMResumeTokenResponse)
+	err := c.cc.Invoke(ctx, ComputeService_GetReceiveVMResumeToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) AdvanceReceiveVMPhase(ctx context.Context, in *AdvanceReceiveVMPhaseRequest, opts ...grpc.CallOption) (*AdvanceReceiveVMPhaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdvanceReceiveVMPhaseResponse)
+	err := c.cc.Invoke(ctx, ComputeService_AdvanceReceiveVMPhase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) UploadReceiveVMSnapshot(ctx context.Context, in *UploadReceiveVMSnapshotRequest, opts ...grpc.CallOption) (*UploadReceiveVMSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UploadReceiveVMSnapshotResponse)
+	err := c.cc.Invoke(ctx, ComputeService_UploadReceiveVMSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) CompleteReceiveVM(ctx context.Context, in *CompleteReceiveVMRequest, opts ...grpc.CallOption) (*CompleteReceiveVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteReceiveVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_CompleteReceiveVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *computeServiceClient) AbortReceiveVM(ctx context.Context, in *AbortReceiveVMRequest, opts ...grpc.CallOption) (*AbortReceiveVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortReceiveVMResponse)
+	err := c.cc.Invoke(ctx, ComputeService_AbortReceiveVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *computeServiceClient) GrowDisk(ctx context.Context, in *GrowDiskRequest, opts ...grpc.CallOption) (*GrowDiskResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GrowDiskResponse)
@@ -358,6 +488,26 @@ type ComputeServiceServer interface {
 	SendVM(grpc.BidiStreamingServer[SendVMRequest, SendVMResponse]) error
 	// ReceiveVM receives a VM from another exelet
 	ReceiveVM(grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]) error
+	// InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
+	InitSendVM(context.Context, *InitSendVMRequest) (*InitSendVMResponse, error)
+	// PollSendVM long-polls for migration events.
+	PollSendVM(context.Context, *PollSendVMRequest) (*PollSendVMResponse, error)
+	// SubmitSendVMControl sends a control signal to the migration goroutine.
+	SubmitSendVMControl(context.Context, *SubmitSendVMControlRequest) (*SubmitSendVMControlResponse, error)
+	// AbortSendVM cancels a migration session and releases resources.
+	AbortSendVM(context.Context, *AbortSendVMRequest) (*AbortSendVMResponse, error)
+	// InitReceiveVM creates a migration session on the target exelet.
+	InitReceiveVM(context.Context, *InitReceiveVMRequest) (*InitReceiveVMResponse, error)
+	// GetReceiveVMResumeToken returns the ZFS resume token for a broken sideband.
+	GetReceiveVMResumeToken(context.Context, *GetReceiveVMResumeTokenRequest) (*GetReceiveVMResumeTokenResponse, error)
+	// AdvanceReceiveVMPhase signals that a sideband phase completed.
+	AdvanceReceiveVMPhase(context.Context, *AdvanceReceiveVMPhaseRequest) (*AdvanceReceiveVMPhaseResponse, error)
+	// UploadReceiveVMSnapshot sends CH snapshot file chunks.
+	UploadReceiveVMSnapshot(context.Context, *UploadReceiveVMSnapshotRequest) (*UploadReceiveVMSnapshotResponse, error)
+	// CompleteReceiveVM sends the checksum and triggers instance finalization.
+	CompleteReceiveVM(context.Context, *CompleteReceiveVMRequest) (*CompleteReceiveVMResponse, error)
+	// AbortReceiveVM cancels a receive session and triggers rollback.
+	AbortReceiveVM(context.Context, *AbortReceiveVMRequest) (*AbortReceiveVMResponse, error)
 	// GrowDisk grows the disk of a running VM
 	GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error)
 	// ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
@@ -422,6 +572,36 @@ func (UnimplementedComputeServiceServer) SendVM(grpc.BidiStreamingServer[SendVMR
 }
 func (UnimplementedComputeServiceServer) ReceiveVM(grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]) error {
 	return status.Error(codes.Unimplemented, "method ReceiveVM not implemented")
+}
+func (UnimplementedComputeServiceServer) InitSendVM(context.Context, *InitSendVMRequest) (*InitSendVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InitSendVM not implemented")
+}
+func (UnimplementedComputeServiceServer) PollSendVM(context.Context, *PollSendVMRequest) (*PollSendVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PollSendVM not implemented")
+}
+func (UnimplementedComputeServiceServer) SubmitSendVMControl(context.Context, *SubmitSendVMControlRequest) (*SubmitSendVMControlResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitSendVMControl not implemented")
+}
+func (UnimplementedComputeServiceServer) AbortSendVM(context.Context, *AbortSendVMRequest) (*AbortSendVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AbortSendVM not implemented")
+}
+func (UnimplementedComputeServiceServer) InitReceiveVM(context.Context, *InitReceiveVMRequest) (*InitReceiveVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InitReceiveVM not implemented")
+}
+func (UnimplementedComputeServiceServer) GetReceiveVMResumeToken(context.Context, *GetReceiveVMResumeTokenRequest) (*GetReceiveVMResumeTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetReceiveVMResumeToken not implemented")
+}
+func (UnimplementedComputeServiceServer) AdvanceReceiveVMPhase(context.Context, *AdvanceReceiveVMPhaseRequest) (*AdvanceReceiveVMPhaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdvanceReceiveVMPhase not implemented")
+}
+func (UnimplementedComputeServiceServer) UploadReceiveVMSnapshot(context.Context, *UploadReceiveVMSnapshotRequest) (*UploadReceiveVMSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UploadReceiveVMSnapshot not implemented")
+}
+func (UnimplementedComputeServiceServer) CompleteReceiveVM(context.Context, *CompleteReceiveVMRequest) (*CompleteReceiveVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteReceiveVM not implemented")
+}
+func (UnimplementedComputeServiceServer) AbortReceiveVM(context.Context, *AbortReceiveVMRequest) (*AbortReceiveVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AbortReceiveVM not implemented")
 }
 func (UnimplementedComputeServiceServer) GrowDisk(context.Context, *GrowDiskRequest) (*GrowDiskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GrowDisk not implemented")
@@ -659,6 +839,186 @@ func _ComputeService_ReceiveVM_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_ReceiveVMServer = grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]
 
+func _ComputeService_InitSendVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitSendVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).InitSendVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_InitSendVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).InitSendVM(ctx, req.(*InitSendVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_PollSendVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PollSendVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).PollSendVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_PollSendVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).PollSendVM(ctx, req.(*PollSendVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_SubmitSendVMControl_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitSendVMControlRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).SubmitSendVMControl(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_SubmitSendVMControl_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).SubmitSendVMControl(ctx, req.(*SubmitSendVMControlRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_AbortSendVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortSendVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).AbortSendVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_AbortSendVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).AbortSendVM(ctx, req.(*AbortSendVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_InitReceiveVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitReceiveVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).InitReceiveVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_InitReceiveVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).InitReceiveVM(ctx, req.(*InitReceiveVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_GetReceiveVMResumeToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReceiveVMResumeTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).GetReceiveVMResumeToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_GetReceiveVMResumeToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).GetReceiveVMResumeToken(ctx, req.(*GetReceiveVMResumeTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_AdvanceReceiveVMPhase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdvanceReceiveVMPhaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).AdvanceReceiveVMPhase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_AdvanceReceiveVMPhase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).AdvanceReceiveVMPhase(ctx, req.(*AdvanceReceiveVMPhaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_UploadReceiveVMSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UploadReceiveVMSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).UploadReceiveVMSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_UploadReceiveVMSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).UploadReceiveVMSnapshot(ctx, req.(*UploadReceiveVMSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_CompleteReceiveVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteReceiveVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).CompleteReceiveVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_CompleteReceiveVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).CompleteReceiveVM(ctx, req.(*CompleteReceiveVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComputeService_AbortReceiveVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortReceiveVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).AbortReceiveVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_AbortReceiveVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).AbortReceiveVM(ctx, req.(*AbortReceiveVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ComputeService_GrowDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GrowDiskRequest)
 	if err := dec(in); err != nil {
@@ -834,6 +1194,46 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSystemInfo",
 			Handler:    _ComputeService_GetSystemInfo_Handler,
+		},
+		{
+			MethodName: "InitSendVM",
+			Handler:    _ComputeService_InitSendVM_Handler,
+		},
+		{
+			MethodName: "PollSendVM",
+			Handler:    _ComputeService_PollSendVM_Handler,
+		},
+		{
+			MethodName: "SubmitSendVMControl",
+			Handler:    _ComputeService_SubmitSendVMControl_Handler,
+		},
+		{
+			MethodName: "AbortSendVM",
+			Handler:    _ComputeService_AbortSendVM_Handler,
+		},
+		{
+			MethodName: "InitReceiveVM",
+			Handler:    _ComputeService_InitReceiveVM_Handler,
+		},
+		{
+			MethodName: "GetReceiveVMResumeToken",
+			Handler:    _ComputeService_GetReceiveVMResumeToken_Handler,
+		},
+		{
+			MethodName: "AdvanceReceiveVMPhase",
+			Handler:    _ComputeService_AdvanceReceiveVMPhase_Handler,
+		},
+		{
+			MethodName: "UploadReceiveVMSnapshot",
+			Handler:    _ComputeService_UploadReceiveVMSnapshot_Handler,
+		},
+		{
+			MethodName: "CompleteReceiveVM",
+			Handler:    _ComputeService_CompleteReceiveVM_Handler,
+		},
+		{
+			MethodName: "AbortReceiveVM",
+			Handler:    _ComputeService_AbortReceiveVM_Handler,
 		},
 		{
 			MethodName: "GrowDisk",

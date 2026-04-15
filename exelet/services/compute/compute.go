@@ -70,6 +70,9 @@ type Service struct {
 	// error after ZFS data is received but before config is saved, WITHOUT
 	// triggering rollback — simulating an exelet crash. Fires once.
 	receiveFaultCrashAfterData atomic.Bool
+
+	receiveVMSessions *receiveVMSessionManager
+	sendVMSessions    *sendVMSessionManager
 }
 
 func newProxyManager(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) sshproxy.Manager {
@@ -100,7 +103,7 @@ func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (servi
 		migrationWorkers = config.DefaultStorageTierMigrationWorkers
 	}
 
-	return &Service{
+	svc := &Service{
 		config:           cfg,
 		mu:               &sync.Mutex{},
 		log:              log,
@@ -108,7 +111,10 @@ func New(ctx context.Context, cfg *config.ExeletConfig, log *slog.Logger) (servi
 		proxyManager:     newProxyManager(ctx, cfg, log),
 		instanceOpLocks:  make(map[string]*instanceLock),
 		tierMigrationSem: make(chan struct{}, migrationWorkers),
-	}, nil
+	}
+	svc.receiveVMSessions = newReceiveVMSessionManager(log, svc)
+	svc.sendVMSessions = newSendVMSessionManager(log, svc)
+	return svc, nil
 }
 
 // Register is called from the server to register with the GRPC server.
@@ -207,6 +213,13 @@ func (s *Service) Start(ctx context.Context) error {
 				}
 			}
 		}
+	}
+
+	if s.receiveVMSessions != nil {
+		go s.receiveVMSessions.janitor(s.reconcileCtx)
+	}
+	if s.sendVMSessions != nil {
+		go s.sendVMSessions.janitor(s.reconcileCtx)
 	}
 
 	startSucceeded = true
@@ -382,6 +395,13 @@ func (s *Service) Stop(ctx context.Context) error {
 	case <-migDone:
 	case <-ctx.Done():
 		s.log.WarnContext(ctx, "shutdown context expired while waiting for tier migrations to drain")
+	}
+
+	if s.receiveVMSessions != nil {
+		s.receiveVMSessions.abortAll()
+	}
+	if s.sendVMSessions != nil {
+		s.sendVMSessions.abortAll()
 	}
 
 	if s.stopLogRotation != nil {

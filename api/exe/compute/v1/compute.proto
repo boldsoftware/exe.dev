@@ -20,6 +20,29 @@ service ComputeService {
   rpc SendVM(stream SendVMRequest) returns (stream SendVMResponse);
   // ReceiveVM receives a VM from another exelet
   rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
+
+  // InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
+  rpc InitSendVM(InitSendVMRequest) returns (InitSendVMResponse);
+  // PollSendVM long-polls for migration events.
+  rpc PollSendVM(PollSendVMRequest) returns (PollSendVMResponse);
+  // SubmitSendVMControl sends a control signal to the migration goroutine.
+  rpc SubmitSendVMControl(SubmitSendVMControlRequest) returns (SubmitSendVMControlResponse);
+  // AbortSendVM cancels a migration session and releases resources.
+  rpc AbortSendVM(AbortSendVMRequest) returns (AbortSendVMResponse);
+
+  // InitReceiveVM creates a migration session on the target exelet.
+  rpc InitReceiveVM(InitReceiveVMRequest) returns (InitReceiveVMResponse);
+  // GetReceiveVMResumeToken returns the ZFS resume token for a broken sideband.
+  rpc GetReceiveVMResumeToken(GetReceiveVMResumeTokenRequest) returns (GetReceiveVMResumeTokenResponse);
+  // AdvanceReceiveVMPhase signals that a sideband phase completed.
+  rpc AdvanceReceiveVMPhase(AdvanceReceiveVMPhaseRequest) returns (AdvanceReceiveVMPhaseResponse);
+  // UploadReceiveVMSnapshot sends CH snapshot file chunks.
+  rpc UploadReceiveVMSnapshot(UploadReceiveVMSnapshotRequest) returns (UploadReceiveVMSnapshotResponse);
+  // CompleteReceiveVM sends the checksum and triggers instance finalization.
+  rpc CompleteReceiveVM(CompleteReceiveVMRequest) returns (CompleteReceiveVMResponse);
+  // AbortReceiveVM cancels a receive session and triggers rollback.
+  rpc AbortReceiveVM(AbortReceiveVMRequest) returns (AbortReceiveVMResponse);
+
   // GrowDisk grows the disk of a running VM
   rpc GrowDisk(GrowDiskRequest) returns (GrowDiskResponse);
   // ResizeVM resizes the memory and/or CPU allocation of a VM (requires restart)
@@ -182,6 +205,12 @@ message GetSystemInfoRequest {}
 message GetSystemInfoResponse {
   string version = 1;
   string arch = 2;
+  MigrationCapabilities migration_capabilities = 3;
+}
+
+message MigrationCapabilities {
+  bool unary_send_vm = 1;
+  bool unary_receive_vm = 2;
 }
 
 message Instance {
@@ -393,6 +422,58 @@ message SendVMComplete {
   uint64 total_bytes = 2;   // Total bytes transferred
 }
 
+message InitSendVMRequest {
+  string instance_id = 1;
+  bool target_has_base_image = 2;
+  bool two_phase = 3;
+  bool live = 4;
+  string target_address = 5;
+  string target_group_id = 6;
+  string client_request_id = 7;
+}
+
+message InitSendVMResponse {
+  string session_id = 1;
+}
+
+message PollSendVMRequest {
+  string session_id = 1;
+  uint64 after_seq = 2;
+  uint32 max_wait_ms = 3;
+}
+
+message PollSendVMResponse {
+  repeated SendVMEvent events = 1;
+  bool completed = 2;
+}
+
+message SendVMEvent {
+  uint64 seq = 1;
+  oneof type {
+    SendVMMetadata metadata = 2;
+    SendVMTargetReady target_ready = 3;
+    SendVMStatus status = 4;
+    SendVMProgress progress = 5;
+    SendVMAwaitControl await_control = 6;
+    SendVMResult result = 7;
+  }
+}
+
+message SubmitSendVMControlRequest {
+  string session_id = 1;
+  uint64 await_seq = 2;
+  SendVMControl control = 3;
+}
+
+message SubmitSendVMControlResponse {}
+
+message AbortSendVMRequest {
+  string session_id = 1;
+  string reason = 2;
+}
+
+message AbortSendVMResponse {}
+
 // ReceiveVM messages
 message ReceiveVMRequest {
   oneof type {
@@ -470,6 +551,74 @@ message ReceiveVMResult {
   string error = 2;       // Error message if failed
   bool cold_booted = 3;   // True if live migration fell back to cold boot (VM was restarted)
 }
+
+message InitReceiveVMRequest {
+  string instance_id = 1;
+  Instance source_instance = 2;
+  string base_image_id = 3;
+  bool encrypted = 4;
+  bytes encryption_key = 5;
+  string group_id = 6;
+  bool live = 7;
+  bool discard_orphan = 8;
+  string client_request_id = 9;
+}
+
+message InitReceiveVMResponse {
+  string session_id = 1;
+  bool has_base_image = 2;
+  NetworkInterface target_network = 3;
+  string sideband_addr = 4;
+  bool resumable = 5;
+  string resume_token = 6;
+  bool skip_ip_reconfig = 7;
+}
+
+message GetReceiveVMResumeTokenRequest {
+  string session_id = 1;
+}
+
+message GetReceiveVMResumeTokenResponse {
+  string token = 1;
+  string sideband_addr = 2;
+}
+
+message AdvanceReceiveVMPhaseRequest {
+  string session_id = 1;
+  bool last = 2;
+}
+
+message AdvanceReceiveVMPhaseResponse {
+  string sideband_addr = 1;
+}
+
+message UploadReceiveVMSnapshotRequest {
+  string session_id = 1;
+  string filename = 2;
+  bytes data = 3;
+  bool compressed = 4;
+  bool is_last_chunk = 5;
+}
+
+message UploadReceiveVMSnapshotResponse {}
+
+message CompleteReceiveVMRequest {
+  string session_id = 1;
+  string checksum = 2;
+}
+
+message CompleteReceiveVMResponse {
+  Instance instance = 1;
+  string error = 2;
+  bool cold_booted = 3;
+}
+
+message AbortReceiveVMRequest {
+  string session_id = 1;
+  string reason = 2;
+}
+
+message AbortReceiveVMResponse {}
 
 message GrowDiskRequest {
   string id = 1;                    // Instance ID

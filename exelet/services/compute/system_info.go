@@ -13,5 +13,9 @@ func (s *Service) GetSystemInfo(ctx context.Context, req *api.GetSystemInfoReque
 	return &api.GetSystemInfoResponse{
 		Version: version.FullVersion(),
 		Arch:    runtime.GOARCH,
+		MigrationCapabilities: &api.MigrationCapabilities{
+			UnarySendVm:    true,
+			UnaryReceiveVm: true,
+		},
 	}, nil
 }
