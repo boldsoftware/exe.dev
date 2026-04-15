@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
@@ -499,7 +499,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	hasTeam := team != nil
 
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
-	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
+	canRequestInvites := s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.InviteRequest, userID)
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 
 	writeJSONOK(w, jsonDashboardData{
@@ -600,10 +600,10 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	var billingStatus string
 	skipBilling := s.env.SkipBilling
 	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		version := entitlement.BasePlan(planRow.PlanID)
-		planName = entitlement.PlanName(version)
-		selfServeBilling = version == entitlement.CategoryIndividual
-		paidPlan = entitlement.PlanIsPaid(version)
+		version := plan.Base(planRow.PlanID)
+		planName = plan.Name(version)
+		selfServeBilling = version == plan.CategoryIndividual
+		paidPlan = plan.IsPaid(version)
 	}
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {
@@ -746,7 +746,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
-	canRequestInvites := s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.InviteRequest, userID)
+	canRequestInvites := s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.InviteRequest, userID)
 
 	// Boxes (for API key VM scope dropdown)
 	var boxes []jsonBoxMinimal
@@ -839,7 +839,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				})
 			}
 		}
-		if !basicUser && s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.TeamCreate, userID) {
+		if !basicUser && s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.TeamCreate, userID) {
 			profile.CanEnableTeam = true
 		}
 	}

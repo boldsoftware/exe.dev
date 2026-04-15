@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/idea"
 	"exe.dev/stage"
@@ -55,7 +55,7 @@ func (s *Server) handleTemplateRateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check billing status
-	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.LLMUse, userID) {
+	if !s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.LLMUse, userID) {
 		http.Error(w, "Active billing required to rate templates", http.StatusForbidden)
 		return
 	}
@@ -233,7 +233,7 @@ func (s *Server) handleIdeaPage(w http.ResponseWriter, r *http.Request) {
 
 	canRate := false
 	if isLoggedIn {
-		canRate = s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.LLMUse, userID)
+		canRate = s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.LLMUse, userID)
 	}
 
 	var showIntegrations bool

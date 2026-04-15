@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/boxname"
 	"exe.dev/cobble"
@@ -1595,7 +1595,7 @@ func (s *Server) handleCreditsBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.CreditPurchase, userID) {
+	if !s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.CreditPurchase, userID) {
 		http.Redirect(w, r, "/billing/update?source=credits", http.StatusSeeOther)
 		return
 	}
@@ -1849,7 +1849,7 @@ func (s *Server) handleInviteRequest(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	if !s.UserHasEntitlement(ctx, entitlement.SourceWeb, entitlement.InviteRequest, userID) {
+	if !s.UserHasEntitlement(ctx, plan.SourceWeb, plan.InviteRequest, userID) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}

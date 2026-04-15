@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/errorz"
 	"exe.dev/exedb"
@@ -417,10 +417,10 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 
 	c := m.client()
 
-	plan := cmp.Or(p.Plan, DefaultPlan)
-	priceID, err := m.lookupPriceIDCached(ctx, plan)
+	lookupKey := cmp.Or(p.Plan, DefaultPlan)
+	priceID, err := m.lookupPriceIDCached(ctx, lookupKey)
 	if err != nil {
-		return "", fmt.Errorf("lookup price %q: %w", plan, err)
+		return "", fmt.Errorf("lookup price %q: %w", lookupKey, err)
 	}
 
 	err = m.upsertCustomer(ctx, billingID, p.Email)
@@ -719,11 +719,11 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 //
 // Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
 func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time) error {
-	basePlan := entitlement.CategoryBasic
+	basePlan := plan.CategoryBasic
 	if eventType == "active" {
-		basePlan = entitlement.CategoryIndividual
+		basePlan = plan.CategoryIndividual
 	}
-	newPlanID := entitlement.PlanID(basePlan)
+	newPlanID := plan.ID(basePlan)
 
 	// Skip if the active plan's base matches — avoids duplicate rows from poller replays.
 	activePlan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
@@ -732,7 +732,7 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	}
 	// Compare base plans so that both bare ("individual") and versioned
 	// ("individual:monthly:20260325") are treated as equivalent.
-	if err == nil && entitlement.BasePlan(activePlan.PlanID) == basePlan {
+	if err == nil && plan.Base(activePlan.PlanID) == basePlan {
 		return nil
 	}
 	// Skip stale events: if the current plan was set by a newer event,
@@ -764,7 +764,7 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	// This caused 81 paying users' VMs to be stopped on 2026-03-29.
 	// Re-enable once syncAccountPlan is subscription-aware or the poller
 	// persists its cursor.
-	// if basePlan == entitlement.CategoryBasic && m.OnPlanDowngrade != nil {
+	// if basePlan == plan.CategoryBasic && m.OnPlanDowngrade != nil {
 	// 	m.OnPlanDowngrade(ctx, accountID)
 	// }
 
@@ -1274,7 +1274,7 @@ func (m *Manager) ListPlanCategorys(ctx context.Context) ([]PlanCategoryGroup, e
 			PlanID: row.PlanID,
 			Count:  int(row.Cnt),
 		}
-		p, i, v := entitlement.ParsePlanID(g.PlanID)
+		p, i, v := plan.ParseID(g.PlanID)
 		g.BasePlan, g.Interval, g.Version = string(p), i, v
 		groups = append(groups, g)
 	}

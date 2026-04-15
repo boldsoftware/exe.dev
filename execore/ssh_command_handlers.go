@@ -29,7 +29,7 @@ import (
 	"mvdan.cc/sh/v3/pattern"
 	"mvdan.cc/sh/v3/syntax"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/errorz"
@@ -968,7 +968,7 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 	}
 
 	// Check if user's plan grants VM run
-	if !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.VMRun, cc.User.ID) {
+	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMRun, cc.User.ID) {
 		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
 		return cc.Errorf("Billing Required\r\n\r\nYou need active billing to restart a VM.\r\n\r\nVisit: %s", billingURL)
 	}
@@ -1930,7 +1930,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Handle disk resize if specified
 	var diskGrowResult *api.GrowDiskResponse
 	if diskStr != "" {
-		if !isSudo && !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.DiskResize, cc.User.ID) {
+		if !isSudo && !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.DiskResize, cc.User.ID) {
 			return cc.Errorf("disk resize is not available on your current plan")
 		}
 
@@ -1946,7 +1946,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			if planErr != nil {
 				return cc.Errorf("failed to look up plan for VM owner: %v", planErr)
 			}
-			maxDisk := entitlement.MaxDiskForPlan(planRow.PlanID)
+			maxDisk := plan.MaxDiskForPlan(planRow.PlanID)
 			if maxDisk == 0 {
 				return cc.Errorf("disk resize is not available on your current plan")
 			}

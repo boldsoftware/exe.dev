@@ -30,7 +30,7 @@ import (
 	"github.com/andybalholm/brotli"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/desiredstate"
 	"exe.dev/email"
@@ -2207,7 +2207,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			// Derive billing exemption for display from account_plans
 			if acctID != "" {
 				if activePlan, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, acctID); err == nil {
-					ui.BillingExemption = entitlement.DeriveExemptionDisplay(&activePlan.PlanID)
+					ui.BillingExemption = plan.DeriveExemptionDisplay(&activePlan.PlanID)
 				}
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
@@ -2643,7 +2643,7 @@ func (s *Server) handleDebugAddBilling(w http.ResponseWriter, r *http.Request) {
 		// Upgrade account plan to individual.
 		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
+			PlanID:    plan.ID(plan.CategoryIndividual),
 			At:        now,
 			ChangedBy: "debug:add-billing",
 		}); err != nil {
@@ -2691,8 +2691,8 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check current plan to prevent downgrades.
-	cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (entitlement.PlanCategory, error) {
-		return entitlement.GetPlanForUser(ctx, q, userID)
+	cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
 	})
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, fmt.Sprintf("failed to check plan: %v", err), http.StatusInternalServerError)
@@ -2708,11 +2708,11 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch cat {
-		case entitlement.CategoryBasic:
+		case plan.CategoryBasic:
 			// Basic users can be granted a trial (including expired trials).
-		case entitlement.CategoryRestricted:
+		case plan.CategoryRestricted:
 			// Restricted users can be granted a trial.
-		case entitlement.CategoryTrial:
+		case plan.CategoryTrial:
 			if trialExpiresAt != nil && time.Now().Before(*trialExpiresAt) {
 				http.Error(w, fmt.Sprintf("user already has an active trial ending %s", trialExpiresAt.Format("2006-01-02")), http.StatusBadRequest)
 				return
@@ -2781,7 +2781,7 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 		// Update account plan to trial.
 		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID:      accountID,
-			PlanID:         entitlement.PlanID(entitlement.CategoryTrial),
+			PlanID:         plan.ID(plan.CategoryTrial),
 			At:             now,
 			TrialExpiresAt: &trialEnd,
 			ChangedBy:      "debug:grant-trial",
@@ -2866,7 +2866,7 @@ func (s *Server) handleDebugAssignEnterprise(w http.ResponseWriter, r *http.Requ
 		}
 		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    entitlement.PlanID(entitlement.CategoryEnterprise),
+			PlanID:    plan.ID(plan.CategoryEnterprise),
 			At:        now,
 			ChangedBy: "debug:assign-enterprise",
 		}); err != nil {
@@ -4029,7 +4029,7 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 	// userID == "" for tests.
 	if userID != "" {
 		// Don't throttle users whose plan grants vm:create.
-		if s.UserHasEntitlement(ctx, entitlement.SourceWeb, entitlement.VMCreate, userID) {
+		if s.UserHasEntitlement(ctx, plan.SourceWeb, plan.VMCreate, userID) {
 			return false, ""
 		}
 	}
@@ -5281,14 +5281,14 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	credit, creditErr := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMCredit, userID)
 	hasCredit := creditErr == nil
 
-	var plan llmgateway.Plan
+	var llmPlan llmgateway.Plan
 	var creditEffective float64
 	if hasCredit {
-		plan, _ = llmgateway.PlanForUser(ctx, s.db, userID, &credit)
+		llmPlan, _ = llmgateway.PlanForUser(ctx, s.db, userID, &credit)
 		creditEffective, _ = llmgateway.CalculateRefreshedCredit(
 			credit.AvailableCredit,
-			plan.MaxCredit,
-			plan.RefreshPerHour,
+			llmPlan.MaxCredit,
+			llmPlan.RefreshPerHour,
 			credit.LastRefreshAt,
 			time.Now(),
 		)
@@ -5397,12 +5397,12 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAtShort:           formatTimeShort(user.CreatedAt),
 	}
 
-	if cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (entitlement.PlanCategory, error) {
-		return entitlement.GetPlanForUser(ctx, q, userID)
+	if cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
 	}); err == nil {
 		data.PlanCategory = string(cat)
-		data.PlanName = entitlement.PlanName(cat)
-		data.CanGrantTrial = cat == entitlement.CategoryBasic || cat == entitlement.CategoryRestricted
+		data.PlanName = plan.Name(cat)
+		data.CanGrantTrial = cat == plan.CategoryBasic || cat == plan.CategoryRestricted
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {
@@ -5431,15 +5431,15 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasCredit {
-		data.CreditPlanName = plan.Name
+		data.CreditPlanName = llmPlan.Name
 		data.CreditAvailableUSD = credit.AvailableCredit
 		data.CreditEffectiveUSD = creditEffective
-		data.CreditMaxUSD = plan.MaxCredit
+		data.CreditMaxUSD = llmPlan.MaxCredit
 		data.CreditMaxUSDOverride = credit.MaxCredit
-		if credit.BillingUpgradeBonusGranted == 1 && credit.AvailableCredit > plan.MaxCredit {
-			data.CreditBonusRemainingUSD = credit.AvailableCredit - plan.MaxCredit
+		if credit.BillingUpgradeBonusGranted == 1 && credit.AvailableCredit > llmPlan.MaxCredit {
+			data.CreditBonusRemainingUSD = credit.AvailableCredit - llmPlan.MaxCredit
 		}
-		data.CreditRefreshPerHrUSD = plan.RefreshPerHour
+		data.CreditRefreshPerHrUSD = llmPlan.RefreshPerHour
 		data.CreditRefreshPerHrOverride = credit.RefreshPerHour
 		data.CreditTotalUsedUSD = credit.TotalUsed
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
@@ -5735,17 +5735,17 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		creditPtr = &creditState
 	}
 	if err == nil || errors.Is(err, sql.ErrNoRows) {
-		plan, planErr := llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
+		llmPlan, planErr := llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
 		if planErr != nil {
 			s.slog().WarnContext(ctx, "failed to resolve shelley credit plan", "error", planErr, "user_id", userID)
-		} else if plan.MaxCredit > 0 {
+		} else if llmPlan.MaxCredit > 0 {
 			effectiveAvailable := creditState.AvailableCredit
 			if creditPtr == nil {
-				effectiveAvailable = plan.MaxCredit
-			} else if plan.Refresh != nil {
-				effectiveAvailable, _ = plan.Refresh(creditState.AvailableCredit, creditState.LastRefreshAt, time.Now())
+				effectiveAvailable = llmPlan.MaxCredit
+			} else if llmPlan.Refresh != nil {
+				effectiveAvailable, _ = llmPlan.Refresh(creditState.AvailableCredit, creditState.LastRefreshAt, time.Now())
 			}
-			shelleyFreeCreditRemainingPct = (effectiveAvailable / plan.MaxCredit) * 100
+			shelleyFreeCreditRemainingPct = (effectiveAvailable / llmPlan.MaxCredit) * 100
 			if shelleyFreeCreditRemainingPct < 0 {
 				shelleyFreeCreditRemainingPct = 0
 			}
@@ -5756,7 +5756,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			if shelleyCreditsAvailable < 0 {
 				shelleyCreditsAvailable = 0
 			}
-			shelleyCreditsMax = plan.MaxCredit
+			shelleyCreditsMax = llmPlan.MaxCredit
 			hasShelleyFreeCreditPct = true
 		}
 	}
@@ -5835,14 +5835,14 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// LLM gateway credit info (same as debug user page).
 	hasCredit := creditPtr != nil
-	var plan llmgateway.Plan
+	var llmPlan llmgateway.Plan
 	var creditEffective float64
 	if hasCredit {
-		plan, _ = llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
+		llmPlan, _ = llmgateway.PlanForUser(ctx, s.db, userID, creditPtr)
 		creditEffective, _ = llmgateway.CalculateRefreshedCredit(
 			creditState.AvailableCredit,
-			plan.MaxCredit,
-			plan.RefreshPerHour,
+			llmPlan.MaxCredit,
+			llmPlan.RefreshPerHour,
 			creditState.LastRefreshAt,
 			time.Now(),
 		)
@@ -5927,12 +5927,12 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasCredit {
-		data.CreditPlanName = plan.Name
+		data.CreditPlanName = llmPlan.Name
 		data.CreditAvailableUSD = creditState.AvailableCredit
 		data.CreditEffectiveUSD = creditEffective
-		data.CreditMaxUSD = plan.MaxCredit
+		data.CreditMaxUSD = llmPlan.MaxCredit
 		data.CreditMaxUSDOverride = creditState.MaxCredit
-		data.CreditRefreshPerHrUSD = plan.RefreshPerHour
+		data.CreditRefreshPerHrUSD = llmPlan.RefreshPerHour
 		data.CreditRefreshPerHrOverride = creditState.RefreshPerHour
 		data.CreditTotalUsedUSD = creditState.TotalUsed
 		data.CreditLastRefreshAt = creditState.LastRefreshAt.Format(time.RFC3339)
@@ -5951,7 +5951,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve entitlements from account_plans (walks parent_id for team members).
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		for _, ent := range entitlement.AllEntitlements() {
+		for _, ent := range plan.AllEntitlements() {
 			data.Entitlements = append(data.Entitlements, struct {
 				Name    string
 				ID      string
@@ -5959,7 +5959,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			}{
 				Name:    ent.DisplayName,
 				ID:      ent.ID,
-				Granted: entitlement.GrantsEntitlement(planRow.PlanID, ent),
+				Granted: plan.GrantsEntitlement(planRow.PlanID, ent),
 			})
 		}
 	}
@@ -6070,20 +6070,20 @@ func (s *Server) handleDebugPlanCategoryMigrate(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleDebugPlans(w http.ResponseWriter, r *http.Request) {
-	plans := entitlement.AllPlans()
-	tiersByCategory := make(map[entitlement.PlanCategory][]entitlement.Tier, len(plans))
+	plans := plan.AllPlans()
+	tiersByCategory := make(map[plan.Category][]plan.Tier, len(plans))
 	for _, p := range plans {
-		tiersByCategory[p.Category] = entitlement.TiersByCategory(p.Category)
+		tiersByCategory[p.Category] = plan.TiersByCategory(p.Category)
 	}
 	data := struct {
-		Plans           []entitlement.Plan
-		Entitlements    []entitlement.Entitlement
-		WildcardEnt     entitlement.Entitlement
-		TiersByCategory map[entitlement.PlanCategory][]entitlement.Tier
+		Plans           []plan.Plan
+		Entitlements    []plan.Entitlement
+		WildcardEnt     plan.Entitlement
+		TiersByCategory map[plan.Category][]plan.Tier
 	}{
 		Plans:           plans,
-		Entitlements:    entitlement.AllEntitlements(),
-		WildcardEnt:     entitlement.All,
+		Entitlements:    plan.AllEntitlements(),
+		WildcardEnt:     plan.All,
 		TiersByCategory: tiersByCategory,
 	}
 	s.renderDebugTemplate(r.Context(), w, "plans.html", data)

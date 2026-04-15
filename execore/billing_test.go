@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
@@ -219,7 +219,7 @@ func TestUserIsPayingQuery(t *testing.T) {
 	}
 
 	// User starts on 'basic' plan (from createUserRecord). Basic does NOT grant VMCreate.
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Expected basic plan user to not have VMCreate entitlement")
 	}
 
@@ -248,8 +248,8 @@ func TestUserIsPayingQuery(t *testing.T) {
 		t.Fatalf("upgrade to individual: %v", err)
 	}
 
-	// User now on 'individual' plan — must have VMCreate entitlement.
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	// User now on 'individual' plan — must have VMCreate plan.
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Expected individual plan user to have VMCreate entitlement")
 	}
 }
@@ -268,7 +268,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	}
 
 	// Basic plan does not grant VMCreate.
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Expected basic plan user to not have VMCreate entitlement")
 	}
 
@@ -298,7 +298,7 @@ func TestUserNeedsBillingQuery(t *testing.T) {
 	}
 
 	// Individual plan grants VMCreate.
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Expected individual plan user to have VMCreate entitlement")
 	}
 }
@@ -343,7 +343,7 @@ func TestLegacyUserDoesNotNeedBilling(t *testing.T) {
 	}
 
 	// Grandfathered user should have VMCreate without paid subscription.
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Expected grandfathered user to have VMCreate entitlement")
 	}
 }
@@ -386,7 +386,7 @@ func TestBillingBypassBug(t *testing.T) {
 	}
 
 	// Step 1: Verify user does not have VMCreate initially
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Fatal("Expected new user to not have VMCreate entitlement initially")
 	}
 
@@ -412,7 +412,7 @@ func TestBillingBypassBug(t *testing.T) {
 	// Step 4: Check if user still lacks VMCreate - they SHOULD still lack it!
 	// This is where the bug manifests: without billing events, the user should still lack VMCreate
 	// because no 'active' event was recorded.
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("BUG: User should still lack VMCreate after starting but not completing Stripe checkout")
 	}
 
@@ -488,13 +488,13 @@ func TestBillingSuccessBypassWithFakeSessionID(t *testing.T) {
 	// Should fail - cannot verify fake session with Stripe
 	if w.Code == http.StatusOK || w.Code == http.StatusSeeOther {
 		// Check if billing was bypassed
-		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Error("SECURITY BUG: User bypassed billing with fake session_id!")
 		}
 	}
 
 	// User should still lack VMCreate since checkout was never completed
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("SECURITY BUG: User should still lack VMCreate after visiting success with fake session_id")
 	}
 }
@@ -513,25 +513,25 @@ func TestBillingActivateThenCancelThenReactivate(t *testing.T) {
 	}
 
 	// New user has 'basic' plan — no VMCreate.
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("New user with basic plan should not have VMCreate")
 	}
 
 	// Activate billing — user gets 'individual' plan.
 	activateUserBilling(t, server, user.UserID)
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("User with individual plan should have VMCreate after activation")
 	}
 
 	// Cancel billing — user drops back to 'basic' plan.
 	cancelUserBilling(t, server, user.UserID)
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("User with basic plan should not have VMCreate after cancellation")
 	}
 
 	// Reactivate — user gets 'individual' plan again.
 	activateUserBilling(t, server, user.UserID)
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("Reactivated user with individual plan should have VMCreate")
 	}
 }
@@ -1041,13 +1041,13 @@ func TestStripelessTrialNewUserSkipsBillingAndGetsTrial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if got := entitlement.BasePlan(activePlan.PlanID); got != entitlement.CategoryTrial {
+	if got := plan.Base(activePlan.PlanID); got != plan.CategoryTrial {
 		t.Fatalf("expected active trial plan, got %q", activePlan.PlanID)
 	}
 	if activePlan.TrialExpiresAt == nil {
 		t.Fatal("expected trial_expires_at to be set")
 	}
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, userID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, userID) {
 		t.Fatal("stripeless trial user should have VMCreate entitlement after account creation")
 	}
 }
@@ -1073,7 +1073,7 @@ func TestStripelessTrialAppliesToSharedSignupAccountCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if got := entitlement.BasePlan(activePlan.PlanID); got != entitlement.CategoryTrial {
+	if got := plan.Base(activePlan.PlanID); got != plan.CategoryTrial {
 		t.Fatalf("expected active trial plan, got %q", activePlan.PlanID)
 	}
 	if activePlan.TrialExpiresAt == nil {
@@ -1427,7 +1427,7 @@ func TestBillingCheckoutReusesExistingAccount(t *testing.T) {
 	}
 
 	// User starts with basic plan — no VMCreate.
-	if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("New user should not have VMCreate before billing activation")
 	}
 
@@ -1435,7 +1435,7 @@ func TestBillingCheckoutReusesExistingAccount(t *testing.T) {
 	activateUserBilling(t, server, user.UserID)
 
 	// Now user should have VMCreate.
-	if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 		t.Error("User with individual plan should have VMCreate after billing activation")
 	}
 
@@ -1479,14 +1479,14 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		}
 
 		activateUserBilling(t, server, user.UserID)
-		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Fatal("User should have VMCreate after activation")
 		}
 
 		cancelUserBilling(t, server, user.UserID)
 
 		// CRITICAL: Canceled user MUST NOT have VMCreate.
-		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Error("BUG: Canceled user should not have VMCreate after cancellation")
 		}
 
@@ -1548,7 +1548,7 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 			t.Fatalf("Failed to set friend plan: %v", err)
 		}
 
-		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Error("User with friend plan should have VMCreate")
 		}
 	})
@@ -1565,14 +1565,14 @@ func TestCanceledUserCannotCreateVM(t *testing.T) {
 		activateUserBilling(t, server, user.UserID)
 		cancelUserBilling(t, server, user.UserID)
 
-		if server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Fatal("User should not have VMCreate after cancellation")
 		}
 
 		// Reactivate.
 		activateUserBilling(t, server, user.UserID)
 
-		if !server.UserHasEntitlement(t.Context(), entitlement.SourceWeb, entitlement.VMCreate, user.UserID) {
+		if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, user.UserID) {
 			t.Error("Reactivated user should have VMCreate entitlement")
 		}
 
@@ -2093,7 +2093,7 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: expected basic plan after signup, got: %v", err)
 	}
-	if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
+	if plan.Base(ap.PlanID) != plan.CategoryBasic {
 		t.Errorf("initial plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 	if ap.EndedAt != nil {
@@ -2139,7 +2139,7 @@ func TestCreateUserRecordNoAccountPlanDuplicates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("user %d GetActiveAccountPlan: %v", i, err)
 		}
-		if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
+		if plan.Base(ap.PlanID) != plan.CategoryBasic {
 			t.Errorf("user %d: plan=%q, want base plan 'basic'", i, ap.PlanID)
 		}
 		if ap.AccountID != acct.ID {
@@ -2178,7 +2178,7 @@ func TestCreateAccountWithInitialPlanIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan after first call: %v", err)
 	}
-	if entitlement.BasePlan(ap.PlanID) != entitlement.CategoryBasic {
+	if plan.Base(ap.PlanID) != plan.CategoryBasic {
 		t.Fatalf("plan_id=%q, want base plan 'basic'", ap.PlanID)
 	}
 
@@ -2189,7 +2189,7 @@ func TestCreateAccountWithInitialPlanIdempotent(t *testing.T) {
 		changedBy := "system:signup"
 		return queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    entitlement.PlanID(entitlement.CategoryBasic),
+			PlanID:    plan.ID(plan.CategoryBasic),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})
@@ -2325,7 +2325,7 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	changedBy := "stripe:event"
 	err = withTx1(server, ctx, (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: billingID,
-		PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
+		PlanID:    plan.ID(plan.CategoryIndividual),
 		StartedAt: now,
 		ChangedBy: &changedBy,
 	})
@@ -2361,12 +2361,12 @@ func TestNewUserBillingSuccess_PollerRace(t *testing.T) {
 	}
 
 	// Verify exactly one active account_plan exists.
-	plan, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, billingID)
+	ap, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, billingID)
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	wantPlanID := entitlement.PlanID(entitlement.CategoryIndividual)
-	if plan.PlanID != wantPlanID {
-		t.Errorf("plan_id=%q, want %q", plan.PlanID, wantPlanID)
+	wantPlanID := plan.ID(plan.CategoryIndividual)
+	if ap.PlanID != wantPlanID {
+		t.Errorf("plan_id=%q, want %q", ap.PlanID, wantPlanID)
 	}
 }

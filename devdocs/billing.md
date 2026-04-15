@@ -4,9 +4,9 @@ exe.dev uses Stripe for subscriptions and credit purchases. Access is controlled
 
 ## Plans and Entitlements
 
-Access control uses a plan-based system defined in `billing/entitlement/`. Each account has an active plan in `account_plans` (the row where `ended_at IS NULL`). The plan determines which entitlements are granted.
+Access control uses a plan-based system defined in `billing/plan/`. Each account has an active plan in `account_plans` (the row where `ended_at IS NULL`). The plan determines which entitlements are granted.
 
-**Plan catalog** (`billing/entitlement/plan.go`):
+**Plan catalog** (`billing/plan/plan.go`):
 
 | Plan | Grants | LLM Category |
 |------|--------|--------------|
@@ -20,7 +20,7 @@ Access control uses a plan-based system defined in `billing/entitlement/`. Each 
 | `basic` | LLM, VM connect only | `no_billing` |
 | `restricted` | Nothing | `no_billing` |
 
-**Plan resolution** (`billing/entitlement/plan.go:GetPlanCategory`), in priority order:
+**Plan resolution** (`billing/plan/plan.go:GetPlanCategory`), in priority order:
 
 1. `canceled` billing status -> `basic` (overrides everything)
 2. `HasExplicitOverrides` (plan_id like `vip:%`) -> `vip`
@@ -141,8 +141,8 @@ CREATE UNIQUE INDEX idx_account_plans_active
 | File | Purpose |
 |------|---------|
 | `billing/billing.go` | Stripe API: subscriptions, credits, checkout, sync |
-| `billing/entitlement/entitlement.go` | Entitlement constants (VMCreate, LLMUse, etc.) |
-| `billing/entitlement/plan.go` | Plan catalog, plan resolution logic |
+| `billing/plan/entitlement.go` | Entitlement constants (VMCreate, LLMUse, etc.) |
+| `billing/plan/plan.go` | Plan catalog, plan resolution logic |
 | `billing/tender/tender.go` | Microcent value type and arithmetic |
 | `execore/subscription_poller.go` | 3-second poll loop for subscription events |
 | `execore/billing_status.go` | `UserHasEntitlement()`, `checkCanCreateVM()` |

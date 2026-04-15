@@ -1,4 +1,4 @@
-package entitlement
+package plan
 
 import (
 	"fmt"
@@ -43,7 +43,7 @@ type Tier struct {
 	// e.g. "individual:medium:monthly:20260601"
 	ID string
 
-	PlanCategory PlanCategory
+	Category Category
 	Name         string // "Small", "Medium", "Default", etc.
 
 	StripePrices map[string]stripePriceInfo
@@ -59,7 +59,7 @@ var tiers = map[string]Tier{
 	// --- Individual tiers ---
 	"individual:small:monthly:20260601": {
 		ID:           "individual:small:monthly:20260601",
-		PlanCategory: CategoryIndividual,
+		Category: CategoryIndividual,
 		Name:         "Small",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_small_monthly", Model: "subscription", Interval: "monthly"},
@@ -77,7 +77,7 @@ var tiers = map[string]Tier{
 	},
 	"individual:medium:monthly:20260601": {
 		ID:           "individual:medium:monthly:20260601",
-		PlanCategory: CategoryIndividual,
+		Category: CategoryIndividual,
 		Name:         "Medium",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_medium_monthly", Model: "subscription", Interval: "monthly"},
@@ -95,7 +95,7 @@ var tiers = map[string]Tier{
 	},
 	"individual:large:monthly:20260601": {
 		ID:           "individual:large:monthly:20260601",
-		PlanCategory: CategoryIndividual,
+		Category: CategoryIndividual,
 		Name:         "Large",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_large_monthly", Model: "subscription", Interval: "monthly"},
@@ -113,7 +113,7 @@ var tiers = map[string]Tier{
 	},
 	"individual:xlarge:monthly:20260601": {
 		ID:           "individual:xlarge:monthly:20260601",
-		PlanCategory: CategoryIndividual,
+		Category: CategoryIndividual,
 		Name:         "XLarge",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_xlarge_monthly", Model: "subscription", Interval: "monthly"},
@@ -134,7 +134,7 @@ var tiers = map[string]Tier{
 
 	"vip:default:monthly:20260601": {
 		ID:           "vip:default:monthly:20260601",
-		PlanCategory: CategoryVIP,
+		Category: CategoryVIP,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -148,7 +148,7 @@ var tiers = map[string]Tier{
 	},
 	"enterprise:default:monthly:20260601": {
 		ID:           "enterprise:default:monthly:20260601",
-		PlanCategory: CategoryEnterprise,
+		Category: CategoryEnterprise,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -162,7 +162,7 @@ var tiers = map[string]Tier{
 	},
 	"team:default:monthly:20260601": {
 		ID:           "team:default:monthly:20260601",
-		PlanCategory: CategoryTeam,
+		Category: CategoryTeam,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -176,7 +176,7 @@ var tiers = map[string]Tier{
 	},
 	"friend:default:monthly:20260601": {
 		ID:           "friend:default:monthly:20260601",
-		PlanCategory: CategoryFriend,
+		Category: CategoryFriend,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -190,7 +190,7 @@ var tiers = map[string]Tier{
 	},
 	"grandfathered:default:monthly:20260601": {
 		ID:           "grandfathered:default:monthly:20260601",
-		PlanCategory: CategoryGrandfathered,
+		Category: CategoryGrandfathered,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -204,7 +204,7 @@ var tiers = map[string]Tier{
 	},
 	"trial:default:monthly:20260601": {
 		ID:           "trial:default:monthly:20260601",
-		PlanCategory: CategoryTrial,
+		Category: CategoryTrial,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -218,7 +218,7 @@ var tiers = map[string]Tier{
 	},
 	"basic:default:monthly:20260601": {
 		ID:           "basic:default:monthly:20260601",
-		PlanCategory: CategoryBasic,
+		Category: CategoryBasic,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -232,7 +232,7 @@ var tiers = map[string]Tier{
 	},
 	"restricted:default:monthly:20260601": {
 		ID:           "restricted:default:monthly:20260601",
-		PlanCategory: CategoryRestricted,
+		Category: CategoryRestricted,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -259,8 +259,8 @@ func getTierByID(id string) (Tier, error) {
 	//   - 3-part legacy IDs: "individual:monthly:20260106"
 	//   - Bare category strings: "individual", "friend", "basic"
 	//   - Any other unknown format
-	cat := BasePlan(id)
-	if plan, ok := GetPlan(cat); ok && plan.DefaultTier != "" {
+	cat := Base(id)
+	if plan, ok := Get(cat); ok && plan.DefaultTier != "" {
 		if tier, ok := tiers[plan.DefaultTier]; ok {
 			return tier, nil
 		}
@@ -271,27 +271,27 @@ func getTierByID(id string) (Tier, error) {
 // ParseTierID extracts the plan category, tier name, interval, and version
 // from a 4-part tier ID (e.g. "individual:medium:monthly:20260601").
 // Returns empty strings for any missing fields.
-func parseTierID(id string) (category PlanCategory, tierName, interval, version string) {
+func parseTierID(id string) (category Category, tierName, interval, version string) {
 	parts := strings.SplitN(id, ":", 4)
 	switch len(parts) {
 	case 4:
-		return PlanCategory(parts[0]), parts[1], parts[2], parts[3]
+		return Category(parts[0]), parts[1], parts[2], parts[3]
 	case 3:
 		// 3-part legacy ID — treat as plan-level, no tier name
-		return PlanCategory(parts[0]), "", parts[1], parts[2]
+		return Category(parts[0]), "", parts[1], parts[2]
 	case 2:
-		return PlanCategory(parts[0]), "", parts[1], ""
+		return Category(parts[0]), "", parts[1], ""
 	default:
-		return PlanCategory(id), "", "", ""
+		return Category(id), "", "", ""
 	}
 }
 
 // TiersByCategory returns all tiers for a given plan category, sorted
 // by pool size (MaxCPUs ascending) so tiers display small → large.
-func TiersByCategory(cat PlanCategory) []Tier {
+func TiersByCategory(cat Category) []Tier {
 	var result []Tier
 	for _, t := range tiers {
-		if t.PlanCategory == cat {
+		if t.Category == cat {
 			result = append(result, t)
 		}
 	}
@@ -309,7 +309,7 @@ func effectiveEntitlements(tier Tier) map[Entitlement]bool {
 	if tier.Entitlements != nil {
 		return *tier.Entitlements
 	}
-	plan, ok := GetPlan(tier.PlanCategory)
+	plan, ok := Get(tier.Category)
 	if !ok {
 		return map[Entitlement]bool{}
 	}

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 
 	"exe.dev/boxname"
 	"exe.dev/exedb"
@@ -398,7 +398,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	// If user is logged in, check entitlements before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
 		// Check if user's plan grants VM creation
-		if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.VMCreate, userID) {
+		if !s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.VMCreate, userID) {
 			billingURL := "/billing/update?name=" + url.QueryEscape(hostname)
 			if prompt != "" {
 				billingURL += "&prompt=" + url.QueryEscape(prompt)

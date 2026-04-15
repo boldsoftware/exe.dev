@@ -5,18 +5,18 @@ import (
 	"database/sql"
 	"errors"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
 
-// UserHasEntitlement reports whether the user's plan grants the given entitlement.
+// UserHasEntitlement reports whether the user's plan grants the given plan.
 // Returns false on any error (safe default). Handles SkipBilling internally.
-// Logs all denials with user_id, email, and entitlement.
+// Logs all denials with user_id, email, and plan.
 //
 // Plan resolution: user -> account (via accounts.created_by) -> account_plans (WHERE ended_at IS NULL).
 // If the account has a parent_id, the parent's active plan is used instead.
-func (s *Server) UserHasEntitlement(ctx context.Context, source entitlement.Source, ent entitlement.Entitlement, userID string) bool {
+func (s *Server) UserHasEntitlement(ctx context.Context, source plan.Source, ent plan.Entitlement, userID string) bool {
 	if s.env.SkipBilling {
 		return true
 	}
@@ -40,7 +40,7 @@ func (s *Server) UserHasEntitlement(ctx context.Context, source entitlement.Sour
 		return false
 	}
 
-	granted := entitlement.GrantsEntitlement(planRow.PlanID, ent)
+	granted := plan.GrantsEntitlement(planRow.PlanID, ent)
 	if !granted {
 		s.slog().InfoContext(ctx, "entitlement denied by plan",
 			"source", string(source),
@@ -71,7 +71,7 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 	}
 
 	// Check if user's plan grants VM creation
-	if !ss.server.UserHasEntitlement(ctx, entitlement.SourceSSH, entitlement.VMCreate, user.ID) {
+	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMCreate, user.ID) {
 		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
 		return "Billing Required\r\n\r\nYou need to add billing information before creating a VM.\r\n\r\nVisit: " + billingURL
 	}

@@ -3,14 +3,14 @@ package execore
 import (
 	"encoding/json"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/stage"
 )
 
 // UserLimits is a type alias for backward compatibility.
-// New code should use entitlement.UserLimits directly.
-type UserLimits = entitlement.UserLimits
+// New code should use plan.UserLimits directly.
+type UserLimits = plan.UserLimits
 
 // ParseUserLimits parses the limits JSON from a user record.
 // Returns nil if the user has no limits override set.

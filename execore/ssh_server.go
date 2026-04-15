@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/ctrlc"
 	"exe.dev/domz"
@@ -1608,16 +1608,16 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			return fmt.Errorf("failed to get account: %w", err)
 		}
 
-		var basePlan entitlement.PlanCategory
+		var basePlan plan.Category
 		var trialEndsAt *time.Time
 
 		switch inviteCode.PlanType {
 		case "free":
-			basePlan = entitlement.CategoryFriend
+			basePlan = plan.CategoryFriend
 		case "trial":
-			basePlan = entitlement.CategoryTrial
+			basePlan = plan.CategoryTrial
 			// Get trial days from Trial plan quotas
-			plan, _ := entitlement.GetPlan(entitlement.CategoryTrial)
+			plan, _ := plan.Get(plan.CategoryTrial)
 			trialDays := plan.TrialDays
 			t := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 			trialEndsAt = &t
@@ -1628,7 +1628,7 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			changedBy := "invite:" + inviteCode.Code
 			if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 				AccountID:      acct.ID,
-				PlanID:         entitlement.PlanID(basePlan),
+				PlanID:         plan.ID(basePlan),
 				At:             now,
 				TrialExpiresAt: trialEndsAt,
 				ChangedBy:      changedBy,

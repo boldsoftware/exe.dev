@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
@@ -210,7 +210,7 @@ func (ss *SSHServer) canCreateTeam(cc *exemenu.CommandContext) bool {
 	if team != nil {
 		return false
 	}
-	return ss.server.UserHasEntitlement(context.Background(), entitlement.SourceSSH, entitlement.TeamCreate, cc.User.ID)
+	return ss.server.UserHasEntitlement(context.Background(), plan.SourceSSH, plan.TeamCreate, cc.User.ID)
 }
 
 // isTeamBillingOwner checks if the user is a team billing owner (for team disable)

@@ -27,7 +27,7 @@ import (
 	sloghttp "github.com/samber/slog-http"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 
 	"exe.dev/domz"
 	"exe.dev/email"
@@ -205,7 +205,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			_ = withTx1(s, context.WithoutCancel(r.Context()), (*exedb.Queries).DeleteMobilePendingVMByToken, token)
 
 			// Check if user's plan grants VM creation before starting
-			if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.VMCreate, verifiedUserID) {
+			if !s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.VMCreate, verifiedUserID) {
 				// Preserve hostname/prompt/image through billing flow
 				s.slog().InfoContext(r.Context(), "vm creation blocked by billing requirement",
 					"user_id", verifiedUserID,
@@ -382,7 +382,7 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
 		// Get trial days from Individual plan quotas
-		plan, _ := entitlement.GetPlan(entitlement.CategoryIndividual)
+		plan, _ := plan.Get(plan.CategoryIndividual)
 		trialDays := plan.TrialDays
 		subParams.TrialEnd = time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 		s.slog().InfoContext(r.Context(), "trial granted at checkout",
@@ -512,7 +512,7 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 			// The poller's syncAccountPlan will be a no-op since the plan already matches.
 			if err := queries.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 				AccountID: acct.ID,
-				PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
+				PlanID:    plan.ID(plan.CategoryIndividual),
 				At:        now,
 				ChangedBy: "stripe:event",
 			}); err != nil {
@@ -732,7 +732,7 @@ func (s *Server) handleNewUserBillingSuccess(w http.ResponseWriter, r *http.Requ
 		changedBy := "stripe:event"
 		if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 			AccountID: billingID,
-			PlanID:    entitlement.PlanID(entitlement.CategoryIndividual),
+			PlanID:    plan.ID(plan.CategoryIndividual),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		}); err != nil {
@@ -1650,7 +1650,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var signupPlan entitlement.PlanCategory
+	var signupPlan plan.Category
 	if isNewUser {
 		userRegion := s.regionForIP(r.Context(), ip.String())
 		err = s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
@@ -1688,7 +1688,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		// Stripeless trial mode already creates new accounts with a trial plan.
 		// iOS signups only need a separate trial grant when signup policy left
 		// the account on a non-trial plan.
-		if isIOS && signupPlan != entitlement.CategoryTrial {
+		if isIOS && signupPlan != plan.CategoryTrial {
 			if err := s.grantIOSTrial(r.Context(), userID); err != nil {
 				s.slog().ErrorContext(r.Context(), "failed to grant iOS trial", "error", err, "user_id", userID)
 			} else {
@@ -2117,7 +2117,7 @@ func (s *Server) verifyDiscordLinkHMAC(discordID, discordUsername, ts, providedH
 // TODO: This should eventually be triggered by a Stripe webhook (e.g. subscription.active)
 // instead of being called inline from the checkout callback.
 func giftSignupBonus(ctx context.Context, mgr *billing.Manager, billingID string, logger *slog.Logger) {
-	plan, ok := entitlement.GetPlan(entitlement.CategoryIndividual)
+	plan, ok := plan.Get(plan.CategoryIndividual)
 	if !ok || plan.SignupBonusCreditUSD == 0 {
 		return
 	}

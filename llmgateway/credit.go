@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
@@ -66,7 +66,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 	// Primary path: resolve plan from account_plans table.
 	planRow, err := q.GetActivePlanForUser(ctx, userID)
 	var monthlyCredit float64
-	var planCategory entitlement.PlanCategory
+	var planCategory plan.Category
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return Plan{}, fmt.Errorf("failed to get active plan for user: %w", err)
@@ -80,18 +80,18 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		switch catResult {
 		case "has_billing":
 			monthlyCredit = 100.0
-			planCategory = entitlement.CategoryIndividual
+			planCategory = plan.CategoryIndividual
 		case "friend":
 			monthlyCredit = 100.0
-			planCategory = entitlement.CategoryFriend
+			planCategory = plan.CategoryFriend
 		case "no_billing":
 			monthlyCredit = 0
-			planCategory = entitlement.CategoryBasic
+			planCategory = plan.CategoryBasic
 		default:
 			return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
 		}
 	} else {
-		p, ok := entitlement.GetPlanByID(planRow.PlanID)
+		p, ok := plan.ByID(planRow.PlanID)
 		if !ok {
 			return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
 		}
@@ -100,35 +100,35 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 	}
 
 	// Determine base plan based on plan category
-	var plan Plan
+	var p Plan
 	switch planCategory {
-	case entitlement.CategoryFriend, entitlement.CategoryVIP:
-		plan = planFriend
-	case entitlement.CategoryIndividual, entitlement.CategoryTeam, entitlement.CategoryEnterprise:
-		plan = planHasBilling
+	case plan.CategoryFriend, plan.CategoryVIP:
+		p = planFriend
+	case plan.CategoryIndividual, plan.CategoryTeam, plan.CategoryEnterprise:
+		p = planHasBilling
 	default:
-		plan = planNoBilling
+		p = planNoBilling
 	}
 
 	// Apply explicit per-user overrides when configured.
 	if credit != nil && (credit.MaxCredit != nil || credit.RefreshPerHour != nil) {
 		if credit.MaxCredit != nil {
-			plan.MaxCredit = *credit.MaxCredit
+			p.MaxCredit = *credit.MaxCredit
 		}
 		if credit.RefreshPerHour != nil {
-			plan.RefreshPerHour = *credit.RefreshPerHour
+			p.RefreshPerHour = *credit.RefreshPerHour
 		}
-		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
-			return calculateMonthlyCredit(available, lastRefresh, now, plan.MaxCredit)
+		p.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+			return calculateMonthlyCredit(available, lastRefresh, now, p.MaxCredit)
 		}
-		return plan, nil
+		return p, nil
 	}
 
 	// Set up refresh behavior based on monthly credit amount
 	if monthlyCredit >= 100.0 {
 		// Paid plans: monthly top-up
-		plan.MaxCredit = monthlyTopUpSubscribedUSD
-		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+		p.MaxCredit = monthlyTopUpSubscribedUSD
+		p.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			now = now.UTC()
 			if !sameUTCMonth(lastRefresh, now) {
 				return monthlyTopUpSubscribedUSD, now
@@ -137,26 +137,26 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		}
 	} else {
 		// Free/trial plans: no refresh
-		plan.MaxCredit = initialFreeCreditNoSubscriptionUSD
-		plan.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
+		p.MaxCredit = initialFreeCreditNoSubscriptionUSD
+		p.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			return available, lastRefresh
 		}
 	}
-	plan.RefreshPerHour = 0
+	p.RefreshPerHour = 0
 
-	return plan, nil
+	return p, nil
 }
 
 // PlanForUser looks up and returns the plan for a user.
 // This is useful for debug pages that need to display plan details.
 func PlanForUser(ctx context.Context, db *sqlite.DB, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
-	var plan Plan
+	var p Plan
 	err := exedb.WithRx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		var err error
-		plan, err = planForUser(ctx, q, userID, credit)
+		p, err = planForUser(ctx, q, userID, credit)
 		return err
 	})
-	return plan, err
+	return p, err
 }
 
 // ErrInsufficientCredit indicates insufficient credit for an LLM request

@@ -1,4 +1,4 @@
-package entitlement
+package plan
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"exe.dev/exedb"
 )
 
-// PlanCategory identifies a billing plan.
-type PlanCategory string
+// Category identifies a billing plan.
+type Category string
 
 // stripePriceInfo contains Stripe price metadata for a plan.
 type stripePriceInfo struct {
@@ -21,15 +21,15 @@ type stripePriceInfo struct {
 
 // Plan category constants.
 const (
-	CategoryVIP           PlanCategory = "vip"
-	CategoryEnterprise    PlanCategory = "enterprise"
-	CategoryTeam          PlanCategory = "team"
-	CategoryIndividual    PlanCategory = "individual"
-	CategoryFriend        PlanCategory = "friend"
-	CategoryGrandfathered PlanCategory = "grandfathered"
-	CategoryTrial         PlanCategory = "trial"
-	CategoryBasic         PlanCategory = "basic"
-	CategoryRestricted    PlanCategory = "restricted"
+	CategoryVIP           Category = "vip"
+	CategoryEnterprise    Category = "enterprise"
+	CategoryTeam          Category = "team"
+	CategoryIndividual    Category = "individual"
+	CategoryFriend        Category = "friend"
+	CategoryGrandfathered Category = "grandfathered"
+	CategoryTrial         Category = "trial"
+	CategoryBasic         Category = "basic"
+	CategoryRestricted    Category = "restricted"
 )
 
 // Plan describes a billing plan category and the base entitlements it grants.
@@ -42,7 +42,7 @@ type Plan struct {
 	ID string
 
 	// Category is the base plan identifier (e.g., "individual", "vip").
-	Category PlanCategory
+	Category Category
 
 	// Available indicates whether this plan can be assigned to new accounts.
 	Available bool
@@ -82,7 +82,7 @@ type UserLimits struct {
 	MaxCPUs   uint64 `json:"max_cpus,omitempty"`   // Max number of CPUs
 }
 
-var plans = map[PlanCategory]Plan{
+var plans = map[Category]Plan{
 	CategoryVIP: {
 		ID:                  "vip",
 		Available:           true,
@@ -219,9 +219,9 @@ func AllPlans() []Plan {
 	return result
 }
 
-// GetPlan returns the Plan for a given category.
+// Get returns the Plan for a given category.
 // Returns false if the category is unknown or the plan is not active.
-func GetPlan(cat PlanCategory) (Plan, bool) {
+func Get(cat Category) (Plan, bool) {
 	p, ok := plans[cat]
 	if !ok || !p.Available {
 		return Plan{}, false
@@ -229,27 +229,27 @@ func GetPlan(cat PlanCategory) (Plan, bool) {
 	return p, true
 }
 
-// ParsePlanID extracts the base plan, interval, and version from a plan ID.
+// ParseID extracts the base plan, interval, and version from a plan ID.
 // Versioned IDs use the format "{plan}:{interval}:{YYYYMMDD}" (e.g.
 // "individual:monthly:20260325"). Bare legacy IDs ("individual") are
 // handled gracefully: the base plan is the ID itself, interval and version
 // are empty strings.
 //
-// ParsePlanID is the single code path for extracting the base plan from
+// ParseID is the single code path for extracting the base plan from
 // any plan_id value stored in account_plans.
-func ParsePlanID(id string) (plan PlanCategory, interval, version string) {
+func ParseID(id string) (plan Category, interval, version string) {
 	parts := strings.SplitN(id, ":", 3)
 	switch len(parts) {
 	case 3:
-		return PlanCategory(parts[0]), parts[1], parts[2]
+		return Category(parts[0]), parts[1], parts[2]
 	default:
-		return PlanCategory(id), "", ""
+		return Category(id), "", ""
 	}
 }
 
-// PlanID returns the stable plan ID for a given version.
+// ID returns the stable plan ID for a given version.
 // Panics if the version is unknown — all valid versions are in the plan map.
-func PlanID(v PlanCategory) string {
+func ID(v Category) string {
 	p, ok := plans[v]
 	if !ok {
 		panic("unknown plan version: " + string(v))
@@ -257,24 +257,24 @@ func PlanID(v PlanCategory) string {
 	return p.ID
 }
 
-// BasePlan extracts the base PlanCategory from a possibly-versioned plan ID.
-// This is a convenience wrapper around ParsePlanID.
-func BasePlan(id string) PlanCategory {
-	plan, _, _ := ParsePlanID(id)
+// Base extracts the base Category from a possibly-versioned plan ID.
+// This is a convenience wrapper around ParseID.
+func Base(id string) Category {
+	plan, _, _ := ParseID(id)
 	return plan
 }
 
-// GetPlanByID returns the Plan for a given plan ID string and whether it exists.
+// ByID returns the Plan for a given plan ID string and whether it exists.
 // It handles both versioned IDs ("individual:monthly:20260325") and bare
-// legacy IDs ("individual") by extracting the base plan via ParsePlanID.
-func GetPlanByID(id string) (Plan, bool) {
-	plan := BasePlan(id)
-	return GetPlan(plan)
+// legacy IDs ("individual") by extracting the base plan via ParseID.
+func ByID(id string) (Plan, bool) {
+	plan := Base(id)
+	return Get(plan)
 }
 
-// PlanName returns the human-readable name for a plan version (e.g., "Individual").
+// Name returns the human-readable name for a plan version (e.g., "Individual").
 // Returns empty string for unknown plan versions.
-func PlanName(version PlanCategory) string {
+func Name(version Category) string {
 	p, ok := plans[version]
 	if !ok {
 		return ""
@@ -282,8 +282,8 @@ func PlanName(version PlanCategory) string {
 	return p.Name
 }
 
-// PlanIsPaid reports whether the plan represents active paid billing.
-func PlanIsPaid(version PlanCategory) bool {
+// IsPaid reports whether the plan represents active paid billing.
+func IsPaid(version Category) bool {
 	p, ok := plans[version]
 	return ok && p.Paid
 }
@@ -301,9 +301,9 @@ func GrantsEntitlement(planID string, ent Entitlement) bool {
 	return tierGrants(tier, ent)
 }
 
-// PlanGrants reports whether the given plan version grants the specified entitlement.
+// Grants reports whether the given plan version grants the specified entitlement.
 // Returns false for unknown plan versions.
-func PlanGrants(version PlanCategory, ent Entitlement) bool {
+func Grants(version Category, ent Entitlement) bool {
 	p, ok := plans[version]
 	if !ok {
 		return false
@@ -340,8 +340,8 @@ type userPlanInputs struct {
 	TeamBillingActive bool
 }
 
-// getPlanCategory maps existing billing state to a PlanCategory.
-func getPlanCategory(inputs userPlanInputs) PlanCategory {
+// getPlanCategory maps existing billing state to a Category.
+func getPlanCategory(inputs userPlanInputs) Category {
 	// Canceled users go straight to Basic — canceling overrides
 	// grandfathered status, exemptions, and trial access.
 	if inputs.BillingStatus == "canceled" {
@@ -383,12 +383,12 @@ func getPlanCategory(inputs userPlanInputs) PlanCategory {
 	return CategoryBasic
 }
 
-// PlanDataQuerier abstracts the database query needed by GetPlanForUser.
-type PlanDataQuerier interface {
+// DataQuerier abstracts the database query needed by ForUser.
+type DataQuerier interface {
 	GetUserPlanData(ctx context.Context, userID string) (exedb.GetUserPlanDataRow, error)
 }
 
-// GetPlanForUser returns the user's plan category by querying the database
+// ForUser returns the user's plan category by querying the database
 // and applying all billing logic in one function. This replaces the pattern
 // of manually constructing UserPlanInputs and calling GetPlanCategory.
 //
@@ -400,7 +400,7 @@ type PlanDataQuerier interface {
 //   - Handling trial expiration logic
 //
 // Returns sql.ErrNoRows if the user doesn't exist.
-func GetPlanForUser(ctx context.Context, q PlanDataQuerier, userID string) (PlanCategory, error) {
+func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error) {
 	row, err := q.GetUserPlanData(ctx, userID)
 	if err != nil {
 		return "", err

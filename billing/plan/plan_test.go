@@ -1,4 +1,4 @@
-package entitlement
+package plan
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 func TestPlanGrants(t *testing.T) {
 	tests := []struct {
-		version PlanCategory
+		version Category
 		ent     Entitlement
 		want    bool
 	}{
@@ -62,9 +62,9 @@ func TestPlanGrants(t *testing.T) {
 		{CategoryRestricted, CreditPurchase, false},
 	}
 	for _, tt := range tests {
-		got := PlanGrants(tt.version, tt.ent)
+		got := Grants(tt.version, tt.ent)
 		if got != tt.want {
-			t.Errorf("PlanGrants(%q, %q) = %v, want %v", tt.version, tt.ent, got, tt.want)
+			t.Errorf("Grants(%q, %q) = %v, want %v", tt.version, tt.ent, got, tt.want)
 		}
 	}
 }
@@ -74,15 +74,15 @@ func TestPlanGrantsWildcard(t *testing.T) {
 		LLMUse, CreditPurchase, VMCreate, VMRun, DiskResize,
 		{"anything:else", "Made Up"},
 	} {
-		if !PlanGrants(CategoryVIP, ent) {
-			t.Errorf("PlanGrants(%q, %q) = false, want true (wildcard)", CategoryVIP, ent)
+		if !Grants(CategoryVIP, ent) {
+			t.Errorf("Grants(%q, %q) = false, want true (wildcard)", CategoryVIP, ent)
 		}
 	}
 }
 
 func TestPlanGrantsUnknownPlan(t *testing.T) {
-	if PlanGrants(PlanCategory("nonexistent"), LLMUse) {
-		t.Error("PlanGrants(nonexistent, llm:use) = true, want false")
+	if Grants(Category("nonexistent"), LLMUse) {
+		t.Error("Grants(nonexistent, llm:use) = true, want false")
 	}
 }
 
@@ -95,7 +95,7 @@ func TestGetPlanCategory(t *testing.T) {
 	tests := []struct {
 		name   string
 		inputs userPlanInputs
-		want   PlanCategory
+		want   Category
 	}{
 		{
 			name:   "canceled overrides grandfathered",
@@ -186,8 +186,8 @@ func TestTeamMemberCanCreateVM(t *testing.T) {
 	if version != CategoryTeam {
 		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryTeam)
 	}
-	if !PlanGrants(version, VMCreate) {
-		t.Errorf("PlanGrants(%q, VMCreate) = false, want true", version)
+	if !Grants(version, VMCreate) {
+		t.Errorf("Grants(%q, VMCreate) = false, want true", version)
 	}
 }
 
@@ -203,14 +203,14 @@ func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 	if version != CategoryBasic {
 		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryBasic)
 	}
-	if PlanGrants(version, VMCreate) {
-		t.Errorf("PlanGrants(%q, VMCreate) = true, want false", version)
+	if Grants(version, VMCreate) {
+		t.Errorf("Grants(%q, VMCreate) = true, want false", version)
 	}
 }
 
 func TestSignupBonusCreditUSD(t *testing.T) {
 	tests := []struct {
-		version PlanCategory
+		version Category
 		want    float64
 	}{
 		{CategoryIndividual, 100.0},
@@ -264,17 +264,17 @@ func TestRestrictedPlanGrantsNothing(t *testing.T) {
 
 // TestVMRunGranted verifies VMRun is granted to the right plans.
 func TestVMRunGranted(t *testing.T) {
-	shouldGrant := []PlanCategory{CategoryVIP, CategoryTeam, CategoryIndividual, CategoryFriend, CategoryGrandfathered, CategoryTrial}
-	shouldDeny := []PlanCategory{CategoryBasic, CategoryRestricted}
+	shouldGrant := []Category{CategoryVIP, CategoryTeam, CategoryIndividual, CategoryFriend, CategoryGrandfathered, CategoryTrial}
+	shouldDeny := []Category{CategoryBasic, CategoryRestricted}
 
 	for _, v := range shouldGrant {
-		if !PlanGrants(v, VMRun) {
-			t.Errorf("PlanGrants(%q, VMRun) = false, want true", v)
+		if !Grants(v, VMRun) {
+			t.Errorf("Grants(%q, VMRun) = false, want true", v)
 		}
 	}
 	for _, v := range shouldDeny {
-		if PlanGrants(v, VMRun) {
-			t.Errorf("PlanGrants(%q, VMRun) = true, want false", v)
+		if Grants(v, VMRun) {
+			t.Errorf("Grants(%q, VMRun) = true, want false", v)
 		}
 	}
 }
@@ -324,7 +324,7 @@ func TestParsePlanID(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		wantPlan PlanCategory
+		wantPlan Category
 		wantInt  string
 		wantVer  string
 	}{
@@ -380,14 +380,14 @@ func TestParsePlanID(t *testing.T) {
 		{
 			name:     "empty string",
 			input:    "",
-			wantPlan: PlanCategory(""),
+			wantPlan: Category(""),
 			wantInt:  "",
 			wantVer:  "",
 		},
 		{
 			name:     "two parts treated as bare",
 			input:    "individual:monthly",
-			wantPlan: PlanCategory("individual:monthly"),
+			wantPlan: Category("individual:monthly"),
 			wantInt:  "",
 			wantVer:  "",
 		},
@@ -401,15 +401,15 @@ func TestParsePlanID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			plan, interval, ver := ParsePlanID(tt.input)
+			plan, interval, ver := ParseID(tt.input)
 			if plan != tt.wantPlan {
-				t.Errorf("ParsePlanID(%q) plan = %q, want %q", tt.input, plan, tt.wantPlan)
+				t.Errorf("ParseID(%q) plan = %q, want %q", tt.input, plan, tt.wantPlan)
 			}
 			if interval != tt.wantInt {
-				t.Errorf("ParsePlanID(%q) interval = %q, want %q", tt.input, interval, tt.wantInt)
+				t.Errorf("ParseID(%q) interval = %q, want %q", tt.input, interval, tt.wantInt)
 			}
 			if ver != tt.wantVer {
-				t.Errorf("ParsePlanID(%q) version = %q, want %q", tt.input, ver, tt.wantVer)
+				t.Errorf("ParseID(%q) version = %q, want %q", tt.input, ver, tt.wantVer)
 			}
 		})
 	}
@@ -418,7 +418,7 @@ func TestParsePlanID(t *testing.T) {
 func TestBasePlan(t *testing.T) {
 	tests := []struct {
 		input string
-		want  PlanCategory
+		want  Category
 	}{
 		{"individual:monthly:20260325", CategoryIndividual},
 		{"basic:monthly:20260101", CategoryBasic},
@@ -428,62 +428,62 @@ func TestBasePlan(t *testing.T) {
 		{"vip", CategoryVIP},
 	}
 	for _, tt := range tests {
-		got := BasePlan(tt.input)
+		got := Base(tt.input)
 		if got != tt.want {
-			t.Errorf("BasePlan(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("Base(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
 
 func TestGetPlanByIDVersioned(t *testing.T) {
 	// Versioned ID should resolve to the base plan.
-	p, ok := GetPlanByID("individual:monthly:20260325")
+	p, ok := ByID("individual:monthly:20260325")
 	if !ok {
-		t.Fatal("GetPlanByID(\"individual:monthly:20260325\") = _, false; want true")
+		t.Fatal("ByID(\"individual:monthly:20260325\") = _, false; want true")
 	}
 	if p.Category != CategoryIndividual {
-		t.Errorf("GetPlanByID versioned got category %q, want %q", p.Category, CategoryIndividual)
+		t.Errorf("ByID versioned got category %q, want %q", p.Category, CategoryIndividual)
 	}
 
 	// Bare ID should still work.
-	p2, ok2 := GetPlanByID("individual")
+	p2, ok2 := ByID("individual")
 	if !ok2 {
-		t.Fatal("GetPlanByID(\"individual\") = _, false; want true")
+		t.Fatal("ByID(\"individual\") = _, false; want true")
 	}
 	if p2.Category != CategoryIndividual {
-		t.Errorf("GetPlanByID bare got category %q, want %q", p2.Category, CategoryIndividual)
+		t.Errorf("ByID bare got category %q, want %q", p2.Category, CategoryIndividual)
 	}
 }
 
-func TestPlanID(t *testing.T) {
-	got := PlanID(CategoryIndividual)
+func TestID(t *testing.T) {
+	got := ID(CategoryIndividual)
 	want := "individual:monthly:20260106"
 	if got != want {
-		t.Errorf("PlanID(CategoryIndividual) = %q, want %q", got, want)
+		t.Errorf("ID(CategoryIndividual) = %q, want %q", got, want)
 	}
 }
 
 func TestPlanGrantsWithVersionedID(t *testing.T) {
-	// Verify that using BasePlan on a versioned ID gives correct entitlements.
-	version := BasePlan("individual:monthly:20260325")
-	if !PlanGrants(version, VMCreate) {
-		t.Error("PlanGrants with versioned individual should grant VMCreate")
+	// Verify that using Base on a versioned ID gives correct entitlements.
+	version := Base("individual:monthly:20260325")
+	if !Grants(version, VMCreate) {
+		t.Error("Grants with versioned individual should grant VMCreate")
 	}
-	if !PlanGrants(version, CreditPurchase) {
-		t.Error("PlanGrants with versioned individual should grant CreditPurchase")
+	if !Grants(version, CreditPurchase) {
+		t.Error("Grants with versioned individual should grant CreditPurchase")
 	}
 
-	version2 := BasePlan("basic:monthly:20260325")
-	if PlanGrants(version2, VMCreate) {
-		t.Error("PlanGrants with versioned basic should not grant VMCreate")
+	version2 := Base("basic:monthly:20260325")
+	if Grants(version2, VMCreate) {
+		t.Error("Grants with versioned basic should not grant VMCreate")
 	}
-	if !PlanGrants(version2, LLMUse) {
-		t.Error("PlanGrants with versioned basic should grant LLMUse")
+	if !Grants(version2, LLMUse) {
+		t.Error("Grants with versioned basic should grant LLMUse")
 	}
 }
 
 func TestEnterprisePlanExists(t *testing.T) {
-	p, ok := GetPlan(CategoryEnterprise)
+	p, ok := Get(CategoryEnterprise)
 	if !ok {
 		t.Fatal("CategoryEnterprise not found in plans")
 	}
@@ -504,18 +504,18 @@ func TestEnterprisePlanExists(t *testing.T) {
 func TestEnterprisePlanGrants(t *testing.T) {
 	shouldGrant := []Entitlement{LLMUse, CreditPurchase, InviteRequest, VMCreate, VMRun}
 	for _, ent := range shouldGrant {
-		if !PlanGrants(CategoryEnterprise, ent) {
-			t.Errorf("PlanGrants(CategoryEnterprise, %q) = false, want true", ent.ID)
+		if !Grants(CategoryEnterprise, ent) {
+			t.Errorf("Grants(CategoryEnterprise, %q) = false, want true", ent.ID)
 		}
 	}
-	if PlanGrants(CategoryEnterprise, TeamCreate) {
-		t.Error("PlanGrants(CategoryEnterprise, TeamCreate) = true, want false")
+	if Grants(CategoryEnterprise, TeamCreate) {
+		t.Error("Grants(CategoryEnterprise, TeamCreate) = true, want false")
 	}
 }
 
 func TestAllPlansComplete(t *testing.T) {
 	all := AllPlans()
-	want := []PlanCategory{
+	want := []Category{
 		CategoryBasic, CategoryEnterprise, CategoryFriend, CategoryGrandfathered,
 		CategoryIndividual, CategoryRestricted, CategoryTeam, CategoryTrial, CategoryVIP,
 	}
@@ -529,7 +529,7 @@ func TestAllPlansComplete(t *testing.T) {
 		}
 	}
 	// Verify all expected categories are present.
-	seen := make(map[PlanCategory]bool)
+	seen := make(map[Category]bool)
 	for _, p := range all {
 		seen[p.Category] = true
 	}
@@ -540,7 +540,7 @@ func TestAllPlansComplete(t *testing.T) {
 	}
 }
 
-// TestGetPlanForUser verifies the GetPlanForUser function.
+// TestGetPlanForUser verifies the ForUser function.
 func TestGetPlanForUser(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 	past := time.Now().Add(-24 * time.Hour)
@@ -550,7 +550,7 @@ func TestGetPlanForUser(t *testing.T) {
 	tests := []struct {
 		name string
 		row  exedb.GetUserPlanDataRow
-		want PlanCategory
+		want Category
 	}{
 		{
 			name: "friend plan",
@@ -633,18 +633,18 @@ func TestGetPlanForUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &mockQueries{row: tt.row}
-			got, err := GetPlanForUser(context.Background(), mock, "test-user")
+			got, err := ForUser(context.Background(), mock, "test-user")
 			if err != nil {
-				t.Fatalf("GetPlanForUser() error = %v", err)
+				t.Fatalf("ForUser() error = %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("GetPlanForUser() = %q, want %q", got, tt.want)
+				t.Errorf("ForUser() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// mockQueries implements PlanDataQuerier for testing.
+// mockQueries implements DataQuerier for testing.
 type mockQueries struct {
 	row exedb.GetUserPlanDataRow
 	err error

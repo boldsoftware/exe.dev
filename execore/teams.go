@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/domz"
 	"exe.dev/email"
@@ -742,7 +742,7 @@ func (s *Server) DisableTeam(ctx context.Context, userID string) error {
 // handleTeamEnable handles POST /team/enable from the web UI.
 func (s *Server) handleTeamEnable(w http.ResponseWriter, r *http.Request, userID string) {
 	// Re-check entitlement at POST time (page may have been open for hours)
-	if !s.UserHasEntitlement(r.Context(), entitlement.SourceWeb, entitlement.TeamCreate, userID) {
+	if !s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.TeamCreate, userID) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "Your plan does not allow creating teams."})
 		return
 	}

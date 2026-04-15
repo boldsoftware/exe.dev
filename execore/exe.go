@@ -43,7 +43,7 @@ import (
 
 	"exe.dev/apns"
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
@@ -3186,18 +3186,18 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 
 // createAccountWithInitialPlan creates a new signup account with the active
 // initial plan selected by signup policy.
-func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, userID string) (string, entitlement.PlanCategory, error) {
+func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, userID string) (string, plan.Category, error) {
 	// When stripeless trial mode is disabled, non-billing signup paths create
 	// a basic account. The Stripe signup path creates the account separately
 	// with the Stripe customer ID as the account ID.
-	planCategory := entitlement.CategoryBasic
+	planCategory := plan.CategoryBasic
 	changedBy := "system:signup"
 	stripelessTrialEnabled, err := queries.GetStripelessTrialEnabled(ctx)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", "", fmt.Errorf("check stripeless trial setting: %w", err)
 	}
 	if stripelessTrialEnabled == "true" {
-		planCategory = entitlement.CategoryTrial
+		planCategory = plan.CategoryTrial
 		changedBy = "system:stripeless_trial"
 	}
 
@@ -3216,7 +3216,7 @@ func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, u
 	}
 	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 		AccountID:      accountID,
-		PlanID:         entitlement.PlanID(planCategory),
+		PlanID:         plan.ID(planCategory),
 		StartedAt:      now,
 		TrialExpiresAt: trialExpiresAt,
 		ChangedBy:      &changedBy,
@@ -3226,11 +3226,11 @@ func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, u
 	return accountID, planCategory, nil
 }
 
-func signupTrialExpiresAt(now time.Time, planCategory entitlement.PlanCategory) (*time.Time, error) {
-	if planCategory != entitlement.CategoryTrial {
+func signupTrialExpiresAt(now time.Time, planCategory plan.Category) (*time.Time, error) {
+	if planCategory != plan.CategoryTrial {
 		return nil, nil
 	}
-	plan, ok := entitlement.GetPlan(entitlement.CategoryTrial)
+	plan, ok := plan.Get(plan.CategoryTrial)
 	if !ok {
 		return nil, fmt.Errorf("trial plan is not available")
 	}

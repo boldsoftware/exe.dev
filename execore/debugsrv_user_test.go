@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 )
 
@@ -76,7 +76,7 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 }
 
 // TestDebugBillingEntitlementTablePresent verifies the entitlement table section
-// appears on the debug billing page with one row per entitlement.
+// appears on the debug billing page with one row per plan.
 func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
@@ -89,7 +89,7 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 	}
 
 	// Every concrete entitlement should appear in the table.
-	for _, ent := range entitlement.AllEntitlements() {
+	for _, ent := range plan.AllEntitlements() {
 		if !strings.Contains(body, ent.DisplayName) {
 			t.Errorf("entitlement table missing %q", ent.DisplayName)
 		}
@@ -137,7 +137,7 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 	}
 	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: account.ID,
-		PlanID:    string(entitlement.CategoryFriend),
+		PlanID:    string(plan.CategoryFriend),
 		StartedAt: time.Now(),
 	})
 	if err != nil {
@@ -175,7 +175,7 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	}
 	err = withTx1(s, t.Context(), (*exedb.Queries).InsertAccountPlan, exedb.InsertAccountPlanParams{
 		AccountID: account.ID,
-		PlanID:    string(entitlement.CategoryIndividual),
+		PlanID:    string(plan.CategoryIndividual),
 		StartedAt: now,
 	})
 	if err != nil {
@@ -191,8 +191,8 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 
 	body := debugBillingPageBody(t, s, userID)
 
-	for _, ent := range entitlement.AllEntitlements() {
-		want := entitlement.PlanGrants(entitlement.CategoryIndividual, ent)
+	for _, ent := range plan.AllEntitlements() {
+		want := plan.Grants(plan.CategoryIndividual, ent)
 		requireEntitlementRow(t, body, ent.DisplayName, want)
 	}
 }

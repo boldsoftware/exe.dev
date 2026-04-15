@@ -1,7 +1,7 @@
 // Package entitlement defines the plan catalog and entitlement constants for exe.dev.
 //
 // This package imports only stdlib and can be imported by any other package without cycles.
-package entitlement
+package plan
 
 // Entitlement represents a capability or permission granted by a plan.
 type Entitlement struct {

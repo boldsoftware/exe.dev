@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
@@ -312,7 +312,7 @@ func TestCheckNewThrottleGrandfathered(t *testing.T) {
 		}
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: acct.ID,
-			PlanID:    string(entitlement.CategoryGrandfathered),
+			PlanID:    string(plan.CategoryGrandfathered),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})
@@ -355,7 +355,7 @@ func TestCheckNewThrottleFreeExemption(t *testing.T) {
 		}
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: acct.ID,
-			PlanID:    string(entitlement.CategoryFriend),
+			PlanID:    string(plan.CategoryFriend),
 			StartedAt: now,
 			ChangedBy: &changedBy,
 		})

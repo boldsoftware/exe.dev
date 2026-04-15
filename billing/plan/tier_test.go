@@ -1,4 +1,4 @@
-package entitlement
+package plan
 
 import "testing"
 
@@ -16,7 +16,7 @@ func TestParseTierID(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		wantCategory PlanCategory
+		wantCategory Category
 		wantTier     string
 		wantInterval string
 		wantVersion  string
@@ -87,7 +87,7 @@ func TestGetTierByID(t *testing.T) {
 		id       string
 		wantID   string
 		wantName string
-		wantCat  PlanCategory
+		wantCat  Category
 	}{
 		{
 			name:     "individual small",
@@ -178,8 +178,8 @@ func TestGetTierByID(t *testing.T) {
 			if tier.Name != tt.wantName {
 				t.Errorf("getTierByID(%q).Name = %q, want %q", tt.id, tier.Name, tt.wantName)
 			}
-			if tier.PlanCategory != tt.wantCat {
-				t.Errorf("getTierByID(%q).PlanCategory = %q, want %q", tt.id, tier.PlanCategory, tt.wantCat)
+			if tier.Category != tt.wantCat {
+				t.Errorf("getTierByID(%q).Category = %q, want %q", tt.id, tier.Category, tt.wantCat)
 			}
 		})
 	}
@@ -215,7 +215,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 	override := map[Entitlement]bool{DiskResize: true}
 	tierWithOverride := Tier{
 		ID:           "test:custom:monthly:20260601",
-		PlanCategory: CategoryIndividual,
+		Category: CategoryIndividual,
 		Name:         "Custom",
 		StripePrices: map[string]stripePriceInfo{},
 
@@ -353,8 +353,8 @@ func TestTiersByCategory(t *testing.T) {
 
 	// All tiers should be individual category.
 	for _, tier := range individualTiers {
-		if tier.PlanCategory != CategoryIndividual {
-			t.Errorf("tier %q has category %q, want Individual", tier.ID, tier.PlanCategory)
+		if tier.Category != CategoryIndividual {
+			t.Errorf("tier %q has category %q, want Individual", tier.ID, tier.Category)
 		}
 	}
 
@@ -389,10 +389,10 @@ func TestTierIDFromStripePriceKey(t *testing.T) {
 }
 
 func TestBasePlanHandles4PartTierID(t *testing.T) {
-	// BasePlan must correctly extract the category from a 4-part tier ID.
+	// Base must correctly extract the category from a 4-part tier ID.
 	tests := []struct {
 		id   string
-		want PlanCategory
+		want Category
 	}{
 		{"individual:small:monthly:20260601", CategoryIndividual},
 		{"individual:xlarge:monthly:20260601", CategoryIndividual},
@@ -400,9 +400,9 @@ func TestBasePlanHandles4PartTierID(t *testing.T) {
 		{"team:default:monthly:20260601", CategoryTeam},
 	}
 	for _, tt := range tests {
-		got := BasePlan(tt.id)
+		got := Base(tt.id)
 		if got != tt.want {
-			t.Errorf("BasePlan(%q) = %q, want %q", tt.id, got, tt.want)
+			t.Errorf("Base(%q) = %q, want %q", tt.id, got, tt.want)
 		}
 	}
 }

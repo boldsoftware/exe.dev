@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 )
@@ -297,7 +297,7 @@ func isIOSAppRequest(r *http.Request) bool {
 // This is called when a new user signs up through the iOS app.
 func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
 	now := time.Now()
-	trialExpiresAt, err := signupTrialExpiresAt(now, entitlement.CategoryTrial)
+	trialExpiresAt, err := signupTrialExpiresAt(now, plan.CategoryTrial)
 	if err != nil {
 		return err
 	}
@@ -310,7 +310,7 @@ func (s *Server) grantIOSTrial(ctx context.Context, userID string) error {
 		changedBy := "ios_signup"
 		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID:      acct.ID,
-			PlanID:         entitlement.PlanID(entitlement.CategoryTrial),
+			PlanID:         plan.ID(plan.CategoryTrial),
 			At:             now,
 			TrialExpiresAt: trialExpiresAt,
 			ChangedBy:      changedBy,

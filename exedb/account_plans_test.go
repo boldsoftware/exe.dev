@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
@@ -391,14 +391,14 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 		t.Errorf("member account_id = %q, want %q (parent's account)", memberPlan.AccountID, ownerAcctID)
 	}
 
-	plan, ok := entitlement.GetPlanByID(memberPlan.PlanID)
+	p, ok := plan.ByID(memberPlan.PlanID)
 	if !ok {
-		t.Fatal("GetPlanByID failed for enterprise plan")
+		t.Fatal("ByID failed for enterprise plan")
 	}
-	if !entitlement.PlanGrants(plan.Category, entitlement.VMCreate) {
+	if !plan.Grants(p.Category, plan.VMCreate) {
 		t.Error("Enterprise plan should grant VMCreate")
 	}
-	if !entitlement.PlanGrants(plan.Category, entitlement.CreditPurchase) {
+	if !plan.Grants(p.Category, plan.CreditPurchase) {
 		t.Error("Enterprise plan should grant CreditPurchase")
 	}
 }

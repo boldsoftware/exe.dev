@@ -4,7 +4,7 @@ For the current billing architecture, see [devdocs/billing.md](../devdocs/billin
 
 ## Plans and Entitlements
 
-All plans are defined in `billing/entitlement/plan.go`. Each plan grants a set of entitlements checked via `UserHasEntitlement`.
+All plans are defined in `billing/plan/plan.go`. Each plan grants a set of entitlements checked via `UserHasEntitlement`.
 
 | Plan | Version | Price | Entitlements |
 |------|---------|-------|-------------|
@@ -183,7 +183,7 @@ User request (SSH/HTTP)
   └──────────────────────────────────────────────────────┘
          │
          ▼
-  PlanGrants(plan_id, entitlement)
+  Grants(plan_id, entitlement)
   ┌──────────────────────────────────────────────────────┐
   │                                                      │
   │  plan_id ──► Plan.Entitlements map                   │
@@ -256,8 +256,8 @@ Plans change via `account_plans` rows (append-only history):
 
 | File | Role |
 |------|------|
-| `billing/entitlement/plan.go` | Plan catalog, `PlanGrants`, `PlanQuotas`, `GetPlanByID` |
-| `billing/entitlement/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
+| `billing/plan/plan.go` | Plan catalog, `Grants`, `Quotas`, `ByID` |
+| `billing/plan/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
 | `execore/billing_status.go` | `UserHasEntitlement` — main entitlement check used by request handlers |
 | `exedb/query/accounts.sql` | `GetActivePlanForUser` — SQL that walks account hierarchy |
 | `execore/subscription_poller.go` | `syncAccountPlan` — keeps account_plans in sync with Stripe |

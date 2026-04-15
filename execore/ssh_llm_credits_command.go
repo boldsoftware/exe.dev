@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
-	"exe.dev/billing/entitlement"
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/llmgateway"
@@ -39,7 +39,7 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	// Get plan
-	plan, err := llmgateway.PlanForUser(ctx, ss.server.db, user.UserID, credit)
+	llmPlan, err := llmgateway.PlanForUser(ctx, ss.server.db, user.UserID, credit)
 	if err != nil {
 		cc.WriteInternalError(ctx, "sudo-exe llm-credits", err)
 		return nil
@@ -81,7 +81,7 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	var billingExemption string
 	if hasBillingAccount {
 		if activePlan, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActiveAccountPlan, billingAccountID); err == nil {
-			billingExemption = entitlement.DeriveExemptionDisplay(&activePlan.PlanID)
+			billingExemption = plan.DeriveExemptionDisplay(&activePlan.PlanID)
 		}
 	}
 
@@ -89,12 +89,12 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 		result := map[string]any{
 			"user_id": user.UserID,
 			"email":   user.Email,
-			"plan":    plan.Name,
+			"plan":    llmPlan.Name,
 		}
 		gateway := map[string]any{
-			"plan":             plan.Name,
-			"max_credit_usd":   plan.MaxCredit,
-			"refresh_per_hour": plan.RefreshPerHour,
+			"plan":             llmPlan.Name,
+			"max_credit_usd":   llmPlan.MaxCredit,
+			"refresh_per_hour": llmPlan.RefreshPerHour,
 		}
 		if credit != nil {
 			gateway["available_credit_usd"] = credit.AvailableCredit
@@ -153,14 +153,14 @@ func (ss *SSHServer) handleLLMCreditsCommand(ctx context.Context, cc *exemenu.Co
 	// Text output
 	cc.Writeln("")
 	cc.Writeln("\033[1mUser:\033[0m %s (%s)", user.UserID, user.Email)
-	cc.Writeln("\033[1mPlan:\033[0m %s", plan.Name)
+	cc.Writeln("\033[1mPlan:\033[0m %s", llmPlan.Name)
 	cc.Writeln("")
 
 	cc.Writeln("\033[1;33m── Gateway Credit (user_llm_credit) ──\033[0m")
 	if credit != nil {
 		cc.Writeln("  Available:       $%.2f", credit.AvailableCredit)
-		cc.Writeln("  Max:             $%.2f", plan.MaxCredit)
-		cc.Writeln("  Refresh/hr:      $%.2f", plan.RefreshPerHour)
+		cc.Writeln("  Max:             $%.2f", llmPlan.MaxCredit)
+		cc.Writeln("  Refresh/hr:      $%.2f", llmPlan.RefreshPerHour)
 		cc.Writeln("  Total used:      $%.2f", credit.TotalUsed)
 		cc.Writeln("  Last refresh:    %s", credit.LastRefreshAt.Format(time.RFC3339))
 		cc.Writeln("  Upgrade bonus:   %s", upgradeBonusText(credit.BillingUpgradeBonusGranted == 1, gifts))
