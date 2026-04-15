@@ -414,6 +414,8 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 				box:        box,
 				progress:   progress,
 				directOnly: false,
+				sudoPrefix: "",
+				guestShell: "",
 			})
 			if err != nil {
 				t.Fatalf("migrateVMLive failed: %v", err)
@@ -504,6 +506,8 @@ func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
 		box:        box,
 		progress:   progress,
 		directOnly: false,
+		sudoPrefix: "",
+		guestShell: "",
 	})
 	if err != nil {
 		t.Fatalf("migrateVMLive failed: %v", err)

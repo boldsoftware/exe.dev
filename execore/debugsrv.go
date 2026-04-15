@@ -713,10 +713,10 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	dbStatus := "running"
 
 	// Live migration requires SSH access to the VM for IP reconfiguration.
-	// Verify SSH works before starting the transfer — a broken SSH server
-	// or stale connection would otherwise waste the entire phase 1 transfer.
-	// If SSH is dead, fall back to cold migration automatically: the VM is
-	// already in a bad state, so a restart on the target is the right move.
+	// Verify SSH works and that the guest can run privileged network commands
+	// before starting the transfer — otherwise the entire phase 1 transfer
+	// is wasted. Falls back to cold migration on failure.
+	var guestSudo, guestShell string
 	if live && box.SSHPort != nil {
 		writeProgress("Verifying SSH access to VM...")
 		if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
@@ -724,6 +724,15 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 				"box", boxName, "error", err)
 			writeProgress("WARNING: SSH pre-check failed (%v) — falling back to cold migration.", err)
 			live = false
+		} else {
+			var err error
+			guestSudo, guestShell, err = s.checkGuestIPReconfig(ctx, &box)
+			if err != nil {
+				s.slog().WarnContext(ctx, "guest IP reconfig pre-check failed, falling back to cold migration",
+					"box", boxName, "error", err)
+				writeProgress("WARNING: guest cannot run IP commands (%v) — falling back to cold migration.", err)
+				live = false
+			}
 		}
 	}
 
@@ -739,6 +748,8 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 			directOnly: directOnly,
 			box:        box,
 			progress:   writeProgress,
+			sudoPrefix: guestSudo,
+			guestShell: guestShell,
 		})
 		if err != nil {
 			s.slog().ErrorContext(ctx, "live migration failed",
@@ -1031,6 +1042,10 @@ type migrateVMLiveParams struct {
 	box        exedb.Box
 	progress   func(string, ...any)
 	directOnly bool
+
+	// Guest privilege escalation prefix and shell, from checkGuestIPReconfig.
+	sudoPrefix string
+	guestShell string
 }
 
 // migrateVMLive performs a direct exelet-to-exelet live migration using CH snapshot/restore.
@@ -1175,7 +1190,7 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 				}
 
 				// SSH into the running VM and change its IP to the target's IP
-				if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, progress); err != nil {
+				if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, p.sudoPrefix, p.guestShell, progress); err != nil {
 					log.ErrorContext(ctx, "live migration: failed to reconfigure VM IP",
 						"source_ip", sourceNetwork.IP.IPV4,
 						"target_ip", targetNetwork.IP.IPV4,
@@ -1231,8 +1246,49 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 	return 0, false, fmt.Errorf("source stream ended without result")
 }
 
+// guestShellPrefix determines the privilege escalation prefix and shell to use
+// when running commands inside a guest VM via SSH. Custom images may lack sudo
+// or /exe.dev/bin/sh, so we probe for their availability.
+func (s *Server) guestShellPrefix(ctx context.Context, box *exedb.Box) (sudo, shell string) {
+	shell = "/exe.dev/bin/sh"
+	if _, err := runCommandOnBox(ctx, s.sshPool, box, "test -x /exe.dev/bin/sh"); err != nil {
+		shell = "sh"
+	}
+
+	if box.SSHUser != nil && *box.SSHUser == "root" {
+		return "", shell
+	}
+
+	if _, err := runCommandOnBox(ctx, s.sshPool, box, "command -v sudo"); err != nil {
+		s.slog().WarnContext(ctx, "guest does not have sudo, running commands without privilege escalation", "box", box.Name)
+		return "", shell
+	}
+	return "sudo ", shell
+}
+
+// checkGuestIPReconfig verifies the guest can perform IP reconfiguration.
+// Returns the sudo prefix and shell, or an error if the guest lacks the
+// necessary privileges (e.g. non-root without sudo, or no ip command).
+//
+// This is called during the SSH pre-check phase, before any disk data is
+// transferred. Live migration requires SSHing into the running guest to
+// reconfigure its network (ip addr add/del, ip route replace) via
+// reconfigureVMIP(). If the guest can't run these commands, we fail fast
+// and fall back to cold migration instead of discovering the failure after
+// the entire phase 1 transfer.
+func (s *Server) checkGuestIPReconfig(ctx context.Context, box *exedb.Box) (sudo, shell string, err error) {
+	sudo, shell = s.guestShellPrefix(ctx, box)
+	// Verify ip command works with the detected privilege level.
+	checkCmd := fmt.Sprintf("%sip link show", sudo)
+	if output, err := runCommandOnBox(ctx, s.sshPool, box, checkCmd); err != nil {
+		return "", "", fmt.Errorf("%sip link show failed: %w (output: %s)", sudo, err, string(output))
+	}
+	return sudo, shell, nil
+}
+
 // reconfigureVMIP SSHes into the running VM and changes its IP from source to target.
-func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetwork, targetNetwork *computeapi.NetworkInterface, progress func(string, ...any)) error {
+// sudoPrefix and guestShell should come from checkGuestIPReconfig (called during pre-flight).
+func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetwork, targetNetwork *computeapi.NetworkInterface, sudoPrefix, guestShell string, progress func(string, ...any)) error {
 	log := s.slog().With("box", box.Name)
 
 	if sourceNetwork.IP == nil || sourceNetwork.IP.IPV4 == "" {
@@ -1312,7 +1368,7 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 	// synchronously — the old IP still exists so SSH stays alive.
 	// promote_secondaries ensures that when we delete the primary (old) IP,
 	// the secondary (new) IP is promoted to primary instead of being removed.
-	addCmd := fmt.Sprintf("sudo /exe.dev/bin/sh -c '"+
+	addCmd := fmt.Sprintf("%s%s -c '"+
 		"echo \"=== Migration IP reconfig $(date -Iseconds) ===\" >> %s; "+
 		"echo \"before:\" >> %s; ip addr show dev %s >> %s 2>&1; ip route >> %s 2>&1; "+
 		"echo 1 > /proc/sys/net/ipv4/conf/%s/promote_secondaries; "+
@@ -1320,6 +1376,7 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 		"sed -i \"s/^%s /%s /\" /etc/hosts 2>> %s; sync; "+
 		"echo \"after add:\" >> %s; ip addr show dev %s >> %s 2>&1"+
 		"'",
+		sudoPrefix, guestShell,
 		logFile,
 		logFile, guestDev, logFile, logFile,
 		guestDev,
@@ -1337,12 +1394,13 @@ func (s *Server) reconfigureVMIP(ctx context.Context, box *exedb.Box, sourceNetw
 	// Step 2: Delete the old IP and fix the route in the background.
 	// Deleting the old IP kills the SSH connection, so we use nohup.
 	// With promote_secondaries, the new IP is promoted to primary automatically.
-	delCmd := fmt.Sprintf("nohup sudo /exe.dev/bin/sh -c '"+
+	delCmd := fmt.Sprintf("nohup %s%s -c '"+
 		"trap \"\" HUP; "+
 		"ip addr del %s dev %s 2>> %s; "+
 		"ip route replace default via %s 2>> %s; "+
 		"echo \"after del:\" >> %s; ip addr show dev %s >> %s 2>&1; ip route >> %s 2>&1"+
 		"' >/dev/null 2>&1 &",
+		sudoPrefix, guestShell,
 		sourceIP, guestDev, logFile,
 		targetGW, logFile,
 		logFile, guestDev, logFile, logFile)
@@ -1379,9 +1437,10 @@ func (s *Server) updateVMHostsFile(ctx context.Context, box *exedb.Box, sourceIP
 	// Match that pattern to avoid partial matches (e.g. 10.0.0.2 inside 10.0.0.20).
 	// We avoid \b because BusyBox sed doesn't support it and truncates the file.
 	sourceIPSed := strings.ReplaceAll(sourceIP, ".", "\\.")
+	sudoPrefix, guestShell := s.guestShellPrefix(ctx, box)
 	cmd := fmt.Sprintf(
-		"sudo /exe.dev/bin/sh -c 'sed -i \"s/^%s /%s /\" /etc/hosts && sync'",
-		sourceIPSed, targetIP,
+		"%s%s -c 'sed -i \"s/^%s /%s /\" /etc/hosts && sync'",
+		sudoPrefix, guestShell, sourceIPSed, targetIP,
 	)
 
 	progress("Updating /etc/hosts: %s -> %s", sourceIP, targetIP)
@@ -1583,16 +1642,25 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		var coldBooted bool
 		dbStatus := "running"
 
+		var guestSudo, guestShell string
 		if live {
-			// Verify SSH works before starting the transfer.
-			// If SSH is dead, fall back to two-phase (cold) migration: the VM
-			// is already in a bad state, so a restart on the target is fine.
+			// Verify SSH works and guest can do IP reconfig before starting
+			// the transfer. Fall back to cold migration on failure.
 			if box.SSHPort != nil {
 				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
 					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
 						"box", boxName, "error", err)
 					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
 					live = false
+				} else {
+					var err error
+					guestSudo, guestShell, err = s.checkGuestIPReconfig(ctx, &box)
+					if err != nil {
+						s.slog().WarnContext(ctx, "guest IP reconfig pre-check failed, falling back to cold migration",
+							"box", boxName, "error", err)
+						writeProgress("WARNING: VM %q cannot run IP commands (%v) — falling back to cold migration.", boxName, err)
+						live = false
+					}
 				}
 			}
 		}
@@ -1607,6 +1675,8 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 				box:        box,
 				progress:   writeProgress,
 				directOnly: false,
+				sudoPrefix: guestSudo,
+				guestShell: guestShell,
 			})
 			if err != nil {
 				s.slog().ErrorContext(ctx, "live migration failed",
@@ -6558,16 +6628,25 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		var coldBooted bool
 		dbStatus := "running"
 
+		var guestSudo, guestShell string
 		if live {
-			// Verify SSH works before starting the transfer.
-			// If SSH is dead, fall back to two-phase (cold) migration: the VM
-			// is already in a bad state, so a restart on the target is fine.
+			// Verify SSH works and guest can do IP reconfig before starting
+			// the transfer. Fall back to cold migration on failure.
 			if box.SSHPort != nil {
 				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
 					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
 						"box", boxName, "error", err)
 					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
 					live = false
+				} else {
+					var err error
+					guestSudo, guestShell, err = s.checkGuestIPReconfig(ctx, &box)
+					if err != nil {
+						s.slog().WarnContext(ctx, "guest IP reconfig pre-check failed, falling back to cold migration",
+							"box", boxName, "error", err)
+						writeProgress("WARNING: VM %q cannot run IP commands (%v) — falling back to cold migration.", boxName, err)
+						live = false
+					}
 				}
 			}
 		}
@@ -6582,6 +6661,8 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 				box:        box,
 				progress:   writeProgress,
 				directOnly: false,
+				sudoPrefix: guestSudo,
+				guestShell: guestShell,
 			})
 			if err != nil {
 				s.slog().ErrorContext(ctx, "live migration failed",
