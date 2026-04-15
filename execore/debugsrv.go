@@ -74,9 +74,6 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/vms/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/vms/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("POST /debug/vms/{name}/migrate-tier", s.handleDebugBoxMigrateTier)
-	mux.HandleFunc("GET /debug/migrate", s.handleDebugMassMigrateForm)
-	mux.HandleFunc("GET /debug/migrate/vms", s.handleDebugMassMigrateBoxes)
-	mux.HandleFunc("POST /debug/migrate", s.handleDebugMassMigrate)
 	mux.HandleFunc("/debug/users", s.handleDebugUsers)
 	mux.HandleFunc("/debug/user", s.handleDebugUser)
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
@@ -102,6 +99,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
+	mux.HandleFunc("/debug/migrations", s.handleDebugMigrations)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("/debug/exelets/{hostname}", s.handleDebugExeletDetail)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/migrate-tier", s.handleDebugExeletMigrateTier)
@@ -1494,353 +1492,6 @@ func (s *Server) updateVMHostsFile(ctx context.Context, box *exedb.Box, sourceIP
 	}
 }
 
-// handleDebugMassMigrateForm shows the migration form for multiple boxes.
-func (s *Server) handleDebugMassMigrateForm(w http.ResponseWriter, r *http.Request) {
-	var addrs []string
-	for addr := range s.exeletClients {
-		addrs = append(addrs, addr)
-	}
-	sort.Strings(addrs)
-
-	data := struct {
-		Exelets []string
-	}{
-		Exelets: addrs,
-	}
-
-	s.renderDebugTemplate(r.Context(), w, "mass-migrate.html", data)
-}
-
-// handleDebugMassMigrateBoxes returns JSON list of boxes on selected exelets.
-func (s *Server) handleDebugMassMigrateBoxes(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sources := r.URL.Query()["source"]
-
-	type boxInfo struct {
-		Name        string `json:"name"`
-		Host        string `json:"host"`
-		ContainerID string `json:"container_id"`
-		Status      string `json:"status"`
-	}
-
-	var boxes []boxInfo
-	for _, source := range sources {
-		dbBoxes, err := withRxRes1(s, ctx, (*exedb.Queries).GetBoxesByHost, source)
-		if err != nil {
-			s.slog().ErrorContext(ctx, "failed to get boxes for host", "host", source, "error", err)
-			continue
-		}
-		for _, b := range dbBoxes {
-			if b.ContainerID == nil {
-				continue
-			}
-			boxes = append(boxes, boxInfo{
-				Name:        b.Name,
-				Host:        b.Ctrhost,
-				ContainerID: *b.ContainerID,
-				Status:      b.Status,
-			})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(boxes)
-}
-
-// handleDebugMassMigrate handles migration of multiple boxes to a target exelet.
-// It streams progress updates to the client.
-func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, fmt.Sprintf("failed to parse form: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	boxNames := r.PostForm["box_names"]
-	targetAddr := r.FormValue("target")
-	confirm := r.FormValue("confirm")
-
-	// Set up streaming response
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	writeProgress := func(format string, args ...any) {
-		fmt.Fprintf(w, format+"\n", args...)
-		flusher.Flush()
-	}
-
-	writeError := func(format string, args ...any) {
-		writeProgress("ERROR: "+format, args...)
-	}
-
-	if len(boxNames) == 0 || targetAddr == "" {
-		writeError("box_names and target are required")
-		writeProgress("MIGRATION_ERROR")
-		return
-	}
-
-	expectedConfirm := strconv.Itoa(len(boxNames))
-	if confirm != expectedConfirm {
-		writeError("confirm must be %q (the number of VMs to migrate)", expectedConfirm)
-		writeProgress("MIGRATION_ERROR")
-		return
-	}
-
-	targetClient := s.getExeletClient(targetAddr)
-	if targetClient == nil {
-		writeError("target exelet %q not configured", targetAddr)
-		writeProgress("MIGRATION_ERROR")
-		return
-	}
-
-	// Use a background context so migrations complete even if the browser disconnects.
-	ctx := context.Background()
-
-	// Lock deployments during mass migration (best-effort).
-	prodLocked, err := prodlockSet(ctx, s.env, "lock", fmt.Sprintf("mass VM migration: %d VMs to %s", len(boxNames), targetAddr))
-	if err != nil {
-		writeProgress("WARNING: failed to lock deployments: %v", err)
-	} else if prodLocked {
-		writeProgress("Deployments locked.")
-	} else {
-		writeProgress("Already locked — will not auto-unlock after migration.")
-	}
-
-	writeProgress("Starting migration of %d VMs to %s (live for running VMs)", len(boxNames), targetAddr)
-	writeProgress("")
-
-	var succeeded, failed int
-
-	for i, boxName := range boxNames {
-		writeProgress("=== [%d/%d] Migrating %s ===", i+1, len(boxNames), boxName)
-
-		box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
-		if err != nil {
-			writeError("box %q not found: %v", boxName, err)
-			failed++
-			writeProgress("")
-			continue
-		}
-
-		if box.ContainerID == nil {
-			writeError("box %q has no container_id", boxName)
-			failed++
-			writeProgress("")
-			continue
-		}
-
-		if box.Ctrhost == targetAddr {
-			writeError("box %q is already on target exelet", boxName)
-			failed++
-			writeProgress("")
-			continue
-		}
-
-		containerID := *box.ContainerID
-		sourceClient := s.getExeletClient(box.Ctrhost)
-		if sourceClient == nil {
-			writeError("source exelet %q not available for box %q", box.Ctrhost, boxName)
-			failed++
-			writeProgress("")
-			continue
-		}
-
-		// Check source VM state
-		sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-		if err != nil {
-			writeError("failed to get instance state for %q: %v", boxName, err)
-			failed++
-			writeProgress("")
-			continue
-		}
-		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
-		live := wasRunning // Use live migration for running VMs
-
-		restartSource := func(reason string) {
-			s.restartSourceVM(ctx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
-		}
-
-		var sshPort *int64
-		var coldBooted bool
-		dbStatus := "running"
-
-		var guestSudo, guestShell string
-		if live {
-			// Verify SSH works and guest can do IP reconfig before starting
-			// the transfer. Fall back to cold migration on failure.
-			if box.SSHPort != nil {
-				if _, err := runCommandOnBox(ctx, s.sshPool, &box, "echo ok"); err != nil {
-					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
-						"box", boxName, "error", err)
-					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
-					live = false
-				} else {
-					var err error
-					guestSudo, guestShell, err = s.checkGuestIPReconfig(ctx, &box)
-					if err != nil {
-						s.slog().WarnContext(ctx, "guest IP reconfig pre-check failed, falling back to cold migration",
-							"box", boxName, "error", err)
-						writeProgress("WARNING: VM %q cannot run IP commands (%v) — falling back to cold migration.", boxName, err)
-						live = false
-					}
-				}
-			}
-		}
-
-		if live {
-			writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
-			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
-				source:     sourceClient.client,
-				targetAddr: targetAddr,
-				instanceID: containerID,
-				box:        box,
-				progress:   writeProgress,
-				directOnly: false,
-				sudoPrefix: guestSudo,
-				guestShell: guestShell,
-			})
-			if err != nil {
-				s.slog().ErrorContext(ctx, "live migration failed",
-					"box", boxName, "container_id", containerID,
-					"source", box.Ctrhost, "target", targetAddr,
-					"error", err)
-				writeError("live migration failed: %v", err)
-				restartSource(err.Error())
-				failed++
-				writeProgress("")
-				continue
-			}
-			coldBooted = cb
-			sshPort = &liveSshPort
-			writeProgress("Live migration complete — VM is running on target.")
-			if coldBooted {
-				writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
-			}
-		} else {
-			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
-			s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, &box, writeProgress); err != nil {
-				s.slog().ErrorContext(ctx, "cold migration failed",
-					"box", boxName, "container_id", containerID,
-					"source", box.Ctrhost, "target", targetAddr,
-					"error", err)
-				writeError("disk transfer failed: %v", err)
-				restartSource(err.Error())
-				failed++
-				writeProgress("")
-				continue
-			}
-			writeProgress("Disk transfer complete.")
-
-			if wasRunning {
-				writeProgress("Starting VM on target...")
-				s.slog().InfoContext(ctx, "migration: starting VM on target", "box", boxName, "target", targetAddr)
-				if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
-					writeError("failed to start VM on target: %v", err)
-					restartSource(err.Error())
-					failed++
-					writeProgress("")
-					continue
-				}
-				writeProgress("VM started on target.")
-
-				writeProgress("Getting new SSH port...")
-				instance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
-				if err != nil {
-					writeError("failed to get instance info from target: %v", err)
-					restartSource(err.Error())
-					failed++
-					writeProgress("")
-					continue
-				}
-				newSSHPort := int64(instance.Instance.SSHPort)
-				sshPort = &newSSHPort
-				writeProgress("New SSH port: %d", newSSHPort)
-			} else {
-				writeProgress("Source VM was stopped, leaving stopped on target.")
-				dbStatus = "stopped"
-			}
-		}
-
-		writeProgress("Updating database...")
-		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
-			Ctrhost: targetAddr,
-			SSHPort: sshPort,
-			Status:  dbStatus,
-			Region:  targetClient.region.Code,
-			ID:      box.ID,
-		}); err != nil {
-			writeError("failed to update database: %v", err)
-			restartSource(err.Error())
-			failed++
-			writeProgress("")
-			continue
-		}
-		writeProgress("Database updated.")
-
-		proxyChangeMovedBox(boxName)
-		writeProgress("Proxy caches flushed.")
-
-		// Best-effort: update /etc/hosts inside the guest after DB is committed.
-		if wasRunning && sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil {
-			if targetInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID}); err == nil &&
-				targetInstance.Instance.VMConfig != nil && targetInstance.Instance.VMConfig.NetworkInterface != nil {
-				sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
-				targetNet := targetInstance.Instance.VMConfig.NetworkInterface
-				if sourceNet.IP != nil && targetNet.IP != nil {
-					targetBox := box
-					targetBox.Ctrhost = targetAddr
-					targetBox.SSHPort = sshPort
-					s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
-				}
-			}
-		}
-
-		if !live || coldBooted {
-			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
-		}
-
-		// Clean up source instance
-		writeProgress("Deleting source instance on %s...", box.Ctrhost)
-		if err := retrySourceDeleteAfterMigration(ctx, sourceClient.client, containerID); err != nil {
-			writeProgress("WARNING: failed to delete source instance: %v", err)
-			writeProgress("Manual cleanup: ./exelet-ctl -a %s compute instances rm %s", box.Ctrhost, containerID)
-			s.slog().WarnContext(ctx, "failed to delete source instance after migration",
-				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
-		} else {
-			writeProgress("Source instance deleted.")
-		}
-
-		writeProgress("Box %s migrated successfully.", boxName)
-		succeeded++
-		writeProgress("")
-	}
-
-	// Unlock if we locked it.
-	if prodLocked {
-		writeProgress("Unlocking deployments...")
-		if _, err := prodlockSet(ctx, s.env, "unlock", "mass VM migration complete"); err != nil {
-			writeProgress("WARNING: failed to unlock deployments: %v — manual unlock required", err)
-		} else {
-			writeProgress("Deployments unlocked.")
-		}
-	}
-
-	writeProgress("=== Migration complete ===")
-	writeProgress("Succeeded: %d, Failed: %d, Total: %d", succeeded, failed, len(boxNames))
-
-	if failed == 0 {
-		writeProgress("MIGRATION_SUCCESS")
-	} else {
-		writeProgress("MIGRATION_ERROR")
-	}
-}
-
 // prodlockSet locks or unlocks a prodlock environment.
 // action must be "lock" or "unlock".
 // It returns true if the action was applied, or false if the environment
@@ -2955,6 +2606,102 @@ func formatInt64Ptr(v *int64) string {
 		return "-"
 	}
 	return fmt.Sprintf("%d", *v)
+}
+
+// handleDebugMigrations shows all in-flight migrations across all exelets.
+func (s *Server) handleDebugMigrations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// 1. Live VM migrations (tracked in-memory by execore).
+	allLive := s.allLiveMigrationInfo()
+
+	// 2. Tier migrations (fetched from each exelet via gRPC).
+	type tierMigInfo struct {
+		Hostname  string
+		OpID      string
+		Instance  string
+		From      string
+		To        string
+		Progress  string
+		State     string
+		Error     string
+		Started   string
+		Completed string
+		startedAt int64
+	}
+
+	var (
+		tierMigs = make([]tierMigInfo, 0)
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+	)
+
+	for addr, ec := range s.exeletClients {
+		wg.Add(1)
+		go func(addr string, ec *exeletClient) {
+			defer wg.Done()
+			hostname := ""
+			if u, err := url.Parse(addr); err == nil {
+				hostname = u.Hostname()
+			}
+			migCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			resp, err := ec.client.GetTierMigrationStatus(migCtx, &computeapi.GetTierMigrationStatusRequest{})
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			for _, op := range resp.Operations {
+				var started, completed string
+				if op.StartedAt > 0 {
+					started = time.Unix(op.StartedAt, 0).UTC().Format("2006-01-02 15:04:05")
+				}
+				if op.CompletedAt > 0 {
+					completed = time.Unix(op.CompletedAt, 0).UTC().Format("2006-01-02 15:04:05")
+				}
+				tierMigs = append(tierMigs, tierMigInfo{
+					Hostname:  hostname,
+					OpID:      op.OperationID,
+					Instance:  op.InstanceID,
+					From:      op.SourcePool,
+					To:        op.TargetPool,
+					Progress:  fmt.Sprintf("%.0f%%", op.Progress*100),
+					State:     op.State,
+					Error:     op.Error,
+					Started:   started,
+					Completed: completed,
+					startedAt: op.StartedAt,
+				})
+			}
+			mu.Unlock()
+		}(addr, ec)
+	}
+	wg.Wait()
+
+	sort.Slice(tierMigs, func(i, j int) bool {
+		return tierMigs[i].startedAt > tierMigs[j].startedAt
+	})
+
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(map[string]any{
+			"live_migrations": allLive,
+			"tier_migrations": tierMigs,
+		})
+		return
+	}
+
+	data := struct {
+		LiveMigrations    []liveMigrationInfo
+		StorageMigrations []tierMigInfo
+	}{
+		LiveMigrations:    allLive,
+		StorageMigrations: tierMigs,
+	}
+
+	s.renderDebugTemplate(ctx, w, "migrations.html", data)
 }
 
 // handleDebugExelets displays a list of all exelets with their status and allows setting a preferred exelet.

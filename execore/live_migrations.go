@@ -168,3 +168,32 @@ func formatDuration(d time.Duration) string {
 	s := int(d.Seconds()) % 60
 	return fmt.Sprintf("%dm%02ds", m, s)
 }
+
+// allLiveMigrationInfo returns display-ready info for all in-flight VM migrations.
+func (s *Server) allLiveMigrationInfo() []liveMigrationInfo {
+	entries := s.liveMigrations.snapshot()
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].StartedAt.Before(entries[j].StartedAt)
+	})
+	infos := make([]liveMigrationInfo, len(entries))
+	now := time.Now()
+	for i, e := range entries {
+		dur := now.Sub(e.StartedAt)
+		var rate string
+		if dur > time.Second && e.BytesSent > 0 {
+			mbps := float64(e.BytesSent) * 8 / dur.Seconds() / 1_000_000
+			rate = fmt.Sprintf("%.1f Mbit/s", mbps)
+		}
+		infos[i] = liveMigrationInfo{
+			BoxName:      e.BoxName,
+			Source:       e.Source,
+			Target:       e.Target,
+			Live:         e.Live,
+			State:        string(e.State),
+			Transferred:  formatMigrationBytes(e.BytesSent),
+			TransferRate: rate,
+			Duration:     formatDuration(dur),
+		}
+	}
+	return infos
+}
