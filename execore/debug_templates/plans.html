@@ -281,8 +281,8 @@ details[open] > .plan-summary::before {
 
           <p class="tier-section-title">Pool Size</p>
           <table class="tier-table">
-            <tr><th>vCPUs</th><td{{if not .Quotas.PoolSize.MaxCPUs}} class="zero"{{end}}>{{if .Quotas.PoolSize.MaxCPUs}}{{.Quotas.PoolSize.MaxCPUs}}{{else}}—{{end}}</td></tr>
-            <tr><th>Memory</th><td>{{formatBytes .Quotas.PoolSize.MaxMemory}}</td></tr>
+            <tr><th>vCPUs</th><td{{if not .Quotas.ComputeClass.MaxCPUs}} class="zero"{{end}}>{{if .Quotas.ComputeClass.MaxCPUs}}{{.Quotas.ComputeClass.MaxCPUs}}{{else}}—{{end}}</td></tr>
+            <tr><th>Memory</th><td>{{formatBytes .Quotas.ComputeClass.MaxMemory}}</td></tr>
           </table>
 
           <p class="tier-section-title">Quotas</p>
