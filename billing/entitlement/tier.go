@@ -6,30 +6,30 @@ import (
 )
 
 const (
-	// GB is one gibibyte (2^30 bytes), used for expressing tier quota sizes.
-	GB = 1024 * 1024 * 1024
+	// gb is one gibibyte (2^30 bytes), used for expressing tier quota sizes.
+	gb = 1024 * 1024 * 1024
 )
 
-// ComputeClass represents the vCPU + memory bundle that defines a tier's
+// computeClass represents the vCPU + memory bundle that defines a tier's
 // compute capacity. Matches the "Pool size" dropdown on the pricing page.
-type ComputeClass struct {
+type computeClass struct {
 	MaxMemory uint64 // bytes
 	MaxCPUs   uint64
 }
 
 var (
-	ComputeSmall  = ComputeClass{MaxMemory: 8 * GB, MaxCPUs: 2}
-	ComputeMedium = ComputeClass{MaxMemory: 16 * GB, MaxCPUs: 4}
-	ComputeLarge  = ComputeClass{MaxMemory: 32 * GB, MaxCPUs: 8}
-	ComputeXLarge = ComputeClass{MaxMemory: 64 * GB, MaxCPUs: 16}
+	computeSmall  = computeClass{MaxMemory: 8 * gb, MaxCPUs: 2}
+	computeMedium = computeClass{MaxMemory: 16 * gb, MaxCPUs: 4}
+	computeLarge  = computeClass{MaxMemory: 32 * gb, MaxCPUs: 8}
+	computeXLarge = computeClass{MaxMemory: 64 * gb, MaxCPUs: 16}
 )
 
-// TierQuotas holds the compute limits for a plan tier.
+// tierQuotas holds the compute limits for a plan tier.
 // Credit amounts are plan-level and live on Plan.
 //
 //exe:completeinit
-type TierQuotas struct {
-	ComputeClass ComputeClass
+type tierQuotas struct {
+	ComputeClass computeClass
 	MaxUserVMs   int
 	MaxTeamVMs   int
 	DefaultDisk  uint64 // bytes — disk size for new VMs
@@ -46,8 +46,8 @@ type Tier struct {
 	PlanCategory PlanCategory
 	Name         string // "Small", "Medium", "Default", etc.
 
-	StripePrices map[string]StripePriceInfo
-	Quotas       TierQuotas
+	StripePrices map[string]stripePriceInfo
+	Quotas       tierQuotas
 
 	// Entitlements overrides the plan's base entitlements when non-nil.
 	// nil = inherit from the parent Plan. Non-nil = use this set instead.
@@ -61,17 +61,17 @@ var tiers = map[string]Tier{
 		ID:           "individual:small:monthly:20260601",
 		PlanCategory: CategoryIndividual,
 		Name:         "Small",
-		StripePrices: map[string]StripePriceInfo{
+		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_small_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeSmall,
+		Quotas: tierQuotas{
+			ComputeClass: computeSmall,
 			MaxUserVMs:   50,
 			MaxTeamVMs:   0,
-			DefaultDisk:  25 * GB,
-			MaxDisk:      75 * GB,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -79,17 +79,17 @@ var tiers = map[string]Tier{
 		ID:           "individual:medium:monthly:20260601",
 		PlanCategory: CategoryIndividual,
 		Name:         "Medium",
-		StripePrices: map[string]StripePriceInfo{
+		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_medium_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeMedium,
+		Quotas: tierQuotas{
+			ComputeClass: computeMedium,
 			MaxUserVMs:   50,
 			MaxTeamVMs:   0,
-			DefaultDisk:  25 * GB,
-			MaxDisk:      75 * GB,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -97,17 +97,17 @@ var tiers = map[string]Tier{
 		ID:           "individual:large:monthly:20260601",
 		PlanCategory: CategoryIndividual,
 		Name:         "Large",
-		StripePrices: map[string]StripePriceInfo{
+		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_large_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeLarge,
+		Quotas: tierQuotas{
+			ComputeClass: computeLarge,
 			MaxUserVMs:   50,
 			MaxTeamVMs:   0,
-			DefaultDisk:  25 * GB,
-			MaxDisk:      75 * GB,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -115,17 +115,17 @@ var tiers = map[string]Tier{
 		ID:           "individual:xlarge:monthly:20260601",
 		PlanCategory: CategoryIndividual,
 		Name:         "XLarge",
-		StripePrices: map[string]StripePriceInfo{
+		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_xlarge_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeXLarge,
+		Quotas: tierQuotas{
+			ComputeClass: computeXLarge,
 			MaxUserVMs:   50,
 			MaxTeamVMs:   0,
-			DefaultDisk:  25 * GB,
-			MaxDisk:      75 * GB,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -136,9 +136,9 @@ var tiers = map[string]Tier{
 		ID:           "vip:default:monthly:20260601",
 		PlanCategory: CategoryVIP,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -150,9 +150,9 @@ var tiers = map[string]Tier{
 		ID:           "enterprise:default:monthly:20260601",
 		PlanCategory: CategoryEnterprise,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -164,9 +164,9 @@ var tiers = map[string]Tier{
 		ID:           "team:default:monthly:20260601",
 		PlanCategory: CategoryTeam,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -178,9 +178,9 @@ var tiers = map[string]Tier{
 		ID:           "friend:default:monthly:20260601",
 		PlanCategory: CategoryFriend,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -192,9 +192,9 @@ var tiers = map[string]Tier{
 		ID:           "grandfathered:default:monthly:20260601",
 		PlanCategory: CategoryGrandfathered,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -206,9 +206,9 @@ var tiers = map[string]Tier{
 		ID:           "trial:default:monthly:20260601",
 		PlanCategory: CategoryTrial,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -220,9 +220,9 @@ var tiers = map[string]Tier{
 		ID:           "basic:default:monthly:20260601",
 		PlanCategory: CategoryBasic,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -234,9 +234,9 @@ var tiers = map[string]Tier{
 		ID:           "restricted:default:monthly:20260601",
 		PlanCategory: CategoryRestricted,
 		Name:         "Default",
-		StripePrices: map[string]StripePriceInfo{},
-		Quotas: TierQuotas{
-			ComputeClass: ComputeClass{},
+		StripePrices: map[string]stripePriceInfo{},
+		Quotas: tierQuotas{
+			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
 			DefaultDisk:  0,
@@ -246,11 +246,11 @@ var tiers = map[string]Tier{
 	},
 }
 
-// GetTierByID returns the Tier for a given tier ID.
+// getTierByID returns the Tier for a given tier ID.
 // Handles 4-part tier IDs ("individual:medium:monthly:20260601") as well as
 // 3-part legacy plan IDs ("individual:monthly:20260106").
 // Returns an error for completely unknown IDs.
-func GetTierByID(id string) (Tier, error) {
+func getTierByID(id string) (Tier, error) {
 	if tier, ok := tiers[id]; ok {
 		return tier, nil
 	}
@@ -331,7 +331,7 @@ func tierGrants(tier Tier, ent Entitlement) bool {
 // given the current disk size and the user's plan. Returns 0 if the plan
 // does not allow resize (MaxDisk == 0) or the disk is already at/above the ceiling.
 func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
-	tier, err := GetTierByID(planID)
+	tier, err := getTierByID(planID)
 	if err != nil || tier.Quotas.MaxDisk == 0 {
 		return 0
 	}
@@ -344,7 +344,7 @@ func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
 // MaxDiskForPlan returns the absolute disk ceiling for a plan.
 // Returns 0 if the plan is unknown or has no disk resize quota.
 func MaxDiskForPlan(planID string) uint64 {
-	tier, err := GetTierByID(planID)
+	tier, err := getTierByID(planID)
 	if err != nil {
 		return 0
 	}

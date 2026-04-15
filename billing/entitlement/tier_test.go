@@ -2,12 +2,12 @@ package entitlement
 
 import "testing"
 
-// mustGetTierByID is a test helper that fatals if the tier ID is unknown.
-func mustGetTierByID(t *testing.T, id string) Tier {
+// mustgetTierByID is a test helper that fatals if the tier ID is unknown.
+func mustgetTierByID(t *testing.T, id string) Tier {
 	t.Helper()
-	tier, err := GetTierByID(id)
+	tier, err := getTierByID(id)
 	if err != nil {
-		t.Fatalf("GetTierByID(%q): %v", id, err)
+		t.Fatalf("getTierByID(%q): %v", id, err)
 	}
 	return tier
 }
@@ -168,27 +168,27 @@ func TestGetTierByID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tier, err := GetTierByID(tt.id)
+			tier, err := getTierByID(tt.id)
 			if err != nil {
-				t.Fatalf("GetTierByID(%q): %v", tt.id, err)
+				t.Fatalf("getTierByID(%q): %v", tt.id, err)
 			}
 			if tier.ID != tt.wantID {
-				t.Errorf("GetTierByID(%q).ID = %q, want %q", tt.id, tier.ID, tt.wantID)
+				t.Errorf("getTierByID(%q).ID = %q, want %q", tt.id, tier.ID, tt.wantID)
 			}
 			if tier.Name != tt.wantName {
-				t.Errorf("GetTierByID(%q).Name = %q, want %q", tt.id, tier.Name, tt.wantName)
+				t.Errorf("getTierByID(%q).Name = %q, want %q", tt.id, tier.Name, tt.wantName)
 			}
 			if tier.PlanCategory != tt.wantCat {
-				t.Errorf("GetTierByID(%q).PlanCategory = %q, want %q", tt.id, tier.PlanCategory, tt.wantCat)
+				t.Errorf("getTierByID(%q).PlanCategory = %q, want %q", tt.id, tier.PlanCategory, tt.wantCat)
 			}
 		})
 	}
 }
 
 func TestGetTierByIDUnknown(t *testing.T) {
-	_, err := GetTierByID("totally:bogus:id")
+	_, err := getTierByID("totally:bogus:id")
 	if err == nil {
-		t.Error("GetTierByID with unknown ID should return an error")
+		t.Error("getTierByID with unknown ID should return an error")
 	}
 }
 
@@ -200,7 +200,7 @@ func TestGrantsEntitlementUnknownPlanID(t *testing.T) {
 
 func TestTierGrantsInheritance(t *testing.T) {
 	// nil Entitlements → inherit from plan.
-	small := mustGetTierByID(t, "individual:small:monthly:20260601")
+	small := mustgetTierByID(t, "individual:small:monthly:20260601")
 	if small.Entitlements != nil {
 		t.Fatal("small tier should have nil Entitlements (inherit from plan)")
 	}
@@ -217,7 +217,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 		ID:           "test:custom:monthly:20260601",
 		PlanCategory: CategoryIndividual,
 		Name:         "Custom",
-		StripePrices: map[string]StripePriceInfo{},
+		StripePrices: map[string]stripePriceInfo{},
 
 		Entitlements: &override,
 	}
@@ -233,7 +233,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 }
 
 func TestTierGrants(t *testing.T) {
-	small := mustGetTierByID(t, "individual:small:monthly:20260601")
+	small := mustgetTierByID(t, "individual:small:monthly:20260601")
 	if !tierGrants(small, VMCreate) {
 		t.Error("individual:small should grant VMCreate")
 	}
@@ -241,7 +241,7 @@ func TestTierGrants(t *testing.T) {
 		t.Error("individual:small should grant LLMUse")
 	}
 
-	vip := mustGetTierByID(t, "vip:default:monthly:20260601")
+	vip := mustgetTierByID(t, "vip:default:monthly:20260601")
 	// VIP plan has All wildcard — tierGrants should respect it.
 	if !tierGrants(vip, VMCreate) {
 		t.Error("vip:default should grant VMCreate via wildcard")
@@ -289,19 +289,19 @@ func TestGrantsEntitlement(t *testing.T) {
 func TestIndividualTierQuotas(t *testing.T) {
 	expected := []struct {
 		id          string
-		compute     ComputeClass
+		compute     computeClass
 		defaultDisk uint64
 		maxDisk     uint64
 		maxVMs      int
 	}{
-		{"individual:small:monthly:20260601", ComputeSmall, 25 * GB, 75 * GB, 50},
-		{"individual:medium:monthly:20260601", ComputeMedium, 25 * GB, 75 * GB, 50},
-		{"individual:large:monthly:20260601", ComputeLarge, 25 * GB, 75 * GB, 50},
-		{"individual:xlarge:monthly:20260601", ComputeXLarge, 25 * GB, 75 * GB, 50},
+		{"individual:small:monthly:20260601", computeSmall, 25 * gb, 75 * gb, 50},
+		{"individual:medium:monthly:20260601", computeMedium, 25 * gb, 75 * gb, 50},
+		{"individual:large:monthly:20260601", computeLarge, 25 * gb, 75 * gb, 50},
+		{"individual:xlarge:monthly:20260601", computeXLarge, 25 * gb, 75 * gb, 50},
 	}
 	for _, e := range expected {
 		t.Run(e.id, func(t *testing.T) {
-			tier := mustGetTierByID(t, e.id)
+			tier := mustgetTierByID(t, e.id)
 			if tier.Quotas.ComputeClass != e.compute {
 				t.Errorf("ComputeClass = %+v, want %+v", tier.Quotas.ComputeClass, e.compute)
 			}
@@ -319,29 +319,29 @@ func TestIndividualTierQuotas(t *testing.T) {
 }
 
 func TestComputeClasses(t *testing.T) {
-	if ComputeSmall.MaxMemory != 8*GB {
-		t.Errorf("ComputeSmall.MaxMemory = %d, want %d", ComputeSmall.MaxMemory, 8*GB)
+	if computeSmall.MaxMemory != 8*gb {
+		t.Errorf("computeSmall.MaxMemory = %d, want %d", computeSmall.MaxMemory, 8*gb)
 	}
-	if ComputeSmall.MaxCPUs != 2 {
-		t.Errorf("ComputeSmall.MaxCPUs = %d, want 2", ComputeSmall.MaxCPUs)
+	if computeSmall.MaxCPUs != 2 {
+		t.Errorf("computeSmall.MaxCPUs = %d, want 2", computeSmall.MaxCPUs)
 	}
-	if ComputeMedium.MaxMemory != 16*GB {
-		t.Errorf("ComputeMedium.MaxMemory = %d, want %d", ComputeMedium.MaxMemory, 16*GB)
+	if computeMedium.MaxMemory != 16*gb {
+		t.Errorf("computeMedium.MaxMemory = %d, want %d", computeMedium.MaxMemory, 16*gb)
 	}
-	if ComputeMedium.MaxCPUs != 4 {
-		t.Errorf("ComputeMedium.MaxCPUs = %d, want 4", ComputeMedium.MaxCPUs)
+	if computeMedium.MaxCPUs != 4 {
+		t.Errorf("computeMedium.MaxCPUs = %d, want 4", computeMedium.MaxCPUs)
 	}
-	if ComputeLarge.MaxMemory != 32*GB {
-		t.Errorf("ComputeLarge.MaxMemory = %d, want %d", ComputeLarge.MaxMemory, 32*GB)
+	if computeLarge.MaxMemory != 32*gb {
+		t.Errorf("computeLarge.MaxMemory = %d, want %d", computeLarge.MaxMemory, 32*gb)
 	}
-	if ComputeLarge.MaxCPUs != 8 {
-		t.Errorf("ComputeLarge.MaxCPUs = %d, want 8", ComputeLarge.MaxCPUs)
+	if computeLarge.MaxCPUs != 8 {
+		t.Errorf("computeLarge.MaxCPUs = %d, want 8", computeLarge.MaxCPUs)
 	}
-	if ComputeXLarge.MaxMemory != 64*GB {
-		t.Errorf("ComputeXLarge.MaxMemory = %d, want %d", ComputeXLarge.MaxMemory, 64*GB)
+	if computeXLarge.MaxMemory != 64*gb {
+		t.Errorf("computeXLarge.MaxMemory = %d, want %d", computeXLarge.MaxMemory, 64*gb)
 	}
-	if ComputeXLarge.MaxCPUs != 16 {
-		t.Errorf("ComputeXLarge.MaxCPUs = %d, want 16", ComputeXLarge.MaxCPUs)
+	if computeXLarge.MaxCPUs != 16 {
+		t.Errorf("computeXLarge.MaxCPUs = %d, want 16", computeXLarge.MaxCPUs)
 	}
 }
 
@@ -417,50 +417,50 @@ func TestDiskResizeAllowance(t *testing.T) {
 		{
 			name:        "individual small at default",
 			planID:      "individual:small:monthly:20260601",
-			currentDisk: 25 * GB,
-			want:        50 * GB, // 75 - 25 = 50 GB headroom
+			currentDisk: 25 * gb,
+			want:        50 * gb, // 75 - 25 = 50 GB headroom
 		},
 		{
 			name:        "individual small at max",
 			planID:      "individual:small:monthly:20260601",
-			currentDisk: 75 * GB,
+			currentDisk: 75 * gb,
 			want:        0,
 		},
 		{
 			name:        "individual small over max",
 			planID:      "individual:small:monthly:20260601",
-			currentDisk: 80 * GB,
+			currentDisk: 80 * gb,
 			want:        0,
 		},
 		{
 			name:        "individual small at 10GB",
 			planID:      "individual:small:monthly:20260601",
-			currentDisk: 10 * GB,
-			want:        65 * GB,
+			currentDisk: 10 * gb,
+			want:        65 * gb,
 		},
 		{
 			name:        "basic plan no resize",
 			planID:      "basic",
-			currentDisk: 10 * GB,
+			currentDisk: 10 * gb,
 			want:        0,
 		},
 		{
 			name:        "vip plan no resize quota",
 			planID:      "vip",
-			currentDisk: 10 * GB,
+			currentDisk: 10 * gb,
 			want:        0,
 		},
 		{
 			name:        "unknown plan",
 			planID:      "totally:bogus",
-			currentDisk: 10 * GB,
+			currentDisk: 10 * gb,
 			want:        0,
 		},
 		{
 			name:        "legacy individual ID",
 			planID:      "individual:monthly:20260106",
-			currentDisk: 25 * GB,
-			want:        50 * GB, // falls back to small tier, 75 - 25 = 50
+			currentDisk: 25 * gb,
+			want:        50 * gb, // falls back to small tier, 75 - 25 = 50
 		},
 	}
 	for _, tt := range tests {
@@ -474,8 +474,8 @@ func TestDiskResizeAllowance(t *testing.T) {
 }
 
 func TestMaxDiskForPlan(t *testing.T) {
-	if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*GB {
-		t.Errorf("MaxDiskForPlan(individual:small) = %d, want %d", got, 75*GB)
+	if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*gb {
+		t.Errorf("MaxDiskForPlan(individual:small) = %d, want %d", got, 75*gb)
 	}
 	if got := MaxDiskForPlan("basic"); got != 0 {
 		t.Errorf("MaxDiskForPlan(basic) = %d, want 0", got)

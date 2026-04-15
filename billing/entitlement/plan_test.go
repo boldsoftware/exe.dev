@@ -94,80 +94,80 @@ func TestGetPlanCategory(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		inputs UserPlanInputs
+		inputs userPlanInputs
 		want   PlanCategory
 	}{
 		{
 			name:   "canceled overrides grandfathered",
-			inputs: UserPlanInputs{BillingStatus: "canceled", CreatedAt: &oldDate},
+			inputs: userPlanInputs{BillingStatus: "canceled", CreatedAt: &oldDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "canceled overrides trial",
-			inputs: UserPlanInputs{BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: userPlanInputs{BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "friend with overrides is VIP",
-			inputs: UserPlanInputs{HasExplicitOverrides: true},
+			inputs: userPlanInputs{HasExplicitOverrides: true},
 			want:   CategoryVIP,
 		},
 		{
 			name:   "friend without overrides",
-			inputs: UserPlanInputs{PlanID: strPtr("friend")},
+			inputs: userPlanInputs{PlanID: strPtr("friend")},
 			want:   CategoryFriend,
 		},
 		{
 			name:   "has_billing is individual",
-			inputs: UserPlanInputs{BillingStatus: "active"},
+			inputs: userPlanInputs{BillingStatus: "active"},
 			want:   CategoryIndividual,
 		},
 		{
 			name:   "trial not expired is trial",
-			inputs: UserPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: userPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryTrial,
 		},
 		{
 			name:   "trial expired falls through",
-			inputs: UserPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
+			inputs: userPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "old user is grandfathered",
-			inputs: UserPlanInputs{CreatedAt: &oldDate},
+			inputs: userPlanInputs{CreatedAt: &oldDate},
 			want:   CategoryGrandfathered,
 		},
 		{
 			name:   "new user with nothing is basic",
-			inputs: UserPlanInputs{CreatedAt: &newDate},
+			inputs: userPlanInputs{CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "team member covered by billing owner",
-			inputs: UserPlanInputs{CreatedAt: &newDate, TeamBillingActive: true},
+			inputs: userPlanInputs{CreatedAt: &newDate, TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 		{
 			name:   "canceled user on team still basic",
-			inputs: UserPlanInputs{BillingStatus: "canceled", TeamBillingActive: true},
+			inputs: userPlanInputs{BillingStatus: "canceled", TeamBillingActive: true},
 			want:   CategoryBasic,
 		},
 		{
 			name:   "individual with own billing on team resolves to team",
-			inputs: UserPlanInputs{BillingStatus: "active", TeamBillingActive: true},
+			inputs: userPlanInputs{BillingStatus: "active", TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 		{
 			name:   "grandfathered user on team resolves to team",
-			inputs: UserPlanInputs{CreatedAt: &oldDate, TeamBillingActive: true},
+			inputs: userPlanInputs{CreatedAt: &oldDate, TeamBillingActive: true},
 			want:   CategoryTeam,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GetPlanCategory(tt.inputs)
+			got := getPlanCategory(tt.inputs)
 			if got != tt.want {
-				t.Errorf("GetPlanCategory() = %q, want %q", got, tt.want)
+				t.Errorf("getPlanCategory() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -178,13 +178,13 @@ func TestGetPlanCategory(t *testing.T) {
 // should resolve to CategoryTeam and be granted VMCreate.
 func TestTeamMemberCanCreateVM(t *testing.T) {
 	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	inputs := UserPlanInputs{
+	inputs := userPlanInputs{
 		CreatedAt:         &newDate,
 		TeamBillingActive: true,
 	}
-	version := GetPlanCategory(inputs)
+	version := getPlanCategory(inputs)
 	if version != CategoryTeam {
-		t.Fatalf("GetPlanCategory() = %q, want %q", version, CategoryTeam)
+		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryTeam)
 	}
 	if !PlanGrants(version, VMCreate) {
 		t.Errorf("PlanGrants(%q, VMCreate) = false, want true", version)
@@ -195,13 +195,13 @@ func TestTeamMemberCanCreateVM(t *testing.T) {
 // without billing owner coverage falls through to Basic and is denied VMCreate.
 func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 	newDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	inputs := UserPlanInputs{
+	inputs := userPlanInputs{
 		CreatedAt:         &newDate,
 		TeamBillingActive: false,
 	}
-	version := GetPlanCategory(inputs)
+	version := getPlanCategory(inputs)
 	if version != CategoryBasic {
-		t.Fatalf("GetPlanCategory() = %q, want %q", version, CategoryBasic)
+		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryBasic)
 	}
 	if PlanGrants(version, VMCreate) {
 		t.Errorf("PlanGrants(%q, VMCreate) = true, want false", version)
@@ -666,14 +666,14 @@ func TestTierStripePriceInfo(t *testing.T) {
 		name          string
 		tierID        string
 		billingOption string
-		want          StripePriceInfo
+		want          stripePriceInfo
 	}{
 		// Individual Small tier
 		{
 			name:          "individual small monthly",
 			tierID:        "individual:small:monthly:20260601",
 			billingOption: "monthly",
-			want: StripePriceInfo{
+			want: stripePriceInfo{
 				LookupKey: "individual_small_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
@@ -683,7 +683,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			name:          "individual medium monthly",
 			tierID:        "individual:medium:monthly:20260601",
 			billingOption: "monthly",
-			want: StripePriceInfo{
+			want: stripePriceInfo{
 				LookupKey: "individual_medium_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
@@ -693,7 +693,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			name:          "individual large monthly",
 			tierID:        "individual:large:monthly:20260601",
 			billingOption: "monthly",
-			want: StripePriceInfo{
+			want: stripePriceInfo{
 				LookupKey: "individual_large_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
@@ -703,7 +703,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			name:          "individual xlarge monthly",
 			tierID:        "individual:xlarge:monthly:20260601",
 			billingOption: "monthly",
-			want: StripePriceInfo{
+			want: stripePriceInfo{
 				LookupKey: "individual_xlarge_monthly",
 				Model:     "subscription",
 				Interval:  "monthly",
@@ -714,13 +714,13 @@ func TestTierStripePriceInfo(t *testing.T) {
 			name:          "unknown billing option",
 			tierID:        "individual:small:monthly:20260601",
 			billingOption: "nonexistent",
-			want:          StripePriceInfo{},
+			want:          stripePriceInfo{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tier := mustGetTierByID(t, tt.tierID)
+			tier := mustgetTierByID(t, tt.tierID)
 			got := tier.StripePrices[tt.billingOption]
 			if got != tt.want {
 				t.Errorf("tier %q StripePrices[%q] = %+v, want %+v", tt.tierID, tt.billingOption, got, tt.want)

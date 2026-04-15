@@ -12,8 +12,8 @@ import (
 // PlanCategory identifies a billing plan.
 type PlanCategory string
 
-// StripePriceInfo contains Stripe price metadata for a plan.
-type StripePriceInfo struct {
+// stripePriceInfo contains Stripe price metadata for a plan.
+type stripePriceInfo struct {
 	LookupKey string
 	Model     string
 	Interval  string
@@ -34,7 +34,7 @@ const (
 
 // Plan describes a billing plan category and the base entitlements it grants.
 // Numeric quotas (memory, disk, CPUs, credit amounts) live in Tier — use
-// GetTierByID to look those up.
+// getTierByID to look those up.
 type Plan struct {
 	// ID is the stable identifier stored in account_plans.plan_id
 	// (e.g. "individual:monthly:20260106"). For plans without a billing
@@ -293,7 +293,7 @@ func PlanIsPaid(version PlanCategory) bool {
 // category string) and applies tier-override → plan-fallback logic.
 // Use this when you have a raw plan_id from account_plans.
 func GrantsEntitlement(planID string, ent Entitlement) bool {
-	tier, err := GetTierByID(planID)
+	tier, err := getTierByID(planID)
 	if err != nil {
 		slog.Error("entitlement check failed: unknown tier", "plan_id", planID, "entitlement", ent.ID, "error", err)
 		return false
@@ -318,9 +318,9 @@ func PlanGrants(version PlanCategory, ent Entitlement) bool {
 // Duplicated from execore/billing_status.go to avoid importing execore.
 var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
 
-// UserPlanInputs captures the billing state needed to resolve a user's plan version.
+// userPlanInputs captures the billing state needed to resolve a user's plan version.
 // Uses plain Go types to avoid importing exedb or execore.
-type UserPlanInputs struct {
+type userPlanInputs struct {
 	// BillingStatus is the subscription status: "active", "canceled", or "".
 	BillingStatus string
 
@@ -340,8 +340,8 @@ type UserPlanInputs struct {
 	TeamBillingActive bool
 }
 
-// GetPlanCategory maps existing billing state to a PlanCategory.
-func GetPlanCategory(inputs UserPlanInputs) PlanCategory {
+// getPlanCategory maps existing billing state to a PlanCategory.
+func getPlanCategory(inputs userPlanInputs) PlanCategory {
 	// Canceled users go straight to Basic — canceling overrides
 	// grandfathered status, exemptions, and trial access.
 	if inputs.BillingStatus == "canceled" {
@@ -406,8 +406,7 @@ func GetPlanForUser(ctx context.Context, q PlanDataQuerier, userID string) (Plan
 		return "", err
 	}
 
-	// Construct inputs for GetPlanCategory
-	inputs := UserPlanInputs{
+	inputs := userPlanInputs{
 		BillingStatus:        row.BillingStatus,
 		PlanID:               row.PlanID,
 		TrialExpiresAt:       row.TrialExpiresAt,
@@ -416,7 +415,7 @@ func GetPlanForUser(ctx context.Context, q PlanDataQuerier, userID string) (Plan
 		TeamBillingActive:    row.TeamBillingActive != 0,
 	}
 
-	return GetPlanCategory(inputs), nil
+	return getPlanCategory(inputs), nil
 }
 
 // DeriveExemptionDisplay returns a human-readable billing exemption string
