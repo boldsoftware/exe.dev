@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,15 +23,21 @@ import (
 )
 
 // fakeLiveMigrationServer implements a minimal ComputeServiceServer for testing
-// live migration. It can act as either source (SendVM) or target (ReceiveVM).
+// migration via the unary RPCs (InitSendVM/PollSendVM/SubmitSendVMControl/AbortSendVM).
+// It can also act as a target (GetInstance, StartInstance, etc.).
 type fakeLiveMigrationServer struct {
 	computeapi.UnimplementedComputeServiceServer
 	sshPort               int32
-	coldBooted            bool   // controls what ReceiveVMResult.ColdBooted returns
+	coldBooted            bool   // controls what SendVMResult.ColdBooted returns
 	role                  string // "source" or "target"
-	sendPreMetadataStatus bool   // when true, sends a SendVMStatus before metadata (if client accepts)
+	sendPreMetadataStatus bool   // when true, sends a SendVMStatus before metadata
 	deleteErrs            []error
 	deleteCalls           int
+
+	// Migration session state (source role, set by InitSendVM).
+	mu      sync.Mutex
+	events  []*computeapi.SendVMEvent
+	nextSeq uint64
 }
 
 func (f *fakeLiveMigrationServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
@@ -63,211 +69,26 @@ func (f *fakeLiveMigrationServer) DeleteInstance(_ context.Context, _ *computeap
 	return &computeapi.DeleteInstanceResponse{}, nil
 }
 
-// SendVM implements the source side of the migration protocol.
-// When the start request includes a TargetAddress (direct mode), it simulates
-// the source connecting directly to the target and relays control messages back
-// to execore. Otherwise it falls back to the legacy proxy protocol.
-// When sendPreMetadataStatus is true and the client sets AcceptStatus, a
-// SendVMStatus message is sent before metadata to simulate a replication wait.
-func (f *fakeLiveMigrationServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
-	// Receive start request.
-	req, err := stream.Recv()
-	if err != nil {
-		return err
-	}
-	startReq := req.GetStart()
-
-	// Direct mode: source connects to target, sends control messages to execore.
-	if startReq != nil && startReq.TargetAddress != "" {
-		return f.sendVMDirect(stream, startReq)
-	}
-
-	// Legacy proxy mode (data flows through execore).
-
-	// If configured, send a status frame before metadata (simulates replication wait).
-	if f.sendPreMetadataStatus && startReq != nil && startReq.AcceptStatus {
-		if err := stream.Send(&computeapi.SendVMResponse{
-			Type: &computeapi.SendVMResponse_Status{
-				Status: &computeapi.SendVMStatus{
-					Message: "waiting for storage replication to complete",
-				},
-			},
-		}); err != nil {
-			return err
-		}
-	}
-
-	// Send metadata.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Metadata{
-			Metadata: &computeapi.SendVMMetadata{
-				Instance: &computeapi.Instance{
-					ID:    "test-instance",
-					Image: "ubuntu:latest",
-				},
-				BaseImageID: "sha256:fake",
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Send a small data chunk.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Data{
-			Data: &computeapi.SendVMDataChunk{
-				Data: []byte("testdata"),
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Send complete.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Complete{
-			Complete: &computeapi.SendVMComplete{
-				Checksum: "fakechecksum",
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Return nil to close the stream (EOF).
-	return nil
+// addEvent is a helper that appends an event with an auto-incremented sequence number.
+func (f *fakeLiveMigrationServer) addEvent(evt *computeapi.SendVMEvent) {
+	f.nextSeq++
+	evt.Seq = f.nextSeq
+	f.events = append(f.events, evt)
 }
 
-// sendVMDirect simulates direct exelet-to-exelet migration. The source dials
-// the target, drives the ReceiveVM protocol, and relays control messages
-// (TargetReady, Metadata, Progress, Result) back to execore via the SendVM stream.
-func (f *fakeLiveMigrationServer) sendVMDirect(stream computeapi.ComputeService_SendVMServer, startReq *computeapi.SendVMStartRequest) error {
-	// Dial the target exelet.
-	targetClient, err := exeletclient.NewClient(startReq.TargetAddress, exeletclient.WithInsecure())
-	if err != nil {
-		return fmt.Errorf("fake source: failed to dial target %s: %w", startReq.TargetAddress, err)
-	}
-	defer targetClient.Close()
+// InitSendVM prepares the migration event sequence and returns a session ID.
+func (f *fakeLiveMigrationServer) InitSendVM(_ context.Context, req *computeapi.InitSendVMRequest) (*computeapi.InitSendVMResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	recvStream, err := targetClient.ReceiveVM(stream.Context())
-	if err != nil {
-		return fmt.Errorf("fake source: failed to start ReceiveVM: %w", err)
-	}
+	f.events = nil
+	f.nextSeq = 0
 
-	// Send ReceiveVMStartRequest to target.
-	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
-		Type: &computeapi.ReceiveVMRequest_Start{
-			Start: &computeapi.ReceiveVMStartRequest{
-				InstanceID: startReq.InstanceID,
-				Live:       startReq.Live,
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("fake source: failed to send ReceiveVM start: %w", err)
-	}
-
-	// Read ReceiveVMReady from target.
-	readyResp, err := recvStream.Recv()
-	if err != nil {
-		return fmt.Errorf("fake source: failed to receive ReceiveVMReady: %w", err)
-	}
-	ready := readyResp.GetReady()
-
-	// Forward TargetReady to execore stream.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_TargetReady{
+	// Both live (direct) and cold (direct) paths send TargetReady first
+	// because InitSendVM always sets TargetAddress in production.
+	f.addEvent(&computeapi.SendVMEvent{
+		Type: &computeapi.SendVMEvent_TargetReady{
 			TargetReady: &computeapi.SendVMTargetReady{
-				TargetNetwork: ready.GetTargetNetwork(),
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// If configured, send a status frame before metadata.
-	if f.sendPreMetadataStatus && startReq.AcceptStatus {
-		if err := stream.Send(&computeapi.SendVMResponse{
-			Type: &computeapi.SendVMResponse_Status{
-				Status: &computeapi.SendVMStatus{
-					Message: "waiting for storage replication to complete",
-				},
-			},
-		}); err != nil {
-			return err
-		}
-	}
-
-	// Send metadata to execore.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Metadata{
-			Metadata: &computeapi.SendVMMetadata{
-				Instance: &computeapi.Instance{
-					ID:    "test-instance",
-					Image: "ubuntu:latest",
-				},
-				BaseImageID: "sha256:fake",
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Send data directly to target.
-	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
-		Type: &computeapi.ReceiveVMRequest_Data{
-			Data: &computeapi.ReceiveVMDataChunk{
-				Data: []byte("testdata"),
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("fake source: failed to send data to target: %w", err)
-	}
-
-	// Send complete to target.
-	if err := recvStream.Send(&computeapi.ReceiveVMRequest{
-		Type: &computeapi.ReceiveVMRequest_Complete{
-			Complete: &computeapi.ReceiveVMComplete{
-				Checksum: "fakechecksum",
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("fake source: failed to send complete to target: %w", err)
-	}
-
-	// Read result from target.
-	resultResp, err := recvStream.Recv()
-	if err != nil {
-		return fmt.Errorf("fake source: failed to receive result from target: %w", err)
-	}
-	result := resultResp.GetResult()
-
-	// Forward result to execore.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Result{
-			Result: &computeapi.SendVMResult{
-				Instance:   result.GetInstance(),
-				ColdBooted: result.GetColdBooted(),
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ReceiveVM implements the target side: sends ready, receives data, sends result.
-func (f *fakeLiveMigrationServer) ReceiveVM(stream computeapi.ComputeService_ReceiveVMServer) error {
-	// Receive start request.
-	_, err := stream.Recv()
-	if err != nil {
-		return err
-	}
-
-	// Send ready with network interface.
-	if err := stream.Send(&computeapi.ReceiveVMResponse{
-		Type: &computeapi.ReceiveVMResponse_Ready{
-			Ready: &computeapi.ReceiveVMReady{
 				TargetNetwork: &computeapi.NetworkInterface{
 					IP: &computeapi.IPAddress{
 						IPV4:      "10.0.0.2/24",
@@ -276,28 +97,37 @@ func (f *fakeLiveMigrationServer) ReceiveVM(stream computeapi.ComputeService_Rec
 				},
 			},
 		},
-	}); err != nil {
-		return err
+	})
+
+	// Optional pre-metadata status.
+	if f.sendPreMetadataStatus {
+		f.addEvent(&computeapi.SendVMEvent{
+			Type: &computeapi.SendVMEvent_Status{
+				Status: &computeapi.SendVMStatus{
+					Message: "waiting for storage replication to complete",
+				},
+			},
+		})
 	}
 
-	// Receive data chunks until complete.
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if req.GetComplete() != nil {
-			break
-		}
-	}
+	// Metadata.
+	f.addEvent(&computeapi.SendVMEvent{
+		Type: &computeapi.SendVMEvent_Metadata{
+			Metadata: &computeapi.SendVMMetadata{
+				Instance: &computeapi.Instance{
+					ID:    "test-instance",
+					Image: "ubuntu:latest",
+				},
+				BaseImageID: "sha256:fake",
+			},
+		},
+	})
 
-	// Send result.
-	if err := stream.Send(&computeapi.ReceiveVMResponse{
-		Type: &computeapi.ReceiveVMResponse_Result{
-			Result: &computeapi.ReceiveVMResult{
+	// Result event — available immediately for both live and cold paths.
+	// (The real source handles target interaction internally; execore just sees the result.)
+	f.addEvent(&computeapi.SendVMEvent{
+		Type: &computeapi.SendVMEvent_Result{
+			Result: &computeapi.SendVMResult{
 				Instance: &computeapi.Instance{
 					ID:      "test-instance",
 					SSHPort: f.sshPort,
@@ -306,11 +136,41 @@ func (f *fakeLiveMigrationServer) ReceiveVM(stream computeapi.ComputeService_Rec
 				ColdBooted: f.coldBooted,
 			},
 		},
-	}); err != nil {
-		return err
+	})
+
+	return &computeapi.InitSendVMResponse{SessionID: "test-session"}, nil
+}
+
+// PollSendVM returns events with seq > after_seq.
+func (f *fakeLiveMigrationServer) PollSendVM(_ context.Context, req *computeapi.PollSendVMRequest) (*computeapi.PollSendVMResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var result []*computeapi.SendVMEvent
+	var hasResult bool
+	for _, e := range f.events {
+		if e.Seq > req.AfterSeq {
+			result = append(result, e)
+		}
+		if _, ok := e.Type.(*computeapi.SendVMEvent_Result); ok {
+			hasResult = true
+		}
 	}
 
-	return nil
+	return &computeapi.PollSendVMResponse{
+		Events:    result,
+		Completed: hasResult,
+	}, nil
+}
+
+// SubmitSendVMControl is a no-op — the fake includes the Result in the initial event list.
+func (f *fakeLiveMigrationServer) SubmitSendVMControl(_ context.Context, _ *computeapi.SubmitSendVMControlRequest) (*computeapi.SubmitSendVMControlResponse, error) {
+	return &computeapi.SubmitSendVMControlResponse{}, nil
+}
+
+// AbortSendVM cancels the migration session.
+func (f *fakeLiveMigrationServer) AbortSendVM(_ context.Context, _ *computeapi.AbortSendVMRequest) (*computeapi.AbortSendVMResponse, error) {
+	return &computeapi.AbortSendVMResponse{}, nil
 }
 
 // startFakeMigrationExelet starts a gRPC server with the given
@@ -357,12 +217,12 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 
 			const sshPort int32 = 22222
 
-			// Set up source exelet.
-			sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source"}
+			// Set up source exelet (handles InitSendVM/PollSendVM/SubmitSendVMControl).
+			sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, coldBooted: tt.coldBooted, role: "source"}
 			sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
 
-			// Set up target exelet.
-			targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, coldBooted: tt.coldBooted, role: "target"}
+			// Set up target exelet (handles GetInstance, StartInstance, etc.).
+			targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
 			targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
 
 			// Register both exelets.
@@ -579,12 +439,12 @@ func TestMigrateBoxColdBootSendsEmail(t *testing.T) {
 
 	const sshPort int32 = 33333
 
-	// Set up source exelet (handles SendVM, GetInstance, DeleteInstance).
-	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source"}
+	// Set up source exelet (handles InitSendVM/PollSendVM/SubmitSendVMControl, GetInstance, DeleteInstance).
+	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, coldBooted: true, role: "source"}
 	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
 
-	// Set up target exelet (handles ReceiveVM, GetInstance; coldBooted=true).
-	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, coldBooted: true, role: "target"}
+	// Set up target exelet (handles GetInstance, StartInstance).
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
 	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
 
 	// Register both exelets.
@@ -884,6 +744,7 @@ type fakeStoppedSourceServer struct {
 	computeapi.UnimplementedComputeServiceServer
 	postMigrationState computeapi.VMState
 	getInstanceCalls   int
+	events             []*computeapi.SendVMEvent
 }
 
 func (f *fakeStoppedSourceServer) GetInstance(_ context.Context, _ *computeapi.GetInstanceRequest) (*computeapi.GetInstanceResponse, error) {
@@ -912,55 +773,64 @@ func (f *fakeStoppedSourceServer) DeleteInstance(_ context.Context, _ *computeap
 	return &computeapi.DeleteInstanceResponse{}, nil
 }
 
-// SendVM simulates a live migration that connects to the target, gets a TargetReady,
-// sends metadata, then fails with an error (simulating a target-side failure).
-func (f *fakeStoppedSourceServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
-	req, err := stream.Recv()
-	if err != nil {
-		return err
-	}
-	startReq := req.GetStart()
-	if startReq == nil {
-		return fmt.Errorf("expected start request")
-	}
-
-	// Send TargetReady to confirm direct mode.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_TargetReady{
-			TargetReady: &computeapi.SendVMTargetReady{
-				TargetNetwork: &computeapi.NetworkInterface{
-					IP: &computeapi.IPAddress{
-						IPV4:      "10.0.0.2/24",
-						GatewayV4: "10.0.0.1",
-					},
-				},
-			},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Send metadata.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Metadata{
-			Metadata: &computeapi.SendVMMetadata{
-				Instance: &computeapi.Instance{
-					ID:    "test-instance",
-					Image: "ubuntu:latest",
-					VMConfig: &computeapi.VMConfig{
-						NetworkInterface: &computeapi.NetworkInterface{
-							IP: &computeapi.IPAddress{IPV4: "10.0.0.99/24"},
+// InitSendVM simulates a live migration that sends TargetReady and Metadata,
+// then fails with a Result error (simulating a target-side failure).
+func (f *fakeStoppedSourceServer) InitSendVM(_ context.Context, _ *computeapi.InitSendVMRequest) (*computeapi.InitSendVMResponse, error) {
+	f.events = []*computeapi.SendVMEvent{
+		{
+			Seq: 1,
+			Type: &computeapi.SendVMEvent_TargetReady{
+				TargetReady: &computeapi.SendVMTargetReady{
+					TargetNetwork: &computeapi.NetworkInterface{
+						IP: &computeapi.IPAddress{
+							IPV4:      "10.0.0.2/24",
+							GatewayV4: "10.0.0.1",
 						},
 					},
 				},
 			},
 		},
-	}); err != nil {
-		return err
+		{
+			Seq: 2,
+			Type: &computeapi.SendVMEvent_Metadata{
+				Metadata: &computeapi.SendVMMetadata{
+					Instance: &computeapi.Instance{
+						ID:    "test-instance",
+						Image: "ubuntu:latest",
+						VMConfig: &computeapi.VMConfig{
+							NetworkInterface: &computeapi.NetworkInterface{
+								IP: &computeapi.IPAddress{IPV4: "10.0.0.99/24"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			Seq: 3,
+			Type: &computeapi.SendVMEvent_Result{
+				Result: &computeapi.SendVMResult{
+					Error: "target restore failed: simulated error",
+				},
+			},
+		},
 	}
+	return &computeapi.InitSendVMResponse{SessionID: "test-session"}, nil
+}
 
-	// Return error to simulate migration failure (e.g., target restore failed).
-	return fmt.Errorf("target restore failed: simulated error")
+// PollSendVM returns events with seq > after_seq.
+func (f *fakeStoppedSourceServer) PollSendVM(_ context.Context, req *computeapi.PollSendVMRequest) (*computeapi.PollSendVMResponse, error) {
+	var result []*computeapi.SendVMEvent
+	for _, e := range f.events {
+		if e.Seq > req.AfterSeq {
+			result = append(result, e)
+		}
+	}
+	return &computeapi.PollSendVMResponse{Events: result, Completed: true}, nil
+}
+
+func (f *fakeStoppedSourceServer) AbortSendVM(_ context.Context, _ *computeapi.AbortSendVMRequest) (*computeapi.AbortSendVMResponse, error) {
+	return &computeapi.AbortSendVMResponse{}, nil
 }
 
 func TestRestartSourceVMUpdatesDBStatusWhenVMStopped(t *testing.T) {
@@ -1263,40 +1133,44 @@ func (f *slowMigrationServer) DeleteInstance(_ context.Context, _ *computeapi.De
 	return &computeapi.DeleteInstanceResponse{}, nil
 }
 
-func (f *slowMigrationServer) SendVM(stream computeapi.ComputeService_SendVMServer) error {
-	// Receive start request.
-	_, err := stream.Recv()
-	if err != nil {
-		return err
-	}
+func (f *slowMigrationServer) InitSendVM(_ context.Context, _ *computeapi.InitSendVMRequest) (*computeapi.InitSendVMResponse, error) {
+	return &computeapi.InitSendVMResponse{SessionID: "test-session"}, nil
+}
 
-	// Send TargetReady to confirm direct mode.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_TargetReady{
-			TargetReady: &computeapi.SendVMTargetReady{},
-		},
-	}); err != nil {
-		return err
-	}
-
-	// Send metadata.
-	if err := stream.Send(&computeapi.SendVMResponse{
-		Type: &computeapi.SendVMResponse_Metadata{
-			Metadata: &computeapi.SendVMMetadata{
-				Instance: &computeapi.Instance{
-					ID:    "test-instance",
-					Image: "ubuntu:latest",
+// PollSendVM returns TargetReady + Metadata on the first call, then blocks forever
+// (simulating a long transfer) until the context is cancelled.
+func (f *slowMigrationServer) PollSendVM(ctx context.Context, req *computeapi.PollSendVMRequest) (*computeapi.PollSendVMResponse, error) {
+	if req.AfterSeq == 0 {
+		return &computeapi.PollSendVMResponse{
+			Events: []*computeapi.SendVMEvent{
+				{
+					Seq: 1,
+					Type: &computeapi.SendVMEvent_TargetReady{
+						TargetReady: &computeapi.SendVMTargetReady{},
+					},
 				},
-				BaseImageID: "sha256:fake",
+				{
+					Seq: 2,
+					Type: &computeapi.SendVMEvent_Metadata{
+						Metadata: &computeapi.SendVMMetadata{
+							Instance: &computeapi.Instance{
+								ID:    "test-instance",
+								Image: "ubuntu:latest",
+							},
+							BaseImageID: "sha256:fake",
+						},
+					},
+				},
 			},
-		},
-	}); err != nil {
-		return err
+		}, nil
 	}
-
 	// Block until context is done (simulating a long transfer).
-	<-stream.Context().Done()
-	return stream.Context().Err()
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (f *slowMigrationServer) AbortSendVM(_ context.Context, _ *computeapi.AbortSendVMRequest) (*computeapi.AbortSendVMResponse, error) {
+	return &computeapi.AbortSendVMResponse{}, nil
 }
 
 func TestCancelMigrationMidFlight(t *testing.T) {
