@@ -962,6 +962,9 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 // migrateVM performs a direct exelet-to-exelet migration for cold and two-phase modes.
 // The source exelet connects directly to the target for data transfer; execore handles
 // only control messages, metadata observation, and progress reporting.
+//
+// Tries unary RPCs (InitSendVM/PollSendVM) first; falls back to legacy SendVM stream
+// if the source returns Unimplemented.
 func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, box *exedb.Box, progress func(string, ...any)) error {
 	if boxName != "" {
 		ctx = s.liveMigrations.start(ctx, boxName, sourceAddr, targetAddr, false)
@@ -971,6 +974,16 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
 	}
+
+	// Try unary RPCs first.
+	err := s.migrateVMUnary(ctx, source, instanceID, targetAddr, boxName, twoPhase, directOnly, box, progress)
+	if err == nil {
+		return nil
+	}
+	if status.Code(err) != codes.Unimplemented {
+		return err
+	}
+	progress("Source does not support unary migration RPCs, falling back to stream...")
 
 	sendStream, err := source.SendVM(ctx)
 	if err != nil {
@@ -1122,6 +1135,9 @@ type migrateVMLiveParams struct {
 // The source exelet connects directly to the target for data transfer; execore handles
 // control messages (IP reconfiguration), metadata observation, and progress reporting.
 // It returns the new SSH port on the target.
+//
+// Tries unary RPCs (InitSendVM/PollSendVM) first; falls back to legacy SendVM stream
+// if the source returns Unimplemented.
 func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int64, bool, error) {
 	source := p.source
 	instanceID := p.instanceID
@@ -1131,6 +1147,16 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 
 	ctx = s.liveMigrations.start(ctx, box.Name, box.Ctrhost, p.targetAddr, true)
 	defer s.liveMigrations.finish(box.Name)
+
+	// Try unary RPCs first.
+	sshPort, coldBooted, err := s.migrateVMLiveUnary(ctx, p)
+	if err == nil {
+		return sshPort, coldBooted, nil
+	}
+	if status.Code(err) != codes.Unimplemented {
+		return 0, false, err
+	}
+	progress("Source does not support unary migration RPCs, falling back to stream...")
 
 	// Start SendVM on source with live=true
 	sendStream, err := source.SendVM(ctx)
@@ -1311,6 +1337,274 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 	// In direct mode, EOF without a Result means the source crashed after delivering
 	// data to the target. We can't know whether the target succeeded, so treat as error.
 	return 0, false, fmt.Errorf("source stream ended without result")
+}
+
+// migrateVMUnary performs a cold/two-phase migration using unary RPCs.
+// Returns codes.Unimplemented if the source doesn't support the new RPCs.
+func (s *Server) migrateVMUnary(ctx context.Context, source *exeletclient.Client, instanceID, targetAddr, boxName string, twoPhase, directOnly bool, box *exedb.Box, progress func(string, ...any)) error {
+	clientRequestID := crand.Text()[:16]
+
+	// InitSendVM starts the migration on the source.
+	initResp, err := source.InitSendVM(ctx, &computeapi.InitSendVMRequest{
+		InstanceID:         instanceID,
+		TargetHasBaseImage: true,
+		TwoPhase:           twoPhase,
+		TargetAddress:      targetAddr,
+		ClientRequestID:    clientRequestID,
+	})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return err
+		}
+		return fmt.Errorf("failed to start SendVM: %w", err)
+	}
+	sessionID := initResp.SessionID
+
+	// Ensure we abort on failure.
+	var completed bool
+	defer func() {
+		if !completed {
+			abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			_, _ = source.AbortSendVM(abortCtx, &computeapi.AbortSendVMRequest{
+				SessionID: sessionID,
+				Reason:    "execore migration failed",
+			})
+		}
+	}()
+
+	progress("Requesting VM metadata from source (direct, unary)...")
+
+	var directConfirmed bool
+	var afterSeq uint64
+	for {
+		resp, err := source.PollSendVM(ctx, &computeapi.PollSendVMRequest{
+			SessionID: sessionID,
+			AfterSeq:  afterSeq,
+			MaxWaitMs: 10000,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to poll migration events: %w", err)
+		}
+
+		for _, event := range resp.Events {
+			afterSeq = event.Seq
+
+			switch v := event.Type.(type) {
+			case *computeapi.SendVMEvent_Metadata:
+				progress("Received metadata: image=%s, base_image=%s, encrypted=%v, total_size_estimate=%d",
+					v.Metadata.Instance.Image, v.Metadata.BaseImageID, v.Metadata.Encrypted, v.Metadata.TotalSizeEstimate)
+
+			case *computeapi.SendVMEvent_TargetReady:
+				directConfirmed = true
+				progress("Target ready (has_base_image=%v)", v.TargetReady.HasBaseImage)
+				progress("MIGRATION_DIRECT_CONFIRMED:")
+				progress("Transferring disk data...")
+
+			case *computeapi.SendVMEvent_Status:
+				progress("Source: %s", v.Status.Message)
+
+			case *computeapi.SendVMEvent_Progress:
+				progress("Transferred %d MB...", v.Progress.BytesSent/(1024*1024))
+				if boxName != "" {
+					s.liveMigrations.updateBytes(boxName, v.Progress.BytesSent)
+				}
+
+			case *computeapi.SendVMEvent_AwaitControl:
+				if v.AwaitControl.Reason == computeapi.SendVMAwaitControl_NEED_GUEST_SYNC {
+					progress("Syncing guest filesystems...")
+					if box != nil && box.SSHPort != nil {
+						syncCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+						if _, err := runCommandOnBox(syncCtx, s.sshPool, box, "sync"); err != nil {
+							s.slog().WarnContext(ctx, "guest sync failed (proceeding anyway)",
+								"box", boxName, "error", err)
+							progress("WARNING: guest sync failed: %v (proceeding anyway)", err)
+						}
+						cancel()
+					}
+					if _, err := source.SubmitSendVMControl(ctx, &computeapi.SubmitSendVMControlRequest{
+						SessionID: sessionID,
+						AwaitSeq:  event.Seq,
+						Control:   &computeapi.SendVMControl{Action: computeapi.SendVMControl_PROCEED_WITH_PAUSE},
+					}); err != nil {
+						return fmt.Errorf("failed to send sync control: %w", err)
+					}
+				} else {
+					return fmt.Errorf("unexpected await control reason in cold migration: %v", v.AwaitControl.Reason)
+				}
+
+			case *computeapi.SendVMEvent_Result:
+				if v.Result.Error != "" {
+					return fmt.Errorf("target error: %s", v.Result.Error)
+				}
+				progress("Target finalized successfully.")
+				completed = true
+				return nil
+			}
+		}
+
+		if resp.Completed {
+			// Terminal without a Result event — shouldn't happen, but treat
+			// as success if we saw directConfirmed.
+			if directConfirmed {
+				completed = true
+				return nil
+			}
+			return fmt.Errorf("source session completed without result")
+		}
+	}
+}
+
+// migrateVMLiveUnary performs a live migration using unary RPCs.
+// Returns codes.Unimplemented if the source doesn't support the new RPCs.
+func (s *Server) migrateVMLiveUnary(ctx context.Context, p migrateVMLiveParams) (int64, bool, error) {
+	source := p.source
+	instanceID := p.instanceID
+	box := p.box
+	progress := p.progress
+	log := s.slog().With("instance", instanceID, "box", box.Name)
+
+	clientRequestID := crand.Text()[:16]
+
+	// InitSendVM starts the migration on the source.
+	initResp, err := source.InitSendVM(ctx, &computeapi.InitSendVMRequest{
+		InstanceID:         instanceID,
+		TargetHasBaseImage: true,
+		Live:               true,
+		TargetAddress:      p.targetAddr,
+		ClientRequestID:    clientRequestID,
+	})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return 0, false, err
+		}
+		return 0, false, fmt.Errorf("failed to start SendVM: %w", err)
+	}
+	sessionID := initResp.SessionID
+
+	// Ensure we abort on failure.
+	var completed bool
+	defer func() {
+		if !completed {
+			abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			_, _ = source.AbortSendVM(abortCtx, &computeapi.AbortSendVMRequest{
+				SessionID: sessionID,
+				Reason:    "execore live migration failed",
+			})
+		}
+	}()
+
+	progress("Requesting VM metadata from source (live, direct, unary)...")
+
+	var targetNetwork *computeapi.NetworkInterface
+	var skipIPReconfig bool
+	var afterSeq uint64
+
+	for {
+		resp, err := source.PollSendVM(ctx, &computeapi.PollSendVMRequest{
+			SessionID: sessionID,
+			AfterSeq:  afterSeq,
+			MaxWaitMs: 10000,
+		})
+		if err != nil {
+			log.ErrorContext(ctx, "live migration: failed to poll events", "error", err)
+			return 0, false, fmt.Errorf("failed to poll migration events: %w", err)
+		}
+
+		for _, event := range resp.Events {
+			afterSeq = event.Seq
+
+			switch v := event.Type.(type) {
+			case *computeapi.SendVMEvent_Metadata:
+				progress("Received metadata: image=%s, encrypted=%v, total_size_estimate=%d",
+					v.Metadata.Instance.Image, v.Metadata.Encrypted, v.Metadata.TotalSizeEstimate)
+
+			case *computeapi.SendVMEvent_TargetReady:
+				targetNetwork = v.TargetReady.TargetNetwork
+				skipIPReconfig = v.TargetReady.SkipIpReconfig
+				if targetNetwork != nil && targetNetwork.IP != nil {
+					log.InfoContext(ctx, "live migration: target ready", "target_ip", targetNetwork.IP.IPV4)
+					progress("Target ready (target_ip=%s, skip_ip_reconfig=%v)", targetNetwork.IP.IPV4, skipIPReconfig)
+				} else {
+					progress("Target ready")
+				}
+				progress("MIGRATION_DIRECT_CONFIRMED:")
+				progress("Transferring disk data...")
+
+			case *computeapi.SendVMEvent_Status:
+				progress("Source: %s", v.Status.Message)
+
+			case *computeapi.SendVMEvent_Progress:
+				progress("Transferred %d MB...", v.Progress.BytesSent/(1024*1024))
+				s.liveMigrations.updateBytes(box.Name, v.Progress.BytesSent)
+
+			case *computeapi.SendVMEvent_AwaitControl:
+				log.InfoContext(ctx, "live migration: source requesting IP reconfiguration")
+				s.liveMigrations.updateState(box.Name, liveMigrationReconfiguring)
+				progress("Source requesting IP reconfiguration...")
+
+				if skipIPReconfig {
+					progress("Skipping IP reconfiguration (target uses IP isolation)")
+				} else {
+					sourceNetwork := v.AwaitControl.SourceNetwork
+					if sourceNetwork == nil || sourceNetwork.IP == nil {
+						log.ErrorContext(ctx, "live migration: source did not provide network info in AwaitControl")
+						return 0, false, fmt.Errorf("source did not provide network info in AwaitControl")
+					}
+					if targetNetwork == nil || targetNetwork.IP == nil {
+						return 0, false, fmt.Errorf("target network not available for IP reconfiguration (no TargetReady received)")
+					}
+
+					if err := s.reconfigureVMIP(ctx, &box, sourceNetwork, targetNetwork, p.sudoPrefix, p.guestShell, progress); err != nil {
+						log.ErrorContext(ctx, "live migration: failed to reconfigure VM IP",
+							"source_ip", sourceNetwork.IP.IPV4,
+							"target_ip", targetNetwork.IP.IPV4,
+							"error", err)
+						return 0, false, fmt.Errorf("failed to reconfigure VM IP: %w", err)
+					}
+				}
+
+				log.InfoContext(ctx, "live migration: IP reconfigured, sending proceed signal")
+				progress("IP reconfigured, sending proceed signal...")
+				s.liveMigrations.updateState(box.Name, liveMigrationFinalizing)
+				if _, err := source.SubmitSendVMControl(ctx, &computeapi.SubmitSendVMControlRequest{
+					SessionID: sessionID,
+					AwaitSeq:  event.Seq,
+					Control:   &computeapi.SendVMControl{Action: computeapi.SendVMControl_PROCEED_WITH_PAUSE},
+				}); err != nil {
+					log.ErrorContext(ctx, "live migration: failed to send proceed control to source", "error", err)
+					return 0, false, fmt.Errorf("failed to send control: %w", err)
+				}
+
+			case *computeapi.SendVMEvent_Result:
+				if v.Result.Error != "" {
+					log.ErrorContext(ctx, "live migration: target reported error", "target_error", v.Result.Error)
+					return 0, false, fmt.Errorf("target error: %s", v.Result.Error)
+				}
+				resultInstance := v.Result.Instance
+				coldBooted := v.Result.ColdBooted
+				if coldBooted {
+					log.WarnContext(ctx, "live migration: VM restored via cold boot fallback")
+					progress("VM restored via cold boot fallback (snapshot restore failed).")
+				} else {
+					log.InfoContext(ctx, "live migration: VM restored and running on target",
+						"ssh_port", resultInstance.SSHPort)
+					progress("VM restored and running on target.")
+				}
+				if resultInstance == nil {
+					log.ErrorContext(ctx, "live migration: no result instance from target")
+					return 0, false, fmt.Errorf("no result instance from target")
+				}
+				completed = true
+				return int64(resultInstance.SSHPort), coldBooted, nil
+			}
+		}
+
+		if resp.Completed {
+			return 0, false, fmt.Errorf("source session completed without result")
+		}
+	}
 }
 
 // guestShellPrefix determines the privilege escalation prefix and shell to use
