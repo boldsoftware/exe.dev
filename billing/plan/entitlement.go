@@ -75,4 +75,3 @@ func Grants(planID string, ent Entitlement) bool {
 	}
 	return tierGrants(tier, ent)
 }
-
