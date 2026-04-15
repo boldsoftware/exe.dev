@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/errorz"
@@ -164,16 +165,37 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Set defaults from environment
 	memory := ss.server.env.DefaultMemory
-	disk := ss.server.env.DefaultDisk
 	cpus := ss.server.env.DefaultCPUs
+
+	// Look up user's plan to determine tier-based disk defaults.
+	planRow, planErr := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, user.ID)
+	var disk uint64
+	if planErr != nil {
+		// Fall back to env default if plan lookup fails (e.g. no plan row).
+		disk = ss.server.env.DefaultDisk
+	} else {
+		disk = plan.IncludedDisk(planRow.PlanID, ss.server.env.DefaultDisk)
+	}
 
 	// Get effective limits (team limits if in a team, otherwise user limits)
 	effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, user.ID)
 
 	// Determine max limits based on effective limits
 	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits)
-	maxDisk := GetMaxDisk(ss.server.env, effectiveLimits)
 	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits)
+
+	// Disk ceiling: plan quota is the base, support override takes precedence.
+	var userMaxDisk uint64
+	if effectiveLimits != nil {
+		userMaxDisk = effectiveLimits.MaxDisk
+	}
+	var maxDisk uint64
+	if planErr == nil {
+		maxDisk = plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, ss.server.env.DefaultDisk)
+	}
+	if maxDisk == 0 {
+		maxDisk = max(ss.server.env.DefaultDisk, stage.MinDisk)
+	}
 
 	// Parse memory if provided
 	if memoryStr != "" {
@@ -200,7 +222,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("--disk must be at least %s", humanize.IBytes(stage.MinDisk))
 		}
 		if parsedDisk > maxDisk {
-			return cc.Errorf("--disk cannot exceed %s", humanize.IBytes(maxDisk))
+			return cc.Errorf("--disk cannot exceed %s — contact support@exe.dev if you need more", humanize.IBytes(maxDisk))
 		}
 		disk = parsedDisk
 	}

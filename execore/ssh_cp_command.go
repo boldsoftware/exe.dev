@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/exedb"
@@ -68,8 +69,20 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 
 	// Determine max limits based on effective limits
 	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits)
-	maxDisk := GetMaxDisk(ss.server.env, effectiveLimits)
 	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits)
+
+	// Disk ceiling: plan quota is the base, support override takes precedence.
+	var userMaxDisk uint64
+	if effectiveLimits != nil {
+		userMaxDisk = effectiveLimits.MaxDisk
+	}
+	var maxDisk uint64
+	if planRow, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, user.ID); err == nil {
+		maxDisk = plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, ss.server.env.DefaultDisk)
+	}
+	if maxDisk == 0 {
+		maxDisk = max(ss.server.env.DefaultDisk, stage.MinDisk)
+	}
 
 	// Resource overrides for clone (0 = use source)
 	var memoryOverride, diskOverride, cpuOverride uint64
@@ -99,7 +112,7 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 			return cc.Errorf("--disk must be at least %s", humanize.IBytes(stage.MinDisk))
 		}
 		if parsedDisk > maxDisk {
-			return cc.Errorf("--disk cannot exceed %s", humanize.IBytes(maxDisk))
+			return cc.Errorf("--disk cannot exceed %s — contact support@exe.dev if you need more", humanize.IBytes(maxDisk))
 		}
 		diskOverride = parsedDisk
 	}

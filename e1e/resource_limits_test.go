@@ -46,7 +46,7 @@ func TestResVal(t *testing.T) {
 
 	t.Run("disk-hi", func(t *testing.T) {
 		bn := boxName(t)
-		// Test env default is 11GB, asking for 20GB should fail
+		// Test env caps plan ceiling to 11GB (env.DefaultDisk), asking for 20GB should fail
 		regularPTY.SendLine(fmt.Sprintf("new --name=%s --disk=20GB", bn))
 		regularPTY.Want("--disk cannot exceed")
 		regularPTY.WantPrompt()

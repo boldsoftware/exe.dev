@@ -40,11 +40,54 @@ func TiersByCategory(cat Category) []Tier {
 	return result
 }
 
-// DiskResizeAllowance returns how many more bytes a VM's disk can grow
+// IncludedDisk returns the disk size (bytes) included with a plan.
+// The tier catalog is the source of truth. When envDefaultDisk is non-zero
+// and smaller than the tier value, it acts as an override (for local/test
+// environments that don't need production-sized disks).
+// Returns envDefaultDisk as a fallback for unknown tier IDs.
+func IncludedDisk(tierID string, envDefaultDisk uint64) uint64 {
+	tier, err := getTierByID(tierID)
+	if err != nil {
+		return envDefaultDisk
+	}
+	tierDefault := tier.Quotas.DefaultDisk
+	if tierDefault == 0 {
+		return envDefaultDisk
+	}
+	if envDefaultDisk > 0 && envDefaultDisk < tierDefault {
+		return envDefaultDisk
+	}
+	return tierDefault
+}
+
+// EffectiveMaxDisk returns the disk ceiling for a user given their plan,
+// any support-granted override, and the environment's default disk.
+//
+// Resolution order:
+//  1. Support override (userMaxDisk > 0) always wins.
+//  2. If envDefaultDisk > 0 and the tier has a non-zero MaxDisk, the env
+//     caps the tier value. This keeps test/local environments from allowing
+//     huge disks that the host can't back.
+//  3. Otherwise the tier's MaxDisk is used (prod/staging path).
+//
+// Returns 0 when the plan has no disk resize quota (e.g. basic/restricted)
+// and there's no support override.
+func EffectiveMaxDisk(planID string, userMaxDisk, envDefaultDisk uint64) uint64 {
+	if userMaxDisk > 0 {
+		return userMaxDisk
+	}
+	maxDisk := MaxDiskForPlan(planID)
+	if maxDisk > 0 && envDefaultDisk > 0 && envDefaultDisk < maxDisk {
+		return envDefaultDisk
+	}
+	return maxDisk
+}
+
+// RemainingDiskQuota returns how many more bytes a VM's disk can grow
 // given the current disk size and the user's plan. Returns 0 if the plan
 // does not allow resize (MaxDisk == 0) or the disk is already at/above the ceiling.
-func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
-	tier, err := getTierByID(planID)
+func RemainingDiskQuota(tierID string, currentDiskSize uint64) uint64 {
+	tier, err := getTierByID(tierID)
 	if err != nil || tier.Quotas.MaxDisk == 0 {
 		return 0
 	}
@@ -184,8 +227,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -198,8 +241,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -212,8 +255,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -226,8 +269,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -240,8 +283,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -254,8 +297,8 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
-			MaxDisk:      0,
+			DefaultDisk:  25 * gb,
+			MaxDisk:      75 * gb,
 		},
 		Entitlements: nil,
 	},
@@ -268,7 +311,7 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
+			DefaultDisk:  25 * gb,
 			MaxDisk:      0,
 		},
 		Entitlements: nil,
@@ -282,7 +325,7 @@ var tiers = map[string]Tier{
 			ComputeClass: computeClass{},
 			MaxUserVMs:   0,
 			MaxTeamVMs:   0,
-			DefaultDisk:  0,
+			DefaultDisk:  25 * gb,
 			MaxDisk:      0,
 		},
 		Entitlements: nil,

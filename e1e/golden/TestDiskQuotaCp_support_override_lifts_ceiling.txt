@@ -1,0 +1,35 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME cp-override --disk=20GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME cp-override --disk=20GB
+Copying BOX_NAME to cp-override...
+Created cp-override from BOX_NAME in ELAPSED_TIME
+
+http://cp-override.exe.cloud:EXED_HTTP_PORT
+
+ssh cp-override@exe.cloud
+
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+rm cp-override
+
+- help to see a list of commands
+
+PROMPT ▶ rm cp-override
+Deleting cp-override...
+1 VM(s) deleted successfully
+PROMPT ▶ exit
+Goodbye!

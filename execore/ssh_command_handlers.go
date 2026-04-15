@@ -1946,12 +1946,18 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			if planErr != nil {
 				return cc.Errorf("failed to look up plan for VM owner: %v", planErr)
 			}
-			maxDisk := plan.MaxDiskForPlan(planRow.PlanID)
+			// Disk ceiling: support override takes precedence over plan quota.
+			effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, ownerID)
+			var userMaxDisk uint64
+			if effectiveLimits != nil {
+				userMaxDisk = effectiveLimits.MaxDisk
+			}
+			maxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, ss.server.env.DefaultDisk)
 			if maxDisk == 0 {
 				return cc.Errorf("disk resize is not available on your current plan")
 			}
 			if newDiskSize > maxDisk {
-				return cc.Errorf("requested size %s exceeds the %s limit — please contact support for larger sizes", humanize.IBytes(newDiskSize), humanize.IBytes(maxDisk))
+				return cc.Errorf("requested size %s exceeds the %s limit — contact support@exe.dev if you need more", humanize.IBytes(newDiskSize), humanize.IBytes(maxDisk))
 			}
 		}
 

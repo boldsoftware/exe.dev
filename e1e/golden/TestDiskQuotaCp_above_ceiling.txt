@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+cp BOX_NAME cp-over-ceil --disk=20GB
+
+- help to see a list of commands
+
+PROMPT ▶ cp BOX_NAME cp-over-ceil --disk=20GB
+--disk cannot exceed 11 GiB — contact support@exe.dev if you need more
+PROMPT ▶ exit
+Goodbye!

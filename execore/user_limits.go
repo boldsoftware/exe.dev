@@ -72,17 +72,6 @@ func GetMaxMemory(env stage.Env, userLimits *UserLimits) uint64 {
 	return max(env.DefaultMemory, stage.MinMemory)
 }
 
-// GetMaxDisk returns the effective max disk for a user.
-// Uses user-specific limit if set, otherwise falls back to environment default.
-func GetMaxDisk(env stage.Env, userLimits *UserLimits) uint64 {
-	// Use user-specific limit if set
-	if userLimits != nil && userLimits.MaxDisk > 0 {
-		return userLimits.MaxDisk
-	}
-	// Fall back to environment default (but at least the minimum)
-	return max(env.DefaultDisk, stage.MinDisk)
-}
-
 // GetMaxCPUs returns the effective max CPUs for a user.
 // Uses user-specific limit if set, otherwise falls back to environment default.
 func GetMaxCPUs(env stage.Env, userLimits *UserLimits) uint64 {

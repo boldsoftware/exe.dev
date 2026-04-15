@@ -407,7 +407,7 @@ func TestBasePlanHandles4PartTierID(t *testing.T) {
 	}
 }
 
-func TestDiskResizeAllowance(t *testing.T) {
+func TestRemainingDiskQuota_Legacy(t *testing.T) {
 	tests := []struct {
 		name        string
 		planID      string
@@ -445,10 +445,10 @@ func TestDiskResizeAllowance(t *testing.T) {
 			want:        0,
 		},
 		{
-			name:        "vip plan no resize quota",
+			name:        "vip plan",
 			planID:      "vip",
 			currentDisk: 10 * gb,
-			want:        0,
+			want:        65 * gb, // 75 - 10 = 65 GB
 		},
 		{
 			name:        "unknown plan",
@@ -465,9 +465,9 @@ func TestDiskResizeAllowance(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DiskResizeAllowance(tt.planID, tt.currentDisk)
+			got := RemainingDiskQuota(tt.planID, tt.currentDisk)
 			if got != tt.want {
-				t.Errorf("DiskResizeAllowance(%q, %d) = %d, want %d", tt.planID, tt.currentDisk, got, tt.want)
+				t.Errorf("RemainingDiskQuota(%q, %d) = %d, want %d", tt.planID, tt.currentDisk, got, tt.want)
 			}
 		})
 	}
@@ -483,4 +483,387 @@ func TestMaxDiskForPlan(t *testing.T) {
 	if got := MaxDiskForPlan("totally:bogus"); got != 0 {
 		t.Errorf("MaxDiskForPlan(totally:bogus) = %d, want 0", got)
 	}
+}
+
+func TestIncludedDisk(t *testing.T) {
+	tests := []struct {
+		name       string
+		tierID     string
+		envDefault uint64 // stage.Env.DefaultDisk
+		want       uint64
+	}{
+		// Prod/staging: env.DefaultDisk=0 → defer to tier.
+		{
+			name:       "individual small prod",
+			tierID:     "individual:small:monthly:20260601",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		{
+			name:       "individual xlarge prod",
+			tierID:     "individual:xlarge:monthly:20260601",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		{
+			name:       "trial prod",
+			tierID:     "trial",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		{
+			name:       "basic prod",
+			tierID:     "basic",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		{
+			name:       "vip prod",
+			tierID:     "vip",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		// Local: env.DefaultDisk=10GB < tier → use env.
+		{
+			name:       "individual small local",
+			tierID:     "individual:small:monthly:20260601",
+			envDefault: 10 * gb,
+			want:       10 * gb,
+		},
+		{
+			name:       "trial local",
+			tierID:     "trial",
+			envDefault: 10 * gb,
+			want:       10 * gb,
+		},
+		// Test: env.DefaultDisk=11GB < tier → use env.
+		{
+			name:       "individual small test",
+			tierID:     "individual:small:monthly:20260601",
+			envDefault: 11 * gb,
+			want:       11 * gb,
+		},
+		// Legacy 3-part ID.
+		{
+			name:       "legacy individual prod",
+			tierID:     "individual:monthly:20260106",
+			envDefault: 0,
+			want:       25 * gb,
+		},
+		// Unknown plan falls back to env default.
+		{
+			name:       "unknown plan local",
+			tierID:     "totally:bogus",
+			envDefault: 10 * gb,
+			want:       10 * gb,
+		},
+		// Unknown plan with env=0 → 0 (caller should handle).
+		{
+			name:       "unknown plan prod",
+			tierID:     "totally:bogus",
+			envDefault: 0,
+			want:       0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IncludedDisk(tt.tierID, tt.envDefault)
+			if got != tt.want {
+				t.Errorf("IncludedDisk(%q, %d) = %d, want %d", tt.tierID, tt.envDefault, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMaxDiskForPlanWithEnv(t *testing.T) {
+	tests := []struct {
+		name   string
+		tierID string
+		want   uint64
+	}{
+		{"individual small", "individual:small:monthly:20260601", 75 * gb},
+		{"individual xlarge", "individual:xlarge:monthly:20260601", 75 * gb},
+		{"trial", "trial", 75 * gb},
+		{"vip", "vip", 75 * gb},
+		{"friend", "friend", 75 * gb},
+		{"basic", "basic", 0},
+		{"restricted", "restricted", 0},
+		{"unknown", "totally:bogus", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MaxDiskForPlan(tt.tierID)
+			if got != tt.want {
+				t.Errorf("MaxDiskForPlan(%q) = %d, want %d", tt.tierID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemainingDiskQuota(t *testing.T) {
+	tests := []struct {
+		name        string
+		tierID      string
+		currentDisk uint64
+		want        uint64
+	}{
+		// Started at 20GB (prod default), can grow to 75GB.
+		{
+			name:        "individual small from 20GB",
+			tierID:      "individual:small:monthly:20260601",
+			currentDisk: 20 * gb,
+			want:        55 * gb,
+		},
+		// Started at 25GB (tier included), can grow to 75GB.
+		{
+			name:        "individual small from 25GB",
+			tierID:      "individual:small:monthly:20260601",
+			currentDisk: 25 * gb,
+			want:        50 * gb,
+		},
+		// Already at max.
+		{
+			name:        "individual small at max",
+			tierID:      "individual:small:monthly:20260601",
+			currentDisk: 75 * gb,
+			want:        0,
+		},
+		// Over max.
+		{
+			name:        "individual small over max",
+			tierID:      "individual:small:monthly:20260601",
+			currentDisk: 80 * gb,
+			want:        0,
+		},
+		// Basic: MaxDisk=0 → no resize.
+		{
+			name:        "basic no resize",
+			tierID:      "basic",
+			currentDisk: 10 * gb,
+			want:        0,
+		},
+		// Restricted: MaxDisk=0 → no resize.
+		{
+			name:        "restricted no resize",
+			tierID:      "restricted",
+			currentDisk: 10 * gb,
+			want:        0,
+		},
+		// Unknown plan.
+		{
+			name:        "unknown plan",
+			tierID:      "totally:bogus",
+			currentDisk: 10 * gb,
+			want:        0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RemainingDiskQuota(tt.tierID, tt.currentDisk)
+			if got != tt.want {
+				t.Errorf("RemainingDiskQuota(%q, %d) = %d, want %d", tt.tierID, tt.currentDisk, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveMaxDisk(t *testing.T) {
+	tests := []struct {
+		name           string
+		planID         string
+		userMaxDisk    uint64
+		envDefaultDisk uint64
+		want           uint64
+	}{
+		// --- Prod (envDefaultDisk=0): tier catalog is authoritative ---
+		{
+			name:   "individual prod no override",
+			planID: "individual:small:monthly:20260601",
+			want:   75 * gb,
+		},
+		{
+			name:        "support granted 200GB prod",
+			planID:      "individual:small:monthly:20260601",
+			userMaxDisk: 200 * gb,
+			want:        200 * gb,
+		},
+		{
+			name:        "support set same as plan prod",
+			planID:      "individual:small:monthly:20260601",
+			userMaxDisk: 75 * gb,
+			want:        75 * gb,
+		},
+		{
+			name:        "support set below plan prod",
+			planID:      "individual:small:monthly:20260601",
+			userMaxDisk: 30 * gb,
+			want:        30 * gb,
+		},
+		{
+			name:        "support override above plan max prod",
+			planID:      "individual:small:monthly:20260601",
+			userMaxDisk: 80 * gb,
+			want:        80 * gb,
+		},
+		{
+			name:   "basic prod no override",
+			planID: "basic",
+			want:   0,
+		},
+		{
+			name:        "basic prod with support override",
+			planID:      "basic",
+			userMaxDisk: 50 * gb,
+			want:        50 * gb,
+		},
+		{
+			name:        "restricted prod with support override",
+			planID:      "restricted",
+			userMaxDisk: 100 * gb,
+			want:        100 * gb,
+		},
+		{
+			name:        "unknown plan prod with support override",
+			planID:      "totally:bogus",
+			userMaxDisk: 60 * gb,
+			want:        60 * gb,
+		},
+		{
+			name:   "unknown plan prod no override",
+			planID: "totally:bogus",
+			want:   0,
+		},
+		{
+			name:   "vip prod no override",
+			planID: "vip",
+			want:   75 * gb,
+		},
+		{
+			name:        "trial prod with support override",
+			planID:      "trial",
+			userMaxDisk: 150 * gb,
+			want:        150 * gb,
+		},
+
+		// --- Test env (envDefaultDisk=11GB): env caps the tier ceiling ---
+		{
+			name:           "individual test no override",
+			planID:         "individual:small:monthly:20260601",
+			envDefaultDisk: 11 * gb,
+			want:           11 * gb,
+		},
+		{
+			name:           "vip test no override",
+			planID:         "vip",
+			envDefaultDisk: 11 * gb,
+			want:           11 * gb,
+		},
+		{
+			name:           "basic test no override",
+			planID:         "basic",
+			envDefaultDisk: 11 * gb,
+			want:           0, // MaxDisk=0 → no resize, env doesn't help
+		},
+		// Support override still wins over env cap.
+		{
+			name:           "individual test with support override",
+			planID:         "individual:small:monthly:20260601",
+			userMaxDisk:    30 * gb,
+			envDefaultDisk: 11 * gb,
+			want:           30 * gb,
+		},
+
+		// --- Local (envDefaultDisk=10GB) ---
+		{
+			name:           "individual local no override",
+			planID:         "individual:small:monthly:20260601",
+			envDefaultDisk: 10 * gb,
+			want:           10 * gb,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectiveMaxDisk(tt.planID, tt.userMaxDisk, tt.envDefaultDisk)
+			if got != tt.want {
+				t.Errorf("EffectiveMaxDisk(%q, %d, %d) = %d, want %d",
+					tt.planID, tt.userMaxDisk, tt.envDefaultDisk, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDiskQuotasPlanTransitions verifies that disk quota functions behave
+// correctly across plan changes. Disk is set at VM creation and never
+// retroactively resized — these functions only affect what's *allowed*,
+// not what exists.
+func TestDiskQuotasPlanTransitions(t *testing.T) {
+	const envDefault uint64 = 0 // prod
+
+	// Scenario 1: User on Individual creates a VM (25GB), downgrades to Basic.
+	// Their 25GB disk is untouched. They just can't resize anymore.
+	t.Run("downgrade individual to basic", func(t *testing.T) {
+		// At creation on Individual: 25GB included.
+		creationDisk := IncludedDisk("individual:small:monthly:20260601", envDefault)
+		if creationDisk != 25*gb {
+			t.Fatalf("IncludedDisk(individual) = %d, want %d", creationDisk, 25*gb)
+		}
+
+		// After downgrade: Basic has MaxDisk=0, no resize allowed.
+		if got := MaxDiskForPlan("basic"); got != 0 {
+			t.Errorf("MaxDiskForPlan(basic) = %d, want 0", got)
+		}
+		if got := RemainingDiskQuota("basic", creationDisk); got != 0 {
+			t.Errorf("RemainingDiskQuota(basic, %d) = %d, want 0", creationDisk, got)
+		}
+		// Key invariant: the 25GB disk still exists. Nothing shrinks it.
+		// The user just can't grow past it on Basic.
+	})
+
+	// Scenario 2: User on Basic creates a VM (25GB), upgrades to Individual.
+	// Their 25GB disk is untouched. They can now resize up to 75GB.
+	t.Run("upgrade basic to individual", func(t *testing.T) {
+		creationDisk := IncludedDisk("basic", envDefault)
+		if creationDisk != 25*gb {
+			t.Fatalf("IncludedDisk(basic) = %d, want %d", creationDisk, 25*gb)
+		}
+
+		// After upgrade: Individual allows resize up to 75GB.
+		if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*gb {
+			t.Errorf("MaxDiskForPlan(individual) = %d, want %d", got, 75*gb)
+		}
+		if got := RemainingDiskQuota("individual:small:monthly:20260601", creationDisk); got != 50*gb {
+			t.Errorf("RemainingDiskQuota(individual, %d) = %d, want %d", creationDisk, got, 50*gb)
+		}
+	})
+
+	// Scenario 3: User on Individual Small upgrades to XLarge.
+	// Same disk quotas — tier size affects compute, not disk.
+	t.Run("upgrade individual small to xlarge", func(t *testing.T) {
+		smallDisk := IncludedDisk("individual:small:monthly:20260601", envDefault)
+		xlargeDisk := IncludedDisk("individual:xlarge:monthly:20260601", envDefault)
+		if smallDisk != xlargeDisk {
+			t.Errorf("IncludedDisk small=%d vs xlarge=%d — should be equal", smallDisk, xlargeDisk)
+		}
+
+		smallMax := MaxDiskForPlan("individual:small:monthly:20260601")
+		xlargeMax := MaxDiskForPlan("individual:xlarge:monthly:20260601")
+		if smallMax != xlargeMax {
+			t.Errorf("MaxDiskForPlan small=%d vs xlarge=%d — should be equal", smallMax, xlargeMax)
+		}
+	})
+
+	// Scenario 4: User had support override (80GB), downgrades plan.
+	// Support override is independent of plan — still 80GB.
+	t.Run("support override survives plan change", func(t *testing.T) {
+		var supportMaxDisk uint64 = 80 * gb
+
+		// On Individual with override.
+		if got := EffectiveMaxDisk("individual:small:monthly:20260601", supportMaxDisk, 0); got != 80*gb {
+			t.Errorf("EffectiveMaxDisk(individual, 80GB) = %d, want %d", got, 80*gb)
+		}
+		// Downgrade to Basic — override still wins.
+		if got := EffectiveMaxDisk("basic", supportMaxDisk, 0); got != 80*gb {
+			t.Errorf("EffectiveMaxDisk(basic, 80GB) = %d, want %d", got, 80*gb)
+		}
+	})
 }

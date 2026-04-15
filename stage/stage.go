@@ -88,7 +88,7 @@ type Env struct {
 	ProxyPorts []int // ports to listen on for proxying; empty means none
 
 	DefaultMemory uint64 // default memory for new boxes in bytes
-	DefaultDisk   uint64 // default disk size for new boxes in bytes
+	DefaultDisk   uint64 // override disk size for new boxes in bytes; 0 = defer to tier catalog
 	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
@@ -153,7 +153,7 @@ func Invalid() Env {
 		ProxyPorts: nil,
 
 		DefaultMemory: 0, // invalid: must be > 0
-		DefaultDisk:   0, // invalid: must be > 0
+		DefaultDisk:   0, // invalid: no tier catalog available in invalid env
 		DefaultCPUs:   0, // invalid: must be > 0
 
 		ListenOnTailscaleOnly: false,
@@ -361,8 +361,8 @@ func Staging() Env {
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
-		DefaultMemory: 8 * 1024 * 1024 * 1024,  // 8 GiB
-		DefaultDisk:   20 * 1024 * 1024 * 1024, // 20 GiB
+		DefaultMemory: 8 * 1024 * 1024 * 1024, // 8 GiB
+		DefaultDisk:   0,                      // 0 = defer to tier catalog (25 GiB)
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
@@ -442,8 +442,8 @@ func Prod() Env {
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
 
-		DefaultMemory: 8 * 1024 * 1024 * 1024,  // 8 GiB
-		DefaultDisk:   20 * 1024 * 1024 * 1024, // 20 GiB
+		DefaultMemory: 8 * 1024 * 1024 * 1024, // 8 GiB
+		DefaultDisk:   0,                      // 0 = defer to tier catalog (25 GiB)
 		DefaultCPUs:   2,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
