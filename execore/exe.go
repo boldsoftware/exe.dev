@@ -283,6 +283,12 @@ type Server struct {
 	// Image tag resolution
 	tagResolver *tagresolver.TagResolver
 
+	// Exeprox address, as HOST[:PORT]
+	exeproxAddress string
+
+	// Wether to redirect proxy requests to exeprox.
+	exeproxRedirect bool
+
 	// Exelet management (for VM-based instances)
 	exeletClients map[string]*exeletClient // addr -> client
 
@@ -790,6 +796,8 @@ type ServerConfig struct {
 	FakeEmailServer    string
 	PiperdPort         int
 	GHWhoAmIPath       string
+	ExeproxAddress     string
+	ExeproxRedirect    bool
 	ExeletAddresses    []string
 	Env                stage.Env
 	Billing            *billing.Manager // optional billing manager override
@@ -991,15 +999,15 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
 	}
 
-	exeproxAddr, err := cfg.Env.TailscaleListenAddr(strconv.Itoa(cfg.ExeproxServicePort))
+	exeproxServiceAddr, err := cfg.Env.TailscaleListenAddr(strconv.Itoa(cfg.ExeproxServicePort))
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to determine exeprox service address: %v", err)
 	}
-	exeproxServiceLn, err := startListener(slog, "exeprox-service", exeproxAddr)
+	exeproxServiceLn, err := startListener(slog, "exeprox-service", exeproxServiceAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on exeprox service address %q: %w", exeproxAddr, err)
+		return nil, fmt.Errorf("failed to listen on exeprox service address %q: %w", exeproxServiceAddr, err)
 	}
 
 	// Initialize metrics
@@ -1107,6 +1115,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		piperdPort:             cfg.PiperdPort,
 		db:                     db,
 		tagResolver:            tagResolverInstance,
+		exeproxAddress:         cfg.ExeproxAddress,
+		exeproxRedirect:        cfg.ExeproxRedirect,
 		exeletClients:          exeletClients,
 		sshPool:                &sshpool2.Pool{TTL: 10 * time.Minute, Metrics: sshpool2.NewMetrics(cfg.MetricsRegistry)},
 		transportCache:         exeweb.NewTransportCache(5 * time.Minute),
@@ -2864,6 +2874,19 @@ func (s *Server) start() error {
 			} else {
 				s.slog().InfoContext(ctx, "embedded DNS server started", "ips", privateIPs)
 			}
+		}
+	}
+
+	// If exeprox-address is not specified, use IP shards if possible.
+	// We assume that the IP shards are running an exeprox,
+	// and just use one.
+	if s.exeproxAddress == "" && s.env.UseDBShardIPs && len(s.PublicIPs) > 0 {
+		shardName, err := s.dnsServer.ShardName()
+		if err != nil {
+			s.slog().ErrorContext(ctx, "finding exeprox address failed", "error", err)
+		} else {
+			s.exeproxAddress = shardName
+			s.slog().InfoContext(ctx, "found exeprox address", "address", s.exeproxAddress)
 		}
 	}
 

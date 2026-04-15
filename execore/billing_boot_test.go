@@ -29,6 +29,8 @@ func TestNewServerBootstrapStripeCatalog(t *testing.T) {
 		FakeEmailServer:    "",
 		PiperdPort:         2222,
 		GHWhoAmIPath:       "",
+		ExeproxAddress:     "",
+		ExeproxRedirect:    false,
 		ExeletAddresses:    nil,
 		Env:                env,
 		Billing: &billing.Manager{
@@ -64,6 +66,8 @@ func TestNewServerSkipsBootstrapStripeCatalog(t *testing.T) {
 		FakeEmailServer:    "",
 		PiperdPort:         2222,
 		GHWhoAmIPath:       "",
+		ExeproxAddress:     "",
+		ExeproxRedirect:    false,
 		ExeletAddresses:    nil,
 		Env:                env,
 		Billing: &billing.Manager{

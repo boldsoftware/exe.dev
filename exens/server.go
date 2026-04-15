@@ -10,6 +10,7 @@ package exens
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -147,6 +148,17 @@ func (s *Server) Stop(ctx context.Context) {
 // Handler returns a DNS handler function for use with dns.ServeMux.
 func (s *Server) Handler() func(context.Context, dns.ResponseWriter, *dns.Msg) {
 	return s.handleDNS
+}
+
+// ShardName returns the DNS name of a shard.
+// exed uses this to determine the name of an exeprox.
+func (s *Server) ShardName() (string, error) {
+	for shard := 1; shard < 256; shard++ {
+		if s.naShardIPs[shard].IsValid() {
+			return fmt.Sprintf("na%03d.%s", shard, s.boxHost), nil
+		}
+	}
+	return "", errors.New("no known DNS shards")
 }
 
 // SetTXTRecord sets an in-memory TXT record (used for ACME challenges, PSL verification, etc.).

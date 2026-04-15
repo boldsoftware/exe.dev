@@ -1207,3 +1207,20 @@ func TestMXRecords(t *testing.T) {
 		}
 	})
 }
+
+func TestShardName(t *testing.T) {
+	db := newTestDB(t)
+	log := tslog.Slogger(t)
+	lobbyIP := netip.MustParseAddr("10.0.0.100")
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetLobbyIP(lobbyIP)
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
+	got, err := server.ShardName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "na001.exe.xyz"
+	if got != want {
+		t.Errorf("ShardName() == %s, want %s", got, want)
+	}
+}

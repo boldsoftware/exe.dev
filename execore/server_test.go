@@ -99,6 +99,8 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 		FakeEmailServer:    "",
 		PiperdPort:         2222,
 		GHWhoAmIPath:       "",
+		ExeproxAddress:     "",
+		ExeproxRedirect:    false,
 		ExeletAddresses:    nil,
 		Env:                env,
 		Billing: &billing.Manager{
@@ -259,6 +261,8 @@ func newUnstartedServer(t testing.TB) *Server {
 		FakeEmailServer:    "",
 		PiperdPort:         2222,
 		GHWhoAmIPath:       "",
+		ExeproxAddress:     "",
+		ExeproxRedirect:    false,
 		ExeletAddresses:    nil,
 		Env:                env,
 		Billing: &billing.Manager{

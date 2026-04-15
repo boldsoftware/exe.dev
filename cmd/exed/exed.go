@@ -48,6 +48,8 @@ func run() error {
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt), empty to disable")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
+	exeproxAddress := flag.String("exeprox-address", "", "Address of some exeprox process, as host[:port]")
+	exeproxRedirect := flag.Bool("exeprox-redirect", false, "Redirect proxy requests to exeprox")
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
@@ -269,6 +271,8 @@ func run() error {
 		FakeEmailServer:    *fakeHTTPEmail,
 		PiperdPort:         *piperdPort,
 		GHWhoAmIPath:       *ghWhoAmIPath,
+		ExeproxAddress:     *exeproxAddress,
+		ExeproxRedirect:    *exeproxRedirect,
 		ExeletAddresses:    exeletAddrs,
 		Env:                env,
 		Billing:            &billing.Manager{},

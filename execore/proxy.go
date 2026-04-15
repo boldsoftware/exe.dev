@@ -30,10 +30,32 @@ import (
 // https://vmname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
 // private.
 
-// handleProxyRequest handles requests that should be proxied to containers
-// This handler is called when the Host header matches box.exe.dev or box.exe.local
+// handleProxyRequest handles request for which isProxyRequest returns true.
+// These are cases that should have gone to an exeprox server,
+// but for whatever reason--typically DNS confusion--wound up at exed.
+// Redirect to an exeprox.
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
-	s.proxyServer().HandleProxyRequest(w, r)
+	if !s.exeproxRedirect {
+		s.proxyServer().HandleProxyRequest(w, r)
+		return
+	}
+
+	if s.exeproxAddress == "" {
+		s.slog().ErrorContext(r.Context(), "proxy request with no exeprox", "URL", r.URL, "method", r.Method, "host", r.Host)
+		http.Error(w, "internal forwarding failure", http.StatusInternalServerError)
+		return
+	}
+
+	// Add a header to that exeprox knows the original host.
+	// It needs the original host to know which box is being referenced.
+	vals := r.URL.Query()
+	vals.Set("exedev_host", r.Host)
+	r.URL.RawQuery = vals.Encode()
+
+	scheme := getScheme(r)
+	target := fmt.Sprintf("%s://%s%s", scheme, s.exeproxAddress, r.URL.RequestURI())
+	s.slog().InfoContext(r.Context(), "redirecting to exeprox", "URL", r.URL, "method", r.Method, "host", r.Host, "target", target)
+	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 }
 
 // isProxyRequest reports whether a request to host should be handled by the proxy.
