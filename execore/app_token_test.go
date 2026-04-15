@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/sqlite"
@@ -350,18 +352,23 @@ func TestIOSNewUserGetsTrial(t *testing.T) {
 	}
 
 	// Verify trial_expires_at is set.
-	var trialExpires *string
+	var trialExpiresUnix *int64
 	err = s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-			SELECT trial_expires_at FROM account_plans ap
+			SELECT unixepoch(trial_expires_at) FROM account_plans ap
 			JOIN accounts a ON a.id = ap.account_id
-			WHERE a.created_by = ? AND ap.ended_at IS NULL`, userID).Scan(&trialExpires)
+			WHERE a.created_by = ? AND ap.ended_at IS NULL`, userID).Scan(&trialExpiresUnix)
 	})
 	if err != nil {
 		t.Fatal("failed to check trial_expires_at:", err)
 	}
-	if trialExpires == nil {
+	if trialExpiresUnix == nil {
 		t.Fatal("trial_expires_at should be set")
+	}
+	expectedLower := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour - time.Minute).Unix()
+	expectedUpper := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour + time.Minute).Unix()
+	if *trialExpiresUnix < expectedLower || *trialExpiresUnix > expectedUpper {
+		t.Fatalf("trial_expires_at = %d, want about %d days from now [%d, %d]", *trialExpiresUnix, plan.ShortSignupTrialDays, expectedLower, expectedUpper)
 	}
 }
 

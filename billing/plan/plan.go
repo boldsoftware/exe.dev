@@ -24,6 +24,11 @@ const (
 	CategoryRestricted    Category = "restricted"
 )
 
+const (
+	ShortSignupTrialDays = 7
+	InviteTrialDays      = 30
+)
+
 // Plan describes a billing plan category and the base entitlements it grants.
 // Numeric quotas (memory, disk, CPUs, credit amounts) live in Tier — use
 // getTierByID to look those up.
@@ -49,8 +54,8 @@ type Plan struct {
 	// Paid indicates whether this plan represents active paid billing.
 	Paid bool
 
-	// TrialDays is the number of days of trial access granted for this plan.
-	// Stays on Plan because trial duration is a plan-level property, not tier-level.
+	// TrialDays is optional plan-level trial duration metadata for flows that
+	// derive the trial length from plan configuration.
 	TrialDays int
 
 	// SignupBonusCreditUSD is the one-time credit (in USD) granted when a user
@@ -289,7 +294,7 @@ var plans = map[Category]Plan{
 		Category:             CategoryIndividual,
 		Paid:                 true,
 		Name:                 "Individual",
-		TrialDays:            7,
+		TrialDays:            ShortSignupTrialDays,
 		SignupBonusCreditUSD: 100.0,
 		MonthlyLLMCreditUSD:  20,
 		// Individual has multiple tiers; DefaultTier is the Small tier used for
@@ -334,7 +339,6 @@ var plans = map[Category]Plan{
 		Available:   true,
 		Category:    CategoryTrial,
 		Name:        "Trial",
-		TrialDays:   30,
 		DefaultTier: "trial:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:   true,

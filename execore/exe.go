@@ -3210,9 +3210,12 @@ func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, u
 	}
 
 	now := time.Now()
-	trialExpiresAt, err := signupTrialExpiresAt(now, planCategory)
-	if err != nil {
-		return "", "", err
+	var trialExpiresAt *time.Time
+	if planCategory == plan.CategoryTrial {
+		trialExpiresAt, err = shortSignupTrialExpiresAt(now)
+		if err != nil {
+			return "", "", err
+		}
 	}
 	if err := queries.UpsertAccountPlan(ctx, exedb.UpsertAccountPlanParams{
 		AccountID:      accountID,
@@ -3226,19 +3229,20 @@ func createAccountWithInitialPlan(ctx context.Context, queries *exedb.Queries, u
 	return accountID, planCategory, nil
 }
 
-func signupTrialExpiresAt(now time.Time, planCategory plan.Category) (*time.Time, error) {
-	if planCategory != plan.CategoryTrial {
-		return nil, nil
+func trialExpiresAtFromDays(now time.Time, days int) (*time.Time, error) {
+	if days <= 0 {
+		return nil, fmt.Errorf("trial days must be positive: %d", days)
 	}
-	plan, ok := plan.Get(plan.CategoryTrial)
-	if !ok {
-		return nil, fmt.Errorf("trial plan is not available")
-	}
-	if plan.TrialDays <= 0 {
-		return nil, fmt.Errorf("trial plan has invalid trial days: %d", plan.TrialDays)
-	}
-	trialExpiresAt := now.Add(time.Duration(plan.TrialDays) * 24 * time.Hour)
+	trialExpiresAt := now.Add(time.Duration(days) * 24 * time.Hour)
 	return &trialExpiresAt, nil
+}
+
+func shortSignupTrialExpiresAt(now time.Time) (*time.Time, error) {
+	return trialExpiresAtFromDays(now, plan.ShortSignupTrialDays)
+}
+
+func inviteTrialExpiresAt(now time.Time) (*time.Time, error) {
+	return trialExpiresAtFromDays(now, plan.InviteTrialDays)
 }
 
 // checkEmailQuality checks the email quality via IPQS and updates the user if disposable.

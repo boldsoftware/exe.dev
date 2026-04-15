@@ -1608,6 +1608,7 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			return fmt.Errorf("failed to get account: %w", err)
 		}
 
+		now := time.Now()
 		var basePlan plan.Category
 		var trialEndsAt *time.Time
 
@@ -1616,15 +1617,13 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 			basePlan = plan.CategoryFriend
 		case "trial":
 			basePlan = plan.CategoryTrial
-			// Get trial days from Trial plan quotas
-			plan, _ := plan.Get(plan.CategoryTrial)
-			trialDays := plan.TrialDays
-			t := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
-			trialEndsAt = &t
+			trialEndsAt, err = inviteTrialExpiresAt(now)
+			if err != nil {
+				return fmt.Errorf("failed to compute invite trial expiry: %w", err)
+			}
 		}
 
 		if basePlan != "" {
-			now := time.Now()
 			changedBy := "invite:" + inviteCode.Code
 			if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 				AccountID:      acct.ID,

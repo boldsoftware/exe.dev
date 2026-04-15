@@ -1047,6 +1047,11 @@ func TestStripelessTrialNewUserSkipsBillingAndGetsTrial(t *testing.T) {
 	if activePlan.TrialExpiresAt == nil {
 		t.Fatal("expected trial_expires_at to be set")
 	}
+	expectedLower := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour - time.Minute)
+	expectedUpper := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour + time.Minute)
+	if activePlan.TrialExpiresAt.Before(expectedLower) || activePlan.TrialExpiresAt.After(expectedUpper) {
+		t.Fatalf("trial_expires_at = %v, want about %d days from now [%v, %v]", *activePlan.TrialExpiresAt, plan.ShortSignupTrialDays, expectedLower, expectedUpper)
+	}
 	if !server.UserHasEntitlement(t.Context(), plan.SourceWeb, plan.VMCreate, userID) {
 		t.Fatal("stripeless trial user should have VMCreate entitlement after account creation")
 	}
@@ -1078,6 +1083,11 @@ func TestStripelessTrialAppliesToSharedSignupAccountCreation(t *testing.T) {
 	}
 	if activePlan.TrialExpiresAt == nil {
 		t.Fatal("expected trial_expires_at to be set")
+	}
+	expectedLower := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour - time.Minute)
+	expectedUpper := time.Now().Add(plan.ShortSignupTrialDays*24*time.Hour + time.Minute)
+	if activePlan.TrialExpiresAt.Before(expectedLower) || activePlan.TrialExpiresAt.After(expectedUpper) {
+		t.Fatalf("trial_expires_at = %v, want about %d days from now [%v, %v]", *activePlan.TrialExpiresAt, plan.ShortSignupTrialDays, expectedLower, expectedUpper)
 	}
 }
 
