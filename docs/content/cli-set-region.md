@@ -3,7 +3,7 @@
 title: "set-region"
 description: "Set your preferred region for new VMs."
 subheading: "9. CLI Reference"
-suborder: 13
+suborder: 14
 published: true
 ---
 

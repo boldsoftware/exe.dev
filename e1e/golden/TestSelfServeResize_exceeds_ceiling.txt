@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+resize BOX_NAME --disk=40
+
+- help to see a list of commands
+
+PROMPT ▶ resize BOX_NAME --disk=40
+requested size 40 GiB exceeds the 30 GiB limit — contact support@exe.dev if you need more
+PROMPT ▶ exit
+Goodbye!

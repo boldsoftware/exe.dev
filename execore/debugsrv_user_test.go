@@ -150,7 +150,7 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 	requireEntitlementRow(t, body, "Create VMs", true)
 	requireEntitlementRow(t, body, "Run VMs", true)
 	requireEntitlementRow(t, body, "Purchase Credits", false)
-	requireEntitlementRow(t, body, "Resize VM Disks", false)
+	requireEntitlementRow(t, body, "Resize VM Disks", true)
 }
 
 // TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user

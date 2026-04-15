@@ -219,7 +219,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("exelet", "", "[hidden] create VM on specified exelet (support only)")
 	// Resource allocation flags (defaults: 8GB memory, 20GB disk, 2 CPUs)
 	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
-	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
+	fs.String("disk", "", "disk size (e.g., 20, 20GB, 50G)")
 	fs.Uint("cpu", 0, "[hidden] number of CPUs (default 2)")
 	fs.String("setup-script", "", "[hidden] setup script to run on first boot (max 10KiB); supports \\n for newlines; use /dev/stdin to pipe from stdin")
 	// Environment variables (can be specified multiple times)
@@ -239,15 +239,15 @@ func cpCommandFlags() *flag.FlagSet {
 	fs.Bool("copy-tags", true, "copy tags from source VM (use --copy-tags=false to disable)")
 	// Resource allocation flags - copy uses source values if not specified
 	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
-	fs.String("disk", "", "[hidden] disk size (e.g., 20, 20GB, 50G)")
+	fs.String("disk", "", "disk size (e.g., 20, 20GB, 50G)")
 	fs.Uint("cpu", 0, "[hidden] number of CPUs")
 	return fs
 }
 
 func resizeCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("resize", flag.ContinueOnError)
-	fs.String("memory", "", "memory allocation (e.g., 4, 4GB, 8G)")
-	fs.Uint("cpu", 0, "number of CPUs")
+	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
+	fs.Uint("cpu", 0, "[hidden] number of CPUs")
 	fs.String("disk", "", "new total disk size (e.g., 25, 25GB) - must be larger than current size")
 	fs.Bool("json", false, "output in JSON format")
 	return fs
@@ -363,6 +363,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				"cp my-vm my-vm-copy   # copy with specific name",
 				"cp my-vm --copy-tags=false  # copy without tags",
 			},
+		},
+		{
+			Name:              "resize",
+			Description:       "Resize a VM's disk",
+			Usage:             "resize <vmname> --disk=<size>",
+			HasPositionalArgs: true,
+			FlagSetFunc:       resizeCommandFlags,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleResizeCommand,
 		},
 		{
 			Name:           "hireme",
@@ -529,16 +538,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			FlagSetFunc:  jsonOnlyFlags("exelets"),
 			Handler:      ss.handleExeletsCommand,
 		},
-		{
-			Name:              "resize",
-			Hidden:            true,
-			RequiresSudo:      true,
-			Description:       "Resize a VM's memory, CPU, or disk (support only)",
-			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]",
-			HasPositionalArgs: true,
-			FlagSetFunc:       resizeCommandFlags,
-			Handler:           ss.handleResizeCommand,
-		},
+
 		{
 			Name:              "backfill-allocated-cpus",
 			Hidden:            true,
@@ -1874,8 +1874,13 @@ const (
 )
 
 func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
+
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GiB (e.g., '8' for 8 GiB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
+		if isSudo {
+			return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GiB (e.g., '8' for 8 GiB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
+		}
+		return cc.Errorf("usage: resize <vmname> --disk=<size>\nDisk size is in GiB (e.g., '25' for 25 GiB). Disk can only be grown, not shrunk.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -1885,10 +1890,11 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 	// Validate at least one option is specified
 	if memoryStr == "" && cpuVal == 0 && diskStr == "" {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
+		if isSudo {
+			return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
+		}
+		return cc.Errorf("usage: resize <vmname> --disk=<size>\nThe --disk flag is required.")
 	}
-
-	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
 
 	// Memory and CPU resize are support-only. Non-sudo users can only resize disk.
 	if (memoryStr != "" || cpuVal > 0) && !isSudo {

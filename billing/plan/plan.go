@@ -270,6 +270,7 @@ var plans = map[Category]Plan{
 			InviteRequest:  true,
 			VMCreate:       true,
 			VMRun:          true,
+			DiskResize:     true,
 		},
 	},
 	CategoryTeam: {
@@ -286,6 +287,7 @@ var plans = map[Category]Plan{
 			InviteRequest:  true,
 			VMCreate:       true,
 			VMRun:          true,
+			DiskResize:     true,
 		},
 	},
 	CategoryIndividual: {
@@ -307,6 +309,7 @@ var plans = map[Category]Plan{
 			TeamCreate:     true,
 			VMCreate:       true,
 			VMRun:          true,
+			DiskResize:     true,
 		},
 	},
 	CategoryFriend: {
@@ -317,9 +320,10 @@ var plans = map[Category]Plan{
 		MonthlyLLMCreditUSD: 500,
 		DefaultTier:         "friend:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:   true,
-			VMCreate: true,
-			VMRun:    true,
+			LLMUse:     true,
+			VMCreate:   true,
+			VMRun:      true,
+			DiskResize: true,
 		},
 	},
 	CategoryGrandfathered: {
@@ -329,9 +333,10 @@ var plans = map[Category]Plan{
 		Name:        "Grandfathered",
 		DefaultTier: "grandfathered:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:   true,
-			VMCreate: true,
-			VMRun:    true,
+			LLMUse:     true,
+			VMCreate:   true,
+			VMRun:      true,
+			DiskResize: true,
 		},
 	},
 	CategoryTrial: {
@@ -341,9 +346,10 @@ var plans = map[Category]Plan{
 		Name:        "Trial",
 		DefaultTier: "trial:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:   true,
-			VMCreate: true,
-			VMRun:    true,
+			LLMUse:     true,
+			VMCreate:   true,
+			VMRun:      true,
+			DiskResize: true,
 		},
 	},
 	CategoryBasic: {

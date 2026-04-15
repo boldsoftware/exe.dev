@@ -20,6 +20,7 @@ cp <source-vm> [new-name] [--copy-tags=false]
 ## Options
 
 - `--copy-tags`: copy tags from source VM (use --copy-tags=false to disable)
+- `--disk`: disk size (e.g., 20, 20GB, 50G)
 - `--json`: output in JSON format
 
 ## Examples

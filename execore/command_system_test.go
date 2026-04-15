@@ -949,7 +949,6 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 	// Commands that require sudo. Update this when adding new sudo commands.
 	wantSudo := map[string]bool{
 		"exelets":                 true,
-		"resize":                  true,
 		"backfill-allocated-cpus": true,
 		"sudo-exe":                true,
 		"sudo-exe add-gift":       true,

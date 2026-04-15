@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+restart BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ restart BOX_NAME
+Restarting BOX_NAME...
+VM "BOX_NAME" restarted successfully
+PROMPT ▶ exit
+Goodbye!

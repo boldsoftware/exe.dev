@@ -29,12 +29,9 @@ func TestResize(t *testing.T) {
 
 	waitForSSH(t, box, ownerKeyFile)
 
-	// Test that non-support user cannot use resize
-	t.Run("non_support_user_denied", func(t *testing.T) {
+	// Non-support user can resize disk (self-serve) but not memory/CPU.
+	t.Run("non_support_memory_denied", func(t *testing.T) {
 		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.SendLine(fmt.Sprintf("resize %s --disk=20", box))
-		ownerPTY.Want("not in the sudoers file")
-		ownerPTY.WantPrompt()
 		ownerPTY.SendLine(fmt.Sprintf("resize %s --memory=2", box))
 		ownerPTY.Want("not in the sudoers file")
 		ownerPTY.WantPrompt()

@@ -14,6 +14,7 @@ Create a new VM
 ## Options
 
 - `--command`: container command: auto, none, or a custom command
+- `--disk`: disk size (e.g., 20, 20GB, 50G)
 - `--env`: environment variable in KEY=VALUE format (can be specified multiple times)
 - `--image`: container image
 - `--integration`: integration name to attach (can be specified multiple times or comma-separated)

@@ -71,3 +71,31 @@ func TestAllEntitlements(t *testing.T) {
 		}
 	}
 }
+
+// TestDiskResizeEntitlementByPlan verifies which plans grant DiskResize.
+// Plans with MaxDisk > 0 should have it; basic and restricted should not.
+func TestDiskResizeEntitlementByPlan(t *testing.T) {
+	wantDiskResize := map[Category]bool{
+		CategoryVIP:           true, // via All wildcard
+		CategoryEnterprise:    true,
+		CategoryTeam:          true,
+		CategoryIndividual:    true,
+		CategoryFriend:        true,
+		CategoryGrandfathered: true,
+		CategoryTrial:         true,
+		CategoryBasic:         false,
+		CategoryRestricted:    false,
+	}
+
+	for cat, want := range wantDiskResize {
+		p, ok := plans[cat]
+		if !ok {
+			t.Errorf("plan %q not found in plans map", cat)
+			continue
+		}
+		got := Grants(p.ID, DiskResize)
+		if got != want {
+			t.Errorf("plan %q: Grants(DiskResize) = %v, want %v", cat, got, want)
+		}
+	}
+}
