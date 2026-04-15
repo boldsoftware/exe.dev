@@ -2,11 +2,9 @@ package compute
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -30,7 +28,6 @@ func (s *Service) InitSendVM(ctx context.Context, req *api.InitSendVMRequest) (*
 
 	go func() {
 		sender := &sessionMigrationSender{sess: sess}
-		stream := &sessionSendVMStream{ctx: sess.ctx, sender: sender}
 		startReq := &api.SendVMStartRequest{
 			InstanceID:         req.InstanceID,
 			TargetHasBaseImage: req.TargetHasBaseImage,
@@ -40,7 +37,7 @@ func (s *Service) InitSendVM(ctx context.Context, req *api.InitSendVMRequest) (*
 			TargetAddress:      req.TargetAddress,
 			TargetGroupID:      req.TargetGroupID,
 		}
-		err := s.runSendVM(stream, startReq)
+		err := s.runSendVM(sender, startReq)
 		if err != nil {
 			sess.mu.Lock()
 			completed := sess.completed
@@ -109,58 +106,3 @@ func (s *Service) AbortSendVM(ctx context.Context, req *api.AbortSendVMRequest) 
 	s.sendVMSessions.remove(sess.id)
 	return &api.AbortSendVMResponse{}, nil
 }
-
-type sessionSendVMStream struct {
-	ctx            context.Context
-	sender         migrationSender
-	pendingControl *api.SendVMControl
-}
-
-func (s *sessionSendVMStream) Context() context.Context { return s.ctx }
-
-func (s *sessionSendVMStream) Send(resp *api.SendVMResponse) error {
-	switch v := resp.Type.(type) {
-	case *api.SendVMResponse_Metadata:
-		return s.sender.EmitMetadata(v.Metadata)
-	case *api.SendVMResponse_TargetReady:
-		return s.sender.EmitTargetReady(v.TargetReady)
-	case *api.SendVMResponse_Status:
-		return s.sender.EmitStatus(v.Status.Message)
-	case *api.SendVMResponse_Progress:
-		return s.sender.EmitProgress(uint64(v.Progress.BytesSent))
-	case *api.SendVMResponse_AwaitControl:
-		control, err := s.sender.EmitAwaitControl(v.AwaitControl)
-		if err != nil {
-			return err
-		}
-		s.pendingControl = control
-		return nil
-	case *api.SendVMResponse_Result:
-		return s.sender.EmitResult(v.Result)
-	case *api.SendVMResponse_Complete:
-		return nil
-	case *api.SendVMResponse_PhaseComplete:
-		return nil
-	case *api.SendVMResponse_Data:
-		return fmt.Errorf("unexpected data frame in session sender")
-	case *api.SendVMResponse_SnapshotData:
-		return fmt.Errorf("unexpected snapshot frame in session sender")
-	default:
-		return fmt.Errorf("unsupported send vm response type %T", resp.Type)
-	}
-}
-
-func (s *sessionSendVMStream) Recv() (*api.SendVMRequest, error) {
-	if s.pendingControl == nil {
-		return nil, fmt.Errorf("no pending control available")
-	}
-	control := s.pendingControl
-	s.pendingControl = nil
-	return &api.SendVMRequest{Type: &api.SendVMRequest_Control{Control: control}}, nil
-}
-
-func (s *sessionSendVMStream) SendHeader(metadata.MD) error { return nil }
-func (s *sessionSendVMStream) SetHeader(metadata.MD) error  { return nil }
-func (s *sessionSendVMStream) SetTrailer(metadata.MD)       {}
-func (s *sessionSendVMStream) SendMsg(any) error            { return nil }
-func (s *sessionSendVMStream) RecvMsg(any) error            { return nil }

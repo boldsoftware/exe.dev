@@ -26,10 +26,8 @@ import (
 
 const sendVMChunkSize = 4*1024*1024 - 1024
 
-type dataChunkSender func(chunk []byte, isBaseImage bool) error
-
 type progressReporter struct {
-	stream         api.ComputeService_SendVMServer
+	sender         migrationSender
 	totalBytes     uint64
 	lastReportedMB uint64
 }
@@ -41,27 +39,15 @@ func (r *progressReporter) add(n uint64) error {
 		return nil
 	}
 	r.lastReportedMB = currentMB
-	return r.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_Progress{Progress: &api.SendVMProgress{BytesSent: int64(r.totalBytes)}}})
+	return r.sender.EmitProgress(r.totalBytes)
 }
 
 func (r *progressReporter) addStatus(msg string) error {
-	return r.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_Status{Status: &api.SendVMStatus{Message: msg}}})
+	return r.sender.EmitStatus(msg)
 }
 
-func (s *Service) SendVM(stream api.ComputeService_SendVMServer) error {
-	req, err := stream.Recv()
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "failed to receive start request: %v", err)
-	}
-	startReq := req.GetStart()
-	if startReq == nil {
-		return status.Error(codes.InvalidArgument, "first message must be SendVMStartRequest")
-	}
-	return s.runSendVM(stream, startReq)
-}
-
-func (s *Service) runSendVM(stream api.ComputeService_SendVMServer, startReq *api.SendVMStartRequest) error {
-	ctx := stream.Context()
+func (s *Service) runSendVM(sender migrationSender, startReq *api.SendVMStartRequest) error {
+	ctx := sender.Context()
 	instanceID := startReq.InstanceID
 	s.log.InfoContext(ctx, "SendVM started", "instance", instanceID, "two_phase", startReq.TwoPhase, "live", startReq.Live, "direct", startReq.TargetAddress != "")
 
@@ -76,7 +62,7 @@ func (s *Service) runSendVM(stream api.ComputeService_SendVMServer, startReq *ap
 		if rs.IsVolumeActive(instanceID) {
 			s.log.InfoContext(ctx, "waiting on VM storage replication", "instance", instanceID)
 			if startReq.AcceptStatus {
-				_ = stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_Status{Status: &api.SendVMStatus{Message: "waiting for storage replication to complete"}}})
+				_ = sender.EmitStatus("waiting for storage replication to complete")
 			}
 			rs.WaitVolumeIdle(ctx, instanceID)
 		}
@@ -117,7 +103,7 @@ func (s *Service) runSendVM(stream api.ComputeService_SendVMServer, startReq *ap
 		}
 		target.SetFaultInjection(&s.sidebandFaultAfterBytes, &s.sidebandFaultSkipCount, &s.sidebandFaultKillGRPC)
 		defer target.Close()
-		if err := stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_TargetReady{TargetReady: &api.SendVMTargetReady{HasBaseImage: ready.HasBaseImage, TargetNetwork: ready.TargetNetwork, SkipIpReconfig: ready.SkipIpReconfig}}}); err != nil {
+		if err := sender.EmitTargetReady(&api.SendVMTargetReady{HasBaseImage: ready.HasBaseImage, TargetNetwork: ready.TargetNetwork, SkipIpReconfig: ready.SkipIpReconfig}); err != nil {
 			return status.Errorf(codes.Internal, "direct migration: failed to send target_ready to execore: %v", err)
 		}
 		startReq.TargetHasBaseImage = ready.HasBaseImage
@@ -126,9 +112,8 @@ func (s *Service) runSendVM(stream api.ComputeService_SendVMServer, startReq *ap
 
 	var progress *progressReporter
 	if target != nil {
-		progress = &progressReporter{stream: stream}
+		progress = &progressReporter{sender: sender}
 	}
-	sender := &streamMigrationSender{stream: stream}
 	if startReq.Live {
 		return s.sendVMLive(ctx, sender, startReq, instance, sm, target, progress)
 	}
@@ -274,11 +259,6 @@ func (s *Service) finishSendVM(ctx context.Context, sender migrationSender, inst
 			s.log.ErrorContext(ctx, "direct migration: failed to forward result to execore (target already committed)", "instance", instanceID, "error", err)
 		}
 		return nil
-	}
-	if ss, ok := sender.(*streamMigrationSender); ok {
-		if err := ss.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_Complete{Complete: &api.SendVMComplete{Checksum: checksum, TotalBytes: totalBytes}}}); err != nil {
-			return status.Errorf(codes.Internal, "failed to send completion: %v", err)
-		}
 	}
 	return nil
 }
@@ -457,13 +437,6 @@ func (s *Service) makeSnapshotStreamer(ctx context.Context, sender migrationSend
 			return streamViaSideband(ctx, target, s.log, sm, snapshot, incremental, baseSnap, hasher, totalBytes, progress)
 		}
 	}
-	if ss, ok := sender.(*streamMigrationSender); ok {
-		buf := make([]byte, sendVMChunkSize)
-		sendChunk := func(chunk []byte, isBaseImage bool) error {
-			return ss.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_Data{Data: &api.SendVMDataChunk{Data: chunk, IsBaseImage: isBaseImage}}})
-		}
-		return s.makeStreamFunc(ctx, instanceID, hasher, buf, totalBytes, sm, sendChunk, progress)
-	}
 	return func(string, bool, string, bool) error {
 		return fmt.Errorf("no sideband available for session-based migration")
 	}
@@ -482,47 +455,7 @@ func (s *Service) sendPhaseComplete(ctx context.Context, sender migrationSender,
 		}
 		return sender.EmitProgress(cumulativeBytes)
 	}
-	if ss, ok := sender.(*streamMigrationSender); ok {
-		return ss.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_PhaseComplete{PhaseComplete: &api.SendVMPhaseComplete{PhaseBytes: phaseBytes}}})
-	}
 	return nil
-}
-
-func (s *Service) makeStreamFunc(ctx context.Context, instanceID string, hasher hash.Hash, buf []byte, totalBytes *uint64, sm storage.StorageManager, sendChunk dataChunkSender, progress *progressReporter) func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
-	return func(snapshot string, incremental bool, baseSnap string, isBaseImage bool) error {
-		reader, err := sm.SendSnapshot(ctx, snapshot, incremental, baseSnap)
-		if err != nil {
-			return fmt.Errorf("failed to start zfs send: %w", err)
-		}
-		for {
-			n, err := reader.Read(buf)
-			if n > 0 {
-				hasher.Write(buf[:n])
-				*totalBytes += uint64(n)
-				if sendErr := sendChunk(buf[:n], isBaseImage); sendErr != nil {
-					reader.Close()
-					return fmt.Errorf("failed to send chunk: %w", sendErr)
-				}
-				if progress != nil {
-					if sendErr := progress.add(uint64(n)); sendErr != nil {
-						reader.Close()
-						return fmt.Errorf("failed to send progress: %w", sendErr)
-					}
-				}
-			}
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				reader.Close()
-				return fmt.Errorf("failed to read zfs send output: %w", err)
-			}
-		}
-		if err := reader.Close(); err != nil {
-			return fmt.Errorf("zfs send failed: %w", err)
-		}
-		return nil
-	}
 }
 
 func (s *Service) sendVMLive(ctx context.Context, sender migrationSender, startReq *api.SendVMStartRequest, instance *api.Instance, sm storage.StorageManager, target receiveVMTarget, progress *progressReporter) error {
@@ -665,11 +598,6 @@ func (s *Service) streamSnapshotFile(ctx context.Context, sender migrationSender
 			if target != nil {
 				if sendErr := target.UploadSnapshot(ctx, filename, data, useCompressed, isLast); sendErr != nil {
 					return fmt.Errorf("failed to send chunk to target: %w", sendErr)
-				}
-			} else if ss, ok := sender.(*streamMigrationSender); ok {
-				chunk := &api.SendVMSnapshotChunk{Filename: filename, IsLastChunk: isLast, Data: data, Compressed: useCompressed}
-				if sendErr := ss.stream.Send(&api.SendVMResponse{Type: &api.SendVMResponse_SnapshotData{SnapshotData: chunk}}); sendErr != nil {
-					return fmt.Errorf("failed to send chunk: %w", sendErr)
 				}
 			}
 		}
