@@ -210,7 +210,7 @@ func (m *Manager) List(since time.Time) []Status {
 	out := make([]Status, 0, len(deploys))
 	for _, d := range deploys {
 		s := d.snapshot()
-		if s.StartedAt.Before(since) && (s.State == "done" || s.State == "failed") {
+		if s.StartedAt.Before(since) && (s.State == "done" || s.State == "failed" || s.State == "cancelled") {
 			continue
 		}
 		out = append(out, s)
@@ -228,6 +228,37 @@ func (m *Manager) Get(id string) (Status, bool) {
 		}
 	}
 	return Status{}, false
+}
+
+// ErrDeployRolloutOwned is returned by Cancel when the caller tries to
+// cancel a deploy that belongs to a rollout. Rollout-owned deploys must
+// be cancelled via CancelRollout so that the rollout orchestrator stops
+// scheduling further waves.
+var ErrDeployRolloutOwned = fmt.Errorf("deploy is part of a rollout; cancel the rollout instead")
+
+// Cancel aborts an in-flight deploy by id. Idempotent: cancelling a deploy
+// that has already reached a terminal state is a no-op and returns nil.
+// Rollout-owned deploys cannot be cancelled individually; the caller must
+// cancel the rollout instead — in that case ErrDeployRolloutOwned is
+// returned.
+func (m *Manager) Cancel(id string) error {
+	m.mu.Lock()
+	var found *deploy
+	for _, d := range m.deploys {
+		if d.id == id {
+			found = d
+			break
+		}
+	}
+	m.mu.Unlock()
+	if found == nil {
+		return fmt.Errorf("deploy %s not found", id)
+	}
+	if found.rolloutID != "" {
+		return ErrDeployRolloutOwned
+	}
+	found.requestCancel()
+	return nil
 }
 
 // execute runs the full deploy pipeline as a goroutine.
@@ -891,19 +922,50 @@ func (m *Manager) ListRollouts(since time.Time) []RolloutStatus {
 // CancelRollout marks a rollout for cancellation. Subsequent waves are
 // skipped; in-flight deploys in the current wave run to completion.
 func (m *Manager) CancelRollout(id string) error {
-	m.mu.Lock()
-	var found *rollout
-	for _, r := range m.rollouts {
-		if r.id == id {
-			found = r
-			break
-		}
-	}
-	m.mu.Unlock()
-	if found == nil {
+	r := m.findRollout(id)
+	if r == nil {
 		return fmt.Errorf("rollout %s not found", id)
 	}
-	found.requestCancel()
+	r.requestCancel()
+	return nil
+}
+
+// PauseRollout marks a rollout as pause-requested. The pause takes effect
+// at the next wave boundary — if a wave is currently running, it finishes
+// first; if the rollout is in cooldown, the cooldown timer is interrupted.
+// Idempotent and safe to call on a rollout that has already reached a
+// terminal state (returns nil in that case).
+func (m *Manager) PauseRollout(id string) error {
+	r := m.findRollout(id)
+	if r == nil {
+		return fmt.Errorf("rollout %s not found", id)
+	}
+	r.requestPause()
+	return nil
+}
+
+// ResumeRollout clears a rollout's pause flag and unblocks the orchestrator
+// so the next wave can start. Idempotent.
+func (m *Manager) ResumeRollout(id string) error {
+	r := m.findRollout(id)
+	if r == nil {
+		return fmt.Errorf("rollout %s not found", id)
+	}
+	r.requestResume()
+	return nil
+}
+
+// findRollout returns the rollout with the given id, or nil. The returned
+// pointer remains valid because rollouts are never removed from m.rollouts
+// (history is bounded by maxHistory but trimmed from the tail).
+func (m *Manager) findRollout(id string) *rollout {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.rollouts {
+		if r.id == id {
+			return r
+		}
+	}
 	return nil
 }
 
@@ -928,6 +990,34 @@ func (m *Manager) runRollout(r *rollout) {
 			r.state = "cancelled"
 			r.mu.Unlock()
 			return
+		}
+
+		// Honor pause at the wave boundary. If the user clicked Pause during
+		// the previous wave (or during cooldown), wait here until they
+		// resume — or cancel.
+		if ch := r.pauseGate(); ch != nil {
+			r.mu.Lock()
+			r.state = "paused"
+			r.cooldownUntil = time.Time{}
+			r.mu.Unlock()
+			m.log.Info("rollout paused", "id", r.id, "wave", waveIdx)
+			select {
+			case <-ch:
+				m.log.Info("rollout resumed", "id", r.id, "wave", waveIdx)
+			case <-r.cancelCh:
+				m.markRemainingSkipped(r, waveIdx)
+				r.mu.Lock()
+				r.state = "cancelled"
+				r.mu.Unlock()
+				return
+			case <-m.ctx.Done():
+				m.markRemainingSkipped(r, waveIdx)
+				r.mu.Lock()
+				r.state = "cancelled"
+				r.err = "server shutting down"
+				r.mu.Unlock()
+				return
+			}
 		}
 
 		r.mu.Lock()
@@ -978,8 +1068,8 @@ func (m *Manager) runRollout(r *rollout) {
 			select {
 			case <-r.cancelCh:
 				for _, d := range waveDeploys {
-					if d != nil && d.cancel != nil {
-						d.cancel()
+					if d != nil {
+						d.requestCancel()
 					}
 				}
 			case <-waveCancelStop:
@@ -1006,12 +1096,17 @@ func (m *Manager) runRollout(r *rollout) {
 			d.mu.Lock()
 			state := d.state
 			d.mu.Unlock()
-			if state == "failed" {
+			switch state {
+			case "failed":
 				waveFailed = true
 				r.mu.Lock()
 				r.failed++
 				r.mu.Unlock()
-			} else {
+			case "cancelled":
+				// Cancelled deploys (from a rollout cancel) are not counted
+				// as completed or failed — the rollout itself is about to
+				// transition to "cancelled" via the r.cancelled() check below.
+			default:
 				r.mu.Lock()
 				r.completed++
 				r.mu.Unlock()
@@ -1075,6 +1170,18 @@ func (m *Manager) runRollout(r *rollout) {
 				r.state = "cancelled"
 				r.mu.Unlock()
 				return
+			case <-r.pauseSignalCh:
+				// Pause requested mid-cooldown. Stop the timer and let the
+				// next iteration's pause gate handle the wait.
+				if !t.Stop() {
+					select {
+					case <-t.C:
+					default:
+					}
+				}
+				r.mu.Lock()
+				r.cooldownUntil = time.Time{}
+				r.mu.Unlock()
 			case <-m.ctx.Done():
 				if !t.Stop() {
 					<-t.C

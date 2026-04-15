@@ -545,6 +545,280 @@ func TestRollout_CancelDuringCooldown(t *testing.T) {
 	}
 }
 
+func TestRollout_PauseBetweenWavesWaitsForResume(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	m.runDeploy = fakeRunner(nil, &order, &ran, &mu)
+
+	req := RolloutRequest{
+		Targets: []RolloutTarget{
+			mkTarget("a", "fra2", "staging"),
+			mkTarget("b", "lax", "staging"),
+		},
+		BatchSize:     1,
+		CooldownSecs:  1,
+		StopOnFailure: true,
+	}
+	st, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("StartRollout: %v", err)
+	}
+
+	// Wait for wave 0 to start running so the pause request lands during
+	// wave execution rather than before iteration 0.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(ran)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if err := m.PauseRollout(st.ID); err != nil {
+		t.Fatalf("PauseRollout: %v", err)
+	}
+
+	// Wait until the rollout reports state == "paused".
+	deadline = time.Now().Add(3 * time.Second)
+	var paused RolloutStatus
+	for time.Now().Before(deadline) {
+		s, ok := m.GetRollout(st.ID)
+		if !ok {
+			t.Fatal("rollout vanished")
+		}
+		if s.State == "paused" {
+			paused = s
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if paused.State != "paused" {
+		t.Fatalf("rollout did not enter paused state in time")
+	}
+	// Wave 0 should be done; host b (wave 1) must not have run yet.
+	if paused.Waves[0].State != "done" {
+		t.Errorf("wave[0].state = %q, want done", paused.Waves[0].State)
+	}
+	mu.Lock()
+	for _, h := range ran {
+		if h == "b" {
+			t.Errorf("host b ran before resume, ran=%v", ran)
+		}
+	}
+	mu.Unlock()
+
+	// Hold paused for a bit to confirm wave 1 stays put.
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	for _, h := range ran {
+		if h == "b" {
+			t.Errorf("host b ran while paused, ran=%v", ran)
+		}
+	}
+	mu.Unlock()
+
+	// Resume; rollout should complete normally.
+	if err := m.ResumeRollout(st.ID); err != nil {
+		t.Fatalf("ResumeRollout: %v", err)
+	}
+	final := waitTerminalRollout(t, m, st.ID, 5*time.Second)
+	if final.State != "done" {
+		t.Fatalf("final state = %q, want done", final.State)
+	}
+	if final.Completed != 2 {
+		t.Errorf("completed = %d, want 2", final.Completed)
+	}
+}
+
+func TestRollout_PauseDuringCooldownInterruptsTimer(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	m.runDeploy = fakeRunner(nil, &order, &ran, &mu)
+
+	req := RolloutRequest{
+		Targets: []RolloutTarget{
+			mkTarget("a", "fra2", "staging"),
+			mkTarget("b", "lax", "staging"),
+		},
+		BatchSize:    1,
+		CooldownSecs: 30, // long cooldown so we can pause while waiting
+	}
+	st, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("StartRollout: %v", err)
+	}
+
+	// Wait until cooldown is in progress.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s, ok := m.GetRollout(st.ID)
+		if ok && s.State == "cooldown" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	pauseStart := time.Now()
+	if err := m.PauseRollout(st.ID); err != nil {
+		t.Fatalf("PauseRollout: %v", err)
+	}
+
+	// The pause should interrupt the cooldown timer well before the 30s
+	// cooldown elapses.
+	deadline = time.Now().Add(3 * time.Second)
+	pausedSeen := false
+	for time.Now().Before(deadline) {
+		s, ok := m.GetRollout(st.ID)
+		if ok && s.State == "paused" {
+			pausedSeen = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !pausedSeen {
+		t.Fatalf("rollout never reached paused after pause-during-cooldown")
+	}
+	if elapsed := time.Since(pauseStart); elapsed > 2*time.Second {
+		t.Errorf("cooldown interrupt took %v, expected <2s", elapsed)
+	}
+
+	// Resume; rollout should complete the second wave.
+	if err := m.ResumeRollout(st.ID); err != nil {
+		t.Fatalf("ResumeRollout: %v", err)
+	}
+	final := waitTerminalRollout(t, m, st.ID, 5*time.Second)
+	if final.State != "done" {
+		t.Fatalf("final state = %q, want done", final.State)
+	}
+}
+
+func TestRollout_CancelWhilePausedTerminates(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	m.runDeploy = fakeRunner(nil, &order, &ran, &mu)
+
+	req := RolloutRequest{
+		Targets: []RolloutTarget{
+			mkTarget("a", "fra2", "staging"),
+			mkTarget("b", "lax", "staging"),
+		},
+		BatchSize:    1,
+		CooldownSecs: 30,
+	}
+	st, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("StartRollout: %v", err)
+	}
+
+	if err := m.PauseRollout(st.ID); err != nil {
+		t.Fatalf("PauseRollout: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s, ok := m.GetRollout(st.ID)
+		if ok && s.State == "paused" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := m.CancelRollout(st.ID); err != nil {
+		t.Fatalf("CancelRollout: %v", err)
+	}
+	final := waitTerminalRollout(t, m, st.ID, 3*time.Second)
+	if final.State != "cancelled" {
+		t.Fatalf("final state = %q, want cancelled", final.State)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, h := range ran {
+		if h == "b" {
+			t.Errorf("host b ran after cancel-from-paused, ran=%v", ran)
+		}
+	}
+}
+
+func TestRollout_PauseUnknownIDIsError(t *testing.T) {
+	m := newTestManager(t)
+	if err := m.PauseRollout("does-not-exist"); err == nil {
+		t.Fatal("expected error for unknown rollout id")
+	}
+	if err := m.ResumeRollout("does-not-exist"); err == nil {
+		t.Fatal("expected error for unknown rollout id")
+	}
+}
+
+func TestRollout_PauseRequestedFlagSurfacesBeforeBoundary(t *testing.T) {
+	m := newTestManager(t)
+	var order atomic.Int32
+	var ran []string
+	var mu sync.Mutex
+	// Slow runner so we can pause while wave 0 is still executing and
+	// observe pause_requested before the rollout reaches "paused".
+	m.runDeploy = fakeRunnerWith(nil, &order, &ran, &mu, 200*time.Millisecond)
+
+	req := RolloutRequest{
+		Targets: []RolloutTarget{
+			mkTarget("a", "fra2", "staging"),
+			mkTarget("b", "lax", "staging"),
+		},
+		BatchSize:    1,
+		CooldownSecs: 1,
+	}
+	st, err := m.StartRollout(req)
+	if err != nil {
+		t.Fatalf("StartRollout: %v", err)
+	}
+
+	// Wait for wave 0 to start.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(ran)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := m.PauseRollout(st.ID); err != nil {
+		t.Fatalf("PauseRollout: %v", err)
+	}
+	// Immediately after Pause, the rollout is still running wave 0 but the
+	// flag should be visible to the UI.
+	s, ok := m.GetRollout(st.ID)
+	if !ok {
+		t.Fatal("rollout vanished")
+	}
+	if !s.PauseRequested {
+		t.Errorf("PauseRequested = false, want true while wave 0 is running")
+	}
+
+	// Eventually the rollout reaches "paused".
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s, _ := m.GetRollout(st.ID)
+		if s.State == "paused" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := m.ResumeRollout(st.ID); err != nil {
+		t.Fatalf("ResumeRollout: %v", err)
+	}
+	waitTerminalRollout(t, m, st.ID, 5*time.Second)
+}
+
 func TestRollout_ValidationRejectsMixedProcess(t *testing.T) {
 	m := newTestManager(t)
 	req := RolloutRequest{

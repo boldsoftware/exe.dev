@@ -38,7 +38,7 @@ type RolloutStatus struct {
 	ID            string    `json:"id"`
 	Process       string    `json:"process"`
 	SHA           string    `json:"sha"`
-	State         string    `json:"state"` // pending, running, cooldown, done, failed, cancelled
+	State         string    `json:"state"` // pending, running, cooldown, paused, done, failed, cancelled
 	BatchSize     int       `json:"batch_size"`
 	CooldownSecs  int       `json:"cooldown_secs"`
 	StopOnFailure bool      `json:"stop_on_failure"`
@@ -53,6 +53,11 @@ type RolloutStatus struct {
 	Completed int `json:"completed"`
 	Failed    int `json:"failed"`
 	Remaining int `json:"remaining"`
+
+	// PauseRequested is true when the user has clicked Pause but the
+	// rollout has not yet reached the wave boundary. Lets the UI show a
+	// "Pausing…" indicator while the current wave finishes.
+	PauseRequested bool `json:"pause_requested,omitempty"`
 
 	InitiatedBy string `json:"initiated_by,omitempty"`
 	Error       string `json:"error,omitempty"`
@@ -103,6 +108,18 @@ type rollout struct {
 	cancelOnce sync.Once
 	cancelCh   chan struct{}
 
+	// pauseRequested is set by requestPause and cleared by requestResume.
+	// The orchestrator honors it at the next wave boundary. Guarded by mu.
+	pauseRequested bool
+	// unpaused is non-nil while pauseRequested is true. requestResume
+	// closes it to wake the orchestrator. Guarded by mu.
+	unpaused chan struct{}
+	// pauseSignalCh is a buffered (cap 1) wakeup channel used to interrupt
+	// the cooldown timer when pause is requested mid-cooldown. The actual
+	// pause state lives in pauseRequested/unpaused; this channel exists
+	// only so the orchestrator's select unblocks promptly.
+	pauseSignalCh chan struct{}
+
 	// releaseProdLocks are the prod-lock release functions taken when the
 	// rollout was started, one per distinct stage. Called (and cleared)
 	// by Manager.finishRollout.
@@ -148,6 +165,7 @@ func newRollout(id string, req RolloutRequest, waves []*waveState) *rollout {
 		currentWave:   0,
 		startedAt:     time.Now(),
 		cancelCh:      make(chan struct{}),
+		pauseSignalCh: make(chan struct{}, 1),
 	}
 }
 
@@ -262,24 +280,25 @@ func (r *rollout) snapshot() RolloutStatus {
 	}
 
 	return RolloutStatus{
-		ID:            r.id,
-		Process:       r.process,
-		SHA:           r.sha,
-		State:         r.state,
-		BatchSize:     r.batchSize,
-		CooldownSecs:  int(r.cooldown / time.Second),
-		StopOnFailure: r.stopOnFailure,
-		StartedAt:     r.startedAt,
-		DoneAt:        r.doneAt,
-		CooldownUntil: r.cooldownUntil,
-		Waves:         waves,
-		CurrentWave:   currentWave,
-		Total:         total,
-		Completed:     completed,
-		Failed:        failed,
-		Remaining:     total - completed - failed,
-		InitiatedBy:   r.initiatedBy,
-		Error:         r.err,
+		ID:             r.id,
+		Process:        r.process,
+		SHA:            r.sha,
+		State:          r.state,
+		BatchSize:      r.batchSize,
+		CooldownSecs:   int(r.cooldown / time.Second),
+		StopOnFailure:  r.stopOnFailure,
+		StartedAt:      r.startedAt,
+		DoneAt:         r.doneAt,
+		CooldownUntil:  r.cooldownUntil,
+		Waves:          waves,
+		CurrentWave:    currentWave,
+		Total:          total,
+		Completed:      completed,
+		Failed:         failed,
+		Remaining:      total - completed - failed,
+		PauseRequested: r.pauseRequested,
+		InitiatedBy:    r.initiatedBy,
+		Error:          r.err,
 	}
 }
 
@@ -297,6 +316,63 @@ func (r *rollout) cancelled() bool {
 	default:
 		return false
 	}
+}
+
+// requestPause marks the rollout as pause-requested. The orchestrator
+// honors it at the next wave boundary, after the current wave finishes.
+// Returns true if this call performed the request (false if already
+// pause-requested or the rollout has reached a terminal state).
+func (r *rollout) requestPause() bool {
+	r.mu.Lock()
+	if r.pauseRequested {
+		r.mu.Unlock()
+		return false
+	}
+	if r.state == "done" || r.state == "failed" || r.state == "cancelled" {
+		r.mu.Unlock()
+		return false
+	}
+	r.pauseRequested = true
+	r.unpaused = make(chan struct{})
+	r.mu.Unlock()
+
+	// Wake the orchestrator if it's blocked in a cooldown timer. Drop if
+	// the channel is full — the flag is the source of truth, the signal
+	// is just a wakeup.
+	select {
+	case r.pauseSignalCh <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+// requestResume clears the pause flag and unblocks the orchestrator if
+// it's waiting on the unpaused channel. Returns true if this call
+// performed a resume (false if the rollout was not paused).
+func (r *rollout) requestResume() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.pauseRequested {
+		return false
+	}
+	r.pauseRequested = false
+	if r.unpaused != nil {
+		close(r.unpaused)
+		r.unpaused = nil
+	}
+	return true
+}
+
+// pauseGate returns the current unpaused channel if the rollout is
+// pause-requested, else nil. Callers select on it (along with cancelCh
+// and the server context) to wait for resume.
+func (r *rollout) pauseGate() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.pauseRequested {
+		return nil
+	}
+	return r.unpaused
 }
 
 // rolloutLockKey is the per-process exclusion key. Only one rollout per

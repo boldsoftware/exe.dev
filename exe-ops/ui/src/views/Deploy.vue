@@ -517,6 +517,34 @@
               Deploying {{ liveDeployIds.length }} target{{ liveDeployIds.length !== 1 ? 's' : '' }}
             </template>
           </span>
+          <button
+            v-if="canPause"
+            class="deploy-btn modal-titlebar-pause"
+            :disabled="pauseRequestPending"
+            title="Pause after the current wave finishes"
+            @click="doPauseRollout"
+          >
+            <i class="pi pi-pause"></i>
+            {{ pauseRequestPending ? 'Pausing…' : 'Pause' }}
+          </button>
+          <button
+            v-else-if="canResume"
+            class="deploy-btn deploy-btn-confirm modal-titlebar-pause"
+            :disabled="pauseRequestPending"
+            title="Resume the rollout"
+            @click="doResumeRollout"
+          >
+            <i class="pi pi-play"></i>
+            {{ pauseRequestPending ? 'Resuming…' : 'Resume' }}
+          </button>
+          <button
+            v-if="canCancel"
+            class="deploy-btn deploy-btn-cancel modal-titlebar-cancel"
+            :disabled="cancelRequested"
+            @click="doCancel"
+          >
+            {{ cancelRequested ? 'Cancelling…' : 'Cancel' }}
+          </button>
           <button class="modal-close" @click="liveDeployVisible = false" title="Close (deploys continue in background)">
             <i class="pi pi-times"></i>
           </button>
@@ -542,14 +570,6 @@
             <span v-if="activeRollout.state === 'cooldown' && cooldownRemaining > 0 && !cancelRequested" class="rollout-cooldown-countdown">
               next wave in {{ cooldownRemaining }}s
             </span>
-            <button
-              v-if="!rolloutTerminal"
-              class="deploy-btn deploy-btn-cancel rollout-cancel-btn"
-              :disabled="cancelRequested"
-              @click="doCancelRollout"
-            >
-              {{ cancelRequested ? 'Cancelling…' : 'Cancel' }}
-            </button>
           </div>
           <div class="rollout-wave-strip">
             <div
@@ -647,9 +667,12 @@ import {
   fetchDeployCommits,
   fetchDeploys,
   startDeploy,
+  cancelDeploy,
   startRollout,
   fetchRollout,
   cancelRollout,
+  pauseRollout,
+  resumeRollout,
   type DeployProcess,
   type DeployStatus,
   type DeployCommit,
@@ -803,6 +826,9 @@ const rolloutProgressPct = computed(() => {
 const rolloutStatusLabel = computed(() => {
   const r = activeRollout.value
   if (!r) return ''
+  if (r.pause_requested && r.state !== 'paused') {
+    return 'Pausing — waiting for current wave to finish…'
+  }
   switch (r.state) {
     case 'pending': return 'Starting…'
     case 'running': {
@@ -813,12 +839,31 @@ const rolloutStatusLabel = computed(() => {
       return 'Running'
     }
     case 'cooldown': return `Cooldown after wave ${r.current_wave + 1} of ${r.waves.length}`
+    case 'paused': return `Paused before wave ${r.current_wave + 1} of ${r.waves.length}`
     case 'done': return 'Complete'
     case 'failed': return 'Failed'
     case 'cancelled': return 'Cancelled'
     default: return r.state
   }
 })
+
+// Pause/Resume controls only apply to rollouts (single-server deploys
+// can't be paused mid-step).
+const canPause = computed(() => {
+  const r = activeRollout.value
+  if (!r) return false
+  if (rolloutTerminal.value) return false
+  if (r.state === 'paused') return false
+  return !r.pause_requested
+})
+
+const canResume = computed(() => {
+  const r = activeRollout.value
+  if (!r) return false
+  return r.state === 'paused'
+})
+
+const pauseRequestPending = ref(false)
 
 // Tick once a second so cooldown countdown updates without re-fetching.
 const nowTick = ref(Date.now())
@@ -854,7 +899,21 @@ const liveDeployAllDone = computed(() => {
   if (liveDeployIds.value.length === 0) return false
   return liveDeployIds.value.every(id => {
     const s = liveDeployStatuses.value.get(id)
-    return s && (s.state === 'done' || s.state === 'failed')
+    return s && (s.state === 'done' || s.state === 'failed' || s.state === 'cancelled')
+  })
+})
+
+// canCancel is true when a Cancel button should be shown in the titlebar.
+// Covers both rollouts (delegates to rolloutTerminal) and bulk single-server
+// deploys (any non-terminal deploy in liveDeployIds).
+const canCancel = computed(() => {
+  if (activeRolloutId.value) {
+    return !rolloutTerminal.value
+  }
+  if (liveDeployIds.value.length === 0) return false
+  return liveDeployIds.value.some(id => {
+    const s = liveDeployStatuses.value.get(id)
+    return s && s.state !== 'done' && s.state !== 'failed' && s.state !== 'cancelled'
   })
 })
 
@@ -1437,6 +1496,57 @@ async function doCancelRollout() {
   } catch (e: any) {
     cancelRequested.value = false
     error.value = e?.message || 'cancel failed'
+  }
+}
+
+async function doPauseRollout() {
+  if (!activeRolloutId.value || pauseRequestPending.value) return
+  pauseRequestPending.value = true
+  try {
+    const r = await pauseRollout(activeRolloutId.value)
+    activeRollout.value = r
+  } catch (e: any) {
+    error.value = e?.message || 'pause failed'
+  } finally {
+    pauseRequestPending.value = false
+  }
+}
+
+async function doResumeRollout() {
+  if (!activeRolloutId.value || pauseRequestPending.value) return
+  pauseRequestPending.value = true
+  try {
+    const r = await resumeRollout(activeRolloutId.value)
+    activeRollout.value = r
+  } catch (e: any) {
+    error.value = e?.message || 'resume failed'
+  } finally {
+    pauseRequestPending.value = false
+  }
+}
+
+// doCancel is the unified titlebar Cancel handler. For an active rollout it
+// delegates to doCancelRollout. For bulk single-server deploys it cancels
+// every non-terminal deploy in parallel.
+async function doCancel() {
+  if (cancelRequested.value) return
+  if (activeRolloutId.value) {
+    await doCancelRollout()
+    return
+  }
+  const targets = liveDeployIds.value.filter(id => {
+    const s = liveDeployStatuses.value.get(id)
+    return s && s.state !== 'done' && s.state !== 'failed' && s.state !== 'cancelled'
+  })
+  if (targets.length === 0) return
+  cancelRequested.value = true
+  try {
+    await Promise.all(targets.map(id => cancelDeploy(id)))
+    await loadDeploys()
+  } catch (e: any) {
+    error.value = e?.message || 'cancel failed'
+  } finally {
+    cancelRequested.value = false
   }
 }
 
@@ -3265,10 +3375,24 @@ a.version-sha:hover {
   font-family: 'JetBrains Mono', monospace;
 }
 
-.rollout-cancel-btn {
-  margin-left: auto;
+.modal-titlebar-cancel,
+.modal-titlebar-pause {
   padding: 0.25rem 0.6rem;
   font-size: 0.72rem;
+  margin-right: 0.5rem;
+}
+
+/* Push the cluster of titlebar action buttons to the right edge. The first
+ * one in the DOM gets margin-left: auto; the next siblings ride along.
+ * Pause/Resume render before Cancel, so this targets whichever appears first. */
+.modal-titlebar-pause {
+  margin-left: auto;
+}
+.modal-titlebar-pause + .modal-titlebar-cancel {
+  margin-left: 0;
+}
+.modal-header > .modal-titlebar-cancel:first-of-type {
+  margin-left: auto;
 }
 
 .rollout-wave-strip {

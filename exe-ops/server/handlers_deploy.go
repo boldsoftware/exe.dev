@@ -182,8 +182,8 @@ func (h *Handlers) HandleRollouts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleRolloutByID handles GET /api/v1/rollouts/{id} and
-// POST /api/v1/rollouts/{id}/cancel.
+// HandleRolloutByID handles GET /api/v1/rollouts/{id} and the
+// POST /api/v1/rollouts/{id}/{cancel,pause,resume} control endpoints.
 func (h *Handlers) HandleRolloutByID(w http.ResponseWriter, r *http.Request) {
 	if h.deployer == nil {
 		http.Error(w, "deploy not configured", http.StatusNotFound)
@@ -196,20 +196,31 @@ func (h *Handlers) HandleRolloutByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional /cancel suffix.
 	id := path
-	cancel := false
-	if strings.HasSuffix(path, "/cancel") {
-		id = strings.TrimSuffix(path, "/cancel")
-		cancel = true
+	var action string
+	for _, suffix := range []string{"/cancel", "/pause", "/resume"} {
+		if strings.HasSuffix(path, suffix) {
+			id = strings.TrimSuffix(path, suffix)
+			action = strings.TrimPrefix(suffix, "/")
+			break
+		}
 	}
 
-	if cancel {
+	if action != "" {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if err := h.deployer.CancelRollout(id); err != nil {
+		var err error
+		switch action {
+		case "cancel":
+			err = h.deployer.CancelRollout(id)
+		case "pause":
+			err = h.deployer.PauseRollout(id)
+		case "resume":
+			err = h.deployer.ResumeRollout(id)
+		}
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -234,23 +245,53 @@ func (h *Handlers) HandleRolloutByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status)
 }
 
-// HandleDeployStatus handles GET /api/v1/deploys/{id}.
+// HandleDeployStatus handles GET /api/v1/deploys/{id} and
+// POST /api/v1/deploys/{id}/cancel.
 func (h *Handlers) HandleDeployStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	if h.deployer == nil {
 		http.Error(w, "deploy not configured", http.StatusNotFound)
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/deploys/")
-	if id == "" {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/deploys/")
+	if path == "" {
 		http.Error(w, "id required", http.StatusBadRequest)
 		return
 	}
 
+	id := path
+	cancel := false
+	if strings.HasSuffix(path, "/cancel") {
+		id = strings.TrimSuffix(path, "/cancel")
+		cancel = true
+	}
+
+	if cancel {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := h.deployer.Cancel(id); err != nil {
+			if errors.Is(err, deploy.ErrDeployRolloutOwned) {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		status, ok := h.deployer.Get(id)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, status)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	status, ok := h.deployer.Get(id)
 	if !ok {
 		http.Error(w, "not found", http.StatusNotFound)

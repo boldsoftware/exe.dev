@@ -42,7 +42,7 @@ export async function fetchDeployInventory(): Promise<DeployInventory> {
 
 export interface DeployStep {
   name: string
-  status: string // pending, running, done, failed
+  status: string // pending, running, done, failed, cancelled
   started_at?: string
   done_at?: string
   output?: string
@@ -58,7 +58,7 @@ export interface DeployStatus {
   sha: string
   initiated_by?: string
   rollout_id?: string
-  state: string // pending, running, done, failed
+  state: string // pending, running, done, failed, cancelled
   steps: DeployStep[]
   started_at: string
   done_at?: string
@@ -98,6 +98,17 @@ export async function fetchDeploys(since?: string): Promise<DeployStatus[]> {
 export async function fetchDeployStatus(id: string): Promise<DeployStatus> {
   const resp = await fetch(`/api/v1/deploys/${encodeURIComponent(id)}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export async function cancelDeploy(id: string): Promise<DeployStatus> {
+  const resp = await fetch(`/api/v1/deploys/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
   return resp.json()
 }
 
@@ -174,7 +185,7 @@ export interface RolloutStatus {
   id: string
   process: string
   sha: string
-  state: string // pending, running, cooldown, done, failed, cancelled
+  state: string // pending, running, cooldown, paused, done, failed, cancelled
   batch_size: number
   cooldown_secs: number
   stop_on_failure: boolean
@@ -187,6 +198,7 @@ export interface RolloutStatus {
   completed: number
   failed: number
   remaining: number
+  pause_requested?: boolean
   initiated_by?: string
   error?: string
 }
@@ -212,6 +224,28 @@ export async function fetchRollout(id: string): Promise<RolloutStatus> {
 
 export async function cancelRollout(id: string): Promise<RolloutStatus> {
   const resp = await fetch(`/api/v1/rollouts/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function pauseRollout(id: string): Promise<RolloutStatus> {
+  const resp = await fetch(`/api/v1/rollouts/${encodeURIComponent(id)}/pause`, {
+    method: 'POST',
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function resumeRollout(id: string): Promise<RolloutStatus> {
+  const resp = await fetch(`/api/v1/rollouts/${encodeURIComponent(id)}/resume`, {
     method: 'POST',
   })
   if (!resp.ok) {

@@ -115,8 +115,11 @@ func (s *SlackNotifier) DeployFinished(st Status) {
 	}
 
 	emoji := "white_check_mark"
-	if st.State == "failed" {
+	switch st.State {
+	case "failed":
 		emoji = "x"
+	case "cancelled":
+		emoji = "no_entry_sign"
 	}
 
 	if err := s.addReaction(ref.channelID, ref.ts, emoji); err != nil {

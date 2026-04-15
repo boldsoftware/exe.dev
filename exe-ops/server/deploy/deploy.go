@@ -19,7 +19,7 @@ type Status struct {
 	InitiatedBy string `json:"initiated_by,omitempty"` // Tailscale user login, if known
 	RolloutID   string `json:"rollout_id,omitempty"`   // set when deploy was started by a rollout
 
-	State     string    `json:"state"` // pending, running, done, failed
+	State     string    `json:"state"` // pending, running, done, failed, cancelled
 	Steps     []Step    `json:"steps"`
 	StartedAt time.Time `json:"started_at"`
 	DoneAt    time.Time `json:"done_at,omitzero"`
@@ -57,9 +57,16 @@ type deploy struct {
 
 	// ctx is derived from the manager context and used by execute() for
 	// all I/O. cancel aborts in-flight work — the rollout orchestrator
-	// calls it when a cancel is requested during the active wave.
+	// calls it when a cancel is requested during the active wave, and
+	// Manager.Cancel calls it for single-deploy cancels.
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// cancelRequested is set before cancel() is invoked when the abort
+	// originated from a user cancel (single deploy or rollout cancel).
+	// stepDone uses it to mark the terminal state as "cancelled" rather
+	// than "failed". Guarded by mu.
+	cancelRequested bool
 
 	// done is closed when the deploy reaches a terminal state. Allows
 	// the rollout orchestrator to await wave completion without polling.
@@ -165,7 +172,9 @@ func (d *deploy) setStepOutput(output string) {
 }
 
 // stepDone marks the current running step as done (err==nil) or failed.
-// Returns true when err != nil, signaling the caller to abort.
+// Returns true when err != nil, signaling the caller to abort. When the
+// abort was triggered by a user cancel (cancelRequested), the deploy ends
+// in the "cancelled" state instead of "failed".
 func (d *deploy) stepDone(err error) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -176,11 +185,19 @@ func (d *deploy) stepDone(err error) bool {
 		}
 		d.steps[i].DoneAt = now
 		if err != nil {
-			d.steps[i].Status = "failed"
-			d.steps[i].Output = err.Error()
-			d.state = "failed"
-			d.doneAt = now
-			d.err = err.Error()
+			if d.cancelRequested {
+				d.steps[i].Status = "cancelled"
+				d.steps[i].Output = "cancelled by user"
+				d.state = "cancelled"
+				d.doneAt = now
+				d.err = "cancelled by user"
+			} else {
+				d.steps[i].Status = "failed"
+				d.steps[i].Output = err.Error()
+				d.state = "failed"
+				d.doneAt = now
+				d.err = err.Error()
+			}
 		} else {
 			d.steps[i].Status = "done"
 			// Output may already be set by setStepOutput; keep it.
@@ -188,6 +205,29 @@ func (d *deploy) stepDone(err error) bool {
 		break
 	}
 	return err != nil
+}
+
+// requestCancel marks the deploy as user-cancelled and aborts its context.
+// Safe to call from any goroutine; safe to call multiple times. Returns
+// true if this call performed the cancel (false if it was already cancelled
+// or the deploy is already terminal).
+func (d *deploy) requestCancel() bool {
+	d.mu.Lock()
+	if d.cancelRequested {
+		d.mu.Unlock()
+		return false
+	}
+	if d.state == "done" || d.state == "failed" || d.state == "cancelled" {
+		d.mu.Unlock()
+		return false
+	}
+	d.cancelRequested = true
+	cancel := d.cancel
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return true
 }
 
 func (d *deploy) complete() {
