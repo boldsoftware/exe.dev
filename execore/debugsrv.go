@@ -768,7 +768,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
-		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, directOnly, writeProgress); err != nil {
+		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, directOnly, &box, writeProgress); err != nil {
 			s.slog().ErrorContext(ctx, "cold migration failed",
 				"box", boxName, "container_id", containerID,
 				"source", box.Ctrhost, "target", targetAddr,
@@ -919,7 +919,7 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 // migrateVM performs a direct exelet-to-exelet migration for cold and two-phase modes.
 // The source exelet connects directly to the target for data transfer; execore handles
 // only control messages, metadata observation, and progress reporting.
-func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, progress func(string, ...any)) error {
+func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, box *exedb.Box, progress func(string, ...any)) error {
 	if boxName != "" {
 		s.liveMigrations.start(boxName, sourceAddr, targetAddr, false)
 		defer s.liveMigrations.finish(boxName)
@@ -1013,6 +1013,32 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 			progress("Transferred %d MB...", v.Progress.BytesSent/(1024*1024))
 			if boxName != "" {
 				s.liveMigrations.updateBytes(boxName, v.Progress.BytesSent)
+			}
+
+		case *computeapi.SendVMResponse_AwaitControl:
+			if v.AwaitControl.Reason == computeapi.SendVMAwaitControl_NEED_GUEST_SYNC {
+				progress("Syncing guest filesystems...")
+				if box != nil && box.SSHPort != nil {
+					syncCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					if _, err := runCommandOnBox(syncCtx, s.sshPool, box, "sync"); err != nil {
+						s.slog().WarnContext(ctx, "guest sync failed (proceeding anyway)",
+							"box", boxName, "error", err)
+						progress("WARNING: guest sync failed: %v (proceeding anyway)", err)
+					}
+					cancel()
+				}
+				// Tell source to proceed with stop
+				if err := sendStream.Send(&computeapi.SendVMRequest{
+					Type: &computeapi.SendVMRequest_Control{
+						Control: &computeapi.SendVMControl{
+							Action: computeapi.SendVMControl_PROCEED_WITH_PAUSE,
+						},
+					},
+				}); err != nil {
+					return fmt.Errorf("failed to send sync control: %w", err)
+				}
+			} else {
+				return fmt.Errorf("unexpected await control reason in cold migration: %v", v.AwaitControl.Reason)
 			}
 
 		case *computeapi.SendVMResponse_Result:
@@ -1698,7 +1724,7 @@ func (s *Server) handleDebugMassMigrate(w http.ResponseWriter, r *http.Request) 
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "migration: starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, writeProgress); err != nil {
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, &box, writeProgress); err != nil {
 				s.slog().ErrorContext(ctx, "cold migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -6684,7 +6710,7 @@ func (s *Server) handleDebugUserMigrateVMs(w http.ResponseWriter, r *http.Reques
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, writeProgress); err != nil {
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, &box, writeProgress); err != nil {
 				s.slog().ErrorContext(ctx, "cold migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -6907,7 +6933,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 
 	// Transfer disk (two-phase=false since VM is stopped).
 	writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
-	if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, false, false, writeProgress); err != nil {
+	if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, false, false, &box, writeProgress); err != nil {
 		s.slog().ErrorContext(ctx, "cold migration failed",
 			"box", boxName, "container_id", containerID,
 			"source", box.Ctrhost, "target", targetAddr,

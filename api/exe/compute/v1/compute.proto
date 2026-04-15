@@ -365,6 +365,7 @@ message SendVMSnapshotChunk {
 message SendVMAwaitControl {
   enum Reason {
     NEED_IP_RECONFIG = 0;
+    NEED_GUEST_SYNC = 1;
   }
   Reason reason = 1;
   NetworkInterface source_network = 2;

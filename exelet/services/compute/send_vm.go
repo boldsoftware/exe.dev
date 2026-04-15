@@ -552,8 +552,33 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 		return err
 	}
 
+	// Ask the orchestrator to sync the guest's filesystems before we stop the VM.
+	// The guest's page cache may have dirty data that hasn't been flushed to the
+	// block device. A hard VM stop (DELETE /vm) kills the guest without flushing,
+	// so the orchestrator SSHes in and runs 'sync' first.
+	s.log.InfoContext(ctx, "two-phase: requesting guest sync before stop", "instance", instanceID)
+	if err := stream.Send(&api.SendVMResponse{
+		Type: &api.SendVMResponse_AwaitControl{
+			AwaitControl: &api.SendVMAwaitControl{
+				Reason: api.SendVMAwaitControl_NEED_GUEST_SYNC,
+			},
+		},
+	}); err != nil {
+		return status.Errorf(codes.Internal, "failed to send guest sync request: %v", err)
+	}
+
+	// Wait for orchestrator to confirm sync is done
+	controlReq, err := stream.Recv()
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to receive sync control: %v", err)
+	}
+	control := controlReq.GetControl()
+	if control == nil {
+		return status.Errorf(codes.InvalidArgument, "expected control message after guest sync, got %T", controlReq.Type)
+	}
+	s.log.InfoContext(ctx, "two-phase: guest sync confirmed, stopping VM", "instance", instanceID)
+
 	// Phase 2: Stop VM and send incremental diff
-	s.log.InfoContext(ctx, "two-phase: stopping VM for phase 2", "instance", instanceID)
 
 	// Reload instance state in case the VM stopped on its own
 	instance, err = s.getInstance(ctx, instanceID)
@@ -567,7 +592,7 @@ func (s *Service) sendVMTwoPhase(ctx context.Context, stream api.ComputeService_
 	}
 	s.log.InfoContext(ctx, "two-phase: VM stopped, creating final snapshot")
 
-	// Sync after stop to flush any remaining in-flight writes
+	// Sync host filesystem to flush any remaining writes from the hypervisor
 	unix.Sync()
 
 	// Create final migration snapshot

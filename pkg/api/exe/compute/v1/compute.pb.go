@@ -361,15 +361,18 @@ type SendVMAwaitControl_Reason int32
 
 const (
 	SendVMAwaitControl_NEED_IP_RECONFIG SendVMAwaitControl_Reason = 0
+	SendVMAwaitControl_NEED_GUEST_SYNC  SendVMAwaitControl_Reason = 1
 )
 
 // Enum value maps for SendVMAwaitControl_Reason.
 var (
 	SendVMAwaitControl_Reason_name = map[int32]string{
 		0: "NEED_IP_RECONFIG",
+		1: "NEED_GUEST_SYNC",
 	}
 	SendVMAwaitControl_Reason_value = map[string]int32{
 		"NEED_IP_RECONFIG": 0,
+		"NEED_GUEST_SYNC":  1,
 	}
 )
 
@@ -5811,12 +5814,13 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\ris_last_chunk\x18\x03 \x01(\bR\visLastChunk\x12\x1e\n" +
 	"\n" +
 	"compressed\x18\x04 \x01(\bR\n" +
-	"compressed\"\xc0\x01\n" +
+	"compressed\"\xd5\x01\n" +
 	"\x12SendVMAwaitControl\x12A\n" +
 	"\x06reason\x18\x01 \x01(\x0e2).exe.compute.v1.SendVMAwaitControl.ReasonR\x06reason\x12G\n" +
-	"\x0esource_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rsourceNetwork\"\x1e\n" +
+	"\x0esource_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rsourceNetwork\"3\n" +
 	"\x06Reason\x12\x14\n" +
-	"\x10NEED_IP_RECONFIG\x10\x00\"6\n" +
+	"\x10NEED_IP_RECONFIG\x10\x00\x12\x13\n" +
+	"\x0fNEED_GUEST_SYNC\x10\x01\"6\n" +
 	"\x13SendVMPhaseComplete\x12\x1f\n" +
 	"\vphase_bytes\x18\x01 \x01(\x04R\n" +
 	"phaseBytes\"\xdf\x01\n" +
