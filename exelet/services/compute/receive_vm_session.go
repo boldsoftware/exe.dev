@@ -321,7 +321,7 @@ func (sess *receiveVMSession) touchLocked() {
 }
 
 func (sess *receiveVMSession) abort(reason string) {
-	_ = reason
+	slog.Warn("receive VM session aborted", "session", sess.id, "instance", sess.instanceID, "reason", reason)
 	sess.cancel()
 	sess.unlockOnce.Do(func() {
 		if sess.unlockFn != nil {

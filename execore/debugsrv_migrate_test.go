@@ -274,7 +274,6 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 				instanceID: containerID,
 				box:        box,
 				progress:   progress,
-				directOnly: false,
 				sudoPrefix: "",
 				guestShell: "",
 			})
@@ -366,7 +365,6 @@ func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
 		instanceID: containerID,
 		box:        box,
 		progress:   progress,
-		directOnly: false,
 		sudoPrefix: "",
 		guestShell: "",
 	})
@@ -398,7 +396,7 @@ func TestMigrateVMColdPreMetadataStatus(t *testing.T) {
 		messages = append(messages, fmt.Sprintf(format, args...))
 	}
 
-	err := server.migrateVM(ctx, sourceClient, "test-instance", "tcp://source:9080", targetAddr, "test-box", false, false, nil, progress)
+	err := server.migrateVM(ctx, sourceClient, "test-instance", "tcp://source:9080", targetAddr, "test-box", false, nil, progress)
 	if err != nil {
 		t.Fatalf("migrateVM failed: %v", err)
 	}

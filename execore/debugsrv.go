@@ -694,7 +694,6 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("live") == "false" {
 		live = false
 	}
-	directOnly := r.FormValue("direct_only") == "true"
 
 	// Step 1: Stop VM on source (skip for two-phase and live - SendVM handles it)
 	if !twoPhase && !live && wasRunning {
@@ -749,7 +748,6 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 			source:     sourceClient.client,
 			targetAddr: targetAddr,
 			instanceID: containerID,
-			directOnly: directOnly,
 			box:        box,
 			progress:   writeProgress,
 			sudoPrefix: guestSudo,
@@ -772,7 +770,7 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
-		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, directOnly, &box, writeProgress); err != nil {
+		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, &box, writeProgress); err != nil {
 			s.slog().ErrorContext(ctx, "cold migration failed",
 				"box", boxName, "container_id", containerID,
 				"source", box.Ctrhost, "target", targetAddr,
@@ -963,7 +961,7 @@ func retrySourceDeleteAfterMigration(ctx context.Context, source *exeletclient.C
 // The source exelet connects directly to the target for data transfer; execore handles
 // only control messages, metadata observation, and progress reporting.
 // Uses unary RPCs (InitSendVM/PollSendVM).
-func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase, directOnly bool, box *exedb.Box, progress func(string, ...any)) error {
+func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, instanceID, sourceAddr, targetAddr, boxName string, twoPhase bool, box *exedb.Box, progress func(string, ...any)) error {
 	if boxName != "" {
 		ctx = s.liveMigrations.start(ctx, boxName, sourceAddr, targetAddr, false)
 		defer s.liveMigrations.finish(boxName)
@@ -1003,7 +1001,6 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 
 	progress("Requesting VM metadata from source (direct, unary)...")
 
-	var directConfirmed bool
 	var afterSeq uint64
 	for {
 		resp, err := source.PollSendVM(ctx, &computeapi.PollSendVMRequest{
@@ -1024,7 +1021,6 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 					v.Metadata.Instance.Image, v.Metadata.BaseImageID, v.Metadata.Encrypted, v.Metadata.TotalSizeEstimate)
 
 			case *computeapi.SendVMEvent_TargetReady:
-				directConfirmed = true
 				progress("Target ready (has_base_image=%v)", v.TargetReady.HasBaseImage)
 				progress("MIGRATION_DIRECT_CONFIRMED:")
 				progress("Transferring disk data...")
@@ -1072,12 +1068,6 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 		}
 
 		if resp.Completed {
-			// Terminal without a Result event — shouldn't happen, but treat
-			// as success if we saw directConfirmed.
-			if directConfirmed {
-				completed = true
-				return nil
-			}
 			return fmt.Errorf("source session completed without result")
 		}
 	}
@@ -1092,7 +1082,6 @@ type migrateVMLiveParams struct {
 	instanceID string
 	box        exedb.Box
 	progress   func(string, ...any)
-	directOnly bool
 
 	// Guest privilege escalation prefix and shell, from checkGuestIPReconfig.
 	sudoPrefix string
@@ -6693,7 +6682,6 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 				instanceID: containerID,
 				box:        box,
 				progress:   writeProgress,
-				directOnly: false,
 				sudoPrefix: guestSudo,
 				guestShell: guestShell,
 			})
@@ -6717,7 +6705,7 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 		} else {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
-			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, false, &box, writeProgress); err != nil {
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, &box, writeProgress); err != nil {
 				s.slog().ErrorContext(ctx, "cold migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -7036,7 +7024,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 
 	// Transfer disk (two-phase=false since VM is stopped).
 	writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
-	if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, false, false, &box, writeProgress); err != nil {
+	if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, false, &box, writeProgress); err != nil {
 		s.slog().ErrorContext(ctx, "cold migration failed",
 			"box", boxName, "container_id", containerID,
 			"source", box.Ctrhost, "target", targetAddr,
