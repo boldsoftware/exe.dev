@@ -203,7 +203,7 @@ func (m *Manager) defaultProdLockAcquire(ctx context.Context, stage, reason stri
 	release := func() {
 		rctx, cancel := context.WithTimeout(context.Background(), prodLockTimeout)
 		defer cancel()
-		if _, err := prodlockAction(rctx, env, "unlock", "exe-ops: "+reason+" complete"); err != nil {
+		if _, err := prodlockAction(rctx, env, "unlock", reason+" complete"); err != nil {
 			m.log.Warn("prodlock unlock failed", "env", env, "stage", stage, "err", err)
 		} else {
 			m.log.Info("prodlock released", "env", env, "stage", stage)
