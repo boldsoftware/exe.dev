@@ -17,12 +17,12 @@ if planCategory == plan.CategoryIndividual {
 
 ✅ **CORRECT:**
 ```go
-if plan.Grants(planCategory, plan.InviteRequest) {
+if plan.Grants(planID, plan.InviteRequest) {
     // allow invites
 }
 ```
 
-**Why:** Plan structure may change. New plans may be added. An "individual" user might be on a team tomorrow. Checking entitlements keeps the code future-proof and centralizes capability definitions in the plan catalog.
+**Why:** `Grants` is the single entry point for capability checks. It resolves the correct tier from any plan ID (4-part tier ID, 3-part legacy, or bare category) and applies tier-override → plan-fallback logic. Plan structure may change. New plans may be added. Checking entitlements keeps the code future-proof and centralizes capability definitions in the plan catalog.
 
 **Exceptions:** The only acceptable plan category checks are:
 - **Display only:** Debug/admin UI showing plan name/status, UI buttons that link to billing portal

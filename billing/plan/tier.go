@@ -5,6 +5,67 @@ import (
 	"strings"
 )
 
+// Tier represents a specific billing tier within a plan category.
+// Tiers own quotas, Stripe prices, and optional per-tier entitlement overrides.
+type Tier struct {
+	// ID uses the 4-part format: "{category}:{tier}:{interval}:{version}"
+	// e.g. "individual:medium:monthly:20260601"
+	ID string
+
+	Category Category
+	Name     string // "Small", "Medium", "Default", etc.
+
+	StripePrices map[string]stripePriceInfo
+	Quotas       tierQuotas
+
+	// Entitlements overrides the plan's base entitlements when non-nil.
+	// nil = inherit from the parent Plan. Non-nil = use this set instead.
+	Entitlements *map[Entitlement]bool
+}
+
+// TiersByCategory returns all tiers for a given plan category, sorted
+// by pool size (MaxCPUs ascending) so tiers display small → large.
+func TiersByCategory(cat Category) []Tier {
+	var result []Tier
+	for _, t := range tiers {
+		if t.Category == cat {
+			result = append(result, t)
+		}
+	}
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0 && result[j].Quotas.ComputeClass.MaxCPUs < result[j-1].Quotas.ComputeClass.MaxCPUs; j-- {
+			result[j], result[j-1] = result[j-1], result[j]
+		}
+	}
+	return result
+}
+
+// DiskResizeAllowance returns how many more bytes a VM's disk can grow
+// given the current disk size and the user's plan. Returns 0 if the plan
+// does not allow resize (MaxDisk == 0) or the disk is already at/above the ceiling.
+func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
+	tier, err := getTierByID(planID)
+	if err != nil || tier.Quotas.MaxDisk == 0 {
+		return 0
+	}
+	if currentDiskSize >= tier.Quotas.MaxDisk {
+		return 0
+	}
+	return tier.Quotas.MaxDisk - currentDiskSize
+}
+
+// MaxDiskForPlan returns the absolute disk ceiling for a plan.
+// Returns 0 if the plan is unknown or has no disk resize quota.
+func MaxDiskForPlan(planID string) uint64 {
+	tier, err := getTierByID(planID)
+	if err != nil {
+		return 0
+	}
+	return tier.Quotas.MaxDisk
+}
+
+// --- unexported ---
+
 const (
 	// gb is one gibibyte (2^30 bytes), used for expressing tier quota sizes.
 	gb = 1024 * 1024 * 1024
@@ -34,24 +95,6 @@ type tierQuotas struct {
 	MaxTeamVMs   int
 	DefaultDisk  uint64 // bytes — disk size for new VMs
 	MaxDisk      uint64 // bytes — per-VM ceiling for disk resize; contact support above this (0 = no resize allowed)
-}
-
-// Tier represents a specific billing tier within a plan category.
-// Tiers own quotas, Stripe prices, and optional per-tier entitlement overrides.
-type Tier struct {
-	// ID uses the 4-part format: "{category}:{tier}:{interval}:{version}"
-	// e.g. "individual:medium:monthly:20260601"
-	ID string
-
-	Category Category
-	Name     string // "Small", "Medium", "Default", etc.
-
-	StripePrices map[string]stripePriceInfo
-	Quotas       tierQuotas
-
-	// Entitlements overrides the plan's base entitlements when non-nil.
-	// nil = inherit from the parent Plan. Non-nil = use this set instead.
-	Entitlements *map[Entitlement]bool
 }
 
 // tiers is the canonical tier catalog, keyed by tier ID (4-part format).
@@ -268,7 +311,7 @@ func getTierByID(id string) (Tier, error) {
 	return Tier{}, fmt.Errorf("unknown tier ID %q", id)
 }
 
-// ParseTierID extracts the plan category, tier name, interval, and version
+// parseTierID extracts the plan category, tier name, interval, and version
 // from a 4-part tier ID (e.g. "individual:medium:monthly:20260601").
 // Returns empty strings for any missing fields.
 func parseTierID(id string) (category Category, tierName, interval, version string) {
@@ -284,23 +327,6 @@ func parseTierID(id string) (category Category, tierName, interval, version stri
 	default:
 		return Category(id), "", "", ""
 	}
-}
-
-// TiersByCategory returns all tiers for a given plan category, sorted
-// by pool size (MaxCPUs ascending) so tiers display small → large.
-func TiersByCategory(cat Category) []Tier {
-	var result []Tier
-	for _, t := range tiers {
-		if t.Category == cat {
-			result = append(result, t)
-		}
-	}
-	for i := 1; i < len(result); i++ {
-		for j := i; j > 0 && result[j].Quotas.ComputeClass.MaxCPUs < result[j-1].Quotas.ComputeClass.MaxCPUs; j-- {
-			result[j], result[j-1] = result[j-1], result[j]
-		}
-	}
-	return result
 }
 
 // effectiveEntitlements returns the entitlements for a tier, inheriting
@@ -325,30 +351,6 @@ func tierGrants(tier Tier, ent Entitlement) bool {
 		return true
 	}
 	return ents[ent]
-}
-
-// DiskResizeAllowance returns how many more bytes a VM's disk can grow
-// given the current disk size and the user's plan. Returns 0 if the plan
-// does not allow resize (MaxDisk == 0) or the disk is already at/above the ceiling.
-func DiskResizeAllowance(planID string, currentDiskSize uint64) uint64 {
-	tier, err := getTierByID(planID)
-	if err != nil || tier.Quotas.MaxDisk == 0 {
-		return 0
-	}
-	if currentDiskSize >= tier.Quotas.MaxDisk {
-		return 0
-	}
-	return tier.Quotas.MaxDisk - currentDiskSize
-}
-
-// MaxDiskForPlan returns the absolute disk ceiling for a plan.
-// Returns 0 if the plan is unknown or has no disk resize quota.
-func MaxDiskForPlan(planID string) uint64 {
-	tier, err := getTierByID(planID)
-	if err != nil {
-		return 0
-	}
-	return tier.Quotas.MaxDisk
 }
 
 // tierIDFromStripePriceKey returns the tier ID for a given Stripe price lookup key.

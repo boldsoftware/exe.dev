@@ -5985,7 +5985,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			}{
 				Name:    ent.DisplayName,
 				ID:      ent.ID,
-				Granted: plan.GrantsEntitlement(planRow.PlanID, ent),
+				Granted: plan.Grants(planRow.PlanID, ent),
 			})
 		}
 	}

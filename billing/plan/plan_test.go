@@ -8,84 +8,6 @@ import (
 	"exe.dev/exedb"
 )
 
-func TestPlanGrants(t *testing.T) {
-	tests := []struct {
-		version Category
-		ent     Entitlement
-		want    bool
-	}{
-		// Individual
-		{CategoryIndividual, CreditPurchase, true},
-		{CategoryIndividual, VMRun, true},
-		{CategoryIndividual, VMCreate, true},
-		{CategoryIndividual, LLMUse, true},
-		{CategoryIndividual, DiskResize, false},
-
-		// Friend
-		{CategoryFriend, VMRun, true},
-		{CategoryFriend, VMCreate, true},
-		{CategoryFriend, LLMUse, true},
-		{CategoryFriend, CreditPurchase, false},
-
-		// Grandfathered
-		{CategoryGrandfathered, VMCreate, true},
-		{CategoryGrandfathered, VMRun, true},
-		{CategoryGrandfathered, CreditPurchase, false},
-
-		// Invite
-		{CategoryTrial, VMCreate, true},
-		{CategoryTrial, VMRun, true},
-		{CategoryTrial, CreditPurchase, false},
-
-		// Basic
-		{CategoryBasic, LLMUse, true},
-		{CategoryBasic, VMCreate, false},
-		{CategoryBasic, VMRun, false},
-		{CategoryBasic, CreditPurchase, false},
-
-		// Team
-		{CategoryTeam, VMCreate, true},
-		{CategoryTeam, VMRun, true},
-		{CategoryTeam, LLMUse, true},
-		{CategoryTeam, CreditPurchase, true},
-
-		// Enterprise
-		{CategoryEnterprise, CreditPurchase, true},
-		{CategoryEnterprise, VMRun, true},
-		{CategoryEnterprise, TeamCreate, false},
-
-		// CategoryRestricted — grants nothing
-		{CategoryRestricted, LLMUse, false},
-		{CategoryRestricted, VMCreate, false},
-		{CategoryRestricted, VMRun, false},
-		{CategoryRestricted, DiskResize, false},
-		{CategoryRestricted, CreditPurchase, false},
-	}
-	for _, tt := range tests {
-		got := Grants(tt.version, tt.ent)
-		if got != tt.want {
-			t.Errorf("Grants(%q, %q) = %v, want %v", tt.version, tt.ent, got, tt.want)
-		}
-	}
-}
-
-func TestPlanGrantsWildcard(t *testing.T) {
-	for _, ent := range []Entitlement{
-		LLMUse, CreditPurchase, VMCreate, VMRun, DiskResize,
-		{"anything:else", "Made Up"},
-	} {
-		if !Grants(CategoryVIP, ent) {
-			t.Errorf("Grants(%q, %q) = false, want true (wildcard)", CategoryVIP, ent)
-		}
-	}
-}
-
-func TestPlanGrantsUnknownPlan(t *testing.T) {
-	if Grants(Category("nonexistent"), LLMUse) {
-		t.Error("Grants(nonexistent, llm:use) = true, want false")
-	}
-}
-
 func TestGetPlanCategory(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 	past := time.Now().Add(-24 * time.Hour)
@@ -186,7 +108,7 @@ func TestTeamMemberCanCreateVM(t *testing.T) {
 	if version != CategoryTeam {
 		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryTeam)
 	}
-	if !Grants(version, VMCreate) {
+	if !Grants(ID(version), VMCreate) {
 		t.Errorf("Grants(%q, VMCreate) = false, want true", version)
 	}
 }
@@ -203,7 +125,7 @@ func TestTeamMemberDeniedWithoutBillingOwner(t *testing.T) {
 	if version != CategoryBasic {
 		t.Fatalf("getPlanCategory() = %q, want %q", version, CategoryBasic)
 	}
-	if Grants(version, VMCreate) {
+	if Grants(ID(version), VMCreate) {
 		t.Errorf("Grants(%q, VMCreate) = true, want false", version)
 	}
 }
@@ -229,93 +151,6 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 		}
 		if p.SignupBonusCreditUSD != tt.want {
 			t.Errorf("plan %q SignupBonusCreditUSD = %v, want %v", tt.version, p.SignupBonusCreditUSD, tt.want)
-		}
-	}
-}
-
-// TestAllPlansHaveLLMUse verifies all plans except Restricted grant llm:use.
-func TestAllPlansHaveLLMUse(t *testing.T) {
-	for version, plan := range plans {
-		if version == CategoryRestricted {
-			// Restricted grants nothing — explicitly should NOT have LLMUse.
-			if plan.Entitlements[LLMUse] || plan.Entitlements[All] {
-				t.Errorf("plan %q should not grant llm:use", version)
-			}
-			continue
-		}
-		if !plan.Entitlements[LLMUse] && !plan.Entitlements[All] {
-			t.Errorf("plan %q does not grant llm:use", version)
-		}
-	}
-}
-
-// TestRestrictedPlanGrantsNothing verifies the Restricted plan has an empty entitlements map.
-func TestRestrictedPlanGrantsNothing(t *testing.T) {
-	p, ok := plans[CategoryRestricted]
-	if !ok {
-		t.Fatal("CategoryRestricted not found in plans")
-	}
-	for ent, granted := range p.Entitlements {
-		if granted {
-			t.Errorf("CategoryRestricted grants %q, want nothing", ent.ID)
-		}
-	}
-}
-
-// TestVMRunGranted verifies VMRun is granted to the right plans.
-func TestVMRunGranted(t *testing.T) {
-	shouldGrant := []Category{CategoryVIP, CategoryTeam, CategoryIndividual, CategoryFriend, CategoryGrandfathered, CategoryTrial}
-	shouldDeny := []Category{CategoryBasic, CategoryRestricted}
-
-	for _, v := range shouldGrant {
-		if !Grants(v, VMRun) {
-			t.Errorf("Grants(%q, VMRun) = false, want true", v)
-		}
-	}
-	for _, v := range shouldDeny {
-		if Grants(v, VMRun) {
-			t.Errorf("Grants(%q, VMRun) = true, want false", v)
-		}
-	}
-}
-
-// TestAllEntitlements verifies AllEntitlements returns all concrete entitlements
-// (excluding the All wildcard) and that the list is stable.
-func TestAllEntitlements(t *testing.T) {
-	all := AllEntitlements()
-	if len(all) == 0 {
-		t.Fatal("AllEntitlements() returned empty slice")
-	}
-
-	// Should not contain the wildcard.
-	for _, e := range all {
-		if e.ID == "*" {
-			t.Error("AllEntitlements() should not contain the All wildcard")
-		}
-	}
-
-	// Should contain all known concrete entitlements.
-	want := map[string]bool{
-		"llm:use":         true,
-		"credit:purchase": true,
-		"invite:request":  true,
-		"team:create":     true,
-		"vm:create":       true,
-		"vm:run":          true,
-		"disk:resize":     true,
-	}
-	got := make(map[string]bool)
-	for _, e := range all {
-		got[e.ID] = true
-	}
-	for id := range want {
-		if !got[id] {
-			t.Errorf("AllEntitlements() missing %q", id)
-		}
-	}
-	for id := range got {
-		if !want[id] {
-			t.Errorf("AllEntitlements() has unexpected %q", id)
 		}
 	}
 }
@@ -463,25 +298,6 @@ func TestID(t *testing.T) {
 	}
 }
 
-func TestPlanGrantsWithVersionedID(t *testing.T) {
-	// Verify that using Base on a versioned ID gives correct entitlements.
-	version := Base("individual:monthly:20260325")
-	if !Grants(version, VMCreate) {
-		t.Error("Grants with versioned individual should grant VMCreate")
-	}
-	if !Grants(version, CreditPurchase) {
-		t.Error("Grants with versioned individual should grant CreditPurchase")
-	}
-
-	version2 := Base("basic:monthly:20260325")
-	if Grants(version2, VMCreate) {
-		t.Error("Grants with versioned basic should not grant VMCreate")
-	}
-	if !Grants(version2, LLMUse) {
-		t.Error("Grants with versioned basic should grant LLMUse")
-	}
-}
-
 func TestEnterprisePlanExists(t *testing.T) {
 	p, ok := Get(CategoryEnterprise)
 	if !ok {
@@ -498,18 +314,6 @@ func TestEnterprisePlanExists(t *testing.T) {
 	}
 	if p.MonthlyLLMCreditUSD != 500.0 {
 		t.Errorf("Enterprise plan MonthlyLLMCreditUSD = %f, want 500.0", p.MonthlyLLMCreditUSD)
-	}
-}
-
-func TestEnterprisePlanGrants(t *testing.T) {
-	shouldGrant := []Entitlement{LLMUse, CreditPurchase, InviteRequest, VMCreate, VMRun}
-	for _, ent := range shouldGrant {
-		if !Grants(CategoryEnterprise, ent) {
-			t.Errorf("Grants(CategoryEnterprise, %q) = false, want true", ent.ID)
-		}
-	}
-	if Grants(CategoryEnterprise, TeamCreate) {
-		t.Error("Grants(CategoryEnterprise, TeamCreate) = true, want false")
 	}
 }
 

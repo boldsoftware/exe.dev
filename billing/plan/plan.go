@@ -2,7 +2,6 @@ package plan
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -11,13 +10,6 @@ import (
 
 // Category identifies a billing plan.
 type Category string
-
-// stripePriceInfo contains Stripe price metadata for a plan.
-type stripePriceInfo struct {
-	LookupKey string
-	Model     string
-	Interval  string
-}
 
 // Plan category constants.
 const (
@@ -80,6 +72,171 @@ type UserLimits struct {
 	MaxMemory uint64 `json:"max_memory,omitempty"` // Max memory in bytes
 	MaxDisk   uint64 `json:"max_disk,omitempty"`   // Max disk in bytes
 	MaxCPUs   uint64 `json:"max_cpus,omitempty"`   // Max number of CPUs
+}
+
+// DataQuerier abstracts the database query needed by ForUser.
+type DataQuerier interface {
+	GetUserPlanData(ctx context.Context, userID string) (exedb.GetUserPlanDataRow, error)
+}
+
+// AllPlans returns all plans sorted alphabetically by name.
+func AllPlans() []Plan {
+	result := make([]Plan, 0, len(plans))
+	for _, p := range plans {
+		result = append(result, p)
+	}
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0 && result[j].Name < result[j-1].Name; j-- {
+			result[j], result[j-1] = result[j-1], result[j]
+		}
+	}
+	return result
+}
+
+// Get returns the Plan for a given category.
+// Returns false if the category is unknown or the plan is not active.
+func Get(cat Category) (Plan, bool) {
+	p, ok := plans[cat]
+	if !ok || !p.Available {
+		return Plan{}, false
+	}
+	return p, true
+}
+
+// ParseID extracts the base plan, interval, and version from a plan ID.
+// Versioned IDs use the format "{plan}:{interval}:{YYYYMMDD}" (e.g.
+// "individual:monthly:20260325"). Bare legacy IDs ("individual") are
+// handled gracefully: the base plan is the ID itself, interval and version
+// are empty strings.
+//
+// ParseID is the single code path for extracting the base plan from
+// any plan_id value stored in account_plans.
+func ParseID(id string) (plan Category, interval, version string) {
+	parts := strings.SplitN(id, ":", 3)
+	switch len(parts) {
+	case 3:
+		return Category(parts[0]), parts[1], parts[2]
+	default:
+		return Category(id), "", ""
+	}
+}
+
+// ID returns the stable plan ID for a given version.
+// Panics if the version is unknown — all valid versions are in the plan map.
+func ID(v Category) string {
+	p, ok := plans[v]
+	if !ok {
+		panic("unknown plan version: " + string(v))
+	}
+	return p.ID
+}
+
+// Base extracts the base Category from a possibly-versioned plan ID.
+// This is a convenience wrapper around ParseID.
+func Base(id string) Category {
+	plan, _, _ := ParseID(id)
+	return plan
+}
+
+// ByID returns the Plan for a given plan ID string and whether it exists.
+// It handles both versioned IDs ("individual:monthly:20260325") and bare
+// legacy IDs ("individual") by extracting the base plan via ParseID.
+func ByID(id string) (Plan, bool) {
+	plan := Base(id)
+	return Get(plan)
+}
+
+// Name returns the human-readable name for a plan version (e.g., "Individual").
+// Returns empty string for unknown plan versions.
+func Name(version Category) string {
+	p, ok := plans[version]
+	if !ok {
+		return ""
+	}
+	return p.Name
+}
+
+// IsPaid reports whether the plan represents active paid billing.
+func IsPaid(version Category) bool {
+	p, ok := plans[version]
+	return ok && p.Paid
+}
+
+// ForUser returns the user's plan category by querying the database
+// and applying all billing logic in one function. This replaces the pattern
+// of manually constructing UserPlanInputs and calling GetPlanCategory.
+//
+// This is the preferred way to determine a user's plan. It encapsulates:
+//   - Querying account_plans for trial/friend/free status
+//   - Checking billing_events for active/canceled status
+//   - Checking team membership and team billing owner status
+//   - Applying grandfathered status for old accounts
+//   - Handling trial expiration logic
+//
+// Returns sql.ErrNoRows if the user doesn't exist.
+func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error) {
+	row, err := q.GetUserPlanData(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+
+	inputs := userPlanInputs{
+		BillingStatus:        row.BillingStatus,
+		PlanID:               row.PlanID,
+		TrialExpiresAt:       row.TrialExpiresAt,
+		CreatedAt:            row.CreatedAt,
+		HasExplicitOverrides: row.HasExplicitOverrides != 0,
+		TeamBillingActive:    row.TeamBillingActive != 0,
+	}
+
+	return getPlanCategory(inputs), nil
+}
+
+// DeriveExemptionDisplay returns a human-readable billing exemption string
+// for display purposes (debug UI, logs). This is NOT used for plan decisions.
+// Returns "free", "trial", or empty string.
+func DeriveExemptionDisplay(planID *string) string {
+	if planID == nil {
+		return ""
+	}
+	if *planID == "friend" || *planID == "free" {
+		return "free"
+	}
+	if strings.HasPrefix(*planID, "trial:") {
+		return "trial"
+	}
+	return ""
+}
+
+// --- unexported ---
+
+// stripePriceInfo contains Stripe price metadata for a plan.
+type stripePriceInfo struct {
+	LookupKey string
+	Model     string
+	Interval  string
+}
+
+// userPlanInputs captures the billing state needed to resolve a user's plan version.
+// Uses plain Go types to avoid importing exedb or execore.
+type userPlanInputs struct {
+	// BillingStatus is the subscription status: "active", "canceled", or "".
+	BillingStatus string
+
+	// PlanID is the active plan ID from account_plans (e.g., "trial:monthly:20260106", "friend", "free").
+	PlanID *string
+
+	// TrialExpiresAt is when the trial expires, if the plan is a trial.
+	TrialExpiresAt *time.Time
+
+	// CreatedAt is when the user account was created.
+	CreatedAt *time.Time
+
+	// HasExplicitOverrides indicates VIP-style per-user overrides exist.
+	HasExplicitOverrides bool
+
+	// TeamBillingActive is true when the user's team billing owner has active billing.
+	TeamBillingActive bool
 }
 
 var plans = map[Category]Plan{
@@ -205,140 +362,9 @@ var plans = map[Category]Plan{
 	},
 }
 
-// AllPlans returns all plans sorted alphabetically by name.
-func AllPlans() []Plan {
-	result := make([]Plan, 0, len(plans))
-	for _, p := range plans {
-		result = append(result, p)
-	}
-	for i := 1; i < len(result); i++ {
-		for j := i; j > 0 && result[j].Name < result[j-1].Name; j-- {
-			result[j], result[j-1] = result[j-1], result[j]
-		}
-	}
-	return result
-}
-
-// Get returns the Plan for a given category.
-// Returns false if the category is unknown or the plan is not active.
-func Get(cat Category) (Plan, bool) {
-	p, ok := plans[cat]
-	if !ok || !p.Available {
-		return Plan{}, false
-	}
-	return p, true
-}
-
-// ParseID extracts the base plan, interval, and version from a plan ID.
-// Versioned IDs use the format "{plan}:{interval}:{YYYYMMDD}" (e.g.
-// "individual:monthly:20260325"). Bare legacy IDs ("individual") are
-// handled gracefully: the base plan is the ID itself, interval and version
-// are empty strings.
-//
-// ParseID is the single code path for extracting the base plan from
-// any plan_id value stored in account_plans.
-func ParseID(id string) (plan Category, interval, version string) {
-	parts := strings.SplitN(id, ":", 3)
-	switch len(parts) {
-	case 3:
-		return Category(parts[0]), parts[1], parts[2]
-	default:
-		return Category(id), "", ""
-	}
-}
-
-// ID returns the stable plan ID for a given version.
-// Panics if the version is unknown — all valid versions are in the plan map.
-func ID(v Category) string {
-	p, ok := plans[v]
-	if !ok {
-		panic("unknown plan version: " + string(v))
-	}
-	return p.ID
-}
-
-// Base extracts the base Category from a possibly-versioned plan ID.
-// This is a convenience wrapper around ParseID.
-func Base(id string) Category {
-	plan, _, _ := ParseID(id)
-	return plan
-}
-
-// ByID returns the Plan for a given plan ID string and whether it exists.
-// It handles both versioned IDs ("individual:monthly:20260325") and bare
-// legacy IDs ("individual") by extracting the base plan via ParseID.
-func ByID(id string) (Plan, bool) {
-	plan := Base(id)
-	return Get(plan)
-}
-
-// Name returns the human-readable name for a plan version (e.g., "Individual").
-// Returns empty string for unknown plan versions.
-func Name(version Category) string {
-	p, ok := plans[version]
-	if !ok {
-		return ""
-	}
-	return p.Name
-}
-
-// IsPaid reports whether the plan represents active paid billing.
-func IsPaid(version Category) bool {
-	p, ok := plans[version]
-	return ok && p.Paid
-}
-
-// GrantsEntitlement is the single "can this user do X" entry point. It resolves
-// the correct tier from any plan ID (4-part tier ID, 3-part legacy ID, or bare
-// category string) and applies tier-override → plan-fallback logic.
-// Use this when you have a raw plan_id from account_plans.
-func GrantsEntitlement(planID string, ent Entitlement) bool {
-	tier, err := getTierByID(planID)
-	if err != nil {
-		slog.Error("entitlement check failed: unknown tier", "plan_id", planID, "entitlement", ent.ID, "error", err)
-		return false
-	}
-	return tierGrants(tier, ent)
-}
-
-// Grants reports whether the given plan version grants the specified entitlement.
-// Returns false for unknown plan versions.
-func Grants(version Category, ent Entitlement) bool {
-	p, ok := plans[version]
-	if !ok {
-		return false
-	}
-	if p.Entitlements[All] {
-		return true
-	}
-	return p.Entitlements[ent]
-}
-
 // billingRequiredDate is the cutoff: users created before this are grandfathered.
 // Duplicated from execore/billing_status.go to avoid importing execore.
 var billingRequiredDate = time.Date(2026, 1, 6, 23, 10, 0, 0, time.UTC)
-
-// userPlanInputs captures the billing state needed to resolve a user's plan version.
-// Uses plain Go types to avoid importing exedb or execore.
-type userPlanInputs struct {
-	// BillingStatus is the subscription status: "active", "canceled", or "".
-	BillingStatus string
-
-	// PlanID is the active plan ID from account_plans (e.g., "trial:monthly:20260106", "friend", "free").
-	PlanID *string
-
-	// TrialExpiresAt is when the trial expires, if the plan is a trial.
-	TrialExpiresAt *time.Time
-
-	// CreatedAt is when the user account was created.
-	CreatedAt *time.Time
-
-	// HasExplicitOverrides indicates VIP-style per-user overrides exist.
-	HasExplicitOverrides bool
-
-	// TeamBillingActive is true when the user's team billing owner has active billing.
-	TeamBillingActive bool
-}
 
 // getPlanCategory maps existing billing state to a Category.
 func getPlanCategory(inputs userPlanInputs) Category {
@@ -381,55 +407,4 @@ func getPlanCategory(inputs userPlanInputs) Category {
 	}
 
 	return CategoryBasic
-}
-
-// DataQuerier abstracts the database query needed by ForUser.
-type DataQuerier interface {
-	GetUserPlanData(ctx context.Context, userID string) (exedb.GetUserPlanDataRow, error)
-}
-
-// ForUser returns the user's plan category by querying the database
-// and applying all billing logic in one function. This replaces the pattern
-// of manually constructing UserPlanInputs and calling GetPlanCategory.
-//
-// This is the preferred way to determine a user's plan. It encapsulates:
-//   - Querying account_plans for trial/friend/free status
-//   - Checking billing_events for active/canceled status
-//   - Checking team membership and team billing owner status
-//   - Applying grandfathered status for old accounts
-//   - Handling trial expiration logic
-//
-// Returns sql.ErrNoRows if the user doesn't exist.
-func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error) {
-	row, err := q.GetUserPlanData(ctx, userID)
-	if err != nil {
-		return "", err
-	}
-
-	inputs := userPlanInputs{
-		BillingStatus:        row.BillingStatus,
-		PlanID:               row.PlanID,
-		TrialExpiresAt:       row.TrialExpiresAt,
-		CreatedAt:            row.CreatedAt,
-		HasExplicitOverrides: row.HasExplicitOverrides != 0,
-		TeamBillingActive:    row.TeamBillingActive != 0,
-	}
-
-	return getPlanCategory(inputs), nil
-}
-
-// DeriveExemptionDisplay returns a human-readable billing exemption string
-// for display purposes (debug UI, logs). This is NOT used for plan decisions.
-// Returns "free", "trial", or empty string.
-func DeriveExemptionDisplay(planID *string) string {
-	if planID == nil {
-		return ""
-	}
-	if *planID == "friend" || *planID == "free" {
-		return "free"
-	}
-	if strings.HasPrefix(*planID, "trial:") {
-		return "trial"
-	}
-	return ""
 }

@@ -192,7 +192,7 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 	body := debugBillingPageBody(t, s, userID)
 
 	for _, ent := range plan.AllEntitlements() {
-		want := plan.Grants(plan.CategoryIndividual, ent)
+		want := plan.Grants(plan.ID(plan.CategoryIndividual), ent)
 		requireEntitlementRow(t, body, ent.DisplayName, want)
 	}
 }

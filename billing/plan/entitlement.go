@@ -1,7 +1,7 @@
-// Package entitlement defines the plan catalog and entitlement constants for exe.dev.
-//
-// This package imports only stdlib and can be imported by any other package without cycles.
+// Entitlement types, constants, and grant-checking functions for exe.dev plans.
 package plan
+
+import "log/slog"
 
 // Entitlement represents a capability or permission granted by a plan.
 type Entitlement struct {
@@ -63,3 +63,16 @@ const (
 	// SourceSSH is an entitlement check originating from an SSH session.
 	SourceSSH Source = "ssh"
 )
+
+// Grants reports whether the given plan ID grants the specified entitlement.
+// Resolves tiers from any plan ID format (4-part, 3-part legacy, or bare category)
+// and applies tier-override → plan-fallback logic.
+func Grants(planID string, ent Entitlement) bool {
+	tier, err := getTierByID(planID)
+	if err != nil {
+		slog.Error("entitlement check failed: unknown tier", "plan_id", planID, "entitlement", ent.ID, "error", err)
+		return false
+	}
+	return tierGrants(tier, ent)
+}
+

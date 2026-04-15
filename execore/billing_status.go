@@ -40,7 +40,7 @@ func (s *Server) UserHasEntitlement(ctx context.Context, source plan.Source, ent
 		return false
 	}
 
-	granted := plan.GrantsEntitlement(planRow.PlanID, ent)
+	granted := plan.Grants(planRow.PlanID, ent)
 	if !granted {
 		s.slog().InfoContext(ctx, "entitlement denied by plan",
 			"source", string(source),

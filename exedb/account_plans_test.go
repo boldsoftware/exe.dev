@@ -391,14 +391,13 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 		t.Errorf("member account_id = %q, want %q (parent's account)", memberPlan.AccountID, ownerAcctID)
 	}
 
-	p, ok := plan.ByID(memberPlan.PlanID)
-	if !ok {
+	if _, ok := plan.ByID(memberPlan.PlanID); !ok {
 		t.Fatal("ByID failed for enterprise plan")
 	}
-	if !plan.Grants(p.Category, plan.VMCreate) {
+	if !plan.Grants(memberPlan.PlanID, plan.VMCreate) {
 		t.Error("Enterprise plan should grant VMCreate")
 	}
-	if !plan.Grants(p.Category, plan.CreditPurchase) {
+	if !plan.Grants(memberPlan.PlanID, plan.CreditPurchase) {
 		t.Error("Enterprise plan should grant CreditPurchase")
 	}
 }

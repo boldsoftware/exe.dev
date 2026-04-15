@@ -192,9 +192,9 @@ func TestGetTierByIDUnknown(t *testing.T) {
 	}
 }
 
-func TestGrantsEntitlementUnknownPlanID(t *testing.T) {
-	if GrantsEntitlement("totally:bogus:id", VMCreate) {
-		t.Error("GrantsEntitlement with unknown plan ID should return false")
+func TestGrantsUnknownPlanID(t *testing.T) {
+	if Grants("totally:bogus:id", VMCreate) {
+		t.Error("Grants with unknown plan ID should return false")
 	}
 }
 
@@ -251,37 +251,37 @@ func TestTierGrants(t *testing.T) {
 	}
 }
 
-func TestGrantsEntitlement(t *testing.T) {
+func TestGrants(t *testing.T) {
 	// 4-part individual tier ID
-	if !GrantsEntitlement("individual:small:monthly:20260601", VMCreate) {
+	if !Grants("individual:small:monthly:20260601", VMCreate) {
 		t.Error("individual:small should grant VMCreate")
 	}
-	if !GrantsEntitlement("individual:xlarge:monthly:20260601", TeamCreate) {
+	if !Grants("individual:xlarge:monthly:20260601", TeamCreate) {
 		t.Error("individual:xlarge should grant TeamCreate (inherited from plan)")
 	}
 
 	// 3-part legacy individual ID → falls back to small tier → individual plan entitlements
-	if !GrantsEntitlement("individual:monthly:20260106", VMCreate) {
+	if !Grants("individual:monthly:20260106", VMCreate) {
 		t.Error("legacy individual plan ID should grant VMCreate")
 	}
 
 	// Bare "individual" (test helpers and syncAccountPlan insert this)
-	if !GrantsEntitlement("individual", VMCreate) {
+	if !Grants("individual", VMCreate) {
 		t.Error("bare 'individual' should grant VMCreate")
 	}
 
 	// VIP wildcard
-	if !GrantsEntitlement("vip:default:monthly:20260601", Entitlement{"anything:new", "New"}) {
+	if !Grants("vip:default:monthly:20260601", Entitlement{"anything:new", "New"}) {
 		t.Error("vip should grant unknown entitlements via wildcard")
 	}
 
 	// Basic plan should not grant VMCreate
-	if GrantsEntitlement("basic:default:monthly:20260601", VMCreate) {
+	if Grants("basic:default:monthly:20260601", VMCreate) {
 		t.Error("basic plan should not grant VMCreate")
 	}
 
 	// Restricted plan grants nothing
-	if GrantsEntitlement("restricted", VMCreate) {
+	if Grants("restricted", VMCreate) {
 		t.Error("restricted plan should not grant VMCreate")
 	}
 }
