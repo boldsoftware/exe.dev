@@ -44,7 +44,7 @@ type Tier struct {
 	ID string
 
 	Category Category
-	Name         string // "Small", "Medium", "Default", etc.
+	Name     string // "Small", "Medium", "Default", etc.
 
 	StripePrices map[string]stripePriceInfo
 	Quotas       tierQuotas
@@ -58,9 +58,9 @@ type Tier struct {
 var tiers = map[string]Tier{
 	// --- Individual tiers ---
 	"individual:small:monthly:20260601": {
-		ID:           "individual:small:monthly:20260601",
+		ID:       "individual:small:monthly:20260601",
 		Category: CategoryIndividual,
-		Name:         "Small",
+		Name:     "Small",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_small_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
@@ -76,9 +76,9 @@ var tiers = map[string]Tier{
 		Entitlements: nil,
 	},
 	"individual:medium:monthly:20260601": {
-		ID:           "individual:medium:monthly:20260601",
+		ID:       "individual:medium:monthly:20260601",
 		Category: CategoryIndividual,
-		Name:         "Medium",
+		Name:     "Medium",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_medium_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
@@ -94,9 +94,9 @@ var tiers = map[string]Tier{
 		Entitlements: nil,
 	},
 	"individual:large:monthly:20260601": {
-		ID:           "individual:large:monthly:20260601",
+		ID:       "individual:large:monthly:20260601",
 		Category: CategoryIndividual,
-		Name:         "Large",
+		Name:     "Large",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_large_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
@@ -112,9 +112,9 @@ var tiers = map[string]Tier{
 		Entitlements: nil,
 	},
 	"individual:xlarge:monthly:20260601": {
-		ID:           "individual:xlarge:monthly:20260601",
+		ID:       "individual:xlarge:monthly:20260601",
 		Category: CategoryIndividual,
-		Name:         "XLarge",
+		Name:     "XLarge",
 		StripePrices: map[string]stripePriceInfo{
 			"monthly":         {LookupKey: "individual_xlarge_monthly", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
@@ -134,7 +134,7 @@ var tiers = map[string]Tier{
 
 	"vip:default:monthly:20260601": {
 		ID:           "vip:default:monthly:20260601",
-		Category: CategoryVIP,
+		Category:     CategoryVIP,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -148,7 +148,7 @@ var tiers = map[string]Tier{
 	},
 	"enterprise:default:monthly:20260601": {
 		ID:           "enterprise:default:monthly:20260601",
-		Category: CategoryEnterprise,
+		Category:     CategoryEnterprise,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -162,7 +162,7 @@ var tiers = map[string]Tier{
 	},
 	"team:default:monthly:20260601": {
 		ID:           "team:default:monthly:20260601",
-		Category: CategoryTeam,
+		Category:     CategoryTeam,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -176,7 +176,7 @@ var tiers = map[string]Tier{
 	},
 	"friend:default:monthly:20260601": {
 		ID:           "friend:default:monthly:20260601",
-		Category: CategoryFriend,
+		Category:     CategoryFriend,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -190,7 +190,7 @@ var tiers = map[string]Tier{
 	},
 	"grandfathered:default:monthly:20260601": {
 		ID:           "grandfathered:default:monthly:20260601",
-		Category: CategoryGrandfathered,
+		Category:     CategoryGrandfathered,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -204,7 +204,7 @@ var tiers = map[string]Tier{
 	},
 	"trial:default:monthly:20260601": {
 		ID:           "trial:default:monthly:20260601",
-		Category: CategoryTrial,
+		Category:     CategoryTrial,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -218,7 +218,7 @@ var tiers = map[string]Tier{
 	},
 	"basic:default:monthly:20260601": {
 		ID:           "basic:default:monthly:20260601",
-		Category: CategoryBasic,
+		Category:     CategoryBasic,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
@@ -232,7 +232,7 @@ var tiers = map[string]Tier{
 	},
 	"restricted:default:monthly:20260601": {
 		ID:           "restricted:default:monthly:20260601",
-		Category: CategoryRestricted,
+		Category:     CategoryRestricted,
 		Name:         "Default",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{

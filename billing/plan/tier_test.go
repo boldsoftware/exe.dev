@@ -215,7 +215,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 	override := map[Entitlement]bool{DiskResize: true}
 	tierWithOverride := Tier{
 		ID:           "test:custom:monthly:20260601",
-		Category: CategoryIndividual,
+		Category:     CategoryIndividual,
 		Name:         "Custom",
 		StripePrices: map[string]stripePriceInfo{},
 
