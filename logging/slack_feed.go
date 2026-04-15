@@ -306,6 +306,32 @@ func (sf *SlackFeed) TeamDowngrade(ctx context.Context, billingOwnerEmail string
 	}()
 }
 
+// StripelessTrialToggled notifies the feed channel when stripeless trial mode is enabled or disabled.
+func (sf *SlackFeed) StripelessTrialToggled(ctx context.Context, enabled bool) {
+	status := "disabled"
+	emoji := "no_entry_sign"
+	if enabled {
+		status = "enabled"
+		emoji = "free"
+	}
+	message := fmt.Sprintf("stripeless trial mode %s", status)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, false))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post stripeless trial toggle to feed channel", "error", err)
+			return
+		}
+		ref := slack.NewRefToMessage(channel, ts)
+		if err := sf.client.AddReactionContext(context.WithoutCancel(ctx), emoji, ref); err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to stripeless trial toggle message", "error", err)
+		}
+	}()
+}
+
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
 func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {

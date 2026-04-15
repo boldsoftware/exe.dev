@@ -4546,6 +4546,7 @@ func (s *Server) handleDebugStripelessTrialPost(w http.ResponseWriter, r *http.R
 	}
 
 	s.slog().InfoContext(ctx, "stripeless trial setting updated via debug page", "enabled", enabled)
+	s.slackFeed.StripelessTrialToggled(ctx, enabled)
 
 	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }
