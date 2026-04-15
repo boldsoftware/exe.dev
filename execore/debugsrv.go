@@ -105,6 +105,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
 	mux.HandleFunc("/debug/migrations", s.handleDebugMigrations)
 	mux.HandleFunc("POST /debug/migrations/batch", s.handleDebugBatchMigrate)
+	mux.HandleFunc("POST /debug/migrations/cancel-all", s.handleDebugCancelAllMigrations)
 	mux.HandleFunc("/debug/exelets", s.handleDebugExelets)
 	mux.HandleFunc("/debug/exelets/{hostname}", s.handleDebugExeletDetail)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/migrate-tier", s.handleDebugExeletMigrateTier)
@@ -2910,6 +2911,18 @@ func (s *Server) handleDebugBatchMigrate(w http.ResponseWriter, r *http.Request)
 	} else {
 		writeProgress("BATCH_SUCCESS")
 	}
+}
+
+// handleDebugCancelAllMigrations cancels every in-flight VM migration and batch.
+func (s *Server) handleDebugCancelAllMigrations(w http.ResponseWriter, r *http.Request) {
+	migs, batches := s.liveMigrations.cancelAll()
+	s.slog().InfoContext(r.Context(), "cancel-all migrations via debug UI",
+		"migrations_cancelled", migs, "batches_cancelled", batches)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{
+		"migrations_cancelled": migs,
+		"batches_cancelled":    batches,
+	})
 }
 
 // handleDebugExelets displays a list of all exelets with their status and allows setting a preferred exelet.

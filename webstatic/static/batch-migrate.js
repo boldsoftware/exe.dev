@@ -1,11 +1,17 @@
 (function() {
     'use strict';
 
+    // ── State ──
     var allUsers = [];
-    var selectedUsers = {}; // keyed by user_id
+    var selectedUsers = {};
     var batchID = '';
     var usersLoaded = false;
+    var batchRunning = false;
+    var batchSucceeded = 0;
+    var batchFailed = 0;
+    var batchTotal = 0;
 
+    // ── DOM refs ──
     var searchInput = document.getElementById('userSearch');
     var searchResults = document.getElementById('searchResults');
     var searchResultsBody = document.getElementById('searchResultsBody');
@@ -16,9 +22,73 @@
     var submitBtn = document.getElementById('batchSubmitBtn');
     var cancelBtn = document.getElementById('batchCancelBtn');
     var concurrencyInput = document.getElementById('concurrencyInput');
-    var progressLog = document.getElementById('batchProgress');
+    var cancelAllBtn = document.getElementById('cancelAllBtn');
+    var liveCount = document.getElementById('liveCount');
+    var liveTableContainer = document.getElementById('liveTableContainer');
+    var batchStatus = document.getElementById('batchStatus');
+    var batchStatusText = document.getElementById('batchStatusText');
+    var batchLogToggle = document.getElementById('batchLogToggle');
+    var batchLog = document.getElementById('batchLog');
+    var batchLogPre = document.getElementById('batchLogPre');
 
-    // Load users on first search interaction.
+    // ── Live migrations polling ──
+    function refreshLiveTable() {
+        fetch('/debug/migrations?format=json')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var migs = data.live_migrations || [];
+                liveCount.textContent = migs.length;
+
+                if (migs.length === 0) {
+                    liveTableContainer.innerHTML = '<p class="empty">No in-flight VM migrations.</p>';
+                    return;
+                }
+
+                var html = '<table id="liveTable">' +
+                    '<thead><tr><th>VM</th><th>Source \u2192 Target</th><th>Type</th><th>State</th><th>Transferred</th><th>Rate</th><th>Duration</th></tr></thead><tbody>';
+                migs.forEach(function(m) {
+                    html += '<tr>' +
+                        '<td><a href="/debug/vms/' + escapeHtml(m.box_name) + '">' + escapeHtml(m.box_name) + '</a></td>' +
+                        '<td><code>' + escapeHtml(m.source) + '</code> \u2192 <code>' + escapeHtml(m.target) + '</code></td>' +
+                        '<td>' + (m.live ? 'live' : 'cold') + '</td>' +
+                        '<td>' + escapeHtml(m.state) + '</td>' +
+                        '<td>' + escapeHtml(m.transferred) + '</td>' +
+                        '<td>' + escapeHtml(m.transfer_rate) + '</td>' +
+                        '<td>' + escapeHtml(m.duration) + '</td>' +
+                        '</tr>';
+                });
+                html += '</tbody></table>';
+                liveTableContainer.innerHTML = html;
+            })
+            .catch(function() {}); // silent on error, will retry
+    }
+
+    setInterval(refreshLiveTable, 2000);
+
+    // ── Cancel All ──
+    cancelAllBtn.addEventListener('click', function() {
+        if (!confirm('Cancel ALL in-flight migrations and batches?')) return;
+        cancelAllBtn.disabled = true;
+        cancelAllBtn.textContent = 'Cancelling...';
+        fetch('/debug/migrations/cancel-all', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                cancelAllBtn.textContent = 'Cancelled ' + data.migrations_cancelled + ' migration(s), ' + data.batches_cancelled + ' batch(es)';
+                setTimeout(function() {
+                    cancelAllBtn.disabled = false;
+                    cancelAllBtn.textContent = 'Cancel All';
+                }, 3000);
+            })
+            .catch(function(err) {
+                cancelAllBtn.textContent = 'Error: ' + err;
+                setTimeout(function() {
+                    cancelAllBtn.disabled = false;
+                    cancelAllBtn.textContent = 'Cancel All';
+                }, 3000);
+            });
+    });
+
+    // ── User search ──
     function ensureUsersLoaded(cb) {
         if (usersLoaded) { cb(); return; }
         fetch('/debug/users?format=json')
@@ -56,12 +126,9 @@
             return;
         }
 
-        // Cap display at 100.
         var display = matches.slice(0, 100);
         matchCount.textContent = matches.length + ' match' + (matches.length === 1 ? '' : 'es');
         selectAllBtn.style.display = '';
-
-        // Store current matches for select-all.
         searchInput._currentMatches = matches;
 
         display.forEach(function(u) {
@@ -101,7 +168,7 @@
         selectedTags.innerHTML = '';
         var ids = Object.keys(selectedUsers);
         selectedNone.style.display = ids.length ? 'none' : '';
-        submitBtn.disabled = ids.length === 0;
+        submitBtn.disabled = ids.length === 0 || batchRunning;
 
         ids.forEach(function(uid) {
             var u = selectedUsers[uid];
@@ -112,7 +179,6 @@
             tag.addEventListener('click', function() {
                 delete selectedUsers[uid];
                 renderSelectedTags();
-                // Update search results checkboxes if visible.
                 renderSearchResults(searchInput.value);
             });
             selectedTags.appendChild(tag);
@@ -121,11 +187,10 @@
 
     function escapeHtml(s) {
         var div = document.createElement('div');
-        div.appendChild(document.createTextNode(s));
+        div.appendChild(document.createTextNode(s || ''));
         return div.innerHTML;
     }
 
-    // Search input handler.
     var searchTimeout;
     searchInput.addEventListener('input', function() {
         clearTimeout(searchTimeout);
@@ -136,7 +201,6 @@
         }, 150);
     });
 
-    // Select all visible matches.
     selectAllBtn.addEventListener('click', function() {
         var matches = searchInput._currentMatches || [];
         matches.forEach(function(u) {
@@ -148,7 +212,46 @@
         renderSearchResults(searchInput.value);
     });
 
-    // Submit batch migration.
+    // ── Batch log toggle ──
+    batchLogToggle.addEventListener('click', function() {
+        if (batchLog.style.display === 'none' || !batchLog.style.display) {
+            batchLog.style.display = 'block';
+            batchLogToggle.textContent = '[hide log]';
+        } else {
+            batchLog.style.display = 'none';
+            batchLogToggle.textContent = '[show log]';
+        }
+    });
+
+    // ── Batch status rendering ──
+    function updateBatchStatus() {
+        if (!batchRunning) return;
+        batchStatusText.textContent = 'Migrating... succeeded: ' + batchSucceeded + ', failed: ' + batchFailed + ', total: ' + batchTotal;
+    }
+
+    function parseBatchProgress(text) {
+        // Count succeeded/failed from progress lines.
+        var lines = text.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            // Match lines like "[user@email] Done. Succeeded: 1, Failed: 0, Total: 1"
+            var doneMatch = line.match(/Done\. Succeeded: (\d+), Failed: (\d+), Total: (\d+)/);
+            if (doneMatch) {
+                batchSucceeded += parseInt(doneMatch[1]);
+                batchFailed += parseInt(doneMatch[2]);
+                batchTotal += parseInt(doneMatch[3]);
+            }
+            var cancelMatch = line.match(/Cancelled\. Succeeded: (\d+), Failed: (\d+), Total: (\d+)/);
+            if (cancelMatch) {
+                batchSucceeded += parseInt(cancelMatch[1]);
+                batchFailed += parseInt(cancelMatch[2]);
+                batchTotal += parseInt(cancelMatch[3]);
+            }
+        }
+        updateBatchStatus();
+    }
+
+    // ── Submit batch migration ──
     submitBtn.addEventListener('click', function() {
         var ids = Object.keys(selectedUsers);
         if (ids.length === 0) return;
@@ -156,16 +259,26 @@
         var concurrency = parseInt(concurrencyInput.value) || 1;
         if (!confirm('Migrate VMs for ' + ids.length + ' user(s) with concurrency ' + concurrency + '?')) return;
 
+        batchRunning = true;
+        batchSucceeded = 0;
+        batchFailed = 0;
+        batchTotal = 0;
+        batchID = '';
+
         submitBtn.disabled = true;
         submitBtn.textContent = 'Migrating...';
         cancelBtn.style.display = '';
         cancelBtn.disabled = false;
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.textContent = 'Cancel Batch';
         searchInput.disabled = true;
         concurrencyInput.disabled = true;
-        progressLog.style.display = 'block';
-        progressLog.className = '';
-        progressLog.textContent = 'Starting batch migration...\n';
+
+        batchStatus.style.display = 'block';
+        batchStatus.className = 'running';
+        batchStatusText.textContent = 'Starting batch migration for ' + ids.length + ' user(s)...';
+        batchLogPre.textContent = '';
+        batchLog.style.display = 'none';
+        batchLogToggle.textContent = '[show log]';
 
         var body = new URLSearchParams();
         ids.forEach(function(uid) {
@@ -173,20 +286,15 @@
         });
         body.append('concurrency', concurrency.toString());
 
-        var userScrolledUp = false;
-        progressLog.addEventListener('scroll', function() {
-            var atBottom = progressLog.scrollHeight - progressLog.scrollTop - progressLog.clientHeight < 20;
-            userScrolledUp = !atBottom;
-        });
-
         fetch('/debug/migrations/batch', {
             method: 'POST',
             body: body
         }).then(function(response) {
             if (!response.ok) {
                 return response.text().then(function(t) {
-                    progressLog.textContent += 'HTTP error ' + response.status + ': ' + t + '\n';
-                    progressLog.className = 'error';
+                    batchStatusText.textContent = 'HTTP error ' + response.status + ': ' + t;
+                    batchStatus.className = 'error';
+                    batchLogPre.textContent += 'HTTP error ' + response.status + ': ' + t + '\n';
                     resetControls();
                 });
             }
@@ -200,20 +308,24 @@
                         return;
                     }
                     var text = decoder.decode(result.value, {stream: true});
-                    progressLog.textContent += text;
-                    if (!userScrolledUp) {
-                        progressLog.scrollTop = progressLog.scrollHeight;
-                    }
+                    batchLogPre.textContent += text;
 
-                    // Capture batch ID for cancel support.
                     var idMatch = text.match(/BATCH_ID:(\S+)/);
                     if (idMatch) batchID = idMatch[1];
 
+                    parseBatchProgress(text);
+
                     if (text.indexOf('BATCH_SUCCESS') !== -1) {
-                        progressLog.className = 'success';
+                        batchStatus.className = 'success';
+                        batchStatusText.textContent = 'Batch complete \u2014 succeeded: ' + batchSucceeded + ', failed: ' + batchFailed + ', total: ' + batchTotal;
                         cancelBtn.style.display = 'none';
-                    } else if (text.indexOf('BATCH_ERROR') !== -1 || text.indexOf('BATCH_CANCELLED') !== -1) {
-                        progressLog.className = 'error';
+                    } else if (text.indexOf('BATCH_ERROR') !== -1) {
+                        batchStatus.className = 'error';
+                        batchStatusText.textContent = 'Batch finished with errors \u2014 succeeded: ' + batchSucceeded + ', failed: ' + batchFailed + ', total: ' + batchTotal;
+                        cancelBtn.style.display = 'none';
+                    } else if (text.indexOf('BATCH_CANCELLED') !== -1) {
+                        batchStatus.className = 'error';
+                        batchStatusText.textContent = 'Batch cancelled \u2014 succeeded: ' + batchSucceeded + ', failed: ' + batchFailed + ', total: ' + batchTotal;
                         cancelBtn.style.display = 'none';
                     }
 
@@ -222,13 +334,15 @@
             }
             read();
         }).catch(function(err) {
-            progressLog.textContent += '\nFetch error: ' + err + '\n';
-            progressLog.className = 'error';
+            batchStatusText.textContent = 'Fetch error: ' + err;
+            batchStatus.className = 'error';
+            batchLogPre.textContent += '\nFetch error: ' + err + '\n';
             resetControls();
         });
     });
 
     function resetControls() {
+        batchRunning = false;
         submitBtn.textContent = 'Migrate Selected Users';
         submitBtn.disabled = Object.keys(selectedUsers).length === 0;
         cancelBtn.style.display = 'none';
@@ -236,7 +350,7 @@
         concurrencyInput.disabled = false;
     }
 
-    // Cancel batch migration.
+    // ── Cancel batch ──
     cancelBtn.addEventListener('click', function() {
         if (!batchID) return;
         cancelBtn.disabled = true;
@@ -247,11 +361,11 @@
             body: 'batch_id=' + encodeURIComponent(batchID)
         }).then(function(resp) {
             if (!resp.ok) return resp.text().then(function(t) { throw new Error(t); });
-            progressLog.textContent += '\nCancel requested...\n';
+            batchLogPre.textContent += '\nCancel requested...\n';
         }).catch(function(err) {
-            progressLog.textContent += '\nCancel failed: ' + err + '\n';
+            batchLogPre.textContent += '\nCancel failed: ' + err + '\n';
             cancelBtn.disabled = false;
-            cancelBtn.textContent = 'Cancel';
+            cancelBtn.textContent = 'Cancel Batch';
         });
     });
 })();

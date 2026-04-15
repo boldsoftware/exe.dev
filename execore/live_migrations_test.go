@@ -204,3 +204,60 @@ func TestLiveMigrationTrackerBatchCancel(t *testing.T) {
 	tracker.finish("batch-box")
 	tracker.finishBatch("user-123")
 }
+
+func TestLiveMigrationTrackerCancelAll(t *testing.T) {
+	tracker := newLiveMigrationTracker()
+
+	// Cancel all on empty tracker returns 0, 0.
+	migs, batches := tracker.cancelAll()
+	if migs != 0 || batches != 0 {
+		t.Errorf("cancelAll on empty: migs=%d, batches=%d, want 0, 0", migs, batches)
+	}
+
+	// Start two migrations and a batch.
+	ctx1 := tracker.start(context.Background(), "box-1", "tcp://s:1", "tcp://d:1", true)
+	ctx2 := tracker.start(context.Background(), "box-2", "tcp://s:2", "tcp://d:2", false)
+	batchCtx := tracker.startBatch(context.Background(), "user-all")
+
+	if ctx1.Err() != nil || ctx2.Err() != nil || batchCtx.Err() != nil {
+		t.Fatal("all contexts should be active")
+	}
+
+	migs, batches = tracker.cancelAll()
+	if migs != 2 {
+		t.Errorf("cancelAll migs = %d, want 2", migs)
+	}
+	if batches != 1 {
+		t.Errorf("cancelAll batches = %d, want 1", batches)
+	}
+
+	if ctx1.Err() == nil {
+		t.Error("expected ctx1 cancelled")
+	}
+	if ctx2.Err() == nil {
+		t.Error("expected ctx2 cancelled")
+	}
+	if batchCtx.Err() == nil {
+		t.Error("expected batchCtx cancelled")
+	}
+
+	// Both should be marked cancelled.
+	if !tracker.cancelled("box-1") || !tracker.cancelled("box-2") {
+		t.Error("expected both migrations marked cancelled")
+	}
+
+	// Calling cancelAll again is idempotent (already cancelled).
+	migs, batches = tracker.cancelAll()
+	if migs != 0 {
+		t.Errorf("second cancelAll migs = %d, want 0 (already cancelled)", migs)
+	}
+	if batches != 1 {
+		// batch cancel funcs are still in the map (not removed until finishBatch)
+		// but calling cancel again is harmless.
+		t.Errorf("second cancelAll batches = %d, want 1", batches)
+	}
+
+	tracker.finish("box-1")
+	tracker.finish("box-2")
+	tracker.finishBatch("user-all")
+}

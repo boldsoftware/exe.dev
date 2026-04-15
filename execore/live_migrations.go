@@ -125,6 +125,25 @@ func (t *liveMigrationTracker) finishBatch(userID string) {
 	}
 }
 
+// cancelAll cancels every in-flight individual migration and every batch.
+// Returns the number of individual migrations and batches cancelled.
+func (t *liveMigrationTracker) cancelAll() (migrations, batches int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, m := range t.migrations {
+		if !m.cancelled {
+			m.cancel()
+			m.cancelled = true
+			migrations++
+		}
+	}
+	for _, cancel := range t.batchCancels {
+		cancel()
+		batches++
+	}
+	return migrations, batches
+}
+
 func (t *liveMigrationTracker) updateBytes(boxName string, bytesSent int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -195,15 +214,15 @@ func (t *liveMigrationTracker) snapshotForExelet(addr string) []liveMigrationEnt
 
 // liveMigrationInfo is the display-friendly representation of an in-flight migration.
 type liveMigrationInfo struct {
-	BoxName      string
-	Source       string
-	Target       string
-	Direction    string // "outbound" or "inbound" relative to the exelet being viewed
-	Live         bool
-	State        string
-	Transferred  string
-	TransferRate string
-	Duration     string
+	BoxName      string `json:"box_name"`
+	Source       string `json:"source"`
+	Target       string `json:"target"`
+	Direction    string `json:"direction,omitempty"` // "outbound" or "inbound" relative to the exelet being viewed
+	Live         bool   `json:"live"`
+	State        string `json:"state"`
+	Transferred  string `json:"transferred"`
+	TransferRate string `json:"transfer_rate"`
+	Duration     string `json:"duration"`
 }
 
 // liveMigrationInfoForExelet returns display-ready info for in-flight migrations

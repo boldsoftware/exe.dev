@@ -3,7 +3,7 @@
 {{template "base-head"}}
 <style>
 .section { margin-bottom: 30px; }
-table { border-collapse: collapse; }
+table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; font-size: 13px; }
 th { background: #f5f5f5; }
 tr:hover { background: #f9f9f9; }
@@ -24,24 +24,38 @@ tr:hover { background: #f9f9f9; }
 #batchSubmitBtn { padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer; font-size: 13px; }
 #batchSubmitBtn:disabled { background: #ccc; cursor: not-allowed; }
 #batchCancelBtn { padding: 8px 16px; background: #6c757d; color: white; border: none; cursor: pointer; font-size: 13px; display: none; }
-#batchProgress { margin-top: 15px; padding: 15px; background: white; border: 1px solid #dee2e6; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 500px; overflow-y: auto; display: none; }
-#batchProgress.success { background: #d4edda; border-color: #c3e6cb; }
-#batchProgress.error { background: #f8d7da; border-color: #f5c6cb; }
 .search-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .batch-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
 .select-all-btn { padding: 4px 8px; font-size: 11px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 3px; }
-.clear-btn { padding: 4px 8px; font-size: 11px; cursor: pointer; background: #6c757d; color: white; border: none; border-radius: 3px; }
 .user-count { font-size: 12px; color: #666; }
+
+/* Batch status bar */
+#batchStatus { display: none; margin-top: 12px; padding: 8px 12px; border-radius: 4px; font-size: 13px; border: 1px solid #dee2e6; background: #fff3cd; }
+#batchStatus.success { background: #d4edda; border-color: #c3e6cb; }
+#batchStatus.error { background: #f8d7da; border-color: #f5c6cb; }
+#batchStatus.running { background: #fff3cd; border-color: #ffc107; }
+#batchLog { margin-top: 8px; display: none; }
+#batchLog pre { padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; white-space: pre-wrap; font-size: 11px; max-height: 400px; overflow-y: auto; margin: 0; }
+#batchLogToggle { font-size: 11px; color: #007bff; cursor: pointer; margin-left: 8px; }
+
+/* Cancel all */
+.cancel-all-btn { padding: 4px 10px; background: #dc3545; color: white; border: none; cursor: pointer; font-size: 11px; border-radius: 3px; margin-left: 12px; vertical-align: middle; }
+.cancel-all-btn:hover { background: #c82333; }
+.cancel-all-btn:disabled { background: #ccc; cursor: not-allowed; }
 </style>
 </head><body>
 <h1>Migrations</h1>
 <p><a href="/debug">/debug</a> &gt; <a href="/debug/migrations">migrations</a> | <a href="/debug/migrations?format=json">json</a></p>
 
 <div class="section">
-<h2>Live VM Migrations ({{len .LiveMigrations}})</h2>
+<h2>Live VM Migrations (<span id="liveCount">{{len .LiveMigrations}}</span>)
+<button class="cancel-all-btn" id="cancelAllBtn" title="Cancel all in-flight migrations and batches">Cancel All</button>
+</h2>
+<div id="liveTableContainer">
 {{if .LiveMigrations}}
-<table>
-<tr><th>VM</th><th>Source → Target</th><th>Type</th><th>State</th><th>Transferred</th><th>Rate</th><th>Duration</th></tr>
+<table id="liveTable">
+<thead><tr><th>VM</th><th>Source → Target</th><th>Type</th><th>State</th><th>Transferred</th><th>Rate</th><th>Duration</th></tr></thead>
+<tbody>
 {{range .LiveMigrations}}
 <tr>
 <td><a href="/debug/vms/{{.BoxName}}">{{.BoxName}}</a></td>
@@ -53,10 +67,12 @@ tr:hover { background: #f9f9f9; }
 <td>{{.Duration}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
 {{else}}
-<p class="empty">No in-flight VM migrations.</p>
+<p class="empty" id="liveEmpty">No in-flight VM migrations.</p>
 {{end}}
+</div>
 </div>
 
 <div class="section">
@@ -85,10 +101,11 @@ tr:hover { background: #f9f9f9; }
 <div class="batch-actions">
 <label style="font-size:13px;">Concurrency: <input type="number" id="concurrencyInput" value="1" min="1" max="10"></label>
 <button id="batchSubmitBtn" disabled>Migrate Selected Users</button>
-<button id="batchCancelBtn">Cancel</button>
+<button id="batchCancelBtn">Cancel Batch</button>
 </div>
 
-<pre id="batchProgress"></pre>
+<div id="batchStatus"><span id="batchStatusText"></span><span id="batchLogToggle">[show log]</span></div>
+<div id="batchLog"><pre id="batchLogPre"></pre></div>
 </div>
 </div>
 

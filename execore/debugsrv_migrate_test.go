@@ -1686,3 +1686,42 @@ func TestHandleDebugCancelBatchByBatchID(t *testing.T) {
 	// Cleanup.
 	server.liveMigrations.finishBatch("batch-test123")
 }
+
+func TestHandleDebugCancelAllMigrations(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+
+	// Start two migrations and a batch.
+	ctx1 := server.liveMigrations.start(context.Background(), "all-box-1", "tcp://s:1", "tcp://d:1", true)
+	ctx2 := server.liveMigrations.start(context.Background(), "all-box-2", "tcp://s:2", "tcp://d:2", false)
+	batchCtx := server.liveMigrations.startBatch(context.Background(), "user-all-test")
+
+	req := httptest.NewRequest("POST", "/debug/migrations/cancel-all", nil)
+	w := httptest.NewRecorder()
+	server.handleDebugCancelAllMigrations(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify response JSON.
+	var resp map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["migrations_cancelled"] != 2 {
+		t.Errorf("migrations_cancelled = %d, want 2", resp["migrations_cancelled"])
+	}
+	if resp["batches_cancelled"] != 1 {
+		t.Errorf("batches_cancelled = %d, want 1", resp["batches_cancelled"])
+	}
+
+	// All contexts should be cancelled.
+	if ctx1.Err() == nil || ctx2.Err() == nil || batchCtx.Err() == nil {
+		t.Error("expected all contexts cancelled")
+	}
+
+	server.liveMigrations.finish("all-box-1")
+	server.liveMigrations.finish("all-box-2")
+	server.liveMigrations.finishBatch("user-all-test")
+}
