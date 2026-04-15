@@ -373,8 +373,6 @@ type receiveVMRollback struct {
 	zfsDatasetCreated    bool
 	instanceDirCreated   bool
 	snapshotDirCreated   bool
-	preserveForResume    bool // when true, skip ZFS dataset deletion so resume token survives
-
 	// activeRecvWriters tracks pipe writers feeding in-flight zfs recv processes.
 	// Rollback closes them to unblock zfs recv before attempting zfs destroy,
 	// preventing a hang when the dataset is busy.
@@ -417,14 +415,10 @@ func (r *receiveVMRollback) Rollback() {
 	r.closeRecvWriters()
 
 	// Delete any partially created ZFS dataset for the instance.
-	// When preserveForResume is set, skip deletion so the ZFS resume token
-	// survives — the sender can reconnect and continue the transfer.
-	if r.zfsDatasetCreated && !r.preserveForResume {
+	if r.zfsDatasetCreated {
 		if err := r.storageManager.Delete(ctx, r.instanceID); err != nil {
 			r.log.WarnContext(ctx, "failed to delete ZFS dataset during rollback", "instance", r.instanceID, "error", err)
 		}
-	} else if r.preserveForResume {
-		r.log.WarnContext(ctx, "preserving ZFS dataset for sender reconnect", "instance", r.instanceID)
 	}
 
 	// Note: We intentionally do NOT delete the base image during rollback.
