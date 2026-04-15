@@ -110,6 +110,12 @@ table.info th { width: 200px; }
             progress.textContent = 'Starting...\n';
 
             var hadError = false;
+            var userScrolledUp = false;
+            progress.addEventListener('scroll', function() {
+                var atBottom = progress.scrollHeight - progress.scrollTop - progress.clientHeight < 20;
+                userScrolledUp = !atBottom;
+            });
+
             fetch('/debug/user/migrate-vms', {
                 method: 'POST',
                 body: new URLSearchParams({user_id: '{{.UserID}}', confirm: confirmInput.value})
@@ -130,7 +136,16 @@ table.info th { width: 200px; }
                         var text = decoder.decode(result.value, {stream: true});
                         if (text.indexOf('ERROR:') !== -1) hadError = true;
                         progress.textContent += text;
-                        progress.scrollTop = progress.scrollHeight;
+                        if (!userScrolledUp) {
+                            progress.scrollTop = progress.scrollHeight;
+                        }
+                        if (text.indexOf('MIGRATION_SUCCESS') !== -1) {
+                            progress.style.background = '#d4edda';
+                            progress.style.borderColor = '#c3e6cb';
+                        } else if (text.indexOf('MIGRATION_ERROR') !== -1) {
+                            progress.style.background = '#f8d7da';
+                            progress.style.borderColor = '#f5c6cb';
+                        }
                         read();
                     });
                 }
@@ -138,6 +153,8 @@ table.info th { width: 200px; }
             }).catch(function(err) {
                 progress.textContent += '\nError: ' + err;
                 btn.textContent = 'Failed';
+                progress.style.background = '#f8d7da';
+                progress.style.borderColor = '#f5c6cb';
             });
         });
     }
@@ -156,6 +173,12 @@ table.info th { width: 200px; }
             progress.textContent += '=== Cold migrating ' + boxName + ' ===\n';
 
             var hadError = false;
+            var userScrolledUp = false;
+            progress.addEventListener('scroll', function() {
+                var atBottom = progress.scrollHeight - progress.scrollTop - progress.clientHeight < 20;
+                userScrolledUp = !atBottom;
+            });
+
             fetch('/debug/user/cold-migrate-vm', {
                 method: 'POST',
                 body: new URLSearchParams({user_id: '{{.UserID}}', box_name: boxName})
@@ -183,7 +206,16 @@ table.info th { width: 200px; }
                         var text = decoder.decode(result.value, {stream: true});
                         if (text.indexOf('ERROR:') !== -1) hadError = true;
                         progress.textContent += text;
-                        progress.scrollTop = progress.scrollHeight;
+                        if (!userScrolledUp) {
+                            progress.scrollTop = progress.scrollHeight;
+                        }
+                        if (text.indexOf('MIGRATION_SUCCESS') !== -1) {
+                            progress.style.background = '#d4edda';
+                            progress.style.borderColor = '#c3e6cb';
+                        } else if (text.indexOf('MIGRATION_ERROR') !== -1) {
+                            progress.style.background = '#f8d7da';
+                            progress.style.borderColor = '#f5c6cb';
+                        }
                         read();
                     });
                 }
@@ -192,6 +224,8 @@ table.info th { width: 200px; }
                 progress.textContent += '\nError: ' + err;
                 btn.textContent = 'Failed';
                 btn.disabled = false;
+                progress.style.background = '#f8d7da';
+                progress.style.borderColor = '#f5c6cb';
             });
         });
     });
