@@ -249,6 +249,21 @@ func TestRename(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to make request with cookie: %v", err)
 		}
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			loc, err := resp.Location()
+			if err != nil {
+				t.Fatalf("can't fetch redirect location: %v", err)
+			}
+			req, err = localhostRequestWithHostHeader("GET", loc.String(), nil)
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			req.AddCookie(authCookie)
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("failed to make redirected request with cookie: %v", err)
+			}
+		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {

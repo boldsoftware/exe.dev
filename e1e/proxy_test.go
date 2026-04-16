@@ -611,11 +611,17 @@ func proxyAuthCookieName(port int) string {
 
 func (f proxyAuthFixture) authCookies(jar *cookiejar.Jar) []*http.Cookie {
 	f.t.Helper()
-	cookieName := proxyAuthCookieName(f.port)
+	cookieName1 := proxyAuthCookieName(f.port)
+	cookieName2 := proxyAuthCookieName(Env.servers.Exeprox.HTTPPort)
+	cookieName3 := proxyAuthCookieName(Env.servers.ExeproxProxy.Port())
 	var found []*http.Cookie
 	for _, u := range []*url.URL{f.cookieURL, f.localCookieURL} {
 		for _, c := range jar.Cookies(u) {
-			if c.Name == cookieName && c.Value != "" {
+			if c.Value == "" {
+				continue
+			}
+			switch c.Name {
+			case cookieName1, cookieName2, cookieName3:
 				copy := *c
 				found = append(found, &copy)
 			}
@@ -988,12 +994,26 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 	if resp.StatusCode == http.StatusTemporaryRedirect && exp.httpCode != http.StatusTemporaryRedirect && exp.cookies != nil {
 		// We got a redirect when we weren't expecting it, but we have cookies,
 		// so maybe we're just trying to do an auth dance. Let's do the auth dance!
+
+		// If the redirect is not to __exe.dev/login,
+		// it may be an exed to exeprox redirect.
 		u, err := resp.Location()
-		t.Logf("Got redirect to %s", u.String())
 		if err != nil {
 			t.Fatalf("failed to get redirect location: %v", err)
-			return
 		}
+		t.Logf("Got redirect to %s", u)
+
+		if !strings.Contains(u.String(), "/__exe.dev/login?") {
+			resp = followOneRedirect(t, client, resp)
+		}
+	}
+
+	if resp.StatusCode == http.StatusTemporaryRedirect && exp.httpCode != http.StatusTemporaryRedirect && exp.cookies != nil {
+		u, err := resp.Location()
+		if err != nil {
+			t.Fatalf("failed to get redirect location: %v", err)
+		}
+		t.Logf("Got redirect to %s", u)
 
 		// First redirect should be to /__exe.dev/login
 		if !strings.Contains(u.String(), "/__exe.dev/login?") {
@@ -1125,7 +1145,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 		// without an http://..., and Go doesn't do this with the foo.exe.cloud stuff... So:
 		location := resp.Header.Get("Location")
 		if location == "" {
-			t.Fatalf("failed to get redirect location: %v", err)
+			t.Fatal("missing Location header")
 			return
 		}
 		origURL := mustParseURL(proxyURL)
@@ -1135,8 +1155,42 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 			return
 		}
 		t.Logf("Got redirect to %s", u.String())
-		if u.String() != proxyURL {
-			t.Errorf("expected redirect to %s, got %s", proxyURL, u.String())
+
+		// Depending on whether we are talking to exed or exeprox,
+		// we can expect a URL either with or without an exedev_host
+		// parameter.
+
+		vals := url.Values{
+			"exedev_host": {host},
+		}
+		if len(query) == 0 {
+			vals.Set("foo", "1")
+		} else {
+			for entry := range strings.SplitSeq(query[0], "&") {
+				key, val, ok := strings.Cut(entry, "=")
+				if !ok {
+					t.Fatalf("can't parse query parameter %q", entry)
+				}
+				vals.Set(key, val)
+			}
+		}
+		expectURL := fmt.Sprintf("http://%s/?%s", host, vals.Encode())
+
+		if u.String() != proxyURL && u.String() != expectURL {
+			resp = followOneRedirect(t, client, resp)
+			location = resp.Header.Get("Location")
+			if location == "" {
+				t.Fatal("missing Location header")
+			}
+			u, err = origURL.Parse(location)
+			if err != nil {
+				t.Fatalf("failed to parse final redirect URL %q: %v", location, err)
+			}
+			t.Logf("Got redirect to %s", u)
+		}
+
+		if u.String() != proxyURL && u.String() != expectURL {
+			t.Errorf("got %q, expected %q or %q", u, proxyURL, expectURL)
 		}
 		req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
 		if err != nil {
@@ -1151,6 +1205,28 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 					t.Logf("Response body: %s", string(b))
 				}
 			}
+			t.Errorf("failed to do http request: %v", err)
+			return
+		}
+	}
+
+	// If we got an unexpected redirect, follow it.
+	// This may take us from exed to exeprox.
+	for resp.StatusCode != exp.httpCode && resp.StatusCode == http.StatusTemporaryRedirect {
+		u, err := resp.Location()
+		if err != nil {
+			t.Fatalf("failed to get redirect location: %v", err)
+		}
+		t.Logf("Got redirect to %s", u.String())
+
+		req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
+		if err != nil {
+			t.Errorf("failed to make http request: %v", err)
+			return
+		}
+
+		resp, err = client.Do(req)
+		if err != nil {
 			t.Errorf("failed to do http request: %v", err)
 			return
 		}
@@ -1174,17 +1250,64 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation, query ...st
 			t.Errorf("expected redirect location %q, but no Location header found", exp.redirectLocation)
 			return
 		}
-		if location != exp.redirectLocation {
+
+		matchRedirect := func(got string) bool {
+			want := exp.redirectLocation
+			if got == want {
+				return true
+			}
+
+			// Try stripping the exedev_host parameter
+			// out of the parameters.
+
+			u, err := url.Parse(got)
+			if err != nil {
+				t.Errorf("can't parse redirect location %q as URL: %v", got, err)
+				return false
+			}
+			vals := u.Query()
+			if vals.Get("exedev_host") != "" {
+				vals.Del("exedev_host")
+				uc := *u
+				uc.RawQuery = vals.Encode()
+				if uc.String() == want {
+					return true
+				}
+			}
+
+			return false
+		}
+
+		if !matchRedirect(location) {
+			// Try following one redirect.
+			resp = followOneRedirect(t, client, resp)
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Error("expected redirect")
+			} else {
+				location = resp.Header.Get("Location")
+				if location == "" {
+					t.Errorf("no Location header")
+					return
+				}
+			}
+		}
+
+		if !matchRedirect(location) {
 			t.Errorf("expected redirect location %q, got %q", exp.redirectLocation, location)
 			return
 		}
 		t.Logf("Redirect location matches expected: %s", location)
 	}
 
+	notFound := false
 	for _, s := range exp.bodyContains {
 		if !strings.Contains(body, s) {
-			t.Errorf("%q not found in body %q", s, body)
+			t.Errorf("%q not found in body", s)
+			notFound = true
 		}
+	}
+	if notFound {
+		t.Logf("%s", body)
 	}
 }
 

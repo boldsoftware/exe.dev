@@ -25,6 +25,7 @@ type ServerEnv struct {
 	Exelets              []*ExeletInstance
 	Exeprox              *ExeproxInstance
 	Exepipe              *ExepipeInstance
+	ExeproxProxy         *TCPProxy
 	SSHProxy             *TCPProxy
 	ExedHTTPProxy        *TCPProxy
 	ExedPiperPluginProxy *TCPProxy
@@ -112,6 +113,16 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 	// and we retarget the proxies once actual ports are known.
 	// On exed restart, the proxies are retargeted to the new ports
 	// so that sshpiperd, exeprox, and exelets never see exed's actual ports.
+
+	exeproxProxy, err := startTCPProxy(ctx, "exeproxProxy")
+	if err != nil {
+		return env, err
+	}
+	env.ExeproxProxy = exeproxProxy
+
+	if logPorts {
+		slog.InfoContext(ctx, "exeprox proxy listening", "port", exeproxProxy.Port())
+	}
 
 	sshProxy, err := startTCPProxy(ctx, "sshProxy")
 	if err != nil {
@@ -204,7 +215,7 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 	if metricsd != nil {
 		metricsdURL = metricsd.Address
 	}
-	ei, err := StartExed(ctx, bins.Exed, es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts, metricsdURL)
+	ei, err := StartExed(ctx, bins.Exed, exeproxProxy.Port(), es.Port, sshProxy.Port(), []int{0, 0}, exeletAddrs, exedLog, logPorts, metricsdURL)
 	if err != nil {
 		return env, err
 	}
@@ -213,13 +224,13 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 	// Point the proxies at exed's actual ports.
 	exedHTTPProxy.SetDestPort(ei.HTTPPort)
 	exedPiperPluginProxy.SetDestPort(ei.PiperPluginPort)
-	exedExeproxProxy.SetDestPort(ei.ExeproxPort)
+	exedExeproxProxy.SetDestPort(ei.ExeproxGRPCPort)
 
 	// On restart, retarget all three proxies.
 	ei.onRestart = func(ei *ExedInstance) {
 		exedHTTPProxy.SetDestPort(ei.HTTPPort)
 		exedPiperPluginProxy.SetDestPort(ei.PiperPluginPort)
-		exedExeproxProxy.SetDestPort(ei.ExeproxPort)
+		exedExeproxProxy.SetDestPort(ei.ExeproxGRPCPort)
 	}
 
 	// Exeprox uses -exed-http-port only for constructing redirect URLs
@@ -237,6 +248,10 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 		return env, err
 	}
 	env.Exeprox = epi
+
+	env.ExeproxProxy.SetDestPort(epi.HTTPPort)
+
+	AddCanonicalization(env.ExeproxProxy.Port(), "EXEPROX_PORT")
 
 	// Wait for sshpiperd to finish starting.
 	if err := g.Wait(); err != nil {
@@ -261,6 +276,9 @@ func StartServers(ctx context.Context, bins PrebuiltBinaries, exelets []*ExeletI
 // This returns a list of local directory containing remote coverage files,
 // if any.
 func (env *ServerEnv) Stop(ctx context.Context, testRunID string) []string {
+	if env.ExeproxProxy != nil {
+		env.ExeproxProxy.Close()
+	}
 	if env.SSHProxy != nil {
 		env.SSHProxy.Close()
 	}

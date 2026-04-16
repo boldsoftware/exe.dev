@@ -291,7 +291,7 @@ func TestTeamOIDCWebLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /shell failed: %v", err)
 	}
-	resp, err = followRedirects(t, authClient, resp)
+	resp = followRedirects(t, authClient, resp)
 	resp.Body.Close()
 	// An authenticated user gets 200; unauthenticated gets a redirect to /auth.
 	if resp.StatusCode != http.StatusOK {

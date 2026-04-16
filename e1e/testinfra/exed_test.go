@@ -70,8 +70,8 @@ func TestWatchExedLogsHappyPath(t *testing.T) {
 	if result.Ports.PiperPlugin != 4444 {
 		t.Errorf("PiperPlugin port = %d, want 4444", result.Ports.PiperPlugin)
 	}
-	if result.Ports.Exeprox != 5555 {
-		t.Errorf("Exeprox port = %d, want 5555", result.Ports.Exeprox)
+	if result.Ports.ExeproxGRPC != 5555 {
+		t.Errorf("Exeprox port = %d, want 5555", result.Ports.ExeproxGRPC)
 	}
 	if len(result.Ports.Extra) != 2 || result.Ports.Extra[0] != 8080 || result.Ports.Extra[1] != 9090 {
 		t.Errorf("Extra ports = %v, want [8080 9090]", result.Ports.Extra)

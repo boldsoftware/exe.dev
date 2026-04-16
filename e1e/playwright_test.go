@@ -2,6 +2,7 @@ package e1e
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -150,8 +151,10 @@ func TestProxyLoginFlow_Playwright(t *testing.T) {
 
 	pageURL := page.URL()
 	expectedHost := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
-	if !strings.Contains(pageURL, expectedHost) {
-		t.Fatalf("expected URL to contain %s, got %s", expectedHost, pageURL)
+	// If forwarding from exed this may be a query parameter.
+	expectedHostParam := url.Values{"exedev_host": {expectedHost}}.Encode()
+	if !strings.Contains(pageURL, expectedHost) && !strings.Contains(pageURL, expectedHostParam) {
+		t.Fatalf("URL %q does not contain %q or %q", pageURL, expectedHost, expectedHostParam)
 	}
 
 	// Cleanup

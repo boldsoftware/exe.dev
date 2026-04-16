@@ -819,21 +819,36 @@ func noRedirectClient(jar http.CookieJar) *http.Client {
 
 // followRedirects follows redirections when using a noRedirectClient.
 // This will call resp.Body.Close for any response that are not returned.
-func followRedirects(t *testing.T, client *http.Client, resp *http.Response) (*http.Response, error) {
+// This calls t.Fatal on error.
+func followRedirects(t *testing.T, client *http.Client, resp *http.Response) *http.Response {
 	t.Helper()
 	for resp.StatusCode == http.StatusTemporaryRedirect {
-		resp.Body.Close()
-		location, err := resp.Location()
-		if err != nil {
-			return nil, err
-		}
-		t.Logf("redirecting to %q", location)
-		resp, err = client.Get(location.String())
-		if err != nil {
-			return nil, err
-		}
+		resp = followOneRedirect(t, client, resp)
 	}
-	return resp, nil
+	return resp
+}
+
+// followOneRedirect optionally follows a single redirection
+// when using a noRedirectClient.
+// It returns the new response, or the same response
+// if the current one is not a redirection.
+// This will call resp.Body.Close for a response that is not returned.
+// This calls t.Fatal on error.
+func followOneRedirect(t *testing.T, client *http.Client, resp *http.Response) *http.Response {
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		return resp
+	}
+	resp.Body.Close()
+	location, err := resp.Location()
+	if err != nil {
+		t.Fatalf("can't fetch redirect location: %v", err)
+	}
+	t.Logf("redirecting to %q", location)
+	resp, err = client.Get(location.String())
+	if err != nil {
+		t.Fatalf("redirection failed: %v", err)
+	}
+	return resp
 }
 
 // newClientWithCookies creates an http.Client with a cookie jar pre-populated

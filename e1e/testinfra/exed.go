@@ -30,7 +30,7 @@ type ExedInstance struct {
 	SSHPort         int             // exed ssh local host port
 	HTTPPort        int             // exed HTTP local hostport
 	PiperPluginPort int             // piper plugin gPRC server port
-	ExeproxPort     int             // exeprox gPRC server port
+	ExeproxGRPCPort int             // exeprox gPRC server port
 	ExtraPorts      []int           // additional proxy ports
 	CoverDir        string          // where coverage data is written
 	Errors          chan string     // exed errors are sent on this channel
@@ -39,6 +39,7 @@ type ExedInstance struct {
 
 	binPath        string    // exed binary we executed
 	logFile        io.Writer // exed log file; may be nil for no logs
+	exeproxPort    int       // port for exeprox process
 	piperPort      int       // port for ssh piper process
 	emailServerURL string    // port for fake email server
 	whoamiPath     string    // -gh-whoami exed parameter
@@ -57,7 +58,7 @@ type exedPorts struct {
 	SSH         int
 	HTTP        int
 	PiperPlugin int
-	Exeprox     int
+	ExeproxGRPC int
 	Extra       []int
 }
 
@@ -70,7 +71,7 @@ func (p *exedPorts) setPort(typ string, port int) {
 	case "plugin":
 		p.PiperPlugin = port
 	case "exeprox-service":
-		p.Exeprox = port
+		p.ExeproxGRPC = port
 	default:
 		slog.Warn("unknown listener type in exed log", "type", typ, "port", port)
 	}
@@ -232,8 +233,8 @@ drainListening:
 		}
 	}
 
-	if ports.SSH == 0 || ports.HTTP == 0 || ports.PiperPlugin == 0 || ports.Exeprox == 0 {
-		return nil, fmt.Errorf("failed to get all required ports (ssh %d http %d piper %d exeprox %d)", ports.SSH, ports.HTTP, ports.PiperPlugin, ports.Exeprox)
+	if ports.SSH == 0 || ports.HTTP == 0 || ports.PiperPlugin == 0 || ports.ExeproxGRPC == 0 {
+		return nil, fmt.Errorf("failed to get all required ports (ssh %d http %d piper %d exeprox %d)", ports.SSH, ports.HTTP, ports.PiperPlugin, ports.ExeproxGRPC)
 	}
 	if len(ports.Extra) != expectedExtraPorts {
 		return nil, fmt.Errorf("got %d proxy ports, expected %d", len(ports.Extra), expectedExtraPorts)
@@ -289,6 +290,9 @@ func BuildExed(ctx context.Context) (string, error) {
 //
 // binPath is the path to a pre-built exed binary (from BuildExed).
 //
+// exeproxPort is a port on the local host,
+// passed as the -exeprox-address option.
+//
 // emailServerPort is a port on the local host,
 // passed as the -fake-email-server exed option.
 //
@@ -307,7 +311,7 @@ func BuildExed(ctx context.Context) (string, error) {
 // logFile, if not nil, is a file to write logs to.
 //
 // logPorts is whether to log port numbers using slog.InfoContext.
-func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool, metricsdURL string) (*ExedInstance, error) {
+func StartExed(ctx context.Context, binPath string, exeproxPort, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddrs []string, logFile io.Writer, logPorts bool, metricsdURL string) (*ExedInstance, error) {
 	start := time.Now()
 	slog.InfoContext(ctx, "starting exed")
 
@@ -349,6 +353,8 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 		"-ssh=localhost:0",
 		"-piper-plugin=localhost:0",
 		"-piperd-port=" + strconv.Itoa(piperPort),
+		"-exeprox-address=localhost:" + strconv.Itoa(exeproxPort),
+		"-exeprox-redirect",
 		"-exeprox-service-port=0",
 		"-fake-email-server=" + emailServerURL,
 		"-gh-whoami=" + whoamiPath,
@@ -419,7 +425,7 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 		SSHPort:         result.Ports.SSH,
 		HTTPPort:        result.Ports.HTTP,
 		PiperPluginPort: result.Ports.PiperPlugin,
-		ExeproxPort:     result.Ports.Exeprox,
+		ExeproxGRPCPort: result.Ports.ExeproxGRPC,
 		ExtraPorts:      result.Ports.Extra,
 		CoverDir:        coverDir,
 		Errors:          result.Errors,
@@ -427,6 +433,7 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 		LMTPSocketPath:  lmtpSocketPath,
 		binPath:         binPath,
 		logFile:         logFile,
+		exeproxPort:     exeproxPort,
 		piperPort:       piperPort,
 		emailServerURL:  emailServerURL,
 		whoamiPath:      whoamiPath,
@@ -437,7 +444,7 @@ func StartExed(ctx context.Context, binPath string, emailServerPort, piperPort i
 	AddCanonicalization(instance.SSHPort, "EXED_SSH_PORT")
 	AddCanonicalization(instance.HTTPPort, "EXED_HTTP_PORT")
 	AddCanonicalization(instance.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
-	AddCanonicalization(instance.ExeproxPort, "EXED_EXEPROX_SERVICE_PORT")
+	AddCanonicalization(instance.ExeproxGRPCPort, "EXED_EXEPROX_SERVICE_PORT")
 
 	slog.InfoContext(ctx, "started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
@@ -605,6 +612,8 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 		"-ssh=localhost:0",
 		"-piper-plugin=localhost:0",
 		"-piperd-port=" + strconv.Itoa(ei.piperPort),
+		"-exeprox-address=localhost:" + strconv.Itoa(ei.exeproxPort),
+		"-exeprox-redirect",
 		"-exeprox-service-port=0",
 		"-fake-email-server=" + ei.emailServerURL,
 		"-gh-whoami=" + ei.whoamiPath,
@@ -671,7 +680,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.SSHPort = result.Ports.SSH
 	ei.HTTPPort = result.Ports.HTTP
 	ei.PiperPluginPort = result.Ports.PiperPlugin
-	ei.ExeproxPort = result.Ports.Exeprox
+	ei.ExeproxGRPCPort = result.Ports.ExeproxGRPC
 	ei.ExtraPorts = result.Ports.Extra
 	ei.Errors = result.Errors
 	ei.GUIDLog = result.GUIDLog

@@ -912,7 +912,30 @@ func (f *loginWithExeFlow) visitBoxAndExpectLoginRedirect() {
 	}
 
 	if !strings.Contains(location.Path, "/__exe.dev/login") {
-		f.t.Fatalf("expected redirect to /__exe.dev/login, got %s", location.String())
+		// May be a redirect from exed to exeprox.
+		f.t.Logf("following redirect to %s", location)
+		req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+		if err != nil {
+			f.t.Fatalf("failed to create request: %v", err)
+		}
+		resp, err = f.client.Do(req)
+		if err != nil {
+			f.t.Fatalf("failed to visit box: %v", err)
+		}
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			f.t.Fatalf("expected redirect (307), got %d: %s", resp.StatusCode, body)
+		}
+
+		location, err := resp.Location()
+		if err != nil {
+			f.t.Fatalf("missing Location header: %v", err)
+		}
+
+		if !strings.Contains(location.Path, "/__exe.dev/login") {
+			f.t.Fatalf("expected redirect to /__exe.dev/login, got %s", location.String())
+		}
 	}
 
 	f.t.Logf("Step 1: Box redirected to login: %s", location.String())
@@ -1213,6 +1236,11 @@ func (f *loginWithExeFlow) verifyAndClickConfirmationPage() []*http.Cookie {
 		resp.Body.Close()
 		f.t.Fatalf("expected redirect after Continue, got %d: %s", resp.StatusCode, body)
 	}
+
+	// Follow a temporary redirect once, in case it is exed
+	// redirecting to exeprox.
+	resp = followOneRedirect(f.t, f.client, resp)
+
 	resp.Body.Close()
 
 	// Extract cookies from the jar for the box subdomain.
@@ -1243,6 +1271,11 @@ func (f *loginWithExeFlow) verifyCookiesOnBothDomains() {
 	// all cookies will be on localhost. In Go 1.26 the
 	// cookies will be on returnHost, per https://go.dev/issue/38988.
 	cookies = append(cookies, f.jar.Cookies(mustParseURL("https://"+f.returnHost))...)
+
+	if Env.servers.Exeprox.HTTPPort != f.httpPort {
+		rh := fmt.Sprintf("http://%s.exe.cloud:%d", f.box, Env.servers.Exeprox.HTTPPort)
+		cookies = append(cookies, f.jar.Cookies(mustParseURL(rh))...)
+	}
 
 	var hasExeAuth, hasLoginWithExe bool
 	for _, c := range cookies {
@@ -1464,6 +1497,23 @@ echo "QUERY=$QUERY_STRING"
 	}
 	defer resp.Body.Close()
 
+	// exed may redirect to exeprox.
+	if resp.StatusCode == http.StatusTemporaryRedirect {
+		loc, err := resp.Location()
+		if err != nil {
+			t.Fatalf("can't fetch location: %v", err)
+		}
+		req, err = localhostRequestWithHostHeader("POST", loc.String(), strings.NewReader(""))
+		if err != nil {
+			t.Fatalf("POST request: %v", err)
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("POST request: %v", err)
+		}
+		defer resp.Body.Close()
+	}
+
 	if resp.StatusCode == http.StatusFound {
 		t.Fatal("POST with ?share= should not redirect")
 	}
@@ -1679,8 +1729,10 @@ func TestShareLinkFlow_Playwright(t *testing.T) {
 	}
 
 	expectedHost := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
-	if !strings.Contains(finalURL, expectedHost) {
-		t.Fatalf("expected URL to contain %s, got %s", expectedHost, finalURL)
+	// If forwarding from exed there may be a query parameter.
+	expectedHostParam := url.Values{"exedev_host": {expectedHost}}.Encode()
+	if !strings.Contains(finalURL, expectedHost) && !strings.Contains(finalURL, expectedHostParam) {
+		t.Fatalf("URL %q does not contain %q or %q", finalURL, expectedHost, expectedHostParam)
 	}
 
 	t.Logf("Share link flow completed successfully. Final URL: %s", finalURL)
@@ -1769,6 +1821,37 @@ func TestShareLinkLoggedOutUserFlow(t *testing.T) {
 	}
 	resp.Body.Close()
 	t.Logf("Step 1: Got redirect to %s", location.String())
+
+	if !strings.Contains(location.String(), "__exe.dev/login") {
+		// Likely exed redirecting to exeprox.
+		if !strings.Contains(location.String(), "share") {
+			t.Fatalf("redirect lost share token: %s", location)
+		}
+
+		req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to follow redirect: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected 307 redirect, got %d: %s", resp.StatusCode, body)
+		}
+
+		location, err = resp.Location()
+		if err != nil {
+			t.Fatalf("missing Location header: %v", err)
+		}
+		resp.Body.Close()
+
+		t.Logf("Got redirect to %s", location)
+	}
 
 	// Verify the redirect preserves the share token in the redirect parameter
 	// (may be URL-encoded as %3D instead of =)
@@ -1971,6 +2054,8 @@ func TestShareLinkLoggedOutUserFlow(t *testing.T) {
 		t.Fatalf("failed to complete magic auth: %v", err)
 	}
 
+	resp = followRedirects(t, client, resp)
+
 	if resp.StatusCode != http.StatusSeeOther {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -2002,6 +2087,8 @@ func TestShareLinkLoggedOutUserFlow(t *testing.T) {
 		t.Fatalf("failed to make final request: %v", err)
 	}
 
+	resp = followRedirects(t, client, resp)
+
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	t.Logf("Step 8: Final response status: %d", resp.StatusCode)
@@ -2026,6 +2113,7 @@ func TestShareLinkLoggedOutUserFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to make strip request: %v", err)
 		}
+		resp = followRedirects(t, client, resp)
 		body, _ = io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
@@ -2036,8 +2124,6 @@ func TestShareLinkLoggedOutUserFlow(t *testing.T) {
 		t.Logf("Step 8: Direct access granted with share token")
 	} else if resp.StatusCode == http.StatusUnauthorized {
 		t.Fatalf("BUG: Got 401 after completing full login+share link flow. User should have access. Body: %s", body)
-	} else if resp.StatusCode == http.StatusTemporaryRedirect {
-		t.Fatalf("BUG: Got 307 (redirect to login) after completing login. Cookie may not have been set. Body: %s", body)
 	} else {
 		t.Fatalf("unexpected status %d after login+share link flow. Body: %s", resp.StatusCode, body)
 	}

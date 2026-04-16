@@ -77,9 +77,8 @@ func TestRequestAccess(t *testing.T) {
 
 		// POST to the request-access endpoint with a message.
 		requestURL := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/request-access", box, httpPort)
-		req, err := localhostRequestWithHostHeader("POST", requestURL, strings.NewReader(url.Values{
-			"message": {"Please let me collaborate!"},
-		}.Encode()))
+		msg := url.Values{"message": {"Please let me collaborate!"}}.Encode()
+		req, err := localhostRequestWithHostHeader("POST", requestURL, strings.NewReader(msg))
 		if err != nil {
 			t.Fatalf("failed to create request: %v", err)
 		}
@@ -89,6 +88,25 @@ func TestRequestAccess(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to post request-access: %v", err)
 		}
+
+		// Permit redirect from exed to exeprox.
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			loc, err := resp.Location()
+			if err != nil {
+				t.Fatalf("failed to get location: %v", err)
+			}
+			t.Logf("post redirected to %q", loc)
+			req, err = localhostRequestWithHostHeader("POST", loc.String(), strings.NewReader(msg))
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("failed to post request-access: %v", err)
+			}
+		}
+
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
@@ -129,11 +147,13 @@ func TestRequestAccess(t *testing.T) {
 	t.Run("unauthenticated_user_sees_login", func(t *testing.T) {
 		noGolden(t)
 		proxyAssert(t, box, proxyExpectation{
-			name:             "guest sees request access page",
-			httpPort:         httpPort,
-			cookies:          nil,
-			httpCode:         http.StatusTemporaryRedirect,
-			redirectLocation: fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?exedev_host=%s.exe.cloud%%3A%d&redirect=%%2F%%3Ffoo%%3D1", box, httpPort, box, httpPort),
+			name:     "unauthenticated user sees login page",
+			httpPort: httpPort,
+			cookies:  nil,
+			httpCode: http.StatusUnauthorized,
+			bodyContains: []string{
+				"Sign in to continue",
+			},
 		})
 	})
 
