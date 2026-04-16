@@ -5247,6 +5247,38 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		s.slog().WarnContext(ctx, "failed to load invite stats for user", "error", err, "user_id", userID)
 	}
 
+	// Fetch drip campaign sends for this user.
+	dripSends, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
+		UserID:   userID,
+		Campaign: "trial_onboarding",
+	})
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to load drip sends for user", "error", err, "user_id", userID)
+	}
+
+	type dripSendInfo struct {
+		Step       string
+		Status     string
+		SkipReason string
+		Subject    string
+		CreatedAt  string
+	}
+	var dripList []dripSendInfo
+	for _, ds := range dripSends {
+		info := dripSendInfo{
+			Step:      ds.Step,
+			Status:    ds.Status,
+			CreatedAt: ds.CreatedAt.Format("2006-01-02 15:04"),
+		}
+		if ds.SkipReason != nil {
+			info.SkipReason = *ds.SkipReason
+		}
+		if ds.EmailSubject != nil {
+			info.Subject = *ds.EmailSubject
+		}
+		dripList = append(dripList, info)
+	}
+
 	// Build template data
 	type boxInfo struct {
 		Name          string
@@ -5313,6 +5345,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		TeamID             string
 		TeamName           string
 		TeamRole           string
+		DripSends          []dripSendInfo
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5336,6 +5369,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		CanGrantTrial:            true, // default true; overridden below if billing exists
 		CgroupOverrides:          ptrStr(user.CgroupOverrides),
 		CreatedAtShort:           formatTimeShort(user.CreatedAt),
+		DripSends:                dripList,
 	}
 
 	if cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {

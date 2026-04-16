@@ -329,6 +329,39 @@ table.info th { width: 200px; }
 </div>
 </div>
 
+<div class="section">
+<h2>Drip Campaign{{if .DripSends}} ({{len .DripSends}} steps){{else}} (none){{end}}</h2>
+<div class="section-content">
+{{if .DripSends}}
+<table class="info">
+<thead>
+<tr><th>Step</th><th>Status</th><th>Subject / Reason</th><th>When</th></tr>
+</thead>
+<tbody>
+{{range .DripSends}}
+<tr>
+<td><code>{{.Step}}</code></td>
+<td>
+{{if eq .Status "sent"}}<span style="color:#28a745;">&#x2713; sent</span>
+{{else if eq .Status "skipped"}}<span style="color:#6c757d;">&#x2014; skipped</span>
+{{else if eq .Status "failed"}}<span style="color:#dc3545;">&#x2717; failed</span>
+{{else}}{{.Status}}{{end}}
+</td>
+<td>
+{{if eq .Status "sent"}}{{.Subject}}
+{{else}}{{.SkipReason}}{{end}}
+</td>
+<td>{{.CreatedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No drip campaign emails sent or evaluated for this user.</p>
+{{end}}
+</div>
+</div>
+
 {{if .HasCredit}}
 <div class="section">
 <h2>LLM Gateway Credit</h2>
