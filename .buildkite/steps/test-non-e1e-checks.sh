@@ -56,9 +56,9 @@ names+=("oss tests")
 # critical path of producing dist/ — it was removed from "pnpm build"
 # and runs here as a post-build check.
 if [ -f ui/package.json ]; then
-    (make ui && make -C ui typecheck) &
+    (make ui && make -C ui typecheck && make -C ui test) &
     pids+=($!)
-    names+=("ui build+typecheck")
+    names+=("ui build+typecheck+test")
 fi
 
 fail=0

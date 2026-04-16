@@ -1,4 +1,4 @@
-.PHONY: build dev
+.PHONY: build dev typecheck test
 
 # Local Node.js LTS — downloaded once into .node/
 NODE_VERSION := 24.14.0
