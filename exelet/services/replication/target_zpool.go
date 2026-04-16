@@ -260,9 +260,8 @@ func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
 			return classifySendErr(fmt.Errorf("zfs recv failed: %s", recvErrMsg), recvErrMsg)
 		}
 		if sendErr != nil && recvErr != nil && strings.Contains(sendErr.Error(), "141") {
-			if recvErrMsg != "" {
-				return classifySendErr(fmt.Errorf("zfs recv failed: %s", recvErrMsg), recvErrMsg)
-			}
+			// Reached only when recvErrMsg == ""; the `recvErr != nil &&
+			// recvErrMsg != ""` branch above already returned otherwise.
 			return classifySendErr(fmt.Errorf("zfs recv failed: %w", recvErr), recvErrMsg)
 		}
 		if sendErr != nil {
@@ -438,17 +437,11 @@ func (t *ZpoolTarget) ListAllReplicationSnapshots(ctx context.Context) ([]Volume
 
 // GetAvailableSpace returns the bytes available on the local target pool.
 func (t *ZpoolTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
-	return queryRemoteAvailableSpace(t.config.Pool, func(cmd string) ([]byte, error) {
-		// Run the same `zfs get -Hp -o value available <pool>` locally.
-		// Strip the leading "zfs " token so we can hand args directly to exec.
-		const prefix = "zfs "
-		if !strings.HasPrefix(cmd, prefix) {
-			return nil, fmt.Errorf("unexpected command %q", cmd)
-		}
-		args := strings.Fields(strings.TrimPrefix(cmd, prefix))
-		out, err := exec.CommandContext(ctx, "zfs", args...).CombinedOutput()
-		return out, err
-	})
+	out, err := exec.CommandContext(ctx, "zfs", availableSpaceCmd(t.config.Pool)...).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("query available space for %s: %w (output: %s)", t.config.Pool, err, strings.TrimSpace(string(out)))
+	}
+	return parseAvailableSpace(t.config.Pool, out)
 }
 
 func (t *ZpoolTarget) Close() error {

@@ -56,18 +56,19 @@ func classifySendErr(err error, stderr ...string) error {
 	return err
 }
 
-// queryRemoteAvailableSpace runs `zfs get -Hp -o value available <pool>` via
-// the supplied runner and parses the result. Used by SSH/system-SSH/zpool
-// targets so they share a single parser.
-func queryRemoteAvailableSpace(pool string, run func(cmd string) ([]byte, error)) (uint64, error) {
-	out, err := run(fmt.Sprintf("zfs get -Hp -o value available %s", pool))
-	if err != nil {
-		return 0, fmt.Errorf("query available space for %s: %w (output: %s)", pool, err, strings.TrimSpace(string(out)))
-	}
+// availableSpaceCmd is the argument list passed to `zfs` to read the
+// "available" property of a pool or dataset in raw bytes. Shared so every
+// target issues the same query.
+func availableSpaceCmd(pool string) []string {
+	return []string{"get", "-Hp", "-o", "value", "available", pool}
+}
+
+// parseAvailableSpace parses the output of `zfs get -Hp -o value available`.
+func parseAvailableSpace(pool string, out []byte) (uint64, error) {
 	value := strings.TrimSpace(string(out))
-	avail, parseErr := strconv.ParseUint(value, 10, 64)
-	if parseErr != nil {
-		return 0, fmt.Errorf("parse available space %q: %w", value, parseErr)
+	avail, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse available space for %s (%q): %w", pool, value, err)
 	}
 	return avail, nil
 }

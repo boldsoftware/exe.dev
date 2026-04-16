@@ -234,13 +234,20 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 
 	// Pre-flight space check. Best-effort: if either the size estimate or the
 	// available-space query fails, we proceed without the check rather than
-	// blocking replication.
+	// blocking replication -- the send itself will still surface ENOSPC via
+	// classifySendErr. spaceConfirmed captures whether we positively verified
+	// the target has room; the diverged-ancestry branch below uses it to
+	// decide whether destroying the existing backup is safe.
 	estimatedSize := estimateSendSize(ctx, volume.Dataset, snapshotName, baseSnapshot)
 	availableSpace, availErr := wp.target.GetAvailableSpace(ctx)
+	var required uint64
+	if estimatedSize > 0 {
+		required = uint64(float64(estimatedSize) * spaceCheckMargin)
+	}
+	spaceConfirmed := availErr == nil && estimatedSize > 0 && availableSpace >= required
 	if availErr != nil {
 		wp.log.WarnContext(ctx, "target capacity check failed, proceeding without it", "volume_id", volume.LocalID, "error", availErr)
 	} else if estimatedSize > 0 {
-		required := uint64(float64(estimatedSize) * spaceCheckMargin)
 		wp.log.DebugContext(ctx, "pre-flight space check",
 			"volume_id", volume.LocalID,
 			"estimated_bytes", estimatedSize,
@@ -265,17 +272,21 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	} else {
 		wp.log.DebugContext(ctx, "using full send", "volume_id", volume.LocalID)
 		// If remote has snapshots but no common base was found, the ancestry
-		// has diverged (e.g. after a storage tier migration). Delete the remote
-		// dataset so the full send can succeed. Skip the destroy when the
-		// target is full — there is no point destroying the existing backup
-		// if the replacement send cannot succeed.
+		// has diverged (e.g. after a storage tier migration). We must delete
+		// the remote dataset for the full send to succeed -- but only if we
+		// positively confirmed the target has room. If the space query or the
+		// send estimate failed, we cannot guarantee a replacement will fit;
+		// preserve the existing remote backup and surface a failure.
 		if len(remoteSnapshots) > 0 {
-			if availErr == nil && estimatedSize > 0 && availableSpace < uint64(float64(estimatedSize)*spaceCheckMargin) {
-				wp.log.ErrorContext(ctx, "skipping diverged-ancestry cleanup, target full — preserving existing remote backup",
+			if !spaceConfirmed {
+				wp.log.ErrorContext(ctx, "skipping diverged-ancestry cleanup: cannot confirm target has space — preserving existing remote backup",
 					"volume_id", volume.LocalID,
 					"remote_snapshots", len(remoteSnapshots),
+					"avail_err", availErr,
+					"estimated_bytes", estimatedSize,
+					"available_bytes", availableSpace,
 				)
-				wp.recordFailure(job, volume, startTime, fmt.Errorf("%w: diverged ancestry and insufficient space for full send", ErrTargetFull))
+				wp.recordFailure(job, volume, startTime, fmt.Errorf("%w: diverged ancestry and cannot confirm space for full send", ErrTargetFull))
 				wp.destroySnapshot(volume.Dataset, snapshotName)
 				return
 			}

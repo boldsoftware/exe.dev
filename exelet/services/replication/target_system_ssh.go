@@ -469,9 +469,12 @@ func (t *SystemSSHTarget) ListAllReplicationSnapshots(ctx context.Context) ([]Vo
 
 // GetAvailableSpace returns the bytes available on the remote pool.
 func (t *SystemSSHTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
-	return queryRemoteAvailableSpace(t.config.Pool, func(cmd string) ([]byte, error) {
-		return t.runCommand(ctx, cmd)
-	})
+	cmd := "zfs " + strings.Join(availableSpaceCmd(t.config.Pool), " ")
+	out, err := t.runCommand(ctx, cmd)
+	if err != nil {
+		return 0, fmt.Errorf("query available space for %s: %w (output: %s)", t.config.Pool, err, strings.TrimSpace(string(out)))
+	}
+	return parseAvailableSpace(t.config.Pool, out)
 }
 
 func (t *SystemSSHTarget) Close() error {
