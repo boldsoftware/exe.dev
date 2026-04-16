@@ -1,7 +1,5 @@
 header {
-  padding: 0 24px;
-  padding-top: 16px;
-  padding-bottom: 16px;
+  padding: 0;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   position: sticky;
@@ -13,6 +11,7 @@ header {
 header .nav-container {
   max-width: 1200px;
   margin: 0 auto;
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -20,61 +19,63 @@ header .nav-container {
 
 header .nav-left {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 1rem;
 }
 
 header .nav-logo-img {
   display: flex;
+  align-self: center;
 }
 
 header .nav-logo-img img {
-  width: 30px;
-  height: 30px;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 header .nav-logo-text {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 0.9rem;
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
-  margin-right: 24px;
 }
 
 header .nav-link {
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: 16px;
+  font-size: 0.85rem;
 }
 
 header .nav-link:hover {
   color: var(--color-text);
+  text-decoration: none;
 }
 
 header .nav-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 4px;
+  font-size: 0.85rem;
 }
 
 header .btn {
-  padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  padding: 0.4rem 1rem;
+  border: 1px solid #d1d5db;
+  background: transparent;
+  color: #6b7280;
   text-decoration: none;
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  border-radius: 0.375rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   font-family: inherit;
 }
 
 header .btn:hover {
-  background: var(--color-bg-subtle);
-  border-color: var(--color-border-input);
+  border-color: var(--color-text);
   color: var(--color-text);
+  text-decoration: none;
 }
 
 header .btn-active {
@@ -105,14 +106,21 @@ header .btn .btn-text {
 }
 
 @media (max-width: 768px) {
-  header {
-    padding: 0 12px;
-    padding-top: 10px;
-    padding-bottom: 10px;
+  header .nav-container {
+    padding: 0.75rem 1rem;
+  }
+
+  header .nav-left {
+    gap: 0.5rem;
+  }
+
+  header .nav-logo-text {
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
   }
 
   header .nav-link {
-    font-size: 14px;
+    font-size: 0.75rem;
   }
 
   header .btn .btn-text {
@@ -120,22 +128,22 @@ header .btn .btn-text {
   }
 
   header .btn {
-    padding: 8px 10px;
-  }
-
-  header .nav-left {
-    gap: 12px;
+    padding: 0.3rem 0.6rem;
   }
 
   header .nav-right {
-    gap: 6px;
+    gap: 2px;
   }
 
-  header .nav-logo-text {
-    font-size: 14px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 80px;
+  header .btn-login-full {
+    display: none;
   }
+
+  header .btn-login-short {
+    display: inline;
+  }
+}
+
+header .btn-login-short {
+  display: none;
 }

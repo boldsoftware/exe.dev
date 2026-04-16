@@ -57,19 +57,40 @@ nav {
   width: 100%;
   margin: 0 auto;
   flex-shrink: 0;
+  line-height: 1.6;
+}
+
+.nav-left {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
 }
 
 .nav-logo {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 0.9rem;
+  align-self: center;
 }
 
 .nav-logo img {
   width: 1.5rem;
   height: 1.5rem;
+}
+
+.nav-logo-text {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text, #111);
+  text-decoration: none;
+}
+
+.nav-link {
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: #111;
 }
 
 .nav-right {
@@ -89,11 +110,17 @@ nav {
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   transition: all 0.15s;
+  color: #6b7280;
+  text-decoration: none;
 }
 
 .nav-login:hover {
   border-color: #111;
   color: #111;
+}
+
+.nav-login-short {
+  display: none;
 }
 
 /* ── Hero ── */
@@ -462,6 +489,32 @@ footer a:hover {
     padding: 0.75rem 1rem;
   }
 
+  .nav-left {
+    gap: 0.5rem;
+  }
+
+  .nav-logo-text {
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+  }
+
+  .nav-link {
+    font-size: 0.75rem;
+  }
+
+  .nav-login {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+  }
+
+  .nav-login-full {
+    display: none;
+  }
+
+  .nav-login-short {
+    display: inline;
+  }
+
   .above-fold {
     padding-bottom: 5rem;
   }
@@ -680,6 +733,18 @@ footer a:hover {
     color: #f3f4f6;
   }
 
+  .nav-logo-text {
+    color: #f3f4f6;
+  }
+
+  .nav-link {
+    color: #9ca3af;
+  }
+
+  .nav-link:hover {
+    color: #f3f4f6;
+  }
+
   .nav-right {
     color: #9ca3af;
   }
@@ -689,6 +754,7 @@ footer a:hover {
   }
 
   .nav-login {
+    color: #9ca3af;
     border-color: #4b5563;
   }
 

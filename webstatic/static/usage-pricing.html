@@ -20,7 +20,7 @@
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
-            padding: 40px 20px;
+            padding: 0 20px 40px;
         }
         h1 {
             font-size: clamp(40px, 8vw, 80px);
@@ -124,29 +124,7 @@
             padding: 0 10px;
             color: var(--color-text-secondary);
         }
-        nav {
-            margin-top: 50px;
-            text-align: center;
-        }
-        nav a {
-            display: inline-block;
-            font-size: var(--text-sm);
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            font-variant: small-caps;
-            color: var(--color-text-secondary);
-        }
-        nav a + a::before {
-            content: '';
-            display: inline-block;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: currentColor;
-            opacity: 0.6;
-            margin: 0 12px 2px;
-            vertical-align: middle;
-        }
+
         /* Calculator */
         .calculator {
             background: var(--color-surface);
@@ -390,15 +368,10 @@
             </div>
         </div>
 
-        <hr/>
-
-        <nav>
-            <a href="/docs/what-is-exe">about</a>
-            <a href="/blog">blog</a>
-            <a href="/jobs">jobs</a>
-        </nav>
     </main>
+    <script src="topbar.js"></script>
     <script src="usage-pricing.js"></script>
+    <script src="footer.js"></script>
 </body>
 </html>
 

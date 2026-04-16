@@ -27,11 +27,15 @@
     {{if ne .WebHost "exe.dev"}}<div class="dev-banner"><span>D</span><span>E</span><span>V</span></div>{{end}}
     <div class="above-fold">
     <nav>
-      <div class="nav-logo"></div>
+      <div class="nav-left">
+        <a href="/" class="nav-logo"><img src="/static/exy.png" alt="exe.dev" /></a>
+        <a href="/" class="nav-logo-text">exe.dev</a>
+        <a href="/docs" class="nav-link">docs</a>
+        <a href="https://blog.exe.dev" class="nav-link">blog</a>
+        <a href="/pricing" class="nav-link">pricing</a>
+      </div>
       <div class="nav-right">
-        <a href="/docs">docs</a>
-        <a href="/pricing">pricing</a>
-        <a href="/auth" class="nav-login">Login / Register</a>
+        <a href="/auth" class="nav-login"><span class="nav-login-full">Login / Register</span><span class="nav-login-short">Login</span></a>
       </div>
     </nav>
 

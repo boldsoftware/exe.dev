@@ -349,12 +349,37 @@ textarea:focus {
   flex-shrink: 0;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
 .topbar-logo {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-self: center;
+}
+
+.topbar-logo img {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.topbar-logo-text {
   font-weight: 600;
   font-size: 0.9rem;
+  color: var(--color-text, #111);
+  text-decoration: none;
+}
+
+.topbar-link {
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.topbar-link:hover {
+  color: #111;
 }
 
 .topbar-right {
@@ -387,7 +412,20 @@ textarea:focus {
   color: #111;
 }
 
+.topbar-login-short {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
+  .topbar-logo-text {
+    color: #f3f4f6;
+  }
+  .topbar-link {
+    color: #9ca3af;
+  }
+  .topbar-link:hover {
+    color: #f3f4f6;
+  }
   .topbar-right,
   .topbar-right a {
     color: #9ca3af;
@@ -409,9 +447,34 @@ textarea:focus {
     padding: 0.75rem 1rem;
   }
 
-  .topbar-right {
-    gap: 1rem;
+  .topbar-left {
+    gap: 0.5rem;
+  }
+
+  .topbar-logo-text {
     font-size: 0.8rem;
+    margin-right: 0.5rem;
+  }
+
+  .topbar-link {
+    font-size: 0.75rem;
+  }
+
+  .topbar-right {
+    gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .topbar-login {
+    padding: 0.3rem 0.6rem;
+  }
+
+  .topbar-login-full {
+    display: none;
+  }
+
+  .topbar-login-short {
+    display: inline;
   }
 }
 

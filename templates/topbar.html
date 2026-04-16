@@ -7,6 +7,8 @@
       <a href="/" class="nav-logo-img"><img src="/static/exy.png" alt="{{.WebHost}} logo" /></a>
       <a href="/" class="nav-logo-text">{{.WebHost}}</a>
       <a href="/docs" class="nav-link">docs</a>
+      {{if not .IsLoggedIn}}<a href="https://blog.exe.dev" class="nav-link">blog</a>
+      <a href="/pricing" class="nav-link">pricing</a>{{end}}
     </div>
     <div class="nav-right">
       {{if .IsLoggedIn}}
@@ -195,7 +197,7 @@
         <span class="btn-text">Sign out</span>
       </a>
       {{else}}
-      <a href="/auth?redirect=/" class="btn">Sign in</a>
+      <a href="/auth" class="btn"><span class="btn-login-full">Login / Register</span><span class="btn-login-short">Login</span></a>
       {{end}}
     </div>
   </div>

@@ -3,11 +3,17 @@
     <header class="topbar">
       <div class="nav-container">
         <div class="nav-left">
-          <router-link to="/" class="nav-logo">
+          <a v-if="isLoggedIn" href="/" class="nav-logo" @click.prevent="$router.push('/')">
             <img src="/exy.png" alt="exe.dev" class="logo-img" />
-          </router-link>
-          <router-link to="/" class="logo-text">exe.dev</router-link>
+          </a>
+          <a v-else href="/" class="nav-logo">
+            <img src="/exy.png" alt="exe.dev" class="logo-img" />
+          </a>
+          <a v-if="isLoggedIn" href="/" class="logo-text" @click.prevent="$router.push('/')">exe.dev</a>
+          <a v-else href="/" class="logo-text">exe.dev</a>
           <router-link to="/docs" class="docs-link">docs</router-link>
+          <a v-if="!isLoggedIn" href="https://blog.exe.dev" class="docs-link">blog</a>
+          <a v-if="!isLoggedIn" href="/pricing" class="docs-link">pricing</a>
         </div>
         <div class="nav-right">
           <template v-if="isLoggedIn">
@@ -32,10 +38,9 @@
               <span class="nav-btn-text">Sign out</span>
             </a>
           </template>
-          <a v-else href="/auth" class="nav-btn">
-            <i class="pi pi-sign-in"></i>
-            <span class="nav-btn-text">Sign in</span>
-          </a>
+          <template v-else>
+            <a href="/auth" class="nav-login-btn"><span class="nav-login-full">Login / Register</span><span class="nav-login-short">Login</span></a>
+          </template>
         </div>
       </div>
     </header>
@@ -271,10 +276,9 @@ select:focus {
 }
 
 .nav-container {
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 20px;
-  height: 48px;
+  padding: 1rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -282,12 +286,13 @@ select:focus {
 
 .nav-left {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 1rem;
 }
 
 .nav-logo {
   display: flex;
+  align-self: center;
 }
 
 .logo-img {
@@ -296,16 +301,14 @@ select:focus {
 }
 
 .logo-text {
-  font-size: 14px;
+  font-size: 0.9rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
   text-decoration: none;
   color: var(--text-color);
-  margin-right: 8px;
 }
 
 .docs-link {
-  font-size: 14px;
+  font-size: 0.85rem;
   color: var(--text-color-secondary);
   text-decoration: none;
 }
@@ -319,6 +322,7 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: 0.85rem;
 }
 
 .nav-btn {
@@ -354,12 +358,43 @@ select:focus {
   font-size: 12px;
 }
 
+.nav-login-btn {
+  padding: 0.4rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.nav-login-btn:hover {
+  border-color: var(--text-color);
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.nav-login-short {
+  display: none;
+}
+
 .content {
   flex: 1;
   max-width: 1000px;
   margin: 0 auto;
   padding: 24px 20px;
   width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .nav-login-btn {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+  .nav-login-btn:hover {
+    border-color: #f3f4f6;
+    color: #f3f4f6;
+  }
 }
 
 @media (max-width: 768px) {
@@ -371,6 +406,30 @@ select:focus {
   }
   .nav-right {
     gap: 2px;
+    font-size: 0.75rem;
+  }
+  .docs-link {
+    font-size: 0.75rem;
+  }
+  .logo-text {
+    font-size: 0.8rem;
+    margin-right: 0.5rem;
+  }
+  .nav-container {
+    padding: 0.75rem 1rem;
+  }
+  .nav-left {
+    gap: 0.5rem;
+  }
+  .nav-login-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+  }
+  .nav-login-full {
+    display: none;
+  }
+  .nav-login-short {
+    display: inline;
   }
   .content {
     padding: 12px 8px;

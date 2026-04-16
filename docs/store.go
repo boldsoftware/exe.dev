@@ -462,10 +462,12 @@ func (h *Handler) HandleAPIList(w http.ResponseWriter, r *http.Request) {
 	type apiResponse struct {
 		Groups      []apiGroup `json:"groups"`
 		DefaultSlug string     `json:"defaultSlug"`
+		IsLoggedIn  bool       `json:"isLoggedIn"`
 	}
 
 	resp := apiResponse{
-		Groups: make([]apiGroup, 0),
+		Groups:     make([]apiGroup, 0),
+		IsLoggedIn: h.topbarData(r).IsLoggedIn,
 	}
 
 	for _, g := range h.store.Groups() {

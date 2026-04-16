@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { fetchDocsList, type DocsGroup } from '../api/client'
+import { fetchDocsList, isAuthenticated, type DocsGroup } from '../api/client'
 
 const loading = ref(true)
 const loadError = ref('')
@@ -42,6 +42,7 @@ onMounted(async () => {
   try {
     const data = await fetchDocsList()
     groups.value = data.groups
+    isAuthenticated.value = data.isLoggedIn
   } catch (e: any) {
     loadError.value = e.message || 'Failed to load'
   } finally {

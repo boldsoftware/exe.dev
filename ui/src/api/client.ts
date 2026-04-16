@@ -367,6 +367,7 @@ export interface DocsGroup {
 export interface DocsListData {
   groups: DocsGroup[]
   defaultSlug: string
+  isLoggedIn: boolean
 }
 
 export interface DocsEntryData {

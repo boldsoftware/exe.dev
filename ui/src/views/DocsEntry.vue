@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDocsList, fetchDocsEntry, type DocsGroup, type DocsDocRef } from '../api/client'
+import { fetchDocsList, fetchDocsEntry, isAuthenticated, type DocsGroup, type DocsDocRef } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,10 +81,13 @@ async function loadDoc(slug: string) {
   loadError.value = ''
   try {
     const [listData, entryData] = await Promise.all([
-      groups.value.length ? Promise.resolve({ groups: groups.value, defaultSlug: '' }) : fetchDocsList(),
+      groups.value.length ? Promise.resolve(null) : fetchDocsList(),
       fetchDocsEntry(slug),
     ])
-    groups.value = listData.groups
+    if (listData) {
+      groups.value = listData.groups
+      isAuthenticated.value = listData.isLoggedIn
+    }
     entry.value = entryData.entry
     prev.value = entryData.prev
     next.value = entryData.next
@@ -107,6 +110,7 @@ async function loadAllDocs() {
   try {
     const listData = await fetchDocsList()
     groups.value = listData.groups
+    isAuthenticated.value = listData.isLoggedIn
 
     // Fetch all entries and combine content
     const allEntries = []
@@ -377,6 +381,7 @@ watch(
       try {
         const listData = await fetchDocsList()
         groups.value = listData.groups
+        isAuthenticated.value = listData.isLoggedIn
         if (listData.defaultSlug) {
           router.replace('/docs/' + listData.defaultSlug)
         }
