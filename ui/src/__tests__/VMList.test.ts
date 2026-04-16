@@ -45,8 +45,10 @@ function makeDashboard(overrides: Partial<DashboardData> = {}): DashboardData {
     sshCommand: 'ssh exe.dev',
     replHost: 'exe.dev',
     showIntegrations: false,
-    billingPeriodStart: '2024-01-01',
-    billingPeriodEnd: '2024-02-01',
+    billing: {
+      periodStart: '2024-01-01',
+      periodEnd: '2024-02-01',
+    },
     ...overrides,
   }
 }

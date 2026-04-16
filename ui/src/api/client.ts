@@ -207,8 +207,10 @@ export interface DashboardData {
   sshCommand: string
   replHost: string
   showIntegrations: boolean
-  billingPeriodStart: string
-  billingPeriodEnd: string
+  billing: {
+    periodStart: string
+    periodEnd: string
+  }
 }
 
 export interface RegionOption {

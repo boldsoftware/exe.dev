@@ -80,19 +80,23 @@ type jsonTeamSharedBox struct {
 }
 
 type jsonDashboardData struct {
-	User               jsonUserInfo        `json:"user"`
-	Boxes              []jsonBoxInfo       `json:"boxes"`
-	SharedBoxes        []jsonSharedBox     `json:"sharedBoxes"`
-	TeamSharedBoxes    []jsonTeamSharedBox `json:"teamSharedBoxes"`
-	TeamBoxes          []jsonTeamBox       `json:"teamBoxes"`
-	HasTeam            bool                `json:"hasTeam"`
-	InviteCount        int64               `json:"inviteCount"`
-	CanRequestInvites  bool                `json:"canRequestInvites"`
-	SSHCommand         string              `json:"sshCommand"`
-	ReplHost           string              `json:"replHost"`
-	ShowIntegrations   bool                `json:"showIntegrations"`
-	BillingPeriodStart time.Time           `json:"billingPeriodStart"`
-	BillingPeriodEnd   time.Time           `json:"billingPeriodEnd"`
+	User              jsonUserInfo         `json:"user"`
+	Boxes             []jsonBoxInfo        `json:"boxes"`
+	SharedBoxes       []jsonSharedBox      `json:"sharedBoxes"`
+	TeamSharedBoxes   []jsonTeamSharedBox  `json:"teamSharedBoxes"`
+	TeamBoxes         []jsonTeamBox        `json:"teamBoxes"`
+	HasTeam           bool                 `json:"hasTeam"`
+	InviteCount       int64                `json:"inviteCount"`
+	CanRequestInvites bool                 `json:"canRequestInvites"`
+	SSHCommand        string               `json:"sshCommand"`
+	ReplHost          string               `json:"replHost"`
+	ShowIntegrations  bool                 `json:"showIntegrations"`
+	Billing           jsonDashboardBilling `json:"billing"`
+}
+
+type jsonDashboardBilling struct {
+	PeriodStart time.Time `json:"periodStart"`
+	PeriodEnd   time.Time `json:"periodEnd"`
 }
 
 type jsonUserInfo struct {
@@ -512,19 +516,21 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	periodStart, periodEnd := billingPeriodForUser(r.Context(), s, billingAccountID, planErr)
 
 	writeJSONOK(w, jsonDashboardData{
-		User:               newJSONUserInfo(user),
-		Boxes:              boxes,
-		SharedBoxes:        sharedBoxes,
-		TeamSharedBoxes:    teamSharedBoxes,
-		TeamBoxes:          teamBoxes,
-		HasTeam:            hasTeam,
-		InviteCount:        inviteCount,
-		CanRequestInvites:  canRequestInvites,
-		SSHCommand:         s.replSSHConnectionCommand(),
-		ReplHost:           s.env.ReplHost,
-		ShowIntegrations:   showIntegrations,
-		BillingPeriodStart: periodStart,
-		BillingPeriodEnd:   periodEnd,
+		User:              newJSONUserInfo(user),
+		Boxes:             boxes,
+		SharedBoxes:       sharedBoxes,
+		TeamSharedBoxes:   teamSharedBoxes,
+		TeamBoxes:         teamBoxes,
+		HasTeam:           hasTeam,
+		InviteCount:       inviteCount,
+		CanRequestInvites: canRequestInvites,
+		SSHCommand:        s.replSSHConnectionCommand(),
+		ReplHost:          s.env.ReplHost,
+		ShowIntegrations:  showIntegrations,
+		Billing: jsonDashboardBilling{
+			PeriodStart: periodStart,
+			PeriodEnd:   periodEnd,
+		},
 	})
 }
 

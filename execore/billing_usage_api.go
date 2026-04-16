@@ -298,22 +298,26 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 }
 
 // billingPeriodForUser computes the current billing period [start, end) for a user.
-// For users with an account plan anchored via Stripe (changed_by='stripe:event'), the
-// anchor day-of-month from started_at is used to define the period boundary.
-// All other users get the current calendar month (UTC).
+// It tries the Stripe subscription first (authoritative), then falls back to the
+// plan anchor day, then to calendar month.
 func billingPeriodForUser(ctx context.Context, s *Server, accountID string, planErr error) (time.Time, time.Time) {
 	now := time.Now().UTC()
 
+	// Try Stripe subscription period first (authoritative source).
+	if accountID != "" {
+		if period, err := s.billing.CurrentBillingPeriod(ctx, accountID); err == nil && period != nil {
+			return period.Start, period.End
+		}
+	}
+
 	if planErr != nil && !errors.Is(planErr, sql.ErrNoRows) {
-		// Unexpected error: fall back to calendar month.
 		return calendarMonthPeriod(now)
 	}
 
-	// Try to get the active account plan for the anchor date.
+	// Fall back to anchor day from plan start date.
 	if accountID != "" {
 		accPlan, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
 		if err == nil && accPlan.ChangedBy != nil && *accPlan.ChangedBy == "stripe:event" {
-			// Use the day-of-month from the plan's start as the billing anchor.
 			return anchoredMonthPeriod(now, accPlan.StartedAt.UTC().Day())
 		}
 	}

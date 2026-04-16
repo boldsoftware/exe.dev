@@ -542,9 +542,9 @@ async function loadDashboard() {
     sharedBoxes.value = data.sharedBoxes
 
     // Fetch VM usage non-blocking using the billing period from the dashboard.
-    billingPeriodStart.value = data.billingPeriodStart
-    billingPeriodEnd.value = data.billingPeriodEnd
-    fetchVMUsage(data.billingPeriodStart, data.billingPeriodEnd).then(usage => {
+    billingPeriodStart.value = data.billing.periodStart
+    billingPeriodEnd.value = data.billing.periodEnd
+    fetchVMUsage(data.billing.periodStart, data.billing.periodEnd).then(usage => {
       const m = new Map<string, VMUsageEntry>()
       for (const vm of usage.metrics ?? []) {
         m.set(vm.vm_name, vm)
