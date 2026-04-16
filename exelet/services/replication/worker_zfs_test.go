@@ -210,11 +210,12 @@ type blockingTarget struct {
 	sendCalled chan struct{}
 }
 
-func (b *blockingTarget) Type() string                                  { return "blocking" }
-func (b *blockingTarget) Name() string                                  { return "blocking" }
+func (b *blockingTarget) Type() string { return "blocking" }
+func (b *blockingTarget) Name() string { return "blocking" }
 func (b *blockingTarget) GetAvailableSpace(context.Context) (uint64, error) {
 	return 1 << 60, nil
 }
+
 func (b *blockingTarget) Send(ctx context.Context, _ SendOptions) error {
 	close(b.sendCalled)
 	<-ctx.Done()
