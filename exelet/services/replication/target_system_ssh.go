@@ -130,7 +130,10 @@ func (t *SystemSSHTarget) ListSnapshotsWithMetadata(ctx context.Context, volumeI
 }
 
 func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
-	estimatedSize := estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	estimatedSize := opts.EstimatedSize
+	if estimatedSize <= 0 {
+		estimatedSize = estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	}
 
 	// Build local zfs send command (-c sends compressed blocks as-is)
 	var sendArgs []string
@@ -228,8 +231,11 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		pvErr := pvCmd.Wait()
 		sshErr := sshCmd.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if sshErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String())
+			return classifySendErr(fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String()), stderrBuf.String(), sendStderrBuf.String())
 		}
 		if pvErr != nil {
 			return fmt.Errorf("pv failed: %w", pvErr)
@@ -281,8 +287,11 @@ func (t *SystemSSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		sendErr := sendCmd.Wait()
 		sshErr := sshCmd.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if sshErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String())
+			return classifySendErr(fmt.Errorf("remote zfs recv failed: %w (recv stderr: %s) (send stderr: %s)", sshErr, stderrBuf.String(), sendStderrBuf.String()), stderrBuf.String(), sendStderrBuf.String())
 		}
 		if sendErr != nil {
 			return fmt.Errorf("zfs send failed: %w (stderr: %s)", sendErr, sendStderrBuf.String())
@@ -456,6 +465,13 @@ func (t *SystemSSHTarget) ListAllReplicationSnapshots(ctx context.Context) ([]Vo
 	}
 
 	return snapshots, nil
+}
+
+// GetAvailableSpace returns the bytes available on the remote pool.
+func (t *SystemSSHTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
+	return queryRemoteAvailableSpace(t.config.Pool, func(cmd string) ([]byte, error) {
+		return t.runCommand(ctx, cmd)
+	})
 }
 
 func (t *SystemSSHTarget) Close() error {

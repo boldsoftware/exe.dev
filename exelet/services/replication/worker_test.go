@@ -39,7 +39,7 @@ func TestNewWorkerPool_WorkerCount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wp := NewWorkerPool(nil, state, metrics, 1, tt.workers, log, noopRestoring)
+			wp := NewWorkerPool(nil, state, metrics, 1, tt.workers, 0, log, noopRestoring)
 			defer wp.Stop()
 
 			if wp.workerCount != tt.want {

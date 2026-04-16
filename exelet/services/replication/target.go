@@ -55,6 +55,12 @@ type Target interface {
 	// ListAllReplicationSnapshots lists all replication snapshots across all volumes
 	ListAllReplicationSnapshots(ctx context.Context) ([]VolumeSnapshot, error)
 
+	// GetAvailableSpace returns the number of bytes free on the target. The
+	// worker uses this for pre-flight capacity checks; implementations should
+	// return a best-effort value and may return an error when the target
+	// cannot be queried.
+	GetAvailableSpace(ctx context.Context) (uint64, error)
+
 	// Close releases any resources held by the target
 	Close() error
 }
@@ -69,6 +75,7 @@ type SendOptions struct {
 	SnapshotName   string       // Name of snapshot to send (e.g., repl-20240115T143022Z)
 	BaseSnapshot   string       // For incremental: name of base snapshot (empty for full)
 	BandwidthLimit string       // Rate limit (e.g., "100M", "1G")
+	EstimatedSize  int64        // Pre-computed zfs send estimate (0 = let target estimate)
 	OnProgress     ProgressFunc // Optional callback for progress updates
 }
 

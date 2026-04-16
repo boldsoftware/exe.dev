@@ -27,6 +27,9 @@ const (
 	// DefaultReplicationPruneRetention is the minimum age of the most recent snapshot
 	// before an orphaned volume is eligible for pruning.
 	DefaultReplicationPruneRetention = 7 * 24 * time.Hour
+	// DefaultReplicationVolumeTimeout caps how long a single zfs send may run.
+	// Prevents one stuck send from blocking the next replication cycle.
+	DefaultReplicationVolumeTimeout = 30 * time.Minute
 
 	// DefaultMetricsDaemonInterval is the default interval for sending metrics to the daemon
 	DefaultMetricsDaemonInterval = 10 * time.Minute
@@ -190,6 +193,9 @@ type ExeletConfig struct {
 	ReplicationPruneRetention time.Duration
 	// ReplicationWorkers is the number of concurrent replication workers (0 = auto: NumCPU/4, min 1)
 	ReplicationWorkers int
+	// ReplicationVolumeTimeout caps how long a single zfs send may run before
+	// being cancelled. Zero means no per-volume timeout.
+	ReplicationVolumeTimeout time.Duration
 
 	// MetricsDaemonURL is the URL of the metrics daemon (e.g., http://localhost:8090)
 	MetricsDaemonURL string

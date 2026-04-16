@@ -394,7 +394,10 @@ func parseHumanSize(s string) int64 {
 // Send transfers a snapshot to the remote target
 func (t *SSHTarget) Send(ctx context.Context, opts SendOptions) error {
 	// Estimate send size for progress tracking
-	estimatedSize := estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	estimatedSize := opts.EstimatedSize
+	if estimatedSize <= 0 {
+		estimatedSize = estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	}
 
 	client, err := t.getClient()
 	if err != nil {
@@ -406,6 +409,20 @@ func (t *SSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 	defer session.Close()
+
+	// Tie the SSH session to ctx. session.Wait() blocks indefinitely if the
+	// remote zfs recv stalls (e.g. full pool); without this, ctx cancellation
+	// or a per-volume timeout cannot abort the send.
+	sessionDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = session.Signal(ssh.SIGTERM)
+			_ = session.Close()
+		case <-sessionDone:
+		}
+	}()
+	defer close(sessionDone)
 
 	// Build remote zfs recv command
 	remoteDataset := t.remoteDataset(opts.VolumeID)
@@ -479,8 +496,11 @@ func (t *SSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		// Wait for remote to complete
 		recvErr := session.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if recvErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", recvErr, stderrBuf.String())
+			return classifySendErr(fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", recvErr, stderrBuf.String()), stderrBuf.String())
 		}
 		if pvErr != nil {
 			return fmt.Errorf("pv failed: %w", pvErr)
@@ -501,8 +521,11 @@ func (t *SSHTarget) Send(ctx context.Context, opts SendOptions) error {
 		// Wait for remote to complete
 		recvErr := session.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if recvErr != nil {
-			return fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", recvErr, stderrBuf.String())
+			return classifySendErr(fmt.Errorf("remote zfs recv failed: %w (stderr: %s)", recvErr, stderrBuf.String()), stderrBuf.String())
 		}
 		if sendErr != nil {
 			return fmt.Errorf("zfs send failed: %w", sendErr)
@@ -752,6 +775,13 @@ func (t *SSHTarget) ListAllReplicationSnapshots(ctx context.Context) ([]VolumeSn
 	}
 
 	return snapshots, nil
+}
+
+// GetAvailableSpace returns the bytes available on the remote pool.
+func (t *SSHTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
+	return queryRemoteAvailableSpace(t.config.Pool, func(cmd string) ([]byte, error) {
+		return t.runCommand(ctx, cmd)
+	})
 }
 
 func (t *SSHTarget) Close() error {

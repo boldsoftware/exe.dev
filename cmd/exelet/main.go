@@ -270,6 +270,12 @@ func main() {
 			Value:   0,
 			EnvVars: []string{"EXELET_STORAGE_REPLICATION_WORKERS"},
 		},
+		&cli.DurationFlag{
+			Name:    "storage-replication-volume-timeout",
+			Usage:   "max duration for a single zfs send before cancellation (0 to disable)",
+			Value:   config.DefaultReplicationVolumeTimeout,
+			EnvVars: []string{"EXELET_STORAGE_REPLICATION_VOLUME_TIMEOUT"},
+		},
 		&cli.StringFlag{
 			Name:    "metrics-daemon-url",
 			Usage:   "URL of the metrics daemon (e.g., http://localhost:8090)",
@@ -395,6 +401,7 @@ func serveAction(clix *cli.Context) error {
 	replicationPrune := clix.Bool("storage-replication-prune")
 	replicationPruneRetention := clix.Duration("storage-replication-prune-retention")
 	replicationWorkers := clix.Int("storage-replication-workers")
+	replicationVolumeTimeout := clix.Duration("storage-replication-volume-timeout")
 	metricsDaemonURL := clix.String("metrics-daemon-url")
 	metricsDaemonInterval := clix.Duration("metrics-daemon-interval")
 	pktflowEnabled := clix.Bool("pktflow-enabled")
@@ -415,6 +422,9 @@ func serveAction(clix *cli.Context) error {
 	}
 	if replicationEnabled && replicationWorkers < 0 {
 		return fmt.Errorf("--storage-replication-workers must be >= 0 (0 = auto)")
+	}
+	if replicationEnabled && replicationVolumeTimeout < 0 {
+		return fmt.Errorf("--storage-replication-volume-timeout must be >= 0 (0 to disable)")
 	}
 	if pktflowEnabled {
 		if pktflowSampleRate == 0 || (pktflowSampleRate&(pktflowSampleRate-1)) != 0 {
@@ -460,6 +470,7 @@ func serveAction(clix *cli.Context) error {
 		ReplicationPrune:            replicationPrune,
 		ReplicationPruneRetention:   replicationPruneRetention,
 		ReplicationWorkers:          replicationWorkers,
+		ReplicationVolumeTimeout:    replicationVolumeTimeout,
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,
 		ReservedCPUs:                reservedCPUs,

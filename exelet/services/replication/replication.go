@@ -130,6 +130,7 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 		s.metrics,
 		s.config.ReplicationRetention,
 		s.config.ReplicationWorkers,
+		s.config.ReplicationVolumeTimeout,
 		s.log,
 		s.IsRestoring,
 	)

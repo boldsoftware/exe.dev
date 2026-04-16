@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // progressWriter wraps a writer and reports bytes written via a callback.
@@ -241,14 +243,14 @@ func (t *FileTarget) Send(ctx context.Context, opts SendOptions) error {
 		return fmt.Errorf("zfs send failed: %w", err)
 	}
 	if copyErr != nil {
-		return fmt.Errorf("failed to write backup data: %w", copyErr)
+		return classifySendErr(fmt.Errorf("failed to write backup data: %w", copyErr))
 	}
 
 	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
+		return classifySendErr(fmt.Errorf("failed to close gzip writer: %w", err))
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("failed to close backup file: %w", err)
+		return classifySendErr(fmt.Errorf("failed to close backup file: %w", err))
 	}
 
 	// Rename temp file to final name
@@ -398,6 +400,16 @@ func (t *FileTarget) DeleteVolume(ctx context.Context, volumeID string) error {
 	}
 
 	return nil
+}
+
+// GetAvailableSpace returns the bytes available on the filesystem hosting
+// the backup directory.
+func (t *FileTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(t.config.Path, &stat); err != nil {
+		return 0, fmt.Errorf("statfs %s: %w", t.config.Path, err)
+	}
+	return stat.Bavail * uint64(stat.Bsize), nil
 }
 
 func (t *FileTarget) Close() error {

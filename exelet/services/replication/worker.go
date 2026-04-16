@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -16,6 +17,11 @@ import (
 
 	api "exe.dev/pkg/api/exe/replication/v1"
 )
+
+// spaceCheckMargin is the safety multiplier applied to the estimated send
+// size when comparing against available space on the target. A 10% buffer
+// covers metadata overhead and small fluctuations in the estimate.
+const spaceCheckMargin = 1.1
 
 const (
 	// MaxRetries is the maximum number of retries for transient failures
@@ -34,15 +40,16 @@ type VolumeInfo struct {
 
 // WorkerPool manages concurrent replication workers
 type WorkerPool struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	drainCtx    context.Context // cancelled on Stop to signal workers to stop picking new jobs
-	drainCancel context.CancelFunc
-	target      Target
-	state       *State
-	metrics     *Metrics
-	log         *slog.Logger
-	retention   int
+	ctx           context.Context
+	cancel        context.CancelFunc
+	drainCtx      context.Context // cancelled on Stop to signal workers to stop picking new jobs
+	drainCancel   context.CancelFunc
+	target        Target
+	state         *State
+	metrics       *Metrics
+	log           *slog.Logger
+	retention     int
+	volumeTimeout time.Duration // 0 = no per-volume timeout
 
 	// isRestoring checks if a volume is currently being restored (skip replication)
 	isRestoring func(volumeID string) bool
@@ -89,8 +96,8 @@ func (j *Job) snapshot() Job {
 }
 
 // NewWorkerPool creates a new worker pool. If workers is 0, the count defaults
-// to max(1, NumCPU/4).
-func NewWorkerPool(target Target, state *State, metrics *Metrics, retention, workers int, log *slog.Logger, isRestoring func(string) bool) *WorkerPool {
+// to max(1, NumCPU/4). volumeTimeout caps each Send attempt; 0 disables it.
+func NewWorkerPool(target Target, state *State, metrics *Metrics, retention, workers int, volumeTimeout time.Duration, log *slog.Logger, isRestoring func(string) bool) *WorkerPool {
 	workerCount := workers
 	if workerCount <= 0 {
 		workerCount = max(runtime.NumCPU()/4, 1)
@@ -101,20 +108,21 @@ func NewWorkerPool(target Target, state *State, metrics *Metrics, retention, wor
 	drainCtx, drainCancel := context.WithCancel(context.Background())
 
 	wp := &WorkerPool{
-		ctx:          ctx,
-		cancel:       cancel,
-		drainCtx:     drainCtx,
-		drainCancel:  drainCancel,
-		target:       target,
-		state:        state,
-		metrics:      metrics,
-		log:          log,
-		retention:    retention,
-		isRestoring:  isRestoring,
-		pendingQueue: make([]VolumeInfo, 0),
-		activeJobs:   make(map[string]*Job),
-		workerCount:  workerCount,
-		jobsCh:       make(chan VolumeInfo, 100),
+		ctx:           ctx,
+		cancel:        cancel,
+		drainCtx:      drainCtx,
+		drainCancel:   drainCancel,
+		target:        target,
+		state:         state,
+		metrics:       metrics,
+		log:           log,
+		retention:     retention,
+		volumeTimeout: volumeTimeout,
+		isRestoring:   isRestoring,
+		pendingQueue:  make([]VolumeInfo, 0),
+		activeJobs:    make(map[string]*Job),
+		workerCount:   workerCount,
+		jobsCh:        make(chan VolumeInfo, 100),
 	}
 
 	// Start workers
@@ -160,9 +168,11 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	// Remove from pending queue now that we're processing
 	wp.removeFromPending(volume.ID)
 
+	ctx := wp.ctx
+
 	// Skip if volume is being restored (use LocalID since restoringVolumes tracks local IDs)
 	if wp.isRestoring != nil && wp.isRestoring(volume.LocalID) {
-		wp.log.Info("skipping replication, volume is being restored", "volume_id", volume.LocalID)
+		wp.log.InfoContext(ctx, "skipping replication, volume is being restored", "volume_id", volume.LocalID)
 		return
 	}
 
@@ -178,7 +188,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	wp.setJob(volume.ID, job)
 	defer wp.removeJob(volume.ID)
 
-	wp.log.Info("starting replication", "volume_id", volume.LocalID, "volume_name", volume.Name)
+	wp.log.InfoContext(ctx, "starting replication", "volume_id", volume.LocalID, "volume_name", volume.Name)
 
 	// Create snapshot
 	snapshotName := fmt.Sprintf("%s%s", SnapshotPrefix, time.Now().UTC().Format("20060102T150405Z"))
@@ -186,7 +196,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to create snapshot: %w", err))
 		return
 	}
-	wp.log.Debug("created snapshot", "volume_id", volume.LocalID, "snapshot", snapshotName)
+	wp.log.DebugContext(ctx, "created snapshot", "volume_id", volume.LocalID, "snapshot", snapshotName)
 
 	// Update job state
 	job.mu.Lock()
@@ -194,7 +204,7 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	job.mu.Unlock()
 
 	// Get existing snapshots on target to determine if incremental
-	remoteSnapshots, err := wp.target.ListSnapshots(wp.ctx, volume.ID)
+	remoteSnapshots, err := wp.target.ListSnapshots(ctx, volume.ID)
 	if err != nil {
 		wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to list remote snapshots: %w", err))
 		wp.destroySnapshot(volume.Dataset, snapshotName)
@@ -222,37 +232,79 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 		}
 	}
 
+	// Pre-flight space check. Best-effort: if either the size estimate or the
+	// available-space query fails, we proceed without the check rather than
+	// blocking replication.
+	estimatedSize := estimateSendSize(ctx, volume.Dataset, snapshotName, baseSnapshot)
+	availableSpace, availErr := wp.target.GetAvailableSpace(ctx)
+	if availErr != nil {
+		wp.log.WarnContext(ctx, "target capacity check failed, proceeding without it", "volume_id", volume.LocalID, "error", availErr)
+	} else if estimatedSize > 0 {
+		required := uint64(float64(estimatedSize) * spaceCheckMargin)
+		wp.log.DebugContext(ctx, "pre-flight space check",
+			"volume_id", volume.LocalID,
+			"estimated_bytes", estimatedSize,
+			"required_bytes", required,
+			"available_bytes", availableSpace,
+		)
+		if availableSpace < required {
+			wp.log.ErrorContext(ctx, "insufficient space on target, skipping send",
+				"volume_id", volume.LocalID,
+				"estimated_bytes", estimatedSize,
+				"required_bytes", required,
+				"available_bytes", availableSpace,
+			)
+			wp.recordFailure(job, volume, startTime, fmt.Errorf("%w: estimated %d bytes, available %d", ErrTargetFull, estimatedSize, availableSpace))
+			wp.destroySnapshot(volume.Dataset, snapshotName)
+			return
+		}
+	}
+
 	if incremental {
-		wp.log.Debug("using incremental send", "volume_id", volume.LocalID, "base", baseSnapshot)
+		wp.log.DebugContext(ctx, "using incremental send", "volume_id", volume.LocalID, "base", baseSnapshot)
 	} else {
-		wp.log.Debug("using full send", "volume_id", volume.LocalID)
+		wp.log.DebugContext(ctx, "using full send", "volume_id", volume.LocalID)
 		// If remote has snapshots but no common base was found, the ancestry
 		// has diverged (e.g. after a storage tier migration). Delete the remote
-		// dataset so the full send can succeed.
+		// dataset so the full send can succeed. Skip the destroy when the
+		// target is full — there is no point destroying the existing backup
+		// if the replacement send cannot succeed.
 		if len(remoteSnapshots) > 0 {
-			wp.log.Warn("ancestry diverged, deleting remote dataset before full send", "volume_id", volume.LocalID, "remote_snapshots", len(remoteSnapshots))
+			if availErr == nil && estimatedSize > 0 && availableSpace < uint64(float64(estimatedSize)*spaceCheckMargin) {
+				wp.log.ErrorContext(ctx, "skipping diverged-ancestry cleanup, target full — preserving existing remote backup",
+					"volume_id", volume.LocalID,
+					"remote_snapshots", len(remoteSnapshots),
+				)
+				wp.recordFailure(job, volume, startTime, fmt.Errorf("%w: diverged ancestry and insufficient space for full send", ErrTargetFull))
+				wp.destroySnapshot(volume.Dataset, snapshotName)
+				return
+			}
+			wp.log.ErrorContext(ctx, "ancestry diverged, deleting remote dataset before full send", "volume_id", volume.LocalID, "remote_snapshots", len(remoteSnapshots))
 			if deleter, ok := wp.target.(VolumeDeleter); ok {
-				if err := deleter.DeleteVolume(wp.ctx, volume.ID); err != nil {
-					wp.log.Warn("failed to delete diverged remote volume", "volume_id", volume.LocalID, "error", err)
+				if err := deleter.DeleteVolume(ctx, volume.ID); err != nil {
+					wp.log.WarnContext(ctx, "failed to delete diverged remote volume", "volume_id", volume.LocalID, "error", err)
 				}
 			}
 		}
 	}
 
-	// Send with retries
-	var sendErr error
+	// Send with retries. Permanent failures (ErrTargetFull) short-circuit the
+	// retry loop — no amount of waiting will make a full pool drain.
 	sendWithRetries := func(base string) error {
+		var lastErr error
 		for attempt := 1; attempt <= MaxRetries; attempt++ {
 			// Reset progress for each attempt
 			job.mu.Lock()
 			job.BytesTransferred = 0
 			job.mu.Unlock()
 
-			err := wp.target.Send(wp.ctx, SendOptions{
-				VolumeID:     volume.ID,
-				Dataset:      volume.Dataset,
-				SnapshotName: snapshotName,
-				BaseSnapshot: base,
+			sendCtx, cancel := wp.sendContext(ctx)
+			err := wp.target.Send(sendCtx, SendOptions{
+				VolumeID:      volume.ID,
+				Dataset:       volume.Dataset,
+				SnapshotName:  snapshotName,
+				BaseSnapshot:  base,
+				EstimatedSize: estimatedSize,
 				OnProgress: func(bytesTransferred, bytesTotal int64) {
 					job.mu.Lock()
 					job.BytesTransferred = bytesTransferred
@@ -263,26 +315,60 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 					job.mu.Unlock()
 				},
 			})
+			cancel()
 			if err == nil {
 				return nil
 			}
-			wp.log.Warn("send attempt failed", "volume_id", volume.LocalID, "attempt", attempt, "incremental", base != "", "error", err)
+			if errors.Is(err, ErrTargetFull) {
+				wp.log.WarnContext(ctx, "target out of space, skipping retries",
+					"volume_id", volume.LocalID,
+					"attempt", attempt,
+					"incremental", base != "",
+					"error", err,
+				)
+				return err
+			}
+			if errors.Is(err, context.DeadlineExceeded) && wp.volumeTimeout > 0 {
+				wp.log.WarnContext(ctx, "send exceeded per-volume timeout, cancelled",
+					"volume_id", volume.LocalID,
+					"attempt", attempt,
+					"timeout", wp.volumeTimeout,
+				)
+			}
+			wp.log.WarnContext(ctx, "send attempt failed",
+				"volume_id", volume.LocalID,
+				"attempt", attempt,
+				"incremental", base != "",
+				"error", err,
+			)
+			lastErr = err
 			if attempt < MaxRetries {
 				backoff := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
 				select {
-				case <-wp.ctx.Done():
-					return wp.ctx.Err()
+				case <-ctx.Done():
+					return ctx.Err()
 				case <-time.After(backoff):
 				}
 			}
-			sendErr = err
 		}
-		return sendErr
+		return lastErr
 	}
 
 	if err := sendWithRetries(baseSnapshot); err != nil {
-		if wp.ctx.Err() != nil {
-			wp.recordFailure(job, volume, startTime, wp.ctx.Err())
+		if ctx.Err() != nil {
+			wp.recordFailure(job, volume, startTime, ctx.Err())
+			return
+		}
+		// Permanent failure (ENOSPC): never destroy the existing remote
+		// dataset to chase a full-send fallback that cannot succeed.
+		if errors.Is(err, ErrTargetFull) {
+			wp.log.ErrorContext(ctx, "skipping incremental→full fallback, target full — preserving existing remote backup",
+				"volume_id", volume.LocalID,
+				"incremental", incremental,
+				"error", err,
+			)
+			wp.recordFailure(job, volume, startTime, err)
+			wp.destroySnapshot(volume.Dataset, snapshotName)
 			return
 		}
 		if !incremental {
@@ -291,17 +377,23 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 			return
 		}
 		// Incremental failed. Destroy remote dataset and retry as full send.
-		wp.log.Warn("incremental send failed, destroying remote and retrying full send", "volume_id", volume.LocalID, "error", err)
+		wp.log.ErrorContext(ctx, "incremental send failed, destroying remote and retrying full send", "volume_id", volume.LocalID, "error", err)
 		if deleter, ok := wp.target.(VolumeDeleter); ok {
-			if err := deleter.DeleteVolume(wp.ctx, volume.ID); err != nil {
-				wp.log.Warn("failed to delete remote volume before full send", "volume_id", volume.LocalID, "error", err)
+			if err := deleter.DeleteVolume(ctx, volume.ID); err != nil {
+				wp.log.WarnContext(ctx, "failed to delete remote volume before full send", "volume_id", volume.LocalID, "error", err)
 			}
 		}
 		baseSnapshot = ""
 		incremental = false
 		if err := sendWithRetries(""); err != nil {
-			if wp.ctx.Err() != nil {
-				wp.recordFailure(job, volume, startTime, wp.ctx.Err())
+			if ctx.Err() != nil {
+				wp.recordFailure(job, volume, startTime, ctx.Err())
+				return
+			}
+			if errors.Is(err, ErrTargetFull) {
+				wp.log.ErrorContext(ctx, "full-send fallback failed: target full", "volume_id", volume.LocalID, "error", err)
+				wp.recordFailure(job, volume, startTime, err)
+				wp.destroySnapshot(volume.Dataset, snapshotName)
 				return
 			}
 			wp.recordFailure(job, volume, startTime, fmt.Errorf("failed to send (full fallback) after %d attempts: %w", MaxRetries, err))
@@ -325,10 +417,10 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 			// Delete oldest replication snapshots to maintain retention
 			toDelete := len(replSnapshots) - wp.retention + 1 // +1 for the new one we just sent
 			for i := range toDelete {
-				if err := wp.target.Delete(wp.ctx, volume.ID, replSnapshots[i]); err != nil {
-					wp.log.Warn("failed to delete old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i], "error", err)
+				if err := wp.target.Delete(ctx, volume.ID, replSnapshots[i]); err != nil {
+					wp.log.WarnContext(ctx, "failed to delete old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i], "error", err)
 				} else {
-					wp.log.Debug("deleted old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i])
+					wp.log.DebugContext(ctx, "deleted old snapshot", "volume_id", volume.LocalID, "snapshot", replSnapshots[i])
 				}
 			}
 		}
@@ -359,7 +451,18 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 	wp.state.AddHistory(historyEntry)
 	wp.metrics.RecordSuccess(wp.target.Type(), wp.target.Name(), bytesTransferred, duration.Seconds())
 
-	wp.log.Info("replication complete", "volume_id", volume.LocalID, "duration", duration, "incremental", incremental)
+	wp.log.InfoContext(ctx, "replication complete", "volume_id", volume.LocalID, "duration", duration, "incremental", incremental)
+}
+
+// sendContext returns a context for a single Send attempt. When
+// volumeTimeout > 0 the returned context carries that deadline so a stuck
+// remote zfs recv cannot block the cycle indefinitely. The returned cancel
+// must always be called to release resources.
+func (wp *WorkerPool) sendContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if wp.volumeTimeout > 0 {
+		return context.WithTimeout(parent, wp.volumeTimeout)
+	}
+	return context.WithCancel(parent)
 }
 
 // recordFailure records a failed replication
@@ -383,7 +486,7 @@ func (wp *WorkerPool) recordFailure(job *Job, volume VolumeInfo, startTime time.
 	wp.state.AddHistory(historyEntry)
 	wp.metrics.RecordFailure(wp.target.Type(), wp.target.Name())
 
-	wp.log.Error("replication failed", "volume_id", volume.LocalID, "error", err)
+	wp.log.ErrorContext(wp.ctx, "replication failed", "volume_id", volume.LocalID, "error", err)
 }
 
 // setJob sets a job in the active jobs map
@@ -433,7 +536,7 @@ func (wp *WorkerPool) QueueVolumes(volumes []VolumeInfo) int {
 		// Skip if already queued or being processed
 		if wp.isVolumeQueuedLocked(v.ID) {
 			wp.mu.Unlock()
-			wp.log.Debug("skipping already queued volume", "volume_id", v.ID)
+			wp.log.DebugContext(wp.ctx, "skipping already queued volume", "volume_id", v.ID)
 			continue
 		}
 		// Add to pending queue
@@ -495,7 +598,7 @@ func (wp *WorkerPool) QueueVolume(volume VolumeInfo) error {
 	}
 	if wp.isVolumeQueuedLocked(volume.ID) {
 		wp.mu.Unlock()
-		wp.log.Debug("skipping already queued volume", "volume_id", volume.ID)
+		wp.log.DebugContext(wp.ctx, "skipping already queued volume", "volume_id", volume.ID)
 		return ErrAlreadyQueued
 	}
 	wp.pendingQueue = append(wp.pendingQueue, volume)

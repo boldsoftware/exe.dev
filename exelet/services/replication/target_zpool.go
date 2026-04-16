@@ -101,7 +101,10 @@ func (t *ZpoolTarget) ListSnapshotsWithMetadata(ctx context.Context, volumeID st
 }
 
 func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
-	estimatedSize := estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	estimatedSize := opts.EstimatedSize
+	if estimatedSize <= 0 {
+		estimatedSize = estimateSendSize(ctx, opts.Dataset, opts.SnapshotName, opts.BaseSnapshot)
+	}
 
 	// Build local zfs send command (-c sends compressed blocks as-is)
 	var sendArgs []string
@@ -191,9 +194,12 @@ func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
 		pvErr := pvCmd.Wait()
 		recvErr := recvCmd.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		recvErrMsg := strings.TrimSpace(recvStderr.String())
 		if recvErr != nil {
-			return fmt.Errorf("zfs recv failed: %w (stderr: %s)", recvErr, recvErrMsg)
+			return classifySendErr(fmt.Errorf("zfs recv failed: %w (stderr: %s)", recvErr, recvErrMsg), recvErrMsg)
 		}
 		if pvErr != nil {
 			return fmt.Errorf("pv failed: %w", pvErr)
@@ -244,17 +250,20 @@ func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
 		sendErr := sendCmd.Wait()
 		recvErr := recvCmd.Wait()
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		recvErrMsg := strings.TrimSpace(recvStderr.String())
 		sendErrMsg := strings.TrimSpace(sendStderr.String())
 
 		if recvErr != nil && recvErrMsg != "" {
-			return fmt.Errorf("zfs recv failed: %s", recvErrMsg)
+			return classifySendErr(fmt.Errorf("zfs recv failed: %s", recvErrMsg), recvErrMsg)
 		}
 		if sendErr != nil && recvErr != nil && strings.Contains(sendErr.Error(), "141") {
 			if recvErrMsg != "" {
-				return fmt.Errorf("zfs recv failed: %s", recvErrMsg)
+				return classifySendErr(fmt.Errorf("zfs recv failed: %s", recvErrMsg), recvErrMsg)
 			}
-			return fmt.Errorf("zfs recv failed: %w", recvErr)
+			return classifySendErr(fmt.Errorf("zfs recv failed: %w", recvErr), recvErrMsg)
 		}
 		if sendErr != nil {
 			if sendErrMsg != "" {
@@ -264,9 +273,9 @@ func (t *ZpoolTarget) Send(ctx context.Context, opts SendOptions) error {
 		}
 		if recvErr != nil {
 			if recvErrMsg != "" {
-				return fmt.Errorf("zfs recv failed: %s", recvErrMsg)
+				return classifySendErr(fmt.Errorf("zfs recv failed: %s", recvErrMsg), recvErrMsg)
 			}
-			return fmt.Errorf("zfs recv failed: %w", recvErr)
+			return classifySendErr(fmt.Errorf("zfs recv failed: %w", recvErr), recvErrMsg)
 		}
 	}
 
@@ -425,6 +434,21 @@ func (t *ZpoolTarget) ListAllReplicationSnapshots(ctx context.Context) ([]Volume
 	}
 
 	return snapshots, nil
+}
+
+// GetAvailableSpace returns the bytes available on the local target pool.
+func (t *ZpoolTarget) GetAvailableSpace(ctx context.Context) (uint64, error) {
+	return queryRemoteAvailableSpace(t.config.Pool, func(cmd string) ([]byte, error) {
+		// Run the same `zfs get -Hp -o value available <pool>` locally.
+		// Strip the leading "zfs " token so we can hand args directly to exec.
+		const prefix = "zfs "
+		if !strings.HasPrefix(cmd, prefix) {
+			return nil, fmt.Errorf("unexpected command %q", cmd)
+		}
+		args := strings.Fields(strings.TrimPrefix(cmd, prefix))
+		out, err := exec.CommandContext(ctx, "zfs", args...).CombinedOutput()
+		return out, err
+	})
 }
 
 func (t *ZpoolTarget) Close() error {
