@@ -67,6 +67,7 @@ APT_CACHE_ENABLED="${APT_CACHE_ENABLED:-false}"
 APT_CACHE_CONTAINER="${CLUSTER_PREFIX}-apt-cache"
 APT_CACHE_PORT="3142"
 APT_CACHE_HOST="192.168.122.1"
+APT_MIRROR="${APT_MIRROR:-}"
 
 # ── Cloud-hypervisor / bridge configuration ──────────────────────────────────
 
@@ -619,6 +620,20 @@ APTPROXY
     fi
 }
 
+apt_mirror_yaml() {
+    [[ -n "${APT_MIRROR}" ]] || return 0
+    local m="${APT_MIRROR%/}"
+    cat <<APT
+apt:
+  primary:
+    - arches: [default]
+      uri: ${m}
+  security:
+    - arches: [default]
+      uri: ${m}
+APT
+}
+
 generate_cloud_init_exed() {
     local tmpdir="$1" name="$2"
     cat >"${tmpdir}/user-data" <<EOF
@@ -631,6 +646,7 @@ users:
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
 $(bootcmd_yaml)
+$(apt_mirror_yaml)
 package_update: true
 packages:
   - curl
@@ -661,6 +677,7 @@ users:
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
 $(bootcmd_yaml)
+$(apt_mirror_yaml)
 package_update: true
 packages:
   - curl
@@ -703,6 +720,7 @@ users:
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
 $(bootcmd_yaml)
+$(apt_mirror_yaml)
 package_update: true
 packages:
   - qemu-guest-agent
@@ -760,6 +778,7 @@ users:
     ssh_authorized_keys:
 $(ssh_authorized_keys_yaml)
 $(bootcmd_yaml)
+$(apt_mirror_yaml)
 package_update: true
 packages:
   - prometheus
@@ -2421,6 +2440,7 @@ install-vnc) cmd_install_vnc ;;
     echo "  EXELET_RAMDISK_POOL_SIZE=${EXELET_RAMDISK_POOL_SIZE}  (tmpfs-backed 'ramdisk' zpool, ephemeral)"
     echo "  EXELET_NETWORK_MANAGER=${EXELET_NETWORK_MANAGER}  (comma-separated: nat,netns to cycle modes across exelets)"
     echo "  APT_CACHE_ENABLED=${APT_CACHE_ENABLED}  (run apt-cacher-ng in Docker for faster/offline package installs)"
+    echo "  APT_MIRROR=${APT_MIRROR}  (override Ubuntu archive/security mirror in VMs, e.g. http://mirror.example.com/ubuntu)"
     exit 1
     ;;
 esac
