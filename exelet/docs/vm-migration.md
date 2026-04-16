@@ -4,76 +4,75 @@ This document describes the VM migration system, which enables migrating VMs bet
 
 ## Overview
 
-VM migration transfers a VM's disk (ZFS dataset), configuration, and optionally its running process state from one exelet to another. The orchestrator (`exed`) mediates a bidirectional gRPC stream between the source exelet's `SendVM` and the target exelet's `ReceiveVM`, then updates the database with the new location.
+VM migration transfers a VM's disk (ZFS dataset), configuration, and optionally its running process state from one exelet to another. The source exelet and target exelet transfer bulk data over a raw TCP sideband, while the orchestrator (`exed`) drives migration progress through session-based unary gRPCs and then updates the database with the new location.
 
 Three migration modes are supported:
 
 | Mode | VM State | Downtime | Description |
 |------|----------|----------|-------------|
-| Cold | Stopped | N/A | Full ZFS stream, target VM remains stopped |
-| Two-Phase | Running | Brief (phase 2 delta) | Phase 1: snapshot live VM, send full stream. Phase 2: stop VM, send incremental delta |
+| Cold | Stopped | N/A | Full ZFS transfer, target VM remains stopped |
+| Two-Phase | Running | Brief (phase 2 delta) | Phase 1: snapshot live VM, send full transfer. Phase 2: stop VM, send incremental delta |
 | Live | Running | Near-zero | Two-phase ZFS + CH snapshot/restore with in-flight IP reconfiguration |
 
 ## API
 
-Two gRPC RPCs in `ComputeService`:
+Migration uses unary gRPC session RPCs in `ComputeService`.
 
-- `SendVM(stream SendVMRequest) returns (stream SendVMResponse)` — Streams a VM's disk, config, and optionally process state
-- `ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse)` — Receives a VM from another exelet
+**Source-side control plane:**
+- `InitSendVM` — Starts a migration and returns a source session ID
+- `PollSendVM` — Long-polls for sequenced migration events
+- `SubmitSendVMControl` — Sends control signals (e.g. `PROCEED_WITH_PAUSE`)
+- `AbortSendVM` — Cancels the source session
 
-### Message Types
+**Target-side control plane:**
+- `InitReceiveVM` — Creates a target session and returns target capabilities plus a sideband address
+- `GetReceiveVMResumeToken` — Returns the ZFS resume token after sideband interruption
+- `AdvanceReceiveVMPhase` — Advances between sideband transfer phases
+- `UploadReceiveVMSnapshot` — Uploads CH snapshot chunks for live migration
+- `CompleteReceiveVM` — Verifies checksum and finalizes the instance
+- `AbortReceiveVM` — Cancels the target session and rolls back partial state
 
-**SendVM responses** (source → orchestrator → target):
+### Event / Message Types
+
+**Source session events** (`PollSendVM`):
 - `SendVMMetadata` — Instance config, base image ID
-- `SendVMDataChunk` — 4MB ZFS send chunks
-- `SendVMPhaseComplete` — Marks end of a transfer phase
-- `SendVMAwaitControl` — Requests orchestrator action (e.g., IP reconfig)
-- `SendVMSnapshotChunk` — CH snapshot file chunks (live only, zstd-compressed)
-- `SendVMComplete` — SHA-256 checksum of all data
+- `SendVMTargetReady` — Target readiness, network allocation, and skip-IP-reconfig hint
+- `SendVMStatus` — Human-readable status updates
+- `SendVMProgress` — Bytes transferred over sideband
+- `SendVMAwaitControl` — Requests orchestrator action (e.g., guest sync or IP reconfig)
+- `SendVMResult` — Final result, including `ColdBooted` for live-migration fallback
 
-**SendVM requests** (orchestrator → source):
-- `SendVMStartRequest` — Instance ID, mode flags (`TwoPhase`, `Live`), `TargetHasBaseImage`
-- `SendVMControl` — Control signals (e.g., `PROCEED_WITH_PAUSE`)
-
-**ReceiveVM requests** (orchestrator → target):
-- `ReceiveVMStartRequest` — Instance ID, source config, mode flags
-- `ReceiveVMDataChunk` — Echoed data chunks
-- `ReceiveVMPhaseComplete` — Echoed phase markers
-- `ReceiveVMSnapshotChunk` — Echoed CH snapshot chunks
-- `ReceiveVMComplete` — Echoed checksum
-
-**ReceiveVM responses** (target → orchestrator):
-- `ReceiveVMReady` — `HasBaseImage` flag, allocated `TargetNetwork` (live only)
-- `ReceiveVMResult` — Created instance, `ColdBooted` flag
+**Source session control** (`SubmitSendVMControl`):
+- `SendVMControl` — Control signals (currently `PROCEED_WITH_PAUSE`)
 
 ## Cold Migration
 
 The simplest mode. VM must be stopped.
 
-### SendVM Flow
+### Source Flow
 
-1. Client sends `SendVMStartRequest` with instance ID
-2. Server locks instance for migration (prevents Start/Stop/Delete/Update)
-3. Server suspends replication and waits for in-flight replication jobs
-4. Server validates VM is stopped
-5. Server sends `SendVMMetadata` (instance config, base image ID)
-6. Server creates migration snapshot (`{dataset}@migration`)
-7. Server streams ZFS send data in ~4MB chunks (`SendVMDataChunk`)
-8. Server sends `SendVMComplete` with SHA-256 checksum
-9. Server cleans up migration snapshot and unlocks instance
+1. Client calls `InitSendVM` with instance ID and target address
+2. Source locks instance for migration (prevents Start/Stop/Delete/Update)
+3. Source suspends replication and waits for in-flight replication jobs
+4. Source validates VM is stopped
+5. Source emits `SendVMMetadata` through `PollSendVM`
+6. Source creates migration snapshot (`{dataset}@migration`)
+7. Source streams ZFS send data to the target over the sideband TCP connection
+8. Source calls `CompleteReceiveVM` on the target with the SHA-256 checksum
+9. Source emits `SendVMResult` and cleans up migration state
 
-### ReceiveVM Flow
+### Target Flow
 
-1. Client sends `ReceiveVMStartRequest` with instance ID, source config
-2. Server locks instance for migration and suspends replication
-3. Server checks instance doesn't already exist
-4. Server checks if base image exists locally
-5. Server sends `ReceiveVMReady` with `has_base_image` flag
-6. Server starts `zfs recv` process and pipes incoming data chunks
-7. Server verifies SHA-256 checksum
-8. Server copies embedded kernel to instance directory
-9. Server saves instance config (state=STOPPED)
-10. Server sends `ReceiveVMResult` with created instance
+1. Source calls `InitReceiveVM` with instance ID and source config
+2. Target locks instance for migration and suspends replication
+3. Target checks instance doesn't already exist
+4. Target checks if base image exists locally
+5. Target returns `InitReceiveVMResponse` with `has_base_image`, sideband listener address, resume token, and target network (live only)
+6. Target starts `zfs recv` and accepts bytes on the sideband listener
+7. Target verifies SHA-256 checksum during `CompleteReceiveVM`
+8. Target copies embedded kernel to instance directory
+9. Target saves instance config (state=STOPPED)
+10. Target returns `CompleteReceiveVMResponse` with created instance
 
 ## Two-Phase Migration
 
@@ -82,7 +81,7 @@ Allows migrating a running VM with only a brief pause during the final delta tra
 ### Flow
 
 1. **Phase 1** (VM running): Create `@migration-pre` snapshot, send full ZFS stream. VM continues running throughout — writes accumulate as delta.
-2. **Phase complete marker**: Source sends `SendVMPhaseComplete`, target completes `zfs recv` for phase 1.
+2. **Phase complete marker**: Source calls `AdvanceReceiveVMPhase(last=false)`, and the target finishes `zfs recv` for phase 1 then returns a fresh sideband listener for phase 2.
 3. **Phase 2** (VM stopped): Stop the VM, create `@migration` snapshot, send incremental diff from `@migration-pre` to `@migration`. This delta is typically small (only writes since phase 1 snapshot).
 4. **Complete**: Verify checksum, save instance as STOPPED on target.
 
@@ -109,7 +108,7 @@ The most complex mode — preserves the VM's running process state across exelet
 
 4. **Phase 2** (VM paused): Incremental ZFS diff from `@migration-pre` to `@migration`.
 
-5. **Phase 3 — CH snapshot**: Source creates a CH snapshot (JSON config + memory state files), streams each file as `SendVMSnapshotChunk` messages. Each chunk is independently zstd-compressed (skipped if incompressible).
+5. **Phase 3 — CH snapshot**: Source creates a CH snapshot (JSON config + memory state files), uploads each file chunk with `UploadReceiveVMSnapshot`. Each chunk is independently zstd-compressed (skipped if incompressible).
 
 6. **Restore on target**: Target edits the CH `config.json` — updates disk path, kernel path, and replaces the `ip=` kernel boot argument with the target IP. Then calls `RestoreFromSnapshot` to resume the VM.
 
@@ -121,7 +120,7 @@ The most complex mode — preserves the VM's running process state across exelet
 
 ```
 T0  VM running on source with source_ip, source_gw
-T1  Target allocates target_ip (in ReceiveVMReady)
+T1  Target allocates target_ip (in InitReceiveVMResponse)
 T2  Orchestrator SSHes into VM, adds target_ip as secondary
 T3  Orchestrator sends PROCEED_WITH_PAUSE
 T4  Source deflates balloon, pauses VM (downtime starts)

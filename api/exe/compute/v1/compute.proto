@@ -16,10 +16,6 @@ service ComputeService {
   rpc SetInstanceGroup(SetInstanceGroupRequest) returns (SetInstanceGroupResponse);
   rpc RenameInstance(RenameInstanceRequest) returns (RenameInstanceResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
-  // SendVM streams a stopped VM's disk and config to the caller for migration
-  rpc SendVM(stream SendVMRequest) returns (stream SendVMResponse);
-  // ReceiveVM receives a VM from another exelet
-  rpc ReceiveVM(stream ReceiveVMRequest) returns (stream ReceiveVMResponse);
 
   // InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
   rpc InitSendVM(InitSendVMRequest) returns (InitSendVMResponse);
@@ -311,14 +307,6 @@ message ServerLocality {
   string zone = 2;
 }
 
-// SendVM messages
-message SendVMRequest {
-  oneof type {
-    SendVMStartRequest start = 1;
-    SendVMControl control = 2;
-  }
-}
-
 message SendVMStartRequest {
   string instance_id = 1;
   // If true, send full stream of instance only (target already has base image).
@@ -337,7 +325,7 @@ message SendVMStartRequest {
   // Clients that don't set this will only receive metadata as the first response.
   bool accept_status = 5;
   // Direct migration: source connects to target directly for data transfer.
-  // When set, source dials target_address and opens a ReceiveVM stream.
+  // When set, source dials target_address and initializes a receive session there.
   string target_address = 6;
   string target_group_id = 7;
 }
@@ -347,21 +335,6 @@ message SendVMControl {
     PROCEED_WITH_PAUSE = 0;
   }
   Action action = 1;
-}
-
-message SendVMResponse {
-  oneof type {
-    SendVMMetadata metadata = 1;
-    SendVMDataChunk data = 2;
-    SendVMComplete complete = 3;
-    SendVMPhaseComplete phase_complete = 4;
-    SendVMSnapshotChunk snapshot_data = 5;
-    SendVMAwaitControl await_control = 6;
-    SendVMStatus status = 7;
-    SendVMTargetReady target_ready = 8;
-    SendVMProgress progress = 9;
-    SendVMResult result = 10;
-  }
 }
 
 message SendVMStatus {
@@ -384,13 +357,6 @@ message SendVMResult {
   bool cold_booted = 3;
 }
 
-message SendVMSnapshotChunk {
-  string filename = 1;
-  bytes data = 2;
-  bool is_last_chunk = 3;
-  bool compressed = 4;
-}
-
 message SendVMAwaitControl {
   enum Reason {
     NEED_IP_RECONFIG = 0;
@@ -400,26 +366,12 @@ message SendVMAwaitControl {
   NetworkInterface source_network = 2;
 }
 
-message SendVMPhaseComplete {
-  uint64 phase_bytes = 1;  // Bytes transferred in phase 1
-}
-
 message SendVMMetadata {
   Instance instance = 1;             // Full instance config
   string base_image_id = 2;          // e.g., "sha256:abc123..."
   uint64 total_size_estimate = 3;    // Estimated bytes for progress display
   bool encrypted = 4;                // Whether disk is encrypted
-  bytes encryption_key = 5;          // Encryption key (if encrypted). Nil in direct mode; key sent directly to target via ReceiveVMStartRequest.
-}
-
-message SendVMDataChunk {
-  bytes data = 1;           // Raw zfs send data (64KB chunks)
-  bool is_base_image = 2;   // True if this chunk is base image data
-}
-
-message SendVMComplete {
-  string checksum = 1;      // SHA256 of entire stream for verification
-  uint64 total_bytes = 2;   // Total bytes transferred
+  bytes encryption_key = 5;          // Encryption key (if encrypted). Nil in direct mode; key sent directly to target via InitReceiveVMRequest.
 }
 
 message InitSendVMRequest {
@@ -473,84 +425,6 @@ message AbortSendVMRequest {
 }
 
 message AbortSendVMResponse {}
-
-// ReceiveVM messages
-message ReceiveVMRequest {
-  oneof type {
-    ReceiveVMStartRequest start = 1;
-    ReceiveVMDataChunk data = 2;
-    ReceiveVMComplete complete = 3;
-    ReceiveVMPhaseComplete phase_complete = 4;
-    ReceiveVMSnapshotChunk snapshot_data = 5;
-    ReceiveVMResumeTokenRequest resume_token_request = 6;  // Ask target for ZFS resume token after broken sideband connection
-  }
-}
-
-message ReceiveVMResumeTokenRequest {}
-
-message ReceiveVMResumeTokenResponse {
-  string token = 1;           // ZFS receive_resume_token; empty if no resumable state exists
-  string sideband_addr = 2;   // New sideband TCP listener address for resumed transfer
-}
-
-message ReceiveVMPhaseComplete {
-  bool last = 1;  // When true, no more sideband phases follow; target should not open a new listener
-}
-
-message ReceiveVMStartRequest {
-  string instance_id = 1;           // Instance ID to use on target
-  Instance source_instance = 2;     // Instance config from source
-  string base_image_id = 3;         // Base image ID to check/clone
-  bool encrypted = 4;               // Whether disk is encrypted
-  bytes encryption_key = 5;         // Encryption key (if encrypted). In direct mode, carries the actual key from source to target.
-  string group_id = 6;              // Target group ID
-  bool live = 7;                    // Live migration: restore from CH snapshot
-  bool discard_orphan = 8;          // When true, delete any orphaned dataset from a prior migration instead of attempting to resume
-}
-
-message ReceiveVMSnapshotChunk {
-  string filename = 1;
-  bytes data = 2;
-  bool is_last_chunk = 3;
-  bool compressed = 4;
-}
-
-message ReceiveVMDataChunk {
-  bytes data = 1;           // Raw zfs recv data
-  bool is_base_image = 2;   // True if this chunk is base image data
-}
-
-message ReceiveVMComplete {
-  string checksum = 1;  // Checksum for verification
-}
-
-message ReceiveVMResponse {
-  oneof type {
-    ReceiveVMReady ready = 1;
-    ReceiveVMResult result = 2;
-    ReceiveVMPhaseReady phase_ready = 3;  // Sent after PhaseComplete in sideband mode with next TCP addr
-    ReceiveVMResumeTokenResponse resume_token = 4;  // Response to resume_token_request
-  }
-}
-
-message ReceiveVMReady {
-  bool has_base_image = 1;              // Target already has the base image
-  NetworkInterface target_network = 2;  // Allocated network for live migration
-  string sideband_addr = 3;            // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
-  bool resumable = 4;                   // Target supports resumable sideband receives
-  string resume_token = 5;             // ZFS resume token from a prior interrupted transfer; empty if fresh start
-  bool skip_ip_reconfig = 6;           // Target handles IP isolation (e.g. netns); orchestrator should skip SSH IP reconfiguration
-}
-
-message ReceiveVMPhaseReady {
-  string sideband_addr = 1;  // host:port of raw TCP listener for the next migration phase
-}
-
-message ReceiveVMResult {
-  Instance instance = 1;  // Created instance
-  string error = 2;       // Error message if failed
-  bool cold_booted = 3;   // True if live migration fell back to cold boot (VM was restarted)
-}
 
 message InitReceiveVMRequest {
   string instance_id = 1;

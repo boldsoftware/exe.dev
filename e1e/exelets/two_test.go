@@ -647,8 +647,8 @@ func TestDirectMigrationOrphanedDataset(t *testing.T) {
 
 // TestDirectMigrationReconnect verifies that when both the sideband TCP
 // and the gRPC control channel die simultaneously (simulating a full
-// network outage), the sender reconnects to the target with a fresh
-// ReceiveVM stream and resumes the transfer using ZFS resume tokens.
+// network outage), the sender reconnects to the target by reusing the
+// unary migration session model and resumes the transfer using ZFS resume tokens.
 func TestDirectMigrationReconnect(t *testing.T) {
 	if err := ensureExeletCount(t.Context(), 2); err != nil {
 		t.Fatal(err)
@@ -686,9 +686,9 @@ func TestDirectMigrationReconnect(t *testing.T) {
 	}
 
 	// Arm fault injection on the source exelet: close the sideband TCP
-	// AND kill the gRPC stream after 1 MiB. This simulates a full network
+	// AND kill the gRPC control plane after 1 MiB. This simulates a full network
 	// outage where both connections die. The sender must reconnect to the
-	// target with a fresh ReceiveVM stream and resume from the ZFS token.
+	// target session and resume from the ZFS token.
 	faultURL := sourceExelet.HTTPAddress + "/debug/fault/sideband-disconnect"
 	resp, err := http.PostForm(faultURL, url.Values{
 		"after_bytes": {"1048576"},

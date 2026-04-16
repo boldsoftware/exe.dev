@@ -354,7 +354,7 @@ func (x SendVMControl_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SendVMControl_Action.Descriptor instead.
 func (SendVMControl_Action) EnumDescriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{39, 0}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38, 0}
 }
 
 type SendVMAwaitControl_Reason int32
@@ -400,7 +400,7 @@ func (x SendVMAwaitControl_Reason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SendVMAwaitControl_Reason.Descriptor instead.
 func (SendVMAwaitControl_Reason) EnumDescriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{46, 0}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{43, 0}
 }
 
 type CloneInstanceStatus_State int32
@@ -464,7 +464,7 @@ func (x CloneInstanceStatus_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CloneInstanceStatus_State.Descriptor instead.
 func (CloneInstanceStatus_State) EnumDescriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{87, 0}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{69, 0}
 }
 
 type CreateInstanceRequest struct {
@@ -2652,89 +2652,6 @@ func (x *ServerLocality) GetZone() string {
 	return ""
 }
 
-// SendVM messages
-type SendVMRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Type:
-	//
-	//	*SendVMRequest_Start
-	//	*SendVMRequest_Control
-	Type          isSendVMRequest_Type `protobuf_oneof:"type"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMRequest) Reset() {
-	*x = SendVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[37]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMRequest) ProtoMessage() {}
-
-func (x *SendVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[37]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMRequest.ProtoReflect.Descriptor instead.
-func (*SendVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{37}
-}
-
-func (x *SendVMRequest) GetType() isSendVMRequest_Type {
-	if x != nil {
-		return x.Type
-	}
-	return nil
-}
-
-func (x *SendVMRequest) GetStart() *SendVMStartRequest {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMRequest_Start); ok {
-			return x.Start
-		}
-	}
-	return nil
-}
-
-func (x *SendVMRequest) GetControl() *SendVMControl {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMRequest_Control); ok {
-			return x.Control
-		}
-	}
-	return nil
-}
-
-type isSendVMRequest_Type interface {
-	isSendVMRequest_Type()
-}
-
-type SendVMRequest_Start struct {
-	Start *SendVMStartRequest `protobuf:"bytes,1,opt,name=start,proto3,oneof"`
-}
-
-type SendVMRequest_Control struct {
-	Control *SendVMControl `protobuf:"bytes,2,opt,name=control,proto3,oneof"`
-}
-
-func (*SendVMRequest_Start) isSendVMRequest_Type() {}
-
-func (*SendVMRequest_Control) isSendVMRequest_Type() {}
-
 type SendVMStartRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	InstanceID string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
@@ -2754,7 +2671,7 @@ type SendVMStartRequest struct {
 	// Clients that don't set this will only receive metadata as the first response.
 	AcceptStatus bool `protobuf:"varint,5,opt,name=accept_status,json=acceptStatus,proto3" json:"accept_status,omitempty"`
 	// Direct migration: source connects to target directly for data transfer.
-	// When set, source dials target_address and opens a ReceiveVM stream.
+	// When set, source dials target_address and initializes a receive session there.
 	TargetAddress string `protobuf:"bytes,6,opt,name=target_address,json=targetAddress,proto3" json:"target_address,omitempty"`
 	TargetGroupID string `protobuf:"bytes,7,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2763,7 +2680,7 @@ type SendVMStartRequest struct {
 
 func (x *SendVMStartRequest) Reset() {
 	*x = SendVMStartRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2775,7 +2692,7 @@ func (x *SendVMStartRequest) String() string {
 func (*SendVMStartRequest) ProtoMessage() {}
 
 func (x *SendVMStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2788,7 +2705,7 @@ func (x *SendVMStartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMStartRequest.ProtoReflect.Descriptor instead.
 func (*SendVMStartRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SendVMStartRequest) GetInstanceID() string {
@@ -2849,7 +2766,7 @@ type SendVMControl struct {
 
 func (x *SendVMControl) Reset() {
 	*x = SendVMControl{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2861,7 +2778,7 @@ func (x *SendVMControl) String() string {
 func (*SendVMControl) ProtoMessage() {}
 
 func (x *SendVMControl) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2874,7 +2791,7 @@ func (x *SendVMControl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMControl.ProtoReflect.Descriptor instead.
 func (*SendVMControl) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{39}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SendVMControl) GetAction() SendVMControl_Action {
@@ -2883,216 +2800,6 @@ func (x *SendVMControl) GetAction() SendVMControl_Action {
 	}
 	return SendVMControl_PROCEED_WITH_PAUSE
 }
-
-type SendVMResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Type:
-	//
-	//	*SendVMResponse_Metadata
-	//	*SendVMResponse_Data
-	//	*SendVMResponse_Complete
-	//	*SendVMResponse_PhaseComplete
-	//	*SendVMResponse_SnapshotData
-	//	*SendVMResponse_AwaitControl
-	//	*SendVMResponse_Status
-	//	*SendVMResponse_TargetReady
-	//	*SendVMResponse_Progress
-	//	*SendVMResponse_Result
-	Type          isSendVMResponse_Type `protobuf_oneof:"type"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMResponse) Reset() {
-	*x = SendVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMResponse) ProtoMessage() {}
-
-func (x *SendVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMResponse.ProtoReflect.Descriptor instead.
-func (*SendVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{40}
-}
-
-func (x *SendVMResponse) GetType() isSendVMResponse_Type {
-	if x != nil {
-		return x.Type
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetMetadata() *SendVMMetadata {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetData() *SendVMDataChunk {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Data); ok {
-			return x.Data
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetComplete() *SendVMComplete {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Complete); ok {
-			return x.Complete
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetPhaseComplete() *SendVMPhaseComplete {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_PhaseComplete); ok {
-			return x.PhaseComplete
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetSnapshotData() *SendVMSnapshotChunk {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_SnapshotData); ok {
-			return x.SnapshotData
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetAwaitControl() *SendVMAwaitControl {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_AwaitControl); ok {
-			return x.AwaitControl
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetStatus() *SendVMStatus {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Status); ok {
-			return x.Status
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetTargetReady() *SendVMTargetReady {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_TargetReady); ok {
-			return x.TargetReady
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetProgress() *SendVMProgress {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Progress); ok {
-			return x.Progress
-		}
-	}
-	return nil
-}
-
-func (x *SendVMResponse) GetResult() *SendVMResult {
-	if x != nil {
-		if x, ok := x.Type.(*SendVMResponse_Result); ok {
-			return x.Result
-		}
-	}
-	return nil
-}
-
-type isSendVMResponse_Type interface {
-	isSendVMResponse_Type()
-}
-
-type SendVMResponse_Metadata struct {
-	Metadata *SendVMMetadata `protobuf:"bytes,1,opt,name=metadata,proto3,oneof"`
-}
-
-type SendVMResponse_Data struct {
-	Data *SendVMDataChunk `protobuf:"bytes,2,opt,name=data,proto3,oneof"`
-}
-
-type SendVMResponse_Complete struct {
-	Complete *SendVMComplete `protobuf:"bytes,3,opt,name=complete,proto3,oneof"`
-}
-
-type SendVMResponse_PhaseComplete struct {
-	PhaseComplete *SendVMPhaseComplete `protobuf:"bytes,4,opt,name=phase_complete,json=phaseComplete,proto3,oneof"`
-}
-
-type SendVMResponse_SnapshotData struct {
-	SnapshotData *SendVMSnapshotChunk `protobuf:"bytes,5,opt,name=snapshot_data,json=snapshotData,proto3,oneof"`
-}
-
-type SendVMResponse_AwaitControl struct {
-	AwaitControl *SendVMAwaitControl `protobuf:"bytes,6,opt,name=await_control,json=awaitControl,proto3,oneof"`
-}
-
-type SendVMResponse_Status struct {
-	Status *SendVMStatus `protobuf:"bytes,7,opt,name=status,proto3,oneof"`
-}
-
-type SendVMResponse_TargetReady struct {
-	TargetReady *SendVMTargetReady `protobuf:"bytes,8,opt,name=target_ready,json=targetReady,proto3,oneof"`
-}
-
-type SendVMResponse_Progress struct {
-	Progress *SendVMProgress `protobuf:"bytes,9,opt,name=progress,proto3,oneof"`
-}
-
-type SendVMResponse_Result struct {
-	Result *SendVMResult `protobuf:"bytes,10,opt,name=result,proto3,oneof"`
-}
-
-func (*SendVMResponse_Metadata) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_Data) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_Complete) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_PhaseComplete) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_SnapshotData) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_AwaitControl) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_Status) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_TargetReady) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_Progress) isSendVMResponse_Type() {}
-
-func (*SendVMResponse_Result) isSendVMResponse_Type() {}
 
 type SendVMStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3103,7 +2810,7 @@ type SendVMStatus struct {
 
 func (x *SendVMStatus) Reset() {
 	*x = SendVMStatus{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3115,7 +2822,7 @@ func (x *SendVMStatus) String() string {
 func (*SendVMStatus) ProtoMessage() {}
 
 func (x *SendVMStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3128,7 +2835,7 @@ func (x *SendVMStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMStatus.ProtoReflect.Descriptor instead.
 func (*SendVMStatus) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{41}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SendVMStatus) GetMessage() string {
@@ -3149,7 +2856,7 @@ type SendVMTargetReady struct {
 
 func (x *SendVMTargetReady) Reset() {
 	*x = SendVMTargetReady{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3161,7 +2868,7 @@ func (x *SendVMTargetReady) String() string {
 func (*SendVMTargetReady) ProtoMessage() {}
 
 func (x *SendVMTargetReady) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3174,7 +2881,7 @@ func (x *SendVMTargetReady) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMTargetReady.ProtoReflect.Descriptor instead.
 func (*SendVMTargetReady) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{42}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SendVMTargetReady) GetHasBaseImage() bool {
@@ -3207,7 +2914,7 @@ type SendVMProgress struct {
 
 func (x *SendVMProgress) Reset() {
 	*x = SendVMProgress{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3219,7 +2926,7 @@ func (x *SendVMProgress) String() string {
 func (*SendVMProgress) ProtoMessage() {}
 
 func (x *SendVMProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3232,7 +2939,7 @@ func (x *SendVMProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMProgress.ProtoReflect.Descriptor instead.
 func (*SendVMProgress) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{43}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SendVMProgress) GetBytesSent() int64 {
@@ -3253,7 +2960,7 @@ type SendVMResult struct {
 
 func (x *SendVMResult) Reset() {
 	*x = SendVMResult{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3265,7 +2972,7 @@ func (x *SendVMResult) String() string {
 func (*SendVMResult) ProtoMessage() {}
 
 func (x *SendVMResult) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3278,7 +2985,7 @@ func (x *SendVMResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMResult.ProtoReflect.Descriptor instead.
 func (*SendVMResult) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{44}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SendVMResult) GetInstance() *Instance {
@@ -3302,74 +3009,6 @@ func (x *SendVMResult) GetColdBooted() bool {
 	return false
 }
 
-type SendVMSnapshotChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
-	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	IsLastChunk   bool                   `protobuf:"varint,3,opt,name=is_last_chunk,json=isLastChunk,proto3" json:"is_last_chunk,omitempty"`
-	Compressed    bool                   `protobuf:"varint,4,opt,name=compressed,proto3" json:"compressed,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMSnapshotChunk) Reset() {
-	*x = SendVMSnapshotChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMSnapshotChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMSnapshotChunk) ProtoMessage() {}
-
-func (x *SendVMSnapshotChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMSnapshotChunk.ProtoReflect.Descriptor instead.
-func (*SendVMSnapshotChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{45}
-}
-
-func (x *SendVMSnapshotChunk) GetFilename() string {
-	if x != nil {
-		return x.Filename
-	}
-	return ""
-}
-
-func (x *SendVMSnapshotChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *SendVMSnapshotChunk) GetIsLastChunk() bool {
-	if x != nil {
-		return x.IsLastChunk
-	}
-	return false
-}
-
-func (x *SendVMSnapshotChunk) GetCompressed() bool {
-	if x != nil {
-		return x.Compressed
-	}
-	return false
-}
-
 type SendVMAwaitControl struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Reason        SendVMAwaitControl_Reason `protobuf:"varint,1,opt,name=reason,proto3,enum=exe.compute.v1.SendVMAwaitControl_Reason" json:"reason,omitempty"`
@@ -3380,7 +3019,7 @@ type SendVMAwaitControl struct {
 
 func (x *SendVMAwaitControl) Reset() {
 	*x = SendVMAwaitControl{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3392,7 +3031,7 @@ func (x *SendVMAwaitControl) String() string {
 func (*SendVMAwaitControl) ProtoMessage() {}
 
 func (x *SendVMAwaitControl) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3405,7 +3044,7 @@ func (x *SendVMAwaitControl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMAwaitControl.ProtoReflect.Descriptor instead.
 func (*SendVMAwaitControl) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{46}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SendVMAwaitControl) GetReason() SendVMAwaitControl_Reason {
@@ -3422,64 +3061,20 @@ func (x *SendVMAwaitControl) GetSourceNetwork() *NetworkInterface {
 	return nil
 }
 
-type SendVMPhaseComplete struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PhaseBytes    uint64                 `protobuf:"varint,1,opt,name=phase_bytes,json=phaseBytes,proto3" json:"phase_bytes,omitempty"` // Bytes transferred in phase 1
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMPhaseComplete) Reset() {
-	*x = SendVMPhaseComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMPhaseComplete) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMPhaseComplete) ProtoMessage() {}
-
-func (x *SendVMPhaseComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMPhaseComplete.ProtoReflect.Descriptor instead.
-func (*SendVMPhaseComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{47}
-}
-
-func (x *SendVMPhaseComplete) GetPhaseBytes() uint64 {
-	if x != nil {
-		return x.PhaseBytes
-	}
-	return 0
-}
-
 type SendVMMetadata struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Instance          *Instance              `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`                                               // Full instance config
 	BaseImageID       string                 `protobuf:"bytes,2,opt,name=base_image_id,json=baseImageId,proto3" json:"base_image_id,omitempty"`                    // e.g., "sha256:abc123..."
 	TotalSizeEstimate uint64                 `protobuf:"varint,3,opt,name=total_size_estimate,json=totalSizeEstimate,proto3" json:"total_size_estimate,omitempty"` // Estimated bytes for progress display
 	Encrypted         bool                   `protobuf:"varint,4,opt,name=encrypted,proto3" json:"encrypted,omitempty"`                                            // Whether disk is encrypted
-	EncryptionKey     []byte                 `protobuf:"bytes,5,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`                // Encryption key (if encrypted). Nil in direct mode; key sent directly to target via ReceiveVMStartRequest.
+	EncryptionKey     []byte                 `protobuf:"bytes,5,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`                // Encryption key (if encrypted). Nil in direct mode; key sent directly to target via InitReceiveVMRequest.
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SendVMMetadata) Reset() {
 	*x = SendVMMetadata{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3491,7 +3086,7 @@ func (x *SendVMMetadata) String() string {
 func (*SendVMMetadata) ProtoMessage() {}
 
 func (x *SendVMMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3504,7 +3099,7 @@ func (x *SendVMMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMMetadata.ProtoReflect.Descriptor instead.
 func (*SendVMMetadata) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{48}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SendVMMetadata) GetInstance() *Instance {
@@ -3542,110 +3137,6 @@ func (x *SendVMMetadata) GetEncryptionKey() []byte {
 	return nil
 }
 
-type SendVMDataChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`                                     // Raw zfs send data (64KB chunks)
-	IsBaseImage   bool                   `protobuf:"varint,2,opt,name=is_base_image,json=isBaseImage,proto3" json:"is_base_image,omitempty"` // True if this chunk is base image data
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMDataChunk) Reset() {
-	*x = SendVMDataChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMDataChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMDataChunk) ProtoMessage() {}
-
-func (x *SendVMDataChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMDataChunk.ProtoReflect.Descriptor instead.
-func (*SendVMDataChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{49}
-}
-
-func (x *SendVMDataChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *SendVMDataChunk) GetIsBaseImage() bool {
-	if x != nil {
-		return x.IsBaseImage
-	}
-	return false
-}
-
-type SendVMComplete struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Checksum      string                 `protobuf:"bytes,1,opt,name=checksum,proto3" json:"checksum,omitempty"`                        // SHA256 of entire stream for verification
-	TotalBytes    uint64                 `protobuf:"varint,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total bytes transferred
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SendVMComplete) Reset() {
-	*x = SendVMComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SendVMComplete) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SendVMComplete) ProtoMessage() {}
-
-func (x *SendVMComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SendVMComplete.ProtoReflect.Descriptor instead.
-func (*SendVMComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{50}
-}
-
-func (x *SendVMComplete) GetChecksum() string {
-	if x != nil {
-		return x.Checksum
-	}
-	return ""
-}
-
-func (x *SendVMComplete) GetTotalBytes() uint64 {
-	if x != nil {
-		return x.TotalBytes
-	}
-	return 0
-}
-
 type InitSendVMRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	InstanceID         string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
@@ -3661,7 +3152,7 @@ type InitSendVMRequest struct {
 
 func (x *InitSendVMRequest) Reset() {
 	*x = InitSendVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3673,7 +3164,7 @@ func (x *InitSendVMRequest) String() string {
 func (*InitSendVMRequest) ProtoMessage() {}
 
 func (x *InitSendVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3686,7 +3177,7 @@ func (x *InitSendVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitSendVMRequest.ProtoReflect.Descriptor instead.
 func (*InitSendVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{51}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *InitSendVMRequest) GetInstanceID() string {
@@ -3747,7 +3238,7 @@ type InitSendVMResponse struct {
 
 func (x *InitSendVMResponse) Reset() {
 	*x = InitSendVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3759,7 +3250,7 @@ func (x *InitSendVMResponse) String() string {
 func (*InitSendVMResponse) ProtoMessage() {}
 
 func (x *InitSendVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3772,7 +3263,7 @@ func (x *InitSendVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitSendVMResponse.ProtoReflect.Descriptor instead.
 func (*InitSendVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{52}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *InitSendVMResponse) GetSessionID() string {
@@ -3793,7 +3284,7 @@ type PollSendVMRequest struct {
 
 func (x *PollSendVMRequest) Reset() {
 	*x = PollSendVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3805,7 +3296,7 @@ func (x *PollSendVMRequest) String() string {
 func (*PollSendVMRequest) ProtoMessage() {}
 
 func (x *PollSendVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3818,7 +3309,7 @@ func (x *PollSendVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollSendVMRequest.ProtoReflect.Descriptor instead.
 func (*PollSendVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{53}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *PollSendVMRequest) GetSessionID() string {
@@ -3852,7 +3343,7 @@ type PollSendVMResponse struct {
 
 func (x *PollSendVMResponse) Reset() {
 	*x = PollSendVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3864,7 +3355,7 @@ func (x *PollSendVMResponse) String() string {
 func (*PollSendVMResponse) ProtoMessage() {}
 
 func (x *PollSendVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3877,7 +3368,7 @@ func (x *PollSendVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollSendVMResponse.ProtoReflect.Descriptor instead.
 func (*PollSendVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{54}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *PollSendVMResponse) GetEvents() []*SendVMEvent {
@@ -3912,7 +3403,7 @@ type SendVMEvent struct {
 
 func (x *SendVMEvent) Reset() {
 	*x = SendVMEvent{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3924,7 +3415,7 @@ func (x *SendVMEvent) String() string {
 func (*SendVMEvent) ProtoMessage() {}
 
 func (x *SendVMEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3937,7 +3428,7 @@ func (x *SendVMEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendVMEvent.ProtoReflect.Descriptor instead.
 func (*SendVMEvent) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{55}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SendVMEvent) GetSeq() uint64 {
@@ -4059,7 +3550,7 @@ type SubmitSendVMControlRequest struct {
 
 func (x *SubmitSendVMControlRequest) Reset() {
 	*x = SubmitSendVMControlRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4071,7 +3562,7 @@ func (x *SubmitSendVMControlRequest) String() string {
 func (*SubmitSendVMControlRequest) ProtoMessage() {}
 
 func (x *SubmitSendVMControlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4084,7 +3575,7 @@ func (x *SubmitSendVMControlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitSendVMControlRequest.ProtoReflect.Descriptor instead.
 func (*SubmitSendVMControlRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{56}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SubmitSendVMControlRequest) GetSessionID() string {
@@ -4116,7 +3607,7 @@ type SubmitSendVMControlResponse struct {
 
 func (x *SubmitSendVMControlResponse) Reset() {
 	*x = SubmitSendVMControlResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4128,7 +3619,7 @@ func (x *SubmitSendVMControlResponse) String() string {
 func (*SubmitSendVMControlResponse) ProtoMessage() {}
 
 func (x *SubmitSendVMControlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4141,7 +3632,7 @@ func (x *SubmitSendVMControlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitSendVMControlResponse.ProtoReflect.Descriptor instead.
 func (*SubmitSendVMControlResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{57}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{51}
 }
 
 type AbortSendVMRequest struct {
@@ -4154,7 +3645,7 @@ type AbortSendVMRequest struct {
 
 func (x *AbortSendVMRequest) Reset() {
 	*x = AbortSendVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4166,7 +3657,7 @@ func (x *AbortSendVMRequest) String() string {
 func (*AbortSendVMRequest) ProtoMessage() {}
 
 func (x *AbortSendVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4179,7 +3670,7 @@ func (x *AbortSendVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortSendVMRequest.ProtoReflect.Descriptor instead.
 func (*AbortSendVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{58}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AbortSendVMRequest) GetSessionID() string {
@@ -4204,7 +3695,7 @@ type AbortSendVMResponse struct {
 
 func (x *AbortSendVMResponse) Reset() {
 	*x = AbortSendVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4216,7 +3707,7 @@ func (x *AbortSendVMResponse) String() string {
 func (*AbortSendVMResponse) ProtoMessage() {}
 
 func (x *AbortSendVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4229,852 +3720,7 @@ func (x *AbortSendVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortSendVMResponse.ProtoReflect.Descriptor instead.
 func (*AbortSendVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{59}
-}
-
-// ReceiveVM messages
-type ReceiveVMRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Type:
-	//
-	//	*ReceiveVMRequest_Start
-	//	*ReceiveVMRequest_Data
-	//	*ReceiveVMRequest_Complete
-	//	*ReceiveVMRequest_PhaseComplete
-	//	*ReceiveVMRequest_SnapshotData
-	//	*ReceiveVMRequest_ResumeTokenRequest
-	Type          isReceiveVMRequest_Type `protobuf_oneof:"type"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMRequest) Reset() {
-	*x = ReceiveVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMRequest) ProtoMessage() {}
-
-func (x *ReceiveVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMRequest.ProtoReflect.Descriptor instead.
-func (*ReceiveVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{60}
-}
-
-func (x *ReceiveVMRequest) GetType() isReceiveVMRequest_Type {
-	if x != nil {
-		return x.Type
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetStart() *ReceiveVMStartRequest {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_Start); ok {
-			return x.Start
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetData() *ReceiveVMDataChunk {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_Data); ok {
-			return x.Data
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetComplete() *ReceiveVMComplete {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_Complete); ok {
-			return x.Complete
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetPhaseComplete() *ReceiveVMPhaseComplete {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_PhaseComplete); ok {
-			return x.PhaseComplete
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetSnapshotData() *ReceiveVMSnapshotChunk {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_SnapshotData); ok {
-			return x.SnapshotData
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMRequest) GetResumeTokenRequest() *ReceiveVMResumeTokenRequest {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMRequest_ResumeTokenRequest); ok {
-			return x.ResumeTokenRequest
-		}
-	}
-	return nil
-}
-
-type isReceiveVMRequest_Type interface {
-	isReceiveVMRequest_Type()
-}
-
-type ReceiveVMRequest_Start struct {
-	Start *ReceiveVMStartRequest `protobuf:"bytes,1,opt,name=start,proto3,oneof"`
-}
-
-type ReceiveVMRequest_Data struct {
-	Data *ReceiveVMDataChunk `protobuf:"bytes,2,opt,name=data,proto3,oneof"`
-}
-
-type ReceiveVMRequest_Complete struct {
-	Complete *ReceiveVMComplete `protobuf:"bytes,3,opt,name=complete,proto3,oneof"`
-}
-
-type ReceiveVMRequest_PhaseComplete struct {
-	PhaseComplete *ReceiveVMPhaseComplete `protobuf:"bytes,4,opt,name=phase_complete,json=phaseComplete,proto3,oneof"`
-}
-
-type ReceiveVMRequest_SnapshotData struct {
-	SnapshotData *ReceiveVMSnapshotChunk `protobuf:"bytes,5,opt,name=snapshot_data,json=snapshotData,proto3,oneof"`
-}
-
-type ReceiveVMRequest_ResumeTokenRequest struct {
-	ResumeTokenRequest *ReceiveVMResumeTokenRequest `protobuf:"bytes,6,opt,name=resume_token_request,json=resumeTokenRequest,proto3,oneof"` // Ask target for ZFS resume token after broken sideband connection
-}
-
-func (*ReceiveVMRequest_Start) isReceiveVMRequest_Type() {}
-
-func (*ReceiveVMRequest_Data) isReceiveVMRequest_Type() {}
-
-func (*ReceiveVMRequest_Complete) isReceiveVMRequest_Type() {}
-
-func (*ReceiveVMRequest_PhaseComplete) isReceiveVMRequest_Type() {}
-
-func (*ReceiveVMRequest_SnapshotData) isReceiveVMRequest_Type() {}
-
-func (*ReceiveVMRequest_ResumeTokenRequest) isReceiveVMRequest_Type() {}
-
-type ReceiveVMResumeTokenRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMResumeTokenRequest) Reset() {
-	*x = ReceiveVMResumeTokenRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMResumeTokenRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMResumeTokenRequest) ProtoMessage() {}
-
-func (x *ReceiveVMResumeTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMResumeTokenRequest.ProtoReflect.Descriptor instead.
-func (*ReceiveVMResumeTokenRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{61}
-}
-
-type ReceiveVMResumeTokenResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`                                   // ZFS receive_resume_token; empty if no resumable state exists
-	SidebandAddr  string                 `protobuf:"bytes,2,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"` // New sideband TCP listener address for resumed transfer
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMResumeTokenResponse) Reset() {
-	*x = ReceiveVMResumeTokenResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[62]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMResumeTokenResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMResumeTokenResponse) ProtoMessage() {}
-
-func (x *ReceiveVMResumeTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[62]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMResumeTokenResponse.ProtoReflect.Descriptor instead.
-func (*ReceiveVMResumeTokenResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{62}
-}
-
-func (x *ReceiveVMResumeTokenResponse) GetToken() string {
-	if x != nil {
-		return x.Token
-	}
-	return ""
-}
-
-func (x *ReceiveVMResumeTokenResponse) GetSidebandAddr() string {
-	if x != nil {
-		return x.SidebandAddr
-	}
-	return ""
-}
-
-type ReceiveVMPhaseComplete struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Last          bool                   `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"` // When true, no more sideband phases follow; target should not open a new listener
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMPhaseComplete) Reset() {
-	*x = ReceiveVMPhaseComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMPhaseComplete) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMPhaseComplete) ProtoMessage() {}
-
-func (x *ReceiveVMPhaseComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMPhaseComplete.ProtoReflect.Descriptor instead.
-func (*ReceiveVMPhaseComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{63}
-}
-
-func (x *ReceiveVMPhaseComplete) GetLast() bool {
-	if x != nil {
-		return x.Last
-	}
-	return false
-}
-
-type ReceiveVMStartRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	InstanceID     string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // Instance ID to use on target
-	SourceInstance *Instance              `protobuf:"bytes,2,opt,name=source_instance,json=sourceInstance,proto3" json:"source_instance,omitempty"` // Instance config from source
-	BaseImageID    string                 `protobuf:"bytes,3,opt,name=base_image_id,json=baseImageId,proto3" json:"base_image_id,omitempty"`        // Base image ID to check/clone
-	Encrypted      bool                   `protobuf:"varint,4,opt,name=encrypted,proto3" json:"encrypted,omitempty"`                                // Whether disk is encrypted
-	EncryptionKey  []byte                 `protobuf:"bytes,5,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`    // Encryption key (if encrypted). In direct mode, carries the actual key from source to target.
-	GroupID        string                 `protobuf:"bytes,6,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`                      // Target group ID
-	Live           bool                   `protobuf:"varint,7,opt,name=live,proto3" json:"live,omitempty"`                                          // Live migration: restore from CH snapshot
-	DiscardOrphan  bool                   `protobuf:"varint,8,opt,name=discard_orphan,json=discardOrphan,proto3" json:"discard_orphan,omitempty"`   // When true, delete any orphaned dataset from a prior migration instead of attempting to resume
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *ReceiveVMStartRequest) Reset() {
-	*x = ReceiveVMStartRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMStartRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMStartRequest) ProtoMessage() {}
-
-func (x *ReceiveVMStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMStartRequest.ProtoReflect.Descriptor instead.
-func (*ReceiveVMStartRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{64}
-}
-
-func (x *ReceiveVMStartRequest) GetInstanceID() string {
-	if x != nil {
-		return x.InstanceID
-	}
-	return ""
-}
-
-func (x *ReceiveVMStartRequest) GetSourceInstance() *Instance {
-	if x != nil {
-		return x.SourceInstance
-	}
-	return nil
-}
-
-func (x *ReceiveVMStartRequest) GetBaseImageID() string {
-	if x != nil {
-		return x.BaseImageID
-	}
-	return ""
-}
-
-func (x *ReceiveVMStartRequest) GetEncrypted() bool {
-	if x != nil {
-		return x.Encrypted
-	}
-	return false
-}
-
-func (x *ReceiveVMStartRequest) GetEncryptionKey() []byte {
-	if x != nil {
-		return x.EncryptionKey
-	}
-	return nil
-}
-
-func (x *ReceiveVMStartRequest) GetGroupID() string {
-	if x != nil {
-		return x.GroupID
-	}
-	return ""
-}
-
-func (x *ReceiveVMStartRequest) GetLive() bool {
-	if x != nil {
-		return x.Live
-	}
-	return false
-}
-
-func (x *ReceiveVMStartRequest) GetDiscardOrphan() bool {
-	if x != nil {
-		return x.DiscardOrphan
-	}
-	return false
-}
-
-type ReceiveVMSnapshotChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
-	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	IsLastChunk   bool                   `protobuf:"varint,3,opt,name=is_last_chunk,json=isLastChunk,proto3" json:"is_last_chunk,omitempty"`
-	Compressed    bool                   `protobuf:"varint,4,opt,name=compressed,proto3" json:"compressed,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMSnapshotChunk) Reset() {
-	*x = ReceiveVMSnapshotChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMSnapshotChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMSnapshotChunk) ProtoMessage() {}
-
-func (x *ReceiveVMSnapshotChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMSnapshotChunk.ProtoReflect.Descriptor instead.
-func (*ReceiveVMSnapshotChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{65}
-}
-
-func (x *ReceiveVMSnapshotChunk) GetFilename() string {
-	if x != nil {
-		return x.Filename
-	}
-	return ""
-}
-
-func (x *ReceiveVMSnapshotChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *ReceiveVMSnapshotChunk) GetIsLastChunk() bool {
-	if x != nil {
-		return x.IsLastChunk
-	}
-	return false
-}
-
-func (x *ReceiveVMSnapshotChunk) GetCompressed() bool {
-	if x != nil {
-		return x.Compressed
-	}
-	return false
-}
-
-type ReceiveVMDataChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`                                     // Raw zfs recv data
-	IsBaseImage   bool                   `protobuf:"varint,2,opt,name=is_base_image,json=isBaseImage,proto3" json:"is_base_image,omitempty"` // True if this chunk is base image data
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMDataChunk) Reset() {
-	*x = ReceiveVMDataChunk{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMDataChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMDataChunk) ProtoMessage() {}
-
-func (x *ReceiveVMDataChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMDataChunk.ProtoReflect.Descriptor instead.
-func (*ReceiveVMDataChunk) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{66}
-}
-
-func (x *ReceiveVMDataChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *ReceiveVMDataChunk) GetIsBaseImage() bool {
-	if x != nil {
-		return x.IsBaseImage
-	}
-	return false
-}
-
-type ReceiveVMComplete struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Checksum      string                 `protobuf:"bytes,1,opt,name=checksum,proto3" json:"checksum,omitempty"` // Checksum for verification
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMComplete) Reset() {
-	*x = ReceiveVMComplete{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMComplete) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMComplete) ProtoMessage() {}
-
-func (x *ReceiveVMComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMComplete.ProtoReflect.Descriptor instead.
-func (*ReceiveVMComplete) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{67}
-}
-
-func (x *ReceiveVMComplete) GetChecksum() string {
-	if x != nil {
-		return x.Checksum
-	}
-	return ""
-}
-
-type ReceiveVMResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Type:
-	//
-	//	*ReceiveVMResponse_Ready
-	//	*ReceiveVMResponse_Result
-	//	*ReceiveVMResponse_PhaseReady
-	//	*ReceiveVMResponse_ResumeToken
-	Type          isReceiveVMResponse_Type `protobuf_oneof:"type"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMResponse) Reset() {
-	*x = ReceiveVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMResponse) ProtoMessage() {}
-
-func (x *ReceiveVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMResponse.ProtoReflect.Descriptor instead.
-func (*ReceiveVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{68}
-}
-
-func (x *ReceiveVMResponse) GetType() isReceiveVMResponse_Type {
-	if x != nil {
-		return x.Type
-	}
-	return nil
-}
-
-func (x *ReceiveVMResponse) GetReady() *ReceiveVMReady {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMResponse_Ready); ok {
-			return x.Ready
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMResponse) GetResult() *ReceiveVMResult {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMResponse_Result); ok {
-			return x.Result
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMResponse) GetPhaseReady() *ReceiveVMPhaseReady {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMResponse_PhaseReady); ok {
-			return x.PhaseReady
-		}
-	}
-	return nil
-}
-
-func (x *ReceiveVMResponse) GetResumeToken() *ReceiveVMResumeTokenResponse {
-	if x != nil {
-		if x, ok := x.Type.(*ReceiveVMResponse_ResumeToken); ok {
-			return x.ResumeToken
-		}
-	}
-	return nil
-}
-
-type isReceiveVMResponse_Type interface {
-	isReceiveVMResponse_Type()
-}
-
-type ReceiveVMResponse_Ready struct {
-	Ready *ReceiveVMReady `protobuf:"bytes,1,opt,name=ready,proto3,oneof"`
-}
-
-type ReceiveVMResponse_Result struct {
-	Result *ReceiveVMResult `protobuf:"bytes,2,opt,name=result,proto3,oneof"`
-}
-
-type ReceiveVMResponse_PhaseReady struct {
-	PhaseReady *ReceiveVMPhaseReady `protobuf:"bytes,3,opt,name=phase_ready,json=phaseReady,proto3,oneof"` // Sent after PhaseComplete in sideband mode with next TCP addr
-}
-
-type ReceiveVMResponse_ResumeToken struct {
-	ResumeToken *ReceiveVMResumeTokenResponse `protobuf:"bytes,4,opt,name=resume_token,json=resumeToken,proto3,oneof"` // Response to resume_token_request
-}
-
-func (*ReceiveVMResponse_Ready) isReceiveVMResponse_Type() {}
-
-func (*ReceiveVMResponse_Result) isReceiveVMResponse_Type() {}
-
-func (*ReceiveVMResponse_PhaseReady) isReceiveVMResponse_Type() {}
-
-func (*ReceiveVMResponse_ResumeToken) isReceiveVMResponse_Type() {}
-
-type ReceiveVMReady struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	HasBaseImage   bool                   `protobuf:"varint,1,opt,name=has_base_image,json=hasBaseImage,proto3" json:"has_base_image,omitempty"`       // Target already has the base image
-	TargetNetwork  *NetworkInterface      `protobuf:"bytes,2,opt,name=target_network,json=targetNetwork,proto3" json:"target_network,omitempty"`       // Allocated network for live migration
-	SidebandAddr   string                 `protobuf:"bytes,3,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"`          // host:port of raw TCP listener for bulk data transfer; empty = use gRPC chunks
-	Resumable      bool                   `protobuf:"varint,4,opt,name=resumable,proto3" json:"resumable,omitempty"`                                   // Target supports resumable sideband receives
-	ResumeToken    string                 `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`             // ZFS resume token from a prior interrupted transfer; empty if fresh start
-	SkipIpReconfig bool                   `protobuf:"varint,6,opt,name=skip_ip_reconfig,json=skipIpReconfig,proto3" json:"skip_ip_reconfig,omitempty"` // Target handles IP isolation (e.g. netns); orchestrator should skip SSH IP reconfiguration
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *ReceiveVMReady) Reset() {
-	*x = ReceiveVMReady{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMReady) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMReady) ProtoMessage() {}
-
-func (x *ReceiveVMReady) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMReady.ProtoReflect.Descriptor instead.
-func (*ReceiveVMReady) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{69}
-}
-
-func (x *ReceiveVMReady) GetHasBaseImage() bool {
-	if x != nil {
-		return x.HasBaseImage
-	}
-	return false
-}
-
-func (x *ReceiveVMReady) GetTargetNetwork() *NetworkInterface {
-	if x != nil {
-		return x.TargetNetwork
-	}
-	return nil
-}
-
-func (x *ReceiveVMReady) GetSidebandAddr() string {
-	if x != nil {
-		return x.SidebandAddr
-	}
-	return ""
-}
-
-func (x *ReceiveVMReady) GetResumable() bool {
-	if x != nil {
-		return x.Resumable
-	}
-	return false
-}
-
-func (x *ReceiveVMReady) GetResumeToken() string {
-	if x != nil {
-		return x.ResumeToken
-	}
-	return ""
-}
-
-func (x *ReceiveVMReady) GetSkipIpReconfig() bool {
-	if x != nil {
-		return x.SkipIpReconfig
-	}
-	return false
-}
-
-type ReceiveVMPhaseReady struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SidebandAddr  string                 `protobuf:"bytes,1,opt,name=sideband_addr,json=sidebandAddr,proto3" json:"sideband_addr,omitempty"` // host:port of raw TCP listener for the next migration phase
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMPhaseReady) Reset() {
-	*x = ReceiveVMPhaseReady{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMPhaseReady) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMPhaseReady) ProtoMessage() {}
-
-func (x *ReceiveVMPhaseReady) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMPhaseReady.ProtoReflect.Descriptor instead.
-func (*ReceiveVMPhaseReady) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{70}
-}
-
-func (x *ReceiveVMPhaseReady) GetSidebandAddr() string {
-	if x != nil {
-		return x.SidebandAddr
-	}
-	return ""
-}
-
-type ReceiveVMResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Instance      *Instance              `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`                        // Created instance
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`                              // Error message if failed
-	ColdBooted    bool                   `protobuf:"varint,3,opt,name=cold_booted,json=coldBooted,proto3" json:"cold_booted,omitempty"` // True if live migration fell back to cold boot (VM was restarted)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReceiveVMResult) Reset() {
-	*x = ReceiveVMResult{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReceiveVMResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReceiveVMResult) ProtoMessage() {}
-
-func (x *ReceiveVMResult) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReceiveVMResult.ProtoReflect.Descriptor instead.
-func (*ReceiveVMResult) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{71}
-}
-
-func (x *ReceiveVMResult) GetInstance() *Instance {
-	if x != nil {
-		return x.Instance
-	}
-	return nil
-}
-
-func (x *ReceiveVMResult) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
-func (x *ReceiveVMResult) GetColdBooted() bool {
-	if x != nil {
-		return x.ColdBooted
-	}
-	return false
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{53}
 }
 
 type InitReceiveVMRequest struct {
@@ -5094,7 +3740,7 @@ type InitReceiveVMRequest struct {
 
 func (x *InitReceiveVMRequest) Reset() {
 	*x = InitReceiveVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5106,7 +3752,7 @@ func (x *InitReceiveVMRequest) String() string {
 func (*InitReceiveVMRequest) ProtoMessage() {}
 
 func (x *InitReceiveVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5119,7 +3765,7 @@ func (x *InitReceiveVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitReceiveVMRequest.ProtoReflect.Descriptor instead.
 func (*InitReceiveVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{72}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *InitReceiveVMRequest) GetInstanceID() string {
@@ -5200,7 +3846,7 @@ type InitReceiveVMResponse struct {
 
 func (x *InitReceiveVMResponse) Reset() {
 	*x = InitReceiveVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5212,7 +3858,7 @@ func (x *InitReceiveVMResponse) String() string {
 func (*InitReceiveVMResponse) ProtoMessage() {}
 
 func (x *InitReceiveVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5225,7 +3871,7 @@ func (x *InitReceiveVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitReceiveVMResponse.ProtoReflect.Descriptor instead.
 func (*InitReceiveVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{73}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *InitReceiveVMResponse) GetSessionID() string {
@@ -5286,7 +3932,7 @@ type GetReceiveVMResumeTokenRequest struct {
 
 func (x *GetReceiveVMResumeTokenRequest) Reset() {
 	*x = GetReceiveVMResumeTokenRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5298,7 +3944,7 @@ func (x *GetReceiveVMResumeTokenRequest) String() string {
 func (*GetReceiveVMResumeTokenRequest) ProtoMessage() {}
 
 func (x *GetReceiveVMResumeTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5311,7 +3957,7 @@ func (x *GetReceiveVMResumeTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReceiveVMResumeTokenRequest.ProtoReflect.Descriptor instead.
 func (*GetReceiveVMResumeTokenRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{74}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GetReceiveVMResumeTokenRequest) GetSessionID() string {
@@ -5331,7 +3977,7 @@ type GetReceiveVMResumeTokenResponse struct {
 
 func (x *GetReceiveVMResumeTokenResponse) Reset() {
 	*x = GetReceiveVMResumeTokenResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[75]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5343,7 +3989,7 @@ func (x *GetReceiveVMResumeTokenResponse) String() string {
 func (*GetReceiveVMResumeTokenResponse) ProtoMessage() {}
 
 func (x *GetReceiveVMResumeTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[75]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5356,7 +4002,7 @@ func (x *GetReceiveVMResumeTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReceiveVMResumeTokenResponse.ProtoReflect.Descriptor instead.
 func (*GetReceiveVMResumeTokenResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{75}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *GetReceiveVMResumeTokenResponse) GetToken() string {
@@ -5383,7 +4029,7 @@ type AdvanceReceiveVMPhaseRequest struct {
 
 func (x *AdvanceReceiveVMPhaseRequest) Reset() {
 	*x = AdvanceReceiveVMPhaseRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[76]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5395,7 +4041,7 @@ func (x *AdvanceReceiveVMPhaseRequest) String() string {
 func (*AdvanceReceiveVMPhaseRequest) ProtoMessage() {}
 
 func (x *AdvanceReceiveVMPhaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[76]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5408,7 +4054,7 @@ func (x *AdvanceReceiveVMPhaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceReceiveVMPhaseRequest.ProtoReflect.Descriptor instead.
 func (*AdvanceReceiveVMPhaseRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{76}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *AdvanceReceiveVMPhaseRequest) GetSessionID() string {
@@ -5434,7 +4080,7 @@ type AdvanceReceiveVMPhaseResponse struct {
 
 func (x *AdvanceReceiveVMPhaseResponse) Reset() {
 	*x = AdvanceReceiveVMPhaseResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[77]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5446,7 +4092,7 @@ func (x *AdvanceReceiveVMPhaseResponse) String() string {
 func (*AdvanceReceiveVMPhaseResponse) ProtoMessage() {}
 
 func (x *AdvanceReceiveVMPhaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[77]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5459,7 +4105,7 @@ func (x *AdvanceReceiveVMPhaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceReceiveVMPhaseResponse.ProtoReflect.Descriptor instead.
 func (*AdvanceReceiveVMPhaseResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{77}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *AdvanceReceiveVMPhaseResponse) GetSidebandAddr() string {
@@ -5482,7 +4128,7 @@ type UploadReceiveVMSnapshotRequest struct {
 
 func (x *UploadReceiveVMSnapshotRequest) Reset() {
 	*x = UploadReceiveVMSnapshotRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[78]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5494,7 +4140,7 @@ func (x *UploadReceiveVMSnapshotRequest) String() string {
 func (*UploadReceiveVMSnapshotRequest) ProtoMessage() {}
 
 func (x *UploadReceiveVMSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[78]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5507,7 +4153,7 @@ func (x *UploadReceiveVMSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadReceiveVMSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*UploadReceiveVMSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{78}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *UploadReceiveVMSnapshotRequest) GetSessionID() string {
@@ -5553,7 +4199,7 @@ type UploadReceiveVMSnapshotResponse struct {
 
 func (x *UploadReceiveVMSnapshotResponse) Reset() {
 	*x = UploadReceiveVMSnapshotResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[79]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5565,7 +4211,7 @@ func (x *UploadReceiveVMSnapshotResponse) String() string {
 func (*UploadReceiveVMSnapshotResponse) ProtoMessage() {}
 
 func (x *UploadReceiveVMSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[79]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5578,7 +4224,7 @@ func (x *UploadReceiveVMSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadReceiveVMSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*UploadReceiveVMSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{79}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{61}
 }
 
 type CompleteReceiveVMRequest struct {
@@ -5591,7 +4237,7 @@ type CompleteReceiveVMRequest struct {
 
 func (x *CompleteReceiveVMRequest) Reset() {
 	*x = CompleteReceiveVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[80]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5603,7 +4249,7 @@ func (x *CompleteReceiveVMRequest) String() string {
 func (*CompleteReceiveVMRequest) ProtoMessage() {}
 
 func (x *CompleteReceiveVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[80]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5616,7 +4262,7 @@ func (x *CompleteReceiveVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteReceiveVMRequest.ProtoReflect.Descriptor instead.
 func (*CompleteReceiveVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{80}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *CompleteReceiveVMRequest) GetSessionID() string {
@@ -5644,7 +4290,7 @@ type CompleteReceiveVMResponse struct {
 
 func (x *CompleteReceiveVMResponse) Reset() {
 	*x = CompleteReceiveVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[81]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5656,7 +4302,7 @@ func (x *CompleteReceiveVMResponse) String() string {
 func (*CompleteReceiveVMResponse) ProtoMessage() {}
 
 func (x *CompleteReceiveVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[81]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5669,7 +4315,7 @@ func (x *CompleteReceiveVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteReceiveVMResponse.ProtoReflect.Descriptor instead.
 func (*CompleteReceiveVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{81}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CompleteReceiveVMResponse) GetInstance() *Instance {
@@ -5703,7 +4349,7 @@ type AbortReceiveVMRequest struct {
 
 func (x *AbortReceiveVMRequest) Reset() {
 	*x = AbortReceiveVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[82]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5715,7 +4361,7 @@ func (x *AbortReceiveVMRequest) String() string {
 func (*AbortReceiveVMRequest) ProtoMessage() {}
 
 func (x *AbortReceiveVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[82]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5728,7 +4374,7 @@ func (x *AbortReceiveVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortReceiveVMRequest.ProtoReflect.Descriptor instead.
 func (*AbortReceiveVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{82}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *AbortReceiveVMRequest) GetSessionID() string {
@@ -5753,7 +4399,7 @@ type AbortReceiveVMResponse struct {
 
 func (x *AbortReceiveVMResponse) Reset() {
 	*x = AbortReceiveVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[83]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5765,7 +4411,7 @@ func (x *AbortReceiveVMResponse) String() string {
 func (*AbortReceiveVMResponse) ProtoMessage() {}
 
 func (x *AbortReceiveVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[83]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5778,7 +4424,7 @@ func (x *AbortReceiveVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortReceiveVMResponse.ProtoReflect.Descriptor instead.
 func (*AbortReceiveVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{83}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{65}
 }
 
 type GrowDiskRequest struct {
@@ -5791,7 +4437,7 @@ type GrowDiskRequest struct {
 
 func (x *GrowDiskRequest) Reset() {
 	*x = GrowDiskRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[84]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5803,7 +4449,7 @@ func (x *GrowDiskRequest) String() string {
 func (*GrowDiskRequest) ProtoMessage() {}
 
 func (x *GrowDiskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[84]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5816,7 +4462,7 @@ func (x *GrowDiskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowDiskRequest.ProtoReflect.Descriptor instead.
 func (*GrowDiskRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{84}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *GrowDiskRequest) GetID() string {
@@ -5843,7 +4489,7 @@ type GrowDiskResponse struct {
 
 func (x *GrowDiskResponse) Reset() {
 	*x = GrowDiskResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[85]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5855,7 +4501,7 @@ func (x *GrowDiskResponse) String() string {
 func (*GrowDiskResponse) ProtoMessage() {}
 
 func (x *GrowDiskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[85]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5868,7 +4514,7 @@ func (x *GrowDiskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrowDiskResponse.ProtoReflect.Descriptor instead.
 func (*GrowDiskResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{85}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *GrowDiskResponse) GetOldSize() uint64 {
@@ -5904,7 +4550,7 @@ type CloneInstanceRequest struct {
 
 func (x *CloneInstanceRequest) Reset() {
 	*x = CloneInstanceRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[86]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5916,7 +4562,7 @@ func (x *CloneInstanceRequest) String() string {
 func (*CloneInstanceRequest) ProtoMessage() {}
 
 func (x *CloneInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[86]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5929,7 +4575,7 @@ func (x *CloneInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceRequest.ProtoReflect.Descriptor instead.
 func (*CloneInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{86}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CloneInstanceRequest) GetSourceInstanceID() string {
@@ -6006,7 +4652,7 @@ type CloneInstanceStatus struct {
 
 func (x *CloneInstanceStatus) Reset() {
 	*x = CloneInstanceStatus{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[87]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6018,7 +4664,7 @@ func (x *CloneInstanceStatus) String() string {
 func (*CloneInstanceStatus) ProtoMessage() {}
 
 func (x *CloneInstanceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[87]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6031,7 +4677,7 @@ func (x *CloneInstanceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceStatus.ProtoReflect.Descriptor instead.
 func (*CloneInstanceStatus) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{87}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *CloneInstanceStatus) GetID() string {
@@ -6068,7 +4714,7 @@ type CloneInstanceResponse struct {
 
 func (x *CloneInstanceResponse) Reset() {
 	*x = CloneInstanceResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[88]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6080,7 +4726,7 @@ func (x *CloneInstanceResponse) String() string {
 func (*CloneInstanceResponse) ProtoMessage() {}
 
 func (x *CloneInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[88]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6093,7 +4739,7 @@ func (x *CloneInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneInstanceResponse.ProtoReflect.Descriptor instead.
 func (*CloneInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{88}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *CloneInstanceResponse) GetType() isCloneInstanceResponse_Type {
@@ -6148,7 +4794,7 @@ type ResizeVMRequest struct {
 
 func (x *ResizeVMRequest) Reset() {
 	*x = ResizeVMRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[89]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6160,7 +4806,7 @@ func (x *ResizeVMRequest) String() string {
 func (*ResizeVMRequest) ProtoMessage() {}
 
 func (x *ResizeVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[89]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6173,7 +4819,7 @@ func (x *ResizeVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeVMRequest.ProtoReflect.Descriptor instead.
 func (*ResizeVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{89}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ResizeVMRequest) GetID() string {
@@ -6209,7 +4855,7 @@ type ResizeVMResponse struct {
 
 func (x *ResizeVMResponse) Reset() {
 	*x = ResizeVMResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[90]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6221,7 +4867,7 @@ func (x *ResizeVMResponse) String() string {
 func (*ResizeVMResponse) ProtoMessage() {}
 
 func (x *ResizeVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[90]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6234,7 +4880,7 @@ func (x *ResizeVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeVMResponse.ProtoReflect.Descriptor instead.
 func (*ResizeVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{90}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ResizeVMResponse) GetOldMemory() uint64 {
@@ -6277,7 +4923,7 @@ type MigrateStorageTierRequest struct {
 
 func (x *MigrateStorageTierRequest) Reset() {
 	*x = MigrateStorageTierRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[91]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6289,7 +4935,7 @@ func (x *MigrateStorageTierRequest) String() string {
 func (*MigrateStorageTierRequest) ProtoMessage() {}
 
 func (x *MigrateStorageTierRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[91]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6302,7 +4948,7 @@ func (x *MigrateStorageTierRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStorageTierRequest.ProtoReflect.Descriptor instead.
 func (*MigrateStorageTierRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{91}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *MigrateStorageTierRequest) GetInstanceID() string {
@@ -6338,7 +4984,7 @@ type MigrateStorageTierResponse struct {
 
 func (x *MigrateStorageTierResponse) Reset() {
 	*x = MigrateStorageTierResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[92]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6350,7 +4996,7 @@ func (x *MigrateStorageTierResponse) String() string {
 func (*MigrateStorageTierResponse) ProtoMessage() {}
 
 func (x *MigrateStorageTierResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[92]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6363,7 +5009,7 @@ func (x *MigrateStorageTierResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStorageTierResponse.ProtoReflect.Descriptor instead.
 func (*MigrateStorageTierResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{92}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *MigrateStorageTierResponse) GetOperationID() string {
@@ -6402,7 +5048,7 @@ type GetTierMigrationStatusRequest struct {
 
 func (x *GetTierMigrationStatusRequest) Reset() {
 	*x = GetTierMigrationStatusRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[93]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6414,7 +5060,7 @@ func (x *GetTierMigrationStatusRequest) String() string {
 func (*GetTierMigrationStatusRequest) ProtoMessage() {}
 
 func (x *GetTierMigrationStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[93]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6427,7 +5073,7 @@ func (x *GetTierMigrationStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTierMigrationStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetTierMigrationStatusRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{93}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{75}
 }
 
 type TierMigrationOperation struct {
@@ -6447,7 +5093,7 @@ type TierMigrationOperation struct {
 
 func (x *TierMigrationOperation) Reset() {
 	*x = TierMigrationOperation{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[94]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6459,7 +5105,7 @@ func (x *TierMigrationOperation) String() string {
 func (*TierMigrationOperation) ProtoMessage() {}
 
 func (x *TierMigrationOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[94]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6472,7 +5118,7 @@ func (x *TierMigrationOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TierMigrationOperation.ProtoReflect.Descriptor instead.
 func (*TierMigrationOperation) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{94}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *TierMigrationOperation) GetOperationID() string {
@@ -6547,7 +5193,7 @@ type GetTierMigrationStatusResponse struct {
 
 func (x *GetTierMigrationStatusResponse) Reset() {
 	*x = GetTierMigrationStatusResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[95]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6559,7 +5205,7 @@ func (x *GetTierMigrationStatusResponse) String() string {
 func (*GetTierMigrationStatusResponse) ProtoMessage() {}
 
 func (x *GetTierMigrationStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[95]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6572,7 +5218,7 @@ func (x *GetTierMigrationStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTierMigrationStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetTierMigrationStatusResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{95}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *GetTierMigrationStatusResponse) GetOperations() []*TierMigrationOperation {
@@ -6591,7 +5237,7 @@ type ListStorageTiersRequest struct {
 
 func (x *ListStorageTiersRequest) Reset() {
 	*x = ListStorageTiersRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[96]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6603,7 +5249,7 @@ func (x *ListStorageTiersRequest) String() string {
 func (*ListStorageTiersRequest) ProtoMessage() {}
 
 func (x *ListStorageTiersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[96]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6616,7 +5262,7 @@ func (x *ListStorageTiersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStorageTiersRequest.ProtoReflect.Descriptor instead.
 func (*ListStorageTiersRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{96}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{78}
 }
 
 type StorageTier struct {
@@ -6634,7 +5280,7 @@ type StorageTier struct {
 
 func (x *StorageTier) Reset() {
 	*x = StorageTier{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[97]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6646,7 +5292,7 @@ func (x *StorageTier) String() string {
 func (*StorageTier) ProtoMessage() {}
 
 func (x *StorageTier) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[97]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6659,7 +5305,7 @@ func (x *StorageTier) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StorageTier.ProtoReflect.Descriptor instead.
 func (*StorageTier) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{97}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *StorageTier) GetName() string {
@@ -6720,7 +5366,7 @@ type ListStorageTiersResponse struct {
 
 func (x *ListStorageTiersResponse) Reset() {
 	*x = ListStorageTiersResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[98]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6732,7 +5378,7 @@ func (x *ListStorageTiersResponse) String() string {
 func (*ListStorageTiersResponse) ProtoMessage() {}
 
 func (x *ListStorageTiersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[98]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6745,7 +5391,7 @@ func (x *ListStorageTiersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStorageTiersResponse.ProtoReflect.Descriptor instead.
 func (*ListStorageTiersResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{98}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ListStorageTiersResponse) GetTiers() []*StorageTier {
@@ -6763,7 +5409,7 @@ type ClearTierMigrationsRequest struct {
 
 func (x *ClearTierMigrationsRequest) Reset() {
 	*x = ClearTierMigrationsRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[99]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6775,7 +5421,7 @@ func (x *ClearTierMigrationsRequest) String() string {
 func (*ClearTierMigrationsRequest) ProtoMessage() {}
 
 func (x *ClearTierMigrationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[99]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6788,7 +5434,7 @@ func (x *ClearTierMigrationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearTierMigrationsRequest.ProtoReflect.Descriptor instead.
 func (*ClearTierMigrationsRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{99}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{81}
 }
 
 type ClearTierMigrationsResponse struct {
@@ -6800,7 +5446,7 @@ type ClearTierMigrationsResponse struct {
 
 func (x *ClearTierMigrationsResponse) Reset() {
 	*x = ClearTierMigrationsResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[100]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6812,7 +5458,7 @@ func (x *ClearTierMigrationsResponse) String() string {
 func (*ClearTierMigrationsResponse) ProtoMessage() {}
 
 func (x *ClearTierMigrationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[100]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6825,7 +5471,7 @@ func (x *ClearTierMigrationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearTierMigrationsResponse.ProtoReflect.Descriptor instead.
 func (*ClearTierMigrationsResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{100}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ClearTierMigrationsResponse) GetCleared() uint32 {
@@ -6844,7 +5490,7 @@ type CancelTierMigrationRequest struct {
 
 func (x *CancelTierMigrationRequest) Reset() {
 	*x = CancelTierMigrationRequest{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[101]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6856,7 +5502,7 @@ func (x *CancelTierMigrationRequest) String() string {
 func (*CancelTierMigrationRequest) ProtoMessage() {}
 
 func (x *CancelTierMigrationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[101]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6869,7 +5515,7 @@ func (x *CancelTierMigrationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTierMigrationRequest.ProtoReflect.Descriptor instead.
 func (*CancelTierMigrationRequest) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{101}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *CancelTierMigrationRequest) GetOperationID() string {
@@ -6889,7 +5535,7 @@ type CancelTierMigrationResponse struct {
 
 func (x *CancelTierMigrationResponse) Reset() {
 	*x = CancelTierMigrationResponse{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[102]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6901,7 +5547,7 @@ func (x *CancelTierMigrationResponse) String() string {
 func (*CancelTierMigrationResponse) ProtoMessage() {}
 
 func (x *CancelTierMigrationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[102]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6914,7 +5560,7 @@ func (x *CancelTierMigrationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTierMigrationResponse.ProtoReflect.Descriptor instead.
 func (*CancelTierMigrationResponse) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{102}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *CancelTierMigrationResponse) GetOperationID() string {
@@ -7117,11 +5763,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\aSTOPPED\x10\b\"<\n" +
 	"\x0eServerLocality\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12\x12\n" +
-	"\x04zone\x18\x02 \x01(\tR\x04zone\"\x8e\x01\n" +
-	"\rSendVMRequest\x12:\n" +
-	"\x05start\x18\x01 \x01(\v2\".exe.compute.v1.SendVMStartRequestH\x00R\x05start\x129\n" +
-	"\acontrol\x18\x02 \x01(\v2\x1d.exe.compute.v1.SendVMControlH\x00R\acontrolB\x06\n" +
-	"\x04type\"\x8d\x02\n" +
+	"\x04zone\x18\x02 \x01(\tR\x04zone\"\x8d\x02\n" +
 	"\x12SendVMStartRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x121\n" +
@@ -7134,20 +5776,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\rSendVMControl\x12<\n" +
 	"\x06action\x18\x01 \x01(\x0e2$.exe.compute.v1.SendVMControl.ActionR\x06action\" \n" +
 	"\x06Action\x12\x16\n" +
-	"\x12PROCEED_WITH_PAUSE\x10\x00\"\xa6\x05\n" +
-	"\x0eSendVMResponse\x12<\n" +
-	"\bmetadata\x18\x01 \x01(\v2\x1e.exe.compute.v1.SendVMMetadataH\x00R\bmetadata\x125\n" +
-	"\x04data\x18\x02 \x01(\v2\x1f.exe.compute.v1.SendVMDataChunkH\x00R\x04data\x12<\n" +
-	"\bcomplete\x18\x03 \x01(\v2\x1e.exe.compute.v1.SendVMCompleteH\x00R\bcomplete\x12L\n" +
-	"\x0ephase_complete\x18\x04 \x01(\v2#.exe.compute.v1.SendVMPhaseCompleteH\x00R\rphaseComplete\x12J\n" +
-	"\rsnapshot_data\x18\x05 \x01(\v2#.exe.compute.v1.SendVMSnapshotChunkH\x00R\fsnapshotData\x12I\n" +
-	"\rawait_control\x18\x06 \x01(\v2\".exe.compute.v1.SendVMAwaitControlH\x00R\fawaitControl\x126\n" +
-	"\x06status\x18\a \x01(\v2\x1c.exe.compute.v1.SendVMStatusH\x00R\x06status\x12F\n" +
-	"\ftarget_ready\x18\b \x01(\v2!.exe.compute.v1.SendVMTargetReadyH\x00R\vtargetReady\x12<\n" +
-	"\bprogress\x18\t \x01(\v2\x1e.exe.compute.v1.SendVMProgressH\x00R\bprogress\x126\n" +
-	"\x06result\x18\n" +
-	" \x01(\v2\x1c.exe.compute.v1.SendVMResultH\x00R\x06resultB\x06\n" +
-	"\x04type\"(\n" +
+	"\x12PROCEED_WITH_PAUSE\x10\x00\"(\n" +
 	"\fSendVMStatus\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\"\xac\x01\n" +
 	"\x11SendVMTargetReady\x12$\n" +
@@ -7161,36 +5790,19 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\binstance\x18\x01 \x01(\v2\x18.exe.compute.v1.InstanceR\binstance\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1f\n" +
 	"\vcold_booted\x18\x03 \x01(\bR\n" +
-	"coldBooted\"\x89\x01\n" +
-	"\x13SendVMSnapshotChunk\x12\x1a\n" +
-	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\x12\"\n" +
-	"\ris_last_chunk\x18\x03 \x01(\bR\visLastChunk\x12\x1e\n" +
-	"\n" +
-	"compressed\x18\x04 \x01(\bR\n" +
-	"compressed\"\xd5\x01\n" +
+	"coldBooted\"\xd5\x01\n" +
 	"\x12SendVMAwaitControl\x12A\n" +
 	"\x06reason\x18\x01 \x01(\x0e2).exe.compute.v1.SendVMAwaitControl.ReasonR\x06reason\x12G\n" +
 	"\x0esource_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rsourceNetwork\"3\n" +
 	"\x06Reason\x12\x14\n" +
 	"\x10NEED_IP_RECONFIG\x10\x00\x12\x13\n" +
-	"\x0fNEED_GUEST_SYNC\x10\x01\"6\n" +
-	"\x13SendVMPhaseComplete\x12\x1f\n" +
-	"\vphase_bytes\x18\x01 \x01(\x04R\n" +
-	"phaseBytes\"\xdf\x01\n" +
+	"\x0fNEED_GUEST_SYNC\x10\x01\"\xdf\x01\n" +
 	"\x0eSendVMMetadata\x124\n" +
 	"\binstance\x18\x01 \x01(\v2\x18.exe.compute.v1.InstanceR\binstance\x12\"\n" +
 	"\rbase_image_id\x18\x02 \x01(\tR\vbaseImageId\x12.\n" +
 	"\x13total_size_estimate\x18\x03 \x01(\x04R\x11totalSizeEstimate\x12\x1c\n" +
 	"\tencrypted\x18\x04 \x01(\bR\tencrypted\x12%\n" +
-	"\x0eencryption_key\x18\x05 \x01(\fR\rencryptionKey\"I\n" +
-	"\x0fSendVMDataChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\"\n" +
-	"\ris_base_image\x18\x02 \x01(\bR\visBaseImage\"M\n" +
-	"\x0eSendVMComplete\x12\x1a\n" +
-	"\bchecksum\x18\x01 \x01(\tR\bchecksum\x12\x1f\n" +
-	"\vtotal_bytes\x18\x02 \x01(\x04R\n" +
-	"totalBytes\"\x93\x02\n" +
+	"\x0eencryption_key\x18\x05 \x01(\fR\rencryptionKey\"\x93\x02\n" +
 	"\x11InitSendVMRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x121\n" +
@@ -7230,64 +5842,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x15\n" +
-	"\x13AbortSendVMResponse\"\xd5\x03\n" +
-	"\x10ReceiveVMRequest\x12=\n" +
-	"\x05start\x18\x01 \x01(\v2%.exe.compute.v1.ReceiveVMStartRequestH\x00R\x05start\x128\n" +
-	"\x04data\x18\x02 \x01(\v2\".exe.compute.v1.ReceiveVMDataChunkH\x00R\x04data\x12?\n" +
-	"\bcomplete\x18\x03 \x01(\v2!.exe.compute.v1.ReceiveVMCompleteH\x00R\bcomplete\x12O\n" +
-	"\x0ephase_complete\x18\x04 \x01(\v2&.exe.compute.v1.ReceiveVMPhaseCompleteH\x00R\rphaseComplete\x12M\n" +
-	"\rsnapshot_data\x18\x05 \x01(\v2&.exe.compute.v1.ReceiveVMSnapshotChunkH\x00R\fsnapshotData\x12_\n" +
-	"\x14resume_token_request\x18\x06 \x01(\v2+.exe.compute.v1.ReceiveVMResumeTokenRequestH\x00R\x12resumeTokenRequestB\x06\n" +
-	"\x04type\"\x1d\n" +
-	"\x1bReceiveVMResumeTokenRequest\"Y\n" +
-	"\x1cReceiveVMResumeTokenResponse\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\x12#\n" +
-	"\rsideband_addr\x18\x02 \x01(\tR\fsidebandAddr\",\n" +
-	"\x16ReceiveVMPhaseComplete\x12\x12\n" +
-	"\x04last\x18\x01 \x01(\bR\x04last\"\xba\x02\n" +
-	"\x15ReceiveVMStartRequest\x12\x1f\n" +
-	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\x12A\n" +
-	"\x0fsource_instance\x18\x02 \x01(\v2\x18.exe.compute.v1.InstanceR\x0esourceInstance\x12\"\n" +
-	"\rbase_image_id\x18\x03 \x01(\tR\vbaseImageId\x12\x1c\n" +
-	"\tencrypted\x18\x04 \x01(\bR\tencrypted\x12%\n" +
-	"\x0eencryption_key\x18\x05 \x01(\fR\rencryptionKey\x12\x19\n" +
-	"\bgroup_id\x18\x06 \x01(\tR\agroupId\x12\x12\n" +
-	"\x04live\x18\a \x01(\bR\x04live\x12%\n" +
-	"\x0ediscard_orphan\x18\b \x01(\bR\rdiscardOrphan\"\x8c\x01\n" +
-	"\x16ReceiveVMSnapshotChunk\x12\x1a\n" +
-	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\x12\"\n" +
-	"\ris_last_chunk\x18\x03 \x01(\bR\visLastChunk\x12\x1e\n" +
-	"\n" +
-	"compressed\x18\x04 \x01(\bR\n" +
-	"compressed\"L\n" +
-	"\x12ReceiveVMDataChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\"\n" +
-	"\ris_base_image\x18\x02 \x01(\bR\visBaseImage\"/\n" +
-	"\x11ReceiveVMComplete\x12\x1a\n" +
-	"\bchecksum\x18\x01 \x01(\tR\bchecksum\"\xa9\x02\n" +
-	"\x11ReceiveVMResponse\x126\n" +
-	"\x05ready\x18\x01 \x01(\v2\x1e.exe.compute.v1.ReceiveVMReadyH\x00R\x05ready\x129\n" +
-	"\x06result\x18\x02 \x01(\v2\x1f.exe.compute.v1.ReceiveVMResultH\x00R\x06result\x12F\n" +
-	"\vphase_ready\x18\x03 \x01(\v2#.exe.compute.v1.ReceiveVMPhaseReadyH\x00R\n" +
-	"phaseReady\x12Q\n" +
-	"\fresume_token\x18\x04 \x01(\v2,.exe.compute.v1.ReceiveVMResumeTokenResponseH\x00R\vresumeTokenB\x06\n" +
-	"\x04type\"\x8f\x02\n" +
-	"\x0eReceiveVMReady\x12$\n" +
-	"\x0ehas_base_image\x18\x01 \x01(\bR\fhasBaseImage\x12G\n" +
-	"\x0etarget_network\x18\x02 \x01(\v2 .exe.compute.v1.NetworkInterfaceR\rtargetNetwork\x12#\n" +
-	"\rsideband_addr\x18\x03 \x01(\tR\fsidebandAddr\x12\x1c\n" +
-	"\tresumable\x18\x04 \x01(\bR\tresumable\x12!\n" +
-	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\x12(\n" +
-	"\x10skip_ip_reconfig\x18\x06 \x01(\bR\x0eskipIpReconfig\":\n" +
-	"\x13ReceiveVMPhaseReady\x12#\n" +
-	"\rsideband_addr\x18\x01 \x01(\tR\fsidebandAddr\"~\n" +
-	"\x0fReceiveVMResult\x124\n" +
-	"\binstance\x18\x01 \x01(\v2\x18.exe.compute.v1.InstanceR\binstance\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1f\n" +
-	"\vcold_booted\x18\x03 \x01(\bR\n" +
-	"coldBooted\"\xe5\x02\n" +
+	"\x13AbortSendVMResponse\"\xe5\x02\n" +
 	"\x14InitReceiveVMRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12A\n" +
@@ -7464,7 +6019,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\bUPDATING\x10\b\x12\t\n" +
 	"\x05ERROR\x10\t\x12\f\n" +
 	"\bCREATING\x10\n" +
-	"2\x89\x18\n" +
+	"2\xe6\x16\n" +
 	"\x0eComputeService\x12a\n" +
 	"\x0eCreateInstance\x12%.exe.compute.v1.CreateInstanceRequest\x1a&.exe.compute.v1.CreateInstanceResponse0\x01\x12^\n" +
 	"\rListInstances\x12$.exe.compute.v1.ListInstancesRequest\x1a%.exe.compute.v1.ListInstancesResponse0\x01\x12V\n" +
@@ -7476,9 +6031,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x0eDeleteInstance\x12%.exe.compute.v1.DeleteInstanceRequest\x1a&.exe.compute.v1.DeleteInstanceResponse\x12e\n" +
 	"\x10SetInstanceGroup\x12'.exe.compute.v1.SetInstanceGroupRequest\x1a(.exe.compute.v1.SetInstanceGroupResponse\x12_\n" +
 	"\x0eRenameInstance\x12%.exe.compute.v1.RenameInstanceRequest\x1a&.exe.compute.v1.RenameInstanceResponse\x12\\\n" +
-	"\rGetSystemInfo\x12$.exe.compute.v1.GetSystemInfoRequest\x1a%.exe.compute.v1.GetSystemInfoResponse\x12K\n" +
-	"\x06SendVM\x12\x1d.exe.compute.v1.SendVMRequest\x1a\x1e.exe.compute.v1.SendVMResponse(\x010\x01\x12T\n" +
-	"\tReceiveVM\x12 .exe.compute.v1.ReceiveVMRequest\x1a!.exe.compute.v1.ReceiveVMResponse(\x010\x01\x12S\n" +
+	"\rGetSystemInfo\x12$.exe.compute.v1.GetSystemInfoRequest\x1a%.exe.compute.v1.GetSystemInfoResponse\x12S\n" +
 	"\n" +
 	"InitSendVM\x12!.exe.compute.v1.InitSendVMRequest\x1a\".exe.compute.v1.InitSendVMResponse\x12S\n" +
 	"\n" +
@@ -7513,7 +6066,7 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 }
 
 var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 104)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 86)
 var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(VMState)(0),                            // 0: exe.compute.v1.VMState
 	(Log_Type)(0),                           // 1: exe.compute.v1.Log.Type
@@ -7560,213 +6113,166 @@ var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(*NetworkInterface)(nil),                // 42: exe.compute.v1.NetworkInterface
 	(*Server)(nil),                          // 43: exe.compute.v1.Server
 	(*ServerLocality)(nil),                  // 44: exe.compute.v1.ServerLocality
-	(*SendVMRequest)(nil),                   // 45: exe.compute.v1.SendVMRequest
-	(*SendVMStartRequest)(nil),              // 46: exe.compute.v1.SendVMStartRequest
-	(*SendVMControl)(nil),                   // 47: exe.compute.v1.SendVMControl
-	(*SendVMResponse)(nil),                  // 48: exe.compute.v1.SendVMResponse
-	(*SendVMStatus)(nil),                    // 49: exe.compute.v1.SendVMStatus
-	(*SendVMTargetReady)(nil),               // 50: exe.compute.v1.SendVMTargetReady
-	(*SendVMProgress)(nil),                  // 51: exe.compute.v1.SendVMProgress
-	(*SendVMResult)(nil),                    // 52: exe.compute.v1.SendVMResult
-	(*SendVMSnapshotChunk)(nil),             // 53: exe.compute.v1.SendVMSnapshotChunk
-	(*SendVMAwaitControl)(nil),              // 54: exe.compute.v1.SendVMAwaitControl
-	(*SendVMPhaseComplete)(nil),             // 55: exe.compute.v1.SendVMPhaseComplete
-	(*SendVMMetadata)(nil),                  // 56: exe.compute.v1.SendVMMetadata
-	(*SendVMDataChunk)(nil),                 // 57: exe.compute.v1.SendVMDataChunk
-	(*SendVMComplete)(nil),                  // 58: exe.compute.v1.SendVMComplete
-	(*InitSendVMRequest)(nil),               // 59: exe.compute.v1.InitSendVMRequest
-	(*InitSendVMResponse)(nil),              // 60: exe.compute.v1.InitSendVMResponse
-	(*PollSendVMRequest)(nil),               // 61: exe.compute.v1.PollSendVMRequest
-	(*PollSendVMResponse)(nil),              // 62: exe.compute.v1.PollSendVMResponse
-	(*SendVMEvent)(nil),                     // 63: exe.compute.v1.SendVMEvent
-	(*SubmitSendVMControlRequest)(nil),      // 64: exe.compute.v1.SubmitSendVMControlRequest
-	(*SubmitSendVMControlResponse)(nil),     // 65: exe.compute.v1.SubmitSendVMControlResponse
-	(*AbortSendVMRequest)(nil),              // 66: exe.compute.v1.AbortSendVMRequest
-	(*AbortSendVMResponse)(nil),             // 67: exe.compute.v1.AbortSendVMResponse
-	(*ReceiveVMRequest)(nil),                // 68: exe.compute.v1.ReceiveVMRequest
-	(*ReceiveVMResumeTokenRequest)(nil),     // 69: exe.compute.v1.ReceiveVMResumeTokenRequest
-	(*ReceiveVMResumeTokenResponse)(nil),    // 70: exe.compute.v1.ReceiveVMResumeTokenResponse
-	(*ReceiveVMPhaseComplete)(nil),          // 71: exe.compute.v1.ReceiveVMPhaseComplete
-	(*ReceiveVMStartRequest)(nil),           // 72: exe.compute.v1.ReceiveVMStartRequest
-	(*ReceiveVMSnapshotChunk)(nil),          // 73: exe.compute.v1.ReceiveVMSnapshotChunk
-	(*ReceiveVMDataChunk)(nil),              // 74: exe.compute.v1.ReceiveVMDataChunk
-	(*ReceiveVMComplete)(nil),               // 75: exe.compute.v1.ReceiveVMComplete
-	(*ReceiveVMResponse)(nil),               // 76: exe.compute.v1.ReceiveVMResponse
-	(*ReceiveVMReady)(nil),                  // 77: exe.compute.v1.ReceiveVMReady
-	(*ReceiveVMPhaseReady)(nil),             // 78: exe.compute.v1.ReceiveVMPhaseReady
-	(*ReceiveVMResult)(nil),                 // 79: exe.compute.v1.ReceiveVMResult
-	(*InitReceiveVMRequest)(nil),            // 80: exe.compute.v1.InitReceiveVMRequest
-	(*InitReceiveVMResponse)(nil),           // 81: exe.compute.v1.InitReceiveVMResponse
-	(*GetReceiveVMResumeTokenRequest)(nil),  // 82: exe.compute.v1.GetReceiveVMResumeTokenRequest
-	(*GetReceiveVMResumeTokenResponse)(nil), // 83: exe.compute.v1.GetReceiveVMResumeTokenResponse
-	(*AdvanceReceiveVMPhaseRequest)(nil),    // 84: exe.compute.v1.AdvanceReceiveVMPhaseRequest
-	(*AdvanceReceiveVMPhaseResponse)(nil),   // 85: exe.compute.v1.AdvanceReceiveVMPhaseResponse
-	(*UploadReceiveVMSnapshotRequest)(nil),  // 86: exe.compute.v1.UploadReceiveVMSnapshotRequest
-	(*UploadReceiveVMSnapshotResponse)(nil), // 87: exe.compute.v1.UploadReceiveVMSnapshotResponse
-	(*CompleteReceiveVMRequest)(nil),        // 88: exe.compute.v1.CompleteReceiveVMRequest
-	(*CompleteReceiveVMResponse)(nil),       // 89: exe.compute.v1.CompleteReceiveVMResponse
-	(*AbortReceiveVMRequest)(nil),           // 90: exe.compute.v1.AbortReceiveVMRequest
-	(*AbortReceiveVMResponse)(nil),          // 91: exe.compute.v1.AbortReceiveVMResponse
-	(*GrowDiskRequest)(nil),                 // 92: exe.compute.v1.GrowDiskRequest
-	(*GrowDiskResponse)(nil),                // 93: exe.compute.v1.GrowDiskResponse
-	(*CloneInstanceRequest)(nil),            // 94: exe.compute.v1.CloneInstanceRequest
-	(*CloneInstanceStatus)(nil),             // 95: exe.compute.v1.CloneInstanceStatus
-	(*CloneInstanceResponse)(nil),           // 96: exe.compute.v1.CloneInstanceResponse
-	(*ResizeVMRequest)(nil),                 // 97: exe.compute.v1.ResizeVMRequest
-	(*ResizeVMResponse)(nil),                // 98: exe.compute.v1.ResizeVMResponse
-	(*MigrateStorageTierRequest)(nil),       // 99: exe.compute.v1.MigrateStorageTierRequest
-	(*MigrateStorageTierResponse)(nil),      // 100: exe.compute.v1.MigrateStorageTierResponse
-	(*GetTierMigrationStatusRequest)(nil),   // 101: exe.compute.v1.GetTierMigrationStatusRequest
-	(*TierMigrationOperation)(nil),          // 102: exe.compute.v1.TierMigrationOperation
-	(*GetTierMigrationStatusResponse)(nil),  // 103: exe.compute.v1.GetTierMigrationStatusResponse
-	(*ListStorageTiersRequest)(nil),         // 104: exe.compute.v1.ListStorageTiersRequest
-	(*StorageTier)(nil),                     // 105: exe.compute.v1.StorageTier
-	(*ListStorageTiersResponse)(nil),        // 106: exe.compute.v1.ListStorageTiersResponse
-	(*ClearTierMigrationsRequest)(nil),      // 107: exe.compute.v1.ClearTierMigrationsRequest
-	(*ClearTierMigrationsResponse)(nil),     // 108: exe.compute.v1.ClearTierMigrationsResponse
-	(*CancelTierMigrationRequest)(nil),      // 109: exe.compute.v1.CancelTierMigrationRequest
-	(*CancelTierMigrationResponse)(nil),     // 110: exe.compute.v1.CancelTierMigrationResponse
-	nil,                                     // 111: exe.compute.v1.StorageTier.MetadataEntry
+	(*SendVMStartRequest)(nil),              // 45: exe.compute.v1.SendVMStartRequest
+	(*SendVMControl)(nil),                   // 46: exe.compute.v1.SendVMControl
+	(*SendVMStatus)(nil),                    // 47: exe.compute.v1.SendVMStatus
+	(*SendVMTargetReady)(nil),               // 48: exe.compute.v1.SendVMTargetReady
+	(*SendVMProgress)(nil),                  // 49: exe.compute.v1.SendVMProgress
+	(*SendVMResult)(nil),                    // 50: exe.compute.v1.SendVMResult
+	(*SendVMAwaitControl)(nil),              // 51: exe.compute.v1.SendVMAwaitControl
+	(*SendVMMetadata)(nil),                  // 52: exe.compute.v1.SendVMMetadata
+	(*InitSendVMRequest)(nil),               // 53: exe.compute.v1.InitSendVMRequest
+	(*InitSendVMResponse)(nil),              // 54: exe.compute.v1.InitSendVMResponse
+	(*PollSendVMRequest)(nil),               // 55: exe.compute.v1.PollSendVMRequest
+	(*PollSendVMResponse)(nil),              // 56: exe.compute.v1.PollSendVMResponse
+	(*SendVMEvent)(nil),                     // 57: exe.compute.v1.SendVMEvent
+	(*SubmitSendVMControlRequest)(nil),      // 58: exe.compute.v1.SubmitSendVMControlRequest
+	(*SubmitSendVMControlResponse)(nil),     // 59: exe.compute.v1.SubmitSendVMControlResponse
+	(*AbortSendVMRequest)(nil),              // 60: exe.compute.v1.AbortSendVMRequest
+	(*AbortSendVMResponse)(nil),             // 61: exe.compute.v1.AbortSendVMResponse
+	(*InitReceiveVMRequest)(nil),            // 62: exe.compute.v1.InitReceiveVMRequest
+	(*InitReceiveVMResponse)(nil),           // 63: exe.compute.v1.InitReceiveVMResponse
+	(*GetReceiveVMResumeTokenRequest)(nil),  // 64: exe.compute.v1.GetReceiveVMResumeTokenRequest
+	(*GetReceiveVMResumeTokenResponse)(nil), // 65: exe.compute.v1.GetReceiveVMResumeTokenResponse
+	(*AdvanceReceiveVMPhaseRequest)(nil),    // 66: exe.compute.v1.AdvanceReceiveVMPhaseRequest
+	(*AdvanceReceiveVMPhaseResponse)(nil),   // 67: exe.compute.v1.AdvanceReceiveVMPhaseResponse
+	(*UploadReceiveVMSnapshotRequest)(nil),  // 68: exe.compute.v1.UploadReceiveVMSnapshotRequest
+	(*UploadReceiveVMSnapshotResponse)(nil), // 69: exe.compute.v1.UploadReceiveVMSnapshotResponse
+	(*CompleteReceiveVMRequest)(nil),        // 70: exe.compute.v1.CompleteReceiveVMRequest
+	(*CompleteReceiveVMResponse)(nil),       // 71: exe.compute.v1.CompleteReceiveVMResponse
+	(*AbortReceiveVMRequest)(nil),           // 72: exe.compute.v1.AbortReceiveVMRequest
+	(*AbortReceiveVMResponse)(nil),          // 73: exe.compute.v1.AbortReceiveVMResponse
+	(*GrowDiskRequest)(nil),                 // 74: exe.compute.v1.GrowDiskRequest
+	(*GrowDiskResponse)(nil),                // 75: exe.compute.v1.GrowDiskResponse
+	(*CloneInstanceRequest)(nil),            // 76: exe.compute.v1.CloneInstanceRequest
+	(*CloneInstanceStatus)(nil),             // 77: exe.compute.v1.CloneInstanceStatus
+	(*CloneInstanceResponse)(nil),           // 78: exe.compute.v1.CloneInstanceResponse
+	(*ResizeVMRequest)(nil),                 // 79: exe.compute.v1.ResizeVMRequest
+	(*ResizeVMResponse)(nil),                // 80: exe.compute.v1.ResizeVMResponse
+	(*MigrateStorageTierRequest)(nil),       // 81: exe.compute.v1.MigrateStorageTierRequest
+	(*MigrateStorageTierResponse)(nil),      // 82: exe.compute.v1.MigrateStorageTierResponse
+	(*GetTierMigrationStatusRequest)(nil),   // 83: exe.compute.v1.GetTierMigrationStatusRequest
+	(*TierMigrationOperation)(nil),          // 84: exe.compute.v1.TierMigrationOperation
+	(*GetTierMigrationStatusResponse)(nil),  // 85: exe.compute.v1.GetTierMigrationStatusResponse
+	(*ListStorageTiersRequest)(nil),         // 86: exe.compute.v1.ListStorageTiersRequest
+	(*StorageTier)(nil),                     // 87: exe.compute.v1.StorageTier
+	(*ListStorageTiersResponse)(nil),        // 88: exe.compute.v1.ListStorageTiersResponse
+	(*ClearTierMigrationsRequest)(nil),      // 89: exe.compute.v1.ClearTierMigrationsRequest
+	(*ClearTierMigrationsResponse)(nil),     // 90: exe.compute.v1.ClearTierMigrationsResponse
+	(*CancelTierMigrationRequest)(nil),      // 91: exe.compute.v1.CancelTierMigrationRequest
+	(*CancelTierMigrationResponse)(nil),     // 92: exe.compute.v1.CancelTierMigrationResponse
+	nil,                                     // 93: exe.compute.v1.StorageTier.MetadataEntry
 }
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
-	13,  // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
-	11,  // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
-	9,   // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
-	10,  // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
-	1,   // 4: exe.compute.v1.Log.type:type_name -> exe.compute.v1.Log.Type
-	2,   // 5: exe.compute.v1.CreateInstanceStatus.state:type_name -> exe.compute.v1.CreateInstanceStatus.State
-	15,  // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
-	38,  // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	38,  // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
-	38,  // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	14,  // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
-	37,  // 11: exe.compute.v1.GetSystemInfoResponse.migration_capabilities:type_name -> exe.compute.v1.MigrationCapabilities
-	39,  // 12: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
-	0,   // 13: exe.compute.v1.Instance.state:type_name -> exe.compute.v1.VMState
-	13,  // 14: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
-	12,  // 15: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
-	40,  // 16: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
-	42,  // 17: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
-	3,   // 18: exe.compute.v1.NetworkInterface.type:type_name -> exe.compute.v1.NetworkInterface.Type
-	41,  // 19: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
-	44,  // 20: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
-	4,   // 21: exe.compute.v1.Server.state:type_name -> exe.compute.v1.Server.ServerState
-	46,  // 22: exe.compute.v1.SendVMRequest.start:type_name -> exe.compute.v1.SendVMStartRequest
-	47,  // 23: exe.compute.v1.SendVMRequest.control:type_name -> exe.compute.v1.SendVMControl
-	5,   // 24: exe.compute.v1.SendVMControl.action:type_name -> exe.compute.v1.SendVMControl.Action
-	56,  // 25: exe.compute.v1.SendVMResponse.metadata:type_name -> exe.compute.v1.SendVMMetadata
-	57,  // 26: exe.compute.v1.SendVMResponse.data:type_name -> exe.compute.v1.SendVMDataChunk
-	58,  // 27: exe.compute.v1.SendVMResponse.complete:type_name -> exe.compute.v1.SendVMComplete
-	55,  // 28: exe.compute.v1.SendVMResponse.phase_complete:type_name -> exe.compute.v1.SendVMPhaseComplete
-	53,  // 29: exe.compute.v1.SendVMResponse.snapshot_data:type_name -> exe.compute.v1.SendVMSnapshotChunk
-	54,  // 30: exe.compute.v1.SendVMResponse.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
-	49,  // 31: exe.compute.v1.SendVMResponse.status:type_name -> exe.compute.v1.SendVMStatus
-	50,  // 32: exe.compute.v1.SendVMResponse.target_ready:type_name -> exe.compute.v1.SendVMTargetReady
-	51,  // 33: exe.compute.v1.SendVMResponse.progress:type_name -> exe.compute.v1.SendVMProgress
-	52,  // 34: exe.compute.v1.SendVMResponse.result:type_name -> exe.compute.v1.SendVMResult
-	42,  // 35: exe.compute.v1.SendVMTargetReady.target_network:type_name -> exe.compute.v1.NetworkInterface
-	38,  // 36: exe.compute.v1.SendVMResult.instance:type_name -> exe.compute.v1.Instance
-	6,   // 37: exe.compute.v1.SendVMAwaitControl.reason:type_name -> exe.compute.v1.SendVMAwaitControl.Reason
-	42,  // 38: exe.compute.v1.SendVMAwaitControl.source_network:type_name -> exe.compute.v1.NetworkInterface
-	38,  // 39: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
-	63,  // 40: exe.compute.v1.PollSendVMResponse.events:type_name -> exe.compute.v1.SendVMEvent
-	56,  // 41: exe.compute.v1.SendVMEvent.metadata:type_name -> exe.compute.v1.SendVMMetadata
-	50,  // 42: exe.compute.v1.SendVMEvent.target_ready:type_name -> exe.compute.v1.SendVMTargetReady
-	49,  // 43: exe.compute.v1.SendVMEvent.status:type_name -> exe.compute.v1.SendVMStatus
-	51,  // 44: exe.compute.v1.SendVMEvent.progress:type_name -> exe.compute.v1.SendVMProgress
-	54,  // 45: exe.compute.v1.SendVMEvent.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
-	52,  // 46: exe.compute.v1.SendVMEvent.result:type_name -> exe.compute.v1.SendVMResult
-	47,  // 47: exe.compute.v1.SubmitSendVMControlRequest.control:type_name -> exe.compute.v1.SendVMControl
-	72,  // 48: exe.compute.v1.ReceiveVMRequest.start:type_name -> exe.compute.v1.ReceiveVMStartRequest
-	74,  // 49: exe.compute.v1.ReceiveVMRequest.data:type_name -> exe.compute.v1.ReceiveVMDataChunk
-	75,  // 50: exe.compute.v1.ReceiveVMRequest.complete:type_name -> exe.compute.v1.ReceiveVMComplete
-	71,  // 51: exe.compute.v1.ReceiveVMRequest.phase_complete:type_name -> exe.compute.v1.ReceiveVMPhaseComplete
-	73,  // 52: exe.compute.v1.ReceiveVMRequest.snapshot_data:type_name -> exe.compute.v1.ReceiveVMSnapshotChunk
-	69,  // 53: exe.compute.v1.ReceiveVMRequest.resume_token_request:type_name -> exe.compute.v1.ReceiveVMResumeTokenRequest
-	38,  // 54: exe.compute.v1.ReceiveVMStartRequest.source_instance:type_name -> exe.compute.v1.Instance
-	77,  // 55: exe.compute.v1.ReceiveVMResponse.ready:type_name -> exe.compute.v1.ReceiveVMReady
-	79,  // 56: exe.compute.v1.ReceiveVMResponse.result:type_name -> exe.compute.v1.ReceiveVMResult
-	78,  // 57: exe.compute.v1.ReceiveVMResponse.phase_ready:type_name -> exe.compute.v1.ReceiveVMPhaseReady
-	70,  // 58: exe.compute.v1.ReceiveVMResponse.resume_token:type_name -> exe.compute.v1.ReceiveVMResumeTokenResponse
-	42,  // 59: exe.compute.v1.ReceiveVMReady.target_network:type_name -> exe.compute.v1.NetworkInterface
-	38,  // 60: exe.compute.v1.ReceiveVMResult.instance:type_name -> exe.compute.v1.Instance
-	38,  // 61: exe.compute.v1.InitReceiveVMRequest.source_instance:type_name -> exe.compute.v1.Instance
-	42,  // 62: exe.compute.v1.InitReceiveVMResponse.target_network:type_name -> exe.compute.v1.NetworkInterface
-	38,  // 63: exe.compute.v1.CompleteReceiveVMResponse.instance:type_name -> exe.compute.v1.Instance
-	9,   // 64: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
-	7,   // 65: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
-	95,  // 66: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
-	38,  // 67: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	102, // 68: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
-	111, // 69: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
-	105, // 70: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
-	8,   // 71: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
-	17,  // 72: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
-	19,  // 73: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
-	21,  // 74: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
-	23,  // 75: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
-	25,  // 76: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
-	33,  // 77: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
-	27,  // 78: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
-	29,  // 79: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
-	31,  // 80: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
-	35,  // 81: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
-	45,  // 82: exe.compute.v1.ComputeService.SendVM:input_type -> exe.compute.v1.SendVMRequest
-	68,  // 83: exe.compute.v1.ComputeService.ReceiveVM:input_type -> exe.compute.v1.ReceiveVMRequest
-	59,  // 84: exe.compute.v1.ComputeService.InitSendVM:input_type -> exe.compute.v1.InitSendVMRequest
-	61,  // 85: exe.compute.v1.ComputeService.PollSendVM:input_type -> exe.compute.v1.PollSendVMRequest
-	64,  // 86: exe.compute.v1.ComputeService.SubmitSendVMControl:input_type -> exe.compute.v1.SubmitSendVMControlRequest
-	66,  // 87: exe.compute.v1.ComputeService.AbortSendVM:input_type -> exe.compute.v1.AbortSendVMRequest
-	80,  // 88: exe.compute.v1.ComputeService.InitReceiveVM:input_type -> exe.compute.v1.InitReceiveVMRequest
-	82,  // 89: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:input_type -> exe.compute.v1.GetReceiveVMResumeTokenRequest
-	84,  // 90: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:input_type -> exe.compute.v1.AdvanceReceiveVMPhaseRequest
-	86,  // 91: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:input_type -> exe.compute.v1.UploadReceiveVMSnapshotRequest
-	88,  // 92: exe.compute.v1.ComputeService.CompleteReceiveVM:input_type -> exe.compute.v1.CompleteReceiveVMRequest
-	90,  // 93: exe.compute.v1.ComputeService.AbortReceiveVM:input_type -> exe.compute.v1.AbortReceiveVMRequest
-	92,  // 94: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
-	97,  // 95: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
-	94,  // 96: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
-	99,  // 97: exe.compute.v1.ComputeService.MigrateStorageTier:input_type -> exe.compute.v1.MigrateStorageTierRequest
-	101, // 98: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
-	104, // 99: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
-	107, // 100: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
-	109, // 101: exe.compute.v1.ComputeService.CancelTierMigration:input_type -> exe.compute.v1.CancelTierMigrationRequest
-	16,  // 102: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
-	18,  // 103: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
-	20,  // 104: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
-	22,  // 105: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
-	24,  // 106: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
-	26,  // 107: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
-	34,  // 108: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
-	28,  // 109: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
-	30,  // 110: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
-	32,  // 111: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
-	36,  // 112: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
-	48,  // 113: exe.compute.v1.ComputeService.SendVM:output_type -> exe.compute.v1.SendVMResponse
-	76,  // 114: exe.compute.v1.ComputeService.ReceiveVM:output_type -> exe.compute.v1.ReceiveVMResponse
-	60,  // 115: exe.compute.v1.ComputeService.InitSendVM:output_type -> exe.compute.v1.InitSendVMResponse
-	62,  // 116: exe.compute.v1.ComputeService.PollSendVM:output_type -> exe.compute.v1.PollSendVMResponse
-	65,  // 117: exe.compute.v1.ComputeService.SubmitSendVMControl:output_type -> exe.compute.v1.SubmitSendVMControlResponse
-	67,  // 118: exe.compute.v1.ComputeService.AbortSendVM:output_type -> exe.compute.v1.AbortSendVMResponse
-	81,  // 119: exe.compute.v1.ComputeService.InitReceiveVM:output_type -> exe.compute.v1.InitReceiveVMResponse
-	83,  // 120: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:output_type -> exe.compute.v1.GetReceiveVMResumeTokenResponse
-	85,  // 121: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:output_type -> exe.compute.v1.AdvanceReceiveVMPhaseResponse
-	87,  // 122: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:output_type -> exe.compute.v1.UploadReceiveVMSnapshotResponse
-	89,  // 123: exe.compute.v1.ComputeService.CompleteReceiveVM:output_type -> exe.compute.v1.CompleteReceiveVMResponse
-	91,  // 124: exe.compute.v1.ComputeService.AbortReceiveVM:output_type -> exe.compute.v1.AbortReceiveVMResponse
-	93,  // 125: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
-	98,  // 126: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
-	96,  // 127: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
-	100, // 128: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
-	103, // 129: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
-	106, // 130: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
-	108, // 131: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
-	110, // 132: exe.compute.v1.ComputeService.CancelTierMigration:output_type -> exe.compute.v1.CancelTierMigrationResponse
-	102, // [102:133] is the sub-list for method output_type
-	71,  // [71:102] is the sub-list for method input_type
-	71,  // [71:71] is the sub-list for extension type_name
-	71,  // [71:71] is the sub-list for extension extendee
-	0,   // [0:71] is the sub-list for field type_name
+	13, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
+	11, // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
+	9,  // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	10, // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
+	1,  // 4: exe.compute.v1.Log.type:type_name -> exe.compute.v1.Log.Type
+	2,  // 5: exe.compute.v1.CreateInstanceStatus.state:type_name -> exe.compute.v1.CreateInstanceStatus.State
+	15, // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
+	38, // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	38, // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
+	38, // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	14, // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
+	37, // 11: exe.compute.v1.GetSystemInfoResponse.migration_capabilities:type_name -> exe.compute.v1.MigrationCapabilities
+	39, // 12: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
+	0,  // 13: exe.compute.v1.Instance.state:type_name -> exe.compute.v1.VMState
+	13, // 14: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
+	12, // 15: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
+	40, // 16: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
+	42, // 17: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
+	3,  // 18: exe.compute.v1.NetworkInterface.type:type_name -> exe.compute.v1.NetworkInterface.Type
+	41, // 19: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
+	44, // 20: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
+	4,  // 21: exe.compute.v1.Server.state:type_name -> exe.compute.v1.Server.ServerState
+	5,  // 22: exe.compute.v1.SendVMControl.action:type_name -> exe.compute.v1.SendVMControl.Action
+	42, // 23: exe.compute.v1.SendVMTargetReady.target_network:type_name -> exe.compute.v1.NetworkInterface
+	38, // 24: exe.compute.v1.SendVMResult.instance:type_name -> exe.compute.v1.Instance
+	6,  // 25: exe.compute.v1.SendVMAwaitControl.reason:type_name -> exe.compute.v1.SendVMAwaitControl.Reason
+	42, // 26: exe.compute.v1.SendVMAwaitControl.source_network:type_name -> exe.compute.v1.NetworkInterface
+	38, // 27: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
+	57, // 28: exe.compute.v1.PollSendVMResponse.events:type_name -> exe.compute.v1.SendVMEvent
+	52, // 29: exe.compute.v1.SendVMEvent.metadata:type_name -> exe.compute.v1.SendVMMetadata
+	48, // 30: exe.compute.v1.SendVMEvent.target_ready:type_name -> exe.compute.v1.SendVMTargetReady
+	47, // 31: exe.compute.v1.SendVMEvent.status:type_name -> exe.compute.v1.SendVMStatus
+	49, // 32: exe.compute.v1.SendVMEvent.progress:type_name -> exe.compute.v1.SendVMProgress
+	51, // 33: exe.compute.v1.SendVMEvent.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
+	50, // 34: exe.compute.v1.SendVMEvent.result:type_name -> exe.compute.v1.SendVMResult
+	46, // 35: exe.compute.v1.SubmitSendVMControlRequest.control:type_name -> exe.compute.v1.SendVMControl
+	38, // 36: exe.compute.v1.InitReceiveVMRequest.source_instance:type_name -> exe.compute.v1.Instance
+	42, // 37: exe.compute.v1.InitReceiveVMResponse.target_network:type_name -> exe.compute.v1.NetworkInterface
+	38, // 38: exe.compute.v1.CompleteReceiveVMResponse.instance:type_name -> exe.compute.v1.Instance
+	9,  // 39: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	7,  // 40: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
+	77, // 41: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
+	38, // 42: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	84, // 43: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
+	93, // 44: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
+	87, // 45: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
+	8,  // 46: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
+	17, // 47: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
+	19, // 48: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
+	21, // 49: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
+	23, // 50: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
+	25, // 51: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
+	33, // 52: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
+	27, // 53: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
+	29, // 54: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
+	31, // 55: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
+	35, // 56: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
+	53, // 57: exe.compute.v1.ComputeService.InitSendVM:input_type -> exe.compute.v1.InitSendVMRequest
+	55, // 58: exe.compute.v1.ComputeService.PollSendVM:input_type -> exe.compute.v1.PollSendVMRequest
+	58, // 59: exe.compute.v1.ComputeService.SubmitSendVMControl:input_type -> exe.compute.v1.SubmitSendVMControlRequest
+	60, // 60: exe.compute.v1.ComputeService.AbortSendVM:input_type -> exe.compute.v1.AbortSendVMRequest
+	62, // 61: exe.compute.v1.ComputeService.InitReceiveVM:input_type -> exe.compute.v1.InitReceiveVMRequest
+	64, // 62: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:input_type -> exe.compute.v1.GetReceiveVMResumeTokenRequest
+	66, // 63: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:input_type -> exe.compute.v1.AdvanceReceiveVMPhaseRequest
+	68, // 64: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:input_type -> exe.compute.v1.UploadReceiveVMSnapshotRequest
+	70, // 65: exe.compute.v1.ComputeService.CompleteReceiveVM:input_type -> exe.compute.v1.CompleteReceiveVMRequest
+	72, // 66: exe.compute.v1.ComputeService.AbortReceiveVM:input_type -> exe.compute.v1.AbortReceiveVMRequest
+	74, // 67: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
+	79, // 68: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
+	76, // 69: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
+	81, // 70: exe.compute.v1.ComputeService.MigrateStorageTier:input_type -> exe.compute.v1.MigrateStorageTierRequest
+	83, // 71: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
+	86, // 72: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
+	89, // 73: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
+	91, // 74: exe.compute.v1.ComputeService.CancelTierMigration:input_type -> exe.compute.v1.CancelTierMigrationRequest
+	16, // 75: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
+	18, // 76: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
+	20, // 77: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
+	22, // 78: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
+	24, // 79: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
+	26, // 80: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
+	34, // 81: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
+	28, // 82: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
+	30, // 83: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
+	32, // 84: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
+	36, // 85: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
+	54, // 86: exe.compute.v1.ComputeService.InitSendVM:output_type -> exe.compute.v1.InitSendVMResponse
+	56, // 87: exe.compute.v1.ComputeService.PollSendVM:output_type -> exe.compute.v1.PollSendVMResponse
+	59, // 88: exe.compute.v1.ComputeService.SubmitSendVMControl:output_type -> exe.compute.v1.SubmitSendVMControlResponse
+	61, // 89: exe.compute.v1.ComputeService.AbortSendVM:output_type -> exe.compute.v1.AbortSendVMResponse
+	63, // 90: exe.compute.v1.ComputeService.InitReceiveVM:output_type -> exe.compute.v1.InitReceiveVMResponse
+	65, // 91: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:output_type -> exe.compute.v1.GetReceiveVMResumeTokenResponse
+	67, // 92: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:output_type -> exe.compute.v1.AdvanceReceiveVMPhaseResponse
+	69, // 93: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:output_type -> exe.compute.v1.UploadReceiveVMSnapshotResponse
+	71, // 94: exe.compute.v1.ComputeService.CompleteReceiveVM:output_type -> exe.compute.v1.CompleteReceiveVMResponse
+	73, // 95: exe.compute.v1.ComputeService.AbortReceiveVM:output_type -> exe.compute.v1.AbortReceiveVMResponse
+	75, // 96: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
+	80, // 97: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
+	78, // 98: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
+	82, // 99: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
+	85, // 100: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
+	88, // 101: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
+	90, // 102: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
+	92, // 103: exe.compute.v1.ComputeService.CancelTierMigration:output_type -> exe.compute.v1.CancelTierMigrationResponse
+	75, // [75:104] is the sub-list for method output_type
+	46, // [46:75] is the sub-list for method input_type
+	46, // [46:46] is the sub-list for extension type_name
+	46, // [46:46] is the sub-list for extension extendee
+	0,  // [0:46] is the sub-list for field type_name
 }
 
 func init() { file_exe_compute_v1_compute_proto_init() }
@@ -7781,23 +6287,7 @@ func file_exe_compute_v1_compute_proto_init() {
 		(*CreateInstanceResponse_Status)(nil),
 		(*CreateInstanceResponse_Instance)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[37].OneofWrappers = []any{
-		(*SendVMRequest_Start)(nil),
-		(*SendVMRequest_Control)(nil),
-	}
-	file_exe_compute_v1_compute_proto_msgTypes[40].OneofWrappers = []any{
-		(*SendVMResponse_Metadata)(nil),
-		(*SendVMResponse_Data)(nil),
-		(*SendVMResponse_Complete)(nil),
-		(*SendVMResponse_PhaseComplete)(nil),
-		(*SendVMResponse_SnapshotData)(nil),
-		(*SendVMResponse_AwaitControl)(nil),
-		(*SendVMResponse_Status)(nil),
-		(*SendVMResponse_TargetReady)(nil),
-		(*SendVMResponse_Progress)(nil),
-		(*SendVMResponse_Result)(nil),
-	}
-	file_exe_compute_v1_compute_proto_msgTypes[55].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[49].OneofWrappers = []any{
 		(*SendVMEvent_Metadata)(nil),
 		(*SendVMEvent_TargetReady)(nil),
 		(*SendVMEvent_Status)(nil),
@@ -7805,33 +6295,19 @@ func file_exe_compute_v1_compute_proto_init() {
 		(*SendVMEvent_AwaitControl)(nil),
 		(*SendVMEvent_Result)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[60].OneofWrappers = []any{
-		(*ReceiveVMRequest_Start)(nil),
-		(*ReceiveVMRequest_Data)(nil),
-		(*ReceiveVMRequest_Complete)(nil),
-		(*ReceiveVMRequest_PhaseComplete)(nil),
-		(*ReceiveVMRequest_SnapshotData)(nil),
-		(*ReceiveVMRequest_ResumeTokenRequest)(nil),
-	}
-	file_exe_compute_v1_compute_proto_msgTypes[68].OneofWrappers = []any{
-		(*ReceiveVMResponse_Ready)(nil),
-		(*ReceiveVMResponse_Result)(nil),
-		(*ReceiveVMResponse_PhaseReady)(nil),
-		(*ReceiveVMResponse_ResumeToken)(nil),
-	}
-	file_exe_compute_v1_compute_proto_msgTypes[86].OneofWrappers = []any{}
-	file_exe_compute_v1_compute_proto_msgTypes[88].OneofWrappers = []any{
+	file_exe_compute_v1_compute_proto_msgTypes[68].OneofWrappers = []any{}
+	file_exe_compute_v1_compute_proto_msgTypes[70].OneofWrappers = []any{
 		(*CloneInstanceResponse_Status)(nil),
 		(*CloneInstanceResponse_Instance)(nil),
 	}
-	file_exe_compute_v1_compute_proto_msgTypes[89].OneofWrappers = []any{}
+	file_exe_compute_v1_compute_proto_msgTypes[71].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   104,
+			NumMessages:   86,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

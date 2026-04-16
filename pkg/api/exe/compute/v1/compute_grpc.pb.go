@@ -30,8 +30,6 @@ const (
 	ComputeService_SetInstanceGroup_FullMethodName        = "/exe.compute.v1.ComputeService/SetInstanceGroup"
 	ComputeService_RenameInstance_FullMethodName          = "/exe.compute.v1.ComputeService/RenameInstance"
 	ComputeService_GetSystemInfo_FullMethodName           = "/exe.compute.v1.ComputeService/GetSystemInfo"
-	ComputeService_SendVM_FullMethodName                  = "/exe.compute.v1.ComputeService/SendVM"
-	ComputeService_ReceiveVM_FullMethodName               = "/exe.compute.v1.ComputeService/ReceiveVM"
 	ComputeService_InitSendVM_FullMethodName              = "/exe.compute.v1.ComputeService/InitSendVM"
 	ComputeService_PollSendVM_FullMethodName              = "/exe.compute.v1.ComputeService/PollSendVM"
 	ComputeService_SubmitSendVMControl_FullMethodName     = "/exe.compute.v1.ComputeService/SubmitSendVMControl"
@@ -67,10 +65,6 @@ type ComputeServiceClient interface {
 	SetInstanceGroup(ctx context.Context, in *SetInstanceGroupRequest, opts ...grpc.CallOption) (*SetInstanceGroupResponse, error)
 	RenameInstance(ctx context.Context, in *RenameInstanceRequest, opts ...grpc.CallOption) (*RenameInstanceResponse, error)
 	GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error)
-	// SendVM streams a stopped VM's disk and config to the caller for migration
-	SendVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendVMRequest, SendVMResponse], error)
-	// ReceiveVM receives a VM from another exelet
-	ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ReceiveVMRequest, ReceiveVMResponse], error)
 	// InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
 	InitSendVM(ctx context.Context, in *InitSendVMRequest, opts ...grpc.CallOption) (*InitSendVMResponse, error)
 	// PollSendVM long-polls for migration events.
@@ -254,32 +248,6 @@ func (c *computeServiceClient) GetSystemInfo(ctx context.Context, in *GetSystemI
 	return out, nil
 }
 
-func (c *computeServiceClient) SendVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendVMRequest, SendVMResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[3], ComputeService_SendVM_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[SendVMRequest, SendVMResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ComputeService_SendVMClient = grpc.BidiStreamingClient[SendVMRequest, SendVMResponse]
-
-func (c *computeServiceClient) ReceiveVM(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ReceiveVMRequest, ReceiveVMResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[4], ComputeService_ReceiveVM_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ReceiveVMRequest, ReceiveVMResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ComputeService_ReceiveVMClient = grpc.BidiStreamingClient[ReceiveVMRequest, ReceiveVMResponse]
-
 func (c *computeServiceClient) InitSendVM(ctx context.Context, in *InitSendVMRequest, opts ...grpc.CallOption) (*InitSendVMResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(InitSendVMResponse)
@@ -402,7 +370,7 @@ func (c *computeServiceClient) ResizeVM(ctx context.Context, in *ResizeVMRequest
 
 func (c *computeServiceClient) CloneInstance(ctx context.Context, in *CloneInstanceRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CloneInstanceResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[5], ComputeService_CloneInstance_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ComputeService_ServiceDesc.Streams[3], ComputeService_CloneInstance_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -484,10 +452,6 @@ type ComputeServiceServer interface {
 	SetInstanceGroup(context.Context, *SetInstanceGroupRequest) (*SetInstanceGroupResponse, error)
 	RenameInstance(context.Context, *RenameInstanceRequest) (*RenameInstanceResponse, error)
 	GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error)
-	// SendVM streams a stopped VM's disk and config to the caller for migration
-	SendVM(grpc.BidiStreamingServer[SendVMRequest, SendVMResponse]) error
-	// ReceiveVM receives a VM from another exelet
-	ReceiveVM(grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]) error
 	// InitSendVM starts a migration on the source exelet and returns immediately with a session ID.
 	InitSendVM(context.Context, *InitSendVMRequest) (*InitSendVMResponse, error)
 	// PollSendVM long-polls for migration events.
@@ -566,12 +530,6 @@ func (UnimplementedComputeServiceServer) RenameInstance(context.Context, *Rename
 }
 func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSystemInfo not implemented")
-}
-func (UnimplementedComputeServiceServer) SendVM(grpc.BidiStreamingServer[SendVMRequest, SendVMResponse]) error {
-	return status.Error(codes.Unimplemented, "method SendVM not implemented")
-}
-func (UnimplementedComputeServiceServer) ReceiveVM(grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]) error {
-	return status.Error(codes.Unimplemented, "method ReceiveVM not implemented")
 }
 func (UnimplementedComputeServiceServer) InitSendVM(context.Context, *InitSendVMRequest) (*InitSendVMResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InitSendVM not implemented")
@@ -824,20 +782,6 @@ func _ComputeService_GetSystemInfo_Handler(srv interface{}, ctx context.Context,
 	}
 	return interceptor(ctx, in, info, handler)
 }
-
-func _ComputeService_SendVM_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ComputeServiceServer).SendVM(&grpc.GenericServerStream[SendVMRequest, SendVMResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ComputeService_SendVMServer = grpc.BidiStreamingServer[SendVMRequest, SendVMResponse]
-
-func _ComputeService_ReceiveVM_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ComputeServiceServer).ReceiveVM(&grpc.GenericServerStream[ReceiveVMRequest, ReceiveVMResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ComputeService_ReceiveVMServer = grpc.BidiStreamingServer[ReceiveVMRequest, ReceiveVMResponse]
 
 func _ComputeService_InitSendVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InitSendVMRequest)
@@ -1279,18 +1223,6 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GetInstanceLogs",
 			Handler:       _ComputeService_GetInstanceLogs_Handler,
 			ServerStreams: true,
-		},
-		{
-			StreamName:    "SendVM",
-			Handler:       _ComputeService_SendVM_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-		{
-			StreamName:    "ReceiveVM",
-			Handler:       _ComputeService_ReceiveVM_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
 		},
 		{
 			StreamName:    "CloneInstance",
