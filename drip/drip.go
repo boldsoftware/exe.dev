@@ -120,19 +120,38 @@ func (r *Runner) processUser(ctx context.Context, u exedb.ListTrialUsersForDripR
 	}
 
 	// Find the next step this user needs.
+	// If this is our first contact with a user (no prior drip records),
+	// skip all already-overdue steps except the most recent one.
+	// This prevents spamming users whose trial started before the drip
+	// campaign was deployed.
+	firstContact := len(prevSends) == 0
+
+	var pendingSteps []step
 	for _, s := range steps {
 		if sentSteps[s.name] {
-			continue // already processed (sent or skipped)
+			continue
 		}
-
 		dueAt := signupTime.Add(s.delay)
 		if !r.isDue(now, dueAt, s.delay, u.Region) {
 			break // not time yet; don't skip ahead
 		}
-
-		r.evaluateStep(ctx, u, s.name)
-		break // one step per hourly tick per user
+		pendingSteps = append(pendingSteps, s)
 	}
+
+	if len(pendingSteps) == 0 {
+		return
+	}
+
+	if firstContact && len(pendingSteps) > 1 {
+		// Skip all but the most recent due step to avoid a burst of emails.
+		for _, s := range pendingSteps[:len(pendingSteps)-1] {
+			r.recordSkip(ctx, u.UserID, s.name, "retroactive: drip campaign started after this step was due")
+		}
+		pendingSteps = pendingSteps[len(pendingSteps)-1:]
+	}
+
+	// Evaluate one step per tick.
+	r.evaluateStep(ctx, u, pendingSteps[0].name)
 }
 
 // regionTimezone returns a *time.Location approximation for a region code.

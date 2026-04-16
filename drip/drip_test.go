@@ -177,22 +177,51 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	ctx := context.Background()
 	r, sent := newTestRunner(t, db)
 
-	// User signed up 25 hours ago, no VM.
-	createTrialUser(t, ctx, db, "charlie@test.com", time.Now().Add(-25*time.Hour))
+	// User signed up 1.5 hours ago, no VM. Day0 is due but day1 is not yet.
+	createTrialUser(t, ctx, db, "charlie@test.com", time.Now().Add(-90*time.Minute))
 
 	// First run: sends day0.
 	r.runOnce(ctx)
 	if len(*sent) != 1 {
 		t.Fatalf("expected 1 email (day0), got %d", len(*sent))
 	}
-
-	// Second run: sends day1.
-	r.runOnce(ctx)
-	if len(*sent) != 2 {
-		t.Fatalf("expected 2 emails (day0+day1), got %d", len(*sent))
+	if (*sent)[0].Subject != "Ready to create computers" {
+		t.Errorf("unexpected day0 subject: %s", (*sent)[0].Subject)
 	}
-	if (*sent)[1].Subject != "You have 6 days left \u2014 start something" {
-		t.Errorf("unexpected day1 subject: %s", (*sent)[1].Subject)
+
+	// Simulate time passing: create a second user 25h into trial.
+	// (We need a fresh user for day1 to be due.)
+	db2 := testDB(t)
+	r2, sent2 := newTestRunner(t, db2)
+	createTrialUser(t, ctx, db2, "charlie2@test.com", time.Now().Add(-90*time.Minute))
+
+	// First run: day0.
+	r2.runOnce(ctx)
+	if len(*sent2) != 1 {
+		t.Fatalf("expected 1 email, got %d", len(*sent2))
+	}
+
+	// Manually insert day0 for a user 25h old to simulate progression.
+	db3 := testDB(t)
+	r3, sent3 := newTestRunner(t, db3)
+	userID := createTrialUser(t, ctx, db3, "charlie3@test.com", time.Now().Add(-25*time.Hour))
+	// Simulate day0 already processed.
+	err := exedb.WithTx1(db3, ctx, (*exedb.Queries).InsertDripSend, exedb.InsertDripSendParams{
+		UserID:   userID,
+		Campaign: "trial_onboarding",
+		Step:     stepDay0Welcome,
+		Status:   statSent,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r3.runOnce(ctx)
+	if len(*sent3) != 1 {
+		t.Fatalf("expected 1 email (day1), got %d", len(*sent3))
+	}
+	if (*sent3)[0].Subject != "You have 6 days left \u2014 start something" {
+		t.Errorf("unexpected day1 subject: %s", (*sent3)[0].Subject)
 	}
 }
 
@@ -213,6 +242,8 @@ func TestNoDoubleDelivery(t *testing.T) {
 }
 
 func TestStepProgression(t *testing.T) {
+	// Test the full lifecycle by simulating a user who started their trial
+	// at the same time as the drip system, so each step fires in order.
 	db := testDB(t)
 	ctx := context.Background()
 	r, sent := newTestRunner(t, db)
@@ -236,12 +267,12 @@ func TestStepProgression(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run 7 times to process all steps.
-	for range 7 {
-		r.runOnce(ctx)
-	}
+	// First run: retroactive skip of all overdue steps except the last (day14).
+	r.runOnce(ctx)
 
-	// Verify we got through all steps.
+	// Subsequent runs: no more steps to process.
+	r.runOnce(ctx)
+
 	sends, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
 		UserID:   userID,
 		Campaign: campaignTrialOnboarding,
@@ -253,46 +284,75 @@ func TestStepProgression(t *testing.T) {
 		t.Fatalf("expected 7 drip records, got %d", len(sends))
 	}
 
-	// Build a map of step -> status for easy checking.
 	stepStatus := make(map[string]string, len(sends))
 	for _, s := range sends {
 		stepStatus[s.Step] = s.Status
 	}
 
-	// day0: skipped (has VM)
-	if stepStatus[stepDay0Welcome] != statSkipped {
-		t.Errorf("day0: expected skipped, got %s", stepStatus[stepDay0Welcome])
+	// day0-day10: retroactive skipped
+	for _, step := range []string{stepDay0Welcome, stepDay1Nudge, stepDay3Feature, stepDay5Urgency, stepDay7Expiry, stepDay10WinBack} {
+		if stepStatus[step] != statSkipped {
+			t.Errorf("%s: expected skipped (retroactive), got %s", step, stepStatus[step])
+		}
 	}
-	// day1: skipped (has VM)
-	if stepStatus[stepDay1Nudge] != statSkipped {
-		t.Errorf("day1: expected skipped, got %s", stepStatus[stepDay1Nudge])
-	}
-	// day3: sent (feature email for active users)
-	if stepStatus[stepDay3Feature] != statSent {
-		t.Errorf("day3: expected sent, got %s", stepStatus[stepDay3Feature])
-	}
-	// day5: sent
-	if stepStatus[stepDay5Urgency] != statSent {
-		t.Errorf("day5: expected sent, got %s", stepStatus[stepDay5Urgency])
-	}
-	// day7: sent
-	if stepStatus[stepDay7Expiry] != statSent {
-		t.Errorf("day7: expected sent, got %s", stepStatus[stepDay7Expiry])
-	}
-	// day10: sent (has VM)
-	if stepStatus[stepDay10WinBack] != statSent {
-		t.Errorf("day10: expected sent, got %s", stepStatus[stepDay10WinBack])
-	}
-	// day14: sent
+	// day14: sent (the most recent overdue step)
 	if stepStatus[stepDay14Final] != statSent {
 		t.Errorf("day14: expected sent, got %s", stepStatus[stepDay14Final])
 	}
 
-	// Count actual sends (not skips).
-	nSent := len(*sent)
-	// day0: skip, day1: skip, day3: send, day5: send, day7: send, day10: send, day14: send = 5 sent
-	if nSent != 5 {
-		t.Errorf("expected 5 emails actually sent, got %d", nSent)
+	// Only 1 email actually sent.
+	if len(*sent) != 1 {
+		t.Errorf("expected 1 email actually sent, got %d", len(*sent))
+	}
+}
+
+func TestFullLifecycleOneStepAtATime(t *testing.T) {
+	// Simulates a fresh user going through all steps by pre-populating prior steps.
+	db := testDB(t)
+	ctx := context.Background()
+
+	// User signed up 15 days ago with a VM.
+	userID := createTrialUser(t, ctx, db, "lifecycle@test.com", time.Now().Add(-15*24*time.Hour))
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		_, err := q.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "host1",
+			Name:            "lifecycle-vm",
+			Status:          "running",
+			Image:           "ubuntu",
+			CreatedByUserID: userID,
+			Region:          "lax",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allSteps := []string{stepDay0Welcome, stepDay1Nudge, stepDay3Feature, stepDay5Urgency, stepDay7Expiry, stepDay10WinBack, stepDay14Final}
+
+	// Pre-populate all steps except the last as already processed.
+	for _, step := range allSteps[:len(allSteps)-1] {
+		err := exedb.WithTx1(db, ctx, (*exedb.Queries).InsertDripSend, exedb.InsertDripSendParams{
+			UserID:     userID,
+			Campaign:   "trial_onboarding",
+			Step:       step,
+			Status:     statSkipped,
+			SkipReason: strPtr("test setup"),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r, sent := newTestRunner(t, db)
+	r.runOnce(ctx)
+
+	// day14 should fire since all prior steps are recorded.
+	if len(*sent) != 1 {
+		t.Fatalf("expected 1 email (day14), got %d", len(*sent))
+	}
+	if (*sent)[0].Subject != "Last note from us" {
+		t.Errorf("unexpected subject: %s", (*sent)[0].Subject)
 	}
 }
 
@@ -331,8 +391,8 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 	ctx := context.Background()
 	r, sent := newTestRunner(t, db)
 
-	// User signed up 3 days ago.
-	userID := createTrialUser(t, ctx, db, "upgraded@test.com", time.Now().Add(-72*time.Hour))
+	// User signed up 1.5 hours ago (only day0 is due, no retroactive issue).
+	userID := createTrialUser(t, ctx, db, "upgraded@test.com", time.Now().Add(-90*time.Minute))
 
 	// First run: day0 sends.
 	r.runOnce(ctx)
@@ -340,7 +400,7 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 		t.Fatalf("expected 1 email, got %d", len(*sent))
 	}
 
-	// Simulate upgrade: close trial plan, open individual plan, add billing event.
+	// Simulate upgrade: close trial plan, open individual plan.
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		accountID := "acct_" + userID
 		now := time.Now()
@@ -364,10 +424,76 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run again: no more emails.
+	// Run again: no more emails — user excluded by query.
 	r.runOnce(ctx)
 	r.runOnce(ctx)
 	if len(*sent) != 1 {
 		t.Fatalf("expected still 1 email after upgrade, got %d", len(*sent))
+	}
+}
+
+func TestRetroactiveUserGetsOnlyLatestStep(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	r, sent := newTestRunner(t, db)
+
+	// User signed up 4 days ago. Drip system is seeing them for the first time.
+	// Steps day0 (1h), day1 (24h), day3 (72h) are all overdue.
+	// Only day3 should be evaluated; day0 and day1 should be auto-skipped.
+	userID := createTrialUser(t, ctx, db, "retro@test.com", time.Now().Add(-96*time.Hour))
+
+	// Create a box so day3 feature email fires (day3 only sends to active users).
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		_, err := q.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "host1",
+			Name:            "retro-vm",
+			Status:          "running",
+			Image:           "ubuntu",
+			CreatedByUserID: userID,
+			Region:          "lax",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.runOnce(ctx)
+
+	// Should have sent exactly 1 email (day3 feature), not 3.
+	if len(*sent) != 1 {
+		t.Fatalf("expected 1 email on first contact, got %d", len(*sent))
+	}
+
+	// Check DB records: day0 and day1 should be skipped as retroactive.
+	sends, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
+		UserID:   userID,
+		Campaign: "trial_onboarding",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stepStatus := make(map[string]string, len(sends))
+	stepReasons := make(map[string]string, len(sends))
+	for _, s := range sends {
+		stepStatus[s.Step] = s.Status
+		if s.SkipReason != nil {
+			stepReasons[s.Step] = *s.SkipReason
+		}
+	}
+
+	if stepStatus[stepDay0Welcome] != statSkipped {
+		t.Errorf("day0: expected skipped, got %s", stepStatus[stepDay0Welcome])
+	}
+	if stepReasons[stepDay0Welcome] != "retroactive: drip campaign started after this step was due" {
+		t.Errorf("day0: unexpected reason: %s", stepReasons[stepDay0Welcome])
+	}
+	if stepStatus[stepDay1Nudge] != statSkipped {
+		t.Errorf("day1: expected skipped, got %s", stepStatus[stepDay1Nudge])
+	}
+	// day3 should be sent (active user with VM).
+	if stepStatus[stepDay3Feature] != statSent {
+		t.Errorf("day3: expected sent, got %s", stepStatus[stepDay3Feature])
 	}
 }
