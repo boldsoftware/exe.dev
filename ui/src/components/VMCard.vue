@@ -77,6 +77,22 @@
         </div>
       </div>
 
+      <!-- Usage panel -->
+      <div v-if="usage?.display" class="usage-panel">
+        <div class="usage-panel-title">USAGE THIS PERIOD<template v-if="formatPeriod(billingPeriodStart, billingPeriodEnd)"> · {{ formatPeriod(billingPeriodStart, billingPeriodEnd) }}</template></div>
+        <div class="usage-panel-row">
+          <span>Disk</span>
+          <span>{{ usage.display.disk_avg }} avg<template v-if="usage.display.included_disk"> / {{ usage.display.included_disk }}</template><template v-if="usage.display.overage_disk"> (+{{ usage.display.overage_disk }} over)</template></span>
+        </div>
+        <div class="usage-panel-row">
+          <span>Bandwidth</span>
+          <span>{{ usage.display.bandwidth }}<template v-if="usage.display.included_bandwidth"> / {{ usage.display.included_bandwidth }}</template><template v-if="usage.display.overage_bandwidth"> (+{{ usage.display.overage_bandwidth }} over)</template></span>
+        </div>
+        <div v-if="usage.display.estimated_overage" class="usage-panel-overage">
+          Est. overage: {{ usage.display.estimated_overage }}
+        </div>
+      </div>
+
       <!-- Tags -->
       <div class="detail-row">
         <span class="detail-label">Tags:</span>
@@ -168,7 +184,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { BoxInfo } from '../api/client'
+import type { BoxInfo, VMUsageEntry } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CopyButton from './CopyButton.vue'
 import { defineAsyncComponent } from 'vue'
@@ -176,11 +192,22 @@ const CreationLog = defineAsyncComponent(() => import('./CreationLog.vue'))
 
 const showCreationLog = ref(false)
 
-defineProps<{
+const props = defineProps<{
   box: BoxInfo
   expanded: boolean
   hasTeam: boolean
+  usage?: VMUsageEntry
+  billingPeriodStart?: string
+  billingPeriodEnd?: string
 }>()
+
+function formatPeriod(start?: string, end?: string): string {
+  if (!start || !end) return ''
+  const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
+
 
 const emit = defineEmits<{
   (e: 'toggle'): void
@@ -489,5 +516,45 @@ function onRowClick(event: MouseEvent) {
   .box-main {
     gap: 8px;
   }
+}
+
+/* Usage panel */
+.usage-panel {
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.usage-panel-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.usage-panel-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  color: var(--text-primary);
+}
+
+.usage-panel-row span:first-child {
+  color: var(--text-secondary);
+}
+
+.usage-panel-row span:last-child {
+  font-weight: 600;
+}
+
+.usage-panel-overage {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surface-border);
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

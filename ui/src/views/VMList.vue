@@ -43,6 +43,9 @@
             :key="box.name"
             :box="box"
             :has-team="hasTeam"
+            :usage="vmUsageMap.get(box.name)"
+            :billing-period-start="billingPeriodStart"
+            :billing-period-end="billingPeriodEnd"
             :expanded="expandedBoxes.has(box.name)"
             @toggle="toggleExpand(box.name)"
             @action="handleAction"
@@ -63,6 +66,9 @@
               :key="box.name"
               :box="box"
               :has-team="hasTeam"
+              :usage="vmUsageMap.get(box.name)"
+              :billing-period-start="billingPeriodStart"
+              :billing-period-end="billingPeriodEnd"
               :expanded="expandedBoxes.has(box.name)"
               @toggle="toggleExpand(box.name)"
               @action="handleAction"
@@ -264,7 +270,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, shellQuote } from '../api/client'
+import { fetchDashboard, fetchVMUsage, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, type VMUsageEntry, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
@@ -278,6 +284,9 @@ const router = useRouter()
 const loading = ref(true)
 const loadError = ref('')
 const boxes = ref<BoxInfo[]>([])
+const vmUsageMap = ref(new Map<string, VMUsageEntry>())
+const billingPeriodStart = ref('')
+const billingPeriodEnd = ref('')
 const sharedBoxes = ref<SharedBoxInfo[]>([])
 const teamSharedBoxes = ref<TeamSharedBoxInfo[]>([])
 const teamBoxes = ref<TeamBoxInfo[]>([])
@@ -526,9 +535,23 @@ async function loadDashboard() {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await fetchDashboard()
+    const [data] = await Promise.all([
+      fetchDashboard(),
+    ])
     boxes.value = data.boxes
     sharedBoxes.value = data.sharedBoxes
+
+    // Fetch VM usage non-blocking using the billing period from the dashboard.
+    billingPeriodStart.value = data.billingPeriodStart
+    billingPeriodEnd.value = data.billingPeriodEnd
+    fetchVMUsage(data.billingPeriodStart, data.billingPeriodEnd).then(usage => {
+      const m = new Map<string, VMUsageEntry>()
+      for (const vm of usage.metrics ?? []) {
+        m.set(vm.vm_name, vm)
+      }
+      vmUsageMap.value = m
+    }).catch(() => { /* non-fatal */ })
+
     teamSharedBoxes.value = data.teamSharedBoxes || []
     teamBoxes.value = data.teamBoxes
     hasTeam.value = data.hasTeam || false

@@ -207,6 +207,8 @@ export interface DashboardData {
   sshCommand: string
   replHost: string
   showIntegrations: boolean
+  billingPeriodStart: string
+  billingPeriodEnd: string
 }
 
 export interface RegionOption {
@@ -264,6 +266,45 @@ async function fetchJSON<T>(url: string): Promise<T> {
 
 export async function fetchDashboard(): Promise<DashboardData> {
   return fetchJSON('/api/dashboard')
+}
+
+// --- VM Usage types ---
+
+export interface VMUsageEntry {
+  vm_id: string
+  vm_name: string
+  disk_avg_bytes: number
+  bandwidth_bytes: number
+  cpu_seconds: number
+  io_read_bytes: number
+  io_write_bytes: number
+  days_with_data: number
+  included_disk_bytes: number
+  included_bandwidth_bytes: number
+  disk_usage_pct: number
+  bandwidth_usage_pct: number
+  overage_disk_bytes: number
+  overage_bandwidth_bytes: number
+  estimated_overage_cents_usd: number
+  display: {
+    disk_avg: string
+    bandwidth: string
+    included_disk: string
+    included_bandwidth: string
+    overage_disk: string
+    overage_bandwidth: string
+    estimated_overage: string
+  }
+}
+
+export interface VMUsageResponse {
+  period_start: string
+  period_end: string
+  metrics: VMUsageEntry[]
+}
+
+export async function fetchVMUsage(start: string, end: string): Promise<VMUsageResponse> {
+  return fetchJSON(`/api/billing/usage/vms?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`)
 }
 
 export async function fetchProfile(): Promise<ProfileData> {

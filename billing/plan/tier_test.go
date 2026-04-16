@@ -867,3 +867,35 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 		}
 	})
 }
+
+func TestIncludedBandwidth(t *testing.T) {
+	t.Run("individual tier has 100GB", func(t *testing.T) {
+		if got := IncludedBandwidth("individual:small:monthly:20260601"); got != 100*gb {
+			t.Errorf("IncludedBandwidth(individual:small) = %d, want %d", got, 100*gb)
+		}
+	})
+
+	t.Run("team tier has 100GB", func(t *testing.T) {
+		if got := IncludedBandwidth("team:default:monthly:20260601"); got != 100*gb {
+			t.Errorf("IncludedBandwidth(team) = %d, want %d", got, 100*gb)
+		}
+	})
+
+	t.Run("trial tier has 100GB", func(t *testing.T) {
+		if got := IncludedBandwidth("trial:default:monthly:20260601"); got != 100*gb {
+			t.Errorf("IncludedBandwidth(trial) = %d, want %d", got, 100*gb)
+		}
+	})
+
+	t.Run("restricted tier has no bandwidth quota", func(t *testing.T) {
+		if got := IncludedBandwidth("restricted:default:monthly:20260601"); got != 0 {
+			t.Errorf("IncludedBandwidth(restricted) = %d, want 0", got)
+		}
+	})
+
+	t.Run("unknown tier returns zero", func(t *testing.T) {
+		if got := IncludedBandwidth("bogus:tier:id:x"); got != 0 {
+			t.Errorf("IncludedBandwidth(bogus) = %d, want 0", got)
+		}
+	})
+}

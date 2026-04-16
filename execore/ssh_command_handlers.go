@@ -350,6 +350,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
+			Name:              "stat",
+			AllowTagScoped:    true,
+			Description:       "Show disk and bandwidth usage for a VM",
+			Usage:             "stat <vm-name>",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+			Handler:           ss.handleStatCommand,
+		},
+		{
 			Name:              "cp",
 			AllowTagScoped:    true,
 			Description:       "Copy an existing VM",
@@ -631,6 +640,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleGameCommand,
 			RequiresPTY: true,
 		},
+
 		{
 			Name:           "top",
 			Hidden:         true,

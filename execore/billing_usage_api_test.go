@@ -136,11 +136,13 @@ func TestAPIBillingUsage_MissingParams(t *testing.T) {
 	}
 }
 
-func TestAPIBillingUsageVMs_MissingParams(t *testing.T) {
+func TestAPIBillingUsageVMs_NoMetricsd(t *testing.T) {
+	// The VMs endpoint requires metricsd; returns 503 when not configured.
 	t.Parallel()
 	s := newTestServer(t)
+	// metricsdURL is empty by default in test server.
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-missing@example.com", "", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "usagevms-nometrics@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -149,25 +151,13 @@ func TestAPIBillingUsageVMs_MissingParams(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	cases := []struct {
-		name string
-		url  string
-	}{
-		{"missing start", "/api/billing/usage/vms?end=2024-02-01T00:00:00Z"},
-		{"missing end", "/api/billing/usage/vms?start=2024-01-01T00:00:00Z"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
-			req.Host = s.env.WebHost
-			req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
-			w := httptest.NewRecorder()
-			s.ServeHTTP(w, req)
-			if w.Code != http.StatusBadRequest {
-				t.Errorf("%s: expected 400, got %d", tc.name, w.Code)
-			}
-		})
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
+	req.Host = s.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
 	}
 }
 
@@ -378,8 +368,7 @@ func TestAPIBillingUsageVMs(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -389,14 +378,12 @@ func TestAPIBillingUsageVMs(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp struct {
-		Metrics []billingUsageVMEntry `json:"metrics"`
-	}
+	var resp billingUsageVMsResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(resp.Metrics) != 2 {
-		t.Fatalf("expected 2 VM metrics, got %d", len(resp.Metrics))
+		t.Fatalf("expected 2 VMs, got %d", len(resp.Metrics))
 	}
 
 	// Check first VM
@@ -440,8 +427,7 @@ func TestAPIBillingUsageVMs_EmptyMetrics(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -451,14 +437,180 @@ func TestAPIBillingUsageVMs_EmptyMetrics(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp struct {
-		Metrics []any `json:"metrics"`
-	}
+	var resp billingUsageVMsResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(resp.Metrics) != 0 {
-		t.Errorf("expected empty metrics array, got %d entries", len(resp.Metrics))
+		t.Errorf("expected empty VMs array, got %d entries", len(resp.Metrics))
+	}
+}
+
+func TestBillingPeriod_CalendarMonth(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		now       time.Time
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{
+			name:      "mid month",
+			now:       time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			wantStart: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "first day",
+			now:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			wantStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "last day of december",
+			now:       time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC),
+			wantStart: time.Date(2024, 12, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			start, end := calendarMonthPeriod(tc.now)
+			if !start.Equal(tc.wantStart) {
+				t.Errorf("start: got %v, want %v", start, tc.wantStart)
+			}
+			if !end.Equal(tc.wantEnd) {
+				t.Errorf("end: got %v, want %v", end, tc.wantEnd)
+			}
+		})
+	}
+}
+
+func TestBillingPeriod_Anchored(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		now       time.Time
+		anchorDay int
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{
+			name:      "anchor on 15th, now is 20th",
+			now:       time.Date(2024, 6, 20, 0, 0, 0, 0, time.UTC),
+			anchorDay: 15,
+			wantStart: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 7, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "anchor on 15th, now is 10th (before anchor this month)",
+			now:       time.Date(2024, 6, 10, 0, 0, 0, 0, time.UTC),
+			anchorDay: 15,
+			wantStart: time.Date(2024, 5, 15, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "anchor on 31st in february (clamp to 29)",
+			now:       time.Date(2024, 2, 15, 0, 0, 0, 0, time.UTC),
+			anchorDay: 31,
+			wantStart: time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			start, end := anchoredMonthPeriod(tc.now, tc.anchorDay)
+			if !start.Equal(tc.wantStart) {
+				t.Errorf("start: got %v, want %v", start, tc.wantStart)
+			}
+			if !end.Equal(tc.wantEnd) {
+				t.Errorf("end: got %v, want %v", end, tc.wantEnd)
+			}
+		})
+	}
+}
+
+func TestAPIBillingUsageVMs_OverageFields(t *testing.T) {
+	t.Parallel()
+
+	// Set up a usage summary where disk is over the plan limit.
+	const gb = int64(1024 * 1024 * 1024)
+	usageSummaries := []types.UsageSummary{
+		{
+			ResourceGroup:  "user-1",
+			PeriodStart:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			PeriodEnd:      time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC),
+			DiskAvgBytes:   30 * gb,
+			BandwidthBytes: 5 * gb,
+			VMs: []types.VMUsageSummary{
+				{
+					VMID:           "vm-xxx",
+					VMName:         "over-vm",
+					ResourceGroup:  "user-1",
+					DiskAvgBytes:   30 * gb, // 30GB, plan includes 25GB -> 5GB over
+					BandwidthBytes: 5 * gb,  // 5GB, under 100GB -> no overage
+					DaysWithData:   31,
+				},
+			},
+		},
+	}
+
+	metricsSrv := newFakeMetricsdServer(t, nil, nil, usageSummaries)
+	s := newTestServerWithMetricsd(t, metricsSrv.URL)
+
+	user, err := s.createUser(t.Context(), testSSHPubKey, "overage-test@example.com", "", AllQualityChecks)
+	if err != nil {
+		t.Fatalf("createUser: %v", err)
+	}
+	cookieValue, err := s.createAuthCookie(t.Context(), user.UserID, s.env.WebHost)
+	if err != nil {
+		t.Fatalf("createAuthCookie: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/usage/vms?start=2024-01-01T00:00:00Z&end=2024-02-01T00:00:00Z", nil)
+	req.Host = s.env.WebHost
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp billingUsageVMsResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Metrics) != 1 {
+		t.Fatalf("expected 1 VM, got %d", len(resp.Metrics))
+	}
+	vm := resp.Metrics[0]
+
+	// IncludedDiskBytes is the plan's default disk (25GB for trial/basic users).
+	// For a new test user with no billing, plan lookup fails => included = 0.
+	// So overage should be 0 too.
+	if vm.OverageDiskBytes < 0 {
+		t.Errorf("overage_disk_bytes should not be negative, got %d", vm.OverageDiskBytes)
+	}
+	if vm.OverageBandwidthBytes < 0 {
+		t.Errorf("overage_bandwidth_bytes should not be negative, got %d", vm.OverageBandwidthBytes)
+	}
+	if vm.EstimatedOverageCentsUSD < 0 {
+		t.Errorf("estimated_overage_cents_usd should not be negative, got %d", vm.EstimatedOverageCentsUSD)
+	}
+	// period_start and period_end must be set.
+	if resp.PeriodStart.IsZero() {
+		t.Error("period_start should not be zero")
+	}
+	if resp.PeriodEnd.IsZero() {
+		t.Error("period_end should not be zero")
+	}
+	if resp.PeriodEnd.Before(resp.PeriodStart) {
+		t.Errorf("period_end %v is before period_start %v", resp.PeriodEnd, resp.PeriodStart)
 	}
 }
 

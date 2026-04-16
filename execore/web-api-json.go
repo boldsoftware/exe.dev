@@ -80,17 +80,19 @@ type jsonTeamSharedBox struct {
 }
 
 type jsonDashboardData struct {
-	User              jsonUserInfo        `json:"user"`
-	Boxes             []jsonBoxInfo       `json:"boxes"`
-	SharedBoxes       []jsonSharedBox     `json:"sharedBoxes"`
-	TeamSharedBoxes   []jsonTeamSharedBox `json:"teamSharedBoxes"`
-	TeamBoxes         []jsonTeamBox       `json:"teamBoxes"`
-	HasTeam           bool                `json:"hasTeam"`
-	InviteCount       int64               `json:"inviteCount"`
-	CanRequestInvites bool                `json:"canRequestInvites"`
-	SSHCommand        string              `json:"sshCommand"`
-	ReplHost          string              `json:"replHost"`
-	ShowIntegrations  bool                `json:"showIntegrations"`
+	User               jsonUserInfo        `json:"user"`
+	Boxes              []jsonBoxInfo       `json:"boxes"`
+	SharedBoxes        []jsonSharedBox     `json:"sharedBoxes"`
+	TeamSharedBoxes    []jsonTeamSharedBox `json:"teamSharedBoxes"`
+	TeamBoxes          []jsonTeamBox       `json:"teamBoxes"`
+	HasTeam            bool                `json:"hasTeam"`
+	InviteCount        int64               `json:"inviteCount"`
+	CanRequestInvites  bool                `json:"canRequestInvites"`
+	SSHCommand         string              `json:"sshCommand"`
+	ReplHost           string              `json:"replHost"`
+	ShowIntegrations   bool                `json:"showIntegrations"`
+	BillingPeriodStart time.Time           `json:"billingPeriodStart"`
+	BillingPeriodEnd   time.Time           `json:"billingPeriodEnd"`
 }
 
 type jsonUserInfo struct {
@@ -502,18 +504,27 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	canRequestInvites := s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.InviteRequest, userID)
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 
+	planRow, planErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID)
+	var billingAccountID string
+	if planErr == nil {
+		billingAccountID = planRow.AccountID
+	}
+	periodStart, periodEnd := billingPeriodForUser(r.Context(), s, billingAccountID, planErr)
+
 	writeJSONOK(w, jsonDashboardData{
-		User:              newJSONUserInfo(user),
-		Boxes:             boxes,
-		SharedBoxes:       sharedBoxes,
-		TeamSharedBoxes:   teamSharedBoxes,
-		TeamBoxes:         teamBoxes,
-		HasTeam:           hasTeam,
-		InviteCount:       inviteCount,
-		CanRequestInvites: canRequestInvites,
-		SSHCommand:        s.replSSHConnectionCommand(),
-		ReplHost:          s.env.ReplHost,
-		ShowIntegrations:  showIntegrations,
+		User:               newJSONUserInfo(user),
+		Boxes:              boxes,
+		SharedBoxes:        sharedBoxes,
+		TeamSharedBoxes:    teamSharedBoxes,
+		TeamBoxes:          teamBoxes,
+		HasTeam:            hasTeam,
+		InviteCount:        inviteCount,
+		CanRequestInvites:  canRequestInvites,
+		SSHCommand:         s.replSSHConnectionCommand(),
+		ReplHost:           s.env.ReplHost,
+		ShowIntegrations:   showIntegrations,
+		BillingPeriodStart: periodStart,
+		BillingPeriodEnd:   periodEnd,
 	})
 }
 
