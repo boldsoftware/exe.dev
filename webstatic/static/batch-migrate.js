@@ -138,7 +138,7 @@
 
             tr.innerHTML = '<td><input type="checkbox"' + (isSelected ? ' checked' : '') + '></td>' +
                 '<td>' + escapeHtml(u.email) + '</td>' +
-                '<td>' + escapeHtml(u.user_id.substring(0, 8)) + '</td>' +
+                '<td>' + escapeHtml(u.region || '') + '</td>' +
                 '<td><code>' + escapeHtml(u.user_id) + '</code></td>';
 
             tr.addEventListener('click', function(e) {

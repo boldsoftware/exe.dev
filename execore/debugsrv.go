@@ -1882,6 +1882,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		type userInfo struct {
 			UserID                 string  `json:"user_id"`
 			Email                  string  `json:"email"`
+			Region                 string  `json:"region,omitempty"`
 			CreatedAt              string  `json:"created_at,omitempty"`
 			RootSupport            bool    `json:"root_support"`
 			VMCreationDisabled     bool    `json:"vm_creation_disabled"`
@@ -1912,6 +1913,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			ui := userInfo{
 				UserID:                 u.UserID,
 				Email:                  u.Email,
+				Region:                 u.Region,
 				CreatedAt:              createdAt,
 				RootSupport:            u.RootSupport == 1,
 				VMCreationDisabled:     u.NewVmCreationDisabled,
