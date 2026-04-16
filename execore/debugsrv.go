@@ -120,6 +120,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-tier-migration", s.handleDebugExeletCancelTierMigration)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/cancel-all-pending-tier-migrations", s.handleDebugExeletCancelAllPendingTierMigrations)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/update-user-cgroup-parents", s.handleDebugExeletUpdateUserCgroupParents)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/local-migrate-all", s.handleDebugExeletLocalMigrateAll)
+	mux.HandleFunc("GET /debug/exelets/{hostname}/local-migrate-status", s.handleDebugExeletLocalMigrateStatus)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/set-private", s.handleDebugSetPrivateExelet)
 	mux.HandleFunc("POST /debug/exelets/set-team-exelet", s.handleDebugSetTeamExelet)

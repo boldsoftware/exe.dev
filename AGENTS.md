@@ -9,6 +9,7 @@
   ```
   Build exelet first to avoid OOM from concurrent Go compilations on small VMs. The exelet binary is cached at /tmp/exeletd after the first build.
 - Use gofumpt and goimports -w. Do not run formatters on generated files.
+- When editing api/ protobuf .proto files, use `make protos` to regenerate Go bindings.
 - When editing OAuth, browser-facing, or multi-account flows, manually test with real accounts and a real browser (using the browser tool) in addition to e1e tests. Mock servers cannot reproduce all real-world behaviors (account switchers, consent screens, token scoping). See `devdocs/for-agents/testing-integrations.md` for test accounts and steps.
 - Use `go test -count=1 ./e1e` (not a typo: the directory is named `e1e`) to run end-to-end tests against a local container host. For much faster results, run a specific test by name.
 - Don't add sleeps in tests. Best is to use testing/synctest. Failing that, add retry loops with a very small sleep.

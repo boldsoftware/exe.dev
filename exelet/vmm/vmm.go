@@ -13,6 +13,9 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
+// LiveMigrateLocalResult contains metrics from a local live migration.
+type LiveMigrateLocalResult = cloudhypervisor.LiveMigrateLocalResult
+
 // NetworkManager is a minimal interface to avoid import cycle with network package
 type NetworkManager interface {
 	Start(ctx context.Context) error
@@ -66,6 +69,10 @@ type VMM interface {
 	// RestoreFromSnapshot starts a new CH process and restores a VM from a snapshot directory.
 	// The restored VM is resumed automatically.
 	RestoreFromSnapshot(ctx context.Context, id, snapshotDir string) error
+	// LiveMigrateLocal migrates a VM to a new CH process on the same host
+	// via snapshot/restore. Enables in-place binary upgrades; downtime
+	// scales with VM RAM size (seconds to tens of seconds).
+	LiveMigrateLocal(ctx context.Context, id string) (*LiveMigrateLocalResult, error)
 	// ResizeDisk notifies the VMM that a disk has been resized
 	ResizeDisk(ctx context.Context, id, diskID string, newSize uint64) error
 	// RecoverProcesses adopts running processes and cleans up stale metadata on startup

@@ -32,6 +32,7 @@ select { padding: 8px; font-size: 14px; }
 
 {{if .Result}}
 <div class="result-msg {{if hasPrefix .Result "error"}}error{{else}}success{{end}}">{{.Result}}</div>
+<script>if (window.history.replaceState) { var u = new URL(location); u.searchParams.delete('result'); history.replaceState(null, '', u); }</script>
 {{end}}
 
 <div class="section">
@@ -75,6 +76,12 @@ select { padding: 8px; font-size: 14px; }
 <div class="section">
 <h2>VMs on this Exelet ({{len .Instances}})</h2>
 {{if .Instances}}
+<div style="margin-bottom: 10px;" id="local-migrate-toolbar">
+<button class="btn btn-primary" id="localMigrateBtn" onclick="startLocalMigrate()">Local Migrate All VMs</button>
+<span id="localMigrateStatus" style="margin-left: 10px;"></span>
+<div style="color: #6c757d; font-size: 12px; margin-top: 4px;">Migrates every running VM on this exelet into a fresh cloud-hypervisor process via snapshot/restore. Use this to roll out a CH binary upgrade. Per-VM downtime scales with VM RAM size (seconds to tens of seconds).</div>
+</div>
+<div id="localMigrateResults" style="display:none; margin-bottom:10px; max-height:200px; overflow-y:auto; border:1px solid #dee2e6; padding:10px; font-size:13px; line-height:1.4;"></div>
 <div class="vm-table-scroll">
 <table>
 <thead><tr><th>Name</th><th>State</th><th>CPUs</th><th>Memory</th><th>Disk</th><th>Pool</th><th>IP</th></tr></thead>
@@ -281,4 +288,85 @@ select { padding: 8px; font-size: 14px; }
 })();
 </script>
 
+<script>
+function startLocalMigrate() {
+    if (!confirm('Local live-migrate all running VMs on this exelet?')) return;
+    var btn = document.getElementById('localMigrateBtn');
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+    fetch('/debug/exelets/{{.Hostname}}/local-migrate-all', {method:'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'no running VMs to migrate') {
+                btn.disabled = false;
+                btn.textContent = 'Local Migrate All VMs';
+                document.getElementById('localMigrateStatus').textContent = 'No running VMs.';
+                return;
+            }
+            btn.textContent = 'Migrating...';
+            pollLocalMigrate();
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = 'Local Migrate All VMs';
+            alert('Error: ' + e);
+        });
+}
+function renderMigrateStatus(op) {
+    var s = document.getElementById('localMigrateStatus');
+    var ok = 0, cold = 0, fail = 0;
+    (op.results||[]).forEach(function(r) {
+        if (!r.ok) fail++;
+        else if (r.cold_restart) cold++;
+        else ok++;
+    });
+    var txt = op.done + '/' + op.total;
+    if (ok) txt += ' \u2705' + ok;
+    if (cold) txt += ' \u26a0\ufe0f' + cold;
+    if (fail) txt += ' \u274c' + fail;
+    if (op.current_id && !op.finished) txt += ' \u2014 migrating ' + op.current_id + '...';
+    if (op.finished) txt += ' \u2014 done';
+    s.textContent = txt;
+
+    var box = document.getElementById('localMigrateResults');
+    box.style.display = '';
+    var lines = (op.results||[]).map(function(r) {
+        if (!r.ok) return '<div style="color:#dc3545">\u274c ' + r.id + ': ' + r.error + '</div>';
+        if (r.cold_restart) return '<div style="color:#856404">\u26a0\ufe0f ' + r.id + ': cold restarted \u2014 ' + r.error + '</div>';
+        return '<div style="color:#155724">\u2705 ' + r.id + ': ' + r.downtime_ms + 'ms</div>';
+    });
+    if (op.current_id && !op.finished) {
+        lines.push('<div style="color:#0056b3">\u23f3 ' + op.current_id + '...</div>');
+    }
+    box.innerHTML = lines.join('');
+    box.scrollTop = box.scrollHeight;
+}
+function pollLocalMigrate() {
+    fetch('/debug/exelets/{{.Hostname}}/local-migrate-status')
+        .then(function(r) { return r.json(); })
+        .then(function(op) {
+            if (op.status === 'none') return;
+            renderMigrateStatus(op);
+            if (op.finished) {
+                var btn = document.getElementById('localMigrateBtn');
+                btn.disabled = false;
+                btn.textContent = 'Local Migrate All VMs';
+                return;
+            }
+            setTimeout(pollLocalMigrate, 1000);
+        });
+}
+(function() {
+    fetch('/debug/exelets/{{.Hostname}}/local-migrate-status')
+        .then(function(r) { return r.json(); })
+        .then(function(op) {
+            if (op.status === 'none' || !op.total) return;
+            if (op.finished) return; // Don't show stale results from a previous run.
+            renderMigrateStatus(op);
+            document.getElementById('localMigrateBtn').disabled = true;
+            document.getElementById('localMigrateBtn').textContent = 'Migrating...';
+            pollLocalMigrate();
+        });
+})();
+</script>
 </body></html>

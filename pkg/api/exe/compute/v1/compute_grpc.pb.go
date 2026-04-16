@@ -49,6 +49,7 @@ const (
 	ComputeService_ListStorageTiers_FullMethodName        = "/exe.compute.v1.ComputeService/ListStorageTiers"
 	ComputeService_ClearTierMigrations_FullMethodName     = "/exe.compute.v1.ComputeService/ClearTierMigrations"
 	ComputeService_CancelTierMigration_FullMethodName     = "/exe.compute.v1.ComputeService/CancelTierMigration"
+	ComputeService_LiveMigrateLocal_FullMethodName        = "/exe.compute.v1.ComputeService/LiveMigrateLocal"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -103,6 +104,10 @@ type ComputeServiceClient interface {
 	ClearTierMigrations(ctx context.Context, in *ClearTierMigrationsRequest, opts ...grpc.CallOption) (*ClearTierMigrationsResponse, error)
 	// CancelTierMigration cancels a pending or in-progress tier migration
 	CancelTierMigration(ctx context.Context, in *CancelTierMigrationRequest, opts ...grpc.CallOption) (*CancelTierMigrationResponse, error)
+	// LiveMigrateLocal performs an in-place migration of a VM to a new
+	// cloud-hypervisor process on the same host via snapshot/restore.
+	// Used for CH binary upgrades. Downtime scales with VM RAM size.
+	LiveMigrateLocal(ctx context.Context, in *LiveMigrateLocalRequest, opts ...grpc.CallOption) (*LiveMigrateLocalResponse, error)
 }
 
 type computeServiceClient struct {
@@ -449,6 +454,16 @@ func (c *computeServiceClient) CancelTierMigration(ctx context.Context, in *Canc
 	return out, nil
 }
 
+func (c *computeServiceClient) LiveMigrateLocal(ctx context.Context, in *LiveMigrateLocalRequest, opts ...grpc.CallOption) (*LiveMigrateLocalResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LiveMigrateLocalResponse)
+	err := c.cc.Invoke(ctx, ComputeService_LiveMigrateLocal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility.
@@ -501,6 +516,10 @@ type ComputeServiceServer interface {
 	ClearTierMigrations(context.Context, *ClearTierMigrationsRequest) (*ClearTierMigrationsResponse, error)
 	// CancelTierMigration cancels a pending or in-progress tier migration
 	CancelTierMigration(context.Context, *CancelTierMigrationRequest) (*CancelTierMigrationResponse, error)
+	// LiveMigrateLocal performs an in-place migration of a VM to a new
+	// cloud-hypervisor process on the same host via snapshot/restore.
+	// Used for CH binary upgrades. Downtime scales with VM RAM size.
+	LiveMigrateLocal(context.Context, *LiveMigrateLocalRequest) (*LiveMigrateLocalResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -600,6 +619,9 @@ func (UnimplementedComputeServiceServer) ClearTierMigrations(context.Context, *C
 }
 func (UnimplementedComputeServiceServer) CancelTierMigration(context.Context, *CancelTierMigrationRequest) (*CancelTierMigrationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelTierMigration not implemented")
+}
+func (UnimplementedComputeServiceServer) LiveMigrateLocal(context.Context, *LiveMigrateLocalRequest) (*LiveMigrateLocalResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LiveMigrateLocal not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 func (UnimplementedComputeServiceServer) testEmbeddedByValue()                        {}
@@ -1134,6 +1156,24 @@ func _ComputeService_CancelTierMigration_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_LiveMigrateLocal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LiveMigrateLocalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).LiveMigrateLocal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_LiveMigrateLocal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).LiveMigrateLocal(ctx, req.(*LiveMigrateLocalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1244,6 +1284,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelTierMigration",
 			Handler:    _ComputeService_CancelTierMigration_Handler,
+		},
+		{
+			MethodName: "LiveMigrateLocal",
+			Handler:    _ComputeService_LiveMigrateLocal_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

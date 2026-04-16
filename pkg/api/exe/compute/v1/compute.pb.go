@@ -467,6 +467,55 @@ func (CloneInstanceStatus_State) EnumDescriptor() ([]byte, []int) {
 	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{71, 0}
 }
 
+type LiveMigrateLocalResponse_Outcome int32
+
+const (
+	LiveMigrateLocalResponse_UNKNOWN        LiveMigrateLocalResponse_Outcome = 0
+	LiveMigrateLocalResponse_LIVE_MIGRATED  LiveMigrateLocalResponse_Outcome = 1 // VM was live-migrated to a new CH process
+	LiveMigrateLocalResponse_COLD_RESTARTED LiveMigrateLocalResponse_Outcome = 2 // Live migrate failed; VM was cold-restarted
+)
+
+// Enum value maps for LiveMigrateLocalResponse_Outcome.
+var (
+	LiveMigrateLocalResponse_Outcome_name = map[int32]string{
+		0: "UNKNOWN",
+		1: "LIVE_MIGRATED",
+		2: "COLD_RESTARTED",
+	}
+	LiveMigrateLocalResponse_Outcome_value = map[string]int32{
+		"UNKNOWN":        0,
+		"LIVE_MIGRATED":  1,
+		"COLD_RESTARTED": 2,
+	}
+)
+
+func (x LiveMigrateLocalResponse_Outcome) Enum() *LiveMigrateLocalResponse_Outcome {
+	p := new(LiveMigrateLocalResponse_Outcome)
+	*p = x
+	return p
+}
+
+func (x LiveMigrateLocalResponse_Outcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LiveMigrateLocalResponse_Outcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_exe_compute_v1_compute_proto_enumTypes[8].Descriptor()
+}
+
+func (LiveMigrateLocalResponse_Outcome) Type() protoreflect.EnumType {
+	return &file_exe_compute_v1_compute_proto_enumTypes[8]
+}
+
+func (x LiveMigrateLocalResponse_Outcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LiveMigrateLocalResponse_Outcome.Descriptor instead.
+func (LiveMigrateLocalResponse_Outcome) EnumDescriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{88, 0}
+}
+
 type CreateInstanceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ID            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -5667,6 +5716,110 @@ func (x *CancelTierMigrationResponse) GetState() string {
 	return ""
 }
 
+type LiveMigrateLocalRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstanceID    string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LiveMigrateLocalRequest) Reset() {
+	*x = LiveMigrateLocalRequest{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LiveMigrateLocalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LiveMigrateLocalRequest) ProtoMessage() {}
+
+func (x *LiveMigrateLocalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LiveMigrateLocalRequest.ProtoReflect.Descriptor instead.
+func (*LiveMigrateLocalRequest) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *LiveMigrateLocalRequest) GetInstanceID() string {
+	if x != nil {
+		return x.InstanceID
+	}
+	return ""
+}
+
+type LiveMigrateLocalResponse struct {
+	state          protoimpl.MessageState           `protogen:"open.v1"`
+	Outcome        LiveMigrateLocalResponse_Outcome `protobuf:"varint,1,opt,name=outcome,proto3,enum=exe.compute.v1.LiveMigrateLocalResponse_Outcome" json:"outcome,omitempty"`
+	DowntimeMs     int64                            `protobuf:"varint,2,opt,name=downtime_ms,json=downtimeMs,proto3" json:"downtime_ms,omitempty"`            // Time VM was unavailable (paused or stopped)
+	MigrationError string                           `protobuf:"bytes,3,opt,name=migration_error,json=migrationError,proto3" json:"migration_error,omitempty"` // Set when outcome == COLD_RESTARTED
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *LiveMigrateLocalResponse) Reset() {
+	*x = LiveMigrateLocalResponse{}
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LiveMigrateLocalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LiveMigrateLocalResponse) ProtoMessage() {}
+
+func (x *LiveMigrateLocalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LiveMigrateLocalResponse.ProtoReflect.Descriptor instead.
+func (*LiveMigrateLocalResponse) Descriptor() ([]byte, []int) {
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *LiveMigrateLocalResponse) GetOutcome() LiveMigrateLocalResponse_Outcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return LiveMigrateLocalResponse_UNKNOWN
+}
+
+func (x *LiveMigrateLocalResponse) GetDowntimeMs() int64 {
+	if x != nil {
+		return x.DowntimeMs
+	}
+	return 0
+}
+
+func (x *LiveMigrateLocalResponse) GetMigrationError() string {
+	if x != nil {
+		return x.MigrationError
+	}
+	return ""
+}
+
 var File_exe_compute_v1_compute_proto protoreflect.FileDescriptor
 
 const file_exe_compute_v1_compute_proto_rawDesc = "" +
@@ -6099,7 +6252,19 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\"V\n" +
 	"\x1bCancelTierMigrationResponse\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x14\n" +
-	"\x05state\x18\x02 \x01(\tR\x05state*\x99\x01\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\":\n" +
+	"\x17LiveMigrateLocalRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\"\xef\x01\n" +
+	"\x18LiveMigrateLocalResponse\x12J\n" +
+	"\aoutcome\x18\x01 \x01(\x0e20.exe.compute.v1.LiveMigrateLocalResponse.OutcomeR\aoutcome\x12\x1f\n" +
+	"\vdowntime_ms\x18\x02 \x01(\x03R\n" +
+	"downtimeMs\x12'\n" +
+	"\x0fmigration_error\x18\x03 \x01(\tR\x0emigrationError\"=\n" +
+	"\aOutcome\x12\v\n" +
+	"\aUNKNOWN\x10\x00\x12\x11\n" +
+	"\rLIVE_MIGRATED\x10\x01\x12\x12\n" +
+	"\x0eCOLD_RESTARTED\x10\x02*\x99\x01\n" +
 	"\aVMState\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aCREATED\x10\x01\x12\f\n" +
@@ -6113,7 +6278,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\bUPDATING\x10\b\x12\t\n" +
 	"\x05ERROR\x10\t\x12\f\n" +
 	"\bCREATING\x10\n" +
-	"2\xc7\x17\n" +
+	"2\xae\x18\n" +
 	"\x0eComputeService\x12a\n" +
 	"\x0eCreateInstance\x12%.exe.compute.v1.CreateInstanceRequest\x1a&.exe.compute.v1.CreateInstanceResponse0\x01\x12^\n" +
 	"\rListInstances\x12$.exe.compute.v1.ListInstancesRequest\x1a%.exe.compute.v1.ListInstancesResponse0\x01\x12_\n" +
@@ -6146,7 +6311,8 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x16GetTierMigrationStatus\x12-.exe.compute.v1.GetTierMigrationStatusRequest\x1a..exe.compute.v1.GetTierMigrationStatusResponse\x12e\n" +
 	"\x10ListStorageTiers\x12'.exe.compute.v1.ListStorageTiersRequest\x1a(.exe.compute.v1.ListStorageTiersResponse\x12n\n" +
 	"\x13ClearTierMigrations\x12*.exe.compute.v1.ClearTierMigrationsRequest\x1a+.exe.compute.v1.ClearTierMigrationsResponse\x12n\n" +
-	"\x13CancelTierMigration\x12*.exe.compute.v1.CancelTierMigrationRequest\x1a+.exe.compute.v1.CancelTierMigrationResponseB\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
+	"\x13CancelTierMigration\x12*.exe.compute.v1.CancelTierMigrationRequest\x1a+.exe.compute.v1.CancelTierMigrationResponse\x12e\n" +
+	"\x10LiveMigrateLocal\x12'.exe.compute.v1.LiveMigrateLocalRequest\x1a(.exe.compute.v1.LiveMigrateLocalResponseB\x18Z\x16exe.dev/api/compute/v1b\x06proto3"
 
 var (
 	file_exe_compute_v1_compute_proto_rawDescOnce sync.Once
@@ -6160,8 +6326,8 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 	return file_exe_compute_v1_compute_proto_rawDescData
 }
 
-var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 88)
+var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 90)
 var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(VMState)(0),                            // 0: exe.compute.v1.VMState
 	(Log_Type)(0),                           // 1: exe.compute.v1.Log.Type
@@ -6171,207 +6337,213 @@ var file_exe_compute_v1_compute_proto_goTypes = []any{
 	(SendVMControl_Action)(0),               // 5: exe.compute.v1.SendVMControl.Action
 	(SendVMAwaitControl_Reason)(0),          // 6: exe.compute.v1.SendVMAwaitControl.Reason
 	(CloneInstanceStatus_State)(0),          // 7: exe.compute.v1.CloneInstanceStatus.State
-	(*CreateInstanceRequest)(nil),           // 8: exe.compute.v1.CreateInstanceRequest
-	(*Config)(nil),                          // 9: exe.compute.v1.Config
-	(*FileConfig)(nil),                      // 10: exe.compute.v1.FileConfig
-	(*Volume)(nil),                          // 11: exe.compute.v1.Volume
-	(*ExposedPort)(nil),                     // 12: exe.compute.v1.ExposedPort
-	(*Placement)(nil),                       // 13: exe.compute.v1.Placement
-	(*Log)(nil),                             // 14: exe.compute.v1.Log
-	(*CreateInstanceStatus)(nil),            // 15: exe.compute.v1.CreateInstanceStatus
-	(*CreateInstanceResponse)(nil),          // 16: exe.compute.v1.CreateInstanceResponse
-	(*ListInstancesRequest)(nil),            // 17: exe.compute.v1.ListInstancesRequest
-	(*ListInstancesResponse)(nil),           // 18: exe.compute.v1.ListInstancesResponse
-	(*CountInstancesRequest)(nil),           // 19: exe.compute.v1.CountInstancesRequest
-	(*CountInstancesResponse)(nil),          // 20: exe.compute.v1.CountInstancesResponse
-	(*GetInstanceRequest)(nil),              // 21: exe.compute.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),             // 22: exe.compute.v1.GetInstanceResponse
-	(*GetInstanceLogsRequest)(nil),          // 23: exe.compute.v1.GetInstanceLogsRequest
-	(*GetInstanceLogsResponse)(nil),         // 24: exe.compute.v1.GetInstanceLogsResponse
-	(*StartInstanceRequest)(nil),            // 25: exe.compute.v1.StartInstanceRequest
-	(*StartInstanceResponse)(nil),           // 26: exe.compute.v1.StartInstanceResponse
-	(*StopInstanceRequest)(nil),             // 27: exe.compute.v1.StopInstanceRequest
-	(*StopInstanceResponse)(nil),            // 28: exe.compute.v1.StopInstanceResponse
-	(*DeleteInstanceRequest)(nil),           // 29: exe.compute.v1.DeleteInstanceRequest
-	(*DeleteInstanceResponse)(nil),          // 30: exe.compute.v1.DeleteInstanceResponse
-	(*SetInstanceGroupRequest)(nil),         // 31: exe.compute.v1.SetInstanceGroupRequest
-	(*SetInstanceGroupResponse)(nil),        // 32: exe.compute.v1.SetInstanceGroupResponse
-	(*RenameInstanceRequest)(nil),           // 33: exe.compute.v1.RenameInstanceRequest
-	(*RenameInstanceResponse)(nil),          // 34: exe.compute.v1.RenameInstanceResponse
-	(*UpdateInstanceRequest)(nil),           // 35: exe.compute.v1.UpdateInstanceRequest
-	(*UpdateInstanceResponse)(nil),          // 36: exe.compute.v1.UpdateInstanceResponse
-	(*GetSystemInfoRequest)(nil),            // 37: exe.compute.v1.GetSystemInfoRequest
-	(*GetSystemInfoResponse)(nil),           // 38: exe.compute.v1.GetSystemInfoResponse
-	(*MigrationCapabilities)(nil),           // 39: exe.compute.v1.MigrationCapabilities
-	(*Instance)(nil),                        // 40: exe.compute.v1.Instance
-	(*VMConfig)(nil),                        // 41: exe.compute.v1.VMConfig
-	(*DirectoryShare)(nil),                  // 42: exe.compute.v1.DirectoryShare
-	(*IPAddress)(nil),                       // 43: exe.compute.v1.IPAddress
-	(*NetworkInterface)(nil),                // 44: exe.compute.v1.NetworkInterface
-	(*Server)(nil),                          // 45: exe.compute.v1.Server
-	(*ServerLocality)(nil),                  // 46: exe.compute.v1.ServerLocality
-	(*SendVMStartRequest)(nil),              // 47: exe.compute.v1.SendVMStartRequest
-	(*SendVMControl)(nil),                   // 48: exe.compute.v1.SendVMControl
-	(*SendVMStatus)(nil),                    // 49: exe.compute.v1.SendVMStatus
-	(*SendVMTargetReady)(nil),               // 50: exe.compute.v1.SendVMTargetReady
-	(*SendVMProgress)(nil),                  // 51: exe.compute.v1.SendVMProgress
-	(*SendVMResult)(nil),                    // 52: exe.compute.v1.SendVMResult
-	(*SendVMAwaitControl)(nil),              // 53: exe.compute.v1.SendVMAwaitControl
-	(*SendVMMetadata)(nil),                  // 54: exe.compute.v1.SendVMMetadata
-	(*InitSendVMRequest)(nil),               // 55: exe.compute.v1.InitSendVMRequest
-	(*InitSendVMResponse)(nil),              // 56: exe.compute.v1.InitSendVMResponse
-	(*PollSendVMRequest)(nil),               // 57: exe.compute.v1.PollSendVMRequest
-	(*PollSendVMResponse)(nil),              // 58: exe.compute.v1.PollSendVMResponse
-	(*SendVMEvent)(nil),                     // 59: exe.compute.v1.SendVMEvent
-	(*SubmitSendVMControlRequest)(nil),      // 60: exe.compute.v1.SubmitSendVMControlRequest
-	(*SubmitSendVMControlResponse)(nil),     // 61: exe.compute.v1.SubmitSendVMControlResponse
-	(*AbortSendVMRequest)(nil),              // 62: exe.compute.v1.AbortSendVMRequest
-	(*AbortSendVMResponse)(nil),             // 63: exe.compute.v1.AbortSendVMResponse
-	(*InitReceiveVMRequest)(nil),            // 64: exe.compute.v1.InitReceiveVMRequest
-	(*InitReceiveVMResponse)(nil),           // 65: exe.compute.v1.InitReceiveVMResponse
-	(*GetReceiveVMResumeTokenRequest)(nil),  // 66: exe.compute.v1.GetReceiveVMResumeTokenRequest
-	(*GetReceiveVMResumeTokenResponse)(nil), // 67: exe.compute.v1.GetReceiveVMResumeTokenResponse
-	(*AdvanceReceiveVMPhaseRequest)(nil),    // 68: exe.compute.v1.AdvanceReceiveVMPhaseRequest
-	(*AdvanceReceiveVMPhaseResponse)(nil),   // 69: exe.compute.v1.AdvanceReceiveVMPhaseResponse
-	(*UploadReceiveVMSnapshotRequest)(nil),  // 70: exe.compute.v1.UploadReceiveVMSnapshotRequest
-	(*UploadReceiveVMSnapshotResponse)(nil), // 71: exe.compute.v1.UploadReceiveVMSnapshotResponse
-	(*CompleteReceiveVMRequest)(nil),        // 72: exe.compute.v1.CompleteReceiveVMRequest
-	(*CompleteReceiveVMResponse)(nil),       // 73: exe.compute.v1.CompleteReceiveVMResponse
-	(*AbortReceiveVMRequest)(nil),           // 74: exe.compute.v1.AbortReceiveVMRequest
-	(*AbortReceiveVMResponse)(nil),          // 75: exe.compute.v1.AbortReceiveVMResponse
-	(*GrowDiskRequest)(nil),                 // 76: exe.compute.v1.GrowDiskRequest
-	(*GrowDiskResponse)(nil),                // 77: exe.compute.v1.GrowDiskResponse
-	(*CloneInstanceRequest)(nil),            // 78: exe.compute.v1.CloneInstanceRequest
-	(*CloneInstanceStatus)(nil),             // 79: exe.compute.v1.CloneInstanceStatus
-	(*CloneInstanceResponse)(nil),           // 80: exe.compute.v1.CloneInstanceResponse
-	(*ResizeVMRequest)(nil),                 // 81: exe.compute.v1.ResizeVMRequest
-	(*ResizeVMResponse)(nil),                // 82: exe.compute.v1.ResizeVMResponse
-	(*MigrateStorageTierRequest)(nil),       // 83: exe.compute.v1.MigrateStorageTierRequest
-	(*MigrateStorageTierResponse)(nil),      // 84: exe.compute.v1.MigrateStorageTierResponse
-	(*GetTierMigrationStatusRequest)(nil),   // 85: exe.compute.v1.GetTierMigrationStatusRequest
-	(*TierMigrationOperation)(nil),          // 86: exe.compute.v1.TierMigrationOperation
-	(*GetTierMigrationStatusResponse)(nil),  // 87: exe.compute.v1.GetTierMigrationStatusResponse
-	(*ListStorageTiersRequest)(nil),         // 88: exe.compute.v1.ListStorageTiersRequest
-	(*StorageTier)(nil),                     // 89: exe.compute.v1.StorageTier
-	(*ListStorageTiersResponse)(nil),        // 90: exe.compute.v1.ListStorageTiersResponse
-	(*ClearTierMigrationsRequest)(nil),      // 91: exe.compute.v1.ClearTierMigrationsRequest
-	(*ClearTierMigrationsResponse)(nil),     // 92: exe.compute.v1.ClearTierMigrationsResponse
-	(*CancelTierMigrationRequest)(nil),      // 93: exe.compute.v1.CancelTierMigrationRequest
-	(*CancelTierMigrationResponse)(nil),     // 94: exe.compute.v1.CancelTierMigrationResponse
-	nil,                                     // 95: exe.compute.v1.StorageTier.MetadataEntry
+	(LiveMigrateLocalResponse_Outcome)(0),   // 8: exe.compute.v1.LiveMigrateLocalResponse.Outcome
+	(*CreateInstanceRequest)(nil),           // 9: exe.compute.v1.CreateInstanceRequest
+	(*Config)(nil),                          // 10: exe.compute.v1.Config
+	(*FileConfig)(nil),                      // 11: exe.compute.v1.FileConfig
+	(*Volume)(nil),                          // 12: exe.compute.v1.Volume
+	(*ExposedPort)(nil),                     // 13: exe.compute.v1.ExposedPort
+	(*Placement)(nil),                       // 14: exe.compute.v1.Placement
+	(*Log)(nil),                             // 15: exe.compute.v1.Log
+	(*CreateInstanceStatus)(nil),            // 16: exe.compute.v1.CreateInstanceStatus
+	(*CreateInstanceResponse)(nil),          // 17: exe.compute.v1.CreateInstanceResponse
+	(*ListInstancesRequest)(nil),            // 18: exe.compute.v1.ListInstancesRequest
+	(*ListInstancesResponse)(nil),           // 19: exe.compute.v1.ListInstancesResponse
+	(*CountInstancesRequest)(nil),           // 20: exe.compute.v1.CountInstancesRequest
+	(*CountInstancesResponse)(nil),          // 21: exe.compute.v1.CountInstancesResponse
+	(*GetInstanceRequest)(nil),              // 22: exe.compute.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),             // 23: exe.compute.v1.GetInstanceResponse
+	(*GetInstanceLogsRequest)(nil),          // 24: exe.compute.v1.GetInstanceLogsRequest
+	(*GetInstanceLogsResponse)(nil),         // 25: exe.compute.v1.GetInstanceLogsResponse
+	(*StartInstanceRequest)(nil),            // 26: exe.compute.v1.StartInstanceRequest
+	(*StartInstanceResponse)(nil),           // 27: exe.compute.v1.StartInstanceResponse
+	(*StopInstanceRequest)(nil),             // 28: exe.compute.v1.StopInstanceRequest
+	(*StopInstanceResponse)(nil),            // 29: exe.compute.v1.StopInstanceResponse
+	(*DeleteInstanceRequest)(nil),           // 30: exe.compute.v1.DeleteInstanceRequest
+	(*DeleteInstanceResponse)(nil),          // 31: exe.compute.v1.DeleteInstanceResponse
+	(*SetInstanceGroupRequest)(nil),         // 32: exe.compute.v1.SetInstanceGroupRequest
+	(*SetInstanceGroupResponse)(nil),        // 33: exe.compute.v1.SetInstanceGroupResponse
+	(*RenameInstanceRequest)(nil),           // 34: exe.compute.v1.RenameInstanceRequest
+	(*RenameInstanceResponse)(nil),          // 35: exe.compute.v1.RenameInstanceResponse
+	(*UpdateInstanceRequest)(nil),           // 36: exe.compute.v1.UpdateInstanceRequest
+	(*UpdateInstanceResponse)(nil),          // 37: exe.compute.v1.UpdateInstanceResponse
+	(*GetSystemInfoRequest)(nil),            // 38: exe.compute.v1.GetSystemInfoRequest
+	(*GetSystemInfoResponse)(nil),           // 39: exe.compute.v1.GetSystemInfoResponse
+	(*MigrationCapabilities)(nil),           // 40: exe.compute.v1.MigrationCapabilities
+	(*Instance)(nil),                        // 41: exe.compute.v1.Instance
+	(*VMConfig)(nil),                        // 42: exe.compute.v1.VMConfig
+	(*DirectoryShare)(nil),                  // 43: exe.compute.v1.DirectoryShare
+	(*IPAddress)(nil),                       // 44: exe.compute.v1.IPAddress
+	(*NetworkInterface)(nil),                // 45: exe.compute.v1.NetworkInterface
+	(*Server)(nil),                          // 46: exe.compute.v1.Server
+	(*ServerLocality)(nil),                  // 47: exe.compute.v1.ServerLocality
+	(*SendVMStartRequest)(nil),              // 48: exe.compute.v1.SendVMStartRequest
+	(*SendVMControl)(nil),                   // 49: exe.compute.v1.SendVMControl
+	(*SendVMStatus)(nil),                    // 50: exe.compute.v1.SendVMStatus
+	(*SendVMTargetReady)(nil),               // 51: exe.compute.v1.SendVMTargetReady
+	(*SendVMProgress)(nil),                  // 52: exe.compute.v1.SendVMProgress
+	(*SendVMResult)(nil),                    // 53: exe.compute.v1.SendVMResult
+	(*SendVMAwaitControl)(nil),              // 54: exe.compute.v1.SendVMAwaitControl
+	(*SendVMMetadata)(nil),                  // 55: exe.compute.v1.SendVMMetadata
+	(*InitSendVMRequest)(nil),               // 56: exe.compute.v1.InitSendVMRequest
+	(*InitSendVMResponse)(nil),              // 57: exe.compute.v1.InitSendVMResponse
+	(*PollSendVMRequest)(nil),               // 58: exe.compute.v1.PollSendVMRequest
+	(*PollSendVMResponse)(nil),              // 59: exe.compute.v1.PollSendVMResponse
+	(*SendVMEvent)(nil),                     // 60: exe.compute.v1.SendVMEvent
+	(*SubmitSendVMControlRequest)(nil),      // 61: exe.compute.v1.SubmitSendVMControlRequest
+	(*SubmitSendVMControlResponse)(nil),     // 62: exe.compute.v1.SubmitSendVMControlResponse
+	(*AbortSendVMRequest)(nil),              // 63: exe.compute.v1.AbortSendVMRequest
+	(*AbortSendVMResponse)(nil),             // 64: exe.compute.v1.AbortSendVMResponse
+	(*InitReceiveVMRequest)(nil),            // 65: exe.compute.v1.InitReceiveVMRequest
+	(*InitReceiveVMResponse)(nil),           // 66: exe.compute.v1.InitReceiveVMResponse
+	(*GetReceiveVMResumeTokenRequest)(nil),  // 67: exe.compute.v1.GetReceiveVMResumeTokenRequest
+	(*GetReceiveVMResumeTokenResponse)(nil), // 68: exe.compute.v1.GetReceiveVMResumeTokenResponse
+	(*AdvanceReceiveVMPhaseRequest)(nil),    // 69: exe.compute.v1.AdvanceReceiveVMPhaseRequest
+	(*AdvanceReceiveVMPhaseResponse)(nil),   // 70: exe.compute.v1.AdvanceReceiveVMPhaseResponse
+	(*UploadReceiveVMSnapshotRequest)(nil),  // 71: exe.compute.v1.UploadReceiveVMSnapshotRequest
+	(*UploadReceiveVMSnapshotResponse)(nil), // 72: exe.compute.v1.UploadReceiveVMSnapshotResponse
+	(*CompleteReceiveVMRequest)(nil),        // 73: exe.compute.v1.CompleteReceiveVMRequest
+	(*CompleteReceiveVMResponse)(nil),       // 74: exe.compute.v1.CompleteReceiveVMResponse
+	(*AbortReceiveVMRequest)(nil),           // 75: exe.compute.v1.AbortReceiveVMRequest
+	(*AbortReceiveVMResponse)(nil),          // 76: exe.compute.v1.AbortReceiveVMResponse
+	(*GrowDiskRequest)(nil),                 // 77: exe.compute.v1.GrowDiskRequest
+	(*GrowDiskResponse)(nil),                // 78: exe.compute.v1.GrowDiskResponse
+	(*CloneInstanceRequest)(nil),            // 79: exe.compute.v1.CloneInstanceRequest
+	(*CloneInstanceStatus)(nil),             // 80: exe.compute.v1.CloneInstanceStatus
+	(*CloneInstanceResponse)(nil),           // 81: exe.compute.v1.CloneInstanceResponse
+	(*ResizeVMRequest)(nil),                 // 82: exe.compute.v1.ResizeVMRequest
+	(*ResizeVMResponse)(nil),                // 83: exe.compute.v1.ResizeVMResponse
+	(*MigrateStorageTierRequest)(nil),       // 84: exe.compute.v1.MigrateStorageTierRequest
+	(*MigrateStorageTierResponse)(nil),      // 85: exe.compute.v1.MigrateStorageTierResponse
+	(*GetTierMigrationStatusRequest)(nil),   // 86: exe.compute.v1.GetTierMigrationStatusRequest
+	(*TierMigrationOperation)(nil),          // 87: exe.compute.v1.TierMigrationOperation
+	(*GetTierMigrationStatusResponse)(nil),  // 88: exe.compute.v1.GetTierMigrationStatusResponse
+	(*ListStorageTiersRequest)(nil),         // 89: exe.compute.v1.ListStorageTiersRequest
+	(*StorageTier)(nil),                     // 90: exe.compute.v1.StorageTier
+	(*ListStorageTiersResponse)(nil),        // 91: exe.compute.v1.ListStorageTiersResponse
+	(*ClearTierMigrationsRequest)(nil),      // 92: exe.compute.v1.ClearTierMigrationsRequest
+	(*ClearTierMigrationsResponse)(nil),     // 93: exe.compute.v1.ClearTierMigrationsResponse
+	(*CancelTierMigrationRequest)(nil),      // 94: exe.compute.v1.CancelTierMigrationRequest
+	(*CancelTierMigrationResponse)(nil),     // 95: exe.compute.v1.CancelTierMigrationResponse
+	(*LiveMigrateLocalRequest)(nil),         // 96: exe.compute.v1.LiveMigrateLocalRequest
+	(*LiveMigrateLocalResponse)(nil),        // 97: exe.compute.v1.LiveMigrateLocalResponse
+	nil,                                     // 98: exe.compute.v1.StorageTier.MetadataEntry
 }
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
-	13, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
-	11, // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
-	9,  // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
-	10, // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
+	14, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
+	12, // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
+	10, // 2: exe.compute.v1.CreateInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	11, // 3: exe.compute.v1.Config.file:type_name -> exe.compute.v1.FileConfig
 	1,  // 4: exe.compute.v1.Log.type:type_name -> exe.compute.v1.Log.Type
 	2,  // 5: exe.compute.v1.CreateInstanceStatus.state:type_name -> exe.compute.v1.CreateInstanceStatus.State
-	15, // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
-	40, // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	40, // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
-	40, // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	14, // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
-	39, // 11: exe.compute.v1.GetSystemInfoResponse.migration_capabilities:type_name -> exe.compute.v1.MigrationCapabilities
-	41, // 12: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
+	16, // 6: exe.compute.v1.CreateInstanceResponse.status:type_name -> exe.compute.v1.CreateInstanceStatus
+	41, // 7: exe.compute.v1.CreateInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	41, // 8: exe.compute.v1.ListInstancesResponse.instance:type_name -> exe.compute.v1.Instance
+	41, // 9: exe.compute.v1.GetInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	15, // 10: exe.compute.v1.GetInstanceLogsResponse.log:type_name -> exe.compute.v1.Log
+	40, // 11: exe.compute.v1.GetSystemInfoResponse.migration_capabilities:type_name -> exe.compute.v1.MigrationCapabilities
+	42, // 12: exe.compute.v1.Instance.vm_config:type_name -> exe.compute.v1.VMConfig
 	0,  // 13: exe.compute.v1.Instance.state:type_name -> exe.compute.v1.VMState
-	13, // 14: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
-	12, // 15: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
-	42, // 16: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
-	44, // 17: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
+	14, // 14: exe.compute.v1.Instance.placement:type_name -> exe.compute.v1.Placement
+	13, // 15: exe.compute.v1.Instance.exposed_ports:type_name -> exe.compute.v1.ExposedPort
+	43, // 16: exe.compute.v1.VMConfig.shares:type_name -> exe.compute.v1.DirectoryShare
+	45, // 17: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
 	3,  // 18: exe.compute.v1.NetworkInterface.type:type_name -> exe.compute.v1.NetworkInterface.Type
-	43, // 19: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
-	46, // 20: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
+	44, // 19: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
+	47, // 20: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
 	4,  // 21: exe.compute.v1.Server.state:type_name -> exe.compute.v1.Server.ServerState
 	5,  // 22: exe.compute.v1.SendVMControl.action:type_name -> exe.compute.v1.SendVMControl.Action
-	44, // 23: exe.compute.v1.SendVMTargetReady.target_network:type_name -> exe.compute.v1.NetworkInterface
-	40, // 24: exe.compute.v1.SendVMResult.instance:type_name -> exe.compute.v1.Instance
+	45, // 23: exe.compute.v1.SendVMTargetReady.target_network:type_name -> exe.compute.v1.NetworkInterface
+	41, // 24: exe.compute.v1.SendVMResult.instance:type_name -> exe.compute.v1.Instance
 	6,  // 25: exe.compute.v1.SendVMAwaitControl.reason:type_name -> exe.compute.v1.SendVMAwaitControl.Reason
-	44, // 26: exe.compute.v1.SendVMAwaitControl.source_network:type_name -> exe.compute.v1.NetworkInterface
-	40, // 27: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
-	59, // 28: exe.compute.v1.PollSendVMResponse.events:type_name -> exe.compute.v1.SendVMEvent
-	54, // 29: exe.compute.v1.SendVMEvent.metadata:type_name -> exe.compute.v1.SendVMMetadata
-	50, // 30: exe.compute.v1.SendVMEvent.target_ready:type_name -> exe.compute.v1.SendVMTargetReady
-	49, // 31: exe.compute.v1.SendVMEvent.status:type_name -> exe.compute.v1.SendVMStatus
-	51, // 32: exe.compute.v1.SendVMEvent.progress:type_name -> exe.compute.v1.SendVMProgress
-	53, // 33: exe.compute.v1.SendVMEvent.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
-	52, // 34: exe.compute.v1.SendVMEvent.result:type_name -> exe.compute.v1.SendVMResult
-	48, // 35: exe.compute.v1.SubmitSendVMControlRequest.control:type_name -> exe.compute.v1.SendVMControl
-	40, // 36: exe.compute.v1.InitReceiveVMRequest.source_instance:type_name -> exe.compute.v1.Instance
-	44, // 37: exe.compute.v1.InitReceiveVMResponse.target_network:type_name -> exe.compute.v1.NetworkInterface
-	40, // 38: exe.compute.v1.CompleteReceiveVMResponse.instance:type_name -> exe.compute.v1.Instance
-	9,  // 39: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
+	45, // 26: exe.compute.v1.SendVMAwaitControl.source_network:type_name -> exe.compute.v1.NetworkInterface
+	41, // 27: exe.compute.v1.SendVMMetadata.instance:type_name -> exe.compute.v1.Instance
+	60, // 28: exe.compute.v1.PollSendVMResponse.events:type_name -> exe.compute.v1.SendVMEvent
+	55, // 29: exe.compute.v1.SendVMEvent.metadata:type_name -> exe.compute.v1.SendVMMetadata
+	51, // 30: exe.compute.v1.SendVMEvent.target_ready:type_name -> exe.compute.v1.SendVMTargetReady
+	50, // 31: exe.compute.v1.SendVMEvent.status:type_name -> exe.compute.v1.SendVMStatus
+	52, // 32: exe.compute.v1.SendVMEvent.progress:type_name -> exe.compute.v1.SendVMProgress
+	54, // 33: exe.compute.v1.SendVMEvent.await_control:type_name -> exe.compute.v1.SendVMAwaitControl
+	53, // 34: exe.compute.v1.SendVMEvent.result:type_name -> exe.compute.v1.SendVMResult
+	49, // 35: exe.compute.v1.SubmitSendVMControlRequest.control:type_name -> exe.compute.v1.SendVMControl
+	41, // 36: exe.compute.v1.InitReceiveVMRequest.source_instance:type_name -> exe.compute.v1.Instance
+	45, // 37: exe.compute.v1.InitReceiveVMResponse.target_network:type_name -> exe.compute.v1.NetworkInterface
+	41, // 38: exe.compute.v1.CompleteReceiveVMResponse.instance:type_name -> exe.compute.v1.Instance
+	10, // 39: exe.compute.v1.CloneInstanceRequest.configs:type_name -> exe.compute.v1.Config
 	7,  // 40: exe.compute.v1.CloneInstanceStatus.state:type_name -> exe.compute.v1.CloneInstanceStatus.State
-	79, // 41: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
-	40, // 42: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
-	86, // 43: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
-	95, // 44: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
-	89, // 45: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
-	8,  // 46: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
-	17, // 47: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
-	19, // 48: exe.compute.v1.ComputeService.CountInstances:input_type -> exe.compute.v1.CountInstancesRequest
-	21, // 49: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
-	23, // 50: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
-	25, // 51: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
-	27, // 52: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
-	35, // 53: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
-	29, // 54: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
-	31, // 55: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
-	33, // 56: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
-	37, // 57: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
-	55, // 58: exe.compute.v1.ComputeService.InitSendVM:input_type -> exe.compute.v1.InitSendVMRequest
-	57, // 59: exe.compute.v1.ComputeService.PollSendVM:input_type -> exe.compute.v1.PollSendVMRequest
-	60, // 60: exe.compute.v1.ComputeService.SubmitSendVMControl:input_type -> exe.compute.v1.SubmitSendVMControlRequest
-	62, // 61: exe.compute.v1.ComputeService.AbortSendVM:input_type -> exe.compute.v1.AbortSendVMRequest
-	64, // 62: exe.compute.v1.ComputeService.InitReceiveVM:input_type -> exe.compute.v1.InitReceiveVMRequest
-	66, // 63: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:input_type -> exe.compute.v1.GetReceiveVMResumeTokenRequest
-	68, // 64: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:input_type -> exe.compute.v1.AdvanceReceiveVMPhaseRequest
-	70, // 65: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:input_type -> exe.compute.v1.UploadReceiveVMSnapshotRequest
-	72, // 66: exe.compute.v1.ComputeService.CompleteReceiveVM:input_type -> exe.compute.v1.CompleteReceiveVMRequest
-	74, // 67: exe.compute.v1.ComputeService.AbortReceiveVM:input_type -> exe.compute.v1.AbortReceiveVMRequest
-	76, // 68: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
-	81, // 69: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
-	78, // 70: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
-	83, // 71: exe.compute.v1.ComputeService.MigrateStorageTier:input_type -> exe.compute.v1.MigrateStorageTierRequest
-	85, // 72: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
-	88, // 73: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
-	91, // 74: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
-	93, // 75: exe.compute.v1.ComputeService.CancelTierMigration:input_type -> exe.compute.v1.CancelTierMigrationRequest
-	16, // 76: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
-	18, // 77: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
-	20, // 78: exe.compute.v1.ComputeService.CountInstances:output_type -> exe.compute.v1.CountInstancesResponse
-	22, // 79: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
-	24, // 80: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
-	26, // 81: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
-	28, // 82: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
-	36, // 83: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
-	30, // 84: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
-	32, // 85: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
-	34, // 86: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
-	38, // 87: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
-	56, // 88: exe.compute.v1.ComputeService.InitSendVM:output_type -> exe.compute.v1.InitSendVMResponse
-	58, // 89: exe.compute.v1.ComputeService.PollSendVM:output_type -> exe.compute.v1.PollSendVMResponse
-	61, // 90: exe.compute.v1.ComputeService.SubmitSendVMControl:output_type -> exe.compute.v1.SubmitSendVMControlResponse
-	63, // 91: exe.compute.v1.ComputeService.AbortSendVM:output_type -> exe.compute.v1.AbortSendVMResponse
-	65, // 92: exe.compute.v1.ComputeService.InitReceiveVM:output_type -> exe.compute.v1.InitReceiveVMResponse
-	67, // 93: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:output_type -> exe.compute.v1.GetReceiveVMResumeTokenResponse
-	69, // 94: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:output_type -> exe.compute.v1.AdvanceReceiveVMPhaseResponse
-	71, // 95: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:output_type -> exe.compute.v1.UploadReceiveVMSnapshotResponse
-	73, // 96: exe.compute.v1.ComputeService.CompleteReceiveVM:output_type -> exe.compute.v1.CompleteReceiveVMResponse
-	75, // 97: exe.compute.v1.ComputeService.AbortReceiveVM:output_type -> exe.compute.v1.AbortReceiveVMResponse
-	77, // 98: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
-	82, // 99: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
-	80, // 100: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
-	84, // 101: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
-	87, // 102: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
-	90, // 103: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
-	92, // 104: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
-	94, // 105: exe.compute.v1.ComputeService.CancelTierMigration:output_type -> exe.compute.v1.CancelTierMigrationResponse
-	76, // [76:106] is the sub-list for method output_type
-	46, // [46:76] is the sub-list for method input_type
-	46, // [46:46] is the sub-list for extension type_name
-	46, // [46:46] is the sub-list for extension extendee
-	0,  // [0:46] is the sub-list for field type_name
+	80, // 41: exe.compute.v1.CloneInstanceResponse.status:type_name -> exe.compute.v1.CloneInstanceStatus
+	41, // 42: exe.compute.v1.CloneInstanceResponse.instance:type_name -> exe.compute.v1.Instance
+	87, // 43: exe.compute.v1.GetTierMigrationStatusResponse.operations:type_name -> exe.compute.v1.TierMigrationOperation
+	98, // 44: exe.compute.v1.StorageTier.metadata:type_name -> exe.compute.v1.StorageTier.MetadataEntry
+	90, // 45: exe.compute.v1.ListStorageTiersResponse.tiers:type_name -> exe.compute.v1.StorageTier
+	8,  // 46: exe.compute.v1.LiveMigrateLocalResponse.outcome:type_name -> exe.compute.v1.LiveMigrateLocalResponse.Outcome
+	9,  // 47: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
+	18, // 48: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
+	20, // 49: exe.compute.v1.ComputeService.CountInstances:input_type -> exe.compute.v1.CountInstancesRequest
+	22, // 50: exe.compute.v1.ComputeService.GetInstance:input_type -> exe.compute.v1.GetInstanceRequest
+	24, // 51: exe.compute.v1.ComputeService.GetInstanceLogs:input_type -> exe.compute.v1.GetInstanceLogsRequest
+	26, // 52: exe.compute.v1.ComputeService.StartInstance:input_type -> exe.compute.v1.StartInstanceRequest
+	28, // 53: exe.compute.v1.ComputeService.StopInstance:input_type -> exe.compute.v1.StopInstanceRequest
+	36, // 54: exe.compute.v1.ComputeService.UpdateInstance:input_type -> exe.compute.v1.UpdateInstanceRequest
+	30, // 55: exe.compute.v1.ComputeService.DeleteInstance:input_type -> exe.compute.v1.DeleteInstanceRequest
+	32, // 56: exe.compute.v1.ComputeService.SetInstanceGroup:input_type -> exe.compute.v1.SetInstanceGroupRequest
+	34, // 57: exe.compute.v1.ComputeService.RenameInstance:input_type -> exe.compute.v1.RenameInstanceRequest
+	38, // 58: exe.compute.v1.ComputeService.GetSystemInfo:input_type -> exe.compute.v1.GetSystemInfoRequest
+	56, // 59: exe.compute.v1.ComputeService.InitSendVM:input_type -> exe.compute.v1.InitSendVMRequest
+	58, // 60: exe.compute.v1.ComputeService.PollSendVM:input_type -> exe.compute.v1.PollSendVMRequest
+	61, // 61: exe.compute.v1.ComputeService.SubmitSendVMControl:input_type -> exe.compute.v1.SubmitSendVMControlRequest
+	63, // 62: exe.compute.v1.ComputeService.AbortSendVM:input_type -> exe.compute.v1.AbortSendVMRequest
+	65, // 63: exe.compute.v1.ComputeService.InitReceiveVM:input_type -> exe.compute.v1.InitReceiveVMRequest
+	67, // 64: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:input_type -> exe.compute.v1.GetReceiveVMResumeTokenRequest
+	69, // 65: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:input_type -> exe.compute.v1.AdvanceReceiveVMPhaseRequest
+	71, // 66: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:input_type -> exe.compute.v1.UploadReceiveVMSnapshotRequest
+	73, // 67: exe.compute.v1.ComputeService.CompleteReceiveVM:input_type -> exe.compute.v1.CompleteReceiveVMRequest
+	75, // 68: exe.compute.v1.ComputeService.AbortReceiveVM:input_type -> exe.compute.v1.AbortReceiveVMRequest
+	77, // 69: exe.compute.v1.ComputeService.GrowDisk:input_type -> exe.compute.v1.GrowDiskRequest
+	82, // 70: exe.compute.v1.ComputeService.ResizeVM:input_type -> exe.compute.v1.ResizeVMRequest
+	79, // 71: exe.compute.v1.ComputeService.CloneInstance:input_type -> exe.compute.v1.CloneInstanceRequest
+	84, // 72: exe.compute.v1.ComputeService.MigrateStorageTier:input_type -> exe.compute.v1.MigrateStorageTierRequest
+	86, // 73: exe.compute.v1.ComputeService.GetTierMigrationStatus:input_type -> exe.compute.v1.GetTierMigrationStatusRequest
+	89, // 74: exe.compute.v1.ComputeService.ListStorageTiers:input_type -> exe.compute.v1.ListStorageTiersRequest
+	92, // 75: exe.compute.v1.ComputeService.ClearTierMigrations:input_type -> exe.compute.v1.ClearTierMigrationsRequest
+	94, // 76: exe.compute.v1.ComputeService.CancelTierMigration:input_type -> exe.compute.v1.CancelTierMigrationRequest
+	96, // 77: exe.compute.v1.ComputeService.LiveMigrateLocal:input_type -> exe.compute.v1.LiveMigrateLocalRequest
+	17, // 78: exe.compute.v1.ComputeService.CreateInstance:output_type -> exe.compute.v1.CreateInstanceResponse
+	19, // 79: exe.compute.v1.ComputeService.ListInstances:output_type -> exe.compute.v1.ListInstancesResponse
+	21, // 80: exe.compute.v1.ComputeService.CountInstances:output_type -> exe.compute.v1.CountInstancesResponse
+	23, // 81: exe.compute.v1.ComputeService.GetInstance:output_type -> exe.compute.v1.GetInstanceResponse
+	25, // 82: exe.compute.v1.ComputeService.GetInstanceLogs:output_type -> exe.compute.v1.GetInstanceLogsResponse
+	27, // 83: exe.compute.v1.ComputeService.StartInstance:output_type -> exe.compute.v1.StartInstanceResponse
+	29, // 84: exe.compute.v1.ComputeService.StopInstance:output_type -> exe.compute.v1.StopInstanceResponse
+	37, // 85: exe.compute.v1.ComputeService.UpdateInstance:output_type -> exe.compute.v1.UpdateInstanceResponse
+	31, // 86: exe.compute.v1.ComputeService.DeleteInstance:output_type -> exe.compute.v1.DeleteInstanceResponse
+	33, // 87: exe.compute.v1.ComputeService.SetInstanceGroup:output_type -> exe.compute.v1.SetInstanceGroupResponse
+	35, // 88: exe.compute.v1.ComputeService.RenameInstance:output_type -> exe.compute.v1.RenameInstanceResponse
+	39, // 89: exe.compute.v1.ComputeService.GetSystemInfo:output_type -> exe.compute.v1.GetSystemInfoResponse
+	57, // 90: exe.compute.v1.ComputeService.InitSendVM:output_type -> exe.compute.v1.InitSendVMResponse
+	59, // 91: exe.compute.v1.ComputeService.PollSendVM:output_type -> exe.compute.v1.PollSendVMResponse
+	62, // 92: exe.compute.v1.ComputeService.SubmitSendVMControl:output_type -> exe.compute.v1.SubmitSendVMControlResponse
+	64, // 93: exe.compute.v1.ComputeService.AbortSendVM:output_type -> exe.compute.v1.AbortSendVMResponse
+	66, // 94: exe.compute.v1.ComputeService.InitReceiveVM:output_type -> exe.compute.v1.InitReceiveVMResponse
+	68, // 95: exe.compute.v1.ComputeService.GetReceiveVMResumeToken:output_type -> exe.compute.v1.GetReceiveVMResumeTokenResponse
+	70, // 96: exe.compute.v1.ComputeService.AdvanceReceiveVMPhase:output_type -> exe.compute.v1.AdvanceReceiveVMPhaseResponse
+	72, // 97: exe.compute.v1.ComputeService.UploadReceiveVMSnapshot:output_type -> exe.compute.v1.UploadReceiveVMSnapshotResponse
+	74, // 98: exe.compute.v1.ComputeService.CompleteReceiveVM:output_type -> exe.compute.v1.CompleteReceiveVMResponse
+	76, // 99: exe.compute.v1.ComputeService.AbortReceiveVM:output_type -> exe.compute.v1.AbortReceiveVMResponse
+	78, // 100: exe.compute.v1.ComputeService.GrowDisk:output_type -> exe.compute.v1.GrowDiskResponse
+	83, // 101: exe.compute.v1.ComputeService.ResizeVM:output_type -> exe.compute.v1.ResizeVMResponse
+	81, // 102: exe.compute.v1.ComputeService.CloneInstance:output_type -> exe.compute.v1.CloneInstanceResponse
+	85, // 103: exe.compute.v1.ComputeService.MigrateStorageTier:output_type -> exe.compute.v1.MigrateStorageTierResponse
+	88, // 104: exe.compute.v1.ComputeService.GetTierMigrationStatus:output_type -> exe.compute.v1.GetTierMigrationStatusResponse
+	91, // 105: exe.compute.v1.ComputeService.ListStorageTiers:output_type -> exe.compute.v1.ListStorageTiersResponse
+	93, // 106: exe.compute.v1.ComputeService.ClearTierMigrations:output_type -> exe.compute.v1.ClearTierMigrationsResponse
+	95, // 107: exe.compute.v1.ComputeService.CancelTierMigration:output_type -> exe.compute.v1.CancelTierMigrationResponse
+	97, // 108: exe.compute.v1.ComputeService.LiveMigrateLocal:output_type -> exe.compute.v1.LiveMigrateLocalResponse
+	78, // [78:109] is the sub-list for method output_type
+	47, // [47:78] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_exe_compute_v1_compute_proto_init() }
@@ -6405,8 +6577,8 @@ func file_exe_compute_v1_compute_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
-			NumEnums:      8,
-			NumMessages:   88,
+			NumEnums:      9,
+			NumMessages:   90,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

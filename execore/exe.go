@@ -277,6 +277,14 @@ type Server struct {
 	cookieUsesCache exeweb.CookieUsesCache
 	cookieCancel    context.CancelFunc
 
+	// localMigrateOps tracks background local-migrate-all operations per exelet.
+	// localMigrateOpsMu serializes the "claim-or-reject" decision at the start
+	// of a new operation so two concurrent requests can't both pass the
+	// "already-in-progress" check. Held only for the claim; per-op field
+	// access is serialized by the op's own mutex.
+	localMigrateOps   sync.Map // hostname -> *localMigrateOp
+	localMigrateOpsMu sync.Mutex
+
 	// sshKeyAtimes deduplicates UpdateSSHKeyLastUsed writes
 	// to at most once per public key per UTC day.
 	sshKeyAtimes hashtriemap.HashTrieMap[string, string] // publicKey → "2006-01-02"
@@ -370,6 +378,7 @@ type Server struct {
 	startOnce   sync.Once
 	startErr    error              // result of first start attempt
 	startCancel context.CancelFunc // cancel function for start's context
+	shutdownCtx context.Context    // cancelled by Stop; base for server-lifetime background goroutines
 	serveWg     sync.WaitGroup
 	stopOnce    sync.Once
 	stopChan    chan struct{} // closed by Stop to unblock start's select
@@ -3034,6 +3043,7 @@ func (s *Server) start() error {
 	// the cancellation before they try to log errors.
 	ctx, cancel := context.WithCancel(context.Background())
 	s.startCancel = cancel
+	s.shutdownCtx = ctx
 	defer cancel()
 
 	s.initShardIPs(ctx)

@@ -56,6 +56,10 @@ service ComputeService {
   rpc ClearTierMigrations(ClearTierMigrationsRequest) returns (ClearTierMigrationsResponse);
   // CancelTierMigration cancels a pending or in-progress tier migration
   rpc CancelTierMigration(CancelTierMigrationRequest) returns (CancelTierMigrationResponse);
+  // LiveMigrateLocal performs an in-place migration of a VM to a new
+  // cloud-hypervisor process on the same host via snapshot/restore.
+  // Used for CH binary upgrades. Downtime scales with VM RAM size.
+  rpc LiveMigrateLocal(LiveMigrateLocalRequest) returns (LiveMigrateLocalResponse);
 }
 
 message CreateInstanceRequest {
@@ -626,4 +630,19 @@ message CancelTierMigrationRequest {
 message CancelTierMigrationResponse {
   string operation_id = 1;
   string state = 2;                // State after cancellation attempt ("cancelled", "completed", "failed")
+}
+
+message LiveMigrateLocalRequest {
+  string instance_id = 1;
+}
+
+message LiveMigrateLocalResponse {
+  enum Outcome {
+    UNKNOWN = 0;
+    LIVE_MIGRATED = 1;               // VM was live-migrated to a new CH process
+    COLD_RESTARTED = 2;              // Live migrate failed; VM was cold-restarted
+  }
+  Outcome outcome = 1;
+  int64 downtime_ms = 2;             // Time VM was unavailable (paused or stopped)
+  string migration_error = 3;        // Set when outcome == COLD_RESTARTED
 }
