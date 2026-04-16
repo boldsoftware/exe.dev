@@ -32,8 +32,9 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isProxy := wp.isProxyRequest(r.Host)
-	isTerminal := exeweb.IsTerminalRequest(wp.env, r.Host)
+	host := exeweb.RequestHost(r)
+	isProxy := wp.isProxyRequest(host)
+	isTerminal := exeweb.IsTerminalRequest(wp.env, host)
 
 	// Add request classication to logs.
 	if isProxy {
@@ -103,7 +104,7 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// only when accessed via the Tailscale domain. On all other hosts,
 		// /debug falls through to the redirect to exed below, so that we
 		// don't shadow user VMs or exed's /debug endpoints.
-		if wp.tsDomain != "" && domz.Canonicalize(domz.StripPort(r.Host)) == wp.tsDomain {
+		if wp.tsDomain != "" && domz.Canonicalize(domz.StripPort(host)) == wp.tsDomain {
 			exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
 			return
 		}
@@ -200,9 +201,11 @@ func (wp *WebProxy) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Also check the Host header if it contains a port.
-	_, hostPortStr, err := net.SplitHostPort(r.Host)
-	if err == nil && hostPortStr != "" {
+	// Also check the Host header if it contains a port,
+	// and it is not localhost (which is used for tests).
+	host := exeweb.RequestHost(r)
+	hostStr, hostPortStr, err := net.SplitHostPort(host)
+	if err == nil && hostStr != "localhost" && hostPortStr != "" {
 		// Host header has an explicit port - verify it matches main port.
 		hostPort, err := strconv.Atoi(hostPortStr)
 		if err != nil {
@@ -229,27 +232,6 @@ func (wp *WebProxy) isMainListenerPort(port int) bool {
 		return true
 	}
 	return false
-}
-
-// getRequestPort extracts the port number from
-// an HTTP request's Host header.
-// For requests without an explicit port,
-// it returns the default port for the scheme
-// (443 for HTTPS, 80 for HTTP).
-func getRequestPort(r *http.Request) (int, error) {
-	_, portStr, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		// No port in Host header - use default port for the scheme
-		if r.TLS != nil {
-			return 443, nil
-		}
-		return 80, nil
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid port: %w", err)
-	}
-	return port, nil
 }
 
 // exewebProxyData is the local implementation of [exeweb.ProxyData].

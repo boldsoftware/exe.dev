@@ -129,7 +129,7 @@ func (ps *ProxyServer) xtermAuthURL(r *http.Request) string {
 	redirect := RelativeRedirect(r.URL)
 	// Use webBaseURLNoRequest to get the main domain URL without copying the request's port.
 	// Terminal requests may come in on non-standard ports, but the main domain always uses default ports.
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(RequestHost(r)))
 	return authURL
 }
 
@@ -139,7 +139,7 @@ func (ps *ProxyServer) xtermAuthURL(r *http.Request) string {
 func (ps *ProxyServer) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get box name from subdomain
-		boxName, err := ParseTerminalHostname(ps.Env, r.Host)
+		boxName, err := ParseTerminalHostname(ps.Env, RequestHost(r))
 		if err != nil {
 			http.Error(w, "Invalid hostname", http.StatusBadRequest)
 			return

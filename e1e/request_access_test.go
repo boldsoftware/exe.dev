@@ -133,7 +133,7 @@ func TestRequestAccess(t *testing.T) {
 			httpPort:         httpPort,
 			cookies:          nil,
 			httpCode:         http.StatusTemporaryRedirect,
-			redirectLocation: fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, httpPort),
+			redirectLocation: fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?exedev_host=%s.exe.cloud%%3A%d&redirect=%%2F%%3Ffoo%%3D1", box, httpPort, box, httpPort),
 		})
 	})
 

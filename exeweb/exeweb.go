@@ -40,6 +40,21 @@ var ExeNewAliases = map[string]string{
 	"/clawdbot": "openclaw",
 }
 
+// RequestHost returns the host for a request.
+// In a normal request direct to exeprox, this is just r.Host.
+// When exed redirects to exeprox, it passes a exedev_host
+// parameter to preserve the original host across the redirect.
+//
+// Although the user can control the exedev_host parameter,
+// this is not a security issue; the parameter only replaces
+// the Host header, which the user can already control.
+func RequestHost(r *http.Request) string {
+	if header := r.URL.Query().Get("exedev_host"); header != "" {
+		return header
+	}
+	return r.Host
+}
+
 // NonProxyRedirect is called from an HTTP handler.
 // It looks for cases where we redirect the URL.
 // It does not consider cases where we should proxy the URL,
@@ -48,7 +63,7 @@ var ExeNewAliases = map[string]string{
 // or the empty string in the normal case that no redirection is needed.
 func NonProxyRedirect(env *stage.Env, r *http.Request) string {
 	isKnownHostsRequest := r.URL.Path == SSHKnownHostsPath
-	hostname := domz.Canonicalize(domz.StripPort(r.Host))
+	hostname := domz.Canonicalize(domz.StripPort(RequestHost(r)))
 
 	// Redirect requests to BoxHost apex (exe.xyz) to WebHost (exe.dev).
 	// BoxHost is only for box subdomains (vmname.exe.xyz);

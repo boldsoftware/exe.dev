@@ -89,11 +89,12 @@ func (m *HTTPMetrics) Wrap(next http.Handler) http.Handler {
 		path := SanitizePath(r.URL.Path)
 		box := ""
 
-		if m.isProxyHost != nil && m.isProxyHost(r.Host) {
+		host := RequestHost(r)
+		if m.isProxyHost != nil && m.isProxyHost(host) {
 			proxy = "true"
 			path = ""
 			if m.boxFromHost != nil {
-				box = m.boxFromHost(r.Host)
+				box = m.boxFromHost(host)
 			}
 		}
 

@@ -117,36 +117,41 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	host := RequestHost(r)
 	hostHeaderPort := 0
-	hostHeaderHost, hostPortStr, err := net.SplitHostPort(r.Host)
+	hostHeaderHost, hostPortStr, err := net.SplitHostPort(host)
 	if err != nil {
 		// No port in Host header, that's fine if it's the default port which only
 		// happens in HTTPS land...
-		hostHeaderHost = r.Host
+		hostHeaderHost = host
 		if ps.ProxyHTTPSPort != 0 {
 			hostHeaderPort = ps.ProxyHTTPSPort
 		} else {
-			ps.Lg.WarnContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", r.Host, "error", err)
+			ps.Lg.WarnContext(r.Context(), "Host header didn't have port but we're not using default ports", "host", host, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 	} else {
 		hostHeaderPort, err = strconv.Atoi(hostPortStr)
 		if err != nil {
-			ps.Lg.WarnContext(r.Context(), "Failed to convert host port to integer", "host", r.Host, "error", err)
+			ps.Lg.WarnContext(r.Context(), "Failed to convert host port to integer", "host", host, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 	}
 	if hostHeaderPort != localPort {
-		ps.Lg.WarnContext(r.Context(), "Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
-		http.Error(w, "internal server error", http.StatusBadRequest)
-		return
+		// In the testsuite this can happen when exed redirects
+		// to exeprox. In that case the local address will be localhost.
+		if tcpAddr, ok := conn.(*net.TCPAddr); ok && !tcpAddr.IP.IsLoopback() {
+			ps.Lg.WarnContext(r.Context(), "Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort, "localAddr", conn, "requestHost", r.Host, "hostHeader", host)
+			http.Error(w, "internal server error", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
-		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
+		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Magic auth URL accessed", "host", host, "path", r.URL.Path)
 		ps.HandleMagicAuth(w, r)
 		return
 	}
@@ -159,14 +164,14 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 
 	// Handle logout URL
 	if r.URL.Path == "/__exe.dev/logout" {
-		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
+		ps.Lg.InfoContext(r.Context(), "[REDIRECT] Logout URL accessed", "host", host, "path", r.URL.Path)
 		ps.HandleProxyLogout(w, r)
 		return
 	}
 
 	// Handle request-access URL
 	if r.URL.Path == "/__exe.dev/request-access" {
-		ps.HandleRequestAccess(w, r)
+		ps.HandleRequestAccess(w, r, host)
 		return
 	}
 
@@ -179,7 +184,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	// Parse hostname to extract box name and optional explicit target port
 	boxName, err := ps.domainResolver().ResolveBoxName(r.Context(), hostHeaderHost)
 	if err != nil {
-		ps.Lg.WarnContext(r.Context(), "Failed to resolve box name", "host", r.Host, "error", err)
+		ps.Lg.WarnContext(r.Context(), "Failed to resolve box name", "host", host, "error", err)
 		http.Error(w, "Invalid Hostname", http.StatusBadRequest)
 		return
 	}
@@ -263,7 +268,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	var shelleyTeamCheck bool // check team_shelley sharing for Shelley requests
 	boxRoute := box.BoxRoute
 	targetPort := hostHeaderPort
-	if IsShelleyRequest(ps.Env, r.Host) {
+	if IsShelleyRequest(ps.Env, host) {
 		route = BoxRoute{Port: 9999, Share: "private"}
 		ownerOnly = true
 		shelleyTeamCheck = true
@@ -298,7 +303,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 				return
 			}
 			// Browser client - redirect to auth flow.
-			ps.RedirectToAuth(w, r)
+			ps.RedirectToAuth(w, r, host)
 			return
 		}
 		userID := authResult.UserID
@@ -557,7 +562,7 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 
 	// Determine cookie name based on request type (terminal vs proxy)
 	var cookieName string
-	if IsTerminalRequest(ps.Env, r.Host) {
+	if IsTerminalRequest(ps.Env, RequestHost(r)) {
 		cookieName = "exe-auth"
 	} else {
 		port, err := GetRequestPort(r)
@@ -589,7 +594,8 @@ func (ps *ProxyServer) HandleMagicAuth(w http.ResponseWriter, r *http.Request) {
 // It redirects to the main domain auth flow with redirect and
 // return_host parameters.
 func (ps *ProxyServer) HandleProxyLogin(w http.ResponseWriter, r *http.Request) {
-	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", r.Host)
+	host := RequestHost(r)
+	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleProxyLogin called", "host", host)
 
 	redirect := r.URL.Query().Get("redirect")
 	if !IsValidRedirectURL(redirect) {
@@ -601,7 +607,7 @@ func (ps *ProxyServer) HandleProxyLogin(w http.ResponseWriter, r *http.Request) 
 	// The main domain (exe.dev) always runs on the
 	// default HTTPS port (443),
 	// even when the proxy request came in on a non-standard port like 9999.
-	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(r.Host))
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", ps.webBaseURLNoRequest(), url.QueryEscape(redirect), url.QueryEscape(host))
 
 	ps.Lg.DebugContext(r.Context(), "[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
@@ -854,7 +860,10 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 
 	ctx := r.Context()
 	cookieValue := cookie.Value
-	// Strip port from domain since cookies are per-host, not per-host:port
+	// Strip port from domain since cookies are per-host,
+	// not per-host:port.
+	// We don't use RequestHost here because the auth cookie
+	// is associated with exe.dev, not the user host.
 	domain := domz.StripPort(r.Host)
 
 	// Get auth cookie info
@@ -1126,6 +1135,11 @@ func (ps *ProxyServer) isDefaultServerPort(port int) bool {
 		return true
 	}
 
+	// Also accept the exed port, for tests.
+	if ps.ExedHTTPPort != 0 && ps.ExedHTTPPort == port {
+		return true
+	}
+
 	return false
 }
 
@@ -1256,7 +1270,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 		authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s",
 			ps.webBaseURLNoRequest(),
 			url.QueryEscape(redirect),
-			url.QueryEscape(r.Host),
+			url.QueryEscape(RequestHost(r)),
 		)
 		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 		return
@@ -1302,13 +1316,13 @@ func (ps *ProxyServer) RenderLockedOutPage(w http.ResponseWriter, r *http.Reques
 
 // HandleRequestAccess handles GET and POST for /__exe.dev/request-access.
 // GET renders the request-access form. POST sends an access request email to the box owner.
-func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Request) {
+func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Request, host string) {
 	ctx := r.Context()
 
 	// Authenticate the user.
 	userID, err := ps.ValidateProxyAuthCookie(r)
 	if err != nil {
-		ps.RedirectToAuth(w, r)
+		ps.RedirectToAuth(w, r, host)
 		return
 	}
 
@@ -1324,9 +1338,9 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	requesterEmail := userData.Email
 
 	// Resolve the box from the hostname.
-	hostHeaderHost, _, err := net.SplitHostPort(r.Host)
+	hostHeaderHost, _, err := net.SplitHostPort(host)
 	if err != nil {
-		hostHeaderHost = r.Host
+		hostHeaderHost = host
 	}
 	boxName, err := ps.domainResolver().ResolveBoxName(ctx, hostHeaderHost)
 	if err != nil || boxName == "" {
@@ -1416,10 +1430,11 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 
 // RedirectToAuth redirects the user to the /__exe.dev/login URL
 // which will then redirect to the main domain auth flow.
-func (ps *ProxyServer) RedirectToAuth(w http.ResponseWriter, r *http.Request) {
+func (ps *ProxyServer) RedirectToAuth(w http.ResponseWriter, r *http.Request, host string) {
 	redirect := RelativeRedirect(r.URL)
 	authURL := makeAuthURL("login", r, url.Values{
-		"redirect": {redirect},
+		"redirect":    {redirect},
+		"exedev_host": {host},
 	})
 
 	ps.Lg.DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", r.URL, "to", authURL)

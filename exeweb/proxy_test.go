@@ -1114,7 +1114,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to unescape location: %v", err)
 	}
 
-	want := "https://example.com/__exe.dev/login?redirect=/"
+	want := "https://example.com/__exe.dev/login?exedev_host=example.com&redirect=/"
 	if unescaped != want {
 		t.Errorf("got redirect to %s, want %s", unescaped, want)
 	}

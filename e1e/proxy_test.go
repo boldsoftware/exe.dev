@@ -347,7 +347,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, extraPorts[0])
 
-		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=%%2F%%3Ffoo%%3D1", box, extraPorts[0])
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?exedev_host=%s.exe.cloud%%3A%d&redirect=%%2F%%3Ffoo%%3D1", box, extraPorts[0], box, extraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
 			name:             "altport without auth redirects",
 			httpPort:         extraPorts[0],
