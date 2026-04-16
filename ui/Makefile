@@ -86,3 +86,7 @@ typecheck: $(NODE_BIN)/.corepack-enabled ## Run vue-tsc type checking
 
 dev: $(NODE_BIN)/.corepack-enabled ## Run Vite dev server
 	pnpm dev
+
+test: $(NODE_BIN)/.corepack-enabled ## Run vitest unit tests
+	pnpm install --frozen-lockfile
+	pnpm test
