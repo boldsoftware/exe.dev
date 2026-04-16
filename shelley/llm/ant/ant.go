@@ -31,11 +31,13 @@ const (
 	Claude45Opus   = "claude-opus-4-5-20251101"
 	Claude46Opus   = "claude-opus-4-6"
 	Claude46Sonnet = "claude-sonnet-4-6"
+	Claude47Opus   = "claude-opus-4-7"
 )
 
 // modelMaxOutputTokens maps model names to their maximum output token limits.
 // See https://docs.anthropic.com/en/docs/about-claude/models/all-models
 var modelMaxOutputTokens = map[string]int{
+	Claude47Opus:   128000,
 	Claude46Opus:   128000,
 	Claude45Opus:   128000,
 	Claude46Sonnet: 64000,
@@ -68,7 +70,7 @@ func ClaudeModelName(userName string) string {
 	case "claude", "sonnet":
 		return Claude46Sonnet
 	case "opus":
-		return Claude46Opus
+		return Claude47Opus
 	default:
 		return ""
 	}
@@ -87,7 +89,7 @@ func (s *Service) maxOutputTokens() int {
 		model = DefaultModel
 	}
 	switch model {
-	case Claude46Opus:
+	case Claude47Opus, Claude46Opus:
 		return 128000
 	case Claude4Sonnet, Claude45Sonnet, Claude46Sonnet,
 		Claude45Haiku, Claude45Opus:
@@ -242,11 +244,24 @@ type systemContent struct {
 	CacheControl json.RawMessage `json:"cache_control,omitempty"`
 }
 
+// useAdaptiveThinking reports whether the model requires adaptive thinking
+// (thinking: {type: "adaptive"} + output_config: {effort: "..."}) instead of
+// the legacy manual thinking (thinking: {type: "enabled", budget_tokens: N}).
+// Claude Opus 4.7 and later require adaptive thinking.
+func useAdaptiveThinking(model string) bool {
+	return model == Claude47Opus || strings.HasPrefix(model, "claude-opus-4-7-")
+}
+
 // request represents the request payload for creating a message.
 // thinking configures extended thinking for Claude models.
 type thinking struct {
-	Type         string `json:"type"`                    // "enabled"
-	BudgetTokens int    `json:"budget_tokens,omitempty"` // Max tokens for thinking
+	Type         string `json:"type"`                    // "enabled" or "adaptive"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // Max tokens for thinking (legacy, not used with adaptive)
+}
+
+// outputConfig controls output behavior (effort level for adaptive thinking).
+type outputConfig struct {
+	Effort string `json:"effort,omitempty"` // "minimal", "low", "medium", "high"
 }
 
 type request struct {
@@ -259,6 +274,7 @@ type request struct {
 	Tools         []*tool         `json:"tools,omitempty"`
 	ToolChoice    *toolChoice     `json:"tool_choice,omitempty"`
 	Thinking      *thinking       `json:"thinking,omitempty"`
+	OutputConfig  *outputConfig   `json:"output_config,omitempty"`
 	Temperature   float64         `json:"temperature,omitempty"`
 	TopK          int             `json:"top_k,omitempty"`
 	TopP          float64         `json:"top_p,omitempty"`
@@ -494,12 +510,19 @@ func (s *Service) fromLLMRequest(r *llm.Request) *request {
 
 	// Enable extended thinking if a thinking level is set
 	if s.ThinkingLevel != llm.ThinkingLevelOff {
-		budget := s.ThinkingLevel.ThinkingBudgetTokens()
-		// Ensure max_tokens > budget_tokens as required by Anthropic API
-		if maxTokens <= budget {
-			req.MaxTokens = budget + 1024
+		if useAdaptiveThinking(model) {
+			// Opus 4.7+: adaptive thinking with effort level
+			req.Thinking = &thinking{Type: "adaptive"}
+			req.OutputConfig = &outputConfig{Effort: s.ThinkingLevel.ThinkingEffort()}
+		} else {
+			// Legacy: manual thinking with budget_tokens
+			budget := s.ThinkingLevel.ThinkingBudgetTokens()
+			// Ensure max_tokens > budget_tokens as required by Anthropic API
+			if maxTokens <= budget {
+				req.MaxTokens = budget + 1024
+			}
+			req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
 		}
-		req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
 	}
 
 	// Cap max_tokens at the model's maximum allowed output tokens
@@ -540,11 +563,16 @@ func (s *Service) fromLLMRequestStrippingAllThinking(r *llm.Request) *request {
 	}
 
 	if s.ThinkingLevel != llm.ThinkingLevelOff {
-		budget := s.ThinkingLevel.ThinkingBudgetTokens()
-		if maxTokens <= budget {
-			req.MaxTokens = budget + 1024
+		if useAdaptiveThinking(model) {
+			req.Thinking = &thinking{Type: "adaptive"}
+			req.OutputConfig = &outputConfig{Effort: s.ThinkingLevel.ThinkingEffort()}
+		} else {
+			budget := s.ThinkingLevel.ThinkingBudgetTokens()
+			if maxTokens <= budget {
+				req.MaxTokens = budget + 1024
+			}
+			req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
 		}
-		req.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
 	}
 
 	if limit := s.maxOutputTokens(); req.MaxTokens > limit {
