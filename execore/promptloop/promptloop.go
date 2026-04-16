@@ -179,7 +179,7 @@ type Output interface {
 // --- The loop ---
 
 const (
-	defaultModel     = "claude-opus-4-6"
+	defaultModel     = "claude-opus-4-7"
 	defaultMaxTokens = 8192
 	maxTurns         = 50
 )
@@ -225,7 +225,7 @@ type Config struct {
 	Dispatcher   CommandDispatcher
 	Output       Output
 	SystemPrompt string
-	ModelName    string // e.g. "claude-opus-4-6" (Anthropic API model ID)
+	ModelName    string // e.g. "claude-opus-4-7" (Anthropic API model ID)
 	MaxTokens    int
 }
 
