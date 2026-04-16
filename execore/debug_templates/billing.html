@@ -16,20 +16,10 @@ table.info th { width: 200px; }
 <div class="section">
 <h2>Account: {{.AccountID}}</h2>
 <table class="info">
+<tr><th>User ID</th><td><code>{{$.UserID}}</code></td></tr>
 <tr><th>Account Status</th><td>{{.AccountStatus}}</td></tr>
 <tr><th>Parent Account</th><td>{{if .ParentID}}<a href="/debug/billing?userId={{.ParentCreatedBy}}"><code>{{.ParentID}}</code></a>{{else}}—{{end}}</td></tr>
 <tr><th>Stripe Dashboard</th><td><a href="{{.StripeDashboardURL}}" target="_blank">{{.StripeDashboardURL}}</a></td></tr>
-</table>
-
-<h2>Plan</h2>
-
-<h4>Details</h4>
-<table class="info">
-<tr><th>Plan ID</th><td><code>{{if .CurrentPlanID}}{{.CurrentPlanID}}{{else}}(none){{end}}</code></td></tr>
-<tr><th>Started At</th><td>{{if .CurrentPlanAt}}{{.CurrentPlanAt}}{{else}}—{{end}}</td></tr>
-<tr><th>Ended At</th><td><em>(active)</em></td></tr>
-<tr><th>Trial Expires At</th><td>{{if .TrialExpiresAt}}{{.TrialExpiresAt}}{{else}}—{{end}}</td></tr>
-<tr><th>Changed By</th><td>{{if .PlanChangedBy}}{{.PlanChangedBy}}{{else}}—{{end}}</td></tr>
 </table>
 
 {{if .PaymentMethod}}
@@ -44,15 +34,39 @@ table.info th { width: 200px; }
 </table>
 {{end}}
 
+<h2>Plan</h2>
+
+<h4>Details</h4>
+<table class="info">
+<tr><th>Plan ID</th><td><code>{{if .CurrentPlanID}}{{.CurrentPlanID}}{{else}}(none){{end}}</code></td></tr>
+<tr><th>Trial Expires At</th><td>{{if .TrialExpiresAt}}{{.TrialExpiresAt}}{{else}}—{{end}}</td></tr>
+<tr><th>Current Period</th><td>{{if $.BillingPeriodStart}}{{$.BillingPeriodStart}} → {{$.BillingPeriodEnd}}{{else}}—{{end}}</td></tr>
+<tr><th>Next Invoice</th><td>{{if $.NextInvoiceDate}}{{$.NextInvoiceAmount}} on {{$.NextInvoiceDate}}{{else}}—{{end}}</td></tr>
+</table>
+
 {{if $.Entitlements}}
-<h4>Entitlements{{if $.IsOnTeam}} <span class="muted">(inherited from team billing owner)</span>{{end}}</h4>
+<h4>Entitlements</h4>
 <table class="info">
 <thead>
-<tr><th>Entitlement</th><th>ID</th><th>Status</th></tr>
+<tr><th>ID</th><th>Team</th><th>User</th><th>Effective</th></tr>
 </thead>
 <tbody>
 {{range $.Entitlements}}
-<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}Granted{{else}}Denied{{end}}</td></tr>
+<tr><td><code>{{.ID}}</code></td><td>{{.Team}}</td><td>{{.User}}</td><td>{{.Effective}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{if $.Quotas}}
+<h4>Quotas</h4>
+<table class="info">
+<thead>
+<tr><th>Quota</th><th>Plan</th><th>Stage</th><th>User Limit</th><th>Effective</th></tr>
+</thead>
+<tbody>
+{{range $.Quotas}}
+<tr><td>{{.Name}}</td><td>{{.Plan}}</td><td>{{.Stage}}</td><td>{{.UserLimit}}</td><td>{{.Effective}}</td></tr>
 {{end}}
 </tbody>
 </table>
@@ -114,51 +128,30 @@ table.info th { width: 200px; }
 
 <h2>Usage</h2>
 
+{{if $.BillingPeriodStart}}
+<table class="info">
+<tr><th>Current Period Start</th><td>{{$.BillingPeriodStart}}</td></tr>
+<tr><th>Current Period End</th><td>{{$.BillingPeriodEnd}}</td></tr>
+</table>
+{{end}}
+
 {{if $.HasMetricsd}}
 {{if $.MonthlyMetrics}}
 <h4>Monthly Usage</h4>
 <table>
-<thead><tr><th>Month</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Days</th><th>Disk Overage (GB)</th><th>Disk Cost</th><th>BW Overage (GB)</th><th>BW Cost</th></tr></thead>
+<thead><tr><th>Month</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
 <tbody>
 {{range $.MonthlyMetrics}}
 <tr>
-  <td>{{.MonthStart.Format "2006-01"}}</td>
+  <td rowspan="2">{{.MonthStart.Format "2006-01"}}</td>
+  <td>Disk</td>
   <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .DiskLogicalMaxBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
-  <td>{{printf "%.1f" .CPUSeconds}}</td>
-  <td>{{printf "%.3f" (divf64 .IOReadBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .IOWriteBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
-  <td>{{.DaysWithData}}</td>
   <td>{{overage .DiskLogicalAvgBytes 25}}</td>
   <td>{{diskCost .DiskLogicalAvgBytes}}</td>
-  <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
-  <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
 </tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-
-{{if $.DailyMetrics}}
-<h4>Daily Usage (Current Billing Period)</h4>
-<table>
-<thead><tr><th>Date</th><th>Disk avg (GB)</th><th>Disk peak (GB)</th><th>Bandwidth (GB)</th><th>CPU (s)</th><th>IO Read (GB)</th><th>IO Write (GB)</th><th>Mem RSS peak (GB)</th><th>Hours</th><th>Disk Overage (GB)</th><th>Disk Cost</th><th>BW Overage (GB)</th><th>BW Cost</th></tr></thead>
-<tbody>
-{{range $.DailyMetrics}}
 <tr>
-  <td>{{.DayStart.Format "2006-01-02"}}</td>
-  <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .DiskLogicalMaxBytes 1e9)}}</td>
+  <td>Bandwidth</td>
   <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
-  <td>{{printf "%.1f" .CPUSeconds}}</td>
-  <td>{{printf "%.3f" (divf64 .IOReadBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .IOWriteBytes 1e9)}}</td>
-  <td>{{printf "%.3f" (divf64 .MemoryRSSMaxBytes 1e9)}}</td>
-  <td>{{.HoursWithData}}</td>
-  <td>{{overage .DiskLogicalAvgBytes 25}}</td>
-  <td>{{diskCost .DiskLogicalAvgBytes}}</td>
   <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
   <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
 </tr>
@@ -170,18 +163,21 @@ table.info th { width: 200px; }
 {{if $.UsageVMs}}
 <h4>Per-VM Breakdown</h4>
 <table>
-<thead><tr><th>VM</th><th>Disk avg (raw)</th><th>Disk avg (GB)</th><th>Disk peak (raw)</th><th>Disk peak (GB)</th><th>Bandwidth (raw)</th><th>Bandwidth (GB)</th><th>Days</th></tr></thead>
+<thead><tr><th>VM</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
 <tbody>
 {{range $.UsageVMs}}
 <tr>
-  <td>{{.VMName}}{{if .VMID}} <span class="muted">({{.VMID}})</span>{{end}}</td>
-  <td class="muted">{{.DiskAvgBytes}} B</td>
-  <td>{{printf "%.3f" (divf64 .DiskAvgBytes 1e9)}} GB</td>
-  <td class="muted">{{.DiskMaxBytes}} B</td>
-  <td>{{printf "%.3f" (divf64 .DiskMaxBytes 1e9)}} GB</td>
-  <td class="muted">{{.BandwidthBytes}} B</td>
-  <td>{{printf "%.3f" (divf64 .BandwidthBytes 1e9)}} GB</td>
-  <td>{{.DaysWithData}}</td>
+  <td rowspan="2">{{.VMName}}{{if .VMID}} <span class="muted">({{.VMID}})</span>{{end}}</td>
+  <td>Disk</td>
+  <td>{{printf "%.3f" (divf64 .DiskAvgBytes 1e9)}}</td>
+  <td>{{overage .DiskAvgBytes 25}}</td>
+  <td>{{diskCost .DiskAvgBytes}}</td>
+</tr>
+<tr>
+  <td>Bandwidth</td>
+  <td>{{printf "%.3f" (divf64 .BandwidthBytes 1e9)}}</td>
+  <td>{{overage .BandwidthBytes 100}}</td>
+  <td>{{bwCost .BandwidthBytes}}</td>
 </tr>
 {{end}}
 </tbody>

@@ -355,10 +355,14 @@ var tiers = map[string]Tier{
 	},
 }
 
-// getTierByID returns the Tier for a given tier ID.
+// GetTierByID returns the Tier for a given tier ID.
 // Handles 4-part tier IDs ("individual:medium:monthly:20260601") as well as
 // 3-part legacy plan IDs ("individual:monthly:20260106").
 // Returns an error for completely unknown IDs.
+func GetTierByID(id string) (Tier, error) {
+	return getTierByID(id)
+}
+
 func getTierByID(id string) (Tier, error) {
 	if tier, ok := tiers[id]; ok {
 		return tier, nil

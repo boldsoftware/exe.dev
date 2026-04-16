@@ -5879,11 +5879,23 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		CreditLastRefreshAt           string
 		IsOnTeam                      bool
 		Entitlements                  []struct {
-			Name    string
-			ID      string
-			Granted bool
+			ID        string
+			User      string
+			Team      string
+			Effective string
 		}
-		CreditLedger             []creditRow
+		CreditLedger []creditRow
+		Quotas       []struct {
+			Name      string
+			Plan      string
+			Stage     string
+			UserLimit string
+			Effective string
+		}
+		BillingPeriodStart       string
+		BillingPeriodEnd         string
+		NextInvoiceDate          string
+		NextInvoiceAmount        string
 		HasMetricsd              bool
 		UsageDiskAvgBytes        int64
 		UsageDiskPeakBytes       int64
@@ -5946,22 +5958,125 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		data.IsOnTeam = true
 	}
 
-	// Resolve entitlements from account_plans (walks parent_id for team members).
-	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+	// Resolve entitlements: user's own plan, team (parent) plan, and effective.
+	{
+		var userPlanID, teamPlanID string
+		if len(accounts) > 0 {
+			if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, accounts[0].AccountID); err == nil {
+				userPlanID = ap.PlanID
+			}
+			if accounts[0].ParentID != "" {
+				if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, accounts[0].ParentID); err == nil {
+					teamPlanID = ap.PlanID
+				}
+			}
+		}
+		grantStr := func(planID string, ent plan.Entitlement) string {
+			if planID == "" {
+				return "\u2014"
+			}
+			if plan.Grants(planID, ent) {
+				return "Granted"
+			}
+			return "Denied"
+		}
+		effectivePlanID := teamPlanID
+		if effectivePlanID == "" {
+			effectivePlanID = userPlanID
+		}
 		for _, ent := range plan.AllEntitlements() {
 			data.Entitlements = append(data.Entitlements, struct {
-				Name    string
-				ID      string
-				Granted bool
+				ID        string
+				User      string
+				Team      string
+				Effective string
 			}{
-				Name:    ent.DisplayName,
-				ID:      ent.ID,
-				Granted: plan.Grants(planRow.PlanID, ent),
+				ID:        ent.ID,
+				User:      grantStr(userPlanID, ent),
+				Team:      grantStr(teamPlanID, ent),
+				Effective: grantStr(effectivePlanID, ent),
 			})
 		}
 	}
 
-	// Fetch usage estimates for current calendar month from metricsd.
+	// Populate quotas: plan value, user-limit override, effective.
+	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+		limits := ParseUserLimits(&exedb.User{Limits: user.Limits})
+		planTier, tierErr := plan.GetTierByID(planRow.PlanID)
+		if tierErr == nil {
+			formatBytes := func(b uint64) string {
+				if b == 0 {
+					return "\u2014"
+				}
+				return fmt.Sprintf("%.0f GB", float64(b)/(1024*1024*1024))
+			}
+			type quotaRow = struct {
+				Name      string
+				Plan      string
+				Stage     string
+				UserLimit string
+				Effective string
+			}
+			// Max VMs (user)
+			planMaxUserVMs := planTier.Quotas.MaxUserVMs
+			userMaxBoxes := 0
+			if limits != nil {
+				userMaxBoxes = limits.MaxBoxes
+			}
+			effMaxBoxes := GetMaxBoxes(limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", planMaxUserVMs), fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", effMaxBoxes)})
+			// Max VMs (team)
+			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", planMaxTeamVMs), fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			// Max Disk
+			planMaxDisk := planTier.Quotas.MaxDisk
+			userMaxDisk := uint64(0)
+			if limits != nil {
+				userMaxDisk = limits.MaxDisk
+			}
+			effMaxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, s.env.DefaultDisk)
+			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(planMaxDisk), formatBytes(s.env.DefaultDisk), formatBytes(userMaxDisk), formatBytes(effMaxDisk)})
+			// Default Disk
+			planDefaultDisk := planTier.Quotas.DefaultDisk
+			effDefaultDisk := plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)
+			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", formatBytes(planDefaultDisk), formatBytes(s.env.DefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
+			// Max Memory
+			planMaxMem := planTier.Quotas.ComputeClass.MaxMemory
+			userMaxMem := uint64(0)
+			if limits != nil {
+				userMaxMem = limits.MaxMemory
+			}
+			effMaxMem := GetMaxMemory(s.env, limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(planMaxMem), formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), formatBytes(effMaxMem)})
+			// Max CPUs
+			planMaxCPUs := planTier.Quotas.ComputeClass.MaxCPUs
+			userMaxCPUs := uint64(0)
+			if limits != nil {
+				userMaxCPUs = limits.MaxCPUs
+			}
+			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", planMaxCPUs), fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", effMaxCPUs)})
+		}
+	}
+
+	// Fetch current billing period and next invoice from Stripe.
+	if len(accounts) > 0 {
+		acctID := accounts[0].AccountID
+		if period, err := s.billing.CurrentBillingPeriod(ctx, acctID); err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch billing period", "error", err, "account_id", acctID)
+		} else if period != nil {
+			data.BillingPeriodStart = period.Start.Format("2006-01-02")
+			data.BillingPeriodEnd = period.End.Format("2006-01-02")
+		}
+		if inv, err := s.billing.UpcomingInvoice(ctx, acctID); err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch upcoming invoice", "error", err, "account_id", acctID)
+		} else if inv != nil {
+			data.NextInvoiceDate = inv.PeriodEnd.Format("2006-01-02")
+			data.NextInvoiceAmount = fmt.Sprintf("$%.2f", float64(inv.AmountPaid)/100)
+		}
+	}
+
+	// Fetch usage estimates for current billing period from metricsd.
 	if s.metricsdURL != "" {
 		data.HasMetricsd = true
 		const diskIncludedGB = 25.0
@@ -5969,11 +6084,17 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		const diskPricePerGB = 0.08
 		const bandwidthPricePerGB = 0.07
 		nowUTC := time.Now().UTC()
-		monthStart := time.Date(nowUTC.Year(), nowUTC.Month(), 1, 0, 0, 0, 0, time.UTC)
+		// Use billing period if available, fall back to calendar month.
+		usageStart := time.Date(nowUTC.Year(), nowUTC.Month(), 1, 0, 0, 0, 0, time.UTC)
+		if data.BillingPeriodStart != "" {
+			if t, err := time.Parse("2006-01-02", data.BillingPeriodStart); err == nil {
+				usageStart = t
+			}
+		}
 		usageClient := newMetricsClient(s.metricsdURL)
 		usageCtx, usageCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer usageCancel()
-		if metrics, err := usageClient.queryUsage(usageCtx, []string{userID}, monthStart, nowUTC); err == nil && len(metrics) > 0 {
+		if metrics, err := usageClient.queryUsage(usageCtx, []string{userID}, usageStart, nowUTC); err == nil && len(metrics) > 0 {
 			sum := metrics[0]
 			diskAvgGB := float64(sum.DiskAvgBytes) / 1e9
 			diskPeakGB := float64(sum.DiskPeakBytes) / 1e9
@@ -5992,12 +6113,13 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			data.UsageBandwidthOverageUSD = bandwidthOverage * bandwidthPricePerGB
 			data.UsageVMs = sum.VMs
 		}
-		// Fetch daily rollup data for current month.
-		if daily, err := usageClient.queryDaily(usageCtx, []string{userID}, monthStart, nowUTC); err == nil {
+		// Fetch daily rollup data for current billing period.
+		if daily, err := usageClient.queryDaily(usageCtx, []string{userID}, usageStart, nowUTC); err == nil {
 			data.DailyMetrics = daily
 		}
-		// Fetch monthly rollup data for current month.
-		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthStart, nowUTC); err == nil {
+		// Fetch monthly rollup data for the last 6 months.
+		monthlyStart := time.Date(nowUTC.Year(), nowUTC.Month()-5, 1, 0, 0, 0, 0, time.UTC)
+		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthlyStart, nowUTC); err == nil {
 			data.MonthlyMetrics = monthly
 		}
 	}
@@ -8790,4 +8912,18 @@ func (s *Server) writeStalePDXBatchText(w http.ResponseWriter, result *stalePDXB
 		}
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row.ID, row.UserID, row.Email, row.Status, row.OldRegion, row.TargetRegion, errText)
 	}
+}
+
+func fmtIntOrDash(v int) string {
+	if v == 0 {
+		return "\u2014"
+	}
+	return fmt.Sprintf("%d", v)
+}
+
+func fmtUint64OrDash(v uint64) string {
+	if v == 0 {
+		return "\u2014"
+	}
+	return fmt.Sprintf("%d", v)
 }

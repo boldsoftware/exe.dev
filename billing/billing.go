@@ -770,6 +770,40 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	return nil
 }
 
+// BillingPeriod holds the start and end of a billing period.
+type BillingPeriod struct {
+	Start time.Time
+	End   time.Time
+}
+
+// CurrentBillingPeriod returns the current billing period for an account
+// by looking up the active Stripe subscription.
+// Returns nil if there is no active subscription.
+func (m *Manager) CurrentBillingPeriod(ctx context.Context, customerID string) (*BillingPeriod, error) {
+	c := m.client()
+	params := &stripe.SubscriptionListParams{
+		Customer: &customerID,
+		Status:   stripe.String(string(stripe.SubscriptionStatusActive)),
+	}
+	for sub, err := range c.V1Subscriptions.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, fmt.Errorf("list subscriptions: %w", err)
+		}
+		// In Stripe v85, period lives on subscription items, not the subscription.
+		if sub.Items != nil {
+			for _, item := range sub.Items.Data {
+				if item.CurrentPeriodStart > 0 {
+					return &BillingPeriod{
+						Start: time.Unix(item.CurrentPeriodStart, 0).UTC(),
+						End:   time.Unix(item.CurrentPeriodEnd, 0).UTC(),
+					}, nil
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
 // SubscriptionEvents returns subscription events for an account, ordered by time.
 func (m *Manager) SubscriptionEvents(ctx context.Context, billingID string) ([]SubscriptionEvent, error) {
 	rows, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListSubscriptionEvents, billingID)

@@ -88,11 +88,8 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 		t.Fatal("expected Entitlements section header")
 	}
 
-	// Every concrete entitlement should appear in the table.
+	// Every concrete entitlement should appear in the table by ID.
 	for _, ent := range plan.AllEntitlements() {
-		if !strings.Contains(body, ent.DisplayName) {
-			t.Errorf("entitlement table missing %q", ent.DisplayName)
-		}
 		if !strings.Contains(body, ent.ID) {
 			t.Errorf("entitlement table missing ID %q", ent.ID)
 		}
@@ -205,11 +202,23 @@ func requireEntitlementRow(t *testing.T, body, displayName string, granted bool)
 	if granted {
 		status = "Granted"
 	}
-	// Match: <td>DisplayName</td><td><code>id</code></td><td>Status</td> within the same row.
-	pattern := `<td>` + regexp.QuoteMeta(displayName) + `</td>\s*<td><code>[^<]+</code></td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`
+	// Find the entitlement ID from the display name.
+	var entID string
+	for _, ent := range plan.AllEntitlements() {
+		if ent.DisplayName == displayName {
+			entID = ent.ID
+			break
+		}
+	}
+	if entID == "" {
+		t.Fatalf("unknown entitlement display name %q", displayName)
+	}
+	// Match: <td><code>id</code></td><td>...</td><td>...</td><td>Effective</td>
+	// The Effective column is the last <td> in the row.
+	pattern := `<td><code>` + regexp.QuoteMeta(entID) + `</code></td>\s*<td>[^<]*</td>\s*<td>[^<]*</td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`
 	re := regexp.MustCompile(pattern)
 	if !re.MatchString(body) {
-		t.Errorf("entitlement row %q: expected %s, pattern not found", displayName, status)
+		t.Errorf("entitlement row %q (%s): expected effective=%s, pattern not found", displayName, entID, status)
 	}
 }
 
