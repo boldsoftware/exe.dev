@@ -1217,12 +1217,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.dripRunner = drip.NewRunner(s.db, cfg.Env, func(ctx context.Context, msg email.Message) error {
 		return s.sendEmail(ctx, sendEmailParams{
 			emailType: msg.Type,
-			to:       msg.To,
-			subject:  msg.Subject,
-			body:     msg.Body,
-			fromName: "David Crawshaw",
-			replyTo:  msg.ReplyTo,
-			attrs:    msg.Attrs,
+			to:        msg.To,
+			subject:   msg.Subject,
+			body:      msg.Body,
+			fromName:  "David Crawshaw",
+			replyTo:   msg.ReplyTo,
+			attrs:     msg.Attrs,
 		})
 	}, slog)
 

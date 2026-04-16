@@ -192,7 +192,7 @@ func regionTimezone(code string) *time.Location {
 // For the day0 step (delay < 24h), we just check elapsed time.
 // For subsequent steps, we wait until 9 AM in the user's region timezone
 // on the appropriate day.
-func (r *Runner) isDue(now time.Time, dueAt time.Time, stepDelay time.Duration, regionCode string) bool {
+func (r *Runner) isDue(now, dueAt time.Time, stepDelay time.Duration, regionCode string) bool {
 	if now.Before(dueAt) {
 		return false
 	}
