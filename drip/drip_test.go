@@ -40,10 +40,9 @@ func testDB(t *testing.T) *sqlite.DB {
 }
 
 func testEnv() stage.Env {
-	return stage.Env{
-		WebHost:   "exe.dev",
-		FakeEmail: true,
-	}
+	env := stage.Test()
+	env.WebHost = "exe.dev"
+	return env
 }
 
 type sentEmail struct {
