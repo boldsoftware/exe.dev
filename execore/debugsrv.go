@@ -8605,6 +8605,10 @@ func (s *Server) renderDebugTemplate(ctx context.Context, w http.ResponseWriter,
 	}
 }
 
+const defaultStalePDXApplyBatchSize = 1000
+
+var errStalePDXApplyLimitRequired = errors.New("apply requires an explicit limit")
+
 type stalePDXDecision struct {
 	User              exedb.User
 	TargetRegion      string
@@ -8614,13 +8618,26 @@ type stalePDXDecision struct {
 	SignupIPCheckJSON *string
 }
 
+type stalePDXBatchOptions struct {
+	BatchID  string
+	Mode     string
+	Limit    int
+	Progress func(string)
+}
+
 type stalePDXBatchResult struct {
-	BatchID      string
-	Mode         string
-	Rows         []exedb.UserRegionMigration
-	Applied      int
-	Failed       int
-	AlreadyMoved int
+	BatchID       string
+	Mode          string
+	Rows          []exedb.UserRegionMigration
+	Applied       int
+	Failed        int
+	AlreadyMoved  int
+	TotalEligible int
+	Selected      int
+	Limit         int
+	StartedAt     time.Time
+	EndedAt       time.Time
+	TerminalEvent string
 }
 
 func deriveStalePDXTarget(ipCheck *exedb.SignupIPCheck) (target, source, reason string) {
@@ -8645,27 +8662,39 @@ func deriveStalePDXTarget(ipCheck *exedb.SignupIPCheck) (target, source, reason 
 	return reg.Code, "signup_ip_check", fmt.Sprintf("derived from signup_ip_check (%s)", reg.Code)
 }
 
+func (s *Server) listStalePDXUsers(ctx context.Context) ([]exedb.User, error) {
+	return withRxRes0(s, ctx, (*exedb.Queries).ListPDXUsers)
+}
+
+func (s *Server) deriveStalePDXDecision(ctx context.Context, user exedb.User) (stalePDXDecision, error) {
+	ipCheck, err := s.lookupSignupIPCheckForUser(ctx, user)
+	if err != nil {
+		return stalePDXDecision{}, err
+	}
+	target, source, reason := deriveStalePDXTarget(ipCheck)
+	decision := stalePDXDecision{
+		User:           user,
+		TargetRegion:   target,
+		DecisionSource: source,
+		DecisionReason: reason,
+	}
+	if ipCheck != nil {
+		decision.SignupIPCheckID = &ipCheck.ID
+		decision.SignupIPCheckJSON = ipCheck.IpqsResponseJson
+	}
+	return decision, nil
+}
+
 func (s *Server) buildStalePDXDecisions(ctx context.Context) ([]stalePDXDecision, error) {
-	users, err := withRxRes0(s, ctx, (*exedb.Queries).ListPDXUsers)
+	users, err := s.listStalePDXUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 	decisions := make([]stalePDXDecision, 0, len(users))
 	for _, user := range users {
-		ipCheck, err := s.lookupSignupIPCheckForUser(ctx, user)
+		decision, err := s.deriveStalePDXDecision(ctx, user)
 		if err != nil {
 			return nil, err
-		}
-		target, source, reason := deriveStalePDXTarget(ipCheck)
-		decision := stalePDXDecision{
-			User:           user,
-			TargetRegion:   target,
-			DecisionSource: source,
-			DecisionReason: reason,
-		}
-		if ipCheck != nil {
-			decision.SignupIPCheckID = &ipCheck.ID
-			decision.SignupIPCheckJSON = ipCheck.IpqsResponseJson
 		}
 		decisions = append(decisions, decision)
 	}
@@ -8689,20 +8718,51 @@ func (s *Server) lookupSignupIPCheckForUser(ctx context.Context, user exedb.User
 	return nil, nil
 }
 
-func (s *Server) runStalePDXBatch(ctx context.Context, mode string) (*stalePDXBatchResult, error) {
-	decisions, err := s.buildStalePDXDecisions(ctx)
+func (s *Server) runStalePDXBatch(ctx context.Context, opts stalePDXBatchOptions) (*stalePDXBatchResult, error) {
+	mode := opts.Mode
+	if mode == "" {
+		mode = "dry_run"
+	}
+	if mode == "apply" && opts.Limit <= 0 {
+		return nil, errStalePDXApplyLimitRequired
+	}
+	users, err := s.listStalePDXUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	batchID := fmt.Sprintf("stale-pdx-%d", time.Now().UnixNano())
-	result := &stalePDXBatchResult{BatchID: batchID, Mode: mode}
-	for _, decision := range decisions {
+	startedAt := time.Now().UTC()
+	batchID := opts.BatchID
+	if batchID == "" {
+		batchID = fmt.Sprintf("stale-pdx-%d", startedAt.UnixNano())
+	}
+	result := &stalePDXBatchResult{
+		BatchID:       batchID,
+		Mode:          mode,
+		TotalEligible: len(users),
+		Limit:         opts.Limit,
+		StartedAt:     startedAt,
+		TerminalEvent: "done",
+	}
+	selectedIndex := 0
+	for _, user := range users {
+		if opts.Limit > 0 && result.Selected >= opts.Limit {
+			break
+		}
+		decision, err := s.deriveStalePDXDecision(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+		result.Selected++
+		selectedIndex++
 		row, err := s.insertStalePDXAuditRow(ctx, batchID, nil, decision, mode)
 		if err != nil {
 			return nil, err
 		}
 		if mode == "dry_run" {
 			result.Rows = append(result.Rows, row)
+			if opts.Progress != nil {
+				opts.Progress(fmt.Sprintf("event=row\tindex=%d\tstatus=%s\tuser_id=%s\temail=%s\told_region=%s\ttarget_region=%s\tsource=%s\treason=%s", selectedIndex, row.Status, row.UserID, row.Email, row.OldRegion, row.TargetRegion, row.DecisionSource, row.DecisionReason))
+			}
 			continue
 		}
 		applyStatus := "apply_succeeded"
@@ -8734,11 +8794,19 @@ func (s *Server) runStalePDXBatch(ctx context.Context, mode string) (*stalePDXBa
 		if err := withTx1(s, ctx, (*exedb.Queries).UpdateUserRegionMigrationResult, exedb.UpdateUserRegionMigrationResultParams{Status: applyStatus, Error: applyErr, ID: row.ID}); err != nil {
 			return nil, err
 		}
+		if opts.Progress != nil {
+			errText := ""
+			if applyErr != nil {
+				errText = *applyErr
+			}
+			opts.Progress(fmt.Sprintf("event=row\tindex=%d\tstatus=%s\tuser_id=%s\temail=%s\told_region=%s\ttarget_region=%s\tsource=%s\terror=%s", selectedIndex, applyStatus, row.UserID, row.Email, row.OldRegion, row.TargetRegion, row.DecisionSource, errText))
+		}
 	}
 	result.Rows, err = withRxRes1(s, ctx, (*exedb.Queries).ListUserRegionMigrationsByBatch, batchID)
 	if err != nil {
 		return nil, err
 	}
+	result.EndedAt = time.Now().UTC()
 	return result, nil
 }
 
@@ -8823,25 +8891,41 @@ func (s *Server) rollbackStalePDXBatch(ctx context.Context, batchID string) (*st
 	if err != nil {
 		return nil, err
 	}
+	result.StartedAt = time.Now().UTC()
+	result.EndedAt = result.StartedAt
+	result.TerminalEvent = "done"
 	return result, nil
 }
 
 func (s *Server) handleDebugStalePDXCleanup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	decisions, err := s.buildStalePDXDecisions(ctx)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, "<!doctype html><html><head><title>stale-pdx-cleanup</title><style>body{font-family:sans-serif;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;text-align:left}code{white-space:pre-wrap}input[type=text],input[type=number]{padding:6px;margin-right:8px}fieldset{margin:16px 0;padding:12px}</style></head><body>")
+	fmt.Fprint(w, `<p><a href="/debug">/debug</a> &gt; stale-pdx-cleanup</p>`)
+	fmt.Fprint(w, "<h1>stale-pdx-cleanup</h1>")
+	flush, ok := w.(http.Flusher)
+	if ok {
+		flush.Flush()
+	}
+	users, err := s.listStalePDXUsers(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to build stale-pdx preview: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to list stale-pdx users: %v", err), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, "<!doctype html><html><head><title>stale-pdx-cleanup</title><style>body{font-family:sans-serif;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;text-align:left}code{white-space:pre-wrap}</style></head><body>")
-	fmt.Fprint(w, `<p><a href="/debug">/debug</a> &gt; stale-pdx-cleanup</p>`)
-	fmt.Fprintf(w, "<h1>stale-pdx-cleanup</h1><p>PDX users eligible for region cleanup: %d</p>", len(decisions))
-	fmt.Fprint(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:inline-block;margin-right:12px"><input type="hidden" name="mode" value="dry_run"><button type="submit">Dry Run</button></form>`)
-	fmt.Fprint(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:inline-block"><input type="hidden" name="mode" value="apply"><button type="submit" onclick="return confirm('Apply stale PDX cleanup?')">Apply</button></form>`)
+	fmt.Fprintf(w, "<p>PDX users eligible for region cleanup: %d</p>", len(users))
+	fmt.Fprint(w, `<fieldset><legend>Run batch</legend><p>Dry run accepts an optional limit. Apply requires an explicit limit; recommended starting batch size is 1000 users in creation order.</p><form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block;margin-bottom:8px"><input type="hidden" name="mode" value="dry_run"><label>limit <input type="number" name="limit" min="1" placeholder="1000"></label><button type="submit">Dry Run</button></form>`)
+	fmt.Fprintf(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block"><input type="hidden" name="mode" value="apply"><label>limit <input type="number" name="limit" min="1" value="%d" required></label><button type="submit" onclick="return confirm('Apply stale PDX cleanup batch?')">Apply batch</button></form></fieldset>`, defaultStalePDXApplyBatchSize)
 	fmt.Fprint(w, "<table><thead><tr><th>user_id</th><th>email</th><th>current</th><th>target</th><th>source</th><th>reason</th></tr></thead><tbody>")
-	for _, d := range decisions {
-		fmt.Fprintf(w, "<tr><td><a href=\"/debug/user?userId=%s\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>", html.EscapeString(url.QueryEscape(d.User.UserID)), html.EscapeString(d.User.UserID), html.EscapeString(d.User.Email), html.EscapeString(d.User.Region), html.EscapeString(d.TargetRegion), html.EscapeString(d.DecisionSource), html.EscapeString(d.DecisionReason))
+	for i, user := range users {
+		decision, err := s.deriveStalePDXDecision(ctx, user)
+		if err != nil {
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td colspan=\"4\">error: %s</td></tr>", html.EscapeString(user.UserID), html.EscapeString(user.Email), html.EscapeString(err.Error()))
+		} else {
+			fmt.Fprintf(w, "<tr><td><a href=\"/debug/user?userId=%s\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>", html.EscapeString(url.QueryEscape(decision.User.UserID)), html.EscapeString(decision.User.UserID), html.EscapeString(decision.User.Email), html.EscapeString(decision.User.Region), html.EscapeString(decision.TargetRegion), html.EscapeString(decision.DecisionSource), html.EscapeString(decision.DecisionReason))
+		}
+		if ok && (i+1)%25 == 0 {
+			flush.Flush()
+		}
 	}
 	fmt.Fprint(w, "</tbody></table>")
 	fmt.Fprint(w, `<h2 style="margin-top:24px">Rollback</h2><form method="post" action="/debug/stale-pdx-cleanup/rollback"><input type="text" name="batch_id" placeholder="apply batch id" required><button type="submit">Rollback batch</button></form>`)
@@ -8857,11 +8941,44 @@ func (s *Server) handleDebugStalePDXCleanupRun(w http.ResponseWriter, r *http.Re
 		http.Error(w, "mode must be dry_run or apply", http.StatusBadRequest)
 		return
 	}
-	result, err := s.runStalePDXBatch(r.Context(), mode)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("stale-pdx cleanup failed: %v", err), http.StatusInternalServerError)
+	limit := 0
+	if limitStr := strings.TrimSpace(r.FormValue("limit")); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+	if mode == "apply" && limit == 0 {
+		http.Error(w, "apply requires an explicit limit", http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flush, _ := w.(http.Flusher)
+	progress := func(line string) {
+		fmt.Fprintln(w, line)
+		if flush != nil {
+			flush.Flush()
+		}
+	}
+	batchID := fmt.Sprintf("stale-pdx-%d", time.Now().UTC().UnixNano())
+	progress("stream=stale_pdx_cleanup")
+	progress(fmt.Sprintf("event=start\tbatch_id=%s\tmode=%s\tlimit=%d", batchID, mode, limit))
+	result, err := s.runStalePDXBatch(r.Context(), stalePDXBatchOptions{
+		BatchID:  batchID,
+		Mode:     mode,
+		Limit:    limit,
+		Progress: progress,
+	})
+	if err != nil {
+		progress(fmt.Sprintf("event=error\tbatch_id=%s\terror=%s", batchID, err))
+		return
+	}
+	progress(fmt.Sprintf("event=done\tbatch_id=%s\tmode=%s\ttotal_eligible=%d\tselected=%d\tapplied=%d\tfailed=%d", result.BatchID, result.Mode, result.TotalEligible, result.Selected, result.Applied, result.Failed))
 	s.writeStalePDXBatchText(w, result)
 }
 
@@ -8881,13 +8998,14 @@ func (s *Server) handleDebugStalePDXCleanupRollback(w http.ResponseWriter, r *ht
 
 func (s *Server) writeStalePDXBatchText(w http.ResponseWriter, result *stalePDXBatchResult) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "batch_id=%s\nmode=%s\napplied=%d\nfailed=%d\n\n", result.BatchID, result.Mode, result.Applied, result.Failed)
+	fmt.Fprintf(w, "batch_id=%s\nmode=%s\nstarted_at=%s\nended_at=%s\nterminal_event=%s\ntotal_eligible=%d\nselected=%d\nlimit=%d\napplied=%d\nfailed=%d\n\n", result.BatchID, result.Mode, result.StartedAt.Format(time.RFC3339Nano), result.EndedAt.Format(time.RFC3339Nano), result.TerminalEvent, result.TotalEligible, result.Selected, result.Limit, result.Applied, result.Failed)
+	fmt.Fprintln(w, "id\tstatus\tuser_id\temail\told_region\ttarget_region\terror")
 	for _, row := range result.Rows {
 		errText := ""
 		if row.Error != nil {
 			errText = *row.Error
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row.ID, row.UserID, row.Email, row.Status, row.OldRegion, row.TargetRegion, errText)
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row.ID, row.Status, row.UserID, row.Email, row.OldRegion, row.TargetRegion, errText)
 	}
 }
 

@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -84,7 +85,7 @@ func TestRunStalePDXBatchApplyAndRollbackTruthful(t *testing.T) {
 	}
 	insertSignupIPCheckForTest(t, s, "stale-pdx-apply@example.com", `{"country_code":"GB","latitude":51.5,"longitude":-0.12}`)
 
-	dryRun, err := s.runStalePDXBatch(ctx, "dry_run")
+	dryRun, err := s.runStalePDXBatch(ctx, stalePDXBatchOptions{Mode: "dry_run"})
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestRunStalePDXBatchApplyAndRollbackTruthful(t *testing.T) {
 		t.Fatalf("dry run changed user region to %q", user.Region)
 	}
 
-	apply, err := s.runStalePDXBatch(ctx, "apply")
+	apply, err := s.runStalePDXBatch(ctx, stalePDXBatchOptions{Mode: "apply", Limit: 1})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
@@ -164,9 +165,132 @@ func TestHandleDebugStalePDXCleanupRun(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "mode=dry_run") || !strings.Contains(body, "dry_run_planned") {
+	if !strings.Contains(body, "mode=dry_run") || !strings.Contains(body, "terminal_event=done") || !strings.Contains(body, "status\tuser_id\temail") || !strings.Contains(body, "dry_run_planned") {
 		t.Fatalf("unexpected body:\n%s", body)
 	}
+	if got := w.Header().Get("X-Accel-Buffering"); got != "no" {
+		t.Fatalf("X-Accel-Buffering = %q, want no", got)
+	}
+}
+
+func TestHandleDebugStalePDXCleanupRunApplyRequiresExplicitLimit(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+
+	form := url.Values{"mode": {"apply"}}
+	req := httptest.NewRequest(http.MethodPost, "/debug/stale-pdx-cleanup/run", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.handleDebugStalePDXCleanupRun(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "apply requires an explicit limit") {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+}
+
+func TestRunStalePDXBatchRespectsLimit(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := context.Background()
+
+	userIDs := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		email := fmt.Sprintf("stale-pdx-batch-%02d@example.com", i)
+		userID := createTestUser(t, s, email)
+		userIDs = append(userIDs, userID)
+		if err := withTx1(s, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{UserID: userID, Region: "pdx"}); err != nil {
+			t.Fatalf("set pdx region: %v", err)
+		}
+		insertSignupIPCheckForTest(t, s, email, `{"country_code":"GB","latitude":51.5,"longitude":-0.12}`)
+	}
+
+	result, err := s.runStalePDXBatch(ctx, stalePDXBatchOptions{Mode: "apply", Limit: 2})
+	if err != nil {
+		t.Fatalf("apply with limit: %v", err)
+	}
+	if len(result.Rows) != 2 {
+		t.Fatalf("rows = %d, want 2; rows=%+v", len(result.Rows), result.Rows)
+	}
+	if result.Applied != 2 {
+		t.Fatalf("applied = %d, want 2", result.Applied)
+	}
+	appliedUserIDs := map[string]bool{}
+	for _, row := range result.Rows {
+		appliedUserIDs[row.UserID] = true
+		if row.Status != "apply_succeeded" {
+			t.Fatalf("row status = %q, want apply_succeeded", row.Status)
+		}
+	}
+	for _, userID := range userIDs {
+		user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "pdx"
+		if appliedUserIDs[userID] {
+			want = "lon"
+		}
+		if user.Region != want {
+			t.Fatalf("user %s region = %q, want %q", userID, user.Region, want)
+		}
+	}
+}
+
+func TestHandleDebugStalePDXCleanupStreamsProgressAndSummary(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := context.Background()
+
+	for i := 0; i < 2; i++ {
+		email := fmt.Sprintf("stale-pdx-stream-%02d@example.com", i)
+		userID := createTestUser(t, s, email)
+		if err := withTx1(s, ctx, (*exedb.Queries).SetUserRegion, exedb.SetUserRegionParams{UserID: userID, Region: "pdx"}); err != nil {
+			t.Fatalf("set pdx region: %v", err)
+		}
+		insertSignupIPCheckForTest(t, s, email, `{"country_code":"GB","latitude":51.5,"longitude":-0.12}`)
+	}
+
+	form := url.Values{"mode": {"dry_run"}, "limit": {"1"}}
+	req := httptest.NewRequest(http.MethodPost, "/debug/stale-pdx-cleanup/run", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.handleDebugStalePDXCleanupRun(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, needle := range []string{"stream=stale_pdx_cleanup", "event=start", "batch_id=stale-pdx-", "limit=1", "event=row", "event=done", "selected=1", "terminal_event=done", "status\tuser_id\temail"} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("body missing %q:\n%s", needle, body)
+		}
+	}
+	startLine := firstLineWithPrefix(body, "event=start\t")
+	doneLine := firstLineWithPrefix(body, "event=done\t")
+	startBatchID := extractTabbedField(startLine, "batch_id")
+	doneBatchID := extractTabbedField(doneLine, "batch_id")
+	if startBatchID == "" || doneBatchID == "" || startBatchID != doneBatchID {
+		t.Fatalf("batch_id mismatch: start=%q done=%q\nbody:\n%s", startBatchID, doneBatchID, body)
+	}
+}
+
+func firstLineWithPrefix(body, prefix string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
+}
+
+func extractTabbedField(line, key string) string {
+	for _, field := range strings.Split(line, "\t") {
+		if strings.HasPrefix(field, key+"=") {
+			return strings.TrimPrefix(field, key+"=")
+		}
+	}
+	return ""
 }
 
 func TestBuildStalePDXDecisionsUsesRawEmailWhenCanonicalDiffers(t *testing.T) {
