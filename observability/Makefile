@@ -76,8 +76,8 @@ PARALLEL := 10
 deploy-node-scripts:
 	@_deploy_base() { \
 		host=$$1; \
-		echo "[$$host] Deploying os-updates and system-health..."; \
-		scp scripts/os-updates.sh scripts/system-health.sh ubuntu@$$host:/tmp/ && \
+		echo "[$$host] Deploying os-updates, system-health, ipv6-status..."; \
+		scp scripts/os-updates.sh scripts/system-health.sh scripts/ipv6-status.sh ubuntu@$$host:/tmp/ && \
 		ssh ubuntu@$$host "bash -c \" \
 			sudo mkdir -p /var/lib/prometheus/node-exporter && \
 			sudo mv /tmp/os-updates.sh /usr/local/bin/os-updates.sh && \
@@ -86,11 +86,15 @@ deploy-node-scripts:
 			sudo mv /tmp/system-health.sh /usr/local/bin/system-health.sh && \
 			sudo chmod +x /usr/local/bin/system-health.sh && \
 			sudo /usr/local/bin/system-health.sh && \
-			(sudo crontab -l 2>/dev/null | grep -v os-updates | grep -v system-health; \
+			sudo mv /tmp/ipv6-status.sh /usr/local/bin/ipv6-status.sh && \
+			sudo chmod +x /usr/local/bin/ipv6-status.sh && \
+			sudo /usr/local/bin/ipv6-status.sh && \
+			(sudo crontab -l 2>/dev/null | grep -v os-updates | grep -v system-health | grep -v ipv6-status; \
 			 echo '*/15 * * * * /usr/local/bin/os-updates.sh'; \
-			 echo '* * * * * /usr/local/bin/system-health.sh') | sudo crontab -\"" && \
-		echo "[$$host] os-updates and system-health done" || \
-		echo "[$$host] ERROR: os-updates/system-health failed"; \
+			 echo '* * * * * /usr/local/bin/system-health.sh'; \
+			 echo '* * * * * /usr/local/bin/ipv6-status.sh') | sudo crontab -\"" && \
+		echo "[$$host] os-updates, system-health, ipv6-status done" || \
+		echo "[$$host] ERROR: os-updates/system-health/ipv6-status failed"; \
 	}; \
 	_deploy_zpool() { \
 		host=$$1; \

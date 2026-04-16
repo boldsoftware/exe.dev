@@ -3554,6 +3554,7 @@ function makeHostsDashboard() {
         forDuration: "1m",
         summary: "Disk usage is critically high",
         description: "Disk usage has exceeded 80% for more than 1 minute",
+        labels: { signal: "strong" },
       },
     }
   );
@@ -3615,6 +3616,29 @@ function makeHostsDashboard() {
     `irate(node_network_receive_errs_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m]) + irate(node_network_transmit_errs_total{${HOST_FILTER},device!="lo",device!~"tap.*",device!~"ifb.*"}[5m])`,
     {
       gridPos: { w: 8, h: 6 },
+    }
+  );
+
+  // Exelet IPv6-enabled alert — exelets should be IPv4-only on their physical
+  // interfaces; tailscale/VM/overlay interfaces are excluded in the textfile
+  // collector (scripts/ipv6-status.sh).
+  addTimeseriesChart(
+    "Exelet IPv6 Enabled",
+    `host_ipv6_enabled{${HOST_FILTER}}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 8, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alert: {
+        threshold: 0,
+        condition: "gt",
+        forDuration: "5m",
+        noDataState: "OK",
+        summary: "Exelet has IPv6 enabled",
+        description: "A global-scope IPv6 address is present on a non-virtual interface of {{$labels.instance}}. Exelets are expected to be IPv4-only; check `ip -6 addr` and disable IPv6 on the offending interface.",
+        labels: { channel: "buzz" },
+      },
+      alertQueryOverride: `host_ipv6_enabled{role="exelet",stage="production"}`,
     }
   );
 
