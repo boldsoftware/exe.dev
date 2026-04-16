@@ -40,11 +40,9 @@
         <router-link class="back-to-list" to="/docs/list">&larr; All docs</router-link>
         <div v-if="entry" class="doc-header">
           <h1 class="doc-title">{{ entry.title }}</h1>
-          <button v-if="entry.markdown" class="copy-md-btn" @click="copyMarkdown">
-            <span class="copy-btn-text">
-              <span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
-              {{ copyLabel }}
-            </span>
+          <button v-if="entry.markdown" class="copy-md-btn" :class="{ copied: isCopied }" :data-tooltip="copyLabel" :aria-label="copyLabel" @click="copyMarkdown">
+            <svg v-if="!isCopied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
         </div>
         <div v-if="entry" class="doc-content" ref="contentEl" v-html="entry.content" @click="handleContentClick"></div>
@@ -73,6 +71,7 @@ const prev = ref<DocsDocRef | null>(null)
 const next = ref<DocsDocRef | null>(null)
 const currentSlug = ref('')
 const copyLabel = ref('Copy as Markdown')
+const isCopied = ref(false)
 const contentEl = ref<HTMLElement | null>(null)
 const sidebarEl = ref<HTMLElement | null>(null)
 
@@ -353,7 +352,11 @@ function copyMarkdown() {
   if (!entry.value?.markdown) return
   navigator.clipboard.writeText(entry.value.markdown).then(() => {
     copyLabel.value = 'Copied!'
-    setTimeout(() => { copyLabel.value = 'Copy as Markdown' }, 2000)
+    isCopied.value = true
+    setTimeout(() => {
+      copyLabel.value = 'Copy as Markdown'
+      isCopied.value = false
+    }, 2000)
   })
 }
 
@@ -516,39 +519,76 @@ watch(
 }
 
 .copy-md-btn {
+  position: relative;
   flex-shrink: 0;
   display: inline-flex;
-  padding: 6px 10px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   font-family: inherit;
   font-size: 11px;
   color: var(--text-color-muted);
   background: transparent;
-  border: none;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .copy-md-btn:hover {
   color: var(--text-color);
+  background: var(--surface-hover);
 }
 
-.copy-btn-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.copy-md-btn.copied {
+  color: #2e7d32;
+  background: #e8f5e9;
+  border-color: #a5d6a7;
 }
 
-.copy-icon {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  vertical-align: middle;
+.copy-md-btn svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
 }
 
-.copy-icon svg {
-  width: 100%;
-  height: 100%;
+.copy-md-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 3px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.copy-md-btn:hover::after {
+  opacity: 1;
+}
+
+.copy-md-btn.copied::after {
+  background: #2e7d32;
+  opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .copy-md-btn.copied {
+    color: #86efac;
+    background: #052e16;
+    border-color: #166534;
+  }
+
+  .copy-md-btn.copied::after {
+    background: #166534;
+  }
 }
 
 .back-to-list {

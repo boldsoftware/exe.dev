@@ -117,49 +117,76 @@
       }
 
       .copy-md-btn {
+        position: relative;
         flex-shrink: 0;
-        display: inline-grid;
-        padding: 6px 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
         font-family: inherit;
         font-size: var(--text-xs);
         color: var(--color-text-muted);
         background: transparent;
-        border: none;
+        border: 1px solid var(--color-border-input);
         border-radius: var(--radius-sm);
         cursor: pointer;
-        transition: color 0.15s ease;
+        transition: color 0.15s ease, background-color 0.15s ease;
       }
 
       .copy-md-btn:hover {
         color: var(--color-text);
+        background: var(--color-bg-subtle);
       }
 
       .copy-md-btn.copied {
-        color: var(--color-success);
+        color: #2e7d32;
+        background: #e8f5e9;
+        border-color: #a5d6a7;
       }
 
-      .copy-btn-text,
-      .copy-btn-sizer {
-        grid-area: 1 / 1;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
+      .copy-md-btn svg {
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
       }
 
-      .copy-btn-sizer {
-        visibility: hidden;
+      .copy-md-btn::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        padding: 2px 6px;
+        font-size: 11px;
+        font-family: inherit;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.75);
+        border-radius: 3px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
       }
 
-      .copy-icon {
-        display: inline-flex;
-        width: 18px;
-        height: 18px;
-        vertical-align: middle;
+      .copy-md-btn:hover::after {
+        opacity: 1;
       }
 
-      .copy-icon svg {
-        width: 100%;
-        height: 100%;
+      .copy-md-btn.copied::after {
+        background: #2e7d32;
+        opacity: 1;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .copy-md-btn.copied {
+          color: #86efac;
+          background: #052e16;
+          border-color: #166534;
+        }
+
+        .copy-md-btn.copied::after {
+          background: #166534;
+        }
       }
 
       .doc-content {
@@ -516,9 +543,8 @@
         <div class="doc-header">
           <h1 class="doc-title">{{.Title}}{{call $.StatusTag .}}</h1>
           {{if .Markdown}}
-          <button class="copy-md-btn" onclick="copyMarkdown()" title="Copy as Markdown">
-            <span class="copy-btn-sizer" aria-hidden="true"><span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> Copy as Markdown</span>
-            <span class="copy-btn-text"><span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> Copy as Markdown</span>
+          <button class="copy-md-btn" onclick="copyMarkdown()" aria-label="Copy as Markdown" data-tooltip="Copy as Markdown">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
           {{end}}
         </div>
@@ -542,13 +568,13 @@
         const markdown = el.value;
         navigator.clipboard.writeText(markdown).then(function() {
           const btn = document.querySelector('.copy-md-btn');
-          const textEl = btn.querySelector('.copy-btn-text');
-          const originalText = textEl.innerHTML;
           btn.classList.add('copied');
-          textEl.innerHTML = '<span class="copy-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Copied!';
+          btn.dataset.tooltip = 'Copied!';
+          btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
           setTimeout(function() {
             btn.classList.remove('copied');
-            textEl.innerHTML = originalText;
+            btn.dataset.tooltip = 'Copy as Markdown';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
           }, 2000);
         });
       }
