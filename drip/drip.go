@@ -350,10 +350,10 @@ func (r *Runner) day0Welcome(hasCreatedVM bool) (subject, body, skipReason strin
 	}
 	subject = "Ready to create computers"
 	body = "Hello,\n\n" +
-		"Welcome to exe.dev — you have a 7-day trial to create and use virtual machines.\n\n" +
+		"Welcome to exe.dev. You have a 7-day trial to create and use virtual machines.\n\n" +
 		"To get started, open a terminal and run:\n\n" +
 		"  ssh exe.dev\n\n" +
-		"From there you can create your first machine in seconds.\n\n" +
+		"Then you can create your first machine by typing `new`.\n\n" +
 		"If you want some inspiration, check out:\n" +
 		utm(r.webURL("/idea"), stepDay0Welcome) + "\n" +
 		signature()
@@ -364,14 +364,12 @@ func (r *Runner) day1Nudge(ctx context.Context, u exedb.ListTrialUsersForDripRow
 	if hasCreatedVM {
 		return "", "", "user already created a VM; on track", false
 	}
-	subject = "You have 6 days left — start something"
+	subject = "You have 6 days left, start something"
 	body = "Hello,\n\n" +
 		"You signed up for exe.dev but haven't created a machine yet. " +
 		"Your trial expires in 6 days.\n\n" +
 		"Not sure what to build? Here are some ideas:\n" +
 		utm(r.webURL("/idea"), stepDay1Nudge) + "\n\n" +
-		"To jump in:\n\n" +
-		"  ssh exe.dev\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -387,31 +385,29 @@ func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripR
 
 	switch {
 	case hasUsedShelley == 0:
-		subject = "Your exe.dev machines include an AI assistant"
+		subject = "exe.dev machines have an agent"
 		body = "Hello,\n\n" +
-			"Every exe.dev machine comes with Shelley, an AI coding assistant " +
-			"with included LLM credits. No API key needed.\n\n" +
-			"Try it out — SSH into your machine and type `shelley`.\n\n" +
+			"Every exe.dev machine comes with Shelley. Credits included.\n\n" +
+			"Try it out at exe.dev, click on the shelley icon next to your VM.\n\n" +
 			"Learn more:\n" +
 			utm(r.webURL("/docs/shelley"), stepDay3Feature) + "\n" +
 			signature()
 	case hasShared == 0:
 		subject = "Share your exe.dev machine with a friend"
 		body = "Hello,\n\n" +
-			"You can share any of your exe.dev machines with a link — " +
-			"great for pair programming, demos, or getting help.\n\n" +
-			"In your machine, run:\n\n" +
+			"You can share any of your exe.dev machines with a link. " +
+			"Great for pair programming, demos, or getting help.\n\n" +
+			"SSH into exe.dev and run:\n\n" +
 			"  share\n\n" +
-			"and send the link to anyone.\n" +
+			"Send the link to anyone.\n" +
 			signature()
 	default:
 		// They've used the features we track. Send a general tip.
 		subject = "Getting the most out of exe.dev"
 		body = "Hello,\n\n" +
 			"A few things you might not have tried yet:\n\n" +
-			"• Persistent disks — your files survive reboots and stops\n" +
-			"• Custom domains — route traffic to services running on your machine\n" +
-			"• Multiple machines — spin up as many as you need\n\n" +
+			"• Custom domains: put a domain name on your machine\n" +
+			"• GitHub integration: let agents in a VM access GitHub without leaking secrets\n\n" +
 			"Docs: " + utm(r.webURL("/docs"), stepDay3Feature) + "\n" +
 			signature()
 	}
@@ -423,10 +419,6 @@ func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, skipReason strin
 	if hasCreatedVM {
 		body = "Hello,\n\n" +
 			"Your exe.dev trial ends in 2 days.\n\n" +
-			"When you upgrade to the Individual plan, everything you've built is preserved:\n\n" +
-			"• Your persistent disk and all your files\n" +
-			"• Your machine configuration and installed packages\n" +
-			"• Your SSH keys and settings\n\n" +
 			"Upgrade now to keep your work:\n" +
 			utm(r.webURL("/billing"), stepDay5Urgency) + "\n" +
 			signature()
@@ -447,7 +439,7 @@ func (r *Runner) day7Expiry() (subject, body, skipReason string, shouldSend bool
 		"Your exe.dev trial has ended. You are now on the Basic plan.\n\n" +
 		"Your VMs are stopped, but your disk is preserved for 30 days.\n\n" +
 		"Upgrade to the Individual plan to turn your VMs back on. " +
-		"New subscribers receive a $100 credit.\n\n" +
+		"New subscribers receive a $100 LLM credit.\n\n" +
 		"Upgrade:\n" +
 		utm(r.webURL("/billing"), stepDay7Expiry) + "\n" +
 		signature()
@@ -458,7 +450,7 @@ func (r *Runner) day10WinBack(ctx context.Context, u exedb.ListTrialUsersForDrip
 	if !hasCreatedVM {
 		return "", "", "user never created a VM; no workspace to win back", false
 	}
-	subject = "Your workspace is still here"
+	subject = "Your exe.dev workspace is still here"
 	body = "Hello,\n\n" +
 		"Your exe.dev workspace and persistent disk are still intact. " +
 		"Everything you built during your trial is waiting for you.\n\n" +
