@@ -152,7 +152,7 @@
             searchResultsBody.appendChild(tr);
         });
 
-        searchResults.style.display = '';
+        searchResults.style.display = 'block';
     }
 
     function toggleUser(u) {
