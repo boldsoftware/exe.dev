@@ -172,7 +172,7 @@
                 <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
               </div>
               <ul class="invoice-list">
-                <li v-for="inv in data.credits.invoices" :key="inv.status + inv.date + inv.amount" class="invoice-item">
+                <li v-for="(inv, idx) in data.credits.invoices" :key="idx" class="invoice-item">
                   <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : inv.status === 'upcoming' ? 'invoice-icon-upcoming' : 'invoice-icon-open']">
                     <i :class="inv.status === 'upcoming' ? 'pi pi-calendar' : 'pi pi-file'"></i>
                   </div>

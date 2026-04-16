@@ -237,13 +237,19 @@ func newUnstartedServer(t testing.TB) *Server {
 				"name":   "Individual",
 			})
 		case r.Method == "POST" && r.URL.Path == "/v1/invoices/create_preview":
-			// Upcoming invoice preview (used by debug billing page)
+			// Upcoming invoice preview (used by debug billing page and profile)
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]any{
 					"type":    "invalid_request_error",
 					"message": "No upcoming invoices for customer",
 				},
+			})
+		case r.Method == "GET" && r.URL.Path == "/v1/invoices":
+			// List invoices (used by profile page)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{},
+				"has_more": false,
 			})
 		default:
 			t.Errorf("unhandled fake Stripe request: %s %s", r.Method, r.URL)

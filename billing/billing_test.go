@@ -3,11 +3,16 @@ package billing
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"exe.dev/billing/stripetest"
 	"exe.dev/billing/tender"
 	"exe.dev/exedb"
+	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v85"
 )
 
@@ -554,4 +559,225 @@ func TestParseInvoiceLinePlanName(t *testing.T) {
 			t.Errorf("parseInvoiceLinePlanName(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
+}
+
+func TestUpcomingInvoice(t *testing.T) {
+	now := time.Now().UTC()
+	periodStart := now
+	periodEnd := now.Add(30 * 24 * time.Hour)
+
+	tests := []struct {
+		name            string
+		handler         func(w http.ResponseWriter, r *http.Request)
+		wantNil         bool
+		wantPlanName    string
+		wantDescription string
+		wantAmount      int64
+		wantStatus      string
+	}{
+		{
+			name: "valid upcoming invoice with line items",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/invoices/create_preview" {
+					t.Errorf("unexpected path: %s", r.URL.Path)
+					w.WriteHeader(404)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix())
+			},
+			wantPlanName:    "Individual",
+			wantDescription: "Upcoming",
+			wantAmount:      2000,
+			wantStatus:      "upcoming",
+		},
+		{
+			name: "no subscription returns nil",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(404)
+				fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"No upcoming invoices"}}`)
+			},
+			wantNil: true,
+		},
+		{
+			name: "empty line items uses invoice-level period",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[]}}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix())
+			},
+			wantPlanName:    "",
+			wantDescription: "Upcoming",
+			wantAmount:      2000,
+			wantStatus:      "upcoming",
+		},
+		{
+			name: "line item with empty description",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","amount_due":3500,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"","period":{"start":%d,"end":%d}}]}}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix())
+			},
+			wantPlanName:    "",
+			wantDescription: "Upcoming",
+			wantAmount:      3500,
+			wantStatus:      "upcoming",
+		},
+		{
+			name: "zero amount upcoming invoice",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","amount_due":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix())
+			},
+			wantPlanName:    "Individual",
+			wantDescription: "Upcoming",
+			wantAmount:      0,
+			wantStatus:      "upcoming",
+		},
+		{
+			name: "null lines uses invoice-level period",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix())
+			},
+			wantPlanName:    "",
+			wantDescription: "Upcoming",
+			wantAmount:      2000,
+			wantStatus:      "upcoming",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{
+				Client: stripetest.Client(t, tt.handler),
+				Logger: tslog.Slogger(t),
+			}
+
+			inv, err := m.UpcomingInvoice(t.Context(), "cus_test123")
+			if err != nil {
+				t.Fatalf("UpcomingInvoice returned unexpected error: %v", err)
+			}
+
+			if tt.wantNil {
+				if inv != nil {
+					t.Fatalf("expected nil, got %+v", inv)
+				}
+				return
+			}
+
+			if inv == nil {
+				t.Fatal("expected non-nil invoice, got nil")
+			}
+
+			if inv.Description != tt.wantDescription {
+				t.Errorf("Description = %q, want %q", inv.Description, tt.wantDescription)
+			}
+			if inv.PlanName != tt.wantPlanName {
+				t.Errorf("PlanName = %q, want %q", inv.PlanName, tt.wantPlanName)
+			}
+			if inv.AmountPaid != tt.wantAmount {
+				t.Errorf("AmountPaid = %d, want %d", inv.AmountPaid, tt.wantAmount)
+			}
+			if inv.Status != tt.wantStatus {
+				t.Errorf("Status = %q, want %q", inv.Status, tt.wantStatus)
+			}
+			if inv.PeriodStart.IsZero() {
+				t.Error("PeriodStart is zero (would render as Jan 1, 1970)")
+			}
+			if inv.PeriodEnd.IsZero() {
+				t.Error("PeriodEnd is zero (would render as Jan 1, 1970)")
+			}
+			if inv.Date.IsZero() {
+				t.Error("Date is zero")
+			}
+		})
+	}
+}
+
+func TestListInvoices(t *testing.T) {
+	now := time.Now().UTC()
+	periodStart := now.Add(-30 * 24 * time.Hour)
+	periodEnd := now
+
+	t.Run("returns paid and open invoices", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","amount_paid":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"hosted_invoice_url":"https://invoice.stripe.com/i/test1","invoice_pdf":"https://pay.stripe.com/invoice/test1/pdf","lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}},{"object":"invoice","status":"draft","amount_paid":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d},{"object":"invoice","status":"open","amount_paid":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"hosted_invoice_url":"https://invoice.stripe.com/i/test2","lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(), periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		// Should skip draft invoices
+		if len(invoices) != 2 {
+			t.Fatalf("got %d invoices, want 2", len(invoices))
+		}
+		if invoices[0].Status != "paid" {
+			t.Errorf("first invoice status = %q, want paid", invoices[0].Status)
+		}
+		if invoices[0].PlanName != "Individual" {
+			t.Errorf("first invoice PlanName = %q, want Individual", invoices[0].PlanName)
+		}
+		if invoices[0].HostedInvoiceURL != "https://invoice.stripe.com/i/test1" {
+			t.Errorf("first invoice HostedInvoiceURL = %q", invoices[0].HostedInvoiceURL)
+		}
+		if invoices[1].Status != "open" {
+			t.Errorf("second invoice status = %q, want open", invoices[1].Status)
+		}
+	})
+
+	t.Run("empty list returns nil slice", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"object":"list","data":[],"has_more":false}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 0 {
+			t.Fatalf("got %d invoices, want 0", len(invoices))
+		}
+	})
+
+	t.Run("missing description generates fallback", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","amount_paid":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 1 {
+			t.Fatalf("got %d invoices, want 1", len(invoices))
+		}
+		wantDesc := "Subscription \u2014 " + periodEnd.Format("Jan 2006")
+		if invoices[0].Description != wantDesc {
+			t.Errorf("Description = %q, want %q", invoices[0].Description, wantDesc)
+		}
+	})
 }
