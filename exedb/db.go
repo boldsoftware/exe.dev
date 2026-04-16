@@ -111,8 +111,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxesByRegionAndStatusStmt, err = db.PrepareContext(ctx, countBoxesByRegionAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesByRegionAndStatus: %w", err)
 	}
+	if q.countBoxesEverForUserStmt, err = db.PrepareContext(ctx, countBoxesEverForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxesEverForUser: %w", err)
+	}
 	if q.countBoxesForUserStmt, err = db.PrepareContext(ctx, countBoxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesForUser: %w", err)
+	}
+	if q.countDripSendsSinceStmt, err = db.PrepareContext(ctx, countDripSendsSince); err != nil {
+		return nil, fmt.Errorf("error preparing query CountDripSendsSince: %w", err)
 	}
 	if q.countEmailBouncesStmt, err = db.PrepareContext(ctx, countEmailBounces); err != nil {
 		return nil, fmt.Errorf("error preparing query CountEmailBounces: %w", err)
@@ -450,6 +456,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCreditStateStmt, err = db.PrepareContext(ctx, getCreditState); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCreditState: %w", err)
 	}
+	if q.getDripSendsForUserStmt, err = db.PrepareContext(ctx, getDripSendsForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetDripSendsForUser: %w", err)
+	}
 	if q.getEmailBounceStmt, err = db.PrepareContext(ctx, getEmailBounce); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBounce: %w", err)
 	}
@@ -735,11 +744,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.grantBillingUpgradeBonusOnceStmt, err = db.PrepareContext(ctx, grantBillingUpgradeBonusOnce); err != nil {
 		return nil, fmt.Errorf("error preparing query GrantBillingUpgradeBonusOnce: %w", err)
 	}
+	if q.hasDripSendStmt, err = db.PrepareContext(ctx, hasDripSend); err != nil {
+		return nil, fmt.Errorf("error preparing query HasDripSend: %w", err)
+	}
 	if q.hasPushTokensStmt, err = db.PrepareContext(ctx, hasPushTokens); err != nil {
 		return nil, fmt.Errorf("error preparing query HasPushTokens: %w", err)
 	}
 	if q.hasUserAccessToBoxStmt, err = db.PrepareContext(ctx, hasUserAccessToBox); err != nil {
 		return nil, fmt.Errorf("error preparing query HasUserAccessToBox: %w", err)
+	}
+	if q.hasUserUsedShareLinksStmt, err = db.PrepareContext(ctx, hasUserUsedShareLinks); err != nil {
+		return nil, fmt.Errorf("error preparing query HasUserUsedShareLinks: %w", err)
+	}
+	if q.hasUserUsedShelleyStmt, err = db.PrepareContext(ctx, hasUserUsedShelley); err != nil {
+		return nil, fmt.Errorf("error preparing query HasUserUsedShelley: %w", err)
 	}
 	if q.incrementEmailVerificationCodeAttemptsStmt, err = db.PrepareContext(ctx, incrementEmailVerificationCodeAttempts); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementEmailVerificationCodeAttempts: %w", err)
@@ -788,6 +806,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertDeletedBoxStmt, err = db.PrepareContext(ctx, insertDeletedBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertDeletedBox: %w", err)
+	}
+	if q.insertDripSendStmt, err = db.PrepareContext(ctx, insertDripSend); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertDripSend: %w", err)
 	}
 	if q.insertEmailAddressQualityStmt, err = db.PrepareContext(ctx, insertEmailAddressQuality); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailAddressQuality: %w", err)
@@ -1028,6 +1049,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTeamSharedBoxIDsForUserStmt, err = db.PrepareContext(ctx, listTeamSharedBoxIDsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTeamSharedBoxIDsForUser: %w", err)
+	}
+	if q.listTrialUsersForDripStmt, err = db.PrepareContext(ctx, listTrialUsersForDrip); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTrialUsersForDrip: %w", err)
 	}
 	if q.listUnusedInviteCodesForUserStmt, err = db.PrepareContext(ctx, listUnusedInviteCodesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUnusedInviteCodesForUser: %w", err)
@@ -1434,9 +1458,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countBoxesByRegionAndStatusStmt: %w", cerr)
 		}
 	}
+	if q.countBoxesEverForUserStmt != nil {
+		if cerr := q.countBoxesEverForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxesEverForUserStmt: %w", cerr)
+		}
+	}
 	if q.countBoxesForUserStmt != nil {
 		if cerr := q.countBoxesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxesForUserStmt: %w", cerr)
+		}
+	}
+	if q.countDripSendsSinceStmt != nil {
+		if cerr := q.countDripSendsSinceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countDripSendsSinceStmt: %w", cerr)
 		}
 	}
 	if q.countEmailBouncesStmt != nil {
@@ -1999,6 +2033,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCreditStateStmt: %w", cerr)
 		}
 	}
+	if q.getDripSendsForUserStmt != nil {
+		if cerr := q.getDripSendsForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getDripSendsForUserStmt: %w", cerr)
+		}
+	}
 	if q.getEmailBounceStmt != nil {
 		if cerr := q.getEmailBounceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailBounceStmt: %w", cerr)
@@ -2474,6 +2513,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing grantBillingUpgradeBonusOnceStmt: %w", cerr)
 		}
 	}
+	if q.hasDripSendStmt != nil {
+		if cerr := q.hasDripSendStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasDripSendStmt: %w", cerr)
+		}
+	}
 	if q.hasPushTokensStmt != nil {
 		if cerr := q.hasPushTokensStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasPushTokensStmt: %w", cerr)
@@ -2482,6 +2526,16 @@ func (q *Queries) Close() error {
 	if q.hasUserAccessToBoxStmt != nil {
 		if cerr := q.hasUserAccessToBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasUserAccessToBoxStmt: %w", cerr)
+		}
+	}
+	if q.hasUserUsedShareLinksStmt != nil {
+		if cerr := q.hasUserUsedShareLinksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasUserUsedShareLinksStmt: %w", cerr)
+		}
+	}
+	if q.hasUserUsedShelleyStmt != nil {
+		if cerr := q.hasUserUsedShelleyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasUserUsedShelleyStmt: %w", cerr)
 		}
 	}
 	if q.incrementEmailVerificationCodeAttemptsStmt != nil {
@@ -2562,6 +2616,11 @@ func (q *Queries) Close() error {
 	if q.insertDeletedBoxStmt != nil {
 		if cerr := q.insertDeletedBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertDeletedBoxStmt: %w", cerr)
+		}
+	}
+	if q.insertDripSendStmt != nil {
+		if cerr := q.insertDripSendStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertDripSendStmt: %w", cerr)
 		}
 	}
 	if q.insertEmailAddressQualityStmt != nil {
@@ -2962,6 +3021,11 @@ func (q *Queries) Close() error {
 	if q.listTeamSharedBoxIDsForUserStmt != nil {
 		if cerr := q.listTeamSharedBoxIDsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTeamSharedBoxIDsForUserStmt: %w", cerr)
+		}
+	}
+	if q.listTrialUsersForDripStmt != nil {
+		if cerr := q.listTrialUsersForDripStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTrialUsersForDripStmt: %w", cerr)
 		}
 	}
 	if q.listUnusedInviteCodesForUserStmt != nil {
@@ -3457,7 +3521,9 @@ type Queries struct {
 	countBoxSharesByUserStmt                   *sql.Stmt
 	countBoxesStmt                             *sql.Stmt
 	countBoxesByRegionAndStatusStmt            *sql.Stmt
+	countBoxesEverForUserStmt                  *sql.Stmt
 	countBoxesForUserStmt                      *sql.Stmt
+	countDripSendsSinceStmt                    *sql.Stmt
 	countEmailBouncesStmt                      *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
 	countPendingBoxSharesByUserStmt            *sql.Stmt
@@ -3570,6 +3636,7 @@ type Queries struct {
 	getCheckoutParamsStmt                      *sql.Stmt
 	getCreditBalanceStmt                       *sql.Stmt
 	getCreditStateStmt                         *sql.Stmt
+	getDripSendsForUserStmt                    *sql.Stmt
 	getEmailBounceStmt                         *sql.Stmt
 	getEmailBySSHKeyStmt                       *sql.Stmt
 	getEmailByUserIDStmt                       *sql.Stmt
@@ -3665,8 +3732,11 @@ type Queries struct {
 	getUsersWithOutOfRegionBoxesStmt           *sql.Stmt
 	giftCreditsStmt                            *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
+	hasDripSendStmt                            *sql.Stmt
 	hasPushTokensStmt                          *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
+	hasUserUsedShareLinksStmt                  *sql.Stmt
+	hasUserUsedShelleyStmt                     *sql.Stmt
 	incrementEmailVerificationCodeAttemptsStmt *sql.Stmt
 	incrementSeenOnHostsStmt                   *sql.Stmt
 	incrementShareLinkUsageStmt                *sql.Stmt
@@ -3683,6 +3753,7 @@ type Queries struct {
 	insertBoxTeamShareStmt                     *sql.Stmt
 	insertCheckoutParamsStmt                   *sql.Stmt
 	insertDeletedBoxStmt                       *sql.Stmt
+	insertDripSendStmt                         *sql.Stmt
 	insertEmailAddressQualityStmt              *sql.Stmt
 	insertEmailBounceStmt                      *sql.Stmt
 	insertEmailQualityBypassStmt               *sql.Stmt
@@ -3763,6 +3834,7 @@ type Queries struct {
 	listTeamExeletsStmt                        *sql.Stmt
 	listTeamExeletsForTeamStmt                 *sql.Stmt
 	listTeamSharedBoxIDsForUserStmt            *sql.Stmt
+	listTrialUsersForDripStmt                  *sql.Stmt
 	listUnusedInviteCodesForUserStmt           *sql.Stmt
 	listUnusedSystemInviteCodesStmt            *sql.Stmt
 	listUserRegionMigrationsByBatchStmt        *sql.Stmt
@@ -3883,7 +3955,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxSharesByUserStmt:                   q.countBoxSharesByUserStmt,
 		countBoxesStmt:                             q.countBoxesStmt,
 		countBoxesByRegionAndStatusStmt:            q.countBoxesByRegionAndStatusStmt,
+		countBoxesEverForUserStmt:                  q.countBoxesEverForUserStmt,
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
+		countDripSendsSinceStmt:                    q.countDripSendsSinceStmt,
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
 		countPendingBoxSharesByUserStmt:            q.countPendingBoxSharesByUserStmt,
@@ -3996,6 +4070,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
 		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
 		getCreditStateStmt:                         q.getCreditStateStmt,
+		getDripSendsForUserStmt:                    q.getDripSendsForUserStmt,
 		getEmailBounceStmt:                         q.getEmailBounceStmt,
 		getEmailBySSHKeyStmt:                       q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
@@ -4091,8 +4166,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUsersWithOutOfRegionBoxesStmt:           q.getUsersWithOutOfRegionBoxesStmt,
 		giftCreditsStmt:                            q.giftCreditsStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
+		hasDripSendStmt:                            q.hasDripSendStmt,
 		hasPushTokensStmt:                          q.hasPushTokensStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
+		hasUserUsedShareLinksStmt:                  q.hasUserUsedShareLinksStmt,
+		hasUserUsedShelleyStmt:                     q.hasUserUsedShelleyStmt,
 		incrementEmailVerificationCodeAttemptsStmt: q.incrementEmailVerificationCodeAttemptsStmt,
 		incrementSeenOnHostsStmt:                   q.incrementSeenOnHostsStmt,
 		incrementShareLinkUsageStmt:                q.incrementShareLinkUsageStmt,
@@ -4109,6 +4187,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertBoxTeamShareStmt:                     q.insertBoxTeamShareStmt,
 		insertCheckoutParamsStmt:                   q.insertCheckoutParamsStmt,
 		insertDeletedBoxStmt:                       q.insertDeletedBoxStmt,
+		insertDripSendStmt:                         q.insertDripSendStmt,
 		insertEmailAddressQualityStmt:              q.insertEmailAddressQualityStmt,
 		insertEmailBounceStmt:                      q.insertEmailBounceStmt,
 		insertEmailQualityBypassStmt:               q.insertEmailQualityBypassStmt,
@@ -4189,6 +4268,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTeamExeletsStmt:                        q.listTeamExeletsStmt,
 		listTeamExeletsForTeamStmt:                 q.listTeamExeletsForTeamStmt,
 		listTeamSharedBoxIDsForUserStmt:            q.listTeamSharedBoxIDsForUserStmt,
+		listTrialUsersForDripStmt:                  q.listTrialUsersForDripStmt,
 		listUnusedInviteCodesForUserStmt:           q.listUnusedInviteCodesForUserStmt,
 		listUnusedSystemInviteCodesStmt:            q.listUnusedSystemInviteCodesStmt,
 		listUserRegionMigrationsByBatchStmt:        q.listUserRegionMigrationsByBatchStmt,

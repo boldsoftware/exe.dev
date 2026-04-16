@@ -158,6 +158,19 @@ type DeletedBox struct {
 	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at"`
 }
 
+type DripSend struct {
+	ID           int64     `db:"id" json:"id"`
+	UserID       string    `db:"user_id" json:"user_id"`
+	Campaign     string    `db:"campaign" json:"campaign"`
+	Step         string    `db:"step" json:"step"`
+	Status       string    `db:"status" json:"status"`
+	SkipReason   *string   `db:"skip_reason" json:"skip_reason"`
+	EmailTo      *string   `db:"email_to" json:"email_to"`
+	EmailSubject *string   `db:"email_subject" json:"email_subject"`
+	EmailBody    *string   `db:"email_body" json:"email_body"`
+	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+}
+
 type EmailAddressQuality struct {
 	ID           int64      `db:"id" json:"id"`
 	Email        string     `db:"email" json:"email"`

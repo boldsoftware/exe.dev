@@ -34,6 +34,7 @@ const (
 	TypeBoxMaintenance           Type = "box_maintenance"
 	TypeAccessRequest            Type = "access_request"
 	TypeTeamInvitation           Type = "team_invitation"
+	TypeDripCampaign             Type = "drip_campaign"
 )
 
 // postmarkMessageStreams maps email types to Postmark message stream IDs.
@@ -53,6 +54,7 @@ var postmarkMessageStreams = map[Type]string{
 	TypeBoxMaintenance:           "general-notification",
 	TypeAccessRequest:            "general-notification",
 	TypeTeamInvitation:           "general-notification",
+	TypeDripCampaign:             "drip-campaign",
 }
 
 var emailsSentTotal = prometheus.NewCounterVec(

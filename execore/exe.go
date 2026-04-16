@@ -48,6 +48,7 @@ import (
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
 	"exe.dev/domz"
+	"exe.dev/drip"
 	"exe.dev/email"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
@@ -313,6 +314,9 @@ type Server struct {
 	postmarkStatsCollector *email.PostmarkStatsCollector
 	bouncePoller           *email.PostmarkBouncePoller
 	subscriptionPoller     *SubscriptionPoller
+
+	// Drip campaign runner for trial onboarding emails
+	dripRunner *drip.Runner
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -1208,6 +1212,19 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Warn("stripe webhook secret not configured - webhook signature validation will fail")
 	}
 	s.billing.OnPlanDowngrade = s.handlePlanDowngrade
+
+	// Initialize drip campaign runner for trial onboarding emails.
+	s.dripRunner = drip.NewRunner(s.db, cfg.Env, func(ctx context.Context, msg email.Message) error {
+		return s.sendEmail(ctx, sendEmailParams{
+			emailType: msg.Type,
+			to:       msg.To,
+			subject:  msg.Subject,
+			body:     msg.Body,
+			fromName: "David Crawshaw",
+			replyTo:  msg.ReplyTo,
+			attrs:    msg.Attrs,
+		})
+	}, slog)
 
 	if cfg.Env.BootstrapStripeCatalog {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -3016,6 +3033,11 @@ func (s *Server) start() error {
 
 	// Start background GitHub token renewal
 	go s.startGitHubTokenRenewal(ctx)
+
+	// Start drip campaign email loop
+	if s.dripRunner != nil {
+		go s.dripRunner.Start(ctx)
+	}
 
 	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
