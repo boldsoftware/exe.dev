@@ -130,7 +130,7 @@ func (s *Server) handleAPIBillingUsage(w http.ResponseWriter, r *http.Request, u
 
 	switch granularity {
 	case "monthly":
-		monthly, err := client.queryMonthly(ctx, []string{userID}, start, end)
+		monthly, err := client.queryMonthly(ctx, []string{userID}, start, end, true)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to query monthly metrics", "error", err, "user_id", userID)
 			http.Error(w, "failed to query metrics", http.StatusBadGateway)

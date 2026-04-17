@@ -131,11 +131,12 @@ func (c *metricsClient) queryDaily(ctx context.Context, resourceGroups []string,
 }
 
 // queryMonthly fetches monthly metrics for the given resource groups over the specified period.
-func (c *metricsClient) queryMonthly(ctx context.Context, resourceGroups []string, start, end time.Time) ([]types.MonthlyMetric, error) {
+func (c *metricsClient) queryMonthly(ctx context.Context, resourceGroups []string, start, end time.Time, groupByVM bool) ([]types.MonthlyMetric, error) {
 	reqBody := types.QueryMonthlyRequest{
 		ResourceGroups: resourceGroups,
 		Start:          start,
 		End:            end,
+		GroupByVM:      groupByVM,
 	}
 	data, err := json.Marshal(reqBody)
 	if err != nil {

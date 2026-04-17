@@ -6097,7 +6097,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		}
 		// Fetch monthly rollup data for the last 6 months.
 		monthlyStart := time.Date(nowUTC.Year(), nowUTC.Month()-5, 1, 0, 0, 0, 0, time.UTC)
-		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthlyStart, nowUTC); err == nil {
+		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthlyStart, nowUTC, true); err == nil {
 			data.MonthlyMetrics = monthly
 		}
 	}

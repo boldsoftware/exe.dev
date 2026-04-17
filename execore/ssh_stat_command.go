@@ -78,17 +78,17 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("")
 
 	// Disk lines.
-	cc.Writeln("  Included disk:      %s", diskStatLine(diskAvgBytes, includedDisk))
+	cc.Writeln("  Disk:       %s", diskStatLine(diskAvgBytes, includedDisk))
 	if includedDisk > 0 && diskAvgBytes > int64(includedDisk) {
 		overBytes := diskAvgBytes - int64(includedDisk)
-		cc.Writeln("  Extra disk:         %s", humanize.IBytes(uint64(overBytes)))
+		cc.Writeln("  Extra disk: %s", humanize.IBytes(uint64(overBytes)))
 	}
 
 	// Bandwidth lines.
-	cc.Writeln("  Included bandwidth: %s", bandwidthStatLine(bandwidthBytes, includedBandwidth))
+	cc.Writeln("  Bandwidth:  %s", bandwidthStatLine(bandwidthBytes, includedBandwidth))
 	if includedBandwidth > 0 && bandwidthBytes > int64(includedBandwidth) {
 		overBytes := bandwidthBytes - int64(includedBandwidth)
-		cc.Writeln("  Extra bandwidth:    %s", humanize.IBytes(uint64(overBytes)))
+		cc.Writeln("  Extra bandwidth: %s", humanize.IBytes(uint64(overBytes)))
 	}
 
 	// Overage cost.

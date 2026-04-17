@@ -81,7 +81,7 @@
       <div v-if="usage?.display" class="usage-panel">
         <div class="usage-panel-title">USAGE THIS PERIOD<template v-if="formatPeriod(billingPeriodStart, billingPeriodEnd)"> · {{ formatPeriod(billingPeriodStart, billingPeriodEnd) }}</template></div>
         <div class="usage-panel-row">
-          <span>Included disk</span>
+          <span>Disk</span>
           <span>{{ usage.display.disk_avg }} / {{ usage.display.included_disk }}</span>
         </div>
         <div v-if="usage.display.overage_disk" class="usage-panel-row usage-panel-overage-row">
@@ -89,7 +89,7 @@
           <span>{{ usage.display.overage_disk }}</span>
         </div>
         <div class="usage-panel-row">
-          <span>Included bandwidth</span>
+          <span>Bandwidth</span>
           <span>{{ usage.display.bandwidth }} / {{ usage.display.included_bandwidth }}</span>
         </div>
         <div v-if="usage.display.overage_bandwidth" class="usage-panel-row usage-panel-overage-row">
