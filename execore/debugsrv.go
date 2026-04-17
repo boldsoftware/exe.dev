@@ -5888,6 +5888,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		UsageVMs                 []metricstypes.VMUsageSummary
 		DailyMetrics             []metricstypes.DailyMetric
 		MonthlyMetrics           []metricstypes.MonthlyMetric
+		IncludedDiskGB           float64
+		IncludedBandwidthGB      float64
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -5979,6 +5981,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// Populate quotas: plan value, user-limit override, effective.
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+		data.IncludedDiskGB = float64(plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)) / 1e9
+		data.IncludedBandwidthGB = float64(plan.IncludedBandwidth(planRow.PlanID)) / 1e9
 		limits := ParseUserLimits(&exedb.User{Limits: user.Limits})
 		planTier, tierErr := plan.GetTierByID(planRow.PlanID)
 		if tierErr == nil {

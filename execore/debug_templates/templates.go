@@ -84,15 +84,13 @@ func Parse(env stage.Env) (*template.Template, error) {
 				o := max(gb-includedGB, 0)
 				return fmt.Sprintf("%.3f", o)
 			},
-			"diskCost": func(diskAvgBytes int64) string {
-				const includedGB = 25.0
+			"diskCost": func(diskBytes int64, includedGB float64) string {
 				const price = 0.08
-				gb := float64(diskAvgBytes) / 1e9
+				gb := float64(diskBytes) / 1e9
 				cost := max(gb-includedGB, 0) * price
 				return fmt.Sprintf("$%.2f", cost)
 			},
-			"bwCost": func(bwBytes int64) string {
-				const includedGB = 100.0
+			"bwCost": func(bwBytes int64, includedGB float64) string {
 				const price = 0.07
 				gb := float64(bwBytes) / 1e9
 				cost := max(gb-includedGB, 0) * price

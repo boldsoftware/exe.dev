@@ -139,27 +139,29 @@ table.info th { width: 200px; }
 {{if $.MonthlyMetrics}}
 <h4>Monthly Usage</h4>
 <table>
-<thead><tr><th>VM</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
+<thead><tr><th>VM</th><th>Metric</th><th>Included (GB)</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
 <tbody>
 {{range $.MonthlyMetrics}}
 <tr>
   <td rowspan="2">{{if .VMName}}{{.VMName}}{{else}}—{{end}}</td>
   <td>Disk</td>
-  <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
-  <td>{{overage .DiskLogicalAvgBytes 25}}</td>
-  <td>{{diskCost .DiskLogicalAvgBytes}}</td>
+  <td>{{printf "%.0f" $.IncludedDiskGB}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskProvisionedMaxBytes 1e9)}}</td>
+  <td>{{overage .DiskProvisionedMaxBytes $.IncludedDiskGB}}</td>
+  <td>{{diskCost .DiskProvisionedMaxBytes $.IncludedDiskGB}}</td>
 </tr>
 <tr>
   <td>Bandwidth</td>
+  <td>{{printf "%.0f" $.IncludedBandwidthGB}}</td>
   <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
-  <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
-  <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
+  <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) $.IncludedBandwidthGB}}</td>
+  <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes) $.IncludedBandwidthGB}}</td>
 </tr>
 {{end}}
 </tbody>
 </table>
 {{end}}
-<p class="muted">Disk billed on avg daily usage. Overage: disk $0.08/GB, bandwidth $0.07/GB.</p>
+<p class="muted">Disk billed on provisioned size beyond included {{printf "%.0f" $.IncludedDiskGB}} GB/VM. Overage: disk $0.08/GB, bandwidth $0.07/GB.</p>
 {{else}}
 <p>No usage data available.</p>
 {{end}}
