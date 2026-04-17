@@ -229,4 +229,13 @@ describe('VMList', () => {
     expect(wrapper.text()).toContain('#prod')
     expect(wrapper.text()).toContain('Untagged')
   })
+
+  it('renders breadcrumb navigation', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    const wrapper = await mountVMList(makeDashboard())
+    const breadcrumbs = wrapper.find('.breadcrumbs')
+    expect(breadcrumbs.exists()).toBe(true)
+    expect(breadcrumbs.text()).toContain('Home')
+    expect(breadcrumbs.text()).toContain('VMs')
+  })
 })

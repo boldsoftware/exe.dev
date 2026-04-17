@@ -1,0 +1,253 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import LiveMetrics from '../components/LiveMetrics.vue'
+import type { VMLiveMetrics } from '../api/client'
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>()
+  return {
+    ...actual,
+    fetchVMLiveMetrics: vi.fn(),
+  }
+})
+
+import { fetchVMLiveMetrics } from '../api/client'
+const mockFetch = vi.mocked(fetchVMLiveMetrics)
+
+function makeMetrics(overrides: Partial<VMLiveMetrics> = {}): VMLiveMetrics {
+  return {
+    name: 'test-vm',
+    status: 'running',
+    cpu_percent: 23.4,
+    mem_bytes: 2_147_483_648, // ~2 GB
+    swap_bytes: 0,
+    disk_bytes: 5_000_000_000, // 5 GB
+    disk_capacity_bytes: 25_000_000_000, // 25 GB
+    net_rx_bytes: 1_200_000_000, // 1.2 GB
+    net_tx_bytes: 340_000_000, // 340 MB
+    ...overrides,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('LiveMetrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('renders all 5 metric cards', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cards = wrapper.findAll('.metric-card')
+    expect(cards).toHaveLength(5)
+    const labels = cards.map(c => c.find('.mt').text())
+    expect(labels).toEqual(['CPU', 'Memory', 'Disk', 'Net ↓', 'Net ↑'])
+  })
+
+  it('displays CPU percentage', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpu_percent: 75.3 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cpuCard = wrapper.findAll('.metric-card')[0]
+    expect(cpuCard.find('.mv').text()).toBe('75.3%')
+  })
+
+  it('displays memory in human-readable format', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2_147_483_648 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.mv').text()).toBe('2.1 GB')
+  })
+
+  it('shows swap info in memory subtitle when swap is used', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 500_000_000 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.ms').text()).toContain('swap')
+  })
+
+  it('shows RSS usage subtitle when no swap', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.ms').text()).toBe('RSS usage')
+  })
+
+  it('displays disk usage with capacity subtitle', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 5_000_000_000, disk_capacity_bytes: 25_000_000_000 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const diskCard = wrapper.findAll('.metric-card')[2]
+    expect(diskCard.find('.mv').text()).toBe('5.0 GB')
+    expect(diskCard.find('.ms').text()).toContain('25.0 GB capacity')
+  })
+
+  it('shows total bytes on first poll for network', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_200_000_000, net_tx_bytes: 340_000_000 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const rxCard = wrapper.findAll('.metric-card')[3]
+    const txCard = wrapper.findAll('.metric-card')[4]
+    // First poll: no rate yet, show raw value
+    expect(rxCard.find('.mv').text()).toBe('1.2 GB')
+    expect(txCard.find('.mv').text()).toBe('340.0 MB')
+  })
+
+  it('shows network rate after second poll', async () => {
+    // First poll
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_000_000, net_tx_bytes: 500_000 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+
+    // Advance time and trigger second poll
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 2_000_000, net_tx_bytes: 1_000_000 }))
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+
+    const rxCard = wrapper.findAll('.metric-card')[3]
+    // Should show a rate now (Mbps/Kbps/bps), not raw bytes
+    expect(rxCard.find('.mv').text()).toMatch(/bps/)
+  })
+
+  it('shows network totals in subtitle', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_200_000_000, net_tx_bytes: 340_000_000 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const rxCard = wrapper.findAll('.metric-card')[3]
+    const txCard = wrapper.findAll('.metric-card')[4]
+    expect(rxCard.find('.ms').text()).toContain('received total')
+    expect(txCard.find('.ms').text()).toContain('sent total')
+  })
+
+  it('does not poll when VM is stopped', async () => {
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'stopped' } })
+    await flushPromises()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('starts polling when status changes to running', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'stopped' } })
+    await flushPromises()
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ vmStatus: 'running' })
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledWith('test-vm')
+  })
+
+  it('stops polling when status changes to stopped', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ vmStatus: 'stopped' })
+    vi.advanceTimersByTime(10000)
+    await flushPromises()
+    // Should not have polled again after stopping
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets and re-polls when vmName changes', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledWith('test-vm')
+
+    mockFetch.mockResolvedValue(makeMetrics({ name: 'other-vm' }))
+    await wrapper.setProps({ vmName: 'other-vm' })
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledWith('other-vm')
+  })
+
+  it('shows error when fetch fails and no prior data', async () => {
+    mockFetch.mockRejectedValue(new Error('Network error'))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(wrapper.find('.metrics-error').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Unable to load metrics')
+  })
+
+  it('keeps existing data on transient fetch failure', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpu_percent: 50.0 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(wrapper.findAll('.metric-card')[0].find('.mv').text()).toBe('50.0%')
+
+    // Second poll fails
+    mockFetch.mockRejectedValue(new Error('Timeout'))
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+
+    // Data should still be showing
+    expect(wrapper.find('.metrics-error').exists()).toBe(false)
+    expect(wrapper.findAll('.metric-card')[0].find('.mv').text()).toBe('50.0%')
+  })
+
+  it('shows static refresh interval text', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('refreshes every 5s')
+  })
+
+  it('polls at 5-second intervals', async () => {
+    mockFetch.mockResolvedValue(makeMetrics())
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('handles zero values gracefully', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({
+      cpu_percent: 0,
+      mem_bytes: 0,
+      disk_bytes: 0,
+      disk_capacity_bytes: 0,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cpuCard = wrapper.findAll('.metric-card')[0]
+    expect(cpuCard.find('.mv').text()).toBe('0.0%')
+    // Should not throw or show NaN
+    expect(wrapper.text()).not.toContain('NaN')
+    expect(wrapper.text()).not.toContain('undefined')
+  })
+
+  it('caps CPU bar at 100%', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpu_percent: 250 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cpuBar = wrapper.findAll('.metric-card')[0].find('.mb-fill')
+    // Bar width should be capped at 100%, but the display should show the real value
+    expect(cpuBar.attributes('style')).toContain('width: 100%')
+    expect(wrapper.findAll('.metric-card')[0].find('.mv').text()).toBe('250.0%')
+  })
+})

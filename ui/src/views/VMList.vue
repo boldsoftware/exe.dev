@@ -1,5 +1,12 @@
 <template>
   <div class="vm-list-page">
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <router-link to="/" class="breadcrumb-link">Home</router-link>
+      <span class="breadcrumb-sep">›</span>
+      <span class="breadcrumb-current">VMs</span>
+    </nav>
+
     <!-- Header -->
     <div class="section-header">
       <div class="section-left">
@@ -824,7 +831,34 @@ async function submitPrompt() {
 .vm-list-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-color-muted);
+}
+
+.breadcrumb-link {
+  color: var(--text-color-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--text-color-muted);
+}
+
+.breadcrumb-current {
+  color: var(--text-color);
+  font-weight: 500;
 }
 
 .section-header {

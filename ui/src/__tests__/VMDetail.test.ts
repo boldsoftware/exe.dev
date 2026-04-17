@@ -116,13 +116,15 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchDashboard: vi.fn(),
     fetchVMUsage: vi.fn(),
     fetchProfile: vi.fn(),
+    fetchVMLiveMetrics: vi.fn(),
   }
 })
 
-import { fetchDashboard, fetchVMUsage, fetchProfile } from '../api/client'
+import { fetchDashboard, fetchVMUsage, fetchProfile, fetchVMLiveMetrics } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchVMUsage = vi.mocked(fetchVMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
+const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
 
 // ---------------------------------------------------------------------------
 // Mount helper
@@ -505,13 +507,40 @@ describe('VMDetail', () => {
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
 
-  // --- Graph sections hidden ---
+  // --- Live Metrics ---
 
-  it('does not render graph placeholder sections', async () => {
+  it('shows live metrics section for running VMs', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 42.5,
+      mem_bytes: 1073741824,
+      swap_bytes: 0,
+      disk_bytes: 5368709120,
+      disk_capacity_bytes: 10737418240,
+      net_rx_bytes: 1048576,
+      net_tx_bytes: 524288,
+    })
+    const wrapper = await mountVMDetail()
+    expect(wrapper.text()).toContain('Live Metrics')
+    expect(wrapper.text()).toContain('42.5%')
+  })
+
+  it('does not show live metrics for stopped VMs', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({
+      boxes: [makeBox({ status: 'stopped' })],
+    }))
+    const wrapper = await mountVMDetail()
+    expect(wrapper.text()).not.toContain('Live Metrics')
+  })
+
+  // --- Charts placeholder still hidden ---
+
+  it('does not render chart placeholder sections', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     const wrapper = await mountVMDetail()
     expect(wrapper.find('.section-placeholder').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Live Metrics')
     expect(wrapper.text()).not.toContain('Usage History')
   })
 })

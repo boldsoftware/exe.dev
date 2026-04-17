@@ -84,13 +84,16 @@
         <span v-for="tag in box.displayTags" :key="tag" class="tag">#{{ tag }}</span>
       </div>
 
+      <!-- Live Metrics -->
+      <LiveMetrics v-if="box.status === 'running'" :vm-name="box.name" :vm-status="box.status" />
+
       <div class="section-divider"></div>
 
       <!-- Billing: two columns of rows under subheadings -->
       <div class="billing-columns">
         <!-- This Billing Period -->
         <div class="billing-section">
-          <div class="section-heading">This Billing Period<span v-if="periodLabel" class="section-heading-sub">{{ periodLabel }}</span></div>
+          <div class="section-heading">Usage<span v-if="periodLabel" class="section-heading-sub">{{ periodLabel }}</span></div>
           <div v-if="usageLoading" class="card-loading"><i class="pi pi-spin pi-spinner"></i></div>
           <template v-else-if="vmUsage">
             <div class="card-row">
@@ -130,10 +133,6 @@
               <span class="card-label">Plan</span>
               <span class="card-value">{{ profile.credits.planName }}</span>
             </div>
-            <div v-if="poolSizeDisplay !== '—'" class="card-row">
-              <span class="card-label">Pool size</span>
-              <span class="card-value">{{ poolSizeDisplay }}</span>
-            </div>
             <div v-if="vmUsage?.display.included_disk" class="card-row">
               <span class="card-label">Disk included</span>
               <span class="card-value">{{ vmUsage.display.included_disk }}</span>
@@ -154,12 +153,6 @@
           <div v-else class="card-empty">Plan info unavailable.</div>
         </div>
       </div>
-
-      <!-- Live Metrics placeholder (hidden until implemented) -->
-      <!-- <div class="section-placeholder">
-        <div class="placeholder-title">Live Metrics</div>
-        <div class="placeholder-body">Live CPU, memory, disk, and network gauges will appear here.</div>
-      </div> -->
 
       <!-- Charts placeholder (hidden until implemented) -->
       <!-- <div class="section-placeholder">
@@ -246,6 +239,7 @@ import {
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
+import LiveMetrics from '../components/LiveMetrics.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -310,14 +304,6 @@ const uptimeDisplay = computed(() => {
   // updatedAt is approximate last-seen; use createdAt as proxy for uptime
   // Only show if box has been running for a meaningful time
   return ''
-})
-
-const poolSizeDisplay = computed(() => {
-  if (!profile.value) return '—'
-  const ti = profile.value.teamInfo
-  if (ti) return `${ti.boxCount} / ${ti.maxBoxes}`
-  const boxes = profile.value.boxes
-  return String(boxes.length)
 })
 
 const maxDiskDisplay = computed(() => {
@@ -523,7 +509,7 @@ onBeforeUnmount(() => {
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 /* Breadcrumbs */
@@ -775,7 +761,7 @@ onBeforeUnmount(() => {
 .section-divider {
   border: none;
   border-top: 1px solid var(--surface-border);
-  margin: 4px 0;
+  margin: 0;
 }
 
 /* Billing columns */

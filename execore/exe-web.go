@@ -1036,6 +1036,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// /api/vm/{name}/metrics — live VM metrics
+		if s.routeAPIVM(w, r, path) {
+			return
+		}
+
 		// /vm/<name> serves the VM detail view (Vue SPA)
 		if _, ok := strings.CutPrefix(path, "/vm/"); ok {
 			if _, err := s.validateAuthCookie(r); err != nil {
