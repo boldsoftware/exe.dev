@@ -179,6 +179,8 @@ WHERE ap.plan_id LIKE 'trial:%'
   AND ap.started_at >= datetime('now', '-21 days')
   -- Only target users created after drip campaign deployment.
   AND u.created_at >= '2026-04-14'
+  -- Exclude users created via logging into someone else's machine.
+  AND u.created_for_login_with_exe = 0
   -- Exclude users who have upgraded: they have an active non-trial, non-basic plan.
   AND NOT EXISTS (
       SELECT 1 FROM account_plans ap2
