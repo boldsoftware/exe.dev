@@ -3,6 +3,7 @@ package replication
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -54,7 +55,16 @@ func (t *SystemSSHTarget) sshArgs() []string {
 func (t *SystemSSHTarget) runCommand(ctx context.Context, command string) ([]byte, error) {
 	args := append(t.sshArgs(), command)
 	cmd := exec.CommandContext(ctx, t.config.SSHCommand, args...)
-	return cmd.CombinedOutput()
+	out, err := cmd.Output()
+	if err != nil {
+		// If the command failed, include stderr in the error for diagnostics.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			return out, fmt.Errorf("%w: %s", err, exitErr.Stderr)
+		}
+		return out, err
+	}
+	return out, nil
 }
 
 func (t *SystemSSHTarget) remoteDataset(volumeID string) string {

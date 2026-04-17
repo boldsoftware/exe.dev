@@ -64,11 +64,23 @@ func availableSpaceCmd(pool string) []string {
 }
 
 // parseAvailableSpace parses the output of `zfs get -Hp -o value available`.
+// It uses the last non-empty line of output to tolerate any unexpected
+// banners or warnings that may precede the value.
 func parseAvailableSpace(pool string, out []byte) (uint64, error) {
-	value := strings.TrimSpace(string(out))
+	value := lastNonEmptyLine(string(out))
 	avail, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse available space for %s (%q): %w", pool, value, err)
 	}
 	return avail, nil
+}
+
+// lastNonEmptyLine returns the last non-empty line from s, trimmed of
+// surrounding whitespace. If s is empty it returns "".
+func lastNonEmptyLine(s string) string {
+	s = strings.TrimRight(s, "\r\n \t")
+	if i := strings.LastIndexAny(s, "\r\n"); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.TrimSpace(s)
 }

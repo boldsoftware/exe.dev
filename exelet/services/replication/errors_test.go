@@ -6,6 +6,39 @@ import (
 	"testing"
 )
 
+func TestParseAvailableSpace(t *testing.T) {
+	cases := []struct {
+		name    string
+		out     string
+		want    uint64
+		wantErr bool
+	}{
+		{"clean output", "14866915129024\n", 14866915129024, false},
+		{"no trailing newline", "14866915129024", 14866915129024, false},
+		{"ssh known_hosts warning", "Warning: Permanently added 'host' (ED25519) to the list of known hosts.\r\n14866915129024\n", 14866915129024, false},
+		{"multiple banner lines", "banner line 1\nbanner line 2\n14866915129024\n", 14866915129024, false},
+		{"empty output", "", 0, true},
+		{"garbage", "not a number\n", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseAvailableSpace("tank", []byte(tc.out))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %d", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsOutOfSpaceErr(t *testing.T) {
 	cases := []struct {
 		name string
