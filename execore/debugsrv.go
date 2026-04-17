@@ -2680,7 +2680,7 @@ func (s *Server) handleDebugMigrations(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDebugBatchMigrate migrates VMs for multiple users concurrently.
-// Accepts user_ids[] (list of user IDs) and concurrency (int, default 1).
+// Accepts user_ids[] (list of user IDs, max 10). Concurrency equals the number of users.
 func (s *Server) handleDebugBatchMigrate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -2693,13 +2693,12 @@ func (s *Server) handleDebugBatchMigrate(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "user_ids[] is required", http.StatusBadRequest)
 		return
 	}
-
-	concurrency := 1
-	if v := r.FormValue("concurrency"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 10 {
-			concurrency = n
-		}
+	if len(userIDs) > 10 {
+		http.Error(w, "max 10 users per batch", http.StatusBadRequest)
+		return
 	}
+
+	concurrency := len(userIDs)
 
 	// Generate a unique batch ID for cancel support.
 	var batchIDBytes [8]byte

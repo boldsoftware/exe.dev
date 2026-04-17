@@ -1353,8 +1353,7 @@ func TestHandleDebugBatchMigrate(t *testing.T) {
 
 	// POST to the batch migrate endpoint.
 	form := url.Values{
-		"user_ids[]":  {user1ID, user2ID},
-		"concurrency": {"2"},
+		"user_ids[]": {user1ID, user2ID},
 	}
 	req := httptest.NewRequest("POST", "/debug/migrations/batch", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1459,8 +1458,7 @@ func TestHandleDebugBatchMigrateCancel(t *testing.T) {
 	done := make(chan string, 1)
 	go func() {
 		form := url.Values{
-			"user_ids[]":  {userID},
-			"concurrency": {"1"},
+			"user_ids[]": {userID},
 		}
 		req := httptest.NewRequest("POST", "/debug/migrations/batch", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

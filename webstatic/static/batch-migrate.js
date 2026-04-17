@@ -21,7 +21,7 @@
     var selectedNone = document.getElementById('selectedNone');
     var submitBtn = document.getElementById('batchSubmitBtn');
     var cancelBtn = document.getElementById('batchCancelBtn');
-    var concurrencyInput = document.getElementById('concurrencyInput');
+    var maxSelected = 10;
     var cancelAllBtn = document.getElementById('cancelAllBtn');
     var liveCount = document.getElementById('liveCount');
     var liveTableContainer = document.getElementById('liveTableContainer');
@@ -159,6 +159,7 @@
         if (selectedUsers[u.user_id]) {
             delete selectedUsers[u.user_id];
         } else {
+            if (Object.keys(selectedUsers).length >= maxSelected) return;
             selectedUsers[u.user_id] = { email: u.email, user_id: u.user_id };
         }
         renderSelectedTags();
@@ -204,6 +205,7 @@
     selectAllBtn.addEventListener('click', function() {
         var matches = searchInput._currentMatches || [];
         matches.forEach(function(u) {
+            if (Object.keys(selectedUsers).length >= maxSelected) return;
             if (!selectedUsers[u.user_id]) {
                 selectedUsers[u.user_id] = { email: u.email, user_id: u.user_id };
             }
@@ -256,8 +258,7 @@
         var ids = Object.keys(selectedUsers);
         if (ids.length === 0) return;
 
-        var concurrency = parseInt(concurrencyInput.value) || 1;
-        if (!confirm('Migrate VMs for ' + ids.length + ' user(s) with concurrency ' + concurrency + '?')) return;
+        if (!confirm('Migrate VMs for ' + ids.length + ' user(s)? All selected users will run concurrently.')) return;
 
         batchRunning = true;
         batchSucceeded = 0;
@@ -271,7 +272,6 @@
         cancelBtn.disabled = false;
         cancelBtn.textContent = 'Cancel Batch';
         searchInput.disabled = true;
-        concurrencyInput.disabled = true;
 
         batchStatus.style.display = 'block';
         batchStatus.className = 'running';
@@ -284,7 +284,6 @@
         ids.forEach(function(uid) {
             body.append('user_ids[]', uid);
         });
-        body.append('concurrency', concurrency.toString());
 
         fetch('/debug/migrations/batch', {
             method: 'POST',
@@ -347,7 +346,6 @@
         submitBtn.disabled = Object.keys(selectedUsers).length === 0;
         cancelBtn.style.display = 'none';
         searchInput.disabled = false;
-        concurrencyInput.disabled = false;
     }
 
     // ── Cancel batch ──
