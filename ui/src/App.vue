@@ -12,7 +12,7 @@
           <a v-if="isLoggedIn" href="/" class="logo-text" @click.prevent="$router.push('/')">exe.dev</a>
           <a v-else href="/" class="logo-text">exe.dev</a>
           <router-link to="/docs" class="docs-link">docs</router-link>
-          <a v-if="!isLoggedIn" href="https://blog.exe.dev" class="docs-link">blog</a>
+          <a href="https://blog.exe.dev" class="docs-link">blog</a>
           <a v-if="!isLoggedIn" href="/pricing" class="docs-link">pricing</a>
         </div>
         <div class="nav-right">
