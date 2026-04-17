@@ -78,6 +78,7 @@ vi.mock('../api/client', async (importOriginal) => {
   return {
     ...actual,
     fetchDashboard: vi.fn(),
+    fetchVMUsage: vi.fn().mockResolvedValue({ metrics: [] }),
   }
 })
 
