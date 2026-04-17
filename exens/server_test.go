@@ -294,11 +294,18 @@ func TestXtermWildcardA(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 record (A), got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 
-		a, ok := rrs[0].(*dns.A)
+		cname, ok := rrs[0].(*dns.CNAME)
+		if !ok {
+			t.Fatalf("expected first record to be *dns.CNAME, got %T", rrs[0])
+		}
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a, ok := rrs[1].(*dns.A)
 		if !ok {
 			t.Fatalf("expected second record to be *dns.A, got %T", rrs[1])
 		}
@@ -335,11 +342,18 @@ func TestXtermWildcardA(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 record (A), got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 
-		a, ok := rrs[0].(*dns.A)
+		cname, ok := rrs[0].(*dns.CNAME)
+		if !ok {
+			t.Fatalf("expected first record to be *dns.CNAME, got %T", rrs[0])
+		}
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a, ok := rrs[1].(*dns.A)
 		if !ok {
 			t.Fatalf("expected second record to be *dns.A, got %T", rrs[1])
 		}
@@ -369,8 +383,8 @@ func TestXtermWildcardA(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rrs) != 1 {
-			t.Fatalf("expected 1 records (A), got %d", len(rrs))
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
 		}
 	})
 
@@ -425,17 +439,40 @@ func TestDNSServer(t *testing.T) {
 		}
 	})
 
-	t.Run("LookupARecordForBoxName", func(t *testing.T) {
-		// When querying A record for a box name, should get an A record
-		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+	t.Run("LookupCNAMERecord", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(rrs) != 1 {
-			t.Fatalf("expected 1 record (A), got %d", len(rrs))
+			t.Fatalf("expected 1 record, got %d", len(rrs))
 		}
+		cname, ok := rrs[0].(*dns.CNAME)
+		if !ok {
+			t.Fatalf("expected *dns.CNAME, got %T", rrs[0])
+		}
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
+		}
+	})
 
-		a, ok := rrs[0].(*dns.A)
+	t.Run("LookupARecordForBoxName", func(t *testing.T) {
+		// When querying A record for a box name, should get CNAME + A record
+		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
+		}
+		cname, ok := rrs[0].(*dns.CNAME)
+		if !ok {
+			t.Fatalf("expected first record to be *dns.CNAME, got %T", rrs[0])
+		}
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a, ok := rrs[1].(*dns.A)
 		if !ok {
 			t.Fatalf("expected second record to be *dns.A, got %T", rrs[1])
 		}
@@ -463,6 +500,16 @@ func TestDNSServer(t *testing.T) {
 
 	t.Run("LookupNonexistentA", func(t *testing.T) {
 		rrs, err := server.lookupA(ctx, "na099.exe.xyz", "na099.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 0 {
+			t.Errorf("expected 0 records, got %d", len(rrs))
+		}
+	})
+
+	t.Run("LookupNonexistentCNAME", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "nonexistent.exe.xyz", "nonexistent.exe.xyz.", dns.ClassINET)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -758,8 +805,8 @@ func TestDNSServerIntegration(t *testing.T) {
 		if resp.Rcode != dns.RcodeSuccess {
 			t.Errorf("expected NOERROR for known xterm box, got %s", dns.RcodeToString[resp.Rcode])
 		}
-		if len(resp.Answer) != 1 {
-			t.Fatalf("expected 1 answer (A) for known xterm box, got %d", len(resp.Answer))
+		if len(resp.Answer) != 2 {
+			t.Fatalf("expected 2 answers (CNAME + A) for known xterm box, got %d", len(resp.Answer))
 		}
 	})
 
@@ -1006,6 +1053,49 @@ func TestNetActuateShardA(t *testing.T) {
 		}
 		if len(rrs) != 0 {
 			t.Errorf("expected 0 records for nonexistent shard, got %d", len(rrs))
+		}
+	})
+}
+
+func TestBoxCNAMEResolution(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	log := tslog.Slogger(t)
+
+	addBox(t, db)
+
+	server := NewServer(db, log, "exe.xyz", "exe.dev")
+	server.SetNetActuateShardIPs(defaultNAShardIPs)
+
+	t.Run("CNAME", func(t *testing.T) {
+		rrs, err := server.lookupCNAME(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 1 {
+			t.Fatalf("expected 1 CNAME record, got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected na001.exe.xyz., got %s", cname.Target)
+		}
+	})
+
+	t.Run("A", func(t *testing.T) {
+		rrs, err := server.lookupA(ctx, "testbox.exe.xyz", "testbox.exe.xyz.", dns.ClassINET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rrs) != 2 {
+			t.Fatalf("expected 2 records (CNAME + A), got %d", len(rrs))
+		}
+		cname := rrs[0].(*dns.CNAME)
+		if cname.Target != "na001.exe.xyz." {
+			t.Errorf("expected CNAME target na001.exe.xyz., got %s", cname.Target)
+		}
+		a := rrs[1].(*dns.A)
+		if a.A.String() != "161.210.92.1" {
+			t.Errorf("expected 161.210.92.1, got %s", a.A.String())
 		}
 	})
 }
