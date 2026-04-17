@@ -18,6 +18,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/llmgateway"
+	"exe.dev/logging"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
 	"exe.dev/sshkey"
 	"exe.dev/tracing"
@@ -46,20 +47,17 @@ func registerExeproxMetrics(metricsRegistry *prometheus.Registry) *grpcprom.Serv
 
 // setupExeproxServer sets up the exeprox grpc service.
 func (s *Server) setupExeproxServer() {
-	// Adapter to convert slog.Logger to logging.Logger.
-	loggerFunc := func(ctx context.Context, lvl grpclogging.Level, msg string, fields ...any) {
-		s.slog().Log(ctx, slog.Level(lvl), msg, fields...)
-	}
+	logger := logging.GRPCLogger(s.slog())
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		tracing.UnaryServerInterceptor(),
 		s.exeproxServiceMetrics.UnaryServerInterceptor(),
-		grpclogging.UnaryServerInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+		grpclogging.UnaryServerInterceptor(logger),
 	}
 	streamServerInterceptors := []grpc.StreamServerInterceptor{
 		tracing.StreamServerInterceptor(),
 		s.exeproxServiceMetrics.StreamServerInterceptor(),
-		grpclogging.StreamServerInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+		grpclogging.StreamServerInterceptor(logger),
 	}
 
 	grpcOpts := []grpc.ServerOption{

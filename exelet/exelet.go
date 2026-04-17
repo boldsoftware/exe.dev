@@ -10,6 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/exelet/config"
+	"exe.dev/exelet/services"
+	exelogging "exe.dev/logging"
+	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/stage"
+	"exe.dev/tracing"
+
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/pkg/errors"
@@ -18,13 +25,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
-
-	"exe.dev/exelet/config"
-	"exe.dev/exelet/services"
-	exelogging "exe.dev/logging"
-	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/stage"
-	"exe.dev/tracing"
 )
 
 var (
@@ -106,21 +106,19 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, env stage.Env, opts .
 	}
 
 	// Adapter to convert slog.Logger to logging.Logger
-	loggerFunc := func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-		log.Log(ctx, slog.Level(lvl), msg, fields...)
-	}
+	logger := exelogging.GRPCLogger(log)
 
 	// middleware
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		tracing.UnaryServerInterceptor(),
 		grpcMetrics.UnaryServerInterceptor(),
-		logging.UnaryServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
+		logging.UnaryServerInterceptor(logger, logging.WithLogOnEvents(logging.FinishCall)),
 		grpcLogTypeInterceptor(),
 	}
 	streamServerInterceptors := []grpc.StreamServerInterceptor{
 		tracing.StreamServerInterceptor(),
 		grpcMetrics.StreamServerInterceptor(),
-		logging.StreamServerInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)),
+		logging.StreamServerInterceptor(logger, logging.WithLogOnEvents(logging.FinishCall)),
 		grpcStreamLogTypeInterceptor(),
 	}
 

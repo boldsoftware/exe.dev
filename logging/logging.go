@@ -11,6 +11,8 @@ import (
 
 	"exe.dev/stage"
 	"exe.dev/tracing"
+
+	grpclogging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/lmittmann/tint"
 	"github.com/prometheus/client_golang/prometheus"
 	slogmulti "github.com/samber/slog-multi"
@@ -210,7 +212,7 @@ func (h *detachContextHandler) Handle(ctx context.Context, r slog.Record) error 
 	var suppress bool
 	r.Attrs(func(a slog.Attr) bool {
 		switch a.Key {
-		case "error", "err":
+		case "error", "err", "grpc.error":
 			// continued below
 		default:
 			return true
@@ -235,4 +237,37 @@ func (h *detachContextHandler) Handle(ctx context.Context, r slog.Record) error 
 		return nil
 	}
 	return h.Handler.Handle(context.WithoutCancel(ctx), r)
+}
+
+// GRPCLogger returns a grpclogging.Logger that logs
+// to a slog.Logger. This will normally be passed to a
+// grpclogging interceptor that is passed as a grpc option.
+// A "context canceled" error will be downgraded to an info.
+func GRPCLogger(lg *slog.Logger) grpclogging.Logger {
+	return grpcLogger{lg}
+}
+
+// grpcLogger implements grpclogging.Logger.
+type grpcLogger struct {
+	lg *slog.Logger
+}
+
+// Log implements grpclogging.Logger.
+func (gl grpcLogger) Log(ctx context.Context, lvl grpclogging.Level, msg string, fields ...any) {
+	level := slog.Level(lvl)
+
+	// Downgrade canceled context from error to info.
+	// We have to look at the error string,
+	// as the grpc middleware doesn't pass the error value.
+	if level == slog.LevelError {
+		for i := 0; i < len(fields); i += 2 {
+			if fields[i] == "grpc.error" && i+1 < len(fields) {
+				if s, ok := fields[i+1].(string); ok && strings.Contains(s, "context canceled") {
+					level = slog.LevelInfo
+				}
+			}
+		}
+	}
+
+	gl.lg.Log(ctx, level, msg, fields...)
 }

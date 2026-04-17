@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"exe.dev/exeweb"
+	"exe.dev/logging"
 	proxyapi "exe.dev/pkg/api/exe/proxy/v1"
 	"exe.dev/sshpool2"
 	"exe.dev/stage"
@@ -257,24 +258,7 @@ func (ln *listener) addr() string {
 
 // startGRPCClient starts a grpc client to contact exed.
 func startGRPCClient(lg *slog.Logger, addr string, metricsRegistry *prometheus.Registry, latency time.Duration) (proxyapi.ProxyInfoServiceClient, error) {
-	loggerFunc := func(ctx context.Context, lvl grpclogging.Level, msg string, fields ...any) {
-		level := slog.Level(lvl)
-
-		// Downgrade canceled context from error to info.
-		// We have to look at the error string,
-		// as the grpc middlewarn doesn't pass the error value.
-		if level == slog.LevelError {
-			for i := 0; i < len(fields); i += 2 {
-				if fields[i] == "grpc.error" && i+1 < len(fields) {
-					if s, ok := fields[i+1].(string); ok && strings.Contains(s, "context canceled") {
-						level = slog.LevelInfo
-					}
-				}
-			}
-		}
-
-		lg.Log(ctx, level, msg, fields...)
-	}
+	logger := logging.GRPCLogger(lg)
 
 	clientMetrics := grpcprom.NewClientMetrics(
 		grpcprom.WithClientHandlingTimeHistogram(
@@ -286,12 +270,12 @@ func startGRPCClient(lg *slog.Logger, addr string, metricsRegistry *prometheus.R
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		tracing.UnaryClientInterceptor(),
 		clientMetrics.UnaryClientInterceptor(),
-		grpclogging.UnaryClientInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+		grpclogging.UnaryClientInterceptor(logger),
 	}
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		tracing.StreamClientInterceptor(),
 		clientMetrics.StreamClientInterceptor(),
-		grpclogging.StreamClientInterceptor(grpclogging.LoggerFunc(loggerFunc)),
+		grpclogging.StreamClientInterceptor(logger),
 	}
 
 	if latency > 0 {

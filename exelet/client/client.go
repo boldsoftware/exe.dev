@@ -4,18 +4,18 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
-	"strings"
 
-	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
+	exelogging "exe.dev/logging"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	replicationapi "exe.dev/pkg/api/exe/replication/v1"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/tracing"
+
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Client is the GRPC client
@@ -156,26 +156,9 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 	}
 
 	if cfg.Logger != nil {
-		loggerFunc := func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-			level := slog.Level(lvl)
-
-			// Downgrade canceled context from error to info.
-			// We have to look at the error string,
-			// as the grpc middlewarn doesn't pass the error value.
-			if level == slog.LevelError {
-				for i := 0; i < len(fields); i += 2 {
-					if fields[i] == "grpc.error" && i+1 < len(fields) {
-						if s, ok := fields[i+1].(string); ok && strings.Contains(s, "context canceled") {
-							level = slog.LevelInfo
-						}
-					}
-				}
-			}
-
-			cfg.Logger.Log(ctx, level, msg, fields...)
-		}
-		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)))
-		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logging.LoggerFunc(loggerFunc), logging.WithLogOnEvents(logging.FinishCall)))
+		logger := exelogging.GRPCLogger(cfg.Logger)
+		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logger, logging.WithLogOnEvents(logging.FinishCall)))
+		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logger, logging.WithLogOnEvents(logging.FinishCall)))
 	}
 
 	opts = append(opts,
