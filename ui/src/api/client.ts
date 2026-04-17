@@ -368,7 +368,7 @@ export interface VMLiveMetrics {
 }
 
 export async function fetchVMLiveMetrics(name: string): Promise<VMLiveMetrics> {
-  return fetchJSON(`/api/vm/${encodeURIComponent(name)}/metrics`)
+  return fetchJSON(`/api/vm/${encodeURIComponent(name)}/compute-usage/live`)
 }
 
 export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {
@@ -458,4 +458,20 @@ export async function fetchDocsEntry(slug: string): Promise<DocsEntryData> {
   const resp = await fetch(`/api/docs/entry/${encodeURIComponent(slug)}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
+}
+
+// --- VM Compute Usage API ---
+
+export interface VMComputeUsagePoint {
+  timestamp: string
+  cpu_percent: number
+  memory_bytes: number
+  disk_used_bytes: number
+  disk_capacity_bytes: number
+  net_rx_bytes_per_sec: number
+  net_tx_bytes_per_sec: number
+}
+
+export async function fetchVMComputeUsage(name: string, hours: number): Promise<VMComputeUsagePoint[]> {
+  return fetchJSON(`/api/vm/${encodeURIComponent(name)}/compute-usage?hours=${hours}`)
 }

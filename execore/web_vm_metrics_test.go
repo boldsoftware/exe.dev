@@ -12,7 +12,7 @@ func TestVMMetricsRouting(t *testing.T) {
 	server := newTestServer(t)
 
 	t.Run("unauthenticated_returns_401", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/vm/test-vm/metrics", nil)
+		req := httptest.NewRequest("GET", "/api/vm/test-vm/compute-usage/live", nil)
 		req.Host = server.env.WebHost
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)
@@ -23,7 +23,7 @@ func TestVMMetricsRouting(t *testing.T) {
 	})
 
 	t.Run("POST_returns_405", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/vm/test-vm/metrics", nil)
+		req := httptest.NewRequest("POST", "/api/vm/test-vm/compute-usage/live", nil)
 		req.Host = server.env.WebHost
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)
@@ -43,7 +43,7 @@ func TestVMMetricsRouting(t *testing.T) {
 			t.Fatalf("createAuthCookie: %v", err)
 		}
 
-		req := httptest.NewRequest("GET", "/api/vm/nonexistent-vm/metrics", nil)
+		req := httptest.NewRequest("GET", "/api/vm/nonexistent-vm/compute-usage/live", nil)
 		req.Host = server.env.WebHost
 		req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 		w := httptest.NewRecorder()
@@ -61,7 +61,7 @@ func TestVMMetricsRouting(t *testing.T) {
 	})
 
 	t.Run("empty_name_not_routed", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/vm//metrics", nil)
+		req := httptest.NewRequest("GET", "/api/vm//compute-usage/live", nil)
 		req.Host = server.env.WebHost
 		w := httptest.NewRecorder()
 		server.ServeHTTP(w, req)

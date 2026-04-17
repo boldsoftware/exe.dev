@@ -74,7 +74,6 @@
 
       <!-- SSH Field -->
       <div v-if="box.sshCommand" class="ssh-row">
-        <span class="ssh-label">SSH</span>
         <code class="ssh-cmd">{{ box.sshCommand }}</code>
         <CopyButton :text="box.sshCommand" title="Copy SSH command" />
       </div>
@@ -86,6 +85,9 @@
 
       <!-- Live Metrics -->
       <LiveMetrics v-if="box.status === 'running'" :vm-name="box.name" :vm-status="box.status" />
+
+      <!-- Usage History Charts -->
+      <UsageChart :vm-name="box.name" :vm-status="box.status" />
 
       <div class="section-divider"></div>
 
@@ -255,6 +257,7 @@ import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import LiveMetrics from '../components/LiveMetrics.vue'
+import UsageChart from '../components/UsageChart.vue'
 
 const route = useRoute()
 const router = useRouter()

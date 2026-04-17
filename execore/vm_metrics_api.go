@@ -8,7 +8,7 @@ import (
 	"exe.dev/exedb"
 )
 
-// vmMetricsResponse is the JSON response for GET /api/vm/{name}/metrics
+// vmMetricsResponse is the JSON response for GET /api/vm/{name}/compute-usage/live
 type vmMetricsResponse struct {
 	Name         string  `json:"name"`
 	Status       string  `json:"status"`
@@ -21,7 +21,7 @@ type vmMetricsResponse struct {
 	NetTxBytes   uint64  `json:"net_tx_bytes"`        // Cumulative transmitted bytes
 }
 
-// handleAPIVMMetrics handles GET /api/vm/{name}/metrics
+// handleAPIVMMetrics handles GET /api/vm/{name}/compute-usage/live
 // Returns live metrics for a single VM owned by the authenticated user.
 func (s *Server) handleAPIVMMetrics(w http.ResponseWriter, r *http.Request, userID, vmName string) {
 	ctx := r.Context()
