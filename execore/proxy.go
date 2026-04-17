@@ -142,20 +142,6 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 	return &box, nil
 }
 
-// proxyToContainer proxies the HTTP request to a container via SSH port forwarding
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *exedb.Box, route exedb.Route, authResult *exeweb.ProxyAuthResult) error {
-	// Convert to exeweb data formats.
-	// This code is temporary until we move more to exeweb.
-	exewebBox := dbBoxToExewebBox(box)
-
-	exewebRoute := exeweb.BoxRoute{
-		Port:  route.Port,
-		Share: route.Share,
-	}
-
-	return s.proxyServer().ProxyToContainer(w, r, &exewebBox, exewebRoute, authResult)
-}
-
 // createSSHTunnelTransport creates an HTTP transport that
 // tunnels through SSH to a container.
 func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
