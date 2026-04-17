@@ -605,9 +605,6 @@ func TestAPIBillingUsageVMs_OverageFields(t *testing.T) {
 	if vm.OverageBandwidthBytes < 0 {
 		t.Errorf("overage_bandwidth_bytes should not be negative, got %d", vm.OverageBandwidthBytes)
 	}
-	if vm.EstimatedOverageCentsUSD < 0 {
-		t.Errorf("estimated_overage_cents_usd should not be negative, got %d", vm.EstimatedOverageCentsUSD)
-	}
 	// period_start and period_end must be set.
 	if resp.PeriodStart.IsZero() {
 		t.Error("period_start should not be zero")

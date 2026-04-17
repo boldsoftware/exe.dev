@@ -672,6 +672,7 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 			resource_group,
 			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
 			MAX(disk_logical_max_bytes)          AS disk_max_bytes,
+			MAX(disk_provisioned_max_bytes)      AS disk_provisioned_max_bytes,
 			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes,
 			SUM(cpu_seconds)                    AS cpu_seconds,
 			SUM(io_read_bytes)                  AS io_read_bytes,
@@ -709,26 +710,27 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var vmKey, vmID, vmName, rg string
-		var diskAvg, diskMax, bandwidth, ioRead, ioWrite int64
+		var diskAvg, diskMax, diskProvisioned, bandwidth, ioRead, ioWrite int64
 		var cpuSecs float64
 		var daysWithData int
-		if err := rows.Scan(&vmKey, &vmID, &vmName, &rg, &diskAvg, &diskMax, &bandwidth, &cpuSecs, &ioRead, &ioWrite, &daysWithData); err != nil {
+		if err := rows.Scan(&vmKey, &vmID, &vmName, &rg, &diskAvg, &diskMax, &diskProvisioned, &bandwidth, &cpuSecs, &ioRead, &ioWrite, &daysWithData); err != nil {
 			slog.ErrorContext(ctx, "scan usage row failed", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		if d, ok := rgMap[rg]; ok {
 			d.vms = append(d.vms, types.VMUsageSummary{
-				VMID:           vmID,
-				VMName:         vmName,
-				ResourceGroup:  rg,
-				DiskAvgBytes:   diskAvg,
-				DiskMaxBytes:   diskMax,
-				BandwidthBytes: bandwidth,
-				CPUSeconds:     cpuSecs,
-				IOReadBytes:    ioRead,
-				IOWriteBytes:   ioWrite,
-				DaysWithData:   daysWithData,
+				VMID:                    vmID,
+				VMName:                  vmName,
+				ResourceGroup:           rg,
+				DiskAvgBytes:            diskAvg,
+				DiskMaxBytes:            diskMax,
+				DiskProvisionedMaxBytes: diskProvisioned,
+				BandwidthBytes:          bandwidth,
+				CPUSeconds:              cpuSecs,
+				IOReadBytes:             ioRead,
+				IOWriteBytes:            ioWrite,
+				DaysWithData:            daysWithData,
 			})
 		}
 	}

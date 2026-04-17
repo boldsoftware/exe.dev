@@ -80,24 +80,13 @@
       <!-- Usage panel -->
       <div v-if="usage?.display" class="usage-panel">
         <div class="usage-panel-title">USAGE THIS PERIOD<template v-if="formatPeriod(billingPeriodStart, billingPeriodEnd)"> · {{ formatPeriod(billingPeriodStart, billingPeriodEnd) }}</template></div>
-        <div class="usage-panel-row">
+        <div class="usage-panel-row" :class="{ 'usage-panel-extra-row': usage.display.overage_disk }">
           <span>Disk</span>
-          <span>{{ usage.display.disk_avg }} / {{ usage.display.included_disk }}</span>
+          <span>{{ usage.display.disk_provisioned }}<template v-if="usage.display.overage_disk"> ({{ usage.display.overage_disk }} extra)</template></span>
         </div>
-        <div v-if="usage.display.overage_disk" class="usage-panel-row usage-panel-overage-row">
-          <span>Extra disk</span>
-          <span>{{ usage.display.overage_disk }}</span>
-        </div>
-        <div class="usage-panel-row">
+        <div class="usage-panel-row" :class="{ 'usage-panel-overage-row': usage.display.overage_bandwidth }">
           <span>Bandwidth</span>
-          <span>{{ usage.display.bandwidth }} / {{ usage.display.included_bandwidth }}</span>
-        </div>
-        <div v-if="usage.display.overage_bandwidth" class="usage-panel-row usage-panel-overage-row">
-          <span>Extra bandwidth</span>
-          <span>{{ usage.display.overage_bandwidth }}</span>
-        </div>
-        <div v-if="usage.display.estimated_overage" class="usage-panel-overage">
-          Est. overage: {{ usage.display.estimated_overage }}
+          <span>{{ usage.display.bandwidth }} / {{ usage.display.included_bandwidth }}<template v-if="usage.display.overage_bandwidth"> ({{ usage.display.overage_bandwidth }} extra)</template></span>
         </div>
       </div>
 
@@ -560,6 +549,10 @@ function onRowClick(event: MouseEvent) {
 
 .usage-panel-overage-row span {
   color: var(--danger-color);
+}
+
+.usage-panel-extra-row span {
+  color: var(--warning-color, #e6a817);
 }
 
 .usage-panel-overage {

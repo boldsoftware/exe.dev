@@ -46,16 +46,17 @@ type DailyMetric struct {
 
 // VMUsageSummary is the per-VM usage for a time period (from daily rollups).
 type VMUsageSummary struct {
-	VMID           string  `json:"vm_id"`
-	VMName         string  `json:"vm_name"`
-	ResourceGroup  string  `json:"resource_group"`
-	DiskAvgBytes   int64   `json:"disk_avg_bytes"`  // average daily logical disk usage
-	DiskMaxBytes   int64   `json:"disk_max_bytes"`  // peak daily logical disk usage
-	BandwidthBytes int64   `json:"bandwidth_bytes"` // total network tx+rx
-	CPUSeconds     float64 `json:"cpu_seconds"`
-	IOReadBytes    int64   `json:"io_read_bytes"`
-	IOWriteBytes   int64   `json:"io_write_bytes"`
-	DaysWithData   int     `json:"days_with_data"`
+	VMID                    string  `json:"vm_id"`
+	VMName                  string  `json:"vm_name"`
+	ResourceGroup           string  `json:"resource_group"`
+	DiskAvgBytes            int64   `json:"disk_avg_bytes"`             // average daily logical disk usage
+	DiskMaxBytes            int64   `json:"disk_max_bytes"`             // peak daily logical disk usage
+	DiskProvisionedMaxBytes int64   `json:"disk_provisioned_max_bytes"` // max provisioned disk size
+	BandwidthBytes          int64   `json:"bandwidth_bytes"`            // total network tx+rx
+	CPUSeconds              float64 `json:"cpu_seconds"`
+	IOReadBytes             int64   `json:"io_read_bytes"`
+	IOWriteBytes            int64   `json:"io_write_bytes"`
+	DaysWithData            int     `json:"days_with_data"`
 }
 
 // UsageSummary is the per-resource-group usage summary for a time period.

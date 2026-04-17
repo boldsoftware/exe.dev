@@ -55,7 +55,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	periodStart, periodEnd := billingPeriodForUser(ctx, ss.server, accountID, planErr)
 
 	// Fetch usage metrics for this period.
-	var diskAvgBytes int64
+	var diskProvisionedBytes int64
 	var bandwidthBytes int64
 	if ss.server.metricsdURL != "" {
 		client := newMetricsClient(ss.server.metricsdURL)
@@ -64,7 +64,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 			for _, summary := range summaries {
 				for _, vm := range summary.VMs {
 					if vm.VMName == vmName {
-						diskAvgBytes = vm.DiskAvgBytes
+						diskProvisionedBytes = vm.DiskProvisionedMaxBytes
 						bandwidthBytes = vm.BandwidthBytes
 					}
 				}
@@ -74,81 +74,35 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 
 	// Print the stat output.
 	cc.Writeln("\033[1m%s\033[0m", vmName)
-	cc.Writeln("  Period:    %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
+	cc.Writeln("  Period:     %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
 	cc.Writeln("")
 
-	// Disk lines.
-	cc.Writeln("  Disk:       %s", diskStatLine(diskAvgBytes, includedDisk))
-	if includedDisk > 0 && diskAvgBytes > int64(includedDisk) {
-		overBytes := diskAvgBytes - int64(includedDisk)
-		cc.Writeln("  Extra disk: %s", humanize.IBytes(uint64(overBytes)))
-	}
+	// Disk line: show provisioned size, with extra if over included.
+	cc.Writeln("  Disk:       %s", diskStatLine(diskProvisionedBytes, includedDisk))
 
-	// Bandwidth lines.
+	// Bandwidth line: show used / included.
 	cc.Writeln("  Bandwidth:  %s", bandwidthStatLine(bandwidthBytes, includedBandwidth))
-	if includedBandwidth > 0 && bandwidthBytes > int64(includedBandwidth) {
-		overBytes := bandwidthBytes - int64(includedBandwidth)
-		cc.Writeln("  Extra bandwidth: %s", humanize.IBytes(uint64(overBytes)))
-	}
-
-	// Overage cost.
-	const (
-		diskCentsPerGB      = 8
-		bandwidthCentsPerGB = 7
-	)
-	gbBytes := int64(1024 * 1024 * 1024)
-	var overageDisk, overageBW int64
-	if includedDisk > 0 && diskAvgBytes > int64(includedDisk) {
-		overageDisk = diskAvgBytes - int64(includedDisk)
-	}
-	if includedBandwidth > 0 && bandwidthBytes > int64(includedBandwidth) {
-		overageBW = bandwidthBytes - int64(includedBandwidth)
-	}
-	totalCents := (overageDisk/gbBytes)*diskCentsPerGB + (overageBW/gbBytes)*bandwidthCentsPerGB
-	if totalCents > 0 {
-		cc.Writeln("")
-		cc.Writeln("  \033[1;31mEstimated overage: ~$%s\033[0m",
-			formatCents(totalCents))
-		if overageDisk > 0 {
-			cc.Writeln("    Disk:      %s over \u00b7 ~$%s",
-				humanize.IBytes(uint64(overageDisk)),
-				formatCents((overageDisk/gbBytes)*diskCentsPerGB))
-		}
-		if overageBW > 0 {
-			cc.Writeln("    Bandwidth: %s over \u00b7 ~$%s",
-				humanize.IBytes(uint64(overageBW)),
-				formatCents((overageBW/gbBytes)*bandwidthCentsPerGB))
-		}
-	}
 
 	cc.Writeln("")
 	return nil
 }
 
-// diskStatLine formats the disk usage line with plan limit and overage indicator.
-func diskStatLine(usedBytes int64, includedBytes uint64) string {
-	used := humanize.IBytes(uint64(usedBytes))
+// diskStatLine formats the disk provisioned size with extra-disk indicator.
+// Shows just the size when at or below included, adds extra amount when over.
+func diskStatLine(provisionedBytes int64, includedBytes uint64) string {
+	size := humanize.IBytes(uint64(provisionedBytes))
 	if includedBytes == 0 {
-		return used
+		return size
 	}
-	incl := humanize.IBytes(includedBytes)
-	if usedBytes <= int64(includedBytes) {
-		pct := 0.0
-		if includedBytes > 0 {
-			pct = float64(usedBytes) / float64(includedBytes) * 100
-		}
-		color := "\033[32m" // green
-		if pct >= 80 {
-			color = "\033[33m" // yellow
-		}
-		return fmt.Sprintf("%s%s / %s (%.0f%%)\033[0m", color, used, incl, pct)
+	if provisionedBytes <= int64(includedBytes) {
+		return fmt.Sprintf("\033[32m%s\033[0m", size)
 	}
-	overBytes := usedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[1;31m%s / %s (%s over)\033[0m",
-		used, incl, humanize.IBytes(uint64(overBytes)))
+	extraBytes := provisionedBytes - int64(includedBytes)
+	return fmt.Sprintf("\033[33m%s (%s extra)\033[0m",
+		size, humanize.IBytes(uint64(extraBytes)))
 }
 
-// bandwidthStatLine formats the bandwidth usage line with plan limit and overage indicator.
+// bandwidthStatLine formats bandwidth usage as used / included.
 func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
 	used := humanize.IBytes(uint64(usedBytes))
 	if includedBytes == 0 {
@@ -156,27 +110,19 @@ func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
 	}
 	incl := humanize.IBytes(includedBytes)
 	if usedBytes <= int64(includedBytes) {
-		pct := 0.0
-		if includedBytes > 0 {
-			pct = float64(usedBytes) / float64(includedBytes) * 100
-		}
-		color := "\033[32m"
+		pct := float64(usedBytes) / float64(includedBytes) * 100
+		color := "\033[32m" // green
 		if pct >= 80 {
-			color = "\033[33m"
+			color = "\033[33m" // yellow
 		}
-		return fmt.Sprintf("%s%s / %s (%.0f%%)\033[0m", color, used, incl, pct)
+		return fmt.Sprintf("%s%s / %s\033[0m", color, used, incl)
 	}
-	overBytes := usedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[1;31m%s / %s (%s over)\033[0m",
-		used, incl, humanize.IBytes(uint64(overBytes)))
+	extraBytes := usedBytes - int64(includedBytes)
+	return fmt.Sprintf("\033[1;31m%s / %s (%s extra)\033[0m",
+		used, incl, humanize.IBytes(uint64(extraBytes)))
 }
 
 // formatDate formats a time.Time as a short date string.
 func formatDate(t time.Time) string {
 	return t.UTC().Format("Jan 2, 2006")
-}
-
-// formatCents formats a cent value as a dollars-and-cents string.
-func formatCents(cents int64) string {
-	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }

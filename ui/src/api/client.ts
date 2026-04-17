@@ -275,6 +275,7 @@ export async function fetchDashboard(): Promise<DashboardData> {
 export interface VMUsageEntry {
   vm_id: string
   vm_name: string
+  disk_provisioned_bytes: number
   disk_avg_bytes: number
   bandwidth_bytes: number
   cpu_seconds: number
@@ -283,19 +284,15 @@ export interface VMUsageEntry {
   days_with_data: number
   included_disk_bytes: number
   included_bandwidth_bytes: number
-  disk_usage_pct: number
-  bandwidth_usage_pct: number
   overage_disk_bytes: number
   overage_bandwidth_bytes: number
-  estimated_overage_cents_usd: number
   display: {
-    disk_avg: string
+    disk_provisioned: string
     bandwidth: string
     included_disk: string
     included_bandwidth: string
     overage_disk: string
     overage_bandwidth: string
-    estimated_overage: string
   }
 }
 

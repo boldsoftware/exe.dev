@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,35 +49,34 @@ type billingUsageVMsResponse struct {
 
 // billingUsageVMEntry is a per-VM summary in the /api/billing/usage/vms response.
 type billingUsageVMEntry struct {
-	VMID                     string  `json:"vm_id"`
-	VMName                   string  `json:"vm_name"`
-	DiskAvgBytes             int64   `json:"disk_avg_bytes"`
-	BandwidthBytes           int64   `json:"bandwidth_bytes"`
-	CPUSeconds               float64 `json:"cpu_seconds"`
-	IOReadBytes              int64   `json:"io_read_bytes"`
-	IOWriteBytes             int64   `json:"io_write_bytes"`
-	DaysWithData             int     `json:"days_with_data"`
-	IncludedDiskBytes        uint64  `json:"included_disk_bytes"`
-	IncludedBandwidthBytes   uint64  `json:"included_bandwidth_bytes"`
-	DiskUsagePct             float64 `json:"disk_usage_pct"`      // 0–100+; 0 when no limit known
-	BandwidthUsagePct        float64 `json:"bandwidth_usage_pct"` // 0–100+; 0 when no limit known
-	OverageDiskBytes         int64   `json:"overage_disk_bytes"`
-	OverageBandwidthBytes    int64   `json:"overage_bandwidth_bytes"`
-	EstimatedOverageCentsUSD int64   `json:"estimated_overage_cents_usd"`
+	VMID                   string  `json:"vm_id"`
+	VMName                 string  `json:"vm_name"`
+	DiskProvisionedBytes   int64   `json:"disk_provisioned_bytes"`
+	DiskAvgBytes           int64   `json:"disk_avg_bytes"`
+	BandwidthBytes         int64   `json:"bandwidth_bytes"`
+	CPUSeconds             float64 `json:"cpu_seconds"`
+	IOReadBytes            int64   `json:"io_read_bytes"`
+	IOWriteBytes           int64   `json:"io_write_bytes"`
+	DaysWithData           int     `json:"days_with_data"`
+	IncludedDiskBytes      uint64  `json:"included_disk_bytes"`
+	IncludedBandwidthBytes uint64  `json:"included_bandwidth_bytes"`
+	OverageDiskBytes       int64   `json:"overage_disk_bytes"`
+	OverageBandwidthBytes  int64   `json:"overage_bandwidth_bytes"`
 	// Display holds pre-formatted strings for the UI — use these instead of raw bytes.
 	Display vmUsageDisplay `json:"display"`
 }
 
 // vmUsageDisplay holds human-readable strings for a VM's usage entry.
 type vmUsageDisplay struct {
-	DiskAvg           string `json:"disk_avg"`           // e.g. "12.3 GB"
-	Bandwidth         string `json:"bandwidth"`          // e.g. "45.2 GB"
-	IncludedDisk      string `json:"included_disk"`      // e.g. "25 GB"; empty when unknown
-	IncludedBandwidth string `json:"included_bandwidth"` // e.g. "100 GB"; empty when unknown
-	OverageDisk       string `json:"overage_disk"`       // e.g. "5 GB"; empty when no overage
-	OverageBandwidth  string `json:"overage_bandwidth"`  // e.g. "2 GB"; empty when no overage
-	EstimatedOverage  string `json:"estimated_overage"`  // e.g. "~$2.40"; empty when none
-} // handleAPIBillingUsage handles GET /api/billing/usage?granularity=monthly|daily&start=...&end=...
+	DiskProvisioned   string `json:"disk_provisioned"`   // e.g. "25 GiB"
+	Bandwidth         string `json:"bandwidth"`          // e.g. "45.2 GiB"
+	IncludedDisk      string `json:"included_disk"`      // e.g. "25 GiB"; empty when unknown
+	IncludedBandwidth string `json:"included_bandwidth"` // e.g. "100 GiB"; empty when unknown
+	OverageDisk       string `json:"overage_disk"`       // e.g. "25 GiB"; empty when no overage
+	OverageBandwidth  string `json:"overage_bandwidth"`  // e.g. "2 GiB"; empty when no overage
+}
+
+// handleAPIBillingUsage handles GET /api/billing/usage?granularity=monthly|daily&start=...&end=...
 // It returns usage metrics for the authenticated user aggregated by month or day.
 // resource_group is the userID (see debugsrv.go billing section for the pattern).
 func (s *Server) handleAPIBillingUsage(w http.ResponseWriter, r *http.Request, userID string) {
@@ -241,6 +239,7 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 			entry := billingUsageVMEntry{
 				VMID:                   vm.VMID,
 				VMName:                 vm.VMName,
+				DiskProvisionedBytes:   vm.DiskProvisionedMaxBytes,
 				DiskAvgBytes:           vm.DiskAvgBytes,
 				BandwidthBytes:         vm.BandwidthBytes,
 				CPUSeconds:             vm.CPUSeconds,
@@ -250,27 +249,15 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 				IncludedDiskBytes:      includedDisk,
 				IncludedBandwidthBytes: includedBandwidth,
 			}
-			if includedDisk > 0 {
-				entry.DiskUsagePct = float64(vm.DiskAvgBytes) / float64(includedDisk) * 100
-				if vm.DiskAvgBytes > int64(includedDisk) {
-					entry.OverageDiskBytes = vm.DiskAvgBytes - int64(includedDisk)
-				}
+			// Disk overage is based on provisioned size beyond included.
+			if includedDisk > 0 && vm.DiskProvisionedMaxBytes > int64(includedDisk) {
+				entry.OverageDiskBytes = vm.DiskProvisionedMaxBytes - int64(includedDisk)
 			}
-			if includedBandwidth > 0 {
-				entry.BandwidthUsagePct = float64(vm.BandwidthBytes) / float64(includedBandwidth) * 100
-				if vm.BandwidthBytes > int64(includedBandwidth) {
-					entry.OverageBandwidthBytes = vm.BandwidthBytes - int64(includedBandwidth)
-				}
+			// Bandwidth overage is based on actual usage beyond included.
+			if includedBandwidth > 0 && vm.BandwidthBytes > int64(includedBandwidth) {
+				entry.OverageBandwidthBytes = vm.BandwidthBytes - int64(includedBandwidth)
 			}
-			// disk: 8 cents/GB-month, bandwidth: 7 cents/GB
-			const (
-				diskCentsPerGB      = 8
-				bandwidthCentsPerGB = 7
-			)
-			gb := int64(1024 * 1024 * 1024)
-			entry.EstimatedOverageCentsUSD = (entry.OverageDiskBytes/gb)*diskCentsPerGB +
-				(entry.OverageBandwidthBytes/gb)*bandwidthCentsPerGB
-			entry.Display.DiskAvg = humanize.IBytes(uint64(vm.DiskAvgBytes))
+			entry.Display.DiskProvisioned = humanize.IBytes(uint64(vm.DiskProvisionedMaxBytes))
 			entry.Display.Bandwidth = humanize.IBytes(uint64(vm.BandwidthBytes))
 			if includedDisk > 0 {
 				entry.Display.IncludedDisk = humanize.IBytes(includedDisk)
@@ -283,11 +270,6 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 			}
 			if entry.OverageBandwidthBytes > 0 {
 				entry.Display.OverageBandwidth = humanize.IBytes(uint64(entry.OverageBandwidthBytes))
-			}
-			if entry.EstimatedOverageCentsUSD > 0 {
-				entry.Display.EstimatedOverage = fmt.Sprintf("~$%d.%02d",
-					entry.EstimatedOverageCentsUSD/100,
-					entry.EstimatedOverageCentsUSD%100)
 			}
 			vms = append(vms, entry)
 		}
