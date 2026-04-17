@@ -234,6 +234,8 @@ export interface ProfileData {
   canRequestInvites: boolean
   boxes: { name: string; status: string }[]
   availableRegions: RegionOption[]
+  billingPeriodStart: string
+  billingPeriodEnd: string
 }
 
 export interface IntegrationsData {
@@ -304,6 +306,47 @@ export interface VMUsageResponse {
 
 export async function fetchVMUsage(start: string, end: string): Promise<VMUsageResponse> {
   return fetchJSON(`/api/billing/usage/vms?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`)
+}
+
+// --- LLM Usage types ---
+
+export interface LLMUsageDayEntry {
+  box: string
+  model: string
+  provider: string
+  cost: string
+  requestCount: number
+}
+
+export interface LLMUsageDayGroup {
+  day: string
+  entries: LLMUsageDayEntry[]
+  cost: string
+  count: number
+}
+
+export interface LLMUsageResponse {
+  days: LLMUsageDayGroup[]
+  totalCost: string
+  totalCount: number
+  periodStart: string
+  periodEnd: string
+}
+
+export async function fetchLLMUsage(date?: string): Promise<LLMUsageResponse> {
+  const params = date ? `?date=${encodeURIComponent(date)}` : ''
+  return fetchJSON(`/api/llm-usage${params}`)
+}
+
+export interface BoxLLMUsageResponse {
+  models: { model: string; provider: string; cost: string }[]
+  totalCost: string
+  periodStart: string
+  periodEnd: string
+}
+
+export async function fetchBoxLLMUsage(vmName: string): Promise<BoxLLMUsageResponse> {
+  return fetchJSON(`/api/vm/${encodeURIComponent(vmName)}/llm-usage`)
 }
 
 export async function fetchProfile(): Promise<ProfileData> {

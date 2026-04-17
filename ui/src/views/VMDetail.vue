@@ -154,6 +154,19 @@
         </div>
       </div>
 
+      <!-- LLM Usage for this VM -->
+      <div v-if="llmUsage && llmUsage.models.length" class="billing-section llm-usage-section">
+        <div class="section-heading">LLM Usage<span v-if="llmPeriodLabel" class="section-heading-sub">{{ llmPeriodLabel }}</span></div>
+        <div class="card-row" v-for="m in llmUsage.models" :key="m.model + m.provider">
+          <span class="card-label">{{ m.model }}</span>
+          <span class="card-value">{{ m.cost }}</span>
+        </div>
+        <div class="card-row card-row-total">
+          <span class="card-label">Total</span>
+          <span class="card-value">{{ llmUsage.totalCost }}</span>
+        </div>
+      </div>
+
       <!-- Charts placeholder (hidden until implemented) -->
       <!-- <div class="section-placeholder">
         <div class="placeholder-title">Usage History</div>
@@ -230,10 +243,12 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDashboard,
   fetchVMUsage,
+  fetchBoxLLMUsage,
   fetchProfile,
   type BoxInfo,
   type VMUsageEntry,
   type ProfileData,
+  type BoxLLMUsageResponse,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
@@ -260,6 +275,9 @@ const periodEnd = ref('')
 // Profile
 const profileLoading = ref(true)
 const profile = ref<ProfileData | null>(null)
+
+// LLM usage
+const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Junk drawer
 const drawerOpen = ref(false)
@@ -293,10 +311,18 @@ function saveEditorChoice() {
   localStorage.setItem('preferred-editor', editorChoice.value)
 }
 
+function fmtPeriodDate(s: string): string {
+  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
 const periodLabel = computed(() => {
   if (!periodStart.value || !periodEnd.value) return ''
-  const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  return `${fmt(periodStart.value)} – ${fmt(periodEnd.value)}`
+  return `${fmtPeriodDate(periodStart.value)} – ${fmtPeriodDate(periodEnd.value)}`
+})
+
+const llmPeriodLabel = computed(() => {
+  if (!llmUsage.value?.periodStart || !llmUsage.value?.periodEnd) return ''
+  return `${fmtPeriodDate(llmUsage.value.periodStart)} – ${fmtPeriodDate(llmUsage.value.periodEnd)}`
 })
 
 const uptimeDisplay = computed(() => {
@@ -370,6 +396,12 @@ async function load() {
         profile.value = p
         profileLoading.value = false
       }).catch(() => { profileLoading.value = false })
+
+      fetchBoxLLMUsage(vmName.value).then(u => {
+        llmUsage.value = u
+      }).catch(err => {
+        console.error('Failed to load VM LLM usage:', err)
+      })
     } else {
       usageLoading.value = false
       profileLoading.value = false
@@ -838,6 +870,14 @@ onBeforeUnmount(() => {
   color: var(--danger-color);
 }
 
+.llm-usage-section {
+  border-top: 1px solid var(--surface-border);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+.card-row-total {
+  font-weight: 600;
+}
 /* Placeholder sections */
 .section-placeholder {
   background: var(--surface-card);

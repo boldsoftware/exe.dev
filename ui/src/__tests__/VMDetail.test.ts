@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import VMDetail from '../views/VMDetail.vue'
-import type { BoxInfo, DashboardData, VMUsageEntry, ProfileData } from '../api/client'
+import type { BoxInfo, DashboardData, VMUsageEntry, ProfileData, BoxLLMUsageResponse } from '../api/client'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -101,6 +101,21 @@ function makeProfile(overrides: Partial<ProfileData> = {}): ProfileData {
     canRequestInvites: false,
     boxes: [{ name: 'my-vm', status: 'running' }],
     availableRegions: [],
+    billingPeriodStart: '2026-04-01T00:00:00Z',
+    billingPeriodEnd: '2026-05-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeBoxLLMUsage(overrides: Partial<BoxLLMUsageResponse> = {}): BoxLLMUsageResponse {
+  return {
+    models: [
+      { model: 'claude-sonnet-4-20250514', provider: 'anthropic', cost: '$1.50' },
+      { model: 'gpt-4o', provider: 'openai', cost: '$0.25' },
+    ],
+    totalCost: '$1.75',
+    periodStart: '2024-01-01T00:00:00Z',
+    periodEnd: '2024-02-01T00:00:00Z',
     ...overrides,
   }
 }
@@ -115,14 +130,16 @@ vi.mock('../api/client', async (importOriginal) => {
     ...actual,
     fetchDashboard: vi.fn(),
     fetchVMUsage: vi.fn(),
+    fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
     fetchVMLiveMetrics: vi.fn(),
   }
 })
 
-import { fetchDashboard, fetchVMUsage, fetchProfile, fetchVMLiveMetrics } from '../api/client'
+import { fetchDashboard, fetchVMUsage, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchVMUsage = vi.mocked(fetchVMUsage)
+const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
 const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
 
@@ -158,7 +175,12 @@ describe('VMDetail', () => {
     localStorage.clear()
     // Default: usage and profile never resolve (test loading states separately)
     mockFetchVMUsage.mockReturnValue(new Promise(() => {}))
+    mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   // --- Loading & error states ---
@@ -379,6 +401,46 @@ describe('VMDetail', () => {
     const wrapper = await mountVMDetail()
     expect(wrapper.text()).toContain('Jan 1')
     expect(wrapper.text()).toContain('Feb 1')
+  })
+
+  it('renders LLM usage with the API period label', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({
+      billing: { periodStart: '2024-03-15', periodEnd: '2024-04-15' },
+    }))
+    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-03-15', period_end: '2024-04-15', metrics: [] })
+    mockFetchProfile.mockResolvedValue(makeProfile())
+    mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({
+      periodStart: '2024-04-01T00:00:00Z',
+      periodEnd: '2024-05-01T00:00:00Z',
+    }))
+    const wrapper = await mountVMDetail()
+    const llmSection = wrapper.find('.llm-usage-section')
+    expect(llmSection.exists()).toBe(true)
+    expect(llmSection.text()).toContain('LLM Usage')
+    expect(llmSection.text()).toContain('Apr 1')
+    expect(llmSection.text()).toContain('May 1')
+    expect(llmSection.text()).not.toContain('Mar 1')
+    expect(llmSection.text()).toContain('claude-sonnet-4-20250514')
+    expect(llmSection.text()).toContain('$1.75')
+  })
+
+  it('hides LLM usage section when there is no usage', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
+    mockFetchProfile.mockResolvedValue(makeProfile())
+    mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.llm-usage-section').exists()).toBe(false)
+  })
+
+  it('logs when VM LLM usage fetch fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
+    mockFetchProfile.mockResolvedValue(makeProfile())
+    mockFetchBoxLLMUsage.mockRejectedValue(new Error('llm down'))
+    await mountVMDetail()
+    expect(consoleError).toHaveBeenCalledWith('Failed to load VM LLM usage:', expect.any(Error))
   })
 
   it('marks disk overage row with overage class', async () => {

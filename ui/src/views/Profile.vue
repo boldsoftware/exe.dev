@@ -225,6 +225,48 @@
               </ul>
             </div>
 
+            <!-- LLM Usage -->
+            <div v-if="llmPeriodLabel" class="llm-usage-section">
+              <div class="llm-usage-header">
+                <span class="llm-usage-title">LLM Usage</span>
+                <div class="llm-period-nav">
+                  <button class="llm-period-btn" @click="llmPeriodPrev" title="Previous period">‹</button>
+                  <span class="llm-usage-period">{{ llmPeriodLabel }}</span>
+                  <button class="llm-period-btn" :class="{ disabled: isCurrentPeriod }" :disabled="isCurrentPeriod" @click="llmPeriodNext" title="Next period">›</button>
+                </div>
+              </div>
+              <template v-if="llmLoading">
+                <div class="llm-empty">Loading…</div>
+              </template>
+              <template v-else-if="!llmUsage || llmUsage.totalCount === 0">
+                <div class="llm-empty">No usage this period</div>
+              </template>
+              <template v-else>
+                <div v-for="dayGroup in llmUsage.days" :key="dayGroup.day" class="llm-day-group">
+                  <div class="llm-day-header" @click="toggleDay(dayGroup.day)">
+                    <span class="llm-day-label">
+                      <span class="llm-day-chevron">{{ expandedDays.has(dayGroup.day) ? '▾' : '▸' }}</span>
+                      {{ formatDay(dayGroup.day) }}
+                    </span>
+                    <span class="llm-day-stats">{{ dayGroup.cost }}</span>
+                  </div>
+                  <template v-if="expandedDays.has(dayGroup.day)">
+                    <div v-for="(e, i) in dayGroup.entries" :key="i" class="llm-usage-row">
+                      <div class="llm-usage-left">
+                        <span class="llm-usage-model">{{ e.model }}</span>
+                        <span class="llm-usage-box">{{ e.box }}</span>
+                      </div>
+                      <span class="llm-usage-stats">{{ e.cost }}</span>
+                    </div>
+                  </template>
+                </div>
+                <div class="llm-usage-total">
+                  <span>Total</span>
+                  <span>{{ llmUsage.totalCost }}</span>
+                </div>
+              </template>
+            </div>
+
             <!-- Support -->
             <div class="support-section">
               <span class="support-label">Support</span>
@@ -543,7 +585,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { fetchProfile, runCommand, shellQuote, type ProfileData } from '../api/client'
+import { fetchProfile, fetchLLMUsage, runCommand, shellQuote, type ProfileData, type LLMUsageResponse } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
@@ -555,6 +597,9 @@ import Message from 'primevue/message'
 const loading = ref(true)
 const loadError = ref('')
 const data = ref<ProfileData | null>(null)
+const llmUsage = ref<LLMUsageResponse | null>(null)
+const llmLoading = ref(false)
+const expandedDays = ref<Set<string>>(new Set())
 const passkeyName = ref('')
 const deletingPasskeys = ref<Set<number>>(new Set())
 const passkeyError = ref('')
@@ -587,6 +632,60 @@ const canManageBilling = computed(() => {
   // Team member: only billing owner can manage
   return data.value.teamInfo.isBillingOwner
 })
+
+function toggleDay(day: string) {
+  const s = new Set(expandedDays.value)
+  if (s.has(day)) s.delete(day)
+  else s.add(day)
+  expandedDays.value = s
+}
+
+function formatDay(day: string): string {
+  const d = new Date(day + 'T00:00:00Z')
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+function fmtPeriodDate(s: string): string {
+  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+const llmPeriodLabel = computed(() => {
+  if (!llmUsage.value?.periodStart || !llmUsage.value?.periodEnd) {
+    if (!data.value?.billingPeriodStart || !data.value?.billingPeriodEnd) return ''
+    return `${fmtPeriodDate(data.value.billingPeriodStart)} – ${fmtPeriodDate(data.value.billingPeriodEnd)}`
+  }
+  return `${fmtPeriodDate(llmUsage.value.periodStart)} – ${fmtPeriodDate(llmUsage.value.periodEnd)}`
+})
+
+async function loadLLMUsage(date?: string) {
+  llmLoading.value = true
+  expandedDays.value = new Set()
+  try {
+    const resp = await fetchLLMUsage(date)
+    llmUsage.value = resp
+  } catch {
+    llmUsage.value = null
+  } finally {
+    llmLoading.value = false
+  }
+}
+
+const isCurrentPeriod = computed(() => {
+  if (!llmUsage.value?.periodEnd) return true
+  return new Date(llmUsage.value.periodEnd) >= new Date()
+})
+
+function llmPeriodPrev() {
+  if (!llmUsage.value?.periodStart) return
+  const d = new Date(llmUsage.value.periodStart)
+  d.setUTCDate(d.getUTCDate() - 1)
+  loadLLMUsage(d.toISOString().slice(0, 10))
+}
+
+function llmPeriodNext() {
+  if (isCurrentPeriod.value || !llmUsage.value?.periodEnd) return
+  loadLLMUsage(new Date(llmUsage.value.periodEnd).toISOString().slice(0, 10))
+}
 
 const usageBarSeverity = computed(() => {
   const pct = data.value?.credits.monthlyUsedPct ?? 0
@@ -854,6 +953,10 @@ async function loadProfile() {
   loadError.value = ''
   try {
     data.value = await fetchProfile()
+    // Fetch LLM usage non-blocking.
+    if (data.value.billingPeriodStart && data.value.billingPeriodEnd) {
+      loadLLMUsage()
+    }
   } catch (err: any) {
     console.error('Failed to load profile:', err)
     loadError.value = err.message || 'Failed to load data'
@@ -1720,6 +1823,149 @@ async function toggleNewsletter(event: Event) {
 .tx-receipt:hover {
   color: var(--text-color);
   text-decoration: underline;
+}
+
+/* LLM Usage Section */
+.llm-usage-section {
+  margin-top: 0;
+  padding-top: 20px;
+}
+
+.llm-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.llm-usage-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-color-secondary);
+}
+
+.llm-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.llm-period-btn {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.llm-period-btn:hover:not(.disabled) {
+  color: var(--text-color);
+  background: var(--surface-hover);
+}
+
+.llm-period-btn.disabled {
+  color: var(--text-color-muted);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.llm-usage-period {
+  font-size: 11px;
+  color: var(--text-color-muted);
+  min-width: 100px;
+  text-align: center;
+}
+
+.llm-empty {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  padding: 8px 0;
+}
+
+.llm-day-group {
+  margin-bottom: 8px;
+}
+
+.llm-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+  border-bottom: 1px solid var(--surface-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.llm-day-header:hover {
+  color: var(--text-color);
+}
+
+.llm-day-chevron {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: var(--text-color-muted);
+}
+
+.llm-day-label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.llm-day-stats {
+  font-weight: 500;
+}
+
+.llm-usage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0 5px 12px;
+  font-size: 13px;
+}
+
+.llm-usage-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.llm-usage-model {
+  color: var(--text-color);
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.llm-usage-box {
+  color: var(--text-color-muted);
+  font-size: 11px;
+}
+
+.llm-usage-stats {
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.llm-usage-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 0;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
 /* Support Section */
