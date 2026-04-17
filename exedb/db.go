@@ -135,6 +135,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countTeamBoxesStmt, err = db.PrepareContext(ctx, countTeamBoxes); err != nil {
 		return nil, fmt.Errorf("error preparing query CountTeamBoxes: %w", err)
 	}
+	if q.countTrialsByKindAndStatusStmt, err = db.PrepareContext(ctx, countTrialsByKindAndStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query CountTrialsByKindAndStatus: %w", err)
+	}
 	if q.countUnallocatedInviteCodesByUserStmt, err = db.PrepareContext(ctx, countUnallocatedInviteCodesByUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnallocatedInviteCodesByUser: %w", err)
 	}
@@ -1496,6 +1499,11 @@ func (q *Queries) Close() error {
 	if q.countTeamBoxesStmt != nil {
 		if cerr := q.countTeamBoxesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countTeamBoxesStmt: %w", cerr)
+		}
+	}
+	if q.countTrialsByKindAndStatusStmt != nil {
+		if cerr := q.countTrialsByKindAndStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countTrialsByKindAndStatusStmt: %w", cerr)
 		}
 	}
 	if q.countUnallocatedInviteCodesByUserStmt != nil {
@@ -3529,6 +3537,7 @@ type Queries struct {
 	countPendingBoxSharesByUserStmt            *sql.Stmt
 	countPendingTeamInvitesForUserStmt         *sql.Stmt
 	countTeamBoxesStmt                         *sql.Stmt
+	countTrialsByKindAndStatusStmt             *sql.Stmt
 	countUnallocatedInviteCodesByUserStmt      *sql.Stmt
 	countUnusedInviteCodesForUserStmt          *sql.Stmt
 	countUsersByRegionStmt                     *sql.Stmt
@@ -3963,6 +3972,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countPendingBoxSharesByUserStmt:            q.countPendingBoxSharesByUserStmt,
 		countPendingTeamInvitesForUserStmt:         q.countPendingTeamInvitesForUserStmt,
 		countTeamBoxesStmt:                         q.countTeamBoxesStmt,
+		countTrialsByKindAndStatusStmt:             q.countTrialsByKindAndStatusStmt,
 		countUnallocatedInviteCodesByUserStmt:      q.countUnallocatedInviteCodesByUserStmt,
 		countUnusedInviteCodesForUserStmt:          q.countUnusedInviteCodesForUserStmt,
 		countUsersByRegionStmt:                     q.countUsersByRegionStmt,

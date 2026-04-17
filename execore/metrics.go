@@ -137,6 +137,11 @@ var (
 		"Total number of billing accounts.",
 		[]string{"status"}, nil,
 	)
+	trialsDesc = prometheus.NewDesc(
+		"stripeless_trials_total",
+		"Total number of stripeless trial accounts.",
+		[]string{"kind", "status"}, nil,
+	)
 )
 
 func (c *entityCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -144,11 +149,13 @@ func (c *entityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- vmsDesc
 	ch <- usersWithVMsDesc
 	ch <- billingAccountsDesc
+	ch <- trialsDesc
 }
 
 func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 	var users userTypeCounts
 	var billing billingStatusCounts
+	var trials []exedb.CountTrialsByKindAndStatusRow
 	var vms, usersWithVMs int64
 
 	err := c.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
@@ -167,6 +174,9 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 		if billing, err = countBillingStatuses(q, ctx); err != nil {
 			return err
 		}
+		if trials, err = q.CountTrialsByKindAndStatus(ctx); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -181,6 +191,9 @@ func (c *entityCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Active), "active")
 	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Canceled), "canceled")
 	ch <- prometheus.MustNewConstMetric(billingAccountsDesc, prometheus.GaugeValue, float64(billing.Pending), "pending")
+	for _, t := range trials {
+		ch <- prometheus.MustNewConstMetric(trialsDesc, prometheus.GaugeValue, float64(t.Count), t.Kind, t.Status)
+	}
 }
 
 type billingStatusCounts struct {

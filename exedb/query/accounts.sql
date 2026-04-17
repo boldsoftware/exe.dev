@@ -125,6 +125,33 @@ SELECT billing_status, COUNT(*) AS count FROM (
     FROM accounts a
 ) GROUP BY billing_status;
 
+-- name: CountTrialsByKindAndStatus :many
+-- Count stripeless trial accounts by kind (signup=7-day, invite=30-day) and
+-- status (active, expired, converted).
+SELECT kind, status, COUNT(*) AS count FROM (
+    SELECT
+        CASE
+            WHEN ap.changed_by = 'system:signup' THEN 'signup'
+            WHEN ap.changed_by LIKE 'invite:%' THEN 'invite'
+            ELSE 'other'
+        END AS kind,
+        CASE
+            WHEN EXISTS (
+                SELECT 1 FROM account_plans ap2
+                WHERE ap2.account_id = a.id
+                  AND ap2.ended_at IS NULL
+                  AND ap2.plan_id NOT LIKE 'trial:%'
+                  AND ap2.plan_id NOT LIKE 'basic:%'
+                  AND ap2.plan_id != 'restricted'
+            ) THEN 'converted'
+            WHEN ap.ended_at IS NULL AND ap.trial_expires_at > datetime('now') THEN 'active'
+            ELSE 'expired'
+        END AS status
+    FROM accounts a
+    JOIN account_plans ap ON ap.account_id = a.id
+    WHERE ap.plan_id LIKE 'trial:%'
+) GROUP BY kind, status;
+
 -- name: SetAccountParentID :exec
 -- Sets the parent_id on a user's account to link them to a team billing owner's account.
 UPDATE accounts SET parent_id = ?2 WHERE created_by = ?1;
