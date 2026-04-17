@@ -1,5 +1,7 @@
 // Package xshelley provides a simple interface to download the shelley binary
-// from GitHub releases at github.com/boldsoftware/shelley.
+// from the release metadata published to GitHub Pages by the shelley repo.
+// Using GitHub Pages avoids GitHub API rate limits; the binaries themselves
+// still live in GitHub Releases.
 package xshelley
 
 import (
@@ -34,7 +36,9 @@ const (
 )
 
 var (
-	latestReleaseURL = "https://api.github.com/repos/boldsoftware/shelley/releases/latest"
+	// latestReleaseURL points at the release metadata JSON published by
+	// shelley's publish-version-metadata workflow to GitHub Pages.
+	latestReleaseURL = "https://boldsoftware.github.io/shelley/release.json"
 	retryBaseWait    = 1 * time.Second
 
 	cacheDirOnce sync.Once
@@ -69,14 +73,11 @@ type cacheMetadata struct {
 	LastChecked time.Time `json:"last_checked"`
 }
 
-type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	Assets  []ghAsset `json:"assets"`
-}
-
-type ghAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
+// releaseInfo mirrors the subset of shelley's release.json we need.
+// See shelley/scripts/generate-version-metadata.py.
+type releaseInfo struct {
+	TagName      string            `json:"tag_name"`
+	DownloadURLs map[string]string `json:"download_urls"`
 }
 
 // getCacheDir returns the cache directory, using a stable path under the user's
@@ -210,16 +211,10 @@ func GetShelley(ctx context.Context, goarch string) (path string, err error) {
 			}
 		}
 
-		assetName := fmt.Sprintf("shelley_linux_%s", goarch)
-		var downloadURL string
-		for _, asset := range release.Assets {
-			if asset.Name == assetName {
-				downloadURL = asset.BrowserDownloadURL
-				break
-			}
-		}
+		key := fmt.Sprintf("linux_%s", goarch)
+		downloadURL := release.DownloadURLs[key]
 		if downloadURL == "" {
-			return "", fmt.Errorf("no asset %q found in release %s", assetName, release.TagName)
+			return "", fmt.Errorf("no download URL for %q in release %s", key, release.TagName)
 		}
 
 		if err := downloadFile(dlCtx, downloadURL, shelleyBinaryPath); err != nil {
@@ -297,21 +292,23 @@ func retryableGet(ctx context.Context, url string, header http.Header) (*http.Re
 	return nil, lastErr
 }
 
-func fetchLatestRelease(ctx context.Context) (*ghRelease, error) {
-	hdr := http.Header{"Accept": {"application/vnd.github+json"}}
-	resp, err := retryableGet(ctx, latestReleaseURL, hdr)
+func fetchLatestRelease(ctx context.Context) (*releaseInfo, error) {
+	resp, err := retryableGet(ctx, latestReleaseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("release metadata returned status %d", resp.StatusCode)
 	}
 
-	var release ghRelease
+	var release releaseInfo
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return nil, fmt.Errorf("failed to decode release response: %w", err)
+	}
+	if release.TagName == "" {
+		return nil, fmt.Errorf("release metadata missing tag_name")
 	}
 	return &release, nil
 }

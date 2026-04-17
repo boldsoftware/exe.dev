@@ -352,7 +352,6 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	t.Run("shelley_install", func(t *testing.T) {
-		t.Skip("skipping: shelley install hits GitHub API rate limit in CI (come back 2026-04-16)")
 		// Test the shelley install command
 		pty := sshToExeDev(t, keyFile)
 		defer pty.Disconnect()

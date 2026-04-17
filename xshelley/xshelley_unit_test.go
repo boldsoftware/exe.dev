@@ -52,11 +52,11 @@ func resetTestGlobals(t *testing.T, handler http.Handler) {
 func serveRelease(w http.ResponseWriter, r *http.Request) {
 	base := fmt.Sprintf("http://%s", r.Host)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ghRelease{
+	json.NewEncoder(w).Encode(releaseInfo{
 		TagName: "v1.0.0",
-		Assets: []ghAsset{
-			{Name: "shelley_linux_amd64", BrowserDownloadURL: base + "/download/shelley_linux_amd64"},
-			{Name: "shelley_linux_arm64", BrowserDownloadURL: base + "/download/shelley_linux_arm64"},
+		DownloadURLs: map[string]string{
+			"linux_amd64": base + "/download/shelley_linux_amd64",
+			"linux_arm64": base + "/download/shelley_linux_arm64",
 		},
 	})
 }
