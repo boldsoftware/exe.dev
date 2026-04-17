@@ -401,12 +401,16 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
   <div class="shared-section">
     <h2 class="section-title">Shared with your team</h2>
     <div class="boxes-list">
-      <div class="shared-row">
-        <div class="status-dot running"></div>
-        <span class="box-name">fooubar</span>
-        <span class="shared-owner">by philip@bold.dev</span>
-        <button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh fooubar.exe.xyz')"><i class="pi pi-copy" style="font-size:11px"></i></button>
-        <a href="#" class="action-btn" style="margin-left:auto"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+      <div class="box-row">
+        <div class="box-main">
+          <div class="status-dot running"></div>
+          <span class="box-name">fooubar</span>
+          <span class="shared-owner">by philip@bold.dev</span>
+          <div class="box-actions">
+            <div class="ssh-field"><code>ssh fooubar.exe.xyz</code><button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh fooubar.exe.xyz')"><i class="pi pi-copy" style="font-size:10px"></i></button></div>
+            <a href="#" class="action-btn"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -414,20 +418,28 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
   <div class="shared-section">
     <h2 class="section-title">Team VMs</h2>
     <div class="boxes-list">
-      <div class="shared-row">
-        <div class="status-dot running"></div>
-        <span class="box-name">bravo-reef</span>
-        <span class="shared-owner">by shaun@bold.dev</span>
-        <button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh bravo-reef.exe.xyz')"><i class="pi pi-copy" style="font-size:11px"></i></button>
-        <a href="#" class="action-btn" style="margin-left:auto"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+      <div class="box-row">
+        <div class="box-main">
+          <div class="status-dot running"></div>
+          <span class="box-name">bravo-reef</span>
+          <span class="shared-owner">by shaun@bold.dev</span>
+          <div class="box-actions">
+            <div class="ssh-field"><code>ssh bravo-reef.exe.xyz</code><button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh bravo-reef.exe.xyz')"><i class="pi pi-copy" style="font-size:10px"></i></button></div>
+            <a href="#" class="action-btn"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+          </div>
+        </div>
       </div>
-      <div class="shared-row">
-        <div class="status-dot running"></div>
-        <span class="box-name">nan-sky</span>
-        <span class="shared-owner">by shaun@bold.dev</span>
-        <span class="box-tags"><span class="tag">#shaun_dev</span></span>
-        <button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh nan-sky.exe.xyz')"><i class="pi pi-copy" style="font-size:11px"></i></button>
-        <a href="#" class="action-btn" style="margin-left:auto"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+      <div class="box-row">
+        <div class="box-main">
+          <div class="status-dot running"></div>
+          <span class="box-name">nan-sky</span>
+          <span class="shared-owner">by shaun@bold.dev</span>
+          <span class="box-tags"><span class="tag">#shaun_dev</span></span>
+          <div class="box-actions">
+            <div class="ssh-field"><code>ssh nan-sky.exe.xyz</code><button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh nan-sky.exe.xyz')"><i class="pi pi-copy" style="font-size:10px"></i></button></div>
+            <a href="#" class="action-btn"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
