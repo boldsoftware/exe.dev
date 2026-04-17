@@ -90,7 +90,7 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
 .box-row:hover .copy-ssh { opacity: 1; }
 .ssh-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; background: var(--code-bg); border: 1px solid var(--surface-border); border-radius: 4px; padding: 3px 6px 3px 8px; width: 220px; box-sizing: border-box; }
 .ssh-field .ssh-label { color: var(--text-color-muted); font-size: 11px; font-weight: 500; }
-.ssh-field code { color: var(--text-color); font-size: 11px; }
+.ssh-field code { color: var(--text-color); font-size: 11px; flex: 1; }
 
 /* DROPDOWN */
 .dropdown { position: absolute; pointer-events: auto; top: 32px; right: 0; background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); min-width: 170px; z-index: 50; display: none; }
@@ -383,12 +383,23 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
   <div class="shared-section">
     <h2 class="section-title">Shared with you</h2>
     <div class="boxes-list">
-      <div class="shared-row">
-        <div class="status-dot running"></div>
-        <span class="box-name">shauns-thing</span>
-        <span class="shared-owner">by shaun@bold.dev</span>
-        <div class="box-actions">
-          <a href="#" class="action-btn"><i class="pi pi-external-link" style="font-size:12px"></i></a>
+      <div class="box-row">
+        <div class="box-main">
+          <div class="status-dot running"></div>
+          <span class="box-name">shauns-thing</span>
+          <span class="shared-owner">by shaun@bold.dev</span>
+          <div class="box-actions">
+            <div class="ssh-field"><code>ssh shauns-thing.exe.xyz</code><button class="copy-ssh" style="opacity:1" onclick="event.stopPropagation(); copyText(this, 'ssh shauns-thing.exe.xyz')"><i class="pi pi-copy" style="font-size:10px"></i></button></div>
+            <a href="#" class="action-btn"><i class="pi pi-globe" style="font-size:12px"></i></a>
+            <a href="#" class="action-btn"><i class="pi pi-chevron-right" style="font-size:12px"></i></a>
+            <a href="#" class="action-btn"><i class="pi pi-sparkles" style="font-size:12px"></i></a>
+            <div class="action-btn" onclick="event.stopPropagation(); toggleMenu(this)">
+              <i class="pi pi-ellipsis-h" style="font-size:12px"></i>
+              <div class="dropdown">
+                <button class="dd-item"><i class="pi pi-clone"></i> Copy</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
