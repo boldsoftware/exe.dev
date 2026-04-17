@@ -739,6 +739,24 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Pre-check CPU feature compatibility: if the target is missing flags
+	// the source has, CH snapshot restore will fail with CpuidCheckCompatibility.
+	// Detect this early and fall back to two-phase migration to avoid wasting
+	// ~5 minutes on a transfer that can't do a live restore.
+	var cpuMismatch bool
+	if live {
+		writeProgress("Checking CPU feature compatibility...")
+		if missing := s.checkCPUCompatibility(ctx, sourceClient, targetClient, writeProgress); len(missing) > 0 {
+			s.slog().WarnContext(ctx, "CPU feature mismatch, falling back to two-phase migration",
+				"box", boxName, "missing_flags", missing)
+			writeProgress("WARNING: target is missing CPU flags %v — falling back to two-phase migration.", missing)
+			live = false
+			cpuMismatch = true
+		} else {
+			writeProgress("CPU feature compatibility check passed.")
+		}
+	}
+
 	if live {
 		writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
@@ -861,7 +879,11 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 	// Send maintenance email if the VM was rebooted (non-live migration or
 	// live migration that fell back to cold boot).
 	if !live || coldBooted {
-		go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+		var emailReason string
+		if cpuMismatch {
+			emailReason = "The VM had to be cold rebooted due to a CPU feature set mismatch between the source and target hosts."
+		}
+		go s.sendBoxMaintenanceEmail(context.Background(), boxName, emailReason)
 	}
 
 	// Clean up source instance
@@ -1261,6 +1283,55 @@ func (s *Server) guestShellPrefix(ctx context.Context, box *exedb.Box) (sudo, sh
 		return "", shell
 	}
 	return "sudo ", shell
+}
+
+// checkCPUCompatibility fetches CPU flags from both source and target exelets
+// and returns any flags present on the source but missing from the target.
+// An empty slice means the target is compatible for live migration.
+func (s *Server) checkCPUCompatibility(ctx context.Context, source, target *exeletClient, progress func(string, ...any)) []string {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	sourceInfo, err := source.client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
+	if err != nil {
+		s.slog().WarnContext(ctx, "CPU compat check: failed to get source system info", "error", err)
+		progress("WARNING: could not fetch source CPU flags (%v) — skipping CPU compat check.", err)
+		return nil // Proceed optimistically; the old behavior.
+	}
+	targetInfo, err := target.client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
+	if err != nil {
+		s.slog().WarnContext(ctx, "CPU compat check: failed to get target system info", "error", err)
+		progress("WARNING: could not fetch target CPU flags (%v) — skipping CPU compat check.", err)
+		return nil
+	}
+
+	// If either side reports no flags (old exelet version), skip the check.
+	if len(sourceInfo.CpuFlags) == 0 || len(targetInfo.CpuFlags) == 0 {
+		return nil
+	}
+
+	missing := missingCPUFlags(sourceInfo.CpuFlags, targetInfo.CpuFlags)
+	if len(missing) == 0 {
+		s.slog().InfoContext(ctx, "CPU compat check passed",
+			"source_flags", len(sourceInfo.CpuFlags),
+			"target_flags", len(targetInfo.CpuFlags))
+	}
+	return missing
+}
+
+// missingCPUFlags returns flags present in source but absent from target.
+func missingCPUFlags(source, target []string) []string {
+	targetSet := make(map[string]struct{}, len(target))
+	for _, f := range target {
+		targetSet[f] = struct{}{}
+	}
+	var missing []string
+	for _, f := range source {
+		if _, ok := targetSet[f]; !ok {
+			missing = append(missing, f)
+		}
+	}
+	return missing
 }
 
 // checkGuestIPReconfig verifies the guest can perform IP reconfiguration.
@@ -6699,6 +6770,7 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 
 		var sshPort *int64
 		var coldBooted bool
+		var cpuMismatch bool
 		dbStatus := "running"
 
 		var guestSudo, guestShell string
@@ -6721,6 +6793,20 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 						live = false
 					}
 				}
+			}
+		}
+
+		// Pre-check CPU feature compatibility before attempting live migration.
+		if live {
+			writeProgress("Checking CPU feature compatibility...")
+			if missing := s.checkCPUCompatibility(ctx, sourceClient, targetClient, writeProgress); len(missing) > 0 {
+				s.slog().WarnContext(ctx, "CPU feature mismatch, falling back to two-phase migration",
+					"box", boxName, "missing_flags", missing)
+				writeProgress("WARNING: target is missing CPU flags %v — falling back to two-phase migration.", missing)
+				live = false
+				cpuMismatch = true
+			} else {
+				writeProgress("CPU feature compatibility check passed.")
 			}
 		}
 
@@ -6827,7 +6913,11 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 		}
 
 		if !live || coldBooted {
-			go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+			var emailReason string
+			if cpuMismatch {
+				emailReason = "The VM had to be cold rebooted due to a CPU feature set mismatch between the source and target hosts."
+			}
+			go s.sendBoxMaintenanceEmail(context.Background(), boxName, emailReason)
 		}
 
 		writeProgress("Deleting source instance on %s...", box.Ctrhost)
@@ -7145,7 +7235,7 @@ func (s *Server) handleDebugUserColdMigrateVM(w http.ResponseWriter, r *http.Req
 	writeProgress("Proxy caches flushed.")
 
 	if wasRunning {
-		go s.sendBoxMaintenanceEmail(context.Background(), boxName)
+		go s.sendBoxMaintenanceEmail(context.Background(), boxName, "")
 	}
 
 	// Clean up source.

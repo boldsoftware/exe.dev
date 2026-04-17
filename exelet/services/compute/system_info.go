@@ -17,5 +17,6 @@ func (s *Service) GetSystemInfo(ctx context.Context, req *api.GetSystemInfoReque
 			UnarySendVm:    true,
 			UnaryReceiveVm: true,
 		},
+		CpuFlags: readCPUFlags(),
 	}, nil
 }

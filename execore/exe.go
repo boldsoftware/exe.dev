@@ -1839,7 +1839,8 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, det
 }
 
 // sendBoxMaintenanceEmail sends a notification email when a box is rebooted for system maintenance.
-func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
+// An optional reason can be provided to explain why the reboot was necessary.
+func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName, reason string) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -1850,7 +1851,12 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName string) {
 	}
 
 	subject := fmt.Sprintf("exe.dev: system maintenance on %s", boxName)
-	body := fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
+	var body string
+	if reason != "" {
+		body = fmt.Sprintf("Your VM %s was rebooted as part of system maintenance. %s No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName, reason)
+	} else {
+		body = fmt.Sprintf("Your VM %s was rebooted as part of routine system maintenance. No action is required.\n\nIf you run into any issues please contact support@exe.dev.\n\nThanks!\n\nexe.dev support", boxName)
+	}
 
 	if err := s.sendEmail(ctx, sendEmailParams{
 		emailType: email.TypeBoxMaintenance,

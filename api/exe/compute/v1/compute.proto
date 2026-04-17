@@ -202,6 +202,9 @@ message GetSystemInfoResponse {
   string version = 1;
   string arch = 2;
   MigrationCapabilities migration_capabilities = 3;
+  // CPU feature flags from /proc/cpuinfo (e.g., "sse4_2", "avx2", "avx512f").
+  // Used to pre-check CPU compatibility before live migration.
+  repeated string cpu_flags = 4;
 }
 
 message MigrationCapabilities {
