@@ -124,8 +124,14 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
 .action-pill i { font-size: 11px; }
 
 /* ===== DETAIL VIEW ===== */
-.detail-back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-color-muted); text-decoration: none; font-size: 12px; cursor: pointer; background: none; border: none; font-family: inherit; margin-bottom: 4px; }
-.detail-back:hover { color: var(--text-color); }
+/* BREADCRUMBS */
+.breadcrumb { display: flex; align-items: center; gap: 0; font-size: 13px; margin-bottom: 8px; list-style: none; padding: 0; margin-top: 0; }
+.breadcrumb li { display: flex; align-items: center; }
+.breadcrumb .bc-sep { color: var(--text-color-muted); margin: 0 8px; font-size: 11px; }
+.breadcrumb a { color: var(--text-color-muted); text-decoration: none; display: inline-flex; align-items: center; }
+.breadcrumb a:hover { color: var(--primary-color); }
+.breadcrumb .bc-current { color: var(--text-color); font-weight: 500; }
+.breadcrumb .bc-home { font-size: 14px; }
 .detail-header { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .detail-header-top { display: flex; align-items: center; justify-content: space-between; }
 .detail-header-bottom { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -207,6 +213,11 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
 <!-- ===== LIST VIEW ===== -->
 <div id="view-list" class="view active">
 <div class="page">
+  <ul class="breadcrumb">
+    <li><a href="#"><i class="pi pi-home bc-home"></i></a></li>
+    <li><span class="bc-sep">/</span></li>
+    <li><span class="bc-current">VMs</span></li>
+  </ul>
   <div class="section-header">
     <div class="section-left">
       <h2 class="section-title">My VMs</h2>
@@ -477,7 +488,13 @@ body { font-family: var(--font-mono); background: var(--surface-ground); backgro
 <!-- ===== DETAIL VIEW ===== -->
 <div id="view-detail" class="view">
 <div class="page">
-  <button class="detail-back" onclick="showView('list')">← My VMs</button>
+  <ul class="breadcrumb">
+    <li><a href="#"><i class="pi pi-home bc-home"></i></a></li>
+    <li><span class="bc-sep">/</span></li>
+    <li><a href="#" onclick="showView('list'); return false;">VMs</a></li>
+    <li><span class="bc-sep">/</span></li>
+    <li><span class="bc-current">terminus</span></li>
+  </ul>
   <div class="detail-header">
     <div class="detail-header-top">
       <div class="detail-vm-name"><div class="status-dot running"></div> terminus</div>
