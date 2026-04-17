@@ -349,7 +349,7 @@ func (r *Runner) day1Nudge(ctx context.Context, u exedb.ListTrialUsersForDripRow
 	if hasCreatedVM {
 		return "", "", "user already created a VM; on track", false
 	}
-	subject = "You have 6 days left, start something"
+	subject = "exe.dev: 6 days left, start something"
 	body = "Hello,\n\n" +
 		"You signed up for exe.dev but haven't created a machine yet. " +
 		"Your trial expires in 6 days.\n\n" +

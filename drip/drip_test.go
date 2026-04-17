@@ -219,7 +219,7 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	if len(*sent3) != 1 {
 		t.Fatalf("expected 1 email (day1), got %d", len(*sent3))
 	}
-	if (*sent3)[0].Subject != "You have 6 days left, start something" {
+	if (*sent3)[0].Subject != "exe.dev: 6 days left, start something" {
 		t.Errorf("unexpected day1 subject: %s", (*sent3)[0].Subject)
 	}
 }
