@@ -77,13 +77,19 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("  Period:    %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
 	cc.Writeln("")
 
-	// Disk line.
-	diskLine := diskStatLine(diskAvgBytes, includedDisk)
-	cc.Writeln("  Disk:      %s", diskLine)
+	// Disk lines.
+	cc.Writeln("  Included disk:      %s", diskStatLine(diskAvgBytes, includedDisk))
+	if includedDisk > 0 && diskAvgBytes > int64(includedDisk) {
+		overBytes := diskAvgBytes - int64(includedDisk)
+		cc.Writeln("  Extra disk:         %s", humanize.IBytes(uint64(overBytes)))
+	}
 
-	// Bandwidth line.
-	bwLine := bandwidthStatLine(bandwidthBytes, includedBandwidth)
-	cc.Writeln("  Bandwidth: %s", bwLine)
+	// Bandwidth lines.
+	cc.Writeln("  Included bandwidth: %s", bandwidthStatLine(bandwidthBytes, includedBandwidth))
+	if includedBandwidth > 0 && bandwidthBytes > int64(includedBandwidth) {
+		overBytes := bandwidthBytes - int64(includedBandwidth)
+		cc.Writeln("  Extra bandwidth:    %s", humanize.IBytes(uint64(overBytes)))
+	}
 
 	// Overage cost.
 	const (
@@ -123,7 +129,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 func diskStatLine(usedBytes int64, includedBytes uint64) string {
 	used := humanize.IBytes(uint64(usedBytes))
 	if includedBytes == 0 {
-		return fmt.Sprintf("%s avg", used)
+		return used
 	}
 	incl := humanize.IBytes(includedBytes)
 	if usedBytes <= int64(includedBytes) {
@@ -135,10 +141,10 @@ func diskStatLine(usedBytes int64, includedBytes uint64) string {
 		if pct >= 80 {
 			color = "\033[33m" // yellow
 		}
-		return fmt.Sprintf("%s%s avg / %s (%.0f%%)\033[0m", color, used, incl, pct)
+		return fmt.Sprintf("%s%s / %s (%.0f%%)\033[0m", color, used, incl, pct)
 	}
 	overBytes := usedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[1;31m%s avg / %s (%s over)\033[0m",
+	return fmt.Sprintf("\033[1;31m%s / %s (%s over)\033[0m",
 		used, incl, humanize.IBytes(uint64(overBytes)))
 }
 
@@ -146,7 +152,7 @@ func diskStatLine(usedBytes int64, includedBytes uint64) string {
 func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
 	used := humanize.IBytes(uint64(usedBytes))
 	if includedBytes == 0 {
-		return fmt.Sprintf("%s total", used)
+		return used
 	}
 	incl := humanize.IBytes(includedBytes)
 	if usedBytes <= int64(includedBytes) {
@@ -158,10 +164,10 @@ func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
 		if pct >= 80 {
 			color = "\033[33m"
 		}
-		return fmt.Sprintf("%s%s total / %s (%.0f%%)\033[0m", color, used, incl, pct)
+		return fmt.Sprintf("%s%s / %s (%.0f%%)\033[0m", color, used, incl, pct)
 	}
 	overBytes := usedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[1;31m%s total / %s (%s over)\033[0m",
+	return fmt.Sprintf("\033[1;31m%s / %s (%s over)\033[0m",
 		used, incl, humanize.IBytes(uint64(overBytes)))
 }
 

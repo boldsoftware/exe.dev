@@ -19,6 +19,8 @@ import (
 // GET /api/billing/usage?granularity=monthly.
 type billingUsageMonthlyMetric struct {
 	Date           string `json:"date"`
+	VMID           string `json:"vm_id"`
+	VMName         string `json:"vm_name"`
 	DiskAvgBytes   int64  `json:"disk_avg_bytes"`
 	BandwidthBytes int64  `json:"bandwidth_bytes"`
 }
@@ -139,6 +141,8 @@ func (s *Server) handleAPIBillingUsage(w http.ResponseWriter, r *http.Request, u
 		for _, m := range monthly {
 			metrics = append(metrics, billingUsageMonthlyMetric{
 				Date:           m.MonthStart.UTC().Format("2006-01-02"),
+				VMID:           m.VMID,
+				VMName:         m.VMName,
 				DiskAvgBytes:   m.DiskLogicalAvgBytes,
 				BandwidthBytes: m.NetworkTXBytes + m.NetworkRXBytes,
 			})

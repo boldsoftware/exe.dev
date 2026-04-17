@@ -81,12 +81,20 @@
       <div v-if="usage?.display" class="usage-panel">
         <div class="usage-panel-title">USAGE THIS PERIOD<template v-if="formatPeriod(billingPeriodStart, billingPeriodEnd)"> · {{ formatPeriod(billingPeriodStart, billingPeriodEnd) }}</template></div>
         <div class="usage-panel-row">
-          <span>Disk</span>
-          <span>{{ usage.display.disk_avg }} avg<template v-if="usage.display.included_disk"> / {{ usage.display.included_disk }}</template><template v-if="usage.display.overage_disk"> (+{{ usage.display.overage_disk }} over)</template></span>
+          <span>Included disk</span>
+          <span>{{ usage.display.disk_avg }} / {{ usage.display.included_disk }}</span>
+        </div>
+        <div v-if="usage.display.overage_disk" class="usage-panel-row usage-panel-overage-row">
+          <span>Extra disk</span>
+          <span>{{ usage.display.overage_disk }}</span>
         </div>
         <div class="usage-panel-row">
-          <span>Bandwidth</span>
-          <span>{{ usage.display.bandwidth }}<template v-if="usage.display.included_bandwidth"> / {{ usage.display.included_bandwidth }}</template><template v-if="usage.display.overage_bandwidth"> (+{{ usage.display.overage_bandwidth }} over)</template></span>
+          <span>Included bandwidth</span>
+          <span>{{ usage.display.bandwidth }} / {{ usage.display.included_bandwidth }}</span>
+        </div>
+        <div v-if="usage.display.overage_bandwidth" class="usage-panel-row usage-panel-overage-row">
+          <span>Extra bandwidth</span>
+          <span>{{ usage.display.overage_bandwidth }}</span>
         </div>
         <div v-if="usage.display.estimated_overage" class="usage-panel-overage">
           Est. overage: {{ usage.display.estimated_overage }}
@@ -548,6 +556,10 @@ function onRowClick(event: MouseEvent) {
 
 .usage-panel-row span:last-child {
   font-weight: 600;
+}
+
+.usage-panel-overage-row span {
+  color: var(--danger-color);
 }
 
 .usage-panel-overage {

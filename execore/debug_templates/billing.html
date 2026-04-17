@@ -139,11 +139,12 @@ table.info th { width: 200px; }
 {{if $.MonthlyMetrics}}
 <h4>Monthly Usage</h4>
 <table>
-<thead><tr><th>Month</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
+<thead><tr><th>Month</th><th>VM</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
 <tbody>
 {{range $.MonthlyMetrics}}
 <tr>
   <td rowspan="2">{{.MonthStart.Format "2006-01"}}</td>
+  <td rowspan="2">{{if .VMName}}{{.VMName}}{{else}}—{{end}}</td>
   <td>Disk</td>
   <td>{{printf "%.3f" (divf64 .DiskLogicalAvgBytes 1e9)}}</td>
   <td>{{overage .DiskLogicalAvgBytes 25}}</td>
@@ -154,30 +155,6 @@ table.info th { width: 200px; }
   <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
   <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) 100}}</td>
   <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes)}}</td>
-</tr>
-{{end}}
-</tbody>
-</table>
-{{end}}
-
-{{if $.UsageVMs}}
-<h4>Per-VM Breakdown</h4>
-<table>
-<thead><tr><th>VM</th><th>Metric</th><th>Current (GB)</th><th>Overage (GB)</th><th>Cost</th></tr></thead>
-<tbody>
-{{range $.UsageVMs}}
-<tr>
-  <td rowspan="2">{{.VMName}}{{if .VMID}} <span class="muted">({{.VMID}})</span>{{end}}</td>
-  <td>Disk</td>
-  <td>{{printf "%.3f" (divf64 .DiskAvgBytes 1e9)}}</td>
-  <td>{{overage .DiskAvgBytes 25}}</td>
-  <td>{{diskCost .DiskAvgBytes}}</td>
-</tr>
-<tr>
-  <td>Bandwidth</td>
-  <td>{{printf "%.3f" (divf64 .BandwidthBytes 1e9)}}</td>
-  <td>{{overage .BandwidthBytes 100}}</td>
-  <td>{{bwCost .BandwidthBytes}}</td>
 </tr>
 {{end}}
 </tbody>

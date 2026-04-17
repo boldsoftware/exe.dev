@@ -246,6 +246,12 @@ func TestAPIBillingUsage_Monthly(t *testing.T) {
 	if resp.Metrics[0].BandwidthBytes != wantBandwidth {
 		t.Errorf("expected bandwidth_bytes %d, got %d", wantBandwidth, resp.Metrics[0].BandwidthBytes)
 	}
+	if resp.Metrics[0].VMID != "vm-abc" {
+		t.Errorf("expected vm_id 'vm-abc', got %q", resp.Metrics[0].VMID)
+	}
+	if resp.Metrics[0].VMName != "my-vm" {
+		t.Errorf("expected vm_name 'my-vm', got %q", resp.Metrics[0].VMName)
+	}
 }
 
 func TestAPIBillingUsage_Daily(t *testing.T) {
