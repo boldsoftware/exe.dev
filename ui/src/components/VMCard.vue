@@ -3,7 +3,7 @@
     <!-- Collapsed row -->
     <div class="box-main">
       <StatusDot :status="box.status" />
-      <span class="box-name">{{ box.name }}</span>
+      <router-link :to="`/vm/${box.name}`" class="box-name" @click.stop>{{ box.name }}</router-link>
       <span v-if="box.totalShareCount > 0" class="share-badge" :title="`Shared with ${box.sharedUserCount} user(s) and ${box.shareLinkCount} link(s)`">
         👥 {{ box.totalShareCount }}
       </span>
@@ -238,6 +238,13 @@ function onRowClick(event: MouseEvent) {
 .box-name {
   font-weight: 500;
   font-size: 13px;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.box-name:hover {
+  text-decoration: underline;
+  color: var(--primary-color, var(--text-color));
 }
 
 .share-badge {

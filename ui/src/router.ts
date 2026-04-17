@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/docs/list', name: 'docs-list', component: () => import('./views/DocsList.vue') },
     { path: '/docs/all', name: 'docs-all', component: () => import('./views/DocsEntry.vue') },
     { path: '/docs/:slug(.*)', name: 'docs-entry', component: () => import('./views/DocsEntry.vue') },
+    { path: '/vm/:name', name: 'vm-detail', component: () => import('./views/VMDetail.vue') },
   ],
 })
 

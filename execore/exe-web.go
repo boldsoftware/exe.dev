@@ -1036,6 +1036,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// /vm/<name> serves the VM detail view (Vue SPA)
+		if _, ok := strings.CutPrefix(path, "/vm/"); ok {
+			if _, err := s.validateAuthCookie(r); err != nil {
+				authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+				http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+				return
+			}
+			s.serveDashboardUI(w, r)
+			return
+		}
+
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return

@@ -310,6 +310,13 @@ export async function fetchProfile(): Promise<ProfileData> {
   return fetchJSON('/api/profile')
 }
 
+export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {
+  const data = await fetchDashboard()
+  const box = data.boxes.find(b => b.name === name) ?? null
+  if (!box) return null
+  return { box, billing: data.billing }
+}
+
 export async function fetchIntegrations(): Promise<IntegrationsData> {
   return fetchJSON('/api/integrations')
 }
