@@ -96,21 +96,17 @@ type ProxyData interface {
 
 	// DeletePushToken deletes a push token for a user.
 	DeletePushToken(ctx context.Context, token, userID string) error
+
+	// ValidateAppToken validates an app token (prefixed with AppTokenPrefix)
+	// and returns the user ID if valid.
+	// Returns an error if the token is invalid, expired, or the user is locked out.
+	ValidateAppToken(ctx context.Context, token string) (string, error)
 }
 
 // AppTokenPrefix is the prefix for app tokens. Tokens with this prefix
 // are app tokens (for iOS/native apps) and are distinct from browser cookies
 // and SSH-signed tokens.
 const AppTokenPrefix = "exeapp_"
-
-// AppTokenValidator is an optional interface that ProxyData implementations
-// can satisfy to support app token authentication.
-type AppTokenValidator interface {
-	// ValidateAppToken validates an app token (prefixed with AppTokenPrefix)
-	// and returns the user ID if valid.
-	// Returns an error if the token is invalid, expired, or the user is locked out.
-	ValidateAppToken(ctx context.Context, token string) (string, error)
-}
 
 // BoxData is the information we need for a box.
 type BoxData struct {

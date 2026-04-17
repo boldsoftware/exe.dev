@@ -758,11 +758,7 @@ func (ps *ProxyServer) validateAppTokenFromCookie(r *http.Request) *ProxyAuthRes
 // ValidateAppTokenForProxy validates an app token for proxy access.
 // Returns the auth result if valid, nil otherwise.
 func (ps *ProxyServer) ValidateAppTokenForProxy(ctx context.Context, token string) *ProxyAuthResult {
-	validator, ok := ps.Data.(AppTokenValidator)
-	if !ok {
-		return nil
-	}
-	userID, err := validator.ValidateAppToken(ctx, token)
+	userID, err := ps.Data.ValidateAppToken(ctx, token)
 	if err != nil {
 		ps.Lg.DebugContext(ctx, "app token validation failed", "error", err)
 		return nil

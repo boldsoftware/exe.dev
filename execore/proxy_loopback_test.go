@@ -2,8 +2,6 @@ package execore
 
 import (
 	"testing"
-
-	"exe.dev/exeweb"
 )
 
 // TestLoopbackProxyData tests that the gRPC loopback implementation
@@ -263,13 +261,8 @@ func TestLoopbackProxyData(t *testing.T) {
 		loopback.HLLNoteEvents(ctx, userID, []string{"test-event"})
 	})
 
-	t.Run("AppTokenValidator", func(t *testing.T) {
-		atv, ok := loopback.(exeweb.AppTokenValidator)
-		if !ok {
-			t.Fatal("loopback does not implement AppTokenValidator")
-		}
-		// With no tokens configured, validation should fail.
-		_, err := atv.ValidateAppToken(ctx, "nonexistent")
+	t.Run("AppToken", func(t *testing.T) {
+		_, err := loopback.ValidateAppToken(ctx, "nonexistent")
 		if err == nil {
 			t.Error("expected error for invalid app token")
 		}

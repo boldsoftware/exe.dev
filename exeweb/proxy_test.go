@@ -706,7 +706,7 @@ func TestClearExeDevHeaders(t *testing.T) {
 	}
 }
 
-// mockProxyData is a minimal ProxyData + AppTokenValidator for unit tests.
+// mockProxyData is a minimal ProxyData for unit tests.
 type mockProxyData struct {
 	appTokens map[string]string // token -> userID
 	cookies   map[string]CookieData

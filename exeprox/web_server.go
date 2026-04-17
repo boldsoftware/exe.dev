@@ -391,7 +391,7 @@ func (epd *exewebProxyData) DeletePushToken(ctx context.Context, token, userID s
 	return nil
 }
 
-// ValidateAppToken implements [exeweb.AppTokenValidator].
+// ValidateAppToken implements [exeweb.ProxyData.ValidateAppToken].
 // App token validation reuses the CookieInfo gRPC, which already
 // recognizes app tokens by their exeapp_ prefix and validates them
 // on the exed side (see execore/exeprox.go CookieInfo).

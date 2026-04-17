@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"exe.dev/email"
 	"exe.dev/exeweb"
@@ -29,34 +30,36 @@ func (s *Server) setupLoopbackProxyData() {
 	s.loopbackProxyData = NewLoopbackProxyData(client, s.validateAppToken)
 }
 
-// loopbackProxyData implements [exeweb.ProxyData] and
-// [exeweb.AppTokenValidator] by making gRPC calls to the in-process
-// ProxyInfoService server. This exercises the full gRPC serialization
+// loopbackProxyData implements [exeweb.ProxyData] by making gRPC
+// calls to the in-process ProxyInfoService server.
+// This exercises the full gRPC serialization
 // and server-side handler path while staying in the same process.
-//
-// App token validation has no corresponding gRPC RPC, so it is
-// handled via a direct in-process callback.
 type loopbackProxyData struct {
-	client           proxyapi.ProxyInfoServiceClient
-	validateAppToken func(ctx context.Context, token string) (string, error)
+	client proxyapi.ProxyInfoServiceClient
 }
 
 // NewLoopbackProxyData returns a [exeweb.ProxyData] that delegates to
 // the given gRPC client. The client is expected to connect to the
 // ProxyInfoService running in the same process.
-//
-// validateAppToken is called for [exeweb.AppTokenValidator]; it may
-// be nil if app-token auth is not needed.
 func NewLoopbackProxyData(client proxyapi.ProxyInfoServiceClient, validateAppToken func(ctx context.Context, token string) (string, error)) exeweb.ProxyData {
-	return &loopbackProxyData{client: client, validateAppToken: validateAppToken}
+	return &loopbackProxyData{client: client}
 }
 
-// ValidateAppToken implements [exeweb.AppTokenValidator].
 func (lb *loopbackProxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
-	if lb.validateAppToken == nil {
-		return "", errors.New("app token validation not supported")
+	// App token validation reuses the CookieInfo gRPC, which already
+	// recognizes app tokens by their exeapp_ prefix and validates them
+	// on the exed side (see execore/exeprox.go CookieInfo).
+	if !strings.HasPrefix(token, exeweb.AppTokenPrefix) {
+		return "", errors.New("not an app token")
 	}
-	return lb.validateAppToken(ctx, token)
+	cd, ok, err := lb.CookieInfo(ctx, token, "")
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", errors.New("invalid app token")
+	}
+	return cd.UserID, nil
 }
 
 func (lb *loopbackProxyData) BoxInfo(ctx context.Context, boxName string) (exeweb.BoxData, bool, error) {

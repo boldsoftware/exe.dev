@@ -571,11 +571,7 @@ func (ps *ProxyServer) validateTerminalAppToken(r *http.Request) (string, error)
 	if !strings.HasPrefix(cookie.Value, AppTokenPrefix) {
 		return "", fmt.Errorf("not an app token")
 	}
-	validator, ok := ps.Data.(AppTokenValidator)
-	if !ok {
-		return "", fmt.Errorf("app token validation not supported")
-	}
-	return validator.ValidateAppToken(r.Context(), cookie.Value)
+	return ps.Data.ValidateAppToken(r.Context(), cookie.Value)
 }
 
 // terminalAuthKey is the context key for terminal authentication info
