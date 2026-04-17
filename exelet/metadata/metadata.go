@@ -583,7 +583,7 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			pr.SetURL(s.exedTargetURL)
 			pr.Out.URL.Path = pr.In.URL.Path
 			pr.Out.Host = s.exedTargetURL.Host
-			// Add header to identify the box making the request
+			// Add header to identify the box making the request.
 			pr.Out.Header.Set("X-Exedev-Box", boxName)
 			// Propagate trace_id to downstream service
 			tracing.SetTraceIDHeader(pr.In.Context(), pr.Out.Header)

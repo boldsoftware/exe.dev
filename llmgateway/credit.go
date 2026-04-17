@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"exe.dev/billing/plan"
@@ -394,16 +395,17 @@ func TopUpOnBillingUpgradeDB(ctx context.Context, db *sqlite.DB, userID string, 
 
 // DebitCredit subtracts the given cost (in USD) from the user's credit.
 // Returns the new credit info after the debit.
-func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD float64) (*CreditInfo, error) {
+// If boxUsage is non-nil, box LLM usage is also recorded.
+func (m *CreditManager) DebitCredit(ctx context.Context, userID string, costUSD float64, boxUsage *BoxUsage) (*CreditInfo, error) {
 	if m == nil || m.data == nil {
 		return nil, nil // No credit management configured
 	}
-	return m.data.DebitCredit(ctx, userID, costUSD, m.now())
+	return m.data.DebitCredit(ctx, userID, costUSD, m.now(), boxUsage)
 }
 
 // DebitCreditDB is the implementation of [CreditManager.DebitCredit]
 // when using a database.
-func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD float64, now time.Time) (*CreditInfo, error) {
+func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD float64, now time.Time, boxUsage *BoxUsage) (*CreditInfo, error) {
 	var info *CreditInfo
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		credit, err := q.GetUserLLMCredit(ctx, userID)
@@ -437,6 +439,19 @@ func DebitCreditDB(ctx context.Context, db *sqlite.DB, userID string, costUSD fl
 			UserID:          userID,
 		}); err != nil {
 			return err
+		}
+
+		if boxUsage != nil && boxUsage.CostMicrocents > 0 {
+			// Best-effort only: debit must still commit if the usage summary write fails.
+			if err := q.RecordBoxLLMUsage(ctx, exedb.RecordBoxLLMUsageParams{
+				BoxID:          boxUsage.BoxID,
+				UserID:         userID,
+				Provider:       boxUsage.Provider,
+				Model:          boxUsage.Model,
+				CostMicrocents: boxUsage.CostMicrocents,
+			}); err != nil {
+				slog.ErrorContext(ctx, "failed to record box LLM usage", "box_id", boxUsage.BoxID, "error", err)
+			}
 		}
 
 		info = &CreditInfo{

@@ -172,7 +172,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up the box to get the user ID for logging and metrics
-	userID, exists, err := m.data.BoxCreator(r.Context(), boxName)
+	boxInfo, err := m.data.BoxLookup(r.Context(), boxName)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return // Client disconnected
@@ -180,10 +180,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.httpError(w, r, "internal server error", http.StatusInternalServerError, boxName, fmt.Errorf("failed to look up box: %w", err))
 		return
 	}
-	if !exists {
+	if boxInfo == nil {
 		m.httpError(w, r, "VM not found", http.StatusUnauthorized, boxName, nil)
 		return
 	}
+	userID := boxInfo.CreatorID
 	if userID == "" {
 		m.httpError(w, r, "user not found", http.StatusInternalServerError, boxName, fmt.Errorf("could not determine user ID for box %s", boxName))
 		return
@@ -338,11 +339,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var proxyErr error
 	switch alias {
 	case "anthropic":
-		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxName, userID, billingBacked, billingAccountID)
+		proxy, transport, proxyErr = m.createAnthropicProxy(r, boxInfo, userID, billingBacked, billingAccountID)
 	case "openai":
-		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxName, userID, billingBacked, billingAccountID)
+		proxy, transport, proxyErr = m.createOpenAIProxy(r, boxInfo, userID, billingBacked, billingAccountID)
 	case "fireworks":
-		proxy, transport, proxyErr = m.createFireworksProxy(r, boxName, userID, billingBacked, billingAccountID)
+		proxy, transport, proxyErr = m.createFireworksProxy(r, boxInfo, userID, billingBacked, billingAccountID)
 	}
 	if proxyErr != nil {
 		m.httpError(w, r, "proxy configuration error", http.StatusInternalServerError, boxName, proxyErr)
@@ -353,7 +354,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	transport.WaitAndAddSSEAttributes()
 }
 
-func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxInfo *BoxInfo, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Anthropic == "" {
 		return nil, nil, fmt.Errorf("anthropic api key not configured")
 	}
@@ -363,7 +364,8 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 		log:              m.log,
 		creditMgr:        m.creditMgr,
 		incomingReq:      incomingReq,
-		boxName:          boxName,
+		boxID:            boxInfo.ID,
+		boxName:          boxInfo.Name,
 		userID:           userID,
 		billingBacked:    billingBacked,
 		billingAccountID: billingAccountID,
@@ -384,14 +386,14 @@ func (m *llmGateway) createAnthropicProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.httpError(w, r, "anthropic api gateway error", http.StatusBadGateway, boxName, err)
+			m.httpError(w, r, "anthropic api gateway error", http.StatusBadGateway, boxInfo.Name, err)
 		},
 	}
 
 	return proxy, transport, nil
 }
 
-func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxInfo *BoxInfo, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.OpenAI == "" {
 		return nil, nil, fmt.Errorf("openai api key not configured")
 	}
@@ -401,7 +403,8 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 		log:              m.log,
 		creditMgr:        m.creditMgr,
 		incomingReq:      incomingReq,
-		boxName:          boxName,
+		boxID:            boxInfo.ID,
+		boxName:          boxInfo.Name,
 		userID:           userID,
 		billingBacked:    billingBacked,
 		billingAccountID: billingAccountID,
@@ -424,14 +427,14 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxName, userI
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.httpError(w, r, "openai api gateway error", http.StatusBadGateway, boxName, err)
+			m.httpError(w, r, "openai api gateway error", http.StatusBadGateway, boxInfo.Name, err)
 		},
 	}
 
 	return proxy, transport, nil
 }
 
-func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
+func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxInfo *BoxInfo, userID string, billingBacked bool, billingAccountID string) (*httputil.ReverseProxy, *accountingTransport, error) {
 	if m.apiKeys.Fireworks == "" {
 		return nil, nil, fmt.Errorf("fireworks api key not configured")
 	}
@@ -441,7 +444,8 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 		log:              m.log,
 		creditMgr:        m.creditMgr,
 		incomingReq:      incomingReq,
-		boxName:          boxName,
+		boxID:            boxInfo.ID,
+		boxName:          boxInfo.Name,
 		userID:           userID,
 		billingBacked:    billingBacked,
 		billingAccountID: billingAccountID,
@@ -464,7 +468,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxName, us
 			if errors.Is(err, context.Canceled) || errors.Is(err, errBodyNotReplayable) {
 				return
 			}
-			m.httpError(w, r, "fireworks api gateway error", http.StatusBadGateway, boxName, err)
+			m.httpError(w, r, "fireworks api gateway error", http.StatusBadGateway, boxInfo.Name, err)
 		},
 	}
 

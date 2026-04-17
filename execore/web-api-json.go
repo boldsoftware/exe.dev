@@ -261,6 +261,8 @@ type jsonProfileData struct {
 	InviteCount        int64               `json:"inviteCount"`
 	CanRequestInvites  bool                `json:"canRequestInvites"`
 	AvailableRegions   []jsonRegionOption  `json:"availableRegions"`
+	BillingPeriodStart time.Time           `json:"billingPeriodStart"`
+	BillingPeriodEnd   time.Time           `json:"billingPeriodEnd"`
 }
 
 type jsonIntegrationInfo struct {
@@ -895,6 +897,13 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	for i, r := range available {
 		profile.AvailableRegions[i] = jsonRegionOption{Code: r.Code, Display: r.Display}
 	}
+
+	// Billing period.
+	var billingAccountID string
+	if account.ID != "" {
+		billingAccountID = account.ID
+	}
+	profile.BillingPeriodStart, profile.BillingPeriodEnd = billingPeriodForUser(r.Context(), s, billingAccountID, nil)
 
 	writeJSONOK(w, profile)
 }

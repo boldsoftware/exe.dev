@@ -411,6 +411,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
 	}
+	if q.getBoxLLMUsageStmt, err = db.PrepareContext(ctx, getBoxLLMUsage); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxLLMUsage: %w", err)
+	}
+	if q.getBoxLLMUsageSummaryStmt, err = db.PrepareContext(ctx, getBoxLLMUsageSummary); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxLLMUsageSummary: %w", err)
+	}
 	if q.getBoxOwnerByContainerIDStmt, err = db.PrepareContext(ctx, getBoxOwnerByContainerID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxOwnerByContainerID: %w", err)
 	}
@@ -716,6 +722,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserLLMCreditStmt, err = db.PrepareContext(ctx, getUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserLLMCredit: %w", err)
+	}
+	if q.getUserLLMUsageDailyStmt, err = db.PrepareContext(ctx, getUserLLMUsageDaily); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserLLMUsageDaily: %w", err)
+	}
+	if q.getUserLLMUsageSummaryStmt, err = db.PrepareContext(ctx, getUserLLMUsageSummary); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserLLMUsageSummary: %w", err)
 	}
 	if q.getUserLimitsByHostStmt, err = db.PrepareContext(ctx, getUserLimitsByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserLimitsByHost: %w", err)
@@ -1070,6 +1082,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.markPendingTeamInviteAcceptedStmt, err = db.PrepareContext(ctx, markPendingTeamInviteAccepted); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkPendingTeamInviteAccepted: %w", err)
+	}
+	if q.recordBoxLLMUsageStmt, err = db.PrepareContext(ctx, recordBoxLLMUsage); err != nil {
+		return nil, fmt.Errorf("error preparing query RecordBoxLLMUsage: %w", err)
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
@@ -1961,6 +1976,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
 		}
 	}
+	if q.getBoxLLMUsageStmt != nil {
+		if cerr := q.getBoxLLMUsageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxLLMUsageStmt: %w", cerr)
+		}
+	}
+	if q.getBoxLLMUsageSummaryStmt != nil {
+		if cerr := q.getBoxLLMUsageSummaryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxLLMUsageSummaryStmt: %w", cerr)
+		}
+	}
 	if q.getBoxOwnerByContainerIDStmt != nil {
 		if cerr := q.getBoxOwnerByContainerIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxOwnerByContainerIDStmt: %w", cerr)
@@ -2469,6 +2494,16 @@ func (q *Queries) Close() error {
 	if q.getUserLLMCreditStmt != nil {
 		if cerr := q.getUserLLMCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserLLMCreditStmt: %w", cerr)
+		}
+	}
+	if q.getUserLLMUsageDailyStmt != nil {
+		if cerr := q.getUserLLMUsageDailyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserLLMUsageDailyStmt: %w", cerr)
+		}
+	}
+	if q.getUserLLMUsageSummaryStmt != nil {
+		if cerr := q.getUserLLMUsageSummaryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserLLMUsageSummaryStmt: %w", cerr)
 		}
 	}
 	if q.getUserLimitsByHostStmt != nil {
@@ -3061,6 +3096,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing markPendingTeamInviteAcceptedStmt: %w", cerr)
 		}
 	}
+	if q.recordBoxLLMUsageStmt != nil {
+		if cerr := q.recordBoxLLMUsageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recordBoxLLMUsageStmt: %w", cerr)
+		}
+	}
 	if q.recordUserEventStmt != nil {
 		if cerr := q.recordUserEventStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
@@ -3629,6 +3669,8 @@ type Queries struct {
 	getBoxByUserAndShardStmt                   *sql.Stmt
 	getBoxEmailCreditStmt                      *sql.Stmt
 	getBoxIPShardStmt                          *sql.Stmt
+	getBoxLLMUsageStmt                         *sql.Stmt
+	getBoxLLMUsageSummaryStmt                  *sql.Stmt
 	getBoxOwnerByContainerIDStmt               *sql.Stmt
 	getBoxSSHDetailsStmt                       *sql.Stmt
 	getBoxShareEmailsByUserStmt                *sql.Stmt
@@ -3731,6 +3773,8 @@ type Queries struct {
 	getUserIDBySSHKeyStmt                      *sql.Stmt
 	getUserIsLockedOutStmt                     *sql.Stmt
 	getUserLLMCreditStmt                       *sql.Stmt
+	getUserLLMUsageDailyStmt                   *sql.Stmt
+	getUserLLMUsageSummaryStmt                 *sql.Stmt
 	getUserLimitsByHostStmt                    *sql.Stmt
 	getUserNewVMCreationDisabledStmt           *sql.Stmt
 	getUserPlanCategoryStmt                    *sql.Stmt
@@ -3849,6 +3893,7 @@ type Queries struct {
 	listUserRegionMigrationsByBatchStmt        *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
+	recordBoxLLMUsageStmt                      *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
 	setAccountParentIDStmt                     *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
@@ -4064,6 +4109,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByUserAndShardStmt:                   q.getBoxByUserAndShardStmt,
 		getBoxEmailCreditStmt:                      q.getBoxEmailCreditStmt,
 		getBoxIPShardStmt:                          q.getBoxIPShardStmt,
+		getBoxLLMUsageStmt:                         q.getBoxLLMUsageStmt,
+		getBoxLLMUsageSummaryStmt:                  q.getBoxLLMUsageSummaryStmt,
 		getBoxOwnerByContainerIDStmt:               q.getBoxOwnerByContainerIDStmt,
 		getBoxSSHDetailsStmt:                       q.getBoxSSHDetailsStmt,
 		getBoxShareEmailsByUserStmt:                q.getBoxShareEmailsByUserStmt,
@@ -4166,6 +4213,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDBySSHKeyStmt:                      q.getUserIDBySSHKeyStmt,
 		getUserIsLockedOutStmt:                     q.getUserIsLockedOutStmt,
 		getUserLLMCreditStmt:                       q.getUserLLMCreditStmt,
+		getUserLLMUsageDailyStmt:                   q.getUserLLMUsageDailyStmt,
+		getUserLLMUsageSummaryStmt:                 q.getUserLLMUsageSummaryStmt,
 		getUserLimitsByHostStmt:                    q.getUserLimitsByHostStmt,
 		getUserNewVMCreationDisabledStmt:           q.getUserNewVMCreationDisabledStmt,
 		getUserPlanCategoryStmt:                    q.getUserPlanCategoryStmt,
@@ -4284,6 +4333,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUserRegionMigrationsByBatchStmt:        q.listUserRegionMigrationsByBatchStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
+		recordBoxLLMUsageStmt:                      q.recordBoxLLMUsageStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,

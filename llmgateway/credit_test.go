@@ -41,6 +41,27 @@ func createTestUser(t *testing.T, db *sqlite.DB, userID, email string) {
 	}
 }
 
+func createTestBox(t *testing.T, db *sqlite.DB, name, userID string) int {
+	t.Helper()
+	var boxID int64
+	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		var err error
+		boxID, err = q.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "test-ctr",
+			Name:            name,
+			Status:          "running",
+			Image:           "base",
+			CreatedByUserID: userID,
+			Region:          "pdx",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to create test box: %v", err)
+	}
+	return int(boxID)
+}
+
 func createBillingAccount(t *testing.T, db *sqlite.DB, userID, accountID string, now time.Time) {
 	t.Helper()
 	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
@@ -118,7 +139,7 @@ func TestCreditManager_DebitCredit_FreeOnly(t *testing.T) {
 	}
 
 	firstDebit := 4.5
-	info, err = mgr.DebitCredit(ctx, userID, firstDebit)
+	info, err = mgr.DebitCredit(ctx, userID, firstDebit, nil)
 	if err != nil {
 		t.Fatalf("first debit failed: %v", err)
 	}
@@ -127,7 +148,7 @@ func TestCreditManager_DebitCredit_FreeOnly(t *testing.T) {
 	}
 
 	secondDebit := 2.25
-	info, err = mgr.DebitCredit(ctx, userID, secondDebit)
+	info, err = mgr.DebitCredit(ctx, userID, secondDebit, nil)
 	if err != nil {
 		t.Fatalf("second debit failed: %v", err)
 	}
@@ -174,7 +195,7 @@ func TestCreditManager_NoIntraMonthRefill(t *testing.T) {
 	}
 
 	overageDebit := initialFreeCreditNoSubscriptionUSD + 1
-	info, err := mgr.DebitCredit(ctx, userID, overageDebit)
+	info, err := mgr.DebitCredit(ctx, userID, overageDebit, nil)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
@@ -211,7 +232,7 @@ func TestCreditManager_NoNextMonthRefillForNoSubscription(t *testing.T) {
 		t.Fatalf("initial check failed: %v", err)
 	}
 
-	_, err = mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+3)
+	_, err = mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+3, nil)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
@@ -253,7 +274,7 @@ func TestCreditManager_SubscribedMonthRolloverTopUpToFloor(t *testing.T) {
 	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
 		t.Fatalf("top up on upgrade failed: %v", err)
 	}
-	if _, err := mgr.DebitCredit(ctx, userID, 115); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 115, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -294,7 +315,7 @@ func TestCreditManager_SubscribedMonthRolloverResetsToFloor(t *testing.T) {
 	if err := mgr.TopUpOnBillingUpgrade(ctx, userID); err != nil {
 		t.Fatalf("top up on upgrade failed: %v", err)
 	}
-	if _, err := mgr.DebitCredit(ctx, userID, 30); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 30, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -337,7 +358,7 @@ func TestCreditManager_SubscribedMonthRolloverNegativeBalance(t *testing.T) {
 	}
 	// Debit more than available to go negative (will error on insufficient credit)
 	// So instead we'll debit all and then manually set to negative using DB
-	if _, err := mgr.DebitCredit(ctx, userID, 120); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 120, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -396,7 +417,7 @@ func TestCreditManager_SubscribedMonthRolloverExactFloorBalance(t *testing.T) {
 		t.Fatalf("top up on upgrade failed: %v", err)
 	}
 	// User now has $120, debit $100 to leave exactly $20
-	if _, err := mgr.DebitCredit(ctx, userID, 100); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 100, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -442,7 +463,7 @@ func TestCreditManager_SubscribedMonthRolloverZeroBalance(t *testing.T) {
 		t.Fatalf("top up on upgrade failed: %v", err)
 	}
 	// User now has $120, debit all to exactly 0
-	if _, err := mgr.DebitCredit(ctx, userID, 120); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 120, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 
@@ -510,7 +531,7 @@ func TestCreditManager_MonthRolloverResetsOverrideBucket(t *testing.T) {
 		t.Fatalf("same-month refresh_per_hour = %f, want %f", info.RefreshPerHour, refreshPerHour)
 	}
 
-	_, err = mgr.DebitCredit(ctx, userID, 50)
+	_, err = mgr.DebitCredit(ctx, userID, 50, nil)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
@@ -693,7 +714,7 @@ func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {
 		t.Fatalf("initial available = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD)
 	}
 
-	if _, err := mgr.DebitCredit(ctx, userID, 10); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 10, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 	wantAvailable := info.Available - 10 + UpgradeBonusCreditUSD
@@ -857,7 +878,7 @@ func TestCreditManager_DebitCredit_FloorsAtZeroInDB(t *testing.T) {
 	}
 
 	// Debit more than available: $20 + $5 overage
-	info, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+5)
+	info, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD+5, nil)
 	if err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
@@ -894,14 +915,14 @@ func TestCreditManager_DebitCredit_RepeatedOverageStaysAtZero(t *testing.T) {
 	}
 
 	// Exhaust all free credit.
-	if _, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD, nil); err != nil {
 		t.Fatalf("exhaust debit failed: %v", err)
 	}
 
 	// Now debit repeatedly when already at 0. DB should stay at 0,
 	// never accumulating negative balance.
 	for i := range 5 {
-		info, err := mgr.DebitCredit(ctx, userID, 10)
+		info, err := mgr.DebitCredit(ctx, userID, 10, nil)
 		if err != nil {
 			t.Fatalf("debit %d failed: %v", i, err)
 		}
@@ -938,11 +959,11 @@ func TestCreditManager_DebitCredit_TotalUsedStillAccurate(t *testing.T) {
 	}
 
 	// Debit $25 (exceeds $20 free credit by $5).
-	if _, err := mgr.DebitCredit(ctx, userID, 25); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 25, nil); err != nil {
 		t.Fatalf("debit failed: %v", err)
 	}
 	// Debit another $10 while at 0.
-	if _, err := mgr.DebitCredit(ctx, userID, 10); err != nil {
+	if _, err := mgr.DebitCredit(ctx, userID, 10, nil); err != nil {
 		t.Fatalf("second debit failed: %v", err)
 	}
 
@@ -962,5 +983,220 @@ func TestCreditManager_DebitCredit_TotalUsedStillAccurate(t *testing.T) {
 	}
 	if !floatClose(totalUsed, 35, 0.000001) {
 		t.Fatalf("total_used = %f, want 35", totalUsed)
+	}
+}
+
+func TestCreditManager_DebitCredit_RecordsBoxUsage(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	ctx := context.Background()
+	userID := "test-user-box-usage"
+	createTestUser(t, db, userID, "box-usage@example.com")
+	boxID := createTestBox(t, db, "usage-box", userID)
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, userID); err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+
+	// First debit with box usage.
+	info, err := mgr.DebitCredit(ctx, userID, 1.50, &BoxUsage{
+		BoxID:          boxID,
+		Provider:       "anthropic",
+		Model:          "claude-sonnet-4-20250514",
+		CostMicrocents: 1_500_000,
+	})
+	if err != nil {
+		t.Fatalf("first debit failed: %v", err)
+	}
+	if !floatClose(info.Available, initialFreeCreditNoSubscriptionUSD-1.50, 0.000001) {
+		t.Fatalf("available after first debit = %f, want %f", info.Available, initialFreeCreditNoSubscriptionUSD-1.50)
+	}
+
+	// Second debit, same model — should aggregate into the same hourly bucket.
+	_, err = mgr.DebitCredit(ctx, userID, 0.75, &BoxUsage{
+		BoxID:          boxID,
+		Provider:       "anthropic",
+		Model:          "claude-sonnet-4-20250514",
+		CostMicrocents: 750_000,
+	})
+	if err != nil {
+		t.Fatalf("second debit failed: %v", err)
+	}
+
+	// Third debit, different model — should create a separate row.
+	_, err = mgr.DebitCredit(ctx, userID, 0.25, &BoxUsage{
+		BoxID:          boxID,
+		Provider:       "openai",
+		Model:          "gpt-4o",
+		CostMicrocents: 250_000,
+	})
+	if err != nil {
+		t.Fatalf("third debit failed: %v", err)
+	}
+
+	// Query usage summary. Use a wide time range since RecordBoxLLMUsage
+	// buckets by CURRENT_TIMESTAMP (real wall clock).
+	farPast := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	farFuture := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	var summary []exedb.GetBoxLLMUsageSummaryRow
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		summary, err = q.GetBoxLLMUsageSummary(ctx, exedb.GetBoxLLMUsageSummaryParams{
+			BoxID:        boxID,
+			HourBucket:   farPast,
+			HourBucket_2: farFuture,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to get usage summary: %v", err)
+	}
+
+	if len(summary) != 2 {
+		t.Fatalf("expected 2 summary rows, got %d", len(summary))
+	}
+
+	// Rows are ordered by total_cost_microcents DESC.
+	if summary[0].Model != "claude-sonnet-4-20250514" || summary[0].Provider != "anthropic" {
+		t.Fatalf("row 0: model=%q provider=%q, want claude-sonnet-4-20250514/anthropic", summary[0].Model, summary[0].Provider)
+	}
+	if summary[0].TotalCostMicrocents != 2_250_000 {
+		t.Fatalf("row 0: total_cost_microcents=%d, want 2250000", summary[0].TotalCostMicrocents)
+	}
+	if summary[0].TotalRequestCount != 2 {
+		t.Fatalf("row 0: total_request_count=%d, want 2", summary[0].TotalRequestCount)
+	}
+
+	if summary[1].Model != "gpt-4o" || summary[1].Provider != "openai" {
+		t.Fatalf("row 1: model=%q provider=%q, want gpt-4o/openai", summary[1].Model, summary[1].Provider)
+	}
+	if summary[1].TotalCostMicrocents != 250_000 {
+		t.Fatalf("row 1: total_cost_microcents=%d, want 250000", summary[1].TotalCostMicrocents)
+	}
+	if summary[1].TotalRequestCount != 1 {
+		t.Fatalf("row 1: total_request_count=%d, want 1", summary[1].TotalRequestCount)
+	}
+
+	// Verify that passing nil BoxUsage doesn't record anything extra.
+	_, err = mgr.DebitCredit(ctx, userID, 0.10, nil)
+	if err != nil {
+		t.Fatalf("nil-usage debit failed: %v", err)
+	}
+
+	// Re-query: should still be exactly 2 rows, unchanged.
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		summary, err = q.GetBoxLLMUsageSummary(ctx, exedb.GetBoxLLMUsageSummaryParams{
+			BoxID:        boxID,
+			HourBucket:   farPast,
+			HourBucket_2: farFuture,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to get usage summary after nil debit: %v", err)
+	}
+	if len(summary) != 2 {
+		t.Fatalf("expected 2 summary rows after nil debit, got %d", len(summary))
+	}
+}
+
+func TestCreditManager_DebitCredit_TransferKeepsUsageOnOriginalOwnerRow(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := NewCreditManager(&DBGatewayData{db})
+	mgr.now = func() time.Time { return now }
+
+	ctx := context.Background()
+	owner1 := "test-user-box-owner-1"
+	owner2 := "test-user-box-owner-2"
+	createTestUser(t, db, owner1, "box-owner-1@example.com")
+	createTestUser(t, db, owner2, "box-owner-2@example.com")
+	boxID := createTestBox(t, db, "transfer-box", owner1)
+
+	if _, err := mgr.CheckAndRefreshCredit(ctx, owner1); err != nil {
+		t.Fatalf("initial check owner1 failed: %v", err)
+	}
+	if _, err := mgr.CheckAndRefreshCredit(ctx, owner2); err != nil {
+		t.Fatalf("initial check owner2 failed: %v", err)
+	}
+
+	if _, err := mgr.DebitCredit(ctx, owner1, 1.00, &BoxUsage{
+		BoxID:          boxID,
+		Provider:       "anthropic",
+		Model:          "claude-sonnet-4-20250514",
+		CostMicrocents: 1_000_000,
+	}); err != nil {
+		t.Fatalf("first debit failed: %v", err)
+	}
+
+	err := db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		return q.UpdateBoxOwner(ctx, exedb.UpdateBoxOwnerParams{
+			CreatedByUserID: owner2,
+			ID:              boxID,
+		})
+	})
+	if err != nil {
+		t.Fatalf("transfer box: %v", err)
+	}
+
+	if _, err := mgr.DebitCredit(ctx, owner2, 0.50, &BoxUsage{
+		BoxID:          boxID,
+		Provider:       "anthropic",
+		Model:          "claude-sonnet-4-20250514",
+		CostMicrocents: 500_000,
+	}); err != nil {
+		t.Fatalf("second debit failed: %v", err)
+	}
+
+	farPast := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	farFuture := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	var owner1Rows []exedb.GetUserLLMUsageDailyRow
+	var owner2Rows []exedb.GetUserLLMUsageDailyRow
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		q := exedb.New(tx.Conn())
+		var err error
+		owner1Rows, err = q.GetUserLLMUsageDaily(ctx, exedb.GetUserLLMUsageDailyParams{
+			UserID:       owner1,
+			HourBucket:   farPast,
+			HourBucket_2: farFuture,
+		})
+		if err != nil {
+			return err
+		}
+		owner2Rows, err = q.GetUserLLMUsageDaily(ctx, exedb.GetUserLLMUsageDailyParams{
+			UserID:       owner2,
+			HourBucket:   farPast,
+			HourBucket_2: farFuture,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("query daily usage: %v", err)
+	}
+
+	if len(owner1Rows) != 1 {
+		t.Fatalf("owner1 rows = %d, want 1", len(owner1Rows))
+	}
+	if owner1Rows[0].CostMicrocents != 1_500_000 {
+		t.Fatalf("owner1 cost_microcents = %d, want 1500000", owner1Rows[0].CostMicrocents)
+	}
+	if owner1Rows[0].RequestCount != 2 {
+		t.Fatalf("owner1 request_count = %d, want 2", owner1Rows[0].RequestCount)
+	}
+	if len(owner2Rows) != 0 {
+		t.Fatalf("owner2 rows = %d, want 0", len(owner2Rows))
 	}
 }

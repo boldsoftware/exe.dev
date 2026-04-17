@@ -116,6 +116,18 @@ type BoxIPShard struct {
 	IPShard int64  `db:"ip_shard" json:"ip_shard"`
 }
 
+type BoxLLMUsage struct {
+	ID             int64     `db:"id" json:"id"`
+	BoxID          int       `db:"box_id" json:"box_id"`
+	UserID         string    `db:"user_id" json:"user_id"`
+	Provider       string    `db:"provider" json:"provider"`
+	Model          string    `db:"model" json:"model"`
+	HourBucket     time.Time `db:"hour_bucket" json:"hour_bucket"`
+	CostMicrocents int64     `db:"cost_microcents" json:"cost_microcents"`
+	RequestCount   int64     `db:"request_count" json:"request_count"`
+	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+}
+
 type BoxShare struct {
 	ID               int64      `db:"id" json:"id"`
 	BoxID            int64      `db:"box_id" json:"box_id"`

@@ -29,8 +29,8 @@ type preflightGatewayData struct {
 	useCreditsAccount string
 }
 
-func (d *preflightGatewayData) BoxCreator(context.Context, string) (string, bool, error) {
-	return "test-user", true, nil
+func (d *preflightGatewayData) BoxLookup(_ context.Context, _ string) (*BoxInfo, error) {
+	return &BoxInfo{ID: 1, Name: "test-box", CreatorID: "test-user"}, nil
 }
 
 func (d *preflightGatewayData) CheckAndRefreshCredit(context.Context, string, time.Time) (*CreditInfo, error) {
@@ -41,7 +41,7 @@ func (d *preflightGatewayData) TopUpOnBillingUpgrade(context.Context, string, ti
 	return nil
 }
 
-func (d *preflightGatewayData) DebitCredit(context.Context, string, float64, time.Time) (*CreditInfo, error) {
+func (d *preflightGatewayData) DebitCredit(context.Context, string, float64, time.Time, *BoxUsage) (*CreditInfo, error) {
 	return nil, nil
 }
 

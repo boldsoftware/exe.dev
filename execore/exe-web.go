@@ -978,6 +978,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleAPIBillingUsageVMs(w, r, userID)
 		return
+	case "/api/llm-usage":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleAPILLMUsage(w, r, userID)
+		return
 	case "/api/billing/usage":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1012,6 +1024,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/idea", http.StatusMovedPermanently)
 		return
 	default:
+		// /api/vm/<name>/llm-usage returns per-model LLM usage for a single VM
+		if rest, ok := strings.CutPrefix(path, "/api/vm/"); ok {
+			if boxName, ok := strings.CutSuffix(rest, "/llm-usage"); ok && boxName != "" {
+				if r.Method != http.MethodGet {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				userID, err := s.validateAuthCookie(r)
+				if err != nil {
+					http.Error(w, "Authentication required", http.StatusUnauthorized)
+					return
+				}
+				s.handleAPIBoxLLMUsage(w, r, userID, boxName)
+				return
+			}
+		}
+
 		// /api/docs/entry/<slug> returns a single doc entry as JSON
 		if slug, ok := strings.CutPrefix(path, "/api/docs/entry/"); ok && slug != "" {
 			if r.Method != http.MethodGet {

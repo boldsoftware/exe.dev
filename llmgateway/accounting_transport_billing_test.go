@@ -90,7 +90,7 @@ func TestAccountingTransport_BillingBacked_FreeOnlySkipsBillingCharge(t *testing
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
 
-	remaining := transport.debitResponseCredits(5, false)
+	remaining := transport.debitResponseCredits(5, "test-model", false)
 	wantRemaining := initialFreeCreditNoSubscriptionUSD - 5
 	if !floatClose(remaining, wantRemaining, 0.000001) {
 		t.Fatalf("remaining = %f, want %f", remaining, wantRemaining)
@@ -123,11 +123,11 @@ func TestAccountingTransport_BillingBacked_PartialOverageChargesOnlyOverage(t *t
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
 	preDebit := initialFreeCreditNoSubscriptionUSD - 3
-	if _, err := creditMgr.DebitCredit(ctx, userID, preDebit); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, preDebit, nil); err != nil {
 		t.Fatalf("failed to prepare partial free balance: %v", err)
 	}
 
-	remaining := transport.debitResponseCredits(5, false)
+	remaining := transport.debitResponseCredits(5, "test-model", false)
 	if !floatClose(remaining, -2, 0.000001) {
 		t.Fatalf("remaining = %f, want -2", remaining)
 	}
@@ -169,11 +169,11 @@ func TestAccountingTransport_BillingBacked_FullOverageChargesFullCost(t *testing
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD, nil); err != nil {
 		t.Fatalf("failed to deplete free credit: %v", err)
 	}
 
-	remaining := transport.debitResponseCredits(1.25, false)
+	remaining := transport.debitResponseCredits(1.25, "test-model", false)
 	if !floatClose(remaining, -1.25, 0.000001) {
 		t.Fatalf("remaining = %f, want -1.25", remaining)
 	}
@@ -208,11 +208,11 @@ func TestAccountingTransport_BillingBacked_UseCreditsErrorKeepsGatewayDebit(t *t
 	if _, err := creditMgr.CheckAndRefreshCredit(ctx, userID); err != nil {
 		t.Fatalf("failed to initialize credit: %v", err)
 	}
-	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD); err != nil {
+	if _, err := creditMgr.DebitCredit(ctx, userID, initialFreeCreditNoSubscriptionUSD, nil); err != nil {
 		t.Fatalf("failed to deplete free credit: %v", err)
 	}
 
-	remaining := transport.debitResponseCredits(1, false)
+	remaining := transport.debitResponseCredits(1, "test-model", false)
 	if !floatClose(remaining, -1, 0.000001) {
 		t.Fatalf("remaining = %f, want -1", remaining)
 	}
@@ -254,7 +254,7 @@ func TestAccountingTransport_BillingBacked_ConcurrentOverageCharging(t *testing.
 	for range requests {
 		go func() {
 			defer wg.Done()
-			_ = transport.debitResponseCredits(costUSD, false)
+			_ = transport.debitResponseCredits(costUSD, "test-model", false)
 		}()
 	}
 	wg.Wait()

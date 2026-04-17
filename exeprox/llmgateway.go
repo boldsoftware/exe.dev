@@ -19,16 +19,20 @@ type ProxyLLMGatewayData struct {
 	users  *usersData
 }
 
-// BoxCreator implements [llmgateway.GatewayData.BoxCreator].
-func (gd *ProxyLLMGatewayData) BoxCreator(ctx context.Context, boxName string) (string, bool, error) {
+// BoxLookup implements [llmgateway.GatewayData.BoxLookup].
+func (gd *ProxyLLMGatewayData) BoxLookup(ctx context.Context, boxName string) (*llmgateway.BoxInfo, error) {
 	data, exists, err := gd.boxes.lookup(ctx, gd.data, boxName)
 	if err != nil {
-		return "", false, err
+		return nil, err
 	}
 	if !exists {
-		return "", false, nil
+		return nil, nil
 	}
-	return data.CreatedByUserID, true, nil
+	return &llmgateway.BoxInfo{
+		ID:        data.ID,
+		Name:      data.Name,
+		CreatorID: data.CreatedByUserID,
+	}, nil
 }
 
 // CheckAndRefreshCredit implements
@@ -59,14 +63,21 @@ func (gd *ProxyLLMGatewayData) TopUpOnBillingUpgrade(ctx context.Context, userID
 }
 
 // DebitCredit implements [llmgateway.GatewayData.DebitCredit].
-func (gd *ProxyLLMGatewayData) DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time) (*llmgateway.CreditInfo, error) {
+func (gd *ProxyLLMGatewayData) DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time, boxUsage *llmgateway.BoxUsage) (*llmgateway.CreditInfo, error) {
 	if !now.IsZero() {
 		return nil, errors.New("non-zero time")
 	}
-	resp, err := gd.client.LLMDebitCredit(ctx, &proxyapi.LLMDebitCreditRequest{
+	req := &proxyapi.LLMDebitCreditRequest{
 		UserID:  userID,
 		CostUsd: costUSD,
-	})
+	}
+	if boxUsage != nil {
+		req.BoxID = int64(boxUsage.BoxID)
+		req.Provider = boxUsage.Provider
+		req.Model = boxUsage.Model
+		req.CostMicrocents = boxUsage.CostMicrocents
+	}
+	resp, err := gd.client.LLMDebitCredit(ctx, req)
 	if err != nil {
 		return nil, err
 	}

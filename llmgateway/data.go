@@ -12,14 +12,28 @@ import (
 	"exe.dev/sqlite"
 )
 
+// BoxInfo contains identifying information about a box.
+type BoxInfo struct {
+	ID        int
+	Name      string
+	CreatorID string
+}
+
+// BoxUsage contains per-request usage data to be recorded alongside a debit.
+type BoxUsage struct {
+	BoxID          int
+	Provider       string
+	Model          string
+	CostMicrocents int64 // USD microcents (1/1,000,000 of a dollar)
+}
+
 // GatewayData is an interface for retrieving data needed by the LLM gateway.
 // This is used so that both exed and exeprox can use the LLM gateway;
 // exed will use the database directly, while exeprox will ask exed.
 type GatewayData interface {
-	// BoxCreator takes a box name and returns the user ID
-	// that created the box. The bool result reports whether
-	// the box exists.
-	BoxCreator(ctx context.Context, boxName string) (string, bool, error)
+	// BoxLookup returns information about a box.
+	// Returns nil, nil if the box does not exist.
+	BoxLookup(ctx context.Context, boxName string) (*BoxInfo, error)
 
 	// CheckAndRefreshCredit takes a user ID and checks if the user
 	// has any credit available (after refresh).
@@ -35,7 +49,8 @@ type GatewayData interface {
 
 	// DebitCredit subtracts the given cost (in USD) from the user's credit.
 	// This returns the new credit info after the debit.
-	DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time) (*CreditInfo, error)
+	// If boxUsage is non-nil, box LLM usage is also recorded.
+	DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time, boxUsage *BoxUsage) (*CreditInfo, error)
 
 	// AccountIDForUser takes a user ID and returns its account ID.
 	// The bool result reports whether an account exists.
@@ -59,17 +74,20 @@ type DBGatewayData struct {
 	DB *sqlite.DB
 }
 
-// BoxCreator takes a box name and returns the user ID
-// that created the box. This implements [GatewayData].
-func (gd *DBGatewayData) BoxCreator(ctx context.Context, boxName string) (string, bool, error) {
+// BoxLookup implements [GatewayData].
+func (gd *DBGatewayData) BoxLookup(ctx context.Context, boxName string) (*BoxInfo, error) {
 	box, err := exedb.WithRxRes1(gd.DB, ctx, (*exedb.Queries).BoxNamed, boxName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", false, nil
+			return nil, nil
 		}
-		return "", false, err
+		return nil, err
 	}
-	return box.CreatedByUserID, true, nil
+	return &BoxInfo{
+		ID:        box.ID,
+		Name:      box.Name,
+		CreatorID: box.CreatedByUserID,
+	}, nil
 }
 
 // CheckAndRefreshCredit implements [CreditManager.CheckAndRefreshCredit].
@@ -83,8 +101,8 @@ func (gd *DBGatewayData) TopUpOnBillingUpgrade(ctx context.Context, userID strin
 }
 
 // DebitCredit implements [CreditManager.DebitCredit].
-func (gd *DBGatewayData) DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time) (*CreditInfo, error) {
-	return DebitCreditDB(ctx, gd.DB, userID, costUSD, now)
+func (gd *DBGatewayData) DebitCredit(ctx context.Context, userID string, costUSD float64, now time.Time, boxUsage *BoxUsage) (*CreditInfo, error) {
+	return DebitCreditDB(ctx, gd.DB, userID, costUSD, now, boxUsage)
 }
 
 // AccountIDForUser implements [GatewayData.AccountIDForUser].

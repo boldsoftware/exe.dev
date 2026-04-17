@@ -361,7 +361,16 @@ func (es *exeproxServer) TopUpOnLLMBillingUpgrade(ctx context.Context, req *prox
 // from the user's LLM credit.
 // See [llmgateway.CreditManager.LLMDebitCredit].
 func (es *exeproxServer) LLMDebitCredit(ctx context.Context, req *proxyapi.LLMDebitCreditRequest) (*proxyapi.LLMDebitCreditResponse, error) {
-	ci, err := llmgateway.DebitCreditDB(ctx, es.s.db, req.UserID, req.CostUsd, time.Now())
+	var boxUsage *llmgateway.BoxUsage
+	if req.BoxID != 0 {
+		boxUsage = &llmgateway.BoxUsage{
+			BoxID:          int(req.BoxID),
+			Provider:       req.Provider,
+			Model:          req.Model,
+			CostMicrocents: req.CostMicrocents,
+		}
+	}
+	ci, err := llmgateway.DebitCreditDB(ctx, es.s.db, req.UserID, req.CostUsd, time.Now(), boxUsage)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

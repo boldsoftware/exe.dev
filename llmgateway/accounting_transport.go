@@ -45,6 +45,7 @@ type accountingTransport struct {
 
 	// Request context for adding slog attributes
 	incomingReq      *http.Request
+	boxID            int
 	boxName          string
 	userID           string
 	billingBacked    bool
@@ -374,7 +375,7 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 	tokensCounter.WithLabelValues("output", model, providerStr, m.boxName, m.userID).Add(float64(usage.OutputTokens))
 	costUSDCounter.WithLabelValues(model, providerStr, m.boxName, m.userID).Add(costUSD)
 
-	remainingCredit := m.debitResponseCredits(costUSD, false)
+	remainingCredit := m.debitResponseCredits(costUSD, model, false)
 
 	// Add slog attributes to the incoming request for HTTP logging
 	if m.incomingReq != nil {
@@ -596,7 +597,7 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 		usage := m.sseUsage.Usage
 		model := m.sseUsage.Model
 
-		remainingCredit := m.debitResponseCredits(usage.CostUSD, true)
+		remainingCredit := m.debitResponseCredits(usage.CostUSD, model, true)
 
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("llm_model", model))
 		sloghttp.AddCustomAttributes(m.incomingReq, slog.String("vm_name", m.boxName))
@@ -620,7 +621,7 @@ func (m *accountingTransport) WaitAndAddSSEAttributes() {
 	}
 }
 
-func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) float64 {
+func (m *accountingTransport) debitResponseCredits(costUSD float64, model string, isSSE bool) float64 {
 	ctx := context.Background()
 	if m.incomingReq != nil {
 		ctx = m.incomingReq.Context()
@@ -639,7 +640,17 @@ func (m *accountingTransport) debitResponseCredits(costUSD float64, isSSE bool) 
 		return -1
 	}
 
-	creditInfo, err := m.creditMgr.DebitCredit(ctx, m.userID, costUSD)
+	var boxUsage *BoxUsage
+	if m.boxID != 0 {
+		boxUsage = &BoxUsage{
+			BoxID:          m.boxID,
+			Provider:       string(m.provider),
+			Model:          model,
+			CostMicrocents: int64(math.Round(costUSD * 1_000_000)),
+		}
+	}
+
+	creditInfo, err := m.creditMgr.DebitCredit(ctx, m.userID, costUSD, boxUsage)
 	if err != nil {
 		msg := "failed to debit LLM credit"
 		if isSSE {

@@ -259,6 +259,12 @@ message TopUpOnLLMBillingUpgradeResponse {}
 message LLMDebitCreditRequest {
   string user_id = 1;
   double cost_usd = 2;
+  // Box usage to record alongside the debit.
+  // Zero/empty when no box usage should be recorded.
+  int64 box_id = 3;
+  string provider = 4;
+  string model = 5;
+  int64 cost_microcents = 6;
 }
 
 message LLMDebitCreditResponse {

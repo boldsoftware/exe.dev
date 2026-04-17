@@ -1352,11 +1352,17 @@ func (*TopUpOnLLMBillingUpgradeResponse) Descriptor() ([]byte, []int) {
 }
 
 type LLMDebitCreditRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserID        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	CostUsd       float64                `protobuf:"fixed64,2,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	UserID  string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	CostUsd float64                `protobuf:"fixed64,2,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
+	// Box usage to record alongside the debit.
+	// Zero/empty when no box usage should be recorded.
+	BoxID          int64  `protobuf:"varint,3,opt,name=box_id,json=boxId,proto3" json:"box_id,omitempty"`
+	Provider       string `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model          string `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
+	CostMicrocents int64  `protobuf:"varint,6,opt,name=cost_microcents,json=costMicrocents,proto3" json:"cost_microcents,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *LLMDebitCreditRequest) Reset() {
@@ -1399,6 +1405,34 @@ func (x *LLMDebitCreditRequest) GetUserID() string {
 func (x *LLMDebitCreditRequest) GetCostUsd() float64 {
 	if x != nil {
 		return x.CostUsd
+	}
+	return 0
+}
+
+func (x *LLMDebitCreditRequest) GetBoxID() int64 {
+	if x != nil {
+		return x.BoxID
+	}
+	return 0
+}
+
+func (x *LLMDebitCreditRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *LLMDebitCreditRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *LLMDebitCreditRequest) GetCostMicrocents() int64 {
+	if x != nil {
+		return x.CostMicrocents
 	}
 	return 0
 }
@@ -4037,10 +4071,14 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x16credit_exhausted_error\x18\x04 \x01(\tR\x14creditExhaustedError\":\n" +
 	"\x1fTopUpOnLLMBillingUpgradeRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"\"\n" +
-	" TopUpOnLLMBillingUpgradeResponse\"K\n" +
+	" TopUpOnLLMBillingUpgradeResponse\"\xbd\x01\n" +
 	"\x15LLMDebitCreditRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
-	"\bcost_usd\x18\x02 \x01(\x01R\acostUsd\"S\n" +
+	"\bcost_usd\x18\x02 \x01(\x01R\acostUsd\x12\x15\n" +
+	"\x06box_id\x18\x03 \x01(\x03R\x05boxId\x12\x1a\n" +
+	"\bprovider\x18\x04 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x12'\n" +
+	"\x0fcost_microcents\x18\x06 \x01(\x03R\x0ecostMicrocents\"S\n" +
 	"\x16LLMDebitCreditResponse\x129\n" +
 	"\vcredit_info\x18\x01 \x01(\v2\x18.exe.proxy.v1.CreditInfoR\n" +
 	"creditInfo\"q\n" +
