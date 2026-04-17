@@ -1,0 +1,4 @@
+- label: ":vue: ui tests"
+  key: test-ui
+  command: .buildkite/steps/test-ui.sh
+  timeout_in_minutes: 10

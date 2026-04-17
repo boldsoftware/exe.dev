@@ -51,15 +51,9 @@ done) &
 pids+=($!)
 names+=("oss tests")
 
-# UI build + typecheck: build runs first (installs deps + vite build),
-# then typecheck reuses the installed deps. Typecheck is not in the
-# critical path of producing dist/ — it was removed from "pnpm build"
-# and runs here as a post-build check.
-if [ -f ui/package.json ]; then
-    (make ui && make -C ui typecheck && make -C ui test) &
-    pids+=($!)
-    names+=("ui build+typecheck+test")
-fi
+# UI typecheck + unit tests run in a dedicated pipeline step (see
+# .buildkite/segments/ui.yml). The production UI build itself runs inside
+# build-e1e-binaries because exed embeds ui/dist via //go:embed.
 
 fail=0
 for i in "${!pids[@]}"; do
