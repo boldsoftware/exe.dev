@@ -51,6 +51,12 @@ type sentEmail struct {
 	Body    string
 }
 
+// testNow is a fixed point in time used by all drip tests.
+// 20:00 UTC ensures isDue's "past 9 AM local" check passes for all regions
+// (the westernmost test region is lax/America/Los_Angeles at UTC-7, so
+// 20:00 UTC = 13:00 Pacific, well past the 9 AM gate).
+var testNow = time.Date(2026, 4, 15, 20, 0, 0, 0, time.UTC)
+
 func newTestRunner(t *testing.T, db *sqlite.DB) (*Runner, *[]sentEmail) {
 	t.Helper()
 	var mu sync.Mutex
@@ -62,6 +68,7 @@ func newTestRunner(t *testing.T, db *sqlite.DB) (*Runner, *[]sentEmail) {
 		return nil
 	}
 	r := NewRunner(db, testEnv(), sendFn, tslog.Slogger(t))
+	r.now = func() time.Time { return testNow }
 	return r, &sent
 }
 
@@ -111,7 +118,7 @@ func TestDay0Welcome_NoVM(t *testing.T) {
 	r, sent := newTestRunner(t, db)
 
 	// User signed up 2 hours ago, no VM.
-	createTrialUser(t, ctx, db, "alice@test.com", time.Now().Add(-2*time.Hour))
+	createTrialUser(t, ctx, db, "alice@test.com", testNow.Add(-2*time.Hour))
 
 	r.runOnce(ctx)
 
@@ -128,7 +135,7 @@ func TestDay0Welcome_WithVM_Skipped(t *testing.T) {
 	ctx := context.Background()
 	r, sent := newTestRunner(t, db)
 
-	userID := createTrialUser(t, ctx, db, "bob@test.com", time.Now().Add(-2*time.Hour))
+	userID := createTrialUser(t, ctx, db, "bob@test.com", testNow.Add(-2*time.Hour))
 
 	// Create a box for the user.
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
@@ -177,7 +184,7 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	r, sent := newTestRunner(t, db)
 
 	// User signed up 1.5 hours ago, no VM. Day0 is due but day1 is not yet.
-	createTrialUser(t, ctx, db, "charlie@test.com", time.Now().Add(-90*time.Minute))
+	createTrialUser(t, ctx, db, "charlie@test.com", testNow.Add(-90*time.Minute))
 
 	// First run: sends day0.
 	r.runOnce(ctx)
@@ -192,7 +199,7 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	// (We need a fresh user for day1 to be due.)
 	db2 := testDB(t)
 	r2, sent2 := newTestRunner(t, db2)
-	createTrialUser(t, ctx, db2, "charlie2@test.com", time.Now().Add(-90*time.Minute))
+	createTrialUser(t, ctx, db2, "charlie2@test.com", testNow.Add(-90*time.Minute))
 
 	// First run: day0.
 	r2.runOnce(ctx)
@@ -203,7 +210,7 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	// Manually insert day0 for a user 25h old to simulate progression.
 	db3 := testDB(t)
 	r3, sent3 := newTestRunner(t, db3)
-	userID := createTrialUser(t, ctx, db3, "charlie3@test.com", time.Now().Add(-25*time.Hour))
+	userID := createTrialUser(t, ctx, db3, "charlie3@test.com", testNow.Add(-25*time.Hour))
 	// Simulate day0 already processed.
 	err := exedb.WithTx1(db3, ctx, (*exedb.Queries).InsertDripSend, exedb.InsertDripSendParams{
 		UserID:   userID,
@@ -229,7 +236,7 @@ func TestNoDoubleDelivery(t *testing.T) {
 	ctx := context.Background()
 	r, sent := newTestRunner(t, db)
 
-	createTrialUser(t, ctx, db, "diana@test.com", time.Now().Add(-2*time.Hour))
+	createTrialUser(t, ctx, db, "diana@test.com", testNow.Add(-2*time.Hour))
 
 	r.runOnce(ctx)
 	r.runOnce(ctx)
@@ -248,7 +255,7 @@ func TestStepProgression(t *testing.T) {
 	r, sent := newTestRunner(t, db)
 
 	// User signed up 15 days ago with a VM.
-	userID := createTrialUser(t, ctx, db, "eve@test.com", time.Now().Add(-15*24*time.Hour))
+	userID := createTrialUser(t, ctx, db, "eve@test.com", testNow.Add(-15*24*time.Hour))
 
 	// Create a box for the user.
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
@@ -311,7 +318,7 @@ func TestFullLifecycleOneStepAtATime(t *testing.T) {
 	ctx := context.Background()
 
 	// User signed up 15 days ago with a VM.
-	userID := createTrialUser(t, ctx, db, "lifecycle@test.com", time.Now().Add(-15*24*time.Hour))
+	userID := createTrialUser(t, ctx, db, "lifecycle@test.com", testNow.Add(-15*24*time.Hour))
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		_, err := q.InsertBox(ctx, exedb.InsertBoxParams{
 			Ctrhost:         "host1",
@@ -361,7 +368,7 @@ func TestNotYetDue(t *testing.T) {
 	r, sent := newTestRunner(t, db)
 
 	// User just signed up 5 minutes ago.
-	createTrialUser(t, ctx, db, "frank@test.com", time.Now().Add(-5*time.Minute))
+	createTrialUser(t, ctx, db, "frank@test.com", testNow.Add(-5*time.Minute))
 
 	r.runOnce(ctx)
 
@@ -376,7 +383,7 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 	r, sent := newTestRunner(t, db)
 
 	// User signed up 1.5 hours ago (only day0 is due, no retroactive issue).
-	userID := createTrialUser(t, ctx, db, "upgraded@test.com", time.Now().Add(-90*time.Minute))
+	userID := createTrialUser(t, ctx, db, "upgraded@test.com", testNow.Add(-90*time.Minute))
 
 	// First run: day0 sends.
 	r.runOnce(ctx)
@@ -387,7 +394,7 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 	// Simulate upgrade: close trial plan, open individual plan.
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		accountID := "acct_" + userID
-		now := time.Now()
+		now := testNow
 		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 			AccountID: accountID,
 			EndedAt:   &now,
@@ -397,7 +404,7 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: accountID,
 			PlanID:    "individual:monthly:20260106",
-			StartedAt: time.Now(),
+			StartedAt: testNow,
 			ChangedBy: strPtr("stripe:event"),
 		}); err != nil {
 			return err
@@ -424,7 +431,7 @@ func TestRetroactiveUserGetsOnlyLatestStep(t *testing.T) {
 	// User signed up 4 days ago. Drip system is seeing them for the first time.
 	// Steps day0 (1h), day1 (24h), day3 (72h) are all overdue.
 	// Only day3 should be evaluated; day0 and day1 should be auto-skipped.
-	userID := createTrialUser(t, ctx, db, "retro@test.com", time.Now().Add(-96*time.Hour))
+	userID := createTrialUser(t, ctx, db, "retro@test.com", testNow.Add(-96*time.Hour))
 
 	// Create a box so day3 feature email fires (day3 only sends to active users).
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {

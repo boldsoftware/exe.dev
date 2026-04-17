@@ -59,11 +59,12 @@ type Runner struct {
 	env  stage.Env
 	send SendFunc
 	log  *slog.Logger
+	now  func() time.Time // defaults to time.Now; override in tests
 }
 
 // NewRunner creates a new drip campaign runner.
 func NewRunner(db *sqlite.DB, env stage.Env, send SendFunc, log *slog.Logger) *Runner {
-	return &Runner{db: db, env: env, send: send, log: log}
+	return &Runner{db: db, env: env, send: send, log: log, now: time.Now}
 }
 
 // Start begins the hourly drip check loop. It blocks until ctx is canceled.
@@ -102,7 +103,7 @@ func (r *Runner) runOnce(ctx context.Context) {
 // processUser evaluates one user against all campaign steps.
 func (r *Runner) processUser(ctx context.Context, u exedb.ListTrialUsersForDripRow) {
 	signupTime := u.TrialStartedAt
-	now := time.Now()
+	now := r.now()
 
 	// Load previous sends for this user+campaign.
 	prevSends, err := exedb.WithRxRes1(r.db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
