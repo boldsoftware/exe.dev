@@ -250,6 +250,10 @@ func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]stri
 // Usage: ssh support+vmname@exe.cloud
 const supportAccessPrefix = "support+"
 
+// vmAccessPrefix is the username prefix for name-based VM access.
+// Usage: ssh vm+vmname@exe.dev
+const vmAccessPrefix = "vm+"
+
 // handleBanner returns an SSH banner shown before authentication.
 // We use this to show a privacy warning for support access attempts.
 func (p *PiperPlugin) handleBanner(conn libplugin.ConnMetadata) string {
@@ -305,6 +309,11 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 		// Special case: support access attempt failed
 		if supportBoxName, isSupport := strings.CutPrefix(conn.User(), supportAccessPrefix); isSupport {
 			message = fmt.Sprintf("Support access denied for VM %q.\n\nEither:\n- You don't have support privileges, or\n- The VM doesn't have support access enabled\n\nPress Enter to close this connection.", supportBoxName)
+		}
+
+		// Special case: vm+ access attempt failed
+		if vmBoxName, isVM := strings.CutPrefix(conn.User(), vmAccessPrefix); isVM {
+			message = fmt.Sprintf("Access denied for VM %q.\n\nPress Enter to close this connection.", vmBoxName)
 		}
 
 		_, err := client("", message, "", false)
@@ -389,6 +398,25 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		slog.InfoContext(ctx, "support access granted", "component", "piper-plugin", "vm_name", box.Name, "vm_id", box.ID, "support_user_id", userID)
 		cl.add(slog.Bool("support_access", true))
 		return p.handleBoxAccess(ctx, box, userID, connID)
+	}
+
+	// Name-based VM access: ssh vm+vmname@exe.dev
+	// This replicates the exact same lookup chain as IP-shard-based routing
+	// (FindBoxByIPShard → FindTeamBoxByIPShard → FindTeamSSHSharedBoxByIPShard)
+	// but uses name-based lookups, avoiding IP shard exhaustion for large teams.
+	if vmBoxName, isVM := strings.CutPrefix(username, vmAccessPrefix); isVM {
+		// 1. User's own box / team admin accessing a member's box
+		if box, _, err := p.server.FindAccessibleBox(ctx, userID, vmBoxName); err == nil {
+			cl.add(slog.String("route", "by_vm_name"))
+			return p.handleBoxAccess(ctx, box, userID, connID)
+		}
+		// 2. Team SSH sharing (box owner enabled team_ssh)
+		if box := p.server.FindTeamSSHSharedBoxByName(ctx, userID, vmBoxName); box != nil {
+			cl.add(slog.String("route", "by_vm_name_ssh_share"))
+			return p.handleBoxAccess(ctx, box, userID, connID)
+		}
+		slog.WarnContext(ctx, "vm+ access denied", "component", "piper-plugin", "vm_name", vmBoxName, "user_id", userID)
+		return nil, fmt.Errorf("access denied: VM %q not found", vmBoxName)
 	}
 
 	// In test/local environments, it's useful to be able to access VMs by username,

@@ -249,3 +249,4 @@ WHERE tm.user_id = @user_id
 AND b.created_by_user_id != @user_id
 AND b.status != 'failed'
 ORDER BY bts.created_at DESC;
+
