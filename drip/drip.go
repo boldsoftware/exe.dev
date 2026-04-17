@@ -7,7 +7,6 @@ package drip
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -316,20 +315,6 @@ func (r *Runner) recordSkip(ctx context.Context, userID, stepName, reason string
 	}
 }
 
-// utm appends UTM parameters to a URL for tracking.
-func utm(baseURL, step string) string {
-	sep := "?"
-	if len(baseURL) > 0 {
-		for _, c := range baseURL {
-			if c == '?' {
-				sep = "&"
-				break
-			}
-		}
-	}
-	return fmt.Sprintf("%s%sutm_source=drip&utm_medium=email&utm_campaign=trial_onboarding&utm_content=%s", baseURL, sep, step)
-}
-
 func (r *Runner) webURL(path string) string {
 	scheme := "https"
 	if r.env.WebHost == "localhost" {
@@ -348,14 +333,14 @@ func (r *Runner) day0Welcome(hasCreatedVM bool) (subject, body, skipReason strin
 	if hasCreatedVM {
 		return "", "", "user already created a VM", false
 	}
-	subject = "Ready to create computers"
+	subject = "exe.dev: ready to build"
 	body = "Hello,\n\n" +
 		"Welcome to exe.dev. You have a 7-day trial to create and use virtual machines.\n\n" +
 		"To get started, open a terminal and run:\n\n" +
 		"  ssh exe.dev\n\n" +
 		"Then you can create your first machine by typing `new`.\n\n" +
 		"If you want some inspiration, check out:\n" +
-		utm(r.webURL("/idea"), stepDay0Welcome) + "\n" +
+		r.webURL("/idea") + "\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -369,7 +354,7 @@ func (r *Runner) day1Nudge(ctx context.Context, u exedb.ListTrialUsersForDripRow
 		"You signed up for exe.dev but haven't created a machine yet. " +
 		"Your trial expires in 6 days.\n\n" +
 		"Not sure what to build? Here are some ideas:\n" +
-		utm(r.webURL("/idea"), stepDay1Nudge) + "\n\n" +
+		r.webURL("/idea") + "\n\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -390,7 +375,7 @@ func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripR
 			"Every exe.dev machine comes with Shelley. Credits included.\n\n" +
 			"Try it out at exe.dev, click on the shelley icon next to your VM.\n\n" +
 			"Learn more:\n" +
-			utm(r.webURL("/docs/shelley"), stepDay3Feature) + "\n" +
+			r.webURL("/docs/shelley") + "\n" +
 			signature()
 	case hasShared == 0:
 		subject = "Share your exe.dev machine with a friend"
@@ -408,7 +393,7 @@ func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripR
 			"A few things you might not have tried yet:\n\n" +
 			"• Custom domains: put a domain name on your machine\n" +
 			"• GitHub integration: let agents in a VM access GitHub without leaking secrets\n\n" +
-			"Docs: " + utm(r.webURL("/docs"), stepDay3Feature) + "\n" +
+			"Docs: " + r.webURL("/docs") + "\n" +
 			signature()
 	}
 	return subject, body, "", true
@@ -420,7 +405,7 @@ func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, skipReason strin
 		body = "Hello,\n\n" +
 			"Your exe.dev trial ends in 2 days.\n\n" +
 			"Upgrade now to keep your work:\n" +
-			utm(r.webURL("/billing"), stepDay5Urgency) + "\n" +
+			r.webURL("/billing") + "\n" +
 			signature()
 	} else {
 		body = "Hello,\n\n" +
@@ -441,7 +426,7 @@ func (r *Runner) day7Expiry() (subject, body, skipReason string, shouldSend bool
 		"Upgrade to the Individual plan to turn your VMs back on. " +
 		"New subscribers receive a $100 LLM credit.\n\n" +
 		"Upgrade:\n" +
-		utm(r.webURL("/billing"), stepDay7Expiry) + "\n" +
+		r.webURL("/billing") + "\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -455,7 +440,7 @@ func (r *Runner) day10WinBack(ctx context.Context, u exedb.ListTrialUsersForDrip
 		"Your exe.dev workspace and persistent disk are still intact. " +
 		"Everything you built during your trial is waiting for you.\n\n" +
 		"Upgrade to pick up where you left off:\n" +
-		utm(r.webURL("/billing"), stepDay10WinBack) + "\n" +
+		r.webURL("/billing") + "\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -466,7 +451,7 @@ func (r *Runner) day14Final() (subject, body, skipReason string, shouldSend bool
 		"This is our last email about your exe.dev trial.\n\n" +
 		"Your workspace will be cleaned up soon. " +
 		"Upgrade anytime to pick up where you left off:\n" +
-		utm(r.webURL("/billing"), stepDay14Final) + "\n\n" +
+		r.webURL("/billing") + "\n\n" +
 		"Thanks for trying exe.dev.\n" +
 		signature()
 	return subject, body, "", true

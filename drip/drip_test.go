@@ -118,7 +118,7 @@ func TestDay0Welcome_NoVM(t *testing.T) {
 	if len(*sent) != 1 {
 		t.Fatalf("expected 1 email sent, got %d", len(*sent))
 	}
-	if (*sent)[0].Subject != "Ready to create computers" {
+	if (*sent)[0].Subject != "exe.dev: ready to build" {
 		t.Errorf("unexpected subject: %s", (*sent)[0].Subject)
 	}
 }
@@ -184,7 +184,7 @@ func TestDay1Nudge_InactiveUser(t *testing.T) {
 	if len(*sent) != 1 {
 		t.Fatalf("expected 1 email (day0), got %d", len(*sent))
 	}
-	if (*sent)[0].Subject != "Ready to create computers" {
+	if (*sent)[0].Subject != "exe.dev: ready to build" {
 		t.Errorf("unexpected day0 subject: %s", (*sent)[0].Subject)
 	}
 
@@ -352,21 +352,6 @@ func TestFullLifecycleOneStepAtATime(t *testing.T) {
 	}
 	if (*sent)[0].Subject != "Last note from us" {
 		t.Errorf("unexpected subject: %s", (*sent)[0].Subject)
-	}
-}
-
-func TestUTM(t *testing.T) {
-	got := utm("https://exe.dev/idea", "day0_welcome")
-	want := "https://exe.dev/idea?utm_source=drip&utm_medium=email&utm_campaign=trial_onboarding&utm_content=day0_welcome"
-	if got != want {
-		t.Errorf("utm mismatch:\n  got:  %s\n  want: %s", got, want)
-	}
-
-	// URL with existing query params.
-	got2 := utm("https://exe.dev/idea?foo=bar", "day1_nudge")
-	want2 := "https://exe.dev/idea?foo=bar&utm_source=drip&utm_medium=email&utm_campaign=trial_onboarding&utm_content=day1_nudge"
-	if got2 != want2 {
-		t.Errorf("utm mismatch with existing params:\n  got:  %s\n  want: %s", got2, want2)
 	}
 }
 
