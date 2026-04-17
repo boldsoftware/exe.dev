@@ -5980,8 +5980,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 
 	// Populate quotas: plan value, user-limit override, effective.
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
-		data.IncludedDiskGB = float64(plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)) / 1e9
-		data.IncludedBandwidthGB = float64(plan.IncludedBandwidth(planRow.PlanID)) / 1e9
+		const gib = 1 << 30
+		data.IncludedDiskGB = float64(plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)) / gib
+		data.IncludedBandwidthGB = float64(plan.IncludedBandwidth(planRow.PlanID)) / gib
 		limits := ParseUserLimits(&exedb.User{Limits: user.Limits})
 		planTier, tierErr := plan.GetTierByID(planRow.PlanID)
 		if tierErr == nil {
@@ -6060,8 +6061,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	// Fetch usage estimates for current billing period from metricsd.
 	if s.metricsdURL != "" {
 		data.HasMetricsd = true
-		const diskIncludedGB = 25.0
-		const bandwidthIncludedGB = 100.0
+		const gib = 1 << 30
 		const diskPricePerGB = 0.08
 		const bandwidthPricePerGB = 0.07
 		nowUTC := time.Now().UTC()
@@ -6077,11 +6077,11 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		defer usageCancel()
 		if metrics, err := usageClient.queryUsage(usageCtx, []string{userID}, usageStart, nowUTC); err == nil && len(metrics) > 0 {
 			sum := metrics[0]
-			diskAvgGB := float64(sum.DiskAvgBytes) / 1e9
-			diskPeakGB := float64(sum.DiskPeakBytes) / 1e9
-			bandwidthGB := float64(sum.BandwidthBytes) / 1e9
-			diskOverage := max(diskAvgGB-diskIncludedGB, 0)
-			bandwidthOverage := max(bandwidthGB-bandwidthIncludedGB, 0)
+			diskAvgGB := float64(sum.DiskAvgBytes) / gib
+			diskPeakGB := float64(sum.DiskPeakBytes) / gib
+			bandwidthGB := float64(sum.BandwidthBytes) / gib
+			diskOverage := max(diskAvgGB-data.IncludedDiskGB, 0)
+			bandwidthOverage := max(bandwidthGB-data.IncludedBandwidthGB, 0)
 			data.UsageDiskAvgBytes = sum.DiskAvgBytes
 			data.UsageDiskPeakBytes = sum.DiskPeakBytes
 			data.UsageBandwidthBytes = sum.BandwidthBytes

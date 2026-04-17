@@ -146,14 +146,14 @@ table.info th { width: 200px; }
   <td rowspan="2">{{if .VMName}}{{.VMName}}{{else}}—{{end}}</td>
   <td>Disk</td>
   <td>{{printf "%.0f" $.IncludedDiskGB}}</td>
-  <td>{{printf "%.3f" (divf64 .DiskProvisionedMaxBytes 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 .DiskProvisionedMaxBytes 1073741824.0)}}</td>
   <td>{{overage .DiskProvisionedMaxBytes $.IncludedDiskGB}}</td>
   <td>{{diskCost .DiskProvisionedMaxBytes $.IncludedDiskGB}}</td>
 </tr>
 <tr>
   <td>Bandwidth</td>
   <td>{{printf "%.0f" $.IncludedBandwidthGB}}</td>
-  <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1e9)}}</td>
+  <td>{{printf "%.3f" (divf64 (add64 .NetworkTXBytes .NetworkRXBytes) 1073741824.0)}}</td>
   <td>{{overage (add64 .NetworkTXBytes .NetworkRXBytes) $.IncludedBandwidthGB}}</td>
   <td>{{bwCost (add64 .NetworkTXBytes .NetworkRXBytes) $.IncludedBandwidthGB}}</td>
 </tr>
