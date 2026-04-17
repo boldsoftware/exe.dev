@@ -4,7 +4,7 @@
 //
 // Record sources:
 //   - A records (naNNN.exe.xyz): in-memory NetActuate shard IP cache
-//   - CNAME records (vmname.exe.xyz): boxes + box_ip_shard tables
+//   - A records (vmname.exe.xyz): boxes + box_ip_shard tables
 //   - TXT records (ACME challenges): in-memory map
 package exens
 
@@ -213,7 +213,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		case dns.TypeA:
 			rrs, err = s.lookupA(ctx, qname, header.Name, header.Class)
 		case dns.TypeCNAME:
-			rrs, err = s.lookupCNAME(ctx, qname, header.Name, header.Class)
+			// Nothing to return.
 		case dns.TypeTXT:
 			rrs, err = s.lookupTXT(ctx, qname, header.Name, header.Class)
 		case dns.TypeMX:
@@ -255,7 +255,7 @@ func (s *Server) handleDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		// This is mildly inefficient, but saves implementing the lookup logic
 		// twice to compute a "does this exist" bit.
 		lookups := []func(context.Context, string, string, uint16) ([]dns.RR, error){
-			s.lookupA, s.lookupCNAME, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
+			s.lookupA, s.lookupTXT, s.lookupMX, s.lookupNS, s.lookupSOA,
 		}
 		nameExists := false
 		for _, question := range r.Question {
@@ -349,26 +349,49 @@ func (s *Server) lookupA(ctx context.Context, qname, fqdn string, class uint16) 
 		return s.lookupNetActuateShardA(naShard, fqdn, class)
 	}
 
-	// Not a shard name, check if there's a CNAME (box name)
+	// Not a shard name, check if there's a box name.
 	return s.lookupBoxA(ctx, qname, fqdn, class)
 }
 
-// lookupBoxA looks for a CNAME for a box name,
-// and returns the CNAME and A record.
+// lookupBoxA looks for the A record for a box name.
 func (s *Server) lookupBoxA(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
-	cnameRRs, err := s.lookupCNAME(ctx, qname, fqdn, class)
-	if err != nil || len(cnameRRs) == 0 {
-		return nil, err
+	// Extract box name (everything before first dot)
+	parts := strings.SplitN(qname, ".", 2)
+	if len(parts) != 2 {
+		return nil, nil
 	}
-	// Got a CNAME, now chase it to get the A record
-	cname := cnameRRs[0].(*dns.CNAME)
-	targetName := strings.TrimSuffix(cname.Target, ".")
-	aRRs, err := s.lookupA(ctx, targetName, cname.Target, class)
+	boxName := parts[0]
+	domain := parts[1]
+
+	// Only resolve records for {boxname}.{boxHost} — not for deeper
+	// subdomains like testbox.bar.xterm.exe.xyz where the first label
+	// happens to match a known box.
+	// This guard is load-bearing for NXDOMAIN correctness: the existence
+	// sweep calls lookupBoxA with the full qname, so without this check
+	// a dotted xterm/shelley name like testbox.bar.xterm.exe.xyz would
+	// extract boxName="testbox", find it in the DB, and return NODATA
+	// instead of NXDOMAIN.
+	// This also means direct queries for xterm/shelley names
+	// (e.g. testbox.xterm.exe.xyz) return nil here. That's correct —
+	// xterm/shelley CNAMEs are resolved through the A-record path, not
+	// via direct CNAME lookup.
+	if domain != s.boxHost {
+		return nil, nil
+	}
+
+	// Skip shard names (na001, na002, etc.)
+	if _, err := parseNetActuateShardFromName(qname); err == nil {
+		return nil, nil
+	}
+
+	ipShard, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardByBoxName, boxName)
 	if err != nil {
-		return cnameRRs, nil // Return just the CNAME if we can't resolve it
+		// No record found
+		return nil, nil
 	}
-	// Return CNAME followed by the A record
-	return append(cnameRRs, aRRs...), nil
+
+	// Return the address of the shard.
+	return s.lookupNetActuateShardA(int(ipShard), fqdn, class)
 }
 
 // lookupNetActuateShardA returns an A record for the given NetActuate shard number.
@@ -408,55 +431,6 @@ func (s *Server) lookupMetadataA(fqdn string, class uint16) ([]dns.RR, error) {
 		&dns.A{
 			Hdr: dns.Header{Name: fqdn, Class: class, TTL: 300},
 			A:   net.ParseIP("169.254.169.254").To4(),
-		},
-	}, nil
-}
-
-// lookupCNAME handles CNAME record queries.
-// Format: {boxname}.{domain} -> naNNN.{domain}
-func (s *Server) lookupCNAME(ctx context.Context, qname, fqdn string, class uint16) ([]dns.RR, error) {
-	// Extract box name (everything before first dot)
-	parts := strings.SplitN(qname, ".", 2)
-	if len(parts) != 2 {
-		return nil, nil
-	}
-	boxName := parts[0]
-	domain := parts[1]
-
-	// Only resolve CNAMEs for {boxname}.{boxHost} — not for deeper
-	// subdomains like testbox.bar.xterm.exe.xyz where the first label
-	// happens to match a known box.
-	// This guard is load-bearing for NXDOMAIN correctness: the existence
-	// sweep calls lookupCNAME with the full qname, so without this check
-	// a dotted xterm/shelley name like testbox.bar.xterm.exe.xyz would
-	// extract boxName="testbox", find it in the DB, and return NODATA
-	// instead of NXDOMAIN.
-	// This also means direct CNAME-type queries for xterm/shelley names
-	// (e.g. testbox.xterm.exe.xyz) return nil here. That's correct —
-	// xterm/shelley CNAMEs are resolved through the A-record path, not
-	// via direct CNAME lookup.
-	if domain != s.boxHost {
-		return nil, nil
-	}
-
-	// Skip shard names (na001, na002, etc.)
-	if _, err := parseNetActuateShardFromName(qname); err == nil {
-		return nil, nil
-	}
-
-	ipShard, err := exedb.WithRxRes1(s.db, ctx, (*exedb.Queries).GetIPShardByBoxName, boxName)
-	if err != nil {
-		// No record found
-		return nil, nil
-	}
-
-	shardSub := publicips.NetActuateShardSub(int(ipShard))
-	target := shardSub + "." + domain + "."
-
-	return []dns.RR{
-		&dns.CNAME{
-			Hdr:    dns.Header{Name: fqdn, Class: class, TTL: 300},
-			Target: target,
 		},
 	}, nil
 }
