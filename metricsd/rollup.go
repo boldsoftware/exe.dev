@@ -64,7 +64,7 @@ WITH windowed AS (
         GREATEST(0, io_read_bytes  - COALESCE(LAG(io_read_bytes)  OVER w, io_read_bytes))                                        AS io_read_delta,
         GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes))                                       AS io_write_delta
     FROM (
-        SELECT *, COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key
+        SELECT *, vm_id AS vm_key
         FROM vm_metrics
         WHERE timestamp >= ? AND timestamp < ?
     ) raw
@@ -184,7 +184,7 @@ SELECT
     MAX(memory_swap_max_bytes)                          AS memory_swap_max_bytes,
     COUNT(*)                                            AS days_with_data
 FROM vm_metrics_daily
-GROUP BY date_trunc('month', day_start), COALESCE(NULLIF(vm_id,''), vm_name)
+GROUP BY date_trunc('month', day_start), vm_id
 `
 	start := time.Now()
 	_, err := r.db.ExecContext(ctx, rebuildSQL)

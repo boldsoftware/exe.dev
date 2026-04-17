@@ -666,7 +666,7 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 
 	querySQL := fmt.Sprintf(`
 		SELECT
-			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+			vm_id AS vm_key,
 			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
 			LAST(vm_name ORDER BY day_start)    AS vm_name,
 			resource_group,
@@ -681,7 +681,7 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 		WHERE resource_group IN (%s)
 		  AND day_start >= ?
 		  AND day_start < ?
-		GROUP BY COALESCE(NULLIF(vm_id,''), vm_name), resource_group
+		GROUP BY vm_id, resource_group
 		ORDER BY resource_group, vm_name
 	`, phStr)
 
@@ -806,7 +806,7 @@ func (s *Server) handleQueryHourly(w http.ResponseWriter, r *http.Request) {
 	querySQL := fmt.Sprintf(`
 WITH windowed AS (
     SELECT
-        COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+        vm_id AS vm_key,
         timestamp,
         host, vm_id, vm_name, resource_group,
         disk_logical_used_bytes, disk_used_bytes, disk_size_bytes,
@@ -817,12 +817,12 @@ WITH windowed AS (
         GREATEST(0, io_read_bytes - COALESCE(LAG(io_read_bytes) OVER w, io_read_bytes)) AS io_read_delta,
         GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes)) AS io_write_delta
     FROM (
-        SELECT *, COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key_inner
+        SELECT *, vm_id AS vm_key_inner
         FROM vm_metrics
         WHERE resource_group IN (%s)
           AND timestamp >= ? AND timestamp < ?
     ) raw
-    WINDOW w AS (PARTITION BY COALESCE(NULLIF(vm_id,''), vm_name) ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+    WINDOW w AS (PARTITION BY vm_id ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
 )
 SELECT
     date_trunc('hour', timestamp)::TIMESTAMPTZ AS hour_start,
@@ -1146,7 +1146,7 @@ func (s *Server) handleQueryVMsOverLimit(w http.ResponseWriter, r *http.Request)
 
 	querySQL := fmt.Sprintf(`
 		SELECT
-			COALESCE(NULLIF(vm_id,''), vm_name) AS vm_key,
+			vm_id AS vm_key,
 			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
 			LAST(vm_name ORDER BY day_start)    AS vm_name,
 			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
@@ -1155,7 +1155,7 @@ func (s *Server) handleQueryVMsOverLimit(w http.ResponseWriter, r *http.Request)
 		WHERE vm_id IN (%s)
 		  AND day_start >= ?
 		  AND day_start < ?
-		GROUP BY COALESCE(NULLIF(vm_id,''), vm_name)
+		GROUP BY vm_id
 	`, phStr)
 
 	args := make([]interface{}, 0, len(req.VMIDs)+2)

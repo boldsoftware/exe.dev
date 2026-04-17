@@ -571,3 +571,342 @@ func TestRollupAPI_QueryVMsOverLimit(t *testing.T) {
 		t.Errorf("bandwidth_over = false, want true for big-vm")
 	}
 }
+
+func TestRollup_MonthlyGroupsByVMID(t *testing.T) {
+	// Verifies: the monthly rollup groups by vm_id, so a VM that was renamed
+	// mid-month produces one row (not two).
+	ctx := context.Background()
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+
+	// Two days in the same month, same vm_id, different vm_name (rename).
+	day1 := time.Date(2025, 6, 5, 0, 0, 0, 0, time.UTC)
+	day2 := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	for _, d := range []struct {
+		day  time.Time
+		name string
+	}{
+		{day1, "old-name"},
+		{day2, "new-name"},
+	} {
+		insertRawMetrics(t, srv, []Metric{
+			{
+				Timestamp:            d.day.Add(5 * time.Minute),
+				Host:                 "host1",
+				VMID:                 "rename-vm-id",
+				VMName:               d.name,
+				ResourceGroup:        "rg-monthly",
+				DiskLogicalUsedBytes: 10_000_000_000,
+				DiskUsedBytes:        5_000_000_000,
+				DiskSizeBytes:        20_000_000_000,
+				MemoryRSSBytes:       1_000_000_000,
+			},
+			{
+				Timestamp:             d.day.Add(30 * time.Minute),
+				Host:                  "host1",
+				VMID:                  "rename-vm-id",
+				VMName:                d.name,
+				ResourceGroup:         "rg-monthly",
+				CPUUsedCumulativeSecs: 100,
+				NetworkTXBytes:        1000,
+				DiskLogicalUsedBytes:  10_000_000_000,
+				DiskUsedBytes:         5_000_000_000,
+				DiskSizeBytes:         20_000_000_000,
+				MemoryRSSBytes:        1_000_000_000,
+			},
+		})
+	}
+
+	rollup := NewRollup(db)
+	if err := rollup.RunOnce(ctx, day2.Add(25*time.Hour)); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+
+	// Monthly table should have exactly 1 row for this vm_id.
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM vm_metrics_monthly WHERE vm_id = 'rename-vm-id'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("count monthly: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("monthly row count = %d, want 1 (rename should not create duplicate rows)", count)
+	}
+
+	// The vm_name should be the latest (new-name).
+	var vmName string
+	if err := db.QueryRowContext(ctx,
+		`SELECT vm_name FROM vm_metrics_monthly WHERE vm_id = 'rename-vm-id'`,
+	).Scan(&vmName); err != nil {
+		t.Fatalf("query vm_name: %v", err)
+	}
+	if vmName != "new-name" {
+		t.Errorf("vm_name = %q, want %q (should be the latest name)", vmName, "new-name")
+	}
+}
+
+func TestRollup_MonthlyTwoVMsSameMonth(t *testing.T) {
+	// Verifies: two different VMs in the same month produce two separate rows.
+	ctx := context.Background()
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+
+	day := time.Date(2025, 7, 10, 0, 0, 0, 0, time.UTC)
+	for _, vm := range []struct{ id, name string }{
+		{"vm-a-id", "vm-a"},
+		{"vm-b-id", "vm-b"},
+	} {
+		insertRawMetrics(t, srv, []Metric{
+			{
+				Timestamp:            day.Add(5 * time.Minute),
+				Host:                 "host1",
+				VMID:                 vm.id,
+				VMName:               vm.name,
+				ResourceGroup:        "rg-two-vms",
+				DiskLogicalUsedBytes: 10_000_000_000,
+				DiskUsedBytes:        5_000_000_000,
+				DiskSizeBytes:        20_000_000_000,
+				MemoryRSSBytes:       1_000_000_000,
+			},
+			{
+				Timestamp:             day.Add(30 * time.Minute),
+				Host:                  "host1",
+				VMID:                  vm.id,
+				VMName:                vm.name,
+				ResourceGroup:         "rg-two-vms",
+				CPUUsedCumulativeSecs: 100,
+				NetworkTXBytes:        1000,
+				DiskLogicalUsedBytes:  10_000_000_000,
+				DiskUsedBytes:         5_000_000_000,
+				DiskSizeBytes:         20_000_000_000,
+				MemoryRSSBytes:        1_000_000_000,
+			},
+		})
+	}
+
+	rollup := NewRollup(db)
+	if err := rollup.RunOnce(ctx, day.Add(25*time.Hour)); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM vm_metrics_monthly WHERE resource_group = 'rg-two-vms'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("count monthly: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("monthly row count = %d, want 2 (one per VM)", count)
+	}
+}
+
+func TestRollupAPI_QueryMonthlyPerVM(t *testing.T) {
+	// Integration test: insert data for two VMs across two months,
+	// run rollup, query /query/monthly with group_by_vm=true,
+	// verify per-VM rows are returned.
+	ctx := context.Background()
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, month := range []time.Time{
+		time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 4, 10, 0, 0, 0, 0, time.UTC),
+	} {
+		for _, vm := range []struct{ id, name string }{
+			{"mon-vm1", "web"},
+			{"mon-vm2", "api"},
+		} {
+			insertRawMetrics(t, srv, []Metric{
+				{
+					Timestamp:            month.Add(5 * time.Minute),
+					Host:                 "host1",
+					VMID:                 vm.id,
+					VMName:               vm.name,
+					ResourceGroup:        "rg-monthly-api",
+					DiskLogicalUsedBytes: 10_000_000_000,
+					DiskUsedBytes:        5_000_000_000,
+					DiskSizeBytes:        20_000_000_000,
+					MemoryRSSBytes:       1_000_000_000,
+				},
+				{
+					Timestamp:             month.Add(30 * time.Minute),
+					Host:                  "host1",
+					VMID:                  vm.id,
+					VMName:                vm.name,
+					ResourceGroup:         "rg-monthly-api",
+					CPUUsedCumulativeSecs: 100,
+					NetworkTXBytes:        5000,
+					NetworkRXBytes:        3000,
+					DiskLogicalUsedBytes:  10_000_000_000,
+					DiskUsedBytes:         5_000_000_000,
+					DiskSizeBytes:         20_000_000_000,
+					MemoryRSSBytes:        1_000_000_000,
+				},
+			})
+		}
+	}
+
+	rollup := NewRollup(db)
+	if err := rollup.RunOnce(ctx, time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+
+	// Query with group_by_vm=true.
+	reqBody, _ := json.Marshal(types.QueryMonthlyRequest{
+		ResourceGroups: []string{"rg-monthly-api"},
+		Start:          time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		End:            time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC),
+		GroupByVM:      true,
+	})
+	resp, err := http.Post(ts.URL+"/query/monthly", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /query/monthly: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result types.QueryMonthlyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// 2 VMs × 2 months = 4 rows.
+	if len(result.Metrics) != 4 {
+		t.Fatalf("monthly metrics count = %d, want 4", len(result.Metrics))
+	}
+
+	// Verify each row has a vm_id.
+	vmIDs := map[string]int{}
+	for _, m := range result.Metrics {
+		if m.VMID == "" {
+			t.Error("expected non-empty vm_id in grouped monthly response")
+		}
+		vmIDs[m.VMID]++
+	}
+	if vmIDs["mon-vm1"] != 2 {
+		t.Errorf("mon-vm1 rows = %d, want 2", vmIDs["mon-vm1"])
+	}
+	if vmIDs["mon-vm2"] != 2 {
+		t.Errorf("mon-vm2 rows = %d, want 2", vmIDs["mon-vm2"])
+	}
+}
+
+func TestRollupAPI_QueryUsageGroupsByVMID(t *testing.T) {
+	// Verifies: /query/usage groups per-VM stats by vm_id. A renamed VM
+	// should appear as one entry, not two.
+	ctx := context.Background()
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// Same vm_id, two different names across two days.
+	day1 := time.Date(2025, 8, 5, 0, 0, 0, 0, time.UTC)
+	day2 := time.Date(2025, 8, 6, 0, 0, 0, 0, time.UTC)
+
+	for _, d := range []struct {
+		day  time.Time
+		name string
+	}{
+		{day1, "before-rename"},
+		{day2, "after-rename"},
+	} {
+		insertRawMetrics(t, srv, []Metric{
+			{
+				Timestamp:            d.day.Add(5 * time.Minute),
+				Host:                 "host1",
+				VMID:                 "usage-rename-id",
+				VMName:               d.name,
+				ResourceGroup:        "rg-usage-rename",
+				DiskLogicalUsedBytes: 10_000_000_000,
+				DiskUsedBytes:        5_000_000_000,
+				DiskSizeBytes:        20_000_000_000,
+				MemoryRSSBytes:       1_000_000_000,
+			},
+			{
+				Timestamp:             d.day.Add(30 * time.Minute),
+				Host:                  "host1",
+				VMID:                  "usage-rename-id",
+				VMName:                d.name,
+				ResourceGroup:         "rg-usage-rename",
+				CPUUsedCumulativeSecs: 100,
+				NetworkTXBytes:        1000,
+				DiskLogicalUsedBytes:  10_000_000_000,
+				DiskUsedBytes:         5_000_000_000,
+				DiskSizeBytes:         20_000_000_000,
+				MemoryRSSBytes:        1_000_000_000,
+			},
+		})
+	}
+
+	rollup := NewRollup(db)
+	if err := rollup.RunOnce(ctx, day2.Add(25*time.Hour)); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+
+	reqBody, _ := json.Marshal(types.QueryUsageRequest{
+		ResourceGroups: []string{"rg-usage-rename"},
+		Start:          day1,
+		End:            day2.Add(48 * time.Hour),
+	})
+	resp, err := http.Post(ts.URL+"/query/usage", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /query/usage: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result types.QueryUsageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result.Metrics) != 1 {
+		t.Fatalf("summaries = %d, want 1", len(result.Metrics))
+	}
+	// Should be exactly 1 VM entry (not 2 from the rename).
+	if len(result.Metrics[0].VMs) != 1 {
+		t.Fatalf("VM count = %d, want 1 (renamed VM should not produce duplicates)", len(result.Metrics[0].VMs))
+	}
+	vm := result.Metrics[0].VMs[0]
+	if vm.VMID != "usage-rename-id" {
+		t.Errorf("vm_id = %q, want %q", vm.VMID, "usage-rename-id")
+	}
+	// Should have the latest name.
+	if vm.VMName != "after-rename" {
+		t.Errorf("vm_name = %q, want %q", vm.VMName, "after-rename")
+	}
+}
