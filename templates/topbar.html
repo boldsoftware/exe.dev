@@ -7,8 +7,8 @@
       <a href="/" class="nav-logo-img"><img src="/static/exy.png" alt="{{.WebHost}} logo" /></a>
       <a href="/" class="nav-logo-text">{{.WebHost}}</a>
       <a href="/docs" class="nav-link">docs</a>
-      {{if not .IsLoggedIn}}<a href="https://blog.exe.dev" class="nav-link">blog</a>
-      <a href="/pricing" class="nav-link">pricing</a>{{end}}
+      <a href="https://blog.exe.dev" class="nav-link">blog</a>
+      {{if not .IsLoggedIn}}<a href="/pricing" class="nav-link">pricing</a>{{end}}
     </div>
     <div class="nav-right">
       {{if .IsLoggedIn}}
