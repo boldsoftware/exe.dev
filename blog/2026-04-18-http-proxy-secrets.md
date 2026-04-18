@@ -54,7 +54,7 @@ your agent is not doing that.
 
 So in practice, what can we do today to solve this?
 
-We can use an HTTP proxy.
+We can use an HTTP proxy that injects headers.
 
 ## Many secrets are HTTP headers
 
@@ -95,6 +95,8 @@ So we built Integrations into exe.dev to do this.
 Assign an integration to a tag, tag the VMs you want to have access, done.
 Clone your VM, you get a fresh space to work with agents and your
 integrations are automatically present.
+
+<img src="/assets/exe-stripe-http.png" style="width: 600px; height: 600px;" alt="A screenshot of setting up an HTTP integration in exe.dev" />
 
 For GitHub, we did something special, and built a GitHub App to manage
 the OAuth for you.
