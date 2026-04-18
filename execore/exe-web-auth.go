@@ -930,12 +930,6 @@ func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 	return "", http.ErrNoCookie
 }
 
-// validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id.
-// The cookie name is port-specific: "login-with-exe-<port>".
-func (s *Server) validateProxyAuthCookie(r *http.Request) (string, error) {
-	return s.proxyServer().ValidateProxyAuthCookie(r)
-}
-
 // userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.
 func (s *Server) userHasActiveAuthCookie(ctx context.Context, userID string) (bool, error) {
 	hasCookie, err := withRxRes1(s, ctx, (*exedb.Queries).UserHasAuthCookie, userID)

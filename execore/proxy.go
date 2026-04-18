@@ -65,35 +65,6 @@ func (s *Server) isProxyRequest(host string) bool {
 	return exeweb.IsProxyRequest(&s.env, s.tsDomain, host)
 }
 
-// isShelleyRequest determines if a request is for a Shelley subdomain (vm.shelley.exe.xyz)
-func (s *Server) isShelleyRequest(host string) bool {
-	return exeweb.IsShelleyRequest(&s.env, host)
-}
-
-// getAuthenticatedUserID checks if the user is authenticated and returns their userID
-// Returns (userID, true) if authenticated, ("", false) if not authenticated.
-// It may be called multiple times while handling a single request,
-// so it should not mutate r or have other side-effects.
-// Note: This only checks cookie-based auth. For full auth including tokens, use getProxyAuth.
-func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
-	if userID, err := s.validateProxyAuthCookie(r); err == nil {
-		return userID, true
-	}
-	return "", false
-}
-
-// getProxyAuth checks if the user is authenticated for the proxy and returns the auth result.
-// Supports three authentication methods, tried in this order:
-//  1. Bearer token auth (Authorization: Bearer <token>)
-//  2. Basic auth with token as password (for git HTTPS, etc.)
-//  3. Cookie-based auth (login-with-exe-* cookies)
-//
-// For token-based auth, the namespace must be "v0@VMNAME.BOXHOST".
-// Returns nil if not authenticated.
-func (s *Server) getProxyAuth(r *http.Request, box exedb.Box) *exeweb.ProxyAuthResult {
-	return s.proxyServer().GetProxyAuth(r, box.Name)
-}
-
 func (s *Server) webBaseURLNoRequest() string {
 	scheme := s.bestScheme()
 	port := s.bestURLPort()
