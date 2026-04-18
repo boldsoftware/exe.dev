@@ -52,6 +52,10 @@
                 <i class="pi pi-users"></i> {{ box.isTeamShared ? 'Unshare Team' : 'Share with Team' }}
               </button>
               <button class="drawer-item" @click="doAction('share-link')"><i class="pi pi-link"></i> Share Link</button>
+              <button class="drawer-item" @click="doAction('add-tag')"><i class="pi pi-tag"></i> Add Tag</button>
+              <button v-if="box.routeKnown" class="drawer-item" @click="doAction('set-port', box.proxyURL)"><i class="pi pi-sliders-h"></i> Proxy Port</button>
+              <button v-if="box.routeKnown && box.proxyShare === 'public'" class="drawer-item" @click="doAction('set-private')"><i class="pi pi-lock"></i> Make Private</button>
+              <button v-if="box.routeKnown && box.proxyShare !== 'public'" class="drawer-item" @click="doAction('set-public')"><i class="pi pi-unlock"></i> Make Public</button>
               <button class="drawer-item" @click="doAction('copy')"><i class="pi pi-clone"></i> Copy</button>
               <button class="drawer-item" @click="doAction('rename')"><i class="pi pi-pencil"></i> Rename</button>
               <button class="drawer-item" @click="doAction('restart')"><i class="pi pi-refresh"></i> Restart</button>
@@ -80,7 +84,45 @@
 
       <!-- Tags -->
       <div v-if="box.displayTags && box.displayTags.length" class="tags-row">
-        <span v-for="tag in box.displayTags" :key="tag" class="tag">#{{ tag }}</span>
+        <span v-for="tag in box.displayTags" :key="tag" class="tag tag-removable">
+          #{{ tag }}
+          <button class="tag-remove" @click="doAction('remove-tag', tag)">&times;</button>
+        </span>
+      </div>
+
+      <!-- Sharing Section -->
+      <div v-if="(box.sharedEmails && box.sharedEmails.length > 0) || (box.shareLinks && box.shareLinks.length > 0)" class="sharing-section">
+        <!-- Shared emails -->
+        <div v-if="box.sharedEmails && box.sharedEmails.length > 0" class="sharing-group">
+          <div class="sharing-label">Shared with:</div>
+          <div class="shared-list">
+            <div v-for="email in box.sharedEmails" :key="email" class="shared-item">
+              <span>{{ email }}</span>
+              <button class="remove-btn" @click="doAction('remove-share', email)">&times;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Share links -->
+        <div v-if="box.shareLinks && box.shareLinks.length > 0" class="sharing-group">
+          <div class="sharing-label">Share links:</div>
+          <div class="shared-list">
+            <div v-for="link in box.shareLinks" :key="link.token" class="shared-item">
+              <code class="share-link-url">{{ link.url }}</code>
+              <CopyButton :text="link.url" title="Copy link" />
+              <button class="remove-btn" @click="doAction('remove-share-link', link.token)">&times;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Creation Log -->
+      <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" />
+      <div v-else-if="box.hasCreationLog && showCreationLog" class="creation-log-wrap">
+        <CreationLog :hostname="box.name" :streaming="false" />
+      </div>
+      <div v-else-if="box.hasCreationLog && !showCreationLog" class="creation-log-button">
+        <button class="btn btn-secondary" @click="showCreationLog = true">View Creation Log</button>
       </div>
 
       <!-- Live Metrics -->
@@ -240,7 +282,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDashboard,
@@ -258,6 +300,7 @@ import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import LiveMetrics from '../components/LiveMetrics.vue'
 import UsageChart from '../components/UsageChart.vue'
+const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -268,6 +311,7 @@ const loading = ref(true)
 const loadError = ref('')
 const box = ref<BoxInfo | null>(null)
 const hasTeam = ref(false)
+const allBoxes = ref<BoxInfo[]>([])
 
 // Billing / usage
 const usageLoading = ref(true)
@@ -284,6 +328,9 @@ const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Junk drawer
 const drawerOpen = ref(false)
+
+// Creation log
+const showCreationLog = ref(false)
 
 // Editor modal
 const editorModalOpen = ref(false)
@@ -380,6 +427,7 @@ async function load() {
     const data = await fetchDashboard()
     const found = data.boxes.find(b => b.name === vmName.value) ?? null
     box.value = found
+    allBoxes.value = data.boxes
     hasTeam.value = data.hasTeam || false
     periodStart.value = data.billing.periodStart as unknown as string
     periodEnd.value = data.billing.periodEnd as unknown as string
@@ -449,7 +497,7 @@ function openModal(opts: Partial<typeof modal>) {
   drawerOpen.value = false
 }
 
-function doAction(type: string) {
+function doAction(type: string, extra?: any) {
   if (!box.value) return
   const q = shellQuote(box.value.name)
   switch (type) {
@@ -490,6 +538,81 @@ function doAction(type: string) {
     case 'delete':
       openModal({ title: 'Delete VM', command: `rm ${q}`, danger: true, description: 'Permanently delete this VM and all its data. This cannot be undone.' })
       break
+    case 'remove-share':
+      openModal({
+        title: 'Remove Access',
+        command: `share remove ${q} ${shellQuote(extra)}`,
+        description: 'Revoke this user\'s access to the VM\'s web server.',
+        danger: true,
+      })
+      break
+    case 'remove-share-link':
+      openModal({
+        title: 'Remove Share Link',
+        command: `share remove-link ${q} ${shellQuote(extra)}`,
+        description: 'Revoke this share link. Users who were added explicitly will keep access.',
+        danger: true,
+      })
+      break
+    case 'add-tag': {
+      // Suggest existing tags that aren't already on this VM.
+      const existing = new Set(box.value.displayTags || [])
+      const allKnownTags = new Set<string>()
+      for (const b of allBoxes.value) {
+        for (const t of b.displayTags || []) allKnownTags.add(t)
+      }
+      const suggestions = [...allKnownTags].filter(t => !existing.has(t)).sort((a, b) => a.localeCompare(b))
+      openModal({
+        title: 'Add Tag',
+        commandPrefix: `tag ${q}`,
+        inputPlaceholder: 'tag name (e.g. prod)',
+        description: 'Tags are usually used for attaching integrations and organization.',
+        suggestions,
+      })
+      break
+    }
+    case 'remove-tag':
+      openModal({
+        title: 'Remove Tag',
+        command: `tag -d ${q} ${shellQuote(extra)}`,
+        description: 'Remove this tag from the VM.',
+        danger: true,
+      })
+      break
+    case 'set-public':
+      openModal({
+        title: 'Make Public',
+        command: `share set-public ${q}`,
+        description: 'Anyone with the link can access this VM.',
+      })
+      break
+    case 'set-private':
+      openModal({
+        title: 'Make Private',
+        command: `share set-private ${q}`,
+        description: 'Only you and shared users can access this VM.',
+      })
+      break
+    case 'set-port': {
+      const proxyURL = extra || ''
+      let desc = 'The proxy port is the port on your VM that the HTTPS proxy connects to.'
+      if (proxyURL) {
+        try {
+          const u = new URL(proxyURL)
+          if (u.protocol === 'http:' || u.protocol === 'https:') {
+            const safe = u.href.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            desc = `The proxy port is the port on your VM that <a href="${safe}" target="_blank" rel="noopener noreferrer"><b>${safe}</b></a> connects to.`
+          }
+        } catch { /* invalid URL, use default description */ }
+      }
+      openModal({
+        title: 'Set Proxy Port',
+        commandPrefix: `share port ${q}`,
+        inputPlaceholder: 'port (e.g. 8080)',
+        description: desc,
+      })
+      break
+    }
   }
 }
 
@@ -789,6 +912,101 @@ onBeforeUnmount(() => {
   background: var(--tag-bg);
   padding: 2px 8px;
   border-radius: 3px;
+}
+
+.tag-removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.tag-remove:hover {
+  color: var(--danger-color);
+}
+
+/* Sharing Section */
+.sharing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface-inset, var(--surface-ground));
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+
+.sharing-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sharing-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shared-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shared-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.share-link-url {
+  font-size: 11px;
+  color: var(--code-text);
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  color: var(--danger-color);
+}
+
+/* Creation Log */
+.creation-log-wrap {
+  margin: 0;
+}
+
+.creation-log-button {
+  display: flex;
+  align-items: center;
 }
 
 /* Billing cards */
