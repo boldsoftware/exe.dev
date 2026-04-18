@@ -13,6 +13,70 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
+// TestSidebandKeepaliveReaderTouchesDuringSlowCopy verifies that a long
+// io.Copy through sidebandKeepaliveReader refreshes lastActivity on the
+// receive session at least once per keepalive interval — so the janitor
+// does not reap an actively-transferring session.
+func TestSidebandKeepaliveReaderTouchesDuringSlowCopy(t *testing.T) {
+	t.Parallel()
+
+	// A reader that dribbles bytes once per tick, so the copy runs long
+	// enough to cross several keepalive intervals.
+	const (
+		chunks        = 6
+		chunkInterval = 20 * time.Millisecond
+		keepalive     = 25 * time.Millisecond
+	)
+
+	sess := &receiveVMSession{lastActivity: time.Now()}
+	initial := sess.lastActivity
+
+	ka := &sidebandKeepaliveReader{
+		r:        &trickleReader{chunks: chunks, interval: chunkInterval},
+		sess:     sess,
+		interval: keepalive,
+	}
+	if _, err := io.Copy(io.Discard, ka); err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+
+	sess.mu.Lock()
+	got := sess.lastActivity
+	sess.mu.Unlock()
+
+	// The copy ran for ~chunks*chunkInterval ≈ 120ms with a 25ms keepalive
+	// interval, so lastActivity must have been refreshed. Any forward
+	// movement proves the wiring is correct; stronger bounds would be
+	// timing-flaky.
+	if !got.After(initial) {
+		t.Fatalf("lastActivity not refreshed: initial=%v got=%v", initial, got)
+	}
+	if elapsed := got.Sub(initial); elapsed < chunkInterval {
+		t.Fatalf("lastActivity advanced too little: %v (expected >= %v)", elapsed, chunkInterval)
+	}
+}
+
+// trickleReader emits a fixed number of 1-byte reads with a delay between
+// each, simulating a slow sideband stream. It is used to drive the
+// sidebandKeepaliveReader across multiple keepalive intervals.
+type trickleReader struct {
+	chunks   int
+	interval time.Duration
+	emitted  int
+}
+
+func (r *trickleReader) Read(p []byte) (int, error) {
+	if r.emitted >= r.chunks {
+		return 0, io.EOF
+	}
+	if r.emitted > 0 {
+		time.Sleep(r.interval)
+	}
+	p[0] = 'x'
+	r.emitted++
+	return 1, nil
+}
+
 // busyDatasetStorage simulates a storage manager whose Delete blocks until
 // all in-flight zfs recv processes have exited — matching real zfs destroy
 // behavior on a busy dataset. The test passes a readerDone channel that

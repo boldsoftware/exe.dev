@@ -1141,6 +1141,25 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 	ctx = s.liveMigrations.start(ctx, box.Name, box.Ctrhost, p.targetAddr, true)
 	defer s.liveMigrations.finish(box.Name)
 
+	// Bound the overall migration so a misbehaving pair of exelets can't
+	// trap exed in an endless PollSendVM loop. The deferred AbortSendVM
+	// below uses context.WithoutCancel, so it still runs if we hit the
+	// deadline. 60m comfortably covers even very large live migrations;
+	// anything longer is almost certainly stuck.
+	const migrateVMLiveTimeout = 60 * time.Minute
+	ctx, cancelTimeout := context.WithTimeout(ctx, migrateVMLiveTimeout)
+	defer cancelTimeout()
+	// Registered AFTER cancelTimeout so it runs FIRST on exit (LIFO); this
+	// lets us observe DeadlineExceeded before cancelTimeout flips ctx.Err()
+	// to Canceled. Fires only when our own timeout actually tripped, not on
+	// normal completion or caller cancellation.
+	defer func() {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.ErrorContext(ctx, "live migration: exceeded overall timeout; aborting session",
+				"timeout", migrateVMLiveTimeout)
+		}
+	}()
+
 	clientRequestID := crand.Text()[:16]
 
 	// InitSendVM starts the migration on the source.

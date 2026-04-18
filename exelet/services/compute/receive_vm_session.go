@@ -32,6 +32,11 @@ const (
 	receiveVMActiveTTL   = 10 * time.Minute
 	receiveVMTerminalTTL = 10 * time.Minute
 	receiveVMJanitorTick = 30 * time.Second
+
+	// sidebandKeepaliveInterval bounds how often the sideband copy loop
+	// refreshes lastActivity. It must be well under receiveVMActiveTTL so
+	// that a multi-minute io.Copy does not look like inactivity to reap().
+	sidebandKeepaliveInterval = 30 * time.Second
 )
 
 type receiveVMSessionState int
@@ -320,6 +325,35 @@ func (sess *receiveVMSession) touchLocked() {
 	sess.lastActivity = time.Now()
 }
 
+func (sess *receiveVMSession) touch() {
+	sess.mu.Lock()
+	sess.touchLocked()
+	sess.mu.Unlock()
+}
+
+// sidebandKeepaliveReader wraps an io.Reader and refreshes the receive
+// session's lastActivity timestamp while bytes are flowing, so the janitor
+// does not reap a session that is actively transferring data through a
+// long-running io.Copy.
+type sidebandKeepaliveReader struct {
+	r         io.Reader
+	sess      *receiveVMSession
+	interval  time.Duration
+	lastTouch time.Time
+}
+
+func (k *sidebandKeepaliveReader) Read(p []byte) (int, error) {
+	n, err := k.r.Read(p)
+	if n > 0 {
+		now := time.Now()
+		if k.lastTouch.IsZero() || now.Sub(k.lastTouch) >= k.interval {
+			k.sess.touch()
+			k.lastTouch = now
+		}
+	}
+	return n, err
+}
+
 func (sess *receiveVMSession) abort(reason string) {
 	slog.Warn("receive VM session aborted", "session", sess.id, "instance", sess.instanceID, "reason", reason)
 	sess.cancel()
@@ -398,7 +432,8 @@ func (sess *receiveVMSession) runSidebandPhase(ln net.Listener) error {
 	sess.rollback.trackRecvWriter(pw)
 
 	tee := io.TeeReader(conn, sess.hasher)
-	n, copyErr := io.Copy(pw, tee)
+	ka := &sidebandKeepaliveReader{r: tee, sess: sess, interval: sidebandKeepaliveInterval}
+	n, copyErr := io.Copy(pw, ka)
 	sess.totalBytes += uint64(n)
 	_ = pw.Close()
 	zfsErr := <-errCh

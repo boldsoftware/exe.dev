@@ -2,6 +2,8 @@ package compute
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -26,29 +28,66 @@ func (s *Service) InitSendVM(ctx context.Context, req *api.InitSendVMRequest) (*
 		return sess.initResp, nil
 	}
 
-	go func() {
-		sender := &sessionMigrationSender{sess: sess}
-		startReq := &api.SendVMStartRequest{
-			InstanceID:         req.InstanceID,
-			TargetHasBaseImage: req.TargetHasBaseImage,
-			TwoPhase:           req.TwoPhase,
-			Live:               req.Live,
-			AcceptStatus:       true,
-			TargetAddress:      req.TargetAddress,
-			TargetGroupID:      req.TargetGroupID,
-		}
-		err := s.runSendVM(sender, startReq)
-		if err != nil {
-			sess.mu.Lock()
-			completed := sess.completed
-			sess.mu.Unlock()
-			if !completed {
-				_ = sender.EmitResult(&api.SendVMResult{Error: err.Error()})
-			}
-		}
-	}()
+	go s.runSendVMSession(sess, req)
 
 	return sess.initResp, nil
+}
+
+// runSendVMSession drives runSendVM for an async InitSendVM session and
+// guarantees a terminal SendVMEvent_Result is emitted on every exit path
+// (normal return, error return, or panic). Without this guarantee, exed's
+// PollSendVM loop — which only returns when it sees a Result event or a
+// Completed response — would poll forever if the goroutine exited silently.
+func (s *Service) runSendVMSession(sess *sendVMSession, req *api.InitSendVMRequest) {
+	sender := &sessionMigrationSender{sess: sess}
+
+	var runErr error
+	var panicVal any
+	var panicStack []byte
+	defer func() {
+		// Recover inside the defer so we observe a panic without letting
+		// it escape and kill the process.
+		if r := recover(); r != nil {
+			panicVal = r
+			panicStack = debug.Stack()
+		}
+		s.finalizeSendVMSession(sess, sender, runErr, panicVal, panicStack)
+	}()
+
+	startReq := &api.SendVMStartRequest{
+		InstanceID:         req.InstanceID,
+		TargetHasBaseImage: req.TargetHasBaseImage,
+		TwoPhase:           req.TwoPhase,
+		Live:               req.Live,
+		AcceptStatus:       true,
+		TargetAddress:      req.TargetAddress,
+		TargetGroupID:      req.TargetGroupID,
+	}
+	runErr = s.runSendVM(sender, startReq)
+}
+
+// finalizeSendVMSession emits a terminal SendVMResult if the session has
+// not already been completed by runSendVM itself. Extracted for testability.
+func (s *Service) finalizeSendVMSession(sess *sendVMSession, sender migrationSender, runErr error, panicVal any, panicStack []byte) {
+	sess.mu.Lock()
+	completed := sess.completed
+	sess.mu.Unlock()
+	if completed {
+		return
+	}
+
+	var errMsg string
+	switch {
+	case panicVal != nil:
+		s.log.Error("SendVM goroutine panicked", "instance", sess.instanceID, "session", sess.id, "panic", panicVal, "stack", string(panicStack))
+		errMsg = fmt.Sprintf("sendVM panic: %v", panicVal)
+	case runErr != nil:
+		errMsg = runErr.Error()
+	default:
+		s.log.Error("SendVM goroutine exited without emitting result", "instance", sess.instanceID, "session", sess.id)
+		errMsg = "sendVM exited without result"
+	}
+	_ = sender.EmitResult(&api.SendVMResult{Error: errMsg})
 }
 
 func (s *Service) PollSendVM(ctx context.Context, req *api.PollSendVMRequest) (*api.PollSendVMResponse, error) {
