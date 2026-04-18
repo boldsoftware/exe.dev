@@ -1,10 +1,19 @@
 ---
 title: "Some secret management belongs in your HTTP proxy"
 description: do third-party integrations via HTTP header management
-author: David Crawshaw
+author: David Crawshaw and Philip Zeyliger
 date: 2026-04-18
-published: false
 ---
+
+Secrets management is a pain.
+
+Larger organizations commit to centralizing secrets management in
+a service. When done well, these services solve a lot of issues
+around secrets, at the cost of creating a lot of ops overhead
+(which is why they are limited to larger organizations) and engineering
+complexity.
+Smaller organizations have, until now, lived with the pain.
+But the pain has become far more significant with agents.
 
 Agents fuss when you directly hand them an API key.
 It usually works, and if you make it a rapidly revocable key that you
@@ -26,7 +35,7 @@ it grants you the power to *give others the ability* to make API calls
 No software I write in production that has an /etc/defaults file full
 of env vars containing API keys needs that power.
 We have always just been careful about how we write programs to not
-exfill keys.
+exfil keys.
 Never careful enough, because many security flaws in such an app now
 let the attacker walk off the keys and give them a window to do
 nastiness from wherever they like, until we realize and start
@@ -84,9 +93,16 @@ And the key has been removed! What grants your server, and your agents,
 the ability to use the secret is their ability to reach your secrets
 HTTP proxy.
 
+<img src="/assets/secrets-proxy.svg" alt="Secrets HTTP proxy topology" style="max-width: 100%;" />
+
 This covers, amazingly, almost all secrets.
 
-## _Integrations_ in exe.dev
+A proxy like this is part of machinery provided by complex
+secrets management products.
+What is interesting is that it is one of the easier parts of
+secrets management, and delivers a large amount of the value.
+
+## *Integrations* in exe.dev
 
 The final piece of the puzzle is: why do you need to write and manage
 an HTTP proxy?
