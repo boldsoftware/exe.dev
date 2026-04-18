@@ -68,22 +68,22 @@ def sudo(*cmd, **kw):
 
 
 def cp_clone(src: Path, dst: Path) -> None:
-    """Copy src->dst using reflink when the filesystem supports it."""
+    """Copy src->dst using reflink when the filesystem supports it.
+
+    NOTE: coreutils 9.x rejects --reflink=always combined with --sparse=always
+    ("--reflink can be used only with --sparse=auto"), so we must not pass
+    both. Try reflink with its default sparse handling first, then fall back
+    to a plain sparse copy when the filesystem doesn't support clone_file.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
     last_err = ""
-    for args in [
-        ["cp", "--reflink=always", "--sparse=always", "-a", str(src), str(dst)],
-        ["cp", "--reflink=auto",   "--sparse=always", "-a", str(src), str(dst)],
-        ["cp",                     "--sparse=always", "-a", str(src), str(dst)],
-    ]:
-        r = subprocess.run(args, capture_output=True)
-        if r.returncode == 0:
-            return
-        last_err = r.stderr.decode(errors="replace").strip()
-    for args in [
-        ["sudo", "cp", "--reflink=always", "--sparse=always", "-a", str(src), str(dst)],
-        ["sudo", "cp",                     "--sparse=always", "-a", str(src), str(dst)],
-    ]:
+    attempts = [
+        ["cp", "--reflink=always", "-a", str(src), str(dst)],
+        ["cp", "--sparse=always", "-a", str(src), str(dst)],
+        ["sudo", "cp", "--reflink=always", "-a", str(src), str(dst)],
+        ["sudo", "cp", "--sparse=always", "-a", str(src), str(dst)],
+    ]
+    for args in attempts:
         r = subprocess.run(args, capture_output=True)
         if r.returncode == 0:
             return
@@ -116,8 +116,15 @@ def _image_digest() -> str:
 
 def _snapshot_paths(s_hash: str, img_dig: str):
     snap_dir   = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}"
+    # Per-host, one-time-converted backing images living on the same
+    # dataset where per-VM overlays are created. Both are the backing
+    # files for per-VM qcow2 overlays, so VM create is ~15 ms:
+    #   - local_base: flattened root qcow2 (also severs the transitive
+    #     dependency on the ci-rootfs cache).
+    #   - local_data: data.raw converted to qcow2 because cloud-hypervisor's
+    #     qcow2 driver only accepts qcow2 backing files, not raw.
     local_base = WORKDIR  / f"ci-base-{s_hash[:12]}-{img_dig[:12]}.qcow2"
-    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}.raw"
+    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}.qcow2"
     return snap_dir, local_base, local_data
 
 
@@ -948,8 +955,12 @@ def create_vm() -> Path:
     _ensure_snapshot(snap_dir)
 
     # ── Boot from snapshot ──
+    # Both disks are qcow2 overlays: writes go to the per-VM overlay while
+    # reads fall through to the shared read-only backing file. Creation is
+    # ~15 ms (no data copy), filesystem-agnostic (no reflink/CoW required),
+    # and works across datasets/mountpoints.
     disk      = WORKDIR / f"{NAME}.qcow2"
-    data_disk = WORKDIR / f"{NAME}-data.raw"
+    data_disk = WORKDIR / f"{NAME}-data.qcow2"
     tap       = tap_name_for(NAME)
 
     ip  = allocate_ip()
@@ -984,6 +995,10 @@ def create_vm() -> Path:
              "-b", str(local_base), str(disk))
 
     def clone_data():
+        # First use per host: convert the snapshot's raw data disk to a
+        # flat qcow2 sitting on the same dataset as per-VM overlays.
+        # cloud-hypervisor's qcow2 driver refuses raw backing files, so a
+        # qcow2-on-raw overlay won't boot ("Invalid magic" on backing open).
         if not local_data.exists():
             tmp = Path(str(local_data) + ".converting")
             lock = Path("/tmp") / f"{local_data.name}.lock-{os.getenv('USER', 'ci')}"
@@ -991,12 +1006,17 @@ def create_vm() -> Path:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX)
                 if not local_data.exists():
-                    cp_clone(snap_data, tmp)
+                    print("Converting snapshot data disk to qcow2 ...", flush=True)
+                    sudo("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
+                         str(snap_data), str(tmp))
                     sudo("mv", str(tmp), str(local_data))
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 fd.close()
-        cp_clone(local_data, data_disk)
+        # Per-VM thin qcow2 overlay: ~15 ms, filesystem-agnostic. Writes
+        # land in data_disk only; reads fall through to local_data.
+        sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
+             "-b", str(local_data), str(data_disk))
 
     def setup_tap():
         _setup_tap(tap)
